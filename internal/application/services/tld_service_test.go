@@ -3,8 +3,8 @@ package services
 import (
 	"testing"
 
-	"github.com/onasunnymorning/registry-os/internal/application/commands"
-	"github.com/onasunnymorning/registry-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 // MockTLDRepository is a mock implementation of the TLDRepository interface
