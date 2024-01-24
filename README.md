@@ -1,2 +1,2 @@
 # domain-os
-System for Domain repositories
+Domain Registry and Regsitrar Operating System

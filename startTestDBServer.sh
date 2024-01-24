@@ -1,0 +1,2 @@
+# docker run -e POSTGRES_PASSWORD=simplepass -e POSTGRES_USER=postgres -e POSTGRES_DB=regos4 -p 5432:5432 postgres:16.1
+docker run --rm -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres  -p 5432:5432 postgres:16.1
