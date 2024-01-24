@@ -1,0 +1,98 @@
+package postgres
+
+import (
+	"github.com/onasunnymorning/registry-os/internal/domain/entities"
+	"gorm.io/gorm"
+)
+
+// GormTLDRepo implements the TLDRepo interface
+type GormTLDRepo struct {
+	db *gorm.DB
+}
+
+// NewGormTLDRepo returns a new GormTLDRepo
+func NewGormTLDRepo(db *gorm.DB) *GormTLDRepo {
+	return &GormTLDRepo{
+		db: db,
+	}
+}
+
+// GetByName returns a TLD by name
+func (repo *GormTLDRepo) GetByName(name string) (*entities.TLD, error) {
+	dbtld := &TLD{}
+
+	err := repo.db.Where("name = ?", name).First(dbtld).Error
+	if err != nil {
+		return nil, err
+	}
+
+	tld := FromDBTLD(dbtld)
+
+	return tld, nil
+}
+
+// Create creates a new TLD in the database
+func (repo *GormTLDRepo) Create(tld *entities.TLD) error {
+	// Map the TLD to a DBTLD
+	dbtld := ToDBTLD(tld)
+
+	err := repo.db.Create(dbtld).Error
+	if err != nil {
+		return err
+	}
+
+	// Read the data from the repo to ensure we return the same data that was written
+	storedDBTLD, err := repo.GetByName(tld.Name.String())
+	if err != nil {
+		return err
+	}
+
+	// Map the DBTLD back to a TLD
+	*tld = *storedDBTLD
+
+	return nil
+}
+
+// List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
+func (repo *GormTLDRepo) List(pageSize int, pageCursor string) ([]*entities.TLD, error) {
+	dbtlds := []*TLD{}
+
+	err := repo.db.Order("name ASC").Limit(pageSize).Find(&dbtlds, "name > ?", pageCursor).Error
+	if err != nil {
+		return nil, err
+	}
+
+	tlds := make([]*entities.TLD, len(dbtlds))
+	for i, dbtld := range dbtlds {
+		tlds[i] = FromDBTLD(dbtld)
+	}
+
+	return tlds, nil
+}
+
+// Delete deletes a TLD from the database
+func (repo *GormTLDRepo) DeleteByName(name string) error {
+	return repo.db.Where("name = ?", name).Delete(&TLD{}).Error
+}
+
+// Update updates a TLD in the database
+func (repo *GormTLDRepo) Update(tld *entities.TLD) error {
+	// Map the TLD to a DBTLD
+	dbtld := ToDBTLD(tld)
+
+	err := repo.db.Save(dbtld).Error
+	if err != nil {
+		return err
+	}
+
+	// Read the data from the repo to ensure we return the same data that was written
+	storedDBTLD, err := repo.GetByName(tld.Name.String())
+	if err != nil {
+		return err
+	}
+
+	// Map the DBTLD back to a TLD
+	*tld = *storedDBTLD
+
+	return nil
+}
