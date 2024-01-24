@@ -1,6 +1,6 @@
 package repos
 
-import "github.com/onasunnymorning/registry-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
 type TLDRepo interface {
 	Create(tld *entities.TLD) error

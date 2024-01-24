@@ -1,4 +1,4 @@
-module github.com/onasunnymorning/registry-os
+module github.com/onasunnymorning/domain-os
 
 go 1.21.3
 

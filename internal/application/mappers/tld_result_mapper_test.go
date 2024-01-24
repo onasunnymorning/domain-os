@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/onasunnymorning/registry-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 func TestNewTLDResultFromTLD(t *testing.T) {

@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"github.com/onasunnymorning/registry-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 // ToDBTLD converts a TLD struct to a DBTLD struct

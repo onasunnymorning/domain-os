@@ -3,10 +3,10 @@ package services
 import (
 	"strings"
 
-	"github.com/onasunnymorning/registry-os/internal/application/commands"
-	"github.com/onasunnymorning/registry-os/internal/application/mappers"
-	"github.com/onasunnymorning/registry-os/internal/domain/entities"
-	"github.com/onasunnymorning/registry-os/internal/domain/repos"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/mappers"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/domain/repos"
 )
 
 // TLDService implements the TLDService interface

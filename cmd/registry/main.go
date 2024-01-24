@@ -3,9 +3,9 @@ package main
 import (
 	"log"
 
-	"github.com/onasunnymorning/registry-os/internal/application/services"
-	"github.com/onasunnymorning/registry-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/registry-os/internal/interface/rest"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 
 	"os"
 
