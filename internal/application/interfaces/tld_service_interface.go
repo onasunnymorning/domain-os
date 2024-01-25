@@ -10,5 +10,4 @@ type TLDService interface {
 	GetTLDByName(name string) (*entities.TLD, error)
 	ListTLDs(pageSize int, pageCursor string) ([]*entities.TLD, error)
 	DeleteTLDByName(name string) error
-	// UpdateTLD(cmd *commands.UpdateTLDCommand) (*commands.UpdateTLDCommandResult, error)
 }

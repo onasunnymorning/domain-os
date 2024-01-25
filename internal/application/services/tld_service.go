@@ -6,18 +6,18 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repos"
+	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
 
 // TLDService implements the TLDService interface
 type TLDService struct {
-	tldRepo repos.TLDRepo
+	tldRepository repositories.TLDRepository
 }
 
 // NewTLDService returns a new TLDService
-func NewTLDService(tldRepo repos.TLDRepo) *TLDService {
+func NewTLDService(tldRepo repositories.TLDRepository) *TLDService {
 	return &TLDService{
-		tldRepo: tldRepo,
+		tldRepository: tldRepo,
 	}
 }
 
@@ -28,7 +28,7 @@ func (svc *TLDService) CreateTLD(cmd *commands.CreateTLDCommand) (*commands.Crea
 		return nil, err
 	}
 
-	err = svc.tldRepo.Create(newTLD)
+	err = svc.tldRepository.Create(newTLD)
 	if err != nil {
 		return nil, err
 	}
@@ -42,15 +42,15 @@ func (svc *TLDService) CreateTLD(cmd *commands.CreateTLDCommand) (*commands.Crea
 // GetTLDByName gets a TLD by name
 func (svc *TLDService) GetTLDByName(name string) (*entities.TLD, error) {
 	// domain names are case insensitive and we always store them as lowercase
-	return svc.tldRepo.GetByName(strings.ToLower(name))
+	return svc.tldRepository.GetByName(strings.ToLower(name))
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
 func (svc *TLDService) ListTLDs(pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	return svc.tldRepo.List(pageSize, pageCursor)
+	return svc.tldRepository.List(pageSize, pageCursor)
 }
 
 // DeleteTLDByName deletes a TLD by name
 func (svc *TLDService) DeleteTLDByName(name string) error {
-	return svc.tldRepo.DeleteByName(name)
+	return svc.tldRepository.DeleteByName(name)
 }

@@ -1,8 +1,8 @@
-package repos
+package repositories
 
 import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
-type TLDRepo interface {
+type TLDRepository interface {
 	Create(tld *entities.TLD) error
 	GetByName(name string) (*entities.TLD, error)
 	List(pageSize int, pageCursor string) ([]*entities.TLD, error)
