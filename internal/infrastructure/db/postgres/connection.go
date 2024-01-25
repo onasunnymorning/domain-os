@@ -13,7 +13,10 @@ import (
 )
 
 func AutoMigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&TLD{})
+	err := db.AutoMigrate(
+		&TLD{},
+		&NNDN{},
+	)
 	if err != nil {
 		return err
 	}
