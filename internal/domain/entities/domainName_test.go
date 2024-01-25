@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/json"
+	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
 
@@ -40,6 +41,11 @@ func TestNewDomainName(t *testing.T) {
 
 		if err == nil && test.expected != d.String() {
 			t.Errorf("Expected domain name to be %s, but got %s for input %s", strings.ToLower(test.name), d.String(), test.name)
+		}
+
+		if d != nil {
+			tld := d.GetTLD()
+			require.NotEmptyf(t, tld, "TLD must not be empty")
 		}
 	}
 }
