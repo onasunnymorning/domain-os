@@ -5,20 +5,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// GormTLDRepo implements the TLDRepo interface
-type GormTLDRepo struct {
+// GormTLDRepository implements the TLDRepo interface
+type GormTLDRepository struct {
 	db *gorm.DB
 }
 
 // NewGormTLDRepo returns a new GormTLDRepo
-func NewGormTLDRepo(db *gorm.DB) *GormTLDRepo {
-	return &GormTLDRepo{
+func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
+	return &GormTLDRepository{
 		db: db,
 	}
 }
 
 // GetByName returns a TLD by name
-func (repo *GormTLDRepo) GetByName(name string) (*entities.TLD, error) {
+func (repo *GormTLDRepository) GetByName(name string) (*entities.TLD, error) {
 	dbtld := &TLD{}
 
 	err := repo.db.Where("name = ?", name).First(dbtld).Error
@@ -32,7 +32,7 @@ func (repo *GormTLDRepo) GetByName(name string) (*entities.TLD, error) {
 }
 
 // Create creates a new TLD in the database
-func (repo *GormTLDRepo) Create(tld *entities.TLD) error {
+func (repo *GormTLDRepository) Create(tld *entities.TLD) error {
 	// Map the TLD to a DBTLD
 	dbtld := ToDBTLD(tld)
 
@@ -54,7 +54,7 @@ func (repo *GormTLDRepo) Create(tld *entities.TLD) error {
 }
 
 // List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (repo *GormTLDRepo) List(pageSize int, pageCursor string) ([]*entities.TLD, error) {
+func (repo *GormTLDRepository) List(pageSize int, pageCursor string) ([]*entities.TLD, error) {
 	dbtlds := []*TLD{}
 
 	err := repo.db.Order("name ASC").Limit(pageSize).Find(&dbtlds, "name > ?", pageCursor).Error
@@ -71,12 +71,12 @@ func (repo *GormTLDRepo) List(pageSize int, pageCursor string) ([]*entities.TLD,
 }
 
 // Delete deletes a TLD from the database
-func (repo *GormTLDRepo) DeleteByName(name string) error {
+func (repo *GormTLDRepository) DeleteByName(name string) error {
 	return repo.db.Where("name = ?", name).Delete(&TLD{}).Error
 }
 
 // Update updates a TLD in the database
-func (repo *GormTLDRepo) Update(tld *entities.TLD) error {
+func (repo *GormTLDRepository) Update(tld *entities.TLD) error {
 	// Map the TLD to a DBTLD
 	dbtld := ToDBTLD(tld)
 
