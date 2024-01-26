@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"gorm.io/gorm"
 	"testing"
 
@@ -40,7 +41,6 @@ func (s *NNDNSuite) TearDownSuite() {
 func (s *NNDNSuite) TestCreateNNDN() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-
 	repo := NewGormNNDNRepository(tx)
 
 	nndn, _ := entities.NewNNDN("example." + s.tld)
@@ -49,97 +49,100 @@ func (s *NNDNSuite) TestCreateNNDN() {
 	require.NotNil(s.T(), createdNNDN)
 }
 
-//func (s *NNDNSuite) TestReadNNDN() {
-//	nndn := s.newTestNNDN()
-//	createdNNDN, err := s.repo.CreateNNDN(context.Background(), nndn)
-//	require.NoError(s.T(), err)
-//	s.createdNNDNs = append(s.createdNNDNs, createdNNDN.Name.String())
-//
-//	readNNDN, err := s.repo.GetNNDN(context.Background(), createdNNDN.Name.String())
-//	require.NoError(s.T(), err)
-//	require.NotNil(s.T(), readNNDN)
-//	require.Equal(s.T(), createdNNDN.Name, readNNDN.Name)
-//
-//}
-//
-//func (s *NNDNSuite) TestUpdateNNDN() {
-//	nndn := s.newTestNNDN()
-//	createdNNDN, err := s.repo.CreateNNDN(context.Background(), nndn)
-//	require.NoError(s.T(), err)
-//	s.createdNNDNs = append(s.createdNNDNs, createdNNDN.Name.String())
-//
-//	createdNNDN.UName = "updated-unicode-Name"
-//	updatedNNDN, err := s.repo.UpdateNNDN(context.Background(), createdNNDN)
-//	require.NoError(s.T(), err)
-//
-//	require.NotNil(s.T(), updatedNNDN)
-//	require.Equal(s.T(), "updated-unicode-Name", updatedNNDN.UName.String())
-//
-//}
-//
-//func (s *NNDNSuite) TestDeleteNNDN() {
-//	nndn := s.newTestNNDN()
-//	createdNNDN, err := s.repo.CreateNNDN(context.Background(), nndn)
-//	require.NoError(s.T(), err)
-//
-//	err = s.repo.DeleteNNDN(context.Background(), createdNNDN.Name.String())
-//	require.NoError(s.T(), err)
-//
-//	_, err = s.repo.GetNNDN(context.Background(), createdNNDN.Name.String())
-//	require.Error(s.T(), err)
-//}
-//
-//func (s *NNDNSuite) TestListNNDNs() {
-//	var cursor string
-//	for i := 0; i < 3; i++ {
-//		nndn := s.newTestNNDN()
-//		if cursor == "" {
-//			cursor = nndn.Name.String()
-//		}
-//		createdNNDN, err := s.repo.CreateNNDN(context.Background(), nndn)
-//		require.NoError(s.T(), err)
-//		s.createdNNDNs = append(s.createdNNDNs, createdNNDN.Name.String())
-//	}
-//
-//	nndns, err := s.repo.ListNNDNs(context.Background(), 3, cursor)
-//	require.NoError(s.T(), err)
-//	require.Len(s.T(), nndns, 2)
-//}
-//
-//func (s *NNDNSuite) TestCreateNNDN_Error() {
-//	// Create a NNDN with a specific Name
-//	nndn := s.newTestNNDN()
-//	createdNNDN, err := s.repo.CreateNNDN(context.Background(), nndn)
-//	require.NoError(s.T(), err)
-//	// Cleanup
-//	s.createdNNDNs = append(s.createdNNDNs, createdNNDN.Name.String())
-//
-//	// Attempt to create another NNDN with the same Name, expecting an error
-//	duplicateNNDN := s.newTestNNDN()
-//	duplicateNNDN.UName = createdNNDN.UName // Set the same UName
-//	_, err = s.repo.CreateNNDN(context.Background(), duplicateNNDN)
-//	require.Error(s.T(), err)
-//
-//}
-//
-//func (s *NNDNSuite) TestCreateAndUpdateNNDN_Error() {
-//	// Create the first NNDN
-//	firstNNDN := s.newTestNNDN()
-//	createdFirstNNDN, err := s.repo.CreateNNDN(context.Background(), firstNNDN)
-//	require.NoError(s.T(), err)
-//	// Cleanup
-//	s.createdNNDNs = append(s.createdNNDNs, createdFirstNNDN.Name.String())
-//
-//	// Create the second NNDN
-//	secondNNDN := s.newTestNNDN()
-//	createdSecondNNDN, err := s.repo.CreateNNDN(context.Background(), secondNNDN)
-//	require.NoError(s.T(), err)
-//
-//	// Attempt to update the second NNDN with the same aName as the first, expecting an error
-//	createdSecondNNDN.UName = createdFirstNNDN.UName
-//	_, err = s.repo.UpdateNNDN(context.Background(), createdSecondNNDN)
-//	require.Error(s.T(), err)
-//
-//	// Cleanup
-//	s.createdNNDNs = append(s.createdNNDNs, createdSecondNNDN.Name.String())
-//}
+func (s *NNDNSuite) TestReadNNDN() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	nndn, _ := entities.NewNNDN("example." + s.tld)
+	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
+	require.NoError(s.T(), err)
+
+	readNNDN, err := repo.GetNNDN(context.Background(), createdNNDN.Name.String())
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), readNNDN)
+	require.Equal(s.T(), createdNNDN.Name, readNNDN.Name)
+}
+
+func (s *NNDNSuite) TestUpdateNNDN() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	nndn, _ := entities.NewNNDN("example." + s.tld)
+	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
+	require.NoError(s.T(), err)
+
+	createdNNDN.UName = "updated-unicode-name"
+	updatedNNDN, err := repo.UpdateNNDN(context.Background(), createdNNDN)
+	require.NoError(s.T(), err)
+
+	require.NotNil(s.T(), updatedNNDN)
+	require.Equal(s.T(), "updated-unicode-name", updatedNNDN.UName.String())
+}
+
+func (s *NNDNSuite) TestDeleteNNDN() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	nndn, _ := entities.NewNNDN("example." + s.tld)
+	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
+	require.NoError(s.T(), err)
+
+	err = repo.DeleteNNDN(context.Background(), createdNNDN.Name.String())
+	require.NoError(s.T(), err)
+
+	_, err = repo.GetNNDN(context.Background(), createdNNDN.Name.String())
+	require.Error(s.T(), err)
+}
+
+func (s *NNDNSuite) TestListNNDNs() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	var createdNNDNs []string
+	for i := 0; i < 3; i++ {
+		nndn, _ := entities.NewNNDN(fmt.Sprintf("list%d.example.%s", i, s.tld))
+		createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
+		require.NoError(s.T(), err)
+		createdNNDNs = append(createdNNDNs, createdNNDN.Name.String())
+	}
+
+	nndns, err := repo.ListNNDNs(context.Background(), 3, createdNNDNs[0])
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 2)
+}
+
+func (s *NNDNSuite) TestCreateNNDN_Error() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	nndn, _ := entities.NewNNDN("example." + s.tld)
+	_, err := repo.CreateNNDN(context.Background(), nndn)
+	require.NoError(s.T(), err)
+
+	duplicateNNDN, _ := entities.NewNNDN("example." + s.tld)
+	_, err = repo.CreateNNDN(context.Background(), duplicateNNDN)
+	require.Error(s.T(), err)
+}
+
+func (s *NNDNSuite) TestCreateAndUpdateNNDN_Error() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	firstNNDN, _ := entities.NewNNDN("first.error.example." + s.tld)
+	createdFirstNNDN, err := repo.CreateNNDN(context.Background(), firstNNDN)
+	require.NoError(s.T(), err)
+
+	secondNNDN, _ := entities.NewNNDN("second.error.example." + s.tld)
+	createdSecondNNDN, err := repo.CreateNNDN(context.Background(), secondNNDN)
+	require.NoError(s.T(), err)
+
+	createdSecondNNDN.UName = createdFirstNNDN.UName
+	_, err = repo.UpdateNNDN(context.Background(), createdSecondNNDN)
+	require.Error(s.T(), err)
+}
