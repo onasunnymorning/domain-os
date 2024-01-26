@@ -6,6 +6,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"log"
+	"os"
+	"testing"
 )
 
 const (
@@ -58,11 +60,22 @@ func createTestDB() {
 }
 
 func getTestDB() *gorm.DB {
+	return testDB
+}
+
+var testDB *gorm.DB
+
+func TestMain(m *testing.M) {
+	// Setup database connection
 	gormDB := setupTestDB()
 	err := AutoMigrate(gormDB)
 	if err != nil {
 		log.Fatalf("failed to migrated DB, error:%s", err)
 	}
 	log.Printf("Migrated Database %s", dbName)
-	return gormDB
+	testDB = gormDB
+	// Run tests
+	code := m.Run()
+	// Close database connection
+	os.Exit(code)
 }
