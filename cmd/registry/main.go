@@ -27,9 +27,13 @@ func main() {
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
 
+	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
+	nndnService := services.NewNNDNService(nndnRepo)
+
 	r := gin.Default()
 
 	rest.NewTLDController(r, tldService)
+	rest.NewNNDNController(r, nndnService)
 
 	r.Run(":" + os.Getenv("API_PORT"))
 
