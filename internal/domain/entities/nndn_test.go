@@ -9,7 +9,6 @@ import (
 )
 
 func TestNewNNDN(t *testing.T) {
-	// Positive test case
 	t.Run("Valid NNDN Creation", func(t *testing.T) {
 		const (
 			asciiName   = "example.com"
@@ -28,29 +27,57 @@ func TestNewNNDN(t *testing.T) {
 		require.True(t, nndn.UpdatedAt.Before(time.Now()), "UpdatedAt should be before current time")
 	})
 
-	// Negative test cases
+	// test cases
 	tests := []struct {
 		name   string
 		domain string
+		err    error
 	}{
 		{
 			name:   "Invalid ASCII domain",
 			domain: "invalid_domain!?.com",
+			err:    ErrInvalidDomainName,
 		},
 		{
 			name:   "Too long domain",
 			domain: "thisisaverylongdomainnamethatexceedsthemaximumallowedlengthforadomainname.com",
+			err:    ErrInvalidDomainName,
 		},
 		{
 			name:   "Empty domain",
 			domain: "",
+			err:    ErrInvalidDomainName,
+		},
+		{
+			name:   "Valid IDN TLD",
+			domain: "xn--somevalididn.normal.tld",
+			err:    nil,
+		},
+		{
+			name:   "Valid SLD with IDN TLD",
+			domain: "label.xn--somevalididn",
+			err:    nil,
+		},
+		{
+			name:   "Multiple IDN labels",
+			domain: "label.xn--somevalididn.xn--somevalididn",
+			err:    nil,
+		},
+		{
+			name:   "Complex SLD structure",
+			domain: "my.domain.in.an.sld",
+			err:    nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := NewNNDN(tc.domain)
-			require.Error(t, err, "Expected an error for "+tc.name)
+			if tc.err != nil {
+				require.ErrorIs(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

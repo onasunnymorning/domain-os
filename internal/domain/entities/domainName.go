@@ -69,9 +69,3 @@ func (d *DomainName) UnmarshalJSON(bytes []byte) error {
 	*d = DomainName(name)
 	return nil
 }
-
-// GetTLD returns the top-level domain (TLD) of the domain name.
-func (d *DomainName) GetTLD() string {
-	parts := strings.Split(d.String(), ".")
-	return parts[len(parts)-1]
-}
