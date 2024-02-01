@@ -65,7 +65,7 @@ func NewNNDN(name string) (*NNDN, error) {
 		return nil, err
 	}
 
-	tld, err := NewDomainName(domain.GetTLD())
+	tld, err := NewDomainName(domain.ParentDomain())
 	if err != nil {
 		return nil, err
 	}

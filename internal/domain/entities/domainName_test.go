@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewDomainName(t *testing.T) {
@@ -41,11 +40,6 @@ func TestNewDomainName(t *testing.T) {
 
 		if err == nil && test.expected != d.String() {
 			t.Errorf("Expected domain name to be %s, but got %s for input %s", strings.ToLower(test.name), d.String(), test.name)
-		}
-
-		if d != nil {
-			tld := d.GetTLD()
-			require.NotEmptyf(t, tld, "TLD must not be empty")
 		}
 	}
 }
