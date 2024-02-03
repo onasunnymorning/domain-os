@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
+	"strings"
 
 	_ "github.com/lib/pq"     // Standard postgres driver (in case we need to create the database)
 	"gorm.io/driver/postgres" // Gorm postgres driver
@@ -44,38 +44,37 @@ func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	return nil
 }
 
-func NewConnection() (*gorm.DB, error) {
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASS")
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbName := os.Getenv("DB_NAME")
+type Config struct {
+	User   string
+	Pass   string
+	Host   string
+	Port   string
+	DBName string
+}
 
-	gormDB, err := gorm.Open(postgres.Open("postgres://" + dbUser + ":" + dbPass + "@" + dbHost + ":" + dbPort + "/" + dbName))
+func NewConnection(cfg Config) (*gorm.DB, error) {
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName)
+	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
-		// If the database does not exist, create it and retry
-		if errMsg == fmt.Sprintf("failed to connect to `host=%s user=%s database=%s`: server error (FATAL: database \"%s\" does not exist (SQLSTATE 3D000))", dbHost, dbUser, dbName, dbName) {
-			log.Printf("Database '%s' does not exist. Attempting to create it...", dbName)
-			err = CreateDB(dbUser, dbPass, dbHost, dbName, dbPort)
-			if err != nil {
-				return nil, err
+		if strings.Contains(errMsg, fmt.Sprintf("database \"%s\" does not exist", cfg.DBName)) {
+			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
+			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
+				return nil, fmt.Errorf("failed to create database: %w", err)
 			}
-			// If the create works, retry the connection
-			gormDB, err := gorm.Open(postgres.Open("postgres://" + dbUser + ":" + dbPass + "@" + dbHost + ":" + dbPort + "/" + dbName))
+			// Retry the connection after creating the database
+			gormDB, err = gorm.Open(postgres.Open(dsn))
 			if err != nil {
 				// If there is still an issue establishing the connection, return the error
-				return nil, err
+				return nil, fmt.Errorf("failed to connect to database: %w, after creating it", err)
 			}
-			return gormDB, nil
 		} else {
-			// If the error is not that the database does not exist, return the error
-			return nil, err
+			return nil, fmt.Errorf("failed to connect to database: %w", err)
 		}
 	}
-	err = AutoMigrate(gormDB)
-	if err != nil {
-		return gormDB, err
+
+	if err = AutoMigrate(gormDB); err != nil {
+		return gormDB, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	return gormDB, nil
