@@ -19,7 +19,15 @@ import (
 func main() {
 	godotenv.Load()
 
-	gormDB, err := postgres.NewConnection()
+	gormDB, err := postgres.NewConnection(
+		postgres.Config{
+			User:   os.Getenv("DB_USER"),
+			Pass:   os.Getenv("DB_PASS"),
+			Host:   os.Getenv("DB_HOST"),
+			Port:   os.Getenv("DB_PORT"),
+			DBName: os.Getenv("DB_NAME"),
+		},
+	)
 	if err != nil {
 		log.Println(err)
 	}
@@ -27,9 +35,13 @@ func main() {
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
 
+	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
+	nndnService := services.NewNNDNService(nndnRepo)
+
 	r := gin.Default()
 
 	rest.NewTLDController(r, tldService)
+	rest.NewNNDNController(r, nndnService)
 
 	r.Run(":" + os.Getenv("API_PORT"))
 
