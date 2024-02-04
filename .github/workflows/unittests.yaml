@@ -20,6 +20,6 @@ jobs:
           docker run --rm -d -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres  -p 5432:5432 postgres:16.1
         id: testdb
 
-      - name: Run Core Tests
+      - name: Run Tests
         run: |
           go test -v ./...
