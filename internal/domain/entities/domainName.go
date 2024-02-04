@@ -2,10 +2,10 @@ package entities
 
 import (
 	"encoding/json"
-	"golang.org/x/net/idna"
 	"strings"
 
 	"github.com/pkg/errors"
+	"golang.org/x/net/idna"
 )
 
 const (
@@ -14,7 +14,8 @@ const (
 )
 
 var (
-	ErrInvalidDomainName = errors.New("invalid domain name")
+	ErrinvalIdDomainNameLength = errors.New("invalid domain name length. Domain name must be between 1 and 253 characters long")
+	ErrInvalidDomainName       = errors.New("invalid domain name")
 )
 
 // A domainname is an alias for a string
@@ -24,18 +25,34 @@ type DomainName string
 // It normalizes the input string before validating it and Trims leading and trailing dots
 // A single label is also a valid domain name
 func NewDomainName(name string) (*DomainName, error) {
-	n := NormalizeString(name)
-	d := DomainName(strings.Trim(strings.ToLower(n), "."))
-	if !d.IsValid() {
-		return nil, ErrInvalidDomainName
+	n := NormalizeString(strings.ToLower(name))
+	d := DomainName(strings.Trim(n, ".")) // trim leading and trailing dots
+	if err := d.Validate(); err != nil {
+		return nil, err
 	}
 	return &d, nil
 }
 
-// IsValid returns a boolean indicating if the domain name is valid or not
+// Validate returns an error indicating if the domain name is valid or not
 // A domain name is a FQDN (Fully Qualified Domain Name) and can contain letters, digits and hyphens
 // A domain name can be between 1 and 253 characters long
 // A domain consists of valid labels separated by dots
+func (d *DomainName) Validate() error {
+	if len(d.String()) > DOMAIN_MAX_LEN || len(d.String()) < DOMAIN_MIN_LEN {
+		return ErrinvalIdDomainNameLength
+	}
+
+	// Verify that each label is valid
+	for _, label := range d.GetLabels() {
+		if err := label.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// IsValid returns true if the domain name is valid
+// TODO: replace all reference to this method with Validate
 func (d *DomainName) IsValid() bool {
 	if len(d.String()) > DOMAIN_MAX_LEN || len(d.String()) < DOMAIN_MIN_LEN {
 		return false
@@ -74,4 +91,14 @@ func (d *DomainName) UnmarshalJSON(bytes []byte) error {
 // ToUnicode returns the Unicode representation of the domain name
 func (d *DomainName) ToUnicode() (string, error) {
 	return idna.ToUnicode(d.String())
+}
+
+// GetLabels returns a slice of Labels from the domain name
+func (d *DomainName) GetLabels() []Label {
+	labelStrings := strings.Split(d.String(), ".")
+	l := make([]Label, len(labelStrings))
+	for i, label := range labelStrings {
+		l[i] = Label(label)
+	}
+	return l
 }
