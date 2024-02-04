@@ -3,6 +3,7 @@ module github.com/onasunnymorning/domain-os
 go 1.21.3
 
 require (
+	github.com/biter777/countries v1.7.2
 	github.com/gin-gonic/gin v1.9.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
