@@ -91,7 +91,7 @@ var _ = ginkgo.Describe("TLDController", func() {
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
-			gomega.Expect(resp.Code).To(gomega.Equal(http.StatusInternalServerError)) // todo fix this
+			gomega.Expect(resp.Code).To(gomega.Equal(http.StatusNotFound)) // todo fix this
 		})
 	})
 
