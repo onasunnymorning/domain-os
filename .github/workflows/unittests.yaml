@@ -1,0 +1,25 @@
+name: Unit Tests
+
+on: 
+  push
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup and Cache Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: ./go.mod
+        id: go
+
+      - name: Start test Database server
+        run: |
+          docker run --rm -d -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres  -p 5432:5432 postgres:16.1
+        id: testdb
+
+      - name: Run Core Tests
+        run: |
+          go test -v ./...
