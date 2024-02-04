@@ -2,8 +2,6 @@ package entities
 
 import (
 	"time"
-
-	"golang.org/x/net/idna"
 )
 
 // NNDNState is a custom type for representing the state of an NNDN object.
@@ -36,7 +34,7 @@ type NNDN struct {
 
 	// The Unicode representation of the NNDN.
 	// For the IDN variant "xn--fsq.com", this would be "例子.com".
-	UName DomainName
+	UName string
 
 	// Identifier for the Top-Level Domain (TLD) associated with this NNDN.
 	// For "例子.com", the TLDName might correspond to the ".com"
@@ -59,8 +57,7 @@ func NewNNDN(name string) (*NNDN, error) {
 		return nil, err
 	}
 
-	uNameStr, _ := idna.ToUnicode(domain.String())
-	uName, err := NewDomainName(uNameStr)
+	uName, err := domain.ToUnicode()
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +69,7 @@ func NewNNDN(name string) (*NNDN, error) {
 
 	return &NNDN{
 		Name:      *domain,
-		UName:     *uName,
+		UName:     uName,
 		TLDName:   *tld,
 		NameState: NNDNStateBlocked,
 		CreatedAt: time.Now(),

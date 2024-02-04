@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/json"
+	"golang.org/x/net/idna"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -68,4 +69,9 @@ func (d *DomainName) UnmarshalJSON(bytes []byte) error {
 	}
 	*d = DomainName(name)
 	return nil
+}
+
+// ToUnicode returns the Unicode representation of the domain name
+func (d *DomainName) ToUnicode() (string, error) {
+	return idna.ToUnicode(d.String())
 }
