@@ -36,17 +36,17 @@ func TestNewNNDN(t *testing.T) {
 		{
 			name:   "Invalid ASCII domain",
 			domain: "invalid_domain!?.com",
-			err:    ErrInvalidDomainName,
+			err:    ErrLabelContainsInvalidCharacter,
 		},
 		{
 			name:   "Too long domain",
 			domain: "thisisaverylongdomainnamethatexceedsthemaximumallowedlengthforadomainname.com",
-			err:    ErrInvalidDomainName,
+			err:    ErrInvalidLabelLength,
 		},
 		{
 			name:   "Empty domain",
 			domain: "",
-			err:    ErrInvalidDomainName,
+			err:    ErrinvalIdDomainNameLength,
 		},
 		{
 			name:   "Valid IDN TLD",
