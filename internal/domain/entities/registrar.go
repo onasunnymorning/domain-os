@@ -1,0 +1,135 @@
+package entities
+
+import (
+	"net/mail"
+	"time"
+
+	"github.com/pkg/errors"
+)
+
+const (
+	RegistrarStatusTerminated RegistrarStatus = "terminated"
+	RegistrarStatusOK         RegistrarStatus = "ok"
+	RegistrarStatusReadonly   RegistrarStatus = "readonly"
+)
+
+var (
+	ErrInvalidRegistrar              = errors.New("invalid registrar")
+	ErrRegistrarPostalInfoTypeExists = errors.New("postalinfo of this type already exists")
+)
+
+// RegistrarStatus is a type for registrar status
+type RegistrarStatus string
+
+// String returns the string value of the RegistrarStatus
+func (r *RegistrarStatus) String() string {
+	return string(*r)
+}
+
+// Registrar object represents the sponsoring client for other objects and is typically referred to as the sponsoring registrar.
+// Ref: https://www.rfc-editor.org/rfc/rfc9022.html#name-registrar-object
+type Registrar struct {
+	ClID        ClIDType        `json:"clID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
+	Name        string          // A human-readable name for the registrar. Must match the Legal entity name. For ICANN Accredite registrars, must match the entity registered with ICANN for the corresponding GurID.
+	NickName    string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
+	GurID       int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+	Status      RegistrarStatus // The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
+	PostalInfo  [2]*RegistrarPostalInfo
+	Voice       E164Type
+	Fax         E164Type
+	Email       string
+	URL         URL
+	WhoisInfo   WhoisInfo
+	RdapBaseURL URL
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// NewRegistrar creates a new instance of Registrar
+func NewRegistrar(clID, name, email string, gurid int) (*Registrar, error) {
+	r := &Registrar{
+		ClID:     ClIDType(NormalizeString(clID)),
+		Name:     NormalizeString(name),
+		NickName: NormalizeString(name), // By default, the nickname is the same as the name
+		GurID:    gurid,
+		Email:    NormalizeString(email),
+		Status:   RegistrarStatusReadonly, // Create the status as readonly by default
+	}
+
+	if !r.IsValid() {
+		return nil, ErrInvalidRegistrar
+	}
+
+	return r, nil
+}
+
+// IsValid checks if the registrar object is valid
+// It is valid when all of the following conditions are true:
+// - ClID is valid
+// - Name and Email are not empty
+// - Status is one of the valid values
+// - Email is valid
+// - The postal info is valid
+func (r *Registrar) IsValid() bool {
+	if err := r.ClID.Validate(); err != nil {
+		return false
+	}
+	if r.Name == "" || r.Email == "" {
+		return false
+	}
+	if r.Status != RegistrarStatusOK && r.Status != RegistrarStatusReadonly && r.Status != RegistrarStatusTerminated {
+		return false
+	}
+	_, err := mail.ParseAddress(r.Email)
+	if err != nil {
+		return false
+	}
+	for _, pi := range r.PostalInfo {
+		if pi != nil && !pi.IsValid() {
+			return false
+		}
+	}
+	return true
+}
+
+// AddPostalInfo Adds Postal Info to a Registrar. It checks validtiy of the PostalInfo object and returns an error if it is invalid
+// INT postalinfo are stored in the first position, LOC postalinfo in second position
+// If a postalinfo of the same type already exists, it returns an error
+// RemovePostalInfo can be used to remove a postalinfo prior to adding a new one of the same type
+func (r *Registrar) AddPostalInfo(pi *RegistrarPostalInfo) error {
+	// Fail fast if we get an  invalid PostalInfo object
+	if !pi.IsValid() {
+		return ErrInvalidRegistrarPostalInfo
+
+	}
+	// In the 2-item array, store the 'int' postalinfo first, the 'loc' postalinfo in second position
+	if pi.Type == "int" {
+		if r.PostalInfo[0] != nil {
+			return ErrRegistrarPostalInfoTypeExists
+		}
+		r.PostalInfo[0] = pi
+	}
+	if pi.Type == "loc" {
+		if r.PostalInfo[1] != nil {
+			return ErrRegistrarPostalInfoTypeExists
+		}
+		r.PostalInfo[1] = pi
+	}
+	return nil
+}
+
+// RemovePostalInfo Removes Postal Info from Registrar by specifying the type
+func (r *Registrar) RemovePostalInfo(t string) error {
+	if t != "int" && t != "loc" {
+		return ErrInvalidPostalInfoEnumType
+	}
+	// Make this idempotent
+	// The 'int' postalinfo is stored in the first position, the 'loc' postalinfor in second position
+	if t == "int" {
+		r.PostalInfo[0] = nil
+	}
+	if t == "loc" {
+		r.PostalInfo[1] = nil
+	}
+	return nil
+}

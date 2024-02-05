@@ -16,7 +16,7 @@ func TestNewTLD(t *testing.T) {
 		{
 			name:     "-invalid",
 			expected: nil,
-			err:      ErrInvalidDomainName,
+			err:      ErrInvalidLabelDash,
 		},
 	}
 

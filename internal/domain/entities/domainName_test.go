@@ -2,45 +2,45 @@ package entities
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewDomainName(t *testing.T) {
 	tests := []struct {
+		testname      string
 		name          string
 		expected      string
 		expectedError error
 	}{
-		{"example.com", "example.com", nil},
-		{"EXAMPLE.COM", "example.com", nil},
-		{"example.com.", "example.com", nil},
-		{"example", "example", nil},
-		{"example..com", "example..com", ErrInvalidDomainName},
-		{"example_com", "example_com", ErrInvalidDomainName},
-		{"example$com", "example$com", ErrInvalidDomainName},
-		{"example!com", "example!com", ErrInvalidDomainName},
-		{"example.com!", "example.com!", ErrInvalidDomainName},
-		{"example.com ", "example.com", nil},
-		{" example.com", "example.com", nil},
-		{".example.com", "example.com", nil},
-		{"", "", ErrInvalidDomainName},
-		{".", "", ErrInvalidDomainName},
-		{"a", "a", nil},
-		{"tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.", "", ErrInvalidDomainName},
+		{"example.com", "example.com", "example.com", nil},
+		{"EXAMPLE.COM", "EXAMPLE.COM", "example.com", nil},
+		{"example.com.", "example.com.", "example.com", nil},
+		{"example", "example", "example", nil},
+		{"example..com", "example..com", "example..com", ErrInvalidLabelLength},
+		{"example_com", "example_com", "example_com", ErrLabelContainsInvalidCharacter},
+		{"example$com", "example$com", "example$com", ErrLabelContainsInvalidCharacter},
+		{"example!com", "example!com", "example!com", ErrLabelContainsInvalidCharacter},
+		{"example.com!", "example.com!", "example.com!", ErrLabelContainsInvalidCharacter},
+		{"example.com ", "example.com ", "example.com", nil},
+		{" example.com", " example.com", "example.com", nil},
+		{".example.com", ".example.com", "example.com", nil},
+		{"empty", "", "", ErrinvalIdDomainNameLength},
+		{"dot only", ".", "", ErrinvalIdDomainNameLength}, // dots will be trimmed
+		{"one character", "a", "a", nil},
+		{"domain name too long", "tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.tooooooooooooooolooooooooooooooooooongdooooooooooooooooomainnaaaaaaaaaaaame.", "", ErrinvalIdDomainNameLength},
 	}
 
 	for _, test := range tests {
-		d, err := NewDomainName(test.name)
-		if err != test.expectedError {
-			t.Errorf("Expected error to be %v, but got %v for input %s", test.expectedError, err, test.name)
-		}
-
-		if err == nil && test.expected != d.String() {
-			t.Errorf("Expected domain name to be %s, but got %s for input %s", strings.ToLower(test.name), d.String(), test.name)
-		}
+		t.Run(test.testname, func(t *testing.T) {
+			d, err := NewDomainName(test.name)
+			require.Equal(t, test.expectedError, err, "error mismatch")
+			if err == nil {
+				assert.Equal(t, test.expected, d.String(), "domain name mismatch")
+			}
+		})
 	}
 }
 func TestDomainName_ParentDomain(t *testing.T) {
