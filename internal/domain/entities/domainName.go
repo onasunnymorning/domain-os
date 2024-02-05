@@ -51,21 +51,6 @@ func (d *DomainName) Validate() error {
 	return nil
 }
 
-// IsValid returns true if the domain name is valid
-// TODO: replace all reference to this method with Validate
-func (d *DomainName) IsValid() bool {
-	if len(d.String()) > DOMAIN_MAX_LEN || len(d.String()) < DOMAIN_MIN_LEN {
-		return false
-	}
-	labels := strings.Split(d.String(), ".")
-	for _, label := range labels {
-		if !IsValidLabel(label) {
-			return false
-		}
-	}
-	return true
-}
-
 // Returns the parent domain of the domain name
 func (d *DomainName) ParentDomain() string {
 	labels := strings.Split(string(*d), ".")
