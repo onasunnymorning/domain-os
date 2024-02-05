@@ -1,8 +1,11 @@
 package rest
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -28,8 +31,11 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
 	tld, err := ctrl.tldService.GetTLDByName(name)
-	// TODO: If the TLD does not exist, return a 404
 	if err != nil {
+		if errors.Is(err, entities.ErrTLDNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
