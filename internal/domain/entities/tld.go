@@ -4,7 +4,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"golang.org/x/net/idna"
+)
+
+var (
+	ErrTLDNotFound = errors.New("TLD not found")
 )
 
 // TLDType is a custom type describing the type of TLD
