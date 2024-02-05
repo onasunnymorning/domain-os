@@ -12,6 +12,8 @@ const (
 	LABEL_MIN_CHAR = 1
 )
 
+// TODO: replace all reference to this method with the functions in the Label.go file
+
 // Helper function to validate Labels. It will return a boolean indicating if the label is valid or not.
 // It expects a normalized input string and will fail if the input contains invalid characters
 // It does not consider uppercase and lowercase letters to be different, please lowecase all domain names before storing them
