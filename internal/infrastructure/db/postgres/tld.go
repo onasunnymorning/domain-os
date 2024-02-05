@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -57,6 +58,9 @@ func (repo *GormTLDRepository) GetByName(name string) (*entities.TLD, error) {
 
 	err := repo.db.Where("name = ?", name).First(dbtld).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrTLDNotFound
+		}
 		return nil, err
 	}
 
