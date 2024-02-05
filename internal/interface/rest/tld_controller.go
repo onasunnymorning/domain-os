@@ -31,7 +31,6 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
 	tld, err := ctrl.tldService.GetTLDByName(name)
-	// TODO: If the TLD does not exist, return a 404
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
