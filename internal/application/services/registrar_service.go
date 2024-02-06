@@ -1,0 +1,109 @@
+package services
+
+import (
+	"context"
+
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+)
+
+// RegistrarService implements the RegistrarService interface
+type RegistrarService struct {
+	registrarRepository repositories.RegistrarRepository
+}
+
+// NewRegistrarService creates a new RegistrarService
+func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *RegistrarService {
+	return &RegistrarService{
+		registrarRepository: registrarRepository,
+	}
+}
+
+// Create creates a new registrar
+func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
+	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the postal info information
+	for _, pi := range cmd.PostalInfo {
+		err = newRar.AddPostalInfo(pi)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add the optional fields
+	if cmd.Voice != "" {
+		v, err := entities.NewE164Type(cmd.Voice)
+		if err != nil {
+			return nil, err
+		}
+		newRar.Voice = *v
+	}
+	if cmd.Fax != "" {
+		f, err := entities.NewE164Type(cmd.Fax)
+		if err != nil {
+			return nil, err
+		}
+		newRar.Fax = *f
+	}
+	if cmd.URL != "" {
+		url, err := entities.NewURL(cmd.URL)
+		if err != nil {
+			return nil, err
+		}
+		newRar.URL = *url
+	}
+	if cmd.RdapBaseURL != "" {
+		rdapBaseURL, err := entities.NewURL(cmd.RdapBaseURL)
+		if err != nil {
+			return nil, err
+		}
+		newRar.RdapBaseURL = *rdapBaseURL
+	}
+	if cmd.WhoisInfo != nil {
+		wi, err := entities.NewWhoisInfo(cmd.WhoisInfo.Name.String(), cmd.WhoisInfo.URL.String())
+		if err != nil {
+			return nil, err
+		}
+		newRar.WhoisInfo = *wi
+	}
+
+	// Check if the registrar is valid
+	if !newRar.IsValid() {
+		return nil, entities.ErrInvalidRegistrar
+	}
+
+	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
+	if err != nil {
+		return nil, err
+	}
+
+	var result commands.CreateRegistrarCommandResult
+	result.Result = *createdRegistrar
+
+	return &result, nil
+}
+
+// GetByClID returns a registrar by its ClID
+func (s *RegistrarService) GetByClID(ctx context.Context, clid string) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByClID(ctx, clid)
+}
+
+// List returns a list of registrars
+func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
+	return s.registrarRepository.List(ctx, pagesize, pagecursor)
+}
+
+// Update updates a registrar
+func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
+	return s.registrarRepository.Update(ctx, rar)
+}
+
+// Delete deletes a registrar by its ClID
+func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
+	return s.registrarRepository.Delete(ctx, clid)
+}
