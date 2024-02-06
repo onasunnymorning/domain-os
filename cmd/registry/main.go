@@ -61,6 +61,10 @@ func main() {
 
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
+	rest.NewSyncController(r, syncService)
+	rest.NewSpec5Controller(r, spec5Service)
+	rest.NewIANARegistrarController(r, ianaRegistrarService)
+	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
 
 	r.Run(":" + os.Getenv("API_PORT"))
 
