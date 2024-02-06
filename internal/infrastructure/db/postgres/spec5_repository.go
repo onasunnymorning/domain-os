@@ -2,10 +2,22 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
+
+// Spec5Label is a struct representing an label blocked by RA Specification 5 in the database
+type Spec5Label struct {
+	Label     string `gorm:"primary_key"`
+	Type      string
+	CreatedAt time.Time
+}
+
+func (Spec5Label) TableName() string {
+	return "spec5_labels"
+}
 
 // Spec5Repository implements the Spec5Repository interface
 type Spec5Repository struct {
