@@ -22,7 +22,7 @@ func TestNewRegistrar(t *testing.T) {
 			nameStr: "My Registrar",
 			email:   "",
 			gurID:   123,
-			wantErr: ErrInvalidRegistrar,
+			wantErr: ErrRegistrarMissingEmail,
 			want:    nil,
 		},
 		{
@@ -31,7 +31,7 @@ func TestNewRegistrar(t *testing.T) {
 			nameStr: "My Registrar",
 			email:   "geoff@apex.domains",
 			gurID:   123,
-			wantErr: ErrInvalidRegistrar,
+			wantErr: ErrInvalidClIDType,
 			want:    nil,
 		},
 		{
@@ -67,7 +67,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 	testcases := []struct {
 		testname string
 		reg      *Registrar
-		want     bool
+		want     error
 	}{
 		{
 			testname: "invalid clid",
@@ -79,7 +79,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				GurID:    123,
 				Status:   RegistrarStatusReadonly,
 			},
-			want: false,
+			want: ErrInvalidClIDType,
 		},
 		{
 			testname: "invalid name",
@@ -91,7 +91,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				GurID:    123,
 				Status:   RegistrarStatusReadonly,
 			},
-			want: false,
+			want: ErrRegistrarMissingName,
 		},
 		{
 			testname: "invalid email",
@@ -103,7 +103,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				GurID:    123,
 				Status:   RegistrarStatusReadonly,
 			},
-			want: false,
+			want: ErrInvalidEmail,
 		},
 		{
 			testname: "invalid status",
@@ -115,7 +115,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				GurID:    123,
 				Status:   RegistrarStatus("invalid"),
 			},
-			want: false,
+			want: ErrInvalidRegistrarStatus,
 		},
 		{
 			testname: "valid",
@@ -127,7 +127,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				GurID:    123,
 				Status:   RegistrarStatusReadonly,
 			},
-			want: true,
+			want: nil,
 		},
 		{
 			testname: "invalid postal info",
@@ -144,13 +144,13 @@ func TestRegistrar_IsValid(t *testing.T) {
 					},
 				},
 			},
-			want: false,
+			want: ErrInvalidRegistrarPostalInfo,
 		},
 	}
 
 	for _, test := range testcases {
 		t.Run(test.testname, func(t *testing.T) {
-			require.Equal(t, test.want, test.reg.IsValid())
+			require.Equal(t, test.want, test.reg.Validate())
 		})
 	}
 
