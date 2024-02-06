@@ -15,6 +15,7 @@ import (
 func AutoMigrate(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&IANARegistrar{},
+		&Spec5Label{},
 		&TLD{},
 		&NNDN{},
 		&Registrar{},
