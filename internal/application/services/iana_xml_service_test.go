@@ -11,7 +11,7 @@ type MockIANARepository struct {
 	Registrars []*entities.IANARegistrar
 }
 
-func NewMockIANARepository() repositories.IANARepository {
+func NewMockIANARepository() repositories.IANARegistrarRepository {
 	return &MockIANARepository{
 		Registrars: []*entities.IANARegistrar{
 			{

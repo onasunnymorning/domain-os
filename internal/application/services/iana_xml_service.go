@@ -7,11 +7,11 @@ import (
 
 // IANAXMLService implements the IANAXMLService interface
 type IANAXMLService struct {
-	ianaRegistrarRepository repositories.IANARepository
+	ianaRegistrarRepository repositories.IANARegistrarRepository
 }
 
 // NewIANAXMLService creates a new IANAXMLRegistrarService
-func NewIANAXMLService(ianaRegistrarRepo repositories.IANARepository) *IANAXMLService {
+func NewIANAXMLService(ianaRegistrarRepo repositories.IANARegistrarRepository) *IANAXMLService {
 	return &IANAXMLService{
 		ianaRegistrarRepository: ianaRegistrarRepo,
 	}
