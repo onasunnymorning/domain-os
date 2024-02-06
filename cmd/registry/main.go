@@ -6,6 +6,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 
 	"os"
