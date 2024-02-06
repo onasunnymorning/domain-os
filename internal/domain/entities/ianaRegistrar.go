@@ -18,5 +18,4 @@ type IANARegistrar struct {
 	Status    IANARegistrarStatus
 	RdapURL   string
 	CreatedAt time.Time
-	UpdateAt  time.Time
 }
