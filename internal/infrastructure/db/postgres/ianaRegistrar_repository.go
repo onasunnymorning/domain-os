@@ -3,10 +3,24 @@ package postgres
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
+
+// IANARegistrar is a struct representing an IANA Registrar in the database
+type IANARegistrar struct {
+	GurID     int `gorm:"primary_key;auto_increment:false"`
+	Name      string
+	Status    string
+	RdapURL   string
+	CreatedAt time.Time
+}
+
+func (IANARegistrar) TableName() string {
+	return "iana_registrars"
+}
 
 // IANARegistrarRepository implements the IANARegistrarRepository interface
 type IANARegistrarRepository struct {
