@@ -59,6 +59,7 @@ func main() {
 
 	r := gin.Default()
 
+	rest.NewPingController(r)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
 	rest.NewSyncController(r, syncService)

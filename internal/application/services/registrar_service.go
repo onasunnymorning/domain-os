@@ -73,8 +73,8 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 	}
 
 	// Check if the registrar is valid
-	if !newRar.IsValid() {
-		return nil, entities.ErrInvalidRegistrar
+	if err := newRar.Validate(); err != nil {
+		return nil, err
 	}
 
 	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
