@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
@@ -21,21 +20,21 @@ var (
 // IANARepository implements the IANARepository interface
 type IANARepository struct {
 	XMLRegistrarURL string
-	Client          *http.Client
 }
 
-// NewIANARegistrarRepo returns a new IANARepo
-func NewIANARegistrarRepo() *IANARepository {
+// NewIANARRepository returns a new IANARepo
+func NewIANARRepository() *IANARepository {
 	return &IANARepository{
 		XMLRegistrarURL: IANA_REGISTRARS_XML_URL,
-		Client:          GetHTTPClient(),
 	}
 }
 
-// List returns a list all IANA Registrars
-func (repo *IANARepository) ListIANARegistrars() ([]*entities.IANARegistrar, error) {
+// ListRegistrars returns a list all IANA Registrars
+func (repo *IANARepository) ListRegistrars() ([]*entities.IANARegistrar, error) {
+	// Get a http.Client
+	client := GetHTTPClient()
 	// Download the XML
-	resp, err := repo.Client.Get(repo.XMLRegistrarURL)
+	resp, err := client.Get(repo.XMLRegistrarURL)
 	if err != nil {
 		return nil, fmt.Errorf("error while retrieving IANA XML Registry: %v", err)
 	}

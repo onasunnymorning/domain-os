@@ -5,6 +5,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 
 	"os"
@@ -38,10 +40,32 @@ func main() {
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
 
+	// Sync
+	ianaRepo := iana.NewIANARRepository()
+	icannRepo := icann.NewICANNRepo()
+	spec5Repo := postgres.NewSpec5Repository(gormDB)
+	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
+	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo)
+
+	// Spec5
+	spec5Service := services.NewSpec5Service(spec5Repo)
+
+	// IANA Registrar
+	ianaRegistrarService := services.NewIANARegistrarService(iregistrarRepo)
+
+	// Registrars
+	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
+	registrarService := services.NewRegistrarService(registrarRepo)
+
 	r := gin.Default()
 
+	rest.NewPingController(r)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
+	rest.NewSyncController(r, syncService)
+	rest.NewSpec5Controller(r, spec5Service)
+	rest.NewIANARegistrarController(r, ianaRegistrarService)
+	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
 
 	r.Run(":" + os.Getenv("API_PORT"))
 

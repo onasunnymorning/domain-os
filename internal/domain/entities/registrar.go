@@ -14,7 +14,9 @@ const (
 )
 
 var (
-	ErrInvalidRegistrar              = errors.New("invalid registrar")
+	ErrRegistrarMissingEmail         = errors.New("missing email: a valid email is required")
+	ErrRegistrarMissingName          = errors.New("missing name: a valid name and unique name is required")
+	ErrInvalidRegistrarStatus        = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
 	ErrRegistrarPostalInfoTypeExists = errors.New("postalinfo of this type already exists")
 )
 
@@ -56,40 +58,43 @@ func NewRegistrar(clID, name, email string, gurid int) (*Registrar, error) {
 		Status:   RegistrarStatusReadonly, // Create the status as readonly by default
 	}
 
-	if !r.IsValid() {
-		return nil, ErrInvalidRegistrar
+	if err := r.Validate(); err != nil {
+		return nil, err
 	}
 
 	return r, nil
 }
 
-// IsValid checks if the registrar object is valid
+// Validate checks if the registrar object is valid
 // It is valid when all of the following conditions are true:
 // - ClID is valid
 // - Name and Email are not empty
 // - Status is one of the valid values
 // - Email is valid
 // - The postal info is valid
-func (r *Registrar) IsValid() bool {
+func (r *Registrar) Validate() error {
 	if err := r.ClID.Validate(); err != nil {
-		return false
+		return err
 	}
-	if r.Name == "" || r.Email == "" {
-		return false
+	if r.Name == "" {
+		return ErrRegistrarMissingName
+	}
+	if r.Email == "" {
+		return ErrRegistrarMissingEmail
 	}
 	if r.Status != RegistrarStatusOK && r.Status != RegistrarStatusReadonly && r.Status != RegistrarStatusTerminated {
-		return false
+		return ErrInvalidRegistrarStatus
 	}
 	_, err := mail.ParseAddress(r.Email)
 	if err != nil {
-		return false
+		return ErrInvalidEmail
 	}
 	for _, pi := range r.PostalInfo {
 		if pi != nil && !pi.IsValid() {
-			return false
+			return ErrInvalidRegistrarPostalInfo
 		}
 	}
-	return true
+	return nil
 }
 
 // AddPostalInfo Adds Postal Info to a Registrar. It checks validtiy of the PostalInfo object and returns an error if it is invalid
