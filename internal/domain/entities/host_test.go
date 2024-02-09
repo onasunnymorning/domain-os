@@ -554,3 +554,63 @@ func TestUnsetHostStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestHost_Validate(t *testing.T) {
+	testcases := []struct {
+		name string
+		host *Host
+		err  error
+	}{
+		{
+			name: "valid label doubledash",
+			host: &Host{
+				Name:       DomainName("exa--mple.com"),
+				RoID:       "12345_HOST-APEX",
+				ClID:       "67890",
+				CrRr:       "67890",
+				HostStatus: HostStatus{OK: true},
+			},
+			err: ErrInvalidLabelDoubleDash,
+		},
+		{
+			name: "invalid roid",
+			host: &Host{
+				Name:       DomainName("example.com"),
+				RoID:       "12345",
+				ClID:       "67890",
+				CrRr:       "67890",
+				HostStatus: HostStatus{OK: true},
+			},
+			err: ErrInvalidRoid,
+		},
+		{
+			name: "invalid clid",
+			host: &Host{
+				Name:       DomainName("example.com"),
+				RoID:       "12345_HOST-APEX",
+				ClID:       "6789067890678906789067890",
+				CrRr:       "67890",
+				HostStatus: HostStatus{OK: true},
+			},
+			err: ErrInvalidClIDType,
+		},
+		{
+			name: "invalid host status combo",
+			host: &Host{
+				Name:       DomainName("example.com"),
+				RoID:       "12345_HOST-APEX",
+				ClID:       "67890",
+				CrRr:       "67890",
+				HostStatus: HostStatus{OK: true, PendingCreate: true},
+			},
+			err: ErrHostStatusIncompatible,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.host.Validate()
+			require.Equal(t, tc.err, err)
+		})
+	}
+}
