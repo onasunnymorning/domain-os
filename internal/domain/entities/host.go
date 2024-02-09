@@ -248,3 +248,25 @@ func (h *Host) UnsetStatus(s string) error {
 	h.SetOKIfNeeded()
 	return h.ValidateStatus()
 }
+
+// IsValid checks if the host is valid including all its statuses and addresses
+func (h *Host) Validate() error {
+	if err := h.Name.Validate(); err != nil {
+		return err
+	}
+	if err := h.RoID.Validate(); err != nil {
+		return err
+	}
+	if err := h.ClID.Validate(); err != nil {
+		return err
+	}
+	if err := h.ValidateStatus(); err != nil {
+		return err
+	}
+	for _, address := range h.Addresses {
+		if !address.IsValid() {
+			return ErrInvalidIP
+		}
+	}
+	return nil
+}
