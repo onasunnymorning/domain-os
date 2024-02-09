@@ -38,6 +38,11 @@ type Registrar struct {
 	RdapBaseUrl string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// FK relationships with contacts
+	Contacts        []*Contact `gorm:"foreignKey:ClID"`
+	ContactsCreated []*Contact `gorm:"foreignKey:CrRr"`
+	ContactsUpdated []*Contact `gorm:"foreignKey:UpRr"`
 }
 
 func (Registrar) TableName() string {
