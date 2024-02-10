@@ -1,17 +1,12 @@
 package postgres
 
 import (
-	"net/netip"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func getValidHostAddresses() *HostAddress {
-	return &HostAddress{
-		Version: 4,
-		IP:      "195.238.2.21",
-	}
-}
-
-func getValidNetIPAddr() *netip.Addr {
-	ip, _ := netip.ParseAddr("195.238.2.21")
-	return &ip
+func TestHostAddress_Tablename(t *testing.T) {
+	hostAddress := HostAddress{}
+	require.Equal(t, "host_addresses", hostAddress.TableName())
 }
