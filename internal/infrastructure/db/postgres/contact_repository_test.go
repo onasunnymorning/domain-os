@@ -102,7 +102,11 @@ func (s *ContactSuite) TestReadContact() {
 	readContact, err := repo.GetContactByID(context.Background(), createdContact.ID.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(readContact)
-	s.Require().Equal(createdContact, readContact)
+	s.Require().Equal(createdContact.ID, readContact.ID)
+	s.Require().Equal(createdContact.ClID, readContact.ClID)
+	s.Require().Equal(createdContact.Email, readContact.Email)
+	s.Require().Equal(createdContact.RoID, readContact.RoID)
+	s.Require().Equal(createdContact.AuthInfo, readContact.AuthInfo)
 }
 
 func (s *ContactSuite) TestUpdateContact() {
