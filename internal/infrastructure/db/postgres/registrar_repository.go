@@ -43,6 +43,11 @@ type Registrar struct {
 	Contacts        []*Contact `gorm:"foreignKey:ClID"`
 	ContactsCreated []*Contact `gorm:"foreignKey:CrRr"`
 	ContactsUpdated []*Contact `gorm:"foreignKey:UpRr"`
+
+	// FK relationships with hosts
+	Hosts        []*Host `gorm:"foreignKey:ClID"`
+	HostsCreated []*Host `gorm:"foreignKey:CrRr"`
+	HostsUpdated []*Host `gorm:"foreignKey:UpRr"`
 }
 
 func (Registrar) TableName() string {
