@@ -25,7 +25,7 @@ func TestSpec5Suite(t *testing.T) {
 }
 
 func (s *Spec5Suite) SetupSuite() {
-	s.db = getTestDB()
+	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
 }
 
