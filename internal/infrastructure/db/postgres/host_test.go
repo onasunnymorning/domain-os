@@ -47,13 +47,13 @@ func TestHost_FromDBHost(t *testing.T) {
 		{
 			ID:       1,
 			Version:  4,
-			IP:       "195.238.2.21",
+			Address:  "195.238.2.21",
 			HostRoID: dbHost.RoID,
 		},
 		{
 			ID:       2,
 			Version:  6,
-			IP:       "2001:db8:85a3::8a2e:370:7334",
+			Address:  "2001:db8:85a3::8a2e:370:7334",
 			HostRoID: dbHost.RoID,
 		},
 	}

@@ -20,6 +20,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&NNDN{},
 		&Registrar{},
 		&Contact{},
+		&Host{},
+		&HostAddress{},
 	)
 	if err != nil {
 		return err

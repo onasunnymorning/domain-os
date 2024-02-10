@@ -30,9 +30,10 @@ func (Host) TableName() string {
 func ToHost(dbHost *Host) *entities.Host {
 	roid, _ := entities.NewRoidType(dbHost.RoID, entities.RoidTypeHost)
 
+	// When retrieving and preloading the addresses we want to convert them to our entity
 	addresses := make([]netip.Addr, len(dbHost.Addresses))
 	for i, addr := range dbHost.Addresses {
-		a, _ := netip.ParseAddr(addr.IP)
+		a, _ := netip.ParseAddr(addr.Address)
 		addresses[i] = a
 	}
 
@@ -46,7 +47,7 @@ func ToHost(dbHost *Host) *entities.Host {
 		CreatedAt:   dbHost.CreatedAt,
 		UpdatedAt:   dbHost.UpdatedAt,
 		HostStatus:  dbHost.HostStatus,
-		Addresses:   addresses, // When retrieving and preloading the addresses we want to convert them to our entity
+		Addresses:   addresses,
 	}
 }
 
