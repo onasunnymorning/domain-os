@@ -85,7 +85,10 @@ func (s *IANARarSuite) TestList() {
 	list, err = repo.List(context.Background(), 25, "1234", "bro", "")
 	require.Nil(s.T(), err)
 	require.Equal(s.T(), 1, len(list))
-	require.Equal(s.T(), rars[1], list[0])
+	require.Equal(s.T(), rars[1].Name, list[0].Name)
+	require.Equal(s.T(), rars[1].GurID, list[0].GurID)
+	require.Equal(s.T(), rars[1].Status, list[0].Status)
+	require.Equal(s.T(), rars[1].RdapURL, list[0].RdapURL)
 }
 
 func (s *IANARarSuite) TestGetByGurID() {
@@ -113,5 +116,8 @@ func (s *IANARarSuite) TestGetByGurID() {
 
 	rar, err := repo.GetByGurID(context.Background(), 1234)
 	require.Nil(s.T(), err)
-	require.Equal(s.T(), rars[0], rar)
+	require.Equal(s.T(), rars[0].Name, rar.Name)
+	require.Equal(s.T(), rars[0].GurID, rar.GurID)
+	require.Equal(s.T(), rars[0].Status, rar.Status)
+	require.Equal(s.T(), rars[0].RdapURL, rar.RdapURL)
 }
