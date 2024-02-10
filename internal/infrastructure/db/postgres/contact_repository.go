@@ -28,3 +28,31 @@ func (r *ContactRepository) CreateContact(ctx context.Context, c *entities.Conta
 
 	return FromDBContact(dbContact), nil
 }
+
+// GetContactByID retrieves a contact from the database by its ID
+func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
+	dbContact := &Contact{}
+	err := r.db.WithContext(ctx).First(dbContact, id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return FromDBContact(dbContact), nil
+}
+
+// UpdateContact updates a contact in the database
+func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	dbContact := ToDBContact(c)
+
+	err := r.db.WithContext(ctx).Save(dbContact).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return FromDBContact(dbContact), nil
+}
+
+// DeleteContact deletes a contact from the database
+func (r *ContactRepository) DeleteContact(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&Contact{}, id).Error
+}

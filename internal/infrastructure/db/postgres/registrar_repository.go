@@ -48,6 +48,11 @@ type Registrar struct {
 	Hosts        []*Host `gorm:"foreignKey:ClID"`
 	HostsCreated []*Host `gorm:"foreignKey:CrRr"`
 	HostsUpdated []*Host `gorm:"foreignKey:UpRr"`
+
+	// FK relationships with domains
+	Domains        []*Domain `gorm:"foreignKey:ClID"`
+	DomainsCreated []*Domain `gorm:"foreignKey:CrRr"`
+	DomainsUpdated []*Domain `gorm:"foreignKey:UpRr"`
 }
 
 func (Registrar) TableName() string {
