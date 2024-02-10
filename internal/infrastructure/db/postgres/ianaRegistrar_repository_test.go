@@ -27,7 +27,7 @@ func TestIANARarSuite(t *testing.T) {
 }
 
 func (s *IANARarSuite) SetupSuite() {
-	s.db = getTestDB()
+	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
 }
 

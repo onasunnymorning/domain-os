@@ -20,7 +20,7 @@ func TestContactSuite(t *testing.T) {
 }
 
 func (s *ContactSuite) SetupSuite() {
-	s.db = getTestDB()
+	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
 
 	// Create a registrar

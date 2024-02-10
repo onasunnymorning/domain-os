@@ -20,7 +20,7 @@ func TestRegistrarSuite(t *testing.T) {
 }
 
 func (s *RegistrarSuite) SetupSuite() {
-	s.db = getTestDB()
+	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
 }
 
