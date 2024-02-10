@@ -88,10 +88,11 @@ type DomainsRGPStatus struct {
 }
 
 // NewDomain creates a new Domain object. It should only be used directly in internal code (e.g. importing data). When Registering and Renewing domains, use the appropriate methods.
-func NewDomain(name, authInfo string) (*Domain, error) {
+func NewDomain(roid, name, authInfo string) (*Domain, error) {
 	var err error
 
 	d := &Domain{
+		RoID:     RoidType(roid),
 		Name:     DomainName(name),
 		AuthInfo: AuthInfoType(authInfo),
 	}
@@ -112,6 +113,9 @@ func NewDomain(name, authInfo string) (*Domain, error) {
 
 // Validate checks if the Domain object is valid
 func (d *Domain) Validate() error {
+	if err := d.RoID.Validate(); err != nil {
+		return err
+	}
 	if err := d.Name.Validate(); err != nil {
 		return err
 	}
