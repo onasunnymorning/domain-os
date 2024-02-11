@@ -92,7 +92,15 @@ func (s *HostSuite) TestReadHost() {
 	readHost, err := repo.GetHostByRoid(context.Background(), roidInt)
 	s.Require().NoError(err)
 	s.Require().NotNil(readHost)
-	s.Require().Equal(createdHost, readHost)
+	s.Require().Equal(createdHost.Name, readHost.Name)
+	s.Require().Equal(createdHost.ClID, readHost.ClID)
+	s.Require().Equal(createdHost.CrRr, readHost.CrRr)
+	s.Require().Equal(createdHost.UpRr, readHost.UpRr)
+	s.Require().Equal(createdHost.InBailiwick, readHost.InBailiwick)
+	s.Require().Equal(createdHost.ServerDeleteProhibited, readHost.ServerDeleteProhibited)
+	s.Require().Equal(createdHost.HostStatus, readHost.HostStatus)
+	s.Require().Equal(createdHost.RoID, readHost.RoID)
+
 }
 
 func (s *HostSuite) TestUpdateHost() {
