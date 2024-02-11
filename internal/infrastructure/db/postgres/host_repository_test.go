@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
@@ -43,7 +44,8 @@ func (s *HostSuite) TestCreateHost() {
 	defer tx.Rollback()
 	repo := NewGormHostRepository(tx)
 
-	host := getValidHost("199-myrar", nil)
+	t := time.Now().UTC()
+	host := getValidHost("199-myrar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 	a, _ := netip.ParseAddr("195.238.2.21")
 	host.Addresses = append(host.Addresses, a)
@@ -59,7 +61,8 @@ func (s *HostSuite) TestCreateHost_Duplicate() {
 	defer tx.Rollback()
 	repo := NewGormHostRepository(tx)
 
-	host := getValidHost("199-myrar", nil)
+	t := time.Now().UTC()
+	host := getValidHost("199-myrar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -77,7 +80,8 @@ func (s *HostSuite) TestReadHost() {
 	defer tx.Rollback()
 	repo := NewGormHostRepository(tx)
 
-	host := getValidHost("199-myrar", nil)
+	t := time.Now().UTC()
+	host := getValidHost("199-myrar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -96,7 +100,8 @@ func (s *HostSuite) TestUpdateHost() {
 	defer tx.Rollback()
 	repo := NewGormHostRepository(tx)
 
-	host := getValidHost("199-myrar", nil)
+	t := time.Now().UTC()
+	host := getValidHost("199-myrar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -115,7 +120,8 @@ func (s *HostSuite) TestDeleteHost() {
 	defer tx.Rollback()
 	repo := NewGormHostRepository(tx)
 
-	host := getValidHost("199-myrar", nil)
+	t := time.Now().UTC()
+	host := getValidHost("199-myrar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
