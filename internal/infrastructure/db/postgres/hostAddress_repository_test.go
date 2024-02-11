@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
@@ -32,7 +33,8 @@ func (s *HostAddressSuite) SetupSuite() {
 	s.rarClid = createdRar.ClID.String()
 
 	// Create a host
-	host := getValidHost(s.rarClid, nil)
+	t := time.Now().UTC()
+	host := getValidHost(s.rarClid, &t)
 	hostRepo := NewGormHostRepository(s.db)
 	createdHost, _ := hostRepo.CreateHost(context.Background(), host)
 	s.hostRoid, _ = createdHost.RoID.Int64()
