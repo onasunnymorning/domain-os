@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -72,6 +73,9 @@ func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string) (*
 
 	err := r.db.WithContext(ctx).Where("cl_id = ?", clid).First(dbRar).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrRegistrarNotFound
+		}
 		return nil, err
 	}
 
