@@ -32,7 +32,7 @@ func (r *ContactRepository) CreateContact(ctx context.Context, c *entities.Conta
 // GetContactByID retrieves a contact from the database by its ID
 func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
 	dbContact := &Contact{}
-	err := r.db.WithContext(ctx).First(dbContact, id).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(dbContact).Error
 	if err != nil {
 		return nil, err
 	}
@@ -54,5 +54,5 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Conta
 
 // DeleteContact deletes a contact from the database
 func (r *ContactRepository) DeleteContact(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&Contact{}, id).Error
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&Contact{}).Error
 }

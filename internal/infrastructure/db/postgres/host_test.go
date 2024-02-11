@@ -1,7 +1,9 @@
 package postgres
 
 import (
+	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
@@ -12,65 +14,73 @@ func TestHost_Tablename(t *testing.T) {
 	require.Equal(t, "hosts", host.TableName())
 }
 
-func getValidHost() *entities.Host {
-	return &entities.Host{
+func getValidHost(clid string, t *time.Time) *entities.Host {
+	h := &entities.Host{
 		RoID:        entities.RoidType("12345_HOST-APEX"),
 		Name:        "my-host.com",
-		ClID:        entities.ClIDType("my-registrar-id"),
-		CrRr:        entities.ClIDType("my-registrar-id"),
-		UpRr:        entities.ClIDType("my-registrar-id"),
+		ClID:        entities.ClIDType(clid),
+		CrRr:        entities.ClIDType(clid),
+		UpRr:        entities.ClIDType(clid),
 		InBailiwick: true,
 		HostStatus: entities.HostStatus{
 			ServerDeleteProhibited: true,
 		},
 	}
+	if t != nil {
+		h.CreatedAt = t.Round(time.Millisecond)
+		h.UpdatedAt = t.Round(time.Millisecond)
+	}
+	return h
 }
 
 func TestHost_ToDBHost(t *testing.T) {
-	host := getValidHost()
-	dbHost := ToDBHost(*host)
+	ti := time.Now().UTC()
+	host := getValidHost("myrarID", &ti)
 
-	require.Equal(t, int64(12345), dbHost.RoID)
-	require.Equal(t, "my-host.com", dbHost.Name)
-	require.Equal(t, "my-registrar-id", dbHost.ClID)
-	require.Equal(t, "my-registrar-id", dbHost.CrRr)
-	require.Equal(t, "my-registrar-id", dbHost.UpRr)
+	a, _ := netip.ParseAddr("195.238.2.21")
+	host.Addresses = append(host.Addresses, a)
+	a, _ = netip.ParseAddr("195.238.2.22")
+	host.Addresses = append(host.Addresses, a)
+	a, _ = netip.ParseAddr("2001:db8:85a3::8a2e:370:7334")
+	host.Addresses = append(host.Addresses, a)
+
+	dbHost := ToDBHost(host)
+
+	roid, _ := host.RoID.Int64()
+	require.Equal(t, roid, dbHost.RoID)
+	require.Equal(t, host.Name.String(), dbHost.Name)
+	require.Equal(t, host.ClID.String(), dbHost.ClID)
+	require.Equal(t, host.CrRr, entities.ClIDType(*dbHost.CrRr))
+	require.Equal(t, host.UpRr, entities.ClIDType(*dbHost.UpRr))
 	require.True(t, dbHost.InBailiwick)
 	require.True(t, dbHost.ServerDeleteProhibited)
+	require.Equal(t, host.CreatedAt, dbHost.CreatedAt)
+	require.Equal(t, host.UpdatedAt, dbHost.UpdatedAt)
+	require.Len(t, dbHost.Addresses, len(host.Addresses))
 }
 
-func TestHost_FromDBHost(t *testing.T) {
-	host := getValidHost()
-	dbHost := ToDBHost(*host)
+func TestHost_ToHost(t *testing.T) {
+	ti := time.Now().UTC()
+	host := getValidHost("myrarOtherID", &ti)
 
-	dbHost.Addresses = []HostAddress{
-		{
-			ID:       1,
-			Version:  4,
-			Address:  "195.238.2.21",
-			HostRoID: dbHost.RoID,
-		},
-		{
-			ID:       2,
-			Version:  6,
-			Address:  "2001:db8:85a3::8a2e:370:7334",
-			HostRoID: dbHost.RoID,
-		},
-	}
+	a, _ := netip.ParseAddr("195.238.2.21")
+	host.Addresses = append(host.Addresses, a)
+	a, _ = netip.ParseAddr("195.238.2.22")
+	host.Addresses = append(host.Addresses, a)
+	a, _ = netip.ParseAddr("2001:db8:85a3::8a2e:370:7334")
+	host.Addresses = append(host.Addresses, a)
 
-	host = ToHost(dbHost)
+	dbHost := ToDBHost(host)
+	convertedHost := ToHost(dbHost)
 
-	require.Equal(t, "12345_HOST-APEX", host.RoID.String())
-	require.Equal(t, "my-host.com", host.Name.String())
-	require.Equal(t, "my-registrar-id", host.ClID.String())
-	require.Equal(t, "my-registrar-id", host.CrRr.String())
-	require.Equal(t, "my-registrar-id", host.UpRr.String())
-	require.True(t, host.InBailiwick)
-	require.True(t, host.ServerDeleteProhibited)
-	require.Len(t, host.Addresses, 2)
-	require.Equal(t, host.Addresses[0].String(), "195.238.2.21")
-	require.Equal(t, host.Addresses[1].String(), "2001:db8:85a3::8a2e:370:7334")
-	require.True(t, host.Addresses[0].Is4())
-	require.True(t, host.Addresses[1].Is6())
-
+	require.Equal(t, host.RoID, convertedHost.RoID)
+	require.Equal(t, host.Name, convertedHost.Name)
+	require.Equal(t, host.ClID, convertedHost.ClID)
+	require.Equal(t, host.CrRr, convertedHost.CrRr)
+	require.Equal(t, host.UpRr, convertedHost.UpRr)
+	require.Equal(t, host.InBailiwick, convertedHost.InBailiwick)
+	require.Equal(t, host.HostStatus, convertedHost.HostStatus)
+	require.Equal(t, host.CreatedAt, convertedHost.CreatedAt)
+	require.Equal(t, host.UpdatedAt, convertedHost.UpdatedAt)
+	require.Len(t, convertedHost.Addresses, len(host.Addresses))
 }

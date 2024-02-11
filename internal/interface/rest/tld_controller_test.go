@@ -25,7 +25,7 @@ const (
 	dbPass = "unittest"
 	dbHost = "127.0.0.1"
 	dbPort = "5432"
-	dbName = "regos4_integration_tests"
+	dbName = "regos4_unittests"
 )
 
 func TestTLD(t *testing.T) {
