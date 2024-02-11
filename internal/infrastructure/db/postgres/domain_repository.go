@@ -1,6 +1,11 @@
 package postgres
 
-import "gorm.io/gorm"
+import (
+	"context"
+
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"gorm.io/gorm"
+)
 
 // DomainRepository is the postgres implementation of the DomainRepository Interface
 type DomainRepository struct {
@@ -13,8 +18,9 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 }
 
 // CreateDomain creates a new domain in the database
-func (dr *DomainRepository) CreateDomain(d *Domain) error {
-	return dr.db.Create(d).Error
+func (dr *DomainRepository) CreateDomain(ctx context.Context, *entities.Domain) (*entities.Domain, error) {
+	dbDomain := ToDBDomain(d)
+	return dr.db.WithContext(ctx).(dbDomain).Error
 }
 
 // GetDomainByID retrieves a domain from the database by its ID
