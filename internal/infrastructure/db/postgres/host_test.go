@@ -27,8 +27,8 @@ func getValidHost(clid string, t *time.Time) *entities.Host {
 		},
 	}
 	if t != nil {
-		h.CreatedAt = *t
-		h.UpdatedAt = *t
+		h.CreatedAt = t.Round(time.Millisecond)
+		h.UpdatedAt = t.Round(time.Millisecond)
 	}
 	return h
 }
