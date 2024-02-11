@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/pkg/errors"
 	"strconv"
 
 	"github.com/docker/docker/pkg/namesgenerator"
@@ -42,6 +44,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 // @Param clid path string true "Registrar Client ID"
 // @Success 200 {object} entities.Registrar
 // @Failure 400
+// @Failure 404
 // @Failure 500
 // @Router /registrars/{clid} [get]
 func (ctrl *RegistrarController) GetByClID(ctx *gin.Context) {
@@ -49,6 +52,10 @@ func (ctrl *RegistrarController) GetByClID(ctx *gin.Context) {
 
 	rar, err := ctrl.rarService.GetByClID(ctx, clid)
 	if err != nil {
+		if errors.Is(err, entities.ErrRegistrarNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
