@@ -13,6 +13,7 @@ type DomainSuite struct {
 	suite.Suite
 	db      *gorm.DB
 	rarClid string
+	tld     string
 }
 
 func TestDomainSuite(t *testing.T) {
@@ -28,6 +29,13 @@ func (s *DomainSuite) SetupSuite() {
 	repo := NewGormRegistrarRepository(s.db)
 	createdRar, _ := repo.Create(context.Background(), rar)
 	s.rarClid = createdRar.ClID.String()
+
+	// Create a TLD
+	tld, _ := entities.NewTLD("apexdomains")
+	tldRepo := NewGormTLDRepo(s.db)
+	err := tldRepo.Create(tld)
+	s.Require().NoError(err)
+	s.tld = tld.Name.String()
 }
 
 func (s *DomainSuite) TearDownSuite() {
@@ -35,4 +43,8 @@ func (s *DomainSuite) TearDownSuite() {
 		repo := NewGormRegistrarRepository(s.db)
 		_ = repo.Delete(context.Background(), s.rarClid)
 	}
+}
+
+func TestDomainRepository_CreateDomain(t *testing.T) {
+
 }
