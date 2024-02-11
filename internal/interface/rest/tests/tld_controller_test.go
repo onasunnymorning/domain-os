@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
+	"gorm.io/gorm"
 	"net/http"
 	"net/http/httptest"
 
@@ -18,22 +19,27 @@ import (
 
 var _ = ginkgo.Describe("TLDController", func() {
 	var (
-		router        *gin.Engine
+		router *gin.Engine
+		gormDB *gorm.DB
+	)
+
+	gin.SetMode(gin.TestMode)
+	router = gin.New()
+	gormDB, err := getTestDB()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	var (
 		tldService    interfaces.TLDService
 		tldController *rest.TLDController
 		tempTLDName   string
 	)
 
-	ginkgo.BeforeEach(func() {
-		gin.SetMode(gin.TestMode)
-		router = gin.New()
-		gormDB, err := getTestDB()
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		tldRepo := postgres.NewGormTLDRepo(gormDB)
-		tldService = services.NewTLDService(tldRepo)
-		tldController = rest.NewTLDController(router, tldService)
-		_ = tldController
+	tldRepo := postgres.NewGormTLDRepo(gormDB)
+	tldService = services.NewTLDService(tldRepo)
+	tldController = rest.NewTLDController(router, tldService)
+	_ = tldController
 
+	ginkgo.BeforeEach(func() {
 		tempTLDName = "mytesttld" // Define a unique TLD name for each test run if needed
 
 		// Create a TLD
