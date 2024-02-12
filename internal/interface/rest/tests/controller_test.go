@@ -1,11 +1,12 @@
 package tests
 
 import (
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	"gorm.io/gorm"
 	"testing"
+
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 )
 
 func TestController(t *testing.T) {
