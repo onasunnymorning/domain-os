@@ -23,7 +23,7 @@ import (
 var _ = Describe("RegistrarController", func() {
 	var (
 		router *gin.Engine
-		gormDB *gorm.DB
+		tx     *gorm.DB
 	)
 
 	gin.SetMode(gin.TestMode)
@@ -31,16 +31,22 @@ var _ = Describe("RegistrarController", func() {
 	gormDB, err := getTestDB()
 	Expect(err).NotTo(HaveOccurred())
 
+	tx = gormDB.Begin()
+
+	AfterSuite(func() {
+		tx.Rollback()
+	})
+
 	var (
 		registrarService     interfaces.RegistrarService
 		ianaRegistrarService interfaces.IANARegistrarService
 		registrarController  *rest.RegistrarController
 	)
 
-	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
+	registrarRepo := postgres.NewGormRegistrarRepository(tx)
 	registrarService = services.NewRegistrarService(registrarRepo)
 
-	ianaRepo := postgres.NewIANARegistrarRepository(gormDB)
+	ianaRepo := postgres.NewIANARegistrarRepository(tx)
 	ianaRegistrarService = services.NewIANARegistrarService(ianaRepo)
 
 	registrarController = rest.NewRegistrarController(router, registrarService, ianaRegistrarService)
