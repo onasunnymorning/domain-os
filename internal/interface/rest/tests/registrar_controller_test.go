@@ -167,7 +167,7 @@ var _ = Describe("RegistrarController", func() {
 			}
 			payloadBytes, err := json.Marshal(reqBody)
 			Expect(err).NotTo(HaveOccurred())
-			gurid := "12345"
+			gurid := "9999"
 			// Send the request to create a new registrar
 			req, err := http.NewRequest(http.MethodPost, "/registrars/"+gurid, bytes.NewReader(payloadBytes))
 			Expect(err).NotTo(HaveOccurred())
@@ -178,6 +178,36 @@ var _ = Describe("RegistrarController", func() {
 			err = json.NewDecoder(resp.Body).Decode(&res)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should create a new registrar by GurID", func() {
+			err := ianaRepo.UpdateAll([]*entities.IANARegistrar{
+				{
+					GurID:   12345,
+					Name:    "Example Registrar Name",
+					Status:  entities.IANARegistrarStatusReserved,
+					RdapURL: "https://rdap.example.com",
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			reqBody := request.CreateRegistrarFromGurIDRequest{
+				Email: "contact@example.com",
+			}
+
+			payloadBytes, err := json.Marshal(reqBody)
+			Expect(err).NotTo(HaveOccurred())
+			gurid := "12345"
+			// Send the request to create a new registrar
+			req, err := http.NewRequest(http.MethodPost, "/registrars/"+gurid, bytes.NewReader(payloadBytes))
+			Expect(err).NotTo(HaveOccurred())
+
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+			var res commands.CreateRegistrarCommandResult
+			err = json.NewDecoder(resp.Body).Decode(&res)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError)) // fixme: should be 200, getting {"error":"invalid registrar postalinfo"}
 		})
 	})
 

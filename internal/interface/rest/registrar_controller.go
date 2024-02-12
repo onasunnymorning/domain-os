@@ -198,6 +198,9 @@ func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
 	cmd.Name = ianaRar.Name
 	cmd.Email = req.Email
 	cmd.GurID = ianaRar.GurID
+	cmd.PostalInfo = [2]*entities.RegistrarPostalInfo{
+		{Type: "int"}, {Type: "loc"},
+	}
 
 	result, err := ctrl.rarService.Create(ctx, &cmd)
 	if err != nil {
