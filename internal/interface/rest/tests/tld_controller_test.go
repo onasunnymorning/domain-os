@@ -1,16 +1,14 @@
-package rest_test
+package tests
 
 import (
 	"bytes"
 	"encoding/json"
-	"log"
-	"net/http"
-	"net/http/httptest"
-	"testing"
-
 	"github.com/gin-gonic/gin"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
+	"gorm.io/gorm"
+	"net/http"
+	"net/http/httptest"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -19,49 +17,29 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 )
 
-const (
-	// make sure the following values are set to match your environment
-	dbUser = "postgres"
-	dbPass = "unittest"
-	dbHost = "127.0.0.1"
-	dbPort = "5432"
-	dbName = "regos4_unittests"
-)
-
-func TestTLD(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Integration Tests Suite")
-}
-
 var _ = ginkgo.Describe("TLDController", func() {
 	var (
-		router        *gin.Engine
+		router *gin.Engine
+		gormDB *gorm.DB
+	)
+
+	gin.SetMode(gin.TestMode)
+	router = gin.New()
+	gormDB, err := getTestDB()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	var (
 		tldService    interfaces.TLDService
 		tldController *rest.TLDController
 		tempTLDName   string
 	)
 
-	ginkgo.BeforeEach(func() {
-		gin.SetMode(gin.TestMode)
-		router = gin.New()
-		gormDB, err := postgres.NewConnection(
-			postgres.Config{
-				User:   dbUser,
-				Pass:   dbPass,
-				Host:   dbHost,
-				Port:   dbPort,
-				DBName: dbName,
-			},
-		)
-		if err != nil {
-			log.Println(err)
-		}
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		tldRepo := postgres.NewGormTLDRepo(gormDB)
-		tldService = services.NewTLDService(tldRepo)
-		tldController = rest.NewTLDController(router, tldService)
-		_ = tldController
+	tldRepo := postgres.NewGormTLDRepo(gormDB)
+	tldService = services.NewTLDService(tldRepo)
+	tldController = rest.NewTLDController(router, tldService)
+	_ = tldController
 
+	ginkgo.BeforeEach(func() {
 		tempTLDName = "mytesttld" // Define a unique TLD name for each test run if needed
 
 		// Create a TLD
