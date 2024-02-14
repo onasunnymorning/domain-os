@@ -48,8 +48,6 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.TechID = entities.ClIDType(dbDom.TechID)
 	d.BillingID = entities.ClIDType(dbDom.BillingID)
 	d.ClID = entities.ClIDType(dbDom.ClID)
-	d.CrRr = entities.ClIDType(dbDom.CrRr)
-	d.UpRr = entities.ClIDType(dbDom.UpRr)
 	d.TLDName = entities.DomainName(dbDom.TLDName)
 	d.ExpiryDate = dbDom.ExpiryDate
 	d.RenewedYears = dbDom.RenewedYears
@@ -58,6 +56,12 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.UpdatedAt = dbDom.UpdatedAt
 	d.DomainStatus = dbDom.DomainStatus
 	d.DomainsRGPStatus = dbDom.DomainsRGPStatus
+	if dbDom.CrRr != "" {
+		d.CrRr = entities.ClIDType(dbDom.CrRr)
+	}
+	if dbDom.UpRr != "" {
+		d.UpRr = entities.ClIDType(dbDom.UpRr)
+	}
 
 	return d
 }
@@ -74,8 +78,6 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.TechID = d.TechID.String()
 	dbDomain.BillingID = d.BillingID.String()
 	dbDomain.ClID = d.ClID.String()
-	dbDomain.CrRr = d.CrRr.String()
-	dbDomain.UpRr = d.UpRr.String()
 	dbDomain.TLDName = d.TLDName.String()
 	dbDomain.ExpiryDate = d.ExpiryDate
 	dbDomain.RenewedYears = d.RenewedYears
@@ -84,6 +86,13 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.UpdatedAt = d.UpdatedAt
 	dbDomain.DomainStatus = d.DomainStatus
 	dbDomain.DomainsRGPStatus = d.DomainsRGPStatus
+
+	if d.CrRr != entities.ClIDType("") {
+		dbDomain.CrRr = d.CrRr.String()
+	}
+	if d.UpRr != entities.ClIDType("") {
+		dbDomain.UpRr = d.UpRr.String()
+	}
 
 	return dbDomain
 }
