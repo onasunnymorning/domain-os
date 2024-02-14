@@ -12,19 +12,20 @@ func TestDomain_TableName(t *testing.T) {
 }
 
 func getValidDBDomain() *Domain {
+	rarClid := "domaintestRar"
 	return &Domain{
 		RoID:         123456,
-		Name:         "example.com",
-		OriginalName: "example.com",
-		UName:        "example.com",
+		Name:         "example.domaintesttld",
+		OriginalName: "example.domaintesttld",
+		UName:        "example.domaintesttld",
 		RegistrantID: "123456",
 		AdminID:      "123456",
 		TechID:       "123456",
 		BillingID:    "123456",
-		ClID:         "123456",
-		CrRr:         "123456",
-		UpRr:         "123456",
-		TLDName:      "com",
+		ClID:         rarClid,
+		CrRr:         &rarClid,
+		UpRr:         &rarClid,
+		TLDName:      "domaintesttld",
 		RenewedYears: 1,
 		AuthInfo:     "abc123",
 	}
@@ -43,8 +44,8 @@ func TestDomain_ToDomain(t *testing.T) {
 	require.Equal(t, dbDomain.TechID, d.TechID.String())
 	require.Equal(t, dbDomain.BillingID, d.BillingID.String())
 	require.Equal(t, dbDomain.ClID, d.ClID.String())
-	require.Equal(t, dbDomain.CrRr, d.CrRr.String())
-	require.Equal(t, dbDomain.UpRr, d.UpRr.String())
+	require.Equal(t, *dbDomain.CrRr, d.CrRr.String())
+	require.Equal(t, *dbDomain.UpRr, d.UpRr.String())
 	require.Equal(t, dbDomain.TLDName, d.TLDName.String())
 	require.Equal(t, dbDomain.RenewedYears, d.RenewedYears)
 	require.Equal(t, dbDomain.AuthInfo, d.AuthInfo.String())

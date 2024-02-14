@@ -17,8 +17,8 @@ type Domain struct {
 	TechID                    string
 	BillingID                 string
 	ClID                      string
-	CrRr                      string
-	UpRr                      string
+	CrRr                      *string
+	UpRr                      *string
 	TLDName                   string `gorm:"not null;foreignKey"`
 	TLD                       TLD
 	ExpiryDate                time.Time
@@ -56,11 +56,11 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.UpdatedAt = dbDom.UpdatedAt
 	d.DomainStatus = dbDom.DomainStatus
 	d.DomainsRGPStatus = dbDom.DomainsRGPStatus
-	if dbDom.CrRr != "" {
-		d.CrRr = entities.ClIDType(dbDom.CrRr)
+	if dbDom.CrRr != nil {
+		d.CrRr = entities.ClIDType(*dbDom.CrRr)
 	}
-	if dbDom.UpRr != "" {
-		d.UpRr = entities.ClIDType(dbDom.UpRr)
+	if dbDom.UpRr != nil {
+		d.UpRr = entities.ClIDType(*dbDom.UpRr)
 	}
 
 	return d
@@ -88,10 +88,12 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.DomainsRGPStatus = d.DomainsRGPStatus
 
 	if d.CrRr != entities.ClIDType("") {
-		dbDomain.CrRr = d.CrRr.String()
+		rar := d.CrRr.String()
+		dbDomain.CrRr = &rar
 	}
 	if d.UpRr != entities.ClIDType("") {
-		dbDomain.UpRr = d.UpRr.String()
+		rar := d.UpRr.String()
+		dbDomain.UpRr = &rar
 	}
 
 	return dbDomain
