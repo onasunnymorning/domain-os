@@ -10,3 +10,13 @@ type TLDResult struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+// CreateTLDCommand is the command to create a TLD
+type CreateTLDCommand struct {
+	Name string
+}
+
+// CreateTLDCommandResult is the result of the CreateTLDCommand
+type CreateTLDCommandResult struct {
+	Result TLDResult
+}
