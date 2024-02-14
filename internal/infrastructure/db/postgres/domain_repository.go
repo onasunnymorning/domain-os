@@ -50,3 +50,8 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 	}
 	return ToDomain(dbDomain), nil
 }
+
+// DeleteDomain deletes a domain from the database
+func (dr *DomainRepository) DeleteDomain(ctx context.Context, id int64) error {
+	return dr.db.WithContext(ctx).Delete(&Domain{}, id).Error
+}
