@@ -27,6 +27,17 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 	return controller
 }
 
+// GetTLDByName godoc
+// @Summary Get a TLD by name
+// @Description Get a TLD by name
+// @Tags TLDs
+// @Produce json
+// @Param name path string true "TLD Name"
+// @Success 200 {object} entities.TLD
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{name} [get]
 func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
@@ -43,6 +54,17 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	ctx.JSON(200, tld)
 }
 
+// ListTLDs godoc
+// @Summary List TLDs
+// @Description List TLDs.
+// @Tags TLDs
+// @Produce json
+// @Param pagesize query int false "Page size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} entities.TLD
+// @Failure 400
+// @Failure 500
+// @Router /tlds [get]
 func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	var err error
 	// Prepare the response
@@ -66,16 +88,27 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	// Populate the response.Data with the tlds
-	response.Data = tlds
 
-	// Set the metadata
-	response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+	// Set the Data and metadata if there are results only
+	if len(tlds) > 0 {
+		response.Data = tlds
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+	}
 
 	// Return the response
 	ctx.JSON(200, response)
 }
 
+// DeleteTLDByName godoc
+// @Summary Delete a TLD by Name
+// @Description Delete a TLD by Name
+// @Tags TLDs
+// @Produce json
+// @Param name path string true "TLD Name"
+// @Success 204
+// @Failure 400
+// @Failure 500
+// @Router /tlds/{name} [delete]
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
@@ -88,6 +121,17 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	ctx.JSON(204, nil)
 }
 
+// CreateTLD godoc
+// @Summary Create a new TLD
+// @Description Create a new TLD
+// @Tags TLDs
+// @Accept json
+// @Produce json
+// @Param registrar body commands.CreateTLDCommand true "TLD"
+// @Success 200 {object} commands.CreateTLDCommandResult
+// @Failure 400
+// @Failure 500
+// @Router /tlds [post]
 func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	var req request.CreateTLDRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {

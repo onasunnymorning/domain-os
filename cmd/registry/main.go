@@ -13,6 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
+	_ "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
+	swaggerFiles "github.com/swaggo/files"        // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger"    // gin-swagger middleware
 )
 
 // @title APEX RegistryOS
@@ -66,6 +70,11 @@ func main() {
 	rest.NewSpec5Controller(r, spec5Service)
 	rest.NewIANARegistrarController(r, ianaRegistrarService)
 	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
+
+	// Serve the swagger documentation
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(
+		swaggerFiles.Handler,
+		ginSwagger.DocExpansion("none"))) // collapse all endpoints by default
 
 	r.Run(":" + os.Getenv("API_PORT"))
 
