@@ -14,8 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	swaggerFiles "github.com/swaggo/files"     // swagger embed files
-	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
+	_ "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
+	swaggerFiles "github.com/swaggo/files"        // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger"    // gin-swagger middleware
 )
 
 // @title APEX RegistryOS

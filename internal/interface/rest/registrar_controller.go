@@ -117,7 +117,6 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 // @Failure 400
 // @Failure 500
 // @Router /registrars [post]
-// func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 	var cmd commands.CreateRegistrarCommand
 	if err := ctx.ShouldBindJSON(&cmd); err != nil {
