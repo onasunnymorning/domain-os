@@ -22,23 +22,23 @@ func NewRegistrarPostalInfo(t string, Address *Address) (*RegistrarPostalInfo, e
 		Type:    *pit,
 		Address: Address,
 	}
-	if !a.IsValid() {
+	if err := a.IsValid(); err != nil {
 		return nil, ErrInvalidRegistrarPostalInfo
 	}
 	return a, nil
 }
 
 // IsValid checks if the value is valid
-func (t *RegistrarPostalInfo) IsValid() bool {
+func (t *RegistrarPostalInfo) IsValid() error {
 	if err := t.Type.Validate(); err != nil {
-		return false
+		return err
 	}
 	if t.Address == nil {
-		return false
+		return ErrInvalidRegistrarPostalInfo
 	} else {
 		if err := t.Address.Validate(t.Type); err != nil {
-			return false
+			return err
 		}
 	}
-	return true
+	return nil
 }

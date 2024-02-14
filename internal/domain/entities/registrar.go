@@ -91,8 +91,10 @@ func (r *Registrar) Validate() error {
 		return ErrInvalidEmail
 	}
 	for _, pi := range r.PostalInfo {
-		if pi != nil && !pi.IsValid() {
-			return ErrInvalidRegistrarPostalInfo
+		if pi != nil {
+			if err := pi.IsValid(); err != nil {
+				return ErrInvalidRegistrarPostalInfo
+			}
 		}
 	}
 	return nil
@@ -104,7 +106,7 @@ func (r *Registrar) Validate() error {
 // RemovePostalInfo can be used to remove a postalinfo prior to adding a new one of the same type
 func (r *Registrar) AddPostalInfo(pi *RegistrarPostalInfo) error {
 	// Fail fast if we get an  invalid PostalInfo object
-	if !pi.IsValid() {
+	if err := pi.IsValid(); err != nil {
 		return ErrInvalidRegistrarPostalInfo
 
 	}
