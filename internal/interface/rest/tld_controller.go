@@ -88,11 +88,12 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	// Populate the response.Data with the tlds
-	response.Data = tlds
 
-	// Set the metadata
-	response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+	// Set the Data and metadata if there are results only
+	if len(tlds) > 0 {
+		response.Data = tlds
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+	}
 
 	// Return the response
 	ctx.JSON(200, response)
