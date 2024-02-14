@@ -29,9 +29,11 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 
 	// Add the postal info information
 	for _, pi := range cmd.PostalInfo {
-		err = newRar.AddPostalInfo(pi)
-		if err != nil {
-			return nil, err
+		if pi != nil {
+			err = newRar.AddPostalInfo(pi)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
