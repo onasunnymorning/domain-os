@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -19,32 +18,27 @@ import (
 )
 
 var _ = Describe("RegistrarController", func() {
-	var (
-		router               *gin.Engine
-		registrarService     interfaces.RegistrarService
-		ianaRepo             *postgres.IANARegistrarRepository
-		ianaRegistrarService interfaces.IANARegistrarService
-		registrarController  *rest.RegistrarController
-	)
-
-	BeforeEach(func() {
-		// Initialize your router
-		router = gin.New()
-
-		registrarRepo := postgres.NewGormRegistrarRepository(tx)
-		registrarService = services.NewRegistrarService(registrarRepo)
-
-		ianaRepo = postgres.NewIANARegistrarRepository(tx)
-		ianaRegistrarService = services.NewIANARegistrarService(ianaRepo)
-
-		registrarController = rest.NewRegistrarController(router, registrarService, ianaRegistrarService)
-		_ = registrarController
-	})
-
 	Context("Managing a registrar", func() {
+		// Initialize your router
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+
+		// Initialize your database connection
+		db, err := getTestDB()
+		Expect(err).NotTo(HaveOccurred())
+
+		registrarRepo := postgres.NewGormRegistrarRepository(db)
+		registrarService := services.NewRegistrarService(registrarRepo)
+
+		ianaRepo := postgres.NewIANARegistrarRepository(db)
+		ianaRegistrarService := services.NewIANARegistrarService(ianaRepo)
+
+		registrarController := rest.NewRegistrarController(router, registrarService, ianaRegistrarService)
+		Expect(registrarController).NotTo(BeNil())
+
 		var createdID string
 		// Define the registrar payload directly
-		registrarPayload := testRegistrar("testRegistrarID")
+		registrarPayload := testRegistrar("testRegistrarID", "Test Registrar Name")
 
 		It("should create a new registrar and return its ID", func() {
 
@@ -85,7 +79,7 @@ var _ = Describe("RegistrarController", func() {
 			err = json.NewDecoder(resp.Body).Decode(&retrievedRegistrar)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(retrievedRegistrar.ClID).To(Equal(registrarPayload.ClID))
+			Expect(retrievedRegistrar.ClID.String()).To(Equal(registrarPayload.ClID))
 			Expect(retrievedRegistrar.Name).To(Equal(registrarPayload.Name))
 			Expect(retrievedRegistrar.Email).To(Equal(registrarPayload.Email))
 			Expect(retrievedRegistrar.PostalInfo).To(HaveLen(2))
@@ -169,10 +163,10 @@ var _ = Describe("RegistrarController", func() {
 
 })
 
-func testRegistrar(clid string) *commands.CreateRegistrarCommand {
+func testRegistrar(clid string, name string) *commands.CreateRegistrarCommand {
 	return &commands.CreateRegistrarCommand{
 		ClID:  clid,
-		Name:  "Example Registrar Name",
+		Name:  name,
 		Email: "contact@example.com",
 		PostalInfo: [2]*entities.RegistrarPostalInfo{
 			{

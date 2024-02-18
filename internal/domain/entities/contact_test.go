@@ -59,7 +59,7 @@ func TestContact_NewContact(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
-			_, err := NewContact(tc.id, tc.roid, tc.email, tc.authInfo)
+			_, err := NewContact(tc.id, tc.roid, tc.email, tc.authInfo, "199-myrar")
 			require.Equal(t, tc.expectedError, err)
 		})
 	}
@@ -407,7 +407,7 @@ func TestContact_CheckOKIsSet(t *testing.T) {
 func TestAddContactPostalInfo(t *testing.T) {
 	validEmail := "geoff@apex.domains"
 	// Setup
-	c, err := NewContact("myreference1234", "123_CONT-APEX", validEmail, ";S987djfl;sdj")
+	c, err := NewContact("myreference1234", "123_CONT-APEX", validEmail, ";S987djfl;sdj", "199-myrar")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -454,7 +454,7 @@ func TestAddContactPostalInfo(t *testing.T) {
 func TestRemoveContactPostalInfo(t *testing.T) {
 	validEmail := "geoff@apex.domains"
 	// Setup
-	c, err := NewContact("myref1234", "123_CONT-APEX", validEmail, "sdfkSD4ljsd;f")
+	c, err := NewContact("myref1234", "123_CONT-APEX", validEmail, "sdfkSD4ljsd;f", "199-myrar")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
