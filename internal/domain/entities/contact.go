@@ -4,7 +4,7 @@ import (
 	"net/mail"
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 // ContactStatusType is a type for contact status
@@ -43,6 +43,7 @@ const (
 )
 
 var (
+	ErrContactNotFound                 = errors.New("contact not found")
 	ErrInvalidContact                  = errors.New("invalid contact")
 	ErrInvalidContactStatusCombination = errors.New("invalid combination of contact statuses")
 	ErrContactUpdateNotAllowed         = errors.New("contact status prohibits update")
@@ -127,7 +128,7 @@ func NewContact(id, roid, email, authInfo string) (*Contact, error) {
 	c.setOKStatusIfNeeded()
 	// Test if all fields are valid
 	if ok, err := c.IsValid(); !ok {
-		return nil, err
+		return nil, errors.Join(ErrInvalidContact, err)
 	}
 	// By default the Disclose struct is set to FALSE (don't disclose)
 	// TODO: make this configurable

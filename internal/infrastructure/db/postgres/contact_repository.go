@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
@@ -34,6 +35,9 @@ func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*ent
 	dbContact := &Contact{}
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(dbContact).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.Join(entities.ErrContactNotFound, err)
+		}
 		return nil, err
 	}
 
@@ -52,7 +56,14 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Conta
 	return FromDBContact(dbContact), nil
 }
 
-// DeleteContact deletes a contact from the database
-func (r *ContactRepository) DeleteContact(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&Contact{}).Error
+// DeleteContactByID deletes a contact from the database
+func (r *ContactRepository) DeleteContactByID(ctx context.Context, id string) error {
+	err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&Contact{}).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.Join(entities.ErrContactNotFound, err)
+		}
+		return err
+	}
+	return nil
 }
