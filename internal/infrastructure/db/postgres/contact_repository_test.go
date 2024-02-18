@@ -146,14 +146,14 @@ func (s *ContactSuite) TestDeleteContact() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact)
 
-	err = repo.DeleteContact(context.Background(), createdContact.ID.String())
+	err = repo.DeleteContactByID(context.Background(), createdContact.ID.String())
 	s.Require().NoError(err)
 
 	n, err := repo.GetContactByID(context.Background(), createdContact.ID.String())
 	s.Require().Nil(n)
 	s.Require().Error(err)
 
-	err = repo.DeleteContact(context.Background(), createdContact.ID.String())
+	err = repo.DeleteContactByID(context.Background(), createdContact.ID.String())
 	s.Require().NoError(err)
 
 	_, err = repo.GetContactByID(context.Background(), createdContact.ID.String())
