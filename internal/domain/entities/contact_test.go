@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,11 @@ func TestContact_NewContact(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
 			_, err := NewContact(tc.id, tc.roid, tc.email, tc.authInfo, "199-myrar")
-			require.Equal(t, tc.expectedError, err)
+			if tc.expectedError == nil {
+				require.NoError(t, err)
+			} else {
+				require.True(t, errors.Is(err, tc.expectedError))
+			}
 		})
 	}
 }
