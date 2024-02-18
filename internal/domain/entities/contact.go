@@ -45,6 +45,7 @@ const (
 var (
 	ErrContactNotFound                 = errors.New("contact not found")
 	ErrInvalidContact                  = errors.New("invalid contact")
+	ErrContactAlreadyExists            = errors.New("contact already exists")
 	ErrInvalidContactStatusCombination = errors.New("invalid combination of contact statuses")
 	ErrContactUpdateNotAllowed         = errors.New("contact status prohibits update")
 	ErrPostalInfoTypeExistsAlready     = errors.New("postalinfo of this type already exists")
@@ -116,13 +117,14 @@ func NewDiscloseStruct(v bool) *ContactDisclose {
 
 // NewContact creates a new Contact with required parameteres. It will normalize string values and return a pointer to the new Contact or an error
 // Calling code will have to supply a RoID. We can either generate on according to SnowflakeID + ROID_ID or use the one supplied if we are importing an escrow
-func NewContact(id, roid, email, authInfo string) (*Contact, error) {
+func NewContact(id, roid, email, authInfo, rarClid string) (*Contact, error) {
 	// Normalize strings and create the Contact
 	c := &Contact{
 		ID:       ClIDType(NormalizeString(id)),
 		RoID:     RoidType(NormalizeString(roid)),
 		Email:    NormalizeString(email),
 		AuthInfo: AuthInfoType(NormalizeString(authInfo)),
+		ClID:     ClIDType(NormalizeString(rarClid)),
 	}
 	// Set OK status
 	c.setOKStatusIfNeeded()

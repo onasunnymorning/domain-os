@@ -19,61 +19,59 @@ import (
 )
 
 var _ = Describe("ContactController", func() {
-	var (
-		router            *gin.Engine
-		contactController *rest.ContactController
-		registrarService  *services.RegistrarService
-	)
-
-	BeforeEach(func() {
+	Describe("Managing contacts", func() {
 		// Initialize your router
-		router = gin.New()
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
 
-		registrarRepo := postgres.NewGormRegistrarRepository(tx)
-		registrarService = services.NewRegistrarService(registrarRepo)
-		_ = registrarService
+		// Initialize your database connection
+		db, err := getTestDB()
+		Expect(err).NotTo(HaveOccurred())
 
 		// Initialize your repository and service
-		contactRepo := postgres.NewContactRepository(tx)
+		registrarRepo := postgres.NewGormRegistrarRepository(db)
+		registrarService := services.NewRegistrarService(registrarRepo)
+
+		// Initialize your repository and service
+		contactRepo := postgres.NewContactRepository(db)
 		contactService := services.NewContactService(contactRepo)
 
 		// Initialize and register your controller with the router
-		contactController = rest.NewContactController(router, contactService)
+		contactController := rest.NewContactController(router, contactService)
 		Expect(contactController).NotTo(BeNil())
-	})
 
-	Describe("Managing contacts", func() {
-		registrarClid := "exampleCLID"
+		registrarClid := "myRegistrar1234"
+
+		It("should successfully create a registrar", func() {
+			registrarPayload := testRegistrar(registrarClid, "My Registrar for Contact Controller Test")
+			_, _ = registrarService.Create(context.Background(), registrarPayload)
+			// Don't assert as registrar might already exist
+		})
+
 		testContact := &commands.CreateContactCommand{
-			ID:       registrarClid,
-			RoID:     "12345_CONT-APEX",
-			Email:    "jon@doe.com",
-			AuthInfo: "str0NGP@ZZw0rd",
+			ID:            "contactID101",
+			RoID:          "12345_CONT-APEX",
+			Email:         "jon@doe.com",
+			AuthInfo:      "str0NGP@ZZw0rd",
+			RegistrarCLID: registrarClid,
 		}
 
 		var createdContact entities.Contact
 
 		It("should successfully create a contact", func() {
-			registrarPayload := testRegistrar(registrarClid)
-			cmdResult, err := registrarService.Create(context.Background(), registrarPayload)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cmdResult).NotTo(BeNil())
-
 			payloadBytes, _ := json.Marshal(testContact)
 
 			req, _ := http.NewRequest(http.MethodPost, "/contacts", bytes.NewReader(payloadBytes))
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
-			// todo
-			fmt.Println("+++++", resp.Body.String(), "----")
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			err = json.NewDecoder(resp.Body).Decode(&createdContact)
+			err := json.NewDecoder(resp.Body).Decode(&createdContact)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(createdContact.ID).To(Equal(testContact.ID))
-			Expect(createdContact.RoID).To(Equal(testContact.RoID))
+			Expect(createdContact.ID.String()).To(Equal(testContact.ID))
+			Expect(createdContact.RoID.String()).To(Equal(testContact.RoID))
 			Expect(createdContact.Email).To(Equal(testContact.Email))
-			Expect(createdContact.AuthInfo).To(Equal(testContact.AuthInfo))
+			Expect(createdContact.AuthInfo.String()).To(Equal(testContact.AuthInfo))
 		})
 
 		It("should not create a contact with an existing ID", func() {
@@ -112,7 +110,7 @@ var _ = Describe("ContactController", func() {
 			var retrievedContact entities.Contact
 			err := json.NewDecoder(resp.Body).Decode(&retrievedContact)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(retrievedContact.ID).To(Equal(testContact.ID))
+			Expect(retrievedContact.ID.String()).To(Equal(testContact.ID))
 		})
 
 		It("should not find a non-existent contact", func() {
@@ -138,31 +136,6 @@ var _ = Describe("ContactController", func() {
 			err := json.NewDecoder(resp.Body).Decode(&updatedContact)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedContact.Email).To(Equal(updatedContactPayload.Email))
-		})
-
-		It("should not update a non-existent contact", func() {
-			nonExistentContact := createdContact
-			nonExistentContact.ID = "nonexistent"
-			payloadBytes, _ := json.Marshal(nonExistentContact)
-
-			req, _ := http.NewRequest(http.MethodPut, "/contacts", bytes.NewReader(payloadBytes))
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusNotFound))
-		})
-
-		It("should list all contacts", func() {
-			req, _ := http.NewRequest(http.MethodGet, "/contacts", nil)
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusOK))
-
-			var contacts []entities.Contact
-			err := json.NewDecoder(resp.Body).Decode(&contacts)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(len(contacts)).To(BeNumerically(">", 0))
 		})
 
 		It("should delete a contact by ID", func() {

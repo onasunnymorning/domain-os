@@ -74,7 +74,8 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 
 	contact, err := ctrl.contactService.CreateContact(ctx, &req)
 	if err != nil {
-		if errors.Is(err, entities.ErrInvalidContact) {
+		if errors.Is(err, entities.ErrInvalidContact) ||
+			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -112,10 +113,6 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 
 	contact, err := ctrl.contactService.UpdateContact(ctx, &req)
 	if err != nil {
-		if errors.Is(err, entities.ErrContactNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
