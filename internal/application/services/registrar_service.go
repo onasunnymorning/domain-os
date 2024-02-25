@@ -22,19 +22,9 @@ func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *
 
 // Create creates a new registrar
 func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
-	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID)
+	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID, cmd.PostalInfo)
 	if err != nil {
 		return nil, err
-	}
-
-	// Add the postal info information
-	for _, pi := range cmd.PostalInfo {
-		if pi != nil {
-			err = newRar.AddPostalInfo(pi)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 
 	// Add the optional fields
