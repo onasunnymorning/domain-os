@@ -14,6 +14,7 @@ func TestContact_NewContact(t *testing.T) {
 		roid          string
 		email         string
 		authInfo      string
+		postalInfo    [2]*ContactPostalInfo
 		expectedError error
 	}{
 		{
@@ -22,6 +23,7 @@ func TestContact_NewContact(t *testing.T) {
 			roid:          "12324234_CONT-APEX",
 			email:         "contact@apex.domains",
 			authInfo:      "VerySrt0ngP@ssword",
+			postalInfo:    getValidPostalInfoArr(),
 			expectedError: nil,
 		},
 		{
@@ -30,6 +32,7 @@ func TestContact_NewContact(t *testing.T) {
 			roid:          "12324234_CONT-APEX",
 			email:         "g@me.com",
 			authInfo:      "sdfsSDFSD*12312",
+			postalInfo:    getValidPostalInfoArr(),
 			expectedError: ErrInvalidClIDType,
 		},
 		{
@@ -38,6 +41,7 @@ func TestContact_NewContact(t *testing.T) {
 			roid:          "12324234-CONT_APEX",
 			email:         "g@me.com",
 			authInfo:      "sdfsSDFSD*12312",
+			postalInfo:    getValidPostalInfoArr(),
 			expectedError: ErrInvalidRoid,
 		},
 		{
@@ -46,6 +50,7 @@ func TestContact_NewContact(t *testing.T) {
 			roid:          "12324234_CONT-APEX",
 			email:         "gme.com",
 			authInfo:      "sdfsSDFSD*12312",
+			postalInfo:    getValidPostalInfoArr(),
 			expectedError: ErrInvalidEmail,
 		},
 		{
@@ -54,13 +59,23 @@ func TestContact_NewContact(t *testing.T) {
 			roid:          "12324234_CONT-APEX",
 			email:         "g@me.com",
 			authInfo:      "sh",
+			postalInfo:    getValidPostalInfoArr(),
 			expectedError: ErrInvalidAuthInfo,
+		},
+		{
+			testName:      "invalid postal info",
+			id:            "test",
+			roid:          "12324234_CONT-APEX",
+			email:         "g@me.com",
+			authInfo:      "sdfsSDFSD*12312",
+			postalInfo:    [2]*ContactPostalInfo{},
+			expectedError: ErrInvalidContactPostalInfo,
 		},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
-			_, err := NewContact(tc.id, tc.roid, tc.email, tc.authInfo, "199-myrar")
+			_, err := NewContact(tc.id, tc.roid, tc.email, tc.authInfo, "199-myrar", tc.postalInfo)
 			if tc.expectedError == nil {
 				require.NoError(t, err)
 			} else {
@@ -409,104 +424,6 @@ func TestContact_CheckOKIsSet(t *testing.T) {
 	require.True(t, c.OK, "OK should have been set")
 }
 
-func TestAddContactPostalInfo(t *testing.T) {
-	validEmail := "geoff@apex.domains"
-	// Setup
-	c, err := NewContact("myreference1234", "123_CONT-APEX", validEmail, ";S987djfl;sdj", "199-myrar")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	a, _ := NewAddress("London", "UK")
-	pi, _ := NewContactPostalInfo("int", "Some Name", a)
-	// Add a valid 'int' postal info
-	err = c.AddPostalInfo(pi)
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if c.PostalInfo[0].Type != "int" {
-		t.Errorf("Expected postal info type 'int', got %v", c.PostalInfo[0].Type)
-	}
-	// Try and add a second 'int' postal info, should fail
-	err = c.AddPostalInfo(pi)
-	if err == nil {
-		t.Errorf("Expected ErrPostalInfoTypeExists, got nil")
-	}
-	// Try and add an invalid 'int' postal info, should fail
-	pi.Address.City = "United Kingdoñ"
-	err = c.AddPostalInfo(pi)
-	if err == nil {
-		t.Errorf("Expected error, got nil")
-	}
-	// Add a valid 'loc' postal info
-	pi.Type = "loc"
-	err = c.AddPostalInfo(pi)
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	// Try and add a second 'loc' postal info, should fail
-	err = c.AddPostalInfo(pi)
-	if err == nil {
-		t.Errorf("Expected ErrPostalInfoTypeExists, got nil")
-	}
-	// Try and add an invalid type postal info, should fail
-	pi.Type = "invalid"
-	err = c.AddPostalInfo(pi)
-	if err == nil {
-		t.Errorf("Expected ErrPostalInfoTypeExists, got nil")
-	}
-}
-
-func TestRemoveContactPostalInfo(t *testing.T) {
-	validEmail := "geoff@apex.domains"
-	// Setup
-	c, err := NewContact("myref1234", "123_CONT-APEX", validEmail, "sdfkSD4ljsd;f", "199-myrar")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	a, _ := NewAddress("London", "UK")
-	pi, _ := NewContactPostalInfo("int", "Some Name", a)
-	// Add a valid 'int' postal info
-	c.AddPostalInfo(pi)
-	// Add a valid 'loc' postal info
-	pi.Type = "loc"
-	c.AddPostalInfo(pi)
-
-	// Remove the 'int' postal info
-	err = c.RemovePostalInfo("int")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if c.PostalInfo[0] != nil {
-		t.Errorf("Expected postal info to be nil, got %v", c.PostalInfo[0])
-	}
-	// Remove the 'loc' postal info
-	err = c.RemovePostalInfo("loc")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if c.PostalInfo[1] != nil {
-		t.Errorf("Expected postal info to be nil, got %v", c.PostalInfo[0])
-	}
-
-	// Remove the 'int' postal info again, should work idempotently
-	err = c.RemovePostalInfo("int")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if c.PostalInfo[0] != nil {
-		t.Errorf("Expected postal info to be nil, got %v", c.PostalInfo[0])
-	}
-	// Remove the 'loc' postal info again, should work idempotently
-	err = c.RemovePostalInfo("loc")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if c.PostalInfo[1] != nil {
-		t.Errorf("Expected postal info to be nil, got %v", c.PostalInfo[0])
-	}
-
-}
-
 func TestContact_IsValid(t *testing.T) {
 	testcases := []struct {
 		testName       string
@@ -566,6 +483,19 @@ func TestContact_IsValid(t *testing.T) {
 					},
 					nil,
 				},
+			},
+			expectedResult: false,
+			expectedError:  ErrInvalidContactPostalInfo,
+		},
+		{
+			testName: "invalid no postal info",
+			Contact: Contact{
+				ID:            ClIDType("myref1234"),
+				RoID:          RoidType("123_CONT-APEX"),
+				Email:         "g@me.com",
+				AuthInfo:      AuthInfoType("sdfkSD4ljsd;f"),
+				ContactStatus: ContactStatus{OK: true},
+				PostalInfo:    [2]*ContactPostalInfo{},
 			},
 			expectedResult: false,
 			expectedError:  ErrInvalidContactPostalInfo,
@@ -707,5 +637,18 @@ func TestContact_UnSetStatus(t *testing.T) {
 			err := tc.Contact.UnSetStatus(string(tc.status))
 			require.Equal(t, tc.expectedError, err)
 		})
+	}
+}
+
+func getValidPostalInfo(t string) *ContactPostalInfo {
+	a, _ := NewAddress("London", "UK")
+	pi, _ := NewContactPostalInfo(t, "Some Name", a)
+	return pi
+}
+
+func getValidPostalInfoArr() [2]*ContactPostalInfo {
+	return [2]*ContactPostalInfo{
+		getValidPostalInfo("int"),
+		getValidPostalInfo("loc"),
 	}
 }

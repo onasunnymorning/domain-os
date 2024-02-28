@@ -117,7 +117,7 @@ func NewDiscloseStruct(v bool) *ContactDisclose {
 
 // NewContact creates a new Contact with required parameteres. It will normalize string values and return a pointer to the new Contact or an error
 // Calling code will have to supply a RoID. We can either generate on according to SnowflakeID + ROID_ID or use the one supplied if we are importing an escrow
-func NewContact(id, roid, email, authInfo, rarClid string) (*Contact, error) {
+func NewContact(id, roid, email, authInfo, rarClid string, postalInfo [2]*ContactPostalInfo) (*Contact, error) {
 	// Normalize strings and create the Contact
 	c := &Contact{
 		ID:       ClIDType(NormalizeString(id)),
@@ -128,6 +128,17 @@ func NewContact(id, roid, email, authInfo, rarClid string) (*Contact, error) {
 	}
 	// Set OK status
 	c.setOKStatusIfNeeded()
+
+	// Add postal info if it is not nil
+	for _, pi := range postalInfo {
+		if pi != nil {
+			err := c.AddPostalInfo(pi)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// Test if all fields are valid
 	if ok, err := c.IsValid(); !ok {
 		return nil, errors.Join(ErrInvalidContact, err)
@@ -367,12 +378,17 @@ func (c *Contact) IsValid() (bool, error) {
 	if err := c.Fax.Validate(); err != nil {
 		return false, err
 	}
+	validPostalInfoCount := 0
 	for _, pi := range c.PostalInfo {
 		if pi != nil {
 			if !pi.IsValid() {
 				return false, ErrInvalidContactPostalInfo
 			}
+			validPostalInfoCount++
 		}
+	}
+	if validPostalInfoCount == 0 {
+		return false, ErrInvalidContactPostalInfo
 	}
 
 	// Removing this as its maybe a little too strict.
@@ -390,10 +406,6 @@ func (c *Contact) IsValid() (bool, error) {
 // If a postalinfo of the same type already exists, it returns an error
 // RemovePostalInfo can be used to remove a postalinfo prior to adding a new one of the same type
 func (c *Contact) AddPostalInfo(pi *ContactPostalInfo) error {
-	// Fail fast if we get an  invalid PostalInfo object
-	if !pi.IsValid() {
-		return ErrInvalidContactPostalInfo
-	}
 	// Store the 'int' postalinfo first, the 'loc' postalinfo in second position
 	if pi.Type == "int" {
 		if c.PostalInfo[0] != nil {
@@ -406,19 +418,6 @@ func (c *Contact) AddPostalInfo(pi *ContactPostalInfo) error {
 			return ErrPostalInfoTypeExistsAlready
 		}
 		c.PostalInfo[1] = pi
-	}
-	return nil
-}
-
-// RemovePostalInfo Removes Postal Info from Contact by type.
-func (c *Contact) RemovePostalInfo(t string) error {
-	// Make this idempotent
-	// The 'int' postalinfo is stored in the first position, the 'loc' postalinfor in second position
-	if t == "int" {
-		c.PostalInfo[0] = nil
-	}
-	if t == "loc" {
-		c.PostalInfo[1] = nil
 	}
 	return nil
 }
