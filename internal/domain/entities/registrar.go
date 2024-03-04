@@ -49,7 +49,7 @@ type Registrar struct {
 }
 
 // NewRegistrar creates a new instance of Registrar
-func NewRegistrar(clID, name, email string, gurid int) (*Registrar, error) {
+func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarPostalInfo) (*Registrar, error) {
 	r := &Registrar{
 		ClID:     ClIDType(NormalizeString(clID)),
 		Name:     NormalizeString(name),
@@ -57,6 +57,16 @@ func NewRegistrar(clID, name, email string, gurid int) (*Registrar, error) {
 		GurID:    gurid,
 		Email:    NormalizeString(email),
 		Status:   RegistrarStatusReadonly, // Create the status as readonly by default
+	}
+
+	// Add the postal info information
+	for _, pi := range postalInfo {
+		if pi != nil {
+			err := r.AddPostalInfo(pi)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if err := r.Validate(); err != nil {
@@ -90,11 +100,20 @@ func (r *Registrar) Validate() error {
 	if err != nil {
 		return ErrInvalidEmail
 	}
+	validPostalInfoCount := 0
 	for _, pi := range r.PostalInfo {
-		if pi != nil && !pi.IsValid() {
-			return ErrInvalidRegistrarPostalInfo
+		if pi != nil {
+			if err := pi.IsValid(); err != nil {
+				return ErrInvalidRegistrarPostalInfo
+			}
+			validPostalInfoCount++
 		}
 	}
+
+	if validPostalInfoCount == 0 {
+		return ErrInvalidRegistrarPostalInfo
+	}
+
 	return nil
 }
 
@@ -104,7 +123,7 @@ func (r *Registrar) Validate() error {
 // RemovePostalInfo can be used to remove a postalinfo prior to adding a new one of the same type
 func (r *Registrar) AddPostalInfo(pi *RegistrarPostalInfo) error {
 	// Fail fast if we get an  invalid PostalInfo object
-	if !pi.IsValid() {
+	if err := pi.IsValid(); err != nil {
 		return ErrInvalidRegistrarPostalInfo
 
 	}
