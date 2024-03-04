@@ -79,7 +79,7 @@ func TestNewRegistrarPostalInfo(t *testing.T) {
 		require.Equal(t, test.expected, actual, "RegistrarPostalInfo mismatch")
 		require.Equal(t, test.expectedErr, err, "Error mismatch")
 		if test.expectedErr == nil {
-			require.True(t, actual.IsValid(), "IsValid() should return true")
+			require.Nil(t, actual.IsValid(), "IsValid() should return nil")
 		}
 	}
 }
@@ -87,7 +87,7 @@ func TestNewRegistrarPostalInfo(t *testing.T) {
 func TestRegistrarPostalInfo_IsValid(t *testing.T) {
 	tests := []struct {
 		pi       *RegistrarPostalInfo
-		expected bool
+		expected error
 	}{
 		{
 			pi: &RegistrarPostalInfo{
@@ -97,7 +97,7 @@ func TestRegistrarPostalInfo_IsValid(t *testing.T) {
 					CountryCode: CCType("MX"),
 				},
 			},
-			expected: true,
+			expected: nil,
 		},
 		{
 			pi: &RegistrarPostalInfo{
@@ -107,14 +107,14 @@ func TestRegistrarPostalInfo_IsValid(t *testing.T) {
 					CountryCode: CCType("MX"),
 				},
 			},
-			expected: false,
+			expected: ErrInvalidPostalInfoEnumType,
 		},
 		{
 			pi: &RegistrarPostalInfo{
 				Type:    "int",
 				Address: nil,
 			},
-			expected: false,
+			expected: ErrInvalidRegistrarPostalInfo,
 		},
 	}
 
