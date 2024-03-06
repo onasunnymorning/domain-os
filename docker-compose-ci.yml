@@ -24,8 +24,8 @@ services:
     volumes: 
       - db:/var/lib/postgresql/data 
 # Core API container
-  app:
-    image: "geapex/registry-os:${BRANCH}"
+  admin-api:
+    image: "geapex/domain-os:${BRANCH}"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]
@@ -56,7 +56,7 @@ services:
       - collection=${POSTMAN_COLLECTION_ID}
       - environment=${POSTMAN_ENVIRONMENT_ID}
     depends_on:
-      app:
+      admin-api:
         condition: service_healthy
       db:
         condition: service_healthy
