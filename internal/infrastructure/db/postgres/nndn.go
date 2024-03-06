@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
-	"gorm.io/gorm"
+	"errors"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
@@ -73,6 +75,9 @@ func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 	var gormNNDN NNDN
 	result := r.db.WithContext(ctx).Where("Name = ?", name).First(&gormNNDN)
 	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrNNDNNotFound
+		}
 		return nil, result.Error
 	}
 	return gormNNDN.toNNDN(), nil
@@ -80,9 +85,12 @@ func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 
 func (r *GormNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	gormNNDN := fromNNDN(nndn)
-	result := r.db.WithContext(ctx).Save(gormNNDN)
-	if result.Error != nil {
-		return nil, result.Error
+	err := r.db.WithContext(ctx).Save(gormNNDN).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrTLDNotFound
+		}
+		return nil, err
 	}
 	return gormNNDN.toNNDN(), nil
 }

@@ -2,6 +2,8 @@ package entities
 
 import (
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // NNDNState is a custom type for representing the state of an NNDN object.
@@ -12,6 +14,10 @@ const (
 	NNDNStateBlocked  NNDNState = "blocked"  // Indicates the NNDN is not available for registration.
 	NNDNStateWithheld NNDNState = "withheld" // Potentially a future registrable domain.
 	NNDNStateMirrored NNDNState = "mirrored" // A mirrored IDN variant of a domain name.
+)
+
+var (
+	ErrNNDNNotFound = errors.New("NNDN not found")
 )
 
 // NNDN represents a non-standard domain Name object in a domain Name registry.
