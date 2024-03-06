@@ -1,8 +1,11 @@
 package rest
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -29,6 +32,10 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 
 	nndn, err := ctrl.nndnService.GetNNDNByName(ctx, name)
 	if err != nil {
+		if errors.Is(err, entities.ErrNNDNNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -80,6 +87,10 @@ func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 func (ctrl *NNDNController) CreateNNDN(ctx *gin.Context) {
 	var req request.CreateNNDNRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
