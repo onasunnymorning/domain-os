@@ -28,3 +28,6 @@ go.work
 
 # IDE
 .idea
+
+# Local scrap files
+scraps/

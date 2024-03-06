@@ -50,48 +50,48 @@ jobs:
           cache-from: type=registry,ref=geapex/registry-os:buildcache
           cache-to: type=registry,ref=geapex/registry-os:buildcache,mode=max
 
-  # integrationtests:
-  #   name: Integration tests
-  #   runs-on: ubuntu-latest
-  #   needs: build-images
-  #   steps:
-  #     - name: Check out code into the Go module directory
-  #       uses: actions/checkout@v4
+  integrationtests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
 
-  #     - name: Run Integration Tests
-  #       run: docker compose -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
-  #       env:
-  #         POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-  #         POSTMAN_COLLECTION_ID: ${{ vars.POSTMAN_COLLECTION_ID }}
-  #         POSTMAN_ENVIRONMENT_ID: ${{ vars.POSTMAN_ENVIRONMENT_ID }}
-  #         DB_HOST: regos4-db-1
-  #         DB_PORT: 5432
-  #         DB_USER: postgres
-  #         DB_PASS: not-so-secret-password-just-for-testing
-  #         DB_NAME: regos-integrationtests
-  #         API_PORT: 8080
-  #         API_HOST: regos4-app-1
-  #         BRANCH: ${{ github.sha }}
+      - name: Run Integration Tests
+        run: docker compose -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_COLLECTION_ID: ${{ vars.POSTMAN_COLLECTION_ID }}
+          POSTMAN_ENVIRONMENT_ID: ${{ vars.POSTMAN_ENVIRONMENT_ID }}
+          DB_HOST: regos4-db-1
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASS: not-so-secret-password-just-for-testing
+          DB_NAME: regos-integrationtests
+          API_PORT: 8080
+          API_HOST: regos4-app-1
+          BRANCH: ${{ github.sha }}
 
-  # retag:
-  #   name: Retag images
-  #   runs-on: ubuntu-latest
-  #   needs: integrationtests
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     - name: Login to Docker Hub
-  #       uses: docker/login-action@v3
-  #       with:
-  #         username: ${{ secrets.DOCKERHUB_USERNAME }}
-  #         password: ${{ secrets.DOCKERHUB_TOKEN }}
-  #     - name: Build and push
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: .
-  #         push: true
-  #         tags: geapex/registry-os:latest
-  #         cache-from: type=registry,ref=geapex/registry-os:buildcache
-  #         cache-to: type=registry,ref=geapex/registry-os:buildcache,mode=max
+  retag:
+    name: Retag images
+    runs-on: ubuntu-latest
+    needs: integrationtests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: geapex/registry-os:latest
+          cache-from: type=registry,ref=geapex/registry-os:buildcache
+          cache-to: type=registry,ref=geapex/registry-os:buildcache,mode=max

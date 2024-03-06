@@ -24,7 +24,7 @@ services:
     volumes: 
       - db:/var/lib/postgresql/data 
 # Core API container
-  app:
+  admin-api:
     image: "geapex/registry-os:${BRANCH}"
     restart: always
     healthcheck:
