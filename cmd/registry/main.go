@@ -11,6 +11,7 @@ import (
 
 	"os"
 
+	"github.com/apex/gateway"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
@@ -18,6 +19,14 @@ import (
 	swaggerFiles "github.com/swaggo/files"        // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger"    // gin-swagger middleware
 )
+
+// inLambda returns true if the code is running in AWS Lambda
+func inLambda() bool {
+	if lambdaTaskRoot := os.Getenv("LAMBDA_TASK_ROOT"); lambdaTaskRoot != "" {
+		return true
+	}
+	return false
+}
 
 // @title APEX RegistryOS
 // @version 0.5.1
@@ -76,6 +85,12 @@ func main() {
 		swaggerFiles.Handler,
 		ginSwagger.DocExpansion("none"))) // collapse all endpoints by default
 
-	r.Run(":" + os.Getenv("API_PORT"))
+	if inLambda() {
+		log.Println("Running in AWS Lambda")
+		// Start the server using the AWS Lambda proxy
+		log.Fatal(gateway.ListenAndServe(":8080", r))
+	} else {
+		r.Run(":" + os.Getenv("API_PORT"))
+	}
 
 }

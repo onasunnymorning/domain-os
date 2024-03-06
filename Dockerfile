@@ -23,19 +23,19 @@ COPY ./cmd/registry ./cmd/registry
 
 
 # Just build API
-FROM build as build-registry-api
+FROM build as build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/registry
 RUN swag init -g main.go -o /docs -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
 # build binary
 WORKDIR /
-RUN go build -o registryAPI /cmd/registry/main.go
+RUN go build -o adminAPI /cmd/registry/main.go
 
 
 # Create API release image
-FROM alpine:3.18 as core-api
+FROM alpine:3.18 as admin-api
 # Copy our static executable
-COPY --from=build-registry-api /registryAPI /registryAPI
+COPY --from=build-admin-api /adminAPI /adminAPI
 
 EXPOSE 8080
-CMD [ "/registryAPI" ]
+CMD [ "/adminAPI" ]
