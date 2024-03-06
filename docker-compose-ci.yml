@@ -25,7 +25,7 @@ services:
       - db:/var/lib/postgresql/data 
 # Core API container
   admin-api:
-    image: "geapex/registry-os:${BRANCH}"
+    image: "geapex/domain-os:${BRANCH}"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]

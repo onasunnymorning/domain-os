@@ -46,9 +46,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: geapex/registry-os:${{ github.sha }}
-          cache-from: type=registry,ref=geapex/registry-os:buildcache
-          cache-to: type=registry,ref=geapex/registry-os:buildcache,mode=max
+          tags: geapex/domain-os:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/domain-os:buildcache
+          cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
 
   integrationtests:
     name: Integration tests
@@ -92,6 +92,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: geapex/registry-os:latest
-          cache-from: type=registry,ref=geapex/registry-os:buildcache
-          cache-to: type=registry,ref=geapex/registry-os:buildcache,mode=max
+          tags: geapex/domain-os:latest
+          cache-from: type=registry,ref=geapex/domain-os:buildcache
+          cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
