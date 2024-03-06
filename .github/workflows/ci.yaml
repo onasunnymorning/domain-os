@@ -64,13 +64,13 @@ jobs:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_COLLECTION_ID: ${{ vars.POSTMAN_COLLECTION_ID }}
           POSTMAN_ENVIRONMENT_ID: ${{ vars.POSTMAN_ENVIRONMENT_ID }}
-          DB_HOST: regos4-db-1
+          DB_HOST: domain-os-db-1
           DB_PORT: 5432
           DB_USER: postgres
-          DB_PASS: not-so-secret-password-just-for-testing
-          DB_NAME: regos-integrationtests
+          DB_PASS: unittest
+          DB_NAME: integrationtests
           API_PORT: 8080
-          API_HOST: regos4-app-1
+          API_HOST: domain-os-admin-api-1
           BRANCH: ${{ github.sha }}
 
   retag:
