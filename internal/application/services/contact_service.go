@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -20,7 +21,7 @@ func NewContactService(ContactRepo repositories.ContactRepository) *ContactServi
 }
 
 func (s *ContactService) CreateContact(ctx context.Context, c *commands.CreateContactCommand) (*entities.Contact, error) {
-	contact, err := entities.NewContact(c.ID, c.RoID, c.Email, c.AuthInfo, c.RegistrarCLID)
+	contact, err := entities.NewContact(c.ID, c.RoID, c.Email, c.AuthInfo, c.RegistrarClID)
 	if err != nil {
 		return nil, err
 	}

@@ -12,10 +12,10 @@ var (
 
 // ContactPostalInfo is a value object that represents a postal code as defined in RFC5733
 type ContactPostalInfo struct {
-	Type    PostalInfoEnumType `json:"type" example:"loc" extensions:"x-order=0"`
-	Name    PostalLineType     `json:"name" example:"Gerardo Aguantis" extensions:"x-order=1"`
-	Org     OptPostalLineType  `json:"org" example:"Agua Britanica" extensions:"x-order=2"`
-	Address *Address           `json:"address" extensions:"x-order=3"`
+	Type    PostalInfoEnumType `json:"Type" example:"loc" extensions:"x-order=0"`
+	Name    PostalLineType     `json:"Name" example:"Gerardo Aguantis" extensions:"x-order=1"`
+	Org     OptPostalLineType  `json:"Org" example:"Agua Britanica" extensions:"x-order=2"`
+	Address *Address           `json:"Address" extensions:"x-order=3"`
 }
 
 // NewContactPostalInfo creates a new ContactPostalInfo

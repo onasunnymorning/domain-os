@@ -5,9 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -53,7 +54,7 @@ var _ = Describe("ContactController", func() {
 			RoID:          "12345_CONT-APEX",
 			Email:         "jon@doe.com",
 			AuthInfo:      "str0NGP@ZZw0rd",
-			RegistrarCLID: registrarClid,
+			RegistrarClID: registrarClid,
 		}
 
 		var createdContact entities.Contact
