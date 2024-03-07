@@ -32,32 +32,32 @@ var (
 
 // Host struct represents a host object based on https://datatracker.ietf.org/doc/html/rfc5732
 type Host struct {
-	RoID      RoidType     `json:"roId" example:"1729468286778740736_HOST-APEX" extensions:"x-order=0"`
-	Name      DomainName   `json:"name" exmaple:"ns1.apex.domains" extensions:"x-order=1"`
-	Addresses []netip.Addr `json:"addresses"`
-	ClID      ClIDType     `json:"clID" example:"sh8013"`
-	CrRr      ClIDType     `json:"crRR" example:"sh8013"`
-	UpRr      ClIDType     `json:"upRR" example:"sh8013"`
-	CreatedAt time.Time    `json:"crDate" example:"2023-04-03T22:00:00.0Z"`
-	UpdatedAt time.Time    `json:"upDate" example:"2023-04-03T22:00:00.0Z"`
+	RoID      RoidType     `json:"RoID" example:"1729468286778740736_HOST-APEX" extensions:"x-order=0"`
+	Name      DomainName   `json:"Name" exmaple:"ns1.apex.domains" extensions:"x-order=1"`
+	Addresses []netip.Addr `json:"Addresses"`
+	ClID      ClIDType     `json:"ClID" example:"sh8013"`
+	CrRr      ClIDType     `json:"CrRR" example:"sh8013"`
+	UpRr      ClIDType     `json:"UpRR" example:"sh8013"`
+	CreatedAt time.Time    `json:"CrDate" example:"2023-04-03T22:00:00.0Z"`
+	UpdatedAt time.Time    `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
 	// True if the host is used on a domain that is the parent of the host's FQDN. https://datatracker.ietf.org/doc/html/rfc5732#section-1.1
 	// This is set/unset by the Domain.AddHost() and Domain.RemoveHost() when a host is added/removed from a domain.
-	InBailiwick bool `json:"inBailiwick"  example:"true"`
+	InBailiwick bool `json:"InBailiwick"  example:"true"`
 	HostStatus
 }
 
 // HostStatus is an implementation of https://datatracker.ietf.org/doc/html/rfc5732#section-2.3
 type HostStatus struct {
-	OK                     bool `json:"ok" example:"true"`
-	Linked                 bool `json:"linked" example:"true"`
-	PendingCreate          bool `json:"pendingCreate" example:"false"`
-	PendingDelete          bool `json:"pendingDelete" example:"false"`
-	PendingUpdate          bool `json:"pendingUpdate" example:"false"`
-	PendingTransfer        bool `json:"pendingTransfer" example:"false"`
-	ClientDeleteProhibited bool `json:"clientDeleteProhibited" example:"false"`
-	ClientUpdateProhibited bool `json:"clientUpdateProhibited" example:"false"`
-	ServerDeleteProhibited bool `json:"serverDeleteProhibited" example:"false"`
-	ServerUpdateProhibited bool `json:"serverUpdateProhibited" example:"false"`
+	OK                     bool `json:"OK" example:"true"`
+	Linked                 bool `json:"Linked" example:"true"`
+	PendingCreate          bool `json:"PendingCreate" example:"false"`
+	PendingDelete          bool `json:"PendingDelete" example:"false"`
+	PendingUpdate          bool `json:"PendingUpdate" example:"false"`
+	PendingTransfer        bool `json:"PendingTransfer" example:"false"`
+	ClientDeleteProhibited bool `json:"ClientDeleteProhibited" example:"false"`
+	ClientUpdateProhibited bool `json:"ClientUpdateProhibited" example:"false"`
+	ServerDeleteProhibited bool `json:"ServerDeleteProhibited" example:"false"`
+	ServerUpdateProhibited bool `json:"ServerUpdateProhibited" example:"false"`
 }
 
 // NewHost creates a new Host with required fields. It will normalize strings

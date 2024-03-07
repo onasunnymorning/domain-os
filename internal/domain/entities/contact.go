@@ -53,18 +53,18 @@ var (
 
 // Contact is the contact Entity struct Based on https://www.rfc-editor.org/rfc/rfc5733#section-3.1.2
 type Contact struct {
-	ID              ClIDType              `json:"id" example:"sh8013" extensions:"x-order=0"`                          // The contact identifier as supplied by the registrar, this should be used by all references to the contact
-	RoID            RoidType              `json:"roId" example:"1729468286778740736_CONT-APEX" extensions:"x-order=1"` // The generated id for the contact, has to be unique within the registry
-	PostalInfo      [2]*ContactPostalInfo `json:"postalInfo"`                                                          // 1 required, 2 maximum. I prefer the approach to have an array of two optional items over a map because it makes manipulating (updating) easier
-	Voice           E164Type              `json:"voice" example:"+1.9567345623"`
-	Fax             E164Type              `json:"fax" example:"+1.9567345623"`
-	Email           string                `json:"email" example:"solutions@apex.domains"` // Required
-	ClID            ClIDType              `json:"clID" example:"sh8013"`                  // Required
-	CrRr            ClIDType              `json:"crRR" example:"sh8013"`
-	CreatedAt       time.Time             `json:"crDate" example:"2023-04-03T22:00:00.0Z"`
-	UpRr            ClIDType              `json:"upRR" example:"sh8013"`
-	UpdatedAt       time.Time             `json:"upDate" example:"2023-04-03T22:00:00.0Z"`
-	AuthInfo        AuthInfoType          `json:"authInfo" example:"sTr0N5p@zzWqRD"` // Required
+	ID              ClIDType              `json:"ID" example:"sh8013" extensions:"x-order=0"`                          // The contact identifier as supplied by the registrar, this should be used by all references to the contact
+	RoID            RoidType              `json:"RoID" example:"1729468286778740736_CONT-APEX" extensions:"x-order=1"` // The generated id for the contact, has to be unique within the registry
+	PostalInfo      [2]*ContactPostalInfo `json:"PostalInfo"`                                                          // 1 required, 2 maximum. I prefer the approach to have an array of two optional items over a map because it makes manipulating (updating) easier
+	Voice           E164Type              `json:"Voice" example:"+1.9567345623"`
+	Fax             E164Type              `json:"Fax" example:"+1.9567345623"`
+	Email           string                `json:"Email" example:"solutions@apex.domains"` // Required
+	ClID            ClIDType              `json:"ClID" example:"sh8013"`                  // Required
+	CrRr            ClIDType              `json:"CrRR" example:"sh8013"`
+	CreatedAt       time.Time             `json:"CrDate" example:"2023-04-03T22:00:00.0Z"`
+	UpRr            ClIDType              `json:"UpRR" example:"sh8013"`
+	UpdatedAt       time.Time             `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
+	AuthInfo        AuthInfoType          `json:"AuthInfo" example:"sTr0N5p@zzWqRD"` // Required
 	ContactStatus                         // Embedded struct
 	ContactDisclose                       // Embedded struct
 }
@@ -72,18 +72,18 @@ type Contact struct {
 // ContactStatus substruct of Contact
 // https://www.rfc-editor.org/rfc/rfc5733#section-2.2
 type ContactStatus struct {
-	OK                       bool `json:"ok" example:"true"`
-	PendingCreate            bool `json:"pendinCreate" example:"false"`
-	PendingUpdate            bool `json:"pendinUpdate" example:"false"`
-	PendingTransfer          bool `json:"pendinTransfer" example:"false"`
-	PendingDelete            bool `json:"pendinDelete" example:"false"`
-	ClientDeleteProhibited   bool `json:"clienDeleteProhibited" example:"false"`
-	ClientUpdateProhibited   bool `json:"clientUpdatProhibited" example:"false"`
-	ClientTransferProhibited bool `json:"clientTransferProhibited" example:"false"`
-	ServerDeleteProhibited   bool `json:"serverDeleteProhibited" example:"false"`
-	ServerUpdateProhibited   bool `json:"serverUpdateProhibited" example:"false"`
-	ServerTransferProhibited bool `json:"serverTransferProhibited" example:"false"`
-	Linked                   bool `json:"linked" example:"true"`
+	OK                       bool `json:"OK" example:"true"`
+	PendingCreate            bool `json:"PendinCreate" example:"false"`
+	PendingUpdate            bool `json:"PendinUpdate" example:"false"`
+	PendingTransfer          bool `json:"PendinTransfer" example:"false"`
+	PendingDelete            bool `json:"PendinDelete" example:"false"`
+	ClientDeleteProhibited   bool `json:"ClienDeleteProhibited" example:"false"`
+	ClientUpdateProhibited   bool `json:"ClientUpdatProhibited" example:"false"`
+	ClientTransferProhibited bool `json:"ClientTransferProhibited" example:"false"`
+	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited" example:"false"`
+	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited" example:"false"`
+	ServerTransferProhibited bool `json:"ServerTransferProhibited" example:"false"`
+	Linked                   bool `json:"Linked" example:"true"`
 }
 
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9

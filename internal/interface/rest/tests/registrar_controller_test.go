@@ -3,9 +3,10 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -13,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -56,7 +58,7 @@ var _ = Describe("RegistrarController", func() {
 			var res commands.CreateRegistrarCommandResult
 			err = json.NewDecoder(resp.Body).Decode(&res)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
 			createdID = res.Result.ClID.String()
 			Expect(createdID).NotTo(BeEmpty())
@@ -93,10 +95,12 @@ var _ = Describe("RegistrarController", func() {
 			router.ServeHTTP(resp, req)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
-			var res []entities.Registrar
+			res := response.ListItemResult{}
 			err = json.Unmarshal(resp.Body.Bytes(), &res)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(len(res)).To(BeNumerically(">", 0))
+			itemSlice, ok := res.Data.([]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(len(itemSlice)).To(BeNumerically(">", 0))
 		})
 
 		It("should delete the created registrar", func() {

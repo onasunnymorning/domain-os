@@ -9,15 +9,15 @@ import (
 
 // ListItemResult is the struct that adds metadata to the list item query
 type ListItemResult struct {
-	Meta PaginationMetaData `json:"meta"`
-	Data interface{}        `json:"data"`
+	Meta PaginationMetaData `json:"Meta"`
+	Data interface{}        `json:"Data"`
 }
 
 // PaginationMetaData is the struct that conatins the metadata for the list item query
 type PaginationMetaData struct {
-	PageSize   int    `json:"pageSize"`
-	PageCursor string `json:"pageCursor"`
-	NextLink   string `json:"nextLink"`
+	PageSize   int    `json:"PageSize"`
+	PageCursor string `json:"PageCursor"`
+	NextLink   string `json:"NextLink"`
 }
 
 // SetCursor sets the cursor for the list item query

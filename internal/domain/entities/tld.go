@@ -29,11 +29,11 @@ const (
 
 // TLD is a struct representing a top-level domain
 type TLD struct {
-	Name      DomainName `json:"name"`  // Name is the ASCII name of the TLD (aka A-label)
-	Type      TLDType    `json:"type"`  // Type is the type of TLD (generic, country-code, second-level)
-	UName     string     `json:"uname"` // UName is the unicode name of the TLD (aka U-label)
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
+	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
+	UName     string     `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
+	CreatedAt time.Time  `json:"CreatedAt"`
+	UpdatedAt time.Time  `json:"UpdatedAt"`
 }
 
 // NewTLD returns a pointer to a TLD struct or an error (ErrInvalidDomainName) if the domain name is invalid. It will set the Uname and TLDType fields.
