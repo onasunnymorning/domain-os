@@ -6,6 +6,7 @@ require (
 	github.com/THREATINT/go-net v1.2.37
 	github.com/apex/gateway v1.1.2
 	github.com/biter777/countries v1.7.2
+	github.com/bwmarrin/snowflake v0.3.0
 	github.com/docker/docker v25.0.2+incompatible
 	github.com/gin-gonic/gin v1.9.1
 	github.com/joho/godotenv v1.5.1
