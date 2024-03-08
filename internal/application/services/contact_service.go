@@ -1,48 +1,80 @@
 package services
 
 import (
-	"context"
-
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"golang.org/x/net/context"
 )
 
 // ContactService implements the ContactService interface
 type ContactService struct {
-	ContactRepository repositories.ContactRepository
+	contactRepository repositories.ContactRepository
+	roidService       RoidService
 }
 
 // NewContactService returns a new ContactService
-func NewContactService(ContactRepo repositories.ContactRepository) *ContactService {
+func NewContactService(contactRepo repositories.ContactRepository, roidService RoidService) *ContactService {
 	return &ContactService{
-		ContactRepository: ContactRepo,
+		contactRepository: contactRepo,
+		roidService:       roidService,
 	}
 }
 
-func (s *ContactService) CreateContact(ctx context.Context, c *commands.CreateContactCommand) (*entities.Contact, error) {
-	// if c.RoID == "" {
-	// }
-
-	contact, err := entities.NewContact(c.ID, c.RoID, c.Email, c.AuthInfo, c.ClID)
+// CreateContact creates a new contact
+func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*commands.CreateContactResponse, error) {
+	var roid entities.RoidType
+	if cmd.RoID == "" {
+		roid, err := s.roidService.GenerateRoid("contact")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		roid = entities.RoidType(cmd.RoID)
+		err := roid.Validate()
+		if err != nil {
+			return nil, err
+		}
+	}
+	c, err := entities.NewContact(cmd.ID, roid.String(), cmd.Email, cmd.AuthInfo, cmd.ClID)
 	if err != nil {
 		return nil, err
 	}
-	contact, err = s.ContactRepository.CreateContact(ctx, contact)
+
+	for _, pi := range cmd.PostalInfo {
+		err = c.AddPostalInfo(pi)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add the optional elements
+	if cmd.Voice != "" {
+		v, err := entities.NewE164Type(cmd.Voice)
+		if err != nil {
+			return nil, err
+		}
+		c.Voice = *v
+	}
+	if cmd.Fax != "" {
+		f, err := entities.NewE164Type(cmd.Fax)
+		if err != nil {
+			return nil, err
+		}
+		c.Fax = *f
+	}
+
+	// TODO: Set the disclose flags
+
+	// Save the contact
+	newContact, err := s.contactRepository.CreateContact(ctx, c)
 	if err != nil {
 		return nil, err
 	}
-	return contact, nil
-}
 
-func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
-	return s.ContactRepository.GetContactByID(ctx, id)
-}
+	// Map to the response if successful
+	resp := mappers.ContactCreateResultFromContact(newContact)
 
-func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
-	return s.ContactRepository.UpdateContact(ctx, c)
-}
-
-func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
-	return s.ContactRepository.DeleteContactByID(ctx, id)
+	return &resp, nil
 }
