@@ -2,7 +2,6 @@ package services
 
 import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"golang.org/x/net/context"
@@ -23,10 +22,11 @@ func NewContactService(contactRepo repositories.ContactRepository, roidService R
 }
 
 // CreateContact creates a new contact
-func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*commands.CreateContactResponse, error) {
+func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*entities.Contact, error) {
 	var roid entities.RoidType
+	var err error
 	if cmd.RoID == "" {
-		roid, err := s.roidService.GenerateRoid("contact")
+		roid, err = s.roidService.GenerateRoid("contact")
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +74,7 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	}
 
 	// Map to the response if successful
-	resp := mappers.ContactCreateResultFromContact(newContact)
+	// resp := mappers.ContactCreateResultFromContact(newContact)
 
-	return &resp, nil
+	return newContact, nil
 }
