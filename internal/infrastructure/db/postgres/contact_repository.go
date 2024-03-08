@@ -71,3 +71,19 @@ func (r *ContactRepository) DeleteContactByID(ctx context.Context, id string) er
 	}
 	return nil
 }
+
+// // ListContacts returns a list of contacts
+func (r *ContactRepository) ListContacts(ctx context.Context, pagesize int, cursor int64) ([]*entities.Contact, error) {
+	dbContacts := []*Contact{}
+	err := r.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbContacts, "ro_id > ?", cursor).Error
+	if err != nil {
+		return nil, err
+	}
+
+	contacts := make([]*entities.Contact, len(dbContacts))
+	for i, c := range dbContacts {
+		contacts[i] = FromDBContact(c)
+	}
+
+	return contacts, nil
+}

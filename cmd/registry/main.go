@@ -70,6 +70,10 @@ func main() {
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	registrarService := services.NewRegistrarService(registrarRepo)
 
+	// Contacts
+	contactRepo := postgres.NewContactRepository(gormDB)
+	contactService := services.NewContactService(contactRepo)
+
 	r := gin.Default()
 
 	rest.NewPingController(r)
@@ -79,6 +83,7 @@ func main() {
 	rest.NewSpec5Controller(r, spec5Service)
 	rest.NewIANARegistrarController(r, ianaRegistrarService)
 	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
+	rest.NewContactController(r, contactService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

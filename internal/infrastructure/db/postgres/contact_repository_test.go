@@ -150,3 +150,31 @@ func (s *ContactSuite) TestDeleteContact() {
 	s.Require().Error(err)
 
 }
+
+func (s *ContactSuite) TestListContacts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	createdContact1, err := repo.CreateContact(context.Background(), contact1)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact1)
+
+	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	createdContact2, err := repo.CreateContact(context.Background(), contact2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact2)
+
+	contacts, err := repo.ListContacts(context.Background(), 0, 0)
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 2)
+
+	contacts, err = repo.ListContacts(context.Background(), 0, 1234)
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 1)
+}
