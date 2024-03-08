@@ -25,7 +25,7 @@ func (s *DomainSuite) SetupSuite() {
 	NewGormTLDRepo(s.db)
 
 	// Create a registrar
-	rar, _ := entities.NewRegistrar("domaintestRar", "goBro Inc.", "email@gobro.com", 199)
+	rar, _ := entities.NewRegistrar("domaintestRar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
 	repo := NewGormRegistrarRepository(s.db)
 	createdRar, err := repo.Create(context.Background(), rar)
 	s.Require().NoError(err)

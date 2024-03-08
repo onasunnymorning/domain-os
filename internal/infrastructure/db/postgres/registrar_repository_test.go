@@ -29,7 +29,8 @@ func (s *RegistrarSuite) TestCreateRegistrar() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
@@ -40,7 +41,8 @@ func (s *RegistrarSuite) TestCreateRegistrar_Duplicate() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
@@ -56,7 +58,8 @@ func (s *RegistrarSuite) TestReadRegistrar() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
@@ -72,7 +75,8 @@ func (s *RegistrarSuite) TestUpdateRegistrar() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
@@ -89,7 +93,8 @@ func (s *RegistrarSuite) TestDeleteRegistrar() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
@@ -112,12 +117,14 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	defer tx.Rollback()
 	repo := NewGormRegistrarRepository(tx)
 
-	registrar1, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.", "contact@gomamma.com", 12345)
+	registrar1, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
 	createdRegistrar1, err := repo.Create(context.Background(), registrar1)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar1)
 
-	registrar2, _ := entities.NewRegistrar("my-registrar-id2", "GoBro Inc.", "contact@gobro.com", 12346)
+	registrar2, _ := entities.NewRegistrar("my-registrar-id2", "GoBro Inc.",
+		"contact@gobro.com", 12346, getValidRegistrarPostalInfoArr())
 	createdRegistrar2, err := repo.Create(context.Background(), registrar2)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar2)
@@ -126,4 +133,22 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 	require.Len(s.T(), registrars, 2)
+}
+
+func getValidRegistrarPostalInfo(t string) *entities.RegistrarPostalInfo {
+	a, err := entities.NewAddress("BA", "AR")
+	if err != nil {
+		panic(err)
+	}
+	p, err := entities.NewRegistrarPostalInfo(t, a)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+func getValidRegistrarPostalInfoArr() [2]*entities.RegistrarPostalInfo {
+	return [2]*entities.RegistrarPostalInfo{
+		getValidRegistrarPostalInfo("loc"),
+		getValidRegistrarPostalInfo("int"),
+	}
 }

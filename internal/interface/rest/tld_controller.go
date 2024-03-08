@@ -135,6 +135,10 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	var req request.CreateTLDRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
@@ -147,6 +151,10 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 
 	result, err := ctrl.tldService.CreateTLD(cmd)
 	if err != nil {
+		if errors.Is(err, entities.ErrinvalIdDomainNameLength) || errors.Is(err, entities.ErrInvalidLabelLength) || errors.Is(err, entities.ErrInvalidLabelDash) || errors.Is(err, entities.ErrInvalidLabelDoubleDash) || errors.Is(err, entities.ErrInvalidLabelIDN) || errors.Is(err, entities.ErrLabelContainsInvalidCharacter) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

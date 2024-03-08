@@ -8,31 +8,34 @@ import (
 
 func TestNewRegistrar(t *testing.T) {
 	tests := []struct {
-		name    string
-		clID    string
-		nameStr string
-		email   string
-		gurID   int
-		wantErr error
-		want    *Registrar
+		name       string
+		clID       string
+		nameStr    string
+		email      string
+		gurID      int
+		postalInfo [2]*RegistrarPostalInfo
+		wantErr    error
+		want       *Registrar
 	}{
 		{
-			name:    "no email",
-			clID:    "my-registrar-007",
-			nameStr: "My Registrar",
-			email:   "",
-			gurID:   123,
-			wantErr: ErrRegistrarMissingEmail,
-			want:    nil,
+			name:       "no email",
+			clID:       "my-registrar-007",
+			nameStr:    "My Registrar",
+			email:      "",
+			gurID:      123,
+			postalInfo: [2]*RegistrarPostalInfo{},
+			wantErr:    ErrRegistrarMissingEmail,
+			want:       nil,
 		},
 		{
-			name:    "invalid clid",
-			clID:    "",
-			nameStr: "My Registrar",
-			email:   "geoff@apex.domains",
-			gurID:   123,
-			wantErr: ErrInvalidClIDType,
-			want:    nil,
+			name:       "invalid clid",
+			clID:       "",
+			nameStr:    "My Registrar",
+			email:      "geoff@apex.domains",
+			gurID:      123,
+			postalInfo: [2]*RegistrarPostalInfo{},
+			wantErr:    ErrInvalidClIDType,
+			want:       nil,
 		},
 		{
 			name:    "valid rar",
@@ -40,6 +43,9 @@ func TestNewRegistrar(t *testing.T) {
 			nameStr: "My Registrar",
 			email:   "geoff@apex.domains",
 			gurID:   123,
+			postalInfo: [2]*RegistrarPostalInfo{
+				getValidRegistrarPostalInfo("loc"),
+			},
 			wantErr: nil,
 			want: &Registrar{
 				ClID:     "my-registrar-007",
@@ -48,13 +54,50 @@ func TestNewRegistrar(t *testing.T) {
 				Email:    "geoff@apex.domains",
 				GurID:    123,
 				Status:   RegistrarStatusReadonly,
+				PostalInfo: [2]*RegistrarPostalInfo{
+					nil,
+					getValidRegistrarPostalInfo("loc"),
+				},
+			},
+		},
+		{
+			name:       "invalid postal info",
+			clID:       "my-registrar-008",
+			nameStr:    "My Registrar",
+			email:      "geoff@apex.domains",
+			gurID:      123,
+			postalInfo: [2]*RegistrarPostalInfo{},
+			wantErr:    ErrInvalidRegistrarPostalInfo,
+		},
+		{
+			name:    "valid rar with both postal info",
+			clID:    "my-registrar-007",
+			nameStr: "My Registrar",
+			email:   "geoff@apex.domains",
+			gurID:   123,
+			postalInfo: [2]*RegistrarPostalInfo{
+				getValidRegistrarPostalInfo("loc"),
+				getValidRegistrarPostalInfo("int"),
+			},
+			wantErr: nil,
+			want: &Registrar{
+				ClID:     "my-registrar-007",
+				Name:     "My Registrar",
+				NickName: "My Registrar",
+				Email:    "geoff@apex.domains",
+				GurID:    123,
+				Status:   RegistrarStatusReadonly,
+				PostalInfo: [2]*RegistrarPostalInfo{
+					getValidRegistrarPostalInfo("int"),
+					getValidRegistrarPostalInfo("loc"),
+				},
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			r, err := NewRegistrar(test.clID, test.nameStr, test.email, test.gurID)
+			r, err := NewRegistrar(test.clID, test.nameStr, test.email, test.gurID, test.postalInfo)
 			require.Equal(t, test.wantErr, err)
 			require.Equal(t, test.want, r)
 		})
@@ -125,7 +168,11 @@ func TestRegistrar_IsValid(t *testing.T) {
 				NickName: "My Registrar",
 				Email:    "g@my.com",
 				GurID:    123,
-				Status:   RegistrarStatusReadonly,
+				PostalInfo: [2]*RegistrarPostalInfo{
+					getValidRegistrarPostalInfo("int"),
+					getValidRegistrarPostalInfo("loc"),
+				},
+				Status: RegistrarStatusReadonly,
 			},
 			want: nil,
 		},
@@ -146,6 +193,19 @@ func TestRegistrar_IsValid(t *testing.T) {
 			},
 			want: ErrInvalidRegistrarPostalInfo,
 		},
+		{
+			testname: "invalid postal info: no postal info",
+			reg: &Registrar{
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "g@my.co",
+				GurID:      123,
+				Status:     RegistrarStatusReadonly,
+				PostalInfo: [2]*RegistrarPostalInfo{},
+			},
+			want: ErrInvalidRegistrarPostalInfo,
+		},
 	}
 
 	for _, test := range testcases {
@@ -157,7 +217,11 @@ func TestRegistrar_IsValid(t *testing.T) {
 }
 
 func getValidRegistrar() *Registrar {
-	r, _ := NewRegistrar("gomamma01", "Go Mamma registry", "g@go.mamma", 1234)
+	postalInfo := [2]*RegistrarPostalInfo{
+		getValidRegistrarPostalInfo("int"),
+		getValidRegistrarPostalInfo("loc"),
+	}
+	r, _ := NewRegistrar("gomamma01", "Go Mamma registry", "g@go.mamma", 1234, postalInfo)
 	return r
 }
 
@@ -171,51 +235,6 @@ func getValidRegistrarPostalInfo(t string) *RegistrarPostalInfo {
 		panic(err)
 	}
 	return p
-}
-func TestRegsitrar_AddPostalInfo(t *testing.T) {
-	r := getValidRegistrar()
-
-	// Test case 1: Add 'int' postal info
-	pi1 := getValidRegistrarPostalInfo("int")
-	err := r.AddPostalInfo(pi1)
-	if err != nil {
-		t.Errorf("AddPostalInfo() returned an unexpected error: %v", err)
-	}
-	if r.PostalInfo[0] != pi1 {
-		t.Errorf("AddPostalInfo() did not add the 'int' postal info correctly")
-	}
-
-	// Test case 2: Add 'loc' postal info
-	pi2 := getValidRegistrarPostalInfo("loc")
-	err = r.AddPostalInfo(pi2)
-	if err != nil {
-		t.Errorf("AddPostalInfo() returned an unexpected error: %v", err)
-	}
-	if r.PostalInfo[1] != pi2 {
-		t.Errorf("AddPostalInfo() did not add the 'loc' postal info correctly")
-	}
-
-	// Test case 3: Add duplicate 'int' postal info
-	err = r.AddPostalInfo(pi1)
-	if err != ErrRegistrarPostalInfoTypeExists {
-		t.Errorf("AddPostalInfo() did not return the expected error for duplicate 'int' postal info")
-	}
-
-	// Test case 4: Add duplicate 'loc' postal info
-	err = r.AddPostalInfo(pi2)
-	if err != ErrRegistrarPostalInfoTypeExists {
-		t.Errorf("AddPostalInfo() did not return the expected error for duplicate 'loc' postal info")
-	}
-
-	// Test case 5: Add invalid postal info
-	invalidPi := &RegistrarPostalInfo{Type: "invalid", Address: &Address{}}
-	err = r.AddPostalInfo(invalidPi)
-	if err == nil {
-		t.Error("AddPostalInfo() did not return an error for an invalid postal info")
-	}
-	if r.PostalInfo[0] == invalidPi || r.PostalInfo[1] == invalidPi {
-		t.Errorf("AddPostalInfo() added an invalid postal info when it should not have")
-	}
 }
 
 func TestRemovePostalInfo(t *testing.T) {
