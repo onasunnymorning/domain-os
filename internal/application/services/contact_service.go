@@ -43,9 +43,11 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	}
 
 	for _, pi := range cmd.PostalInfo {
-		err = c.AddPostalInfo(pi)
-		if err != nil {
-			return nil, err
+		if pi != nil {
+			err = c.AddPostalInfo(pi)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -77,4 +79,16 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	// resp := mappers.ContactCreateResultFromContact(newContact)
 
 	return newContact, nil
+}
+
+func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
+	return s.contactRepository.GetContactByID(ctx, id)
+}
+
+func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	return s.contactRepository.UpdateContact(ctx, c)
+}
+
+func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
+	return s.contactRepository.DeleteContactByID(ctx, id)
 }

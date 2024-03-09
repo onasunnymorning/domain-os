@@ -5,6 +5,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
@@ -47,6 +48,15 @@ func main() {
 		log.Println(err)
 	}
 
+	// Roid
+	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+	if err != nil {
+		panic(err)
+	}
+	roidService := services.NewRoidService(idGenerator)
+	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
+	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
+
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
 
@@ -72,7 +82,7 @@ func main() {
 
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
-	contactService := services.NewContactService(contactRepo)
+	contactService := services.NewContactService(contactRepo, *roidService)
 
 	r := gin.Default()
 
