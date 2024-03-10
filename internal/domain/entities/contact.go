@@ -91,6 +91,18 @@ func (s *ContactStatus) IsNil() bool {
 	return !s.ClientDeleteProhibited && !s.ClientTransferProhibited && !s.ClientUpdateProhibited && !s.ServerDeleteProhibited && !s.ServerTransferProhibited && !s.ServerUpdateProhibited && !s.PendingCreate && !s.PendingDelete && !s.PendingTransfer && !s.PendingUpdate && !s.OK
 }
 
+// SetFullStatus sets the ContactStatus equal to the received ContactStatus and returns an error if the status is invalid
+func (c *Contact) SetFullStatus(status ContactStatus) error {
+	if !status.IsNil() && !status.IsValidContactStatus() {
+		return ErrInvalidContactStatusCombination
+	}
+	c.ContactStatus = status
+	c.SetOKStatusIfNeeded()
+	c.UnSetOKStatusIfNeeded()
+
+	return nil
+}
+
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9
 // True means disclose, false means don't disclose.
 type ContactDisclose struct {
