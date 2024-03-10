@@ -14,6 +14,6 @@ type CreateContactCommand struct {
 	PostalInfo [2]*entities.ContactPostalInfo `json:"PostalInfo" binding:"required"`
 	Voice      string                         `json:"Voice"`
 	Fax        string                         `json:"Fax"`
-	Status     entities.ContactStatus         `json:"ContactStatus"`
-	Disclose   entities.ContactDisclose       `json:"ContactDisclose"`
+	Status     entities.ContactStatus         `json:"Status"`
+	Disclose   entities.ContactDisclose       `json:"Disclose"`
 }

@@ -60,9 +60,9 @@ type Contact struct {
 	Fax             E164Type              `json:"Fax" example:"+1.9567345623"`
 	Email           string                `json:"Email" example:"solutions@apex.domains"` // Required
 	ClID            ClIDType              `json:"ClID" example:"sh8013"`                  // Required
-	CrRr            ClIDType              `json:"CrRR" example:"sh8013"`
+	CrRr            ClIDType              `json:"CrRr" example:"sh8013"`
 	CreatedAt       time.Time             `json:"CrDate" example:"2023-04-03T22:00:00.0Z"`
-	UpRr            ClIDType              `json:"UpRR" example:"sh8013"`
+	UpRr            ClIDType              `json:"UpRr" example:"sh8013"`
 	UpdatedAt       time.Time             `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
 	AuthInfo        AuthInfoType          `json:"AuthInfo" example:"sTr0N5p@zzWqRD"` // Required
 	ContactStatus                         // Embedded struct
@@ -73,17 +73,22 @@ type Contact struct {
 // https://www.rfc-editor.org/rfc/rfc5733#section-2.2
 type ContactStatus struct {
 	OK                       bool `json:"OK" example:"true"`
-	PendingCreate            bool `json:"PendinCreate" example:"false"`
-	PendingUpdate            bool `json:"PendinUpdate" example:"false"`
-	PendingTransfer          bool `json:"PendinTransfer" example:"false"`
-	PendingDelete            bool `json:"PendinDelete" example:"false"`
-	ClientDeleteProhibited   bool `json:"ClienDeleteProhibited" example:"false"`
+	PendingCreate            bool `json:"PendingCreate" example:"false"`
+	PendingUpdate            bool `json:"PendingUpdate" example:"false"`
+	PendingTransfer          bool `json:"PendingTransfer" example:"false"`
+	PendingDelete            bool `json:"PendingDelete" example:"false"`
+	ClientDeleteProhibited   bool `json:"ClientDeleteProhibited" example:"false"`
 	ClientUpdateProhibited   bool `json:"ClientUpdatProhibited" example:"false"`
 	ClientTransferProhibited bool `json:"ClientTransferProhibited" example:"false"`
 	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited" example:"false"`
 	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited" example:"false"`
 	ServerTransferProhibited bool `json:"ServerTransferProhibited" example:"false"`
 	Linked                   bool `json:"Linked" example:"true"`
+}
+
+// IsNil checks if the ContactStatus is nil (all fields are false)
+func (s *ContactStatus) IsNil() bool {
+	return !s.ClientDeleteProhibited && !s.ClientTransferProhibited && !s.ClientUpdateProhibited && !s.ServerDeleteProhibited && !s.ServerTransferProhibited && !s.ServerUpdateProhibited && !s.PendingCreate && !s.PendingDelete && !s.PendingTransfer && !s.PendingUpdate && !s.OK
 }
 
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9
@@ -98,6 +103,11 @@ type ContactDisclose struct {
 	DiscloseVoice   bool `json:"DiscloseVoice" example:"false"`
 	DiscloseFax     bool `json:"DiscloseFax" example:"false"`
 	DiscloseEmail   bool `json:"DiscloseEmail" example:"false"`
+}
+
+// IsNil checks if the ContactDisclose is nil (all fields are false)
+func (d *ContactDisclose) IsNil() bool {
+	return !d.DiscloseNameInt && !d.DiscloseNameLoc && !d.DiscloseOrgInt && !d.DiscloseOrgLoc && !d.DiscloseAddrInt && !d.DiscloseAddrLoc && !d.DiscloseVoice && !d.DiscloseFax && !d.DiscloseEmail
 }
 
 // NewDiscloseStruct creates a new Disclose struct with default values
@@ -127,7 +137,7 @@ func NewContact(id, roid, email, authInfo, rarClid string) (*Contact, error) {
 		ClID:     ClIDType(NormalizeString(rarClid)),
 	}
 	// Set OK status
-	c.setOKStatusIfNeeded()
+	c.SetOKStatusIfNeeded()
 	// Test if all fields are valid
 	if ok, err := c.IsValid(); !ok {
 		return nil, errors.Join(ErrInvalidContact, err)
@@ -183,7 +193,7 @@ func (c *Contact) SetStatus(s ContactStatusType) error {
 			return ErrInvalidContactStatusCombination
 		}
 		c.PendingCreate = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusPendingUpdate:
 		if c.ClientUpdateProhibited || c.ServerUpdateProhibited {
 			return ErrInvalidContactStatusCombination // Untestable / unreachable because CanBeUpdated() will return false.
@@ -192,7 +202,7 @@ func (c *Contact) SetStatus(s ContactStatusType) error {
 			return ErrInvalidContactStatusCombination
 		}
 		c.PendingUpdate = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusPendingTransfer:
 		if c.ClientTransferProhibited || c.ServerTransferProhibited {
 			return ErrInvalidContactStatusCombination
@@ -201,7 +211,7 @@ func (c *Contact) SetStatus(s ContactStatusType) error {
 			return ErrInvalidContactStatusCombination
 		}
 		c.PendingTransfer = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusPendingDelete:
 		if c.ClientDeleteProhibited || c.ServerDeleteProhibited {
 			return ErrInvalidContactStatusCombination
@@ -210,43 +220,43 @@ func (c *Contact) SetStatus(s ContactStatusType) error {
 			return ErrInvalidContactStatusCombination
 		}
 		c.PendingDelete = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusClientDeleteProhibited:
 		if c.PendingDelete {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ClientDeleteProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusClientUpdateProhibited:
 		if c.PendingUpdate {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ClientUpdateProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusClientTransferProhibited:
 		if c.PendingTransfer {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ClientTransferProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusServerDeleteProhibited:
 		if c.PendingDelete {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ServerDeleteProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusServerUpdateProhibited:
 		if c.PendingUpdate {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ServerUpdateProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	case ContactStatusServerTransferProhibited:
 		if c.PendingTransfer {
 			return ErrInvalidContactStatusCombination
 		}
 		c.ServerTransferProhibited = true
-		c.OK = false
+		c.UnSetOKStatusIfNeeded()
 	default:
 		return ErrInvalidContactStatusCombination // Untestable / unreachable because the switch statement will return before this line.
 	}
@@ -279,44 +289,51 @@ func (c *Contact) UnSetStatus(s string) error {
 		c.Linked = false
 	case "pendingCreate":
 		c.PendingCreate = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "pendingUpdate":
 		c.PendingUpdate = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "pendingTransfer":
 		c.PendingTransfer = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "pendingDelete":
 		c.PendingDelete = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "clientDeleteProhibited":
 		c.ClientDeleteProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "clientUpdateProhibited":
 		c.ClientUpdateProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "clientTransferProhibited":
 		c.ClientTransferProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "serverDeleteProhibited":
 		c.ServerDeleteProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "serverUpdateProhibited":
 		c.ServerUpdateProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	case "serverTransferProhibited":
 		c.ServerTransferProhibited = false
-		c.setOKStatusIfNeeded()
+		c.SetOKStatusIfNeeded()
 	default:
 		return ErrInvalidContactStatusCombination // Untestable / unreachable because the switch statement will return before this line.
 	}
 	return nil
 }
 
-// setOKStatusIfNeeded Sets the OK status should be set
-func (c *Contact) setOKStatusIfNeeded() {
+// SetOKStatusIfNeeded Sets the OK status should be set
+func (c *Contact) SetOKStatusIfNeeded() {
 	if !(c.ClientDeleteProhibited || c.ClientTransferProhibited || c.ClientUpdateProhibited || c.ServerDeleteProhibited || c.ServerTransferProhibited || c.ServerUpdateProhibited || c.PendingCreate || c.PendingDelete || c.PendingTransfer || c.PendingUpdate) {
 		c.OK = true
+	}
+}
+
+// UnSetOKStatusIfNeeded Unsets the OK status if needed
+func (c *Contact) UnSetOKStatusIfNeeded() {
+	if c.ClientDeleteProhibited || c.ClientTransferProhibited || c.ClientUpdateProhibited || c.ServerDeleteProhibited || c.ServerTransferProhibited || c.ServerUpdateProhibited || c.PendingCreate || c.PendingDelete || c.PendingTransfer || c.PendingUpdate {
+		c.OK = false
 	}
 }
 
