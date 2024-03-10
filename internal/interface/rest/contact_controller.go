@@ -9,6 +9,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 type ContactController struct {
@@ -20,6 +21,7 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 		contactService: contactService,
 	}
 
+	e.GET("/contacts", controller.ListContacts)
 	e.GET("/contacts/:id", controller.GetContactByID)
 	e.POST("/contacts", controller.CreateContact)
 	e.PUT("/contacts", controller.UpdateContact)
@@ -68,6 +70,10 @@ func (ctrl *ContactController) GetContactByID(ctx *gin.Context) {
 func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	var req commands.CreateContactCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -144,4 +150,49 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusNoContent, nil)
+}
+
+// ListContacts godoc
+// @Summary List contacts
+// @Description List contacts
+// @Tags Contacts
+// @Produce json
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} entities.Contact
+// @Failure 400
+// @Failure 500
+// @Router /contacts [get]
+func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the contacts from the service
+	contacts, err := ctrl.contactService.ListContacts(ctx, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	response.Data = contacts
+	if len(contacts) > 0 {
+		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize)
+	}
+
+	// Return the response
+	ctx.JSON(200, response)
+
 }

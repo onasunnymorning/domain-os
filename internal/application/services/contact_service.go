@@ -1,6 +1,8 @@
 package services
 
 import (
+	"errors"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -28,25 +30,25 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	if cmd.RoID == "" {
 		roid, err = s.roidService.GenerateRoid("contact")
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidContact, err)
 		}
 	} else {
 		roid = entities.RoidType(cmd.RoID)
 		err := roid.Validate()
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidContact, err)
 		}
 	}
 	c, err := entities.NewContact(cmd.ID, roid.String(), cmd.Email, cmd.AuthInfo, cmd.ClID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 
 	for _, pi := range cmd.PostalInfo {
 		if pi != nil {
 			err = c.AddPostalInfo(pi)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(entities.ErrInvalidContact, err)
 			}
 		}
 	}
@@ -55,14 +57,14 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	if cmd.Voice != "" {
 		v, err := entities.NewE164Type(cmd.Voice)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidContact, err)
 		}
 		c.Voice = *v
 	}
 	if cmd.Fax != "" {
 		f, err := entities.NewE164Type(cmd.Fax)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidContact, err)
 		}
 		c.Fax = *f
 	}
@@ -72,7 +74,7 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	// Save the contact
 	newContact, err := s.contactRepository.CreateContact(ctx, c)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 
 	// Map to the response if successful
@@ -91,4 +93,8 @@ func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact)
 
 func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
 	return s.contactRepository.DeleteContactByID(ctx, id)
+}
+
+func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
+	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
 }
