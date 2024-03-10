@@ -68,8 +68,37 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 		}
 		c.Fax = *f
 	}
+	if cmd.CrRr != "" {
+		r, err := entities.NewClIDType(cmd.CrRr)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidContact, err)
+		}
+		c.CrRr = r
+	}
+	if cmd.UpRr != "" {
+		r, err := entities.NewClIDType(cmd.UpRr)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidContact, err)
+		}
+		c.UpRr = r
+	}
 
-	// TODO: Set the disclose flags
+	// Set the disclose flags
+	c.ContactDisclose = cmd.Disclose
+	// If it's present in the command, check if the status is valid
+	if !cmd.Status.IsNil() && !cmd.Status.IsValidContactStatus() {
+		return nil, errors.Join(entities.ErrInvalidContact, entities.ErrInvalidContactStatusCombination)
+	}
+	// Set the status
+	c.ContactStatus = cmd.Status
+	c.SetOKStatusIfNeeded()
+	c.UnSetOKStatusIfNeeded()
+
+	// Check if this results in a valid state
+	_, err = c.IsValid()
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidContact, err)
+	}
 
 	// Save the contact
 	newContact, err := s.contactRepository.CreateContact(ctx, c)
