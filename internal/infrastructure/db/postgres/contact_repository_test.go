@@ -180,12 +180,12 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact2)
 
-	contacts, err := repo.ListContacts(context.Background(), 25, 0)
+	contacts, err := repo.ListContacts(context.Background(), 25, "")
 	s.Require().NoError(err)
 	s.Require().NotNil(contacts)
 	s.Require().Len(contacts, 2)
 
-	contacts, err = repo.ListContacts(context.Background(), 25, 1234)
+	contacts, err = repo.ListContacts(context.Background(), 25, "1234_CONT-APEX")
 	s.Require().NoError(err)
 	s.Require().NotNil(contacts)
 	s.Require().Len(contacts, 1)
