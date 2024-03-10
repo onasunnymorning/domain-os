@@ -709,3 +709,55 @@ func TestContact_UnSetStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestContact_Status_IsNil(t *testing.T) {
+	cs := ContactStatus{}
+
+	require.True(t, cs.IsNil())
+
+	cs = ContactStatus{
+		OK: true,
+	}
+
+	require.False(t, cs.IsNil())
+}
+
+func TestContact_SetFullStatus(t *testing.T) {
+	c, _ := NewContact("myref1234", "123_CONT-APEX", "me@g.com", "sdfkSD4ljsd;f", "199-myrar")
+
+	cs := ContactStatus{
+		PendingCreate: true,
+	}
+
+	err := c.SetFullStatus(cs)
+
+	require.NoError(t, err)
+	require.True(t, c.PendingCreate)
+	require.False(t, c.OK)
+}
+
+func TestContact_SetFullStatus_Error(t *testing.T) {
+	c, _ := NewContact("myref1234", "123_CONT-APEX", "me@g.com", "sdfkSD4ljsd;f", "199-myrar")
+
+	cs := ContactStatus{
+		OK:            true,
+		PendingCreate: true,
+	}
+
+	err := c.SetFullStatus(cs)
+
+	require.Error(t, err)
+	require.True(t, c.OK)
+}
+
+func TestContact_Disclose_IsNil(t *testing.T) {
+	cd := ContactDisclose{}
+
+	require.True(t, cd.IsNil())
+
+	cd = ContactDisclose{
+		DiscloseNameInt: true,
+	}
+
+	require.False(t, cd.IsNil())
+}

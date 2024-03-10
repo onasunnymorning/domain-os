@@ -85,16 +85,13 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 
 	// Set the disclose flags
 	c.ContactDisclose = cmd.Disclose
-	// If it's present in the command, check if the status is valid
-	if !cmd.Status.IsNil() && !cmd.Status.IsValidContactStatus() {
-		return nil, errors.Join(entities.ErrInvalidContact, entities.ErrInvalidContactStatusCombination)
-	}
 	// Set the status
-	c.ContactStatus = cmd.Status
-	c.SetOKStatusIfNeeded()
-	c.UnSetOKStatusIfNeeded()
+	err = c.SetFullStatus(cmd.Status)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidContact, err)
+	}
 
-	// Check if this results in a valid state
+	// Check if this results in a valid contact
 	_, err = c.IsValid()
 	if err != nil {
 		return nil, errors.Join(entities.ErrInvalidContact, err)
