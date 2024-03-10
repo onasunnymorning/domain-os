@@ -54,6 +54,7 @@ var _ = Describe("ContactController", func() {
 			Email:         "jon@doe.com",
 			AuthInfo:      "str0NGP@ZZw0rd",
 			RegistrarCLID: registrarClid,
+			PostalInfo:    testContactPostalInfo(),
 		}
 
 		var createdContact entities.Contact
@@ -155,3 +156,22 @@ var _ = Describe("ContactController", func() {
 		})
 	})
 })
+
+func testContactPostalInfo() [2]*entities.ContactPostalInfo {
+	return [2]*entities.ContactPostalInfo{
+		getValidContactPostalInfo("loc"),
+		getValidContactPostalInfo("int"),
+	}
+}
+
+func getValidContactPostalInfo(t string) *entities.ContactPostalInfo {
+	a, err := entities.NewAddress("BA", "AR")
+	if err != nil {
+		panic(err)
+	}
+	p, err := entities.NewContactPostalInfo(t, "Jon Doe", a)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}

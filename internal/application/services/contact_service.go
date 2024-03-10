@@ -20,7 +20,7 @@ func NewContactService(ContactRepo repositories.ContactRepository) *ContactServi
 }
 
 func (s *ContactService) CreateContact(ctx context.Context, c *commands.CreateContactCommand) (*entities.Contact, error) {
-	contact, err := entities.NewContact(c.ID, c.RoID, c.Email, c.AuthInfo, c.RegistrarCLID)
+	contact, err := entities.NewContact(c.ID, c.RoID, c.Email, c.AuthInfo, c.RegistrarCLID, c.PostalInfo)
 	if err != nil {
 		return nil, err
 	}
