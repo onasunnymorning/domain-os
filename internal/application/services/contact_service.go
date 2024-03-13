@@ -34,9 +34,14 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 		}
 	} else {
 		roid = entities.RoidType(cmd.RoID)
+		// check if it is a valid Roid
 		err := roid.Validate()
 		if err != nil {
 			return nil, errors.Join(entities.ErrInvalidContact, err)
+		}
+		// Check if it is a Contact Roid
+		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+			return nil, errors.Join(entities.ErrInvalidContact, entities.ErrInvalidRoid)
 		}
 	}
 	c, err := entities.NewContact(cmd.ID, roid.String(), cmd.Email, cmd.AuthInfo, cmd.ClID)

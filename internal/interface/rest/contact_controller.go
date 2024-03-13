@@ -24,7 +24,7 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 	e.GET("/contacts", controller.ListContacts)
 	e.GET("/contacts/:id", controller.GetContactByID)
 	e.POST("/contacts", controller.CreateContact)
-	e.PUT("/contacts", controller.UpdateContact)
+	e.PUT("/contacts/:id", controller.UpdateContact)
 	e.DELETE("/contacts/:id", controller.DeleteContactByID)
 
 	return controller
@@ -103,21 +103,44 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /contacts [put]
+// @Router /contacts/:id [put]
 func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
-	var req entities.Contact
+	var req commands.UpdateContactCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	_, err := req.IsValid()
+	// Look up the contact
+	c, err := ctrl.contactService.GetContactByID(ctx, ctx.Param("id"))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	contact, err := ctrl.contactService.UpdateContact(ctx, &req)
+	// Make the changes
+	c.Email = req.Email
+	c.AuthInfo = req.AuthInfo
+	c.ClID = req.ClID
+	c.CrRr = req.CrRr
+	c.UpRr = req.UpRr
+	c.PostalInfo = req.PostalInfo
+	c.Voice = req.Voice
+	c.Fax = req.Fax
+	c.ContactStatus = req.ContactStatus
+	c.ContactDisclose = req.ContactDisclose
+
+	c.SetOKStatusIfNeeded()
+	c.UnSetOKStatusIfNeeded()
+
+	// Validate the changes
+	_, err = c.IsValid()
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

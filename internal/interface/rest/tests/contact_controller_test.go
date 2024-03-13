@@ -141,7 +141,7 @@ var _ = Describe("ContactController", func() {
 			updatedContactPayload.Email = "mike@doe.com"
 			payloadBytes, _ := json.Marshal(updatedContactPayload)
 
-			req, _ := http.NewRequest(http.MethodPut, "/contacts", bytes.NewReader(payloadBytes))
+			req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("/contacts/%s", createdContact.ID.String()), bytes.NewReader(payloadBytes))
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
