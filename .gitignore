@@ -31,3 +31,7 @@ go.work
 
 # Local scrap files
 scraps/
+
+# Omit the local generated docs (we do need them locally so that code validation will not complain)
+docs/*.json
+docs/*.yaml
