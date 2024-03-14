@@ -27,7 +27,7 @@ func TestNewHost(t *testing.T) {
 	require.Equal(t, RoidType(roid), host.RoID)
 	require.Equal(t, ClIDType(clid), host.ClID)
 	require.Equal(t, ClIDType(clid), host.CrRr)
-	require.True(t, host.HostStatus.OK)
+	require.True(t, host.Status.OK)
 }
 
 func TestAddHostAddress(t *testing.T) {
@@ -179,7 +179,7 @@ func TestCanBeDeleted(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.s
+			host.Status = tc.s
 			require.Equal(t, tc.result, host.CanBeDeleted())
 		})
 	}
@@ -216,7 +216,7 @@ func TestCanBeUpdated(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.s
+			host.Status = tc.s
 			require.Equal(t, tc.result, host.CanBeUpdated())
 		})
 	}
@@ -293,7 +293,7 @@ func TestValidateHostStatus(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.s
+			host.Status = tc.s
 			err := host.ValidateStatus()
 			require.Equal(t, tc.err, err)
 		})
@@ -326,9 +326,9 @@ func TestUnsetOKIfNeeded(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.hs
+			host.Status = tc.hs
 			host.UnsetOKIfNeeded()
-			require.Equal(t, tc.ok, host.HostStatus.OK)
+			require.Equal(t, tc.ok, host.Status.OK)
 		})
 	}
 }
@@ -444,10 +444,10 @@ func TestSetHostStatus(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.hs
+			host.Status = tc.hs
 			err := host.SetStatus(tc.s)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.ok, host.HostStatus.OK)
+			require.Equal(t, tc.ok, host.Status.OK)
 		})
 	}
 }
@@ -548,7 +548,7 @@ func TestUnsetHostStatus(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
-			host.HostStatus = tc.hs
+			host.Status = tc.hs
 			err := host.UnsetStatus(tc.s)
 			require.Equal(t, tc.err, err)
 		})
@@ -564,44 +564,44 @@ func TestHost_Validate(t *testing.T) {
 		{
 			name: "valid label doubledash",
 			host: &Host{
-				Name:       DomainName("exa--mple.com"),
-				RoID:       "12345_HOST-APEX",
-				ClID:       "67890",
-				CrRr:       "67890",
-				HostStatus: HostStatus{OK: true},
+				Name:   DomainName("exa--mple.com"),
+				RoID:   "12345_HOST-APEX",
+				ClID:   "67890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true},
 			},
 			err: ErrInvalidLabelDoubleDash,
 		},
 		{
 			name: "invalid roid",
 			host: &Host{
-				Name:       DomainName("example.com"),
-				RoID:       "12345",
-				ClID:       "67890",
-				CrRr:       "67890",
-				HostStatus: HostStatus{OK: true},
+				Name:   DomainName("example.com"),
+				RoID:   "12345",
+				ClID:   "67890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true},
 			},
 			err: ErrInvalidRoid,
 		},
 		{
 			name: "invalid clid",
 			host: &Host{
-				Name:       DomainName("example.com"),
-				RoID:       "12345_HOST-APEX",
-				ClID:       "6789067890678906789067890",
-				CrRr:       "67890",
-				HostStatus: HostStatus{OK: true},
+				Name:   DomainName("example.com"),
+				RoID:   "12345_HOST-APEX",
+				ClID:   "6789067890678906789067890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true},
 			},
 			err: ErrInvalidClIDType,
 		},
 		{
 			name: "invalid host status combo",
 			host: &Host{
-				Name:       DomainName("example.com"),
-				RoID:       "12345_HOST-APEX",
-				ClID:       "67890",
-				CrRr:       "67890",
-				HostStatus: HostStatus{OK: true, PendingCreate: true},
+				Name:   DomainName("example.com"),
+				RoID:   "12345_HOST-APEX",
+				ClID:   "67890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true, PendingCreate: true},
 			},
 			err: ErrHostStatusIncompatible,
 		},

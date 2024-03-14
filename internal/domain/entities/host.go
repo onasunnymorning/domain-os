@@ -42,8 +42,8 @@ type Host struct {
 	UpdatedAt time.Time    `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
 	// True if the host is used on a domain that is the parent of the host's FQDN. https://datatracker.ietf.org/doc/html/rfc5732#section-1.1
 	// This is set/unset by the Domain.AddHost() and Domain.RemoveHost() when a host is added/removed from a domain.
-	InBailiwick bool `json:"InBailiwick"  example:"true"`
-	HostStatus
+	InBailiwick bool       `json:"InBailiwick"  example:"true"`
+	Status      HostStatus `json:"Status"`
 }
 
 // HostStatus is an implementation of https://datatracker.ietf.org/doc/html/rfc5732#section-2.3
@@ -71,7 +71,7 @@ func NewHost(name, roid, clid string) (*Host, error) {
 		RoID: RoidType(NormalizeString(roid)),
 		ClID: ClIDType(NormalizeString(clid)),
 		CrRr: ClIDType(NormalizeString(clid)),
-		HostStatus: HostStatus{
+		Status: HostStatus{
 			OK: true,
 		},
 	}
@@ -121,7 +121,7 @@ func (h *Host) RemoveAddress(addr string) error {
 
 // CanBeDeleted returns true if the host can be deleted and returns false if a status is set that prevents deletion (ServerDeleteProhibited or ClientDeleteProhibited)
 func (h *Host) CanBeDeleted() bool {
-	if h.ServerDeleteProhibited || h.ClientDeleteProhibited {
+	if h.Status.ServerDeleteProhibited || h.Status.ClientDeleteProhibited {
 		return false
 	}
 	return true
@@ -129,7 +129,7 @@ func (h *Host) CanBeDeleted() bool {
 
 // CanBeUpdated returns true if the host can be updated and returns false if a status is set that prevents update (ServerUpdateProhibited or ClientUpdateProhibited)
 func (h *Host) CanBeUpdated() bool {
-	if h.ServerUpdateProhibited || h.ClientUpdateProhibited {
+	if h.Status.ServerUpdateProhibited || h.Status.ClientUpdateProhibited {
 		return false
 	}
 	return true
@@ -138,29 +138,29 @@ func (h *Host) CanBeUpdated() bool {
 // ValidateStatus validates the status of the host and returns an error if the statuses are incompatible according to https://datatracker.ietf.org/doc/html/rfc5732#section-2.3
 func (h *Host) ValidateStatus() error {
 	// The pendingCreate, pendingDelete, pendingTransfer, and pendingUpdate status values MUST NOT be combined with each other.
-	if h.PendingDelete && (h.PendingTransfer || h.PendingUpdate || h.PendingCreate) {
+	if h.Status.PendingDelete && (h.Status.PendingTransfer || h.Status.PendingUpdate || h.Status.PendingCreate) {
 		return ErrHostStatusIncompatible
 	}
-	if h.PendingCreate && (h.PendingTransfer || h.PendingUpdate || h.PendingDelete) {
+	if h.Status.PendingCreate && (h.Status.PendingTransfer || h.Status.PendingUpdate || h.Status.PendingDelete) {
 		return ErrHostStatusIncompatible
 	}
-	if h.PendingUpdate && (h.PendingTransfer || h.PendingDelete || h.PendingCreate) {
+	if h.Status.PendingUpdate && (h.Status.PendingTransfer || h.Status.PendingDelete || h.Status.PendingCreate) {
 		return ErrHostStatusIncompatible
 	}
 	// "pendingUpdate" status MUST NOT be combined with either "clientUpdateProhibited" or "serverUpdateProhibited" status.
-	if h.PendingUpdate && (h.ClientUpdateProhibited || h.ServerUpdateProhibited) {
+	if h.Status.PendingUpdate && (h.Status.ClientUpdateProhibited || h.Status.ServerUpdateProhibited) {
 		return ErrHostStatusIncompatible
 	}
 	// "pendingDelete" status MUST NOT be combined with either "clientDeleteProhibited" or "serverDeleteProhibited" status.
-	if h.PendingDelete && (h.ClientDeleteProhibited || h.ServerDeleteProhibited) {
+	if h.Status.PendingDelete && (h.Status.ClientDeleteProhibited || h.Status.ServerDeleteProhibited) {
 		return ErrHostStatusIncompatible
 	}
 	// "ok" status MAY only be combined with "linked" status.
-	if h.OK && (h.PendingCreate || h.PendingDelete || h.PendingTransfer || h.PendingUpdate || h.ClientDeleteProhibited || h.ClientUpdateProhibited || h.ServerDeleteProhibited || h.ServerUpdateProhibited) {
+	if h.Status.OK && (h.Status.PendingCreate || h.Status.PendingDelete || h.Status.PendingTransfer || h.Status.PendingUpdate || h.Status.ClientDeleteProhibited || h.Status.ClientUpdateProhibited || h.Status.ServerDeleteProhibited || h.Status.ServerUpdateProhibited) {
 		return ErrHostStatusIncompatible
 	}
 	// "ok" status MUST be set when no other status is set.
-	if !h.OK && !h.PendingCreate && !h.PendingDelete && !h.PendingTransfer && !h.PendingUpdate && !h.ClientDeleteProhibited && !h.ClientUpdateProhibited && !h.ServerDeleteProhibited && !h.ServerUpdateProhibited {
+	if !h.Status.OK && !h.Status.PendingCreate && !h.Status.PendingDelete && !h.Status.PendingTransfer && !h.Status.PendingUpdate && !h.Status.ClientDeleteProhibited && !h.Status.ClientUpdateProhibited && !h.Status.ServerDeleteProhibited && !h.Status.ServerUpdateProhibited {
 		return ErrOKStatusMustBeSet
 	}
 	// Other status combinations not expressly prohibited MAY be used.
@@ -168,16 +168,16 @@ func (h *Host) ValidateStatus() error {
 }
 
 func (h *Host) SetOKIfNeeded() {
-	if !h.PendingCreate && !h.PendingDelete && !h.PendingTransfer && !h.PendingUpdate && !h.ClientDeleteProhibited && !h.ClientUpdateProhibited && !h.ServerDeleteProhibited && !h.ServerUpdateProhibited {
-		h.OK = true
+	if !h.Status.PendingCreate && !h.Status.PendingDelete && !h.Status.PendingTransfer && !h.Status.PendingUpdate && !h.Status.ClientDeleteProhibited && !h.Status.ClientUpdateProhibited && !h.Status.ServerDeleteProhibited && !h.Status.ServerUpdateProhibited {
+		h.Status.OK = true
 	}
 
 }
 
 // UnsetOKIfNeeded unsets the OK status if any other status prohibition is set
 func (h *Host) UnsetOKIfNeeded() {
-	if h.PendingCreate || h.PendingDelete || h.PendingTransfer || h.PendingUpdate || h.ClientDeleteProhibited || h.ClientUpdateProhibited || h.ServerDeleteProhibited || h.ServerUpdateProhibited {
-		h.OK = false
+	if h.Status.PendingCreate || h.Status.PendingDelete || h.Status.PendingTransfer || h.Status.PendingUpdate || h.Status.ClientDeleteProhibited || h.Status.ClientUpdateProhibited || h.Status.ServerDeleteProhibited || h.Status.ServerUpdateProhibited {
+		h.Status.OK = false
 	}
 }
 
@@ -189,25 +189,25 @@ func (h *Host) SetStatus(s string) error {
 	}
 	switch s {
 	case HostStatusOK:
-		h.OK = true
+		h.Status.OK = true
 	case HostStatusLinked:
-		h.Linked = true
+		h.Status.Linked = true
 	case HostStatusPendingCreate:
-		h.PendingCreate = true
+		h.Status.PendingCreate = true
 	case HostStatusPendingDelete:
-		h.PendingDelete = true
+		h.Status.PendingDelete = true
 	case HostStatusPendingUpdate:
-		h.PendingUpdate = true
+		h.Status.PendingUpdate = true
 	case HostStatusPendingTransfer:
-		h.PendingTransfer = true
+		h.Status.PendingTransfer = true
 	case HostStatusClientDeleteProhibited:
-		h.ClientDeleteProhibited = true
+		h.Status.ClientDeleteProhibited = true
 	case HostStatusClientUpdateProhibited:
-		h.ClientUpdateProhibited = true
+		h.Status.ClientUpdateProhibited = true
 	case HostStatusServerDeleteProhibited:
-		h.ServerDeleteProhibited = true
+		h.Status.ServerDeleteProhibited = true
 	case HostStatusServerUpdateProhibited:
-		h.ServerUpdateProhibited = true
+		h.Status.ServerUpdateProhibited = true
 	default:
 		return ErrUnknownHostStatus
 	}
@@ -223,25 +223,25 @@ func (h *Host) UnsetStatus(s string) error {
 	}
 	switch s {
 	case HostStatusOK:
-		h.OK = false
+		h.Status.OK = false
 	case HostStatusLinked:
-		h.Linked = false
+		h.Status.Linked = false
 	case HostStatusPendingCreate:
-		h.PendingCreate = false
+		h.Status.PendingCreate = false
 	case HostStatusPendingDelete:
-		h.PendingDelete = false
+		h.Status.PendingDelete = false
 	case HostStatusPendingUpdate:
-		h.PendingUpdate = false
+		h.Status.PendingUpdate = false
 	case HostStatusPendingTransfer:
-		h.PendingTransfer = false
+		h.Status.PendingTransfer = false
 	case HostStatusClientDeleteProhibited:
-		h.ClientDeleteProhibited = false
+		h.Status.ClientDeleteProhibited = false
 	case HostStatusClientUpdateProhibited:
-		h.ClientUpdateProhibited = false
+		h.Status.ClientUpdateProhibited = false
 	case HostStatusServerDeleteProhibited:
-		h.ServerDeleteProhibited = false
+		h.Status.ServerDeleteProhibited = false
 	case HostStatusServerUpdateProhibited:
-		h.ServerUpdateProhibited = false
+		h.Status.ServerUpdateProhibited = false
 	default:
 		return ErrUnknownHostStatus
 	}

@@ -22,7 +22,7 @@ func getValidHost(clid string, t *time.Time) *entities.Host {
 		CrRr:        entities.ClIDType(clid),
 		UpRr:        entities.ClIDType(clid),
 		InBailiwick: true,
-		HostStatus: entities.HostStatus{
+		Status: entities.HostStatus{
 			ServerDeleteProhibited: true,
 		},
 	}
@@ -79,7 +79,7 @@ func TestHost_ToHost(t *testing.T) {
 	require.Equal(t, host.CrRr, convertedHost.CrRr)
 	require.Equal(t, host.UpRr, convertedHost.UpRr)
 	require.Equal(t, host.InBailiwick, convertedHost.InBailiwick)
-	require.Equal(t, host.HostStatus, convertedHost.HostStatus)
+	require.Equal(t, host.Status, convertedHost.Status)
 	require.Equal(t, host.CreatedAt, convertedHost.CreatedAt)
 	require.Equal(t, host.UpdatedAt, convertedHost.UpdatedAt)
 	require.Len(t, convertedHost.Addresses, len(host.Addresses))
