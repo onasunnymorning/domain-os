@@ -16,9 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	_ "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
-	swaggerFiles "github.com/swaggo/files"        // swagger embed files
-	ginSwagger "github.com/swaggo/gin-swagger"    // gin-swagger middleware
+	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
+	swaggerFiles "github.com/swaggo/files"           // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -29,11 +29,35 @@ func inLambda() bool {
 	return false
 }
 
-// @title APEX RegistryOS
-// @version 0.5.1
+// setSwaggerInfo sets the swagger info dynamically based on the environment variables
+func setSwaggerInfo() {
+	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
+	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+}
+
+// runningInDocker returns true if the code is running in a Docker container. We determine this by looking for the /.dockerenv file
+func runningInDocker() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	return false
+}
+
+// @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
-	godotenv.Load()
+	// Load environment variables when not running in Docker
+	if !runningInDocker() {
+		log.Println("Running outside of Docker")
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Error loading .env file")
+		}
+	} else {
+		log.Println("Running in Docker")
+	}
+
+	setSwaggerInfo()
 
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
