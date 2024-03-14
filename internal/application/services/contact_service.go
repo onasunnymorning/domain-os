@@ -89,7 +89,7 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	}
 
 	// Set the disclose flags
-	c.ContactDisclose = cmd.Disclose
+	c.Disclose = cmd.Disclose
 	// Set the status
 	err = c.SetFullStatus(cmd.Status)
 	if err != nil {
