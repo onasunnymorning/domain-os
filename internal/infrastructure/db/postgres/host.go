@@ -43,7 +43,7 @@ func ToHost(dbHost *Host) *entities.Host {
 		InBailiwick: dbHost.InBailiwick,
 		CreatedAt:   dbHost.CreatedAt,
 		UpdatedAt:   dbHost.UpdatedAt,
-		HostStatus:  dbHost.HostStatus,
+		Status:      dbHost.HostStatus,
 		Addresses:   addresses,
 	}
 
@@ -74,7 +74,7 @@ func ToDBHost(host *entities.Host) *Host {
 		InBailiwick: host.InBailiwick,
 		CreatedAt:   host.CreatedAt,
 		UpdatedAt:   host.UpdatedAt,
-		HostStatus:  host.HostStatus,
+		HostStatus:  host.Status,
 		Addresses:   addr,
 	}
 

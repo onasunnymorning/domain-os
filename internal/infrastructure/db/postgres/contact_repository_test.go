@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -149,4 +150,43 @@ func (s *ContactSuite) TestDeleteContact() {
 	_, err = repo.GetContactByID(context.Background(), createdContact.ID.String())
 	s.Require().Error(err)
 
+}
+
+func (s *ContactSuite) TestListContacts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	a, err := entities.NewAddress("El Cuyo", "MX")
+	s.Require().NoError(err)
+	pi, _ := entities.NewContactPostalInfo("int", "my pi", a)
+	s.Require().NoError(err)
+
+	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	err = contact1.AddPostalInfo(pi)
+	s.Require().NoError(err)
+
+	createdContact1, err := repo.CreateContact(context.Background(), contact1)
+	fmt.Printf("\n\nCreatedContact1: %v\n\n", createdContact1)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact1)
+
+	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	err = contact2.AddPostalInfo(pi)
+	s.Require().NoError(err)
+	createdContact2, err := repo.CreateContact(context.Background(), contact2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact2)
+
+	contacts, err := repo.ListContacts(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 2)
+
+	contacts, err = repo.ListContacts(context.Background(), 25, "1234_CONT-APEX")
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 1)
 }

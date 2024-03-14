@@ -97,8 +97,8 @@ func (s *HostSuite) TestReadHost() {
 	s.Require().Equal(createdHost.CrRr, readHost.CrRr)
 	s.Require().Equal(createdHost.UpRr, readHost.UpRr)
 	s.Require().Equal(createdHost.InBailiwick, readHost.InBailiwick)
-	s.Require().Equal(createdHost.ServerDeleteProhibited, readHost.ServerDeleteProhibited)
-	s.Require().Equal(createdHost.HostStatus, readHost.HostStatus)
+	s.Require().Equal(createdHost.Status.ServerDeleteProhibited, readHost.Status.ServerDeleteProhibited)
+	s.Require().Equal(createdHost.Status, readHost.Status)
 	s.Require().Equal(createdHost.RoID, readHost.RoID)
 
 }

@@ -8,8 +8,8 @@ var (
 
 // RegistrarPostalInfo is a value object that represents a postal code as defined in RFC5733
 type RegistrarPostalInfo struct {
-	Type    PostalInfoEnumType `json:"type" example:"loc" extensions:"x-order=0"`
-	Address *Address           `json:"address" extensions:"x-order=1"`
+	Type    PostalInfoEnumType `json:"Type" example:"loc" extensions:"x-order=0"`
+	Address *Address           `json:"Address" extensions:"x-order=1"`
 }
 
 // NewRegistrarPostalInfo creates a new RegistrarPostalInfo

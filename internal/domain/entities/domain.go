@@ -5,31 +5,31 @@ import "time"
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID         RoidType     `json:"roID"`
-	Name         DomainName   `json:"name"`
-	OriginalName string       `json:"originalName"`
-	UName        string       `json:"uName"`
-	RegistrantID ClIDType     `json:"registrantID"`
-	AdminID      ClIDType     `json:"adminID"`
-	TechID       ClIDType     `json:"techID"`
-	BillingID    ClIDType     `json:"billingID"`
-	ClID         ClIDType     `json:"clID"`
-	CrRr         ClIDType     `json:"crRr"`
-	UpRr         ClIDType     `json:"upRr"`
-	TLDName      DomainName   `json:"tldName"`
-	ExpiryDate   time.Time    `json:"expiryDate"`
-	RenewedYears int          `json:"renewedYears"`
-	AuthInfo     AuthInfoType `json:"authInfo"`
-	CreatedAt    time.Time    `json:"createdAt"`
-	UpdatedAt    time.Time    `json:"updatedAt"`
+	RoID         RoidType     `json:"RoID"`
+	Name         DomainName   `json:"Name"`
+	OriginalName string       `json:"OriginalName"`
+	UName        string       `json:"UName"`
+	RegistrantID ClIDType     `json:"RegistrantID"`
+	AdminID      ClIDType     `json:"AdminID"`
+	TechID       ClIDType     `json:"TechID"`
+	BillingID    ClIDType     `json:"BillingID"`
+	ClID         ClIDType     `json:"ClID"`
+	CrRr         ClIDType     `json:"CrRr"`
+	UpRr         ClIDType     `json:"UpRr"`
+	TLDName      DomainName   `json:"TLDName"`
+	ExpiryDate   time.Time    `json:"ExpiryDate"`
+	RenewedYears int          `json:"RenewedYears"`
+	AuthInfo     AuthInfoType `json:"AuthInfo"`
+	CreatedAt    time.Time    `json:"CreatedAt"`
+	UpdatedAt    time.Time    `json:"UpdatedAt"`
 
 	DomainStatus
 	DomainsRGPStatus
 }
 
 const (
-	DomainStatusOK                       = "ok"
-	DomainStatusInactive                 = "inactive"
+	DomainStatusOK                       = "OK"
+	DomainStatusInactive                 = "Inactive"
 	DomainStatusClientTransferProhibited = "clientTransferProhibited"
 	DomainStatusClientUpdateProhibited   = "clientUpdateProhibited"
 	DomainStatusClientDeleteProhibited   = "clientDeleteProhibited"
@@ -53,22 +53,22 @@ const (
 type DomainStatus struct {
 	OK                       bool `json:"ok"`
 	Inactive                 bool `json:"inactive"`
-	ClientTransferProhibited bool `json:"clientTransferProhibited"`
-	ClientUpdateProhibited   bool `json:"clientUpdateProhibited"`
-	ClientDeleteProhibited   bool `json:"clientDeleteProhibited"`
-	ClientRenewProhibited    bool `json:"clientRenewProhibited"`
-	ClientHold               bool `json:"clientHold"`
-	ServerTransferProhibited bool `json:"serverTransferProhibited"`
-	ServerUpdateProhibited   bool `json:"serverUpdateProhibited"`
-	ServerDeleteProhibited   bool `json:"serverDeleteProhibited"`
-	ServerRenewProhibited    bool `json:"serverPenewProhibited"`
-	ServerHold               bool `json:"serverHold"`
-	PendingCreate            bool `json:"pendingCreate"`
-	PendingRenew             bool `json:"pendingRenew"`
-	PendingTransfer          bool `json:"pendingTransfer"`
-	PendingUpdate            bool `json:"pendingUpdate"`
-	PendingRestore           bool `json:"pendingRestore"`
-	PendingDelete            bool `json:"pendingDelete"`
+	ClientTransferProhibited bool `json:"ClientTransferProhibited"`
+	ClientUpdateProhibited   bool `json:"ClientUpdateProhibited"`
+	ClientDeleteProhibited   bool `json:"ClientDeleteProhibited"`
+	ClientRenewProhibited    bool `json:"ClientRenewProhibited"`
+	ClientHold               bool `json:"ClientHold"`
+	ServerTransferProhibited bool `json:"ServerTransferProhibited"`
+	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited"`
+	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited"`
+	ServerRenewProhibited    bool `json:"ServerPenewProhibited"`
+	ServerHold               bool `json:"ServerHold"`
+	PendingCreate            bool `json:"PendingCreate"`
+	PendingRenew             bool `json:"PendingRenew"`
+	PendingTransfer          bool `json:"PendingTransfer"`
+	PendingUpdate            bool `json:"PendingUpdate"`
+	PendingRestore           bool `json:"PendingRestore"`
+	PendingDelete            bool `json:"PendingDelete"`
 }
 
 // Valid checks if the DomainStatus object is valid
@@ -79,12 +79,12 @@ func (ds *DomainStatus) Validate() error {
 
 // DomainsRGPStatus value object
 type DomainsRGPStatus struct {
-	AddPeriodEnd           time.Time `json:"addPeriodEnd"`
-	RenewPeriodEnd         time.Time `json:"renewPeriodEnd"`
-	AutoRenewPeriodEnd     time.Time `json:"autoRenewPeriodEnd"`
-	TransferPeriodEnd      time.Time `json:"transferPeriodEnd"`
-	RedemptionPeriodEnd    time.Time `json:"redemptionPeriodEnd"`
-	PendingDeletePeriodEnd time.Time `json:"pendingDeletePeriodEnd"`
+	AddPeriodEnd           time.Time `json:"AddPeriodEnd"`
+	RenewPeriodEnd         time.Time `json:"RenewPeriodEnd"`
+	AutoRenewPeriodEnd     time.Time `json:"AutoRenewPeriodEnd"`
+	TransferPeriodEnd      time.Time `json:"RransferPeriodEnd"`
+	RedemptionPeriodEnd    time.Time `json:"RedemptionPeriodEnd"`
+	PendingDeletePeriodEnd time.Time `json:"PendingDeletePeriodEnd"`
 }
 
 // NewDomain creates a new Domain object. It should only be used directly in internal code (e.g. importing data). When Registering and Renewing domains, use the appropriate methods.

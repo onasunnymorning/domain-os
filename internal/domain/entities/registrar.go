@@ -32,7 +32,7 @@ func (r *RegistrarStatus) String() string {
 // Registrar object represents the sponsoring client for other objects and is typically referred to as the sponsoring registrar.
 // Ref: https://www.rfc-editor.org/rfc/rfc9022.html#name-registrar-object
 type Registrar struct {
-	ClID        ClIDType        `json:"clID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
+	ClID        ClIDType        `json:"ClID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
 	Name        string          // A human-readable name for the registrar. Must match the Legal entity name. For ICANN Accredite registrars, must match the entity registered with ICANN for the corresponding GurID.
 	NickName    string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
 	GurID       int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml

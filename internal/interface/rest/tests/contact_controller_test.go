@@ -5,14 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -28,13 +30,20 @@ var _ = Describe("ContactController", func() {
 		db, err := getTestDB()
 		Expect(err).NotTo(HaveOccurred())
 
+		// Roid
+		idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+		if err != nil {
+			panic(err)
+		}
+		roidService := services.NewRoidService(idGenerator)
+
 		// Initialize your repository and service
 		registrarRepo := postgres.NewGormRegistrarRepository(db)
 		registrarService := services.NewRegistrarService(registrarRepo)
 
 		// Initialize your repository and service
 		contactRepo := postgres.NewContactRepository(db)
-		contactService := services.NewContactService(contactRepo)
+		contactService := services.NewContactService(contactRepo, *roidService)
 
 		// Initialize and register your controller with the router
 		contactController := rest.NewContactController(router, contactService)
@@ -48,12 +57,18 @@ var _ = Describe("ContactController", func() {
 			// Don't assert as registrar might already exist
 		})
 
+		testAddress, _ := entities.NewAddress("El Cuyo", "MX")
+		testPostaInfo, _ := entities.NewContactPostalInfo("int", "my pinfo", testAddress)
+
 		testContact := &commands.CreateContactCommand{
-			ID:            "contactID101",
-			RoID:          "12345_CONT-APEX",
-			Email:         "jon@doe.com",
-			AuthInfo:      "str0NGP@ZZw0rd",
-			RegistrarCLID: registrarClid,
+			ID:       "contactID101",
+			RoID:     "12345_CONT-APEX",
+			Email:    "jon@doe.com",
+			AuthInfo: "str0NGP@ZZw0rd",
+			ClID:     registrarClid,
+			PostalInfo: [2]*entities.ContactPostalInfo{
+				testPostaInfo,
+			},
 		}
 
 		var createdContact entities.Contact
@@ -126,7 +141,7 @@ var _ = Describe("ContactController", func() {
 			updatedContactPayload.Email = "mike@doe.com"
 			payloadBytes, _ := json.Marshal(updatedContactPayload)
 
-			req, _ := http.NewRequest(http.MethodPut, "/contacts", bytes.NewReader(payloadBytes))
+			req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("/contacts/%s", createdContact.ID.String()), bytes.NewReader(payloadBytes))
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 

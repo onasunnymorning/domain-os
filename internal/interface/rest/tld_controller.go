@@ -90,8 +90,8 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	}
 
 	// Set the Data and metadata if there are results only
+	response.Data = tlds
 	if len(tlds) > 0 {
-		response.Data = tlds
 		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
 	}
 

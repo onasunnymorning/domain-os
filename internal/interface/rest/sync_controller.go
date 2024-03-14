@@ -12,7 +12,7 @@ type SyncController struct {
 
 // SyncResult is the successful result of a sync endpoint
 type SyncResult struct {
-	Message string `json:"message"`
+	Message string `json:"Message"`
 }
 
 // NewSyncController creates a new SyncController and registers the endpoints

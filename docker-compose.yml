@@ -42,6 +42,8 @@ services:
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
       - API_PORT=${API_PORT}
+      - API_HOST=${API_HOST}
+      - API_VERSION=${API_VERSION}
     ports:
       - ${API_PORT}:${API_PORT}
     networks:

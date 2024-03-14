@@ -12,4 +12,5 @@ type ContactRepository interface {
 	GetContactByID(ctx context.Context, id string) (*entities.Contact, error)
 	UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error)
 	DeleteContactByID(ctx context.Context, id string) error
+	ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error)
 }

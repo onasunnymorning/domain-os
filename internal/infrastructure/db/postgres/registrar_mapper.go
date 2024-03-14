@@ -63,6 +63,8 @@ func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 		},
 		URL:         entities.URL(dbr.URL),
 		RdapBaseURL: entities.URL(dbr.RdapBaseUrl),
+		CreatedAt:   dbr.CreatedAt,
+		UpdatedAt:   dbr.UpdatedAt,
 	}
 
 	a0 := &entities.Address{
