@@ -756,7 +756,7 @@ func TestContact_Disclose_IsNil(t *testing.T) {
 	require.True(t, cd.IsNil())
 
 	cd = ContactDisclose{
-		DiscloseNameInt: true,
+		NameInt: true,
 	}
 
 	require.False(t, cd.IsNil())
