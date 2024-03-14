@@ -273,7 +273,7 @@ func TestContactStatusType_IsValid(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
 			c := Contact{
-				ContactStatus: tc.contactStatus,
+				Status: tc.contactStatus,
 			}
 			err := c.SetStatus(tc.trySet)
 			require.Equal(t, tc.expectedError, err)
@@ -313,7 +313,7 @@ func TestContact_CanBeDeleted(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
 			c := Contact{
-				ContactStatus: tc.contactStatus,
+				Status: tc.contactStatus,
 			}
 			require.Equal(t, tc.expectedResult, c.CanBeDeleted())
 		})
@@ -351,7 +351,7 @@ func TestContact_CanBeUpdated(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
 			c := Contact{
-				ContactStatus: tc.contactStatus,
+				Status: tc.contactStatus,
 			}
 			require.Equal(t, tc.expectedResult, c.CanBeUpdated())
 		})
@@ -389,7 +389,7 @@ func TestContact_CanBeTransferred(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.testName, func(t *testing.T) {
 			c := Contact{
-				ContactStatus: tc.contactStatus,
+				Status: tc.contactStatus,
 			}
 			require.Equal(t, tc.expectedResult, c.CanBeTransferred())
 		})
@@ -398,15 +398,15 @@ func TestContact_CanBeTransferred(t *testing.T) {
 
 func TestContact_CheckOKIsSet(t *testing.T) {
 	c := Contact{
-		ContactStatus: ContactStatus{
+		Status: ContactStatus{
 			PendingCreate: true,
 		},
 	}
 
 	c.UnSetStatus(string(ContactStatusPendingCreate))
 
-	require.False(t, c.PendingCreate, "PendingCreate should have been removed")
-	require.True(t, c.OK, "OK should have been set")
+	require.False(t, c.Status.PendingCreate, "PendingCreate should have been removed")
+	require.True(t, c.Status.OK, "OK should have been set")
 }
 
 func TestAddContactPostalInfo(t *testing.T) {
@@ -528,12 +528,12 @@ func TestContact_IsValid(t *testing.T) {
 		{
 			testName: "invalid Voice",
 			Contact: Contact{
-				ID:            ClIDType("myref1234"),
-				RoID:          RoidType("123_CONT-APEX"),
-				Email:         "g@me.com",
-				AuthInfo:      AuthInfoType("sdfkSD4ljsd;f"),
-				ContactStatus: ContactStatus{OK: true},
-				Voice:         E164Type("123"),
+				ID:       ClIDType("myref1234"),
+				RoID:     RoidType("123_CONT-APEX"),
+				Email:    "g@me.com",
+				AuthInfo: AuthInfoType("sdfkSD4ljsd;f"),
+				Status:   ContactStatus{OK: true},
+				Voice:    E164Type("123"),
 			},
 			expectedResult: false,
 			expectedError:  ErrInvalidE164Type,
@@ -541,12 +541,12 @@ func TestContact_IsValid(t *testing.T) {
 		{
 			testName: "invalid Fax",
 			Contact: Contact{
-				ID:            ClIDType("myref1234"),
-				RoID:          RoidType("123_CONT-APEX"),
-				Email:         "g@me.com",
-				AuthInfo:      AuthInfoType("sdfkSD4ljsd;f"),
-				ContactStatus: ContactStatus{OK: true},
-				Fax:           E164Type("123"),
+				ID:       ClIDType("myref1234"),
+				RoID:     RoidType("123_CONT-APEX"),
+				Email:    "g@me.com",
+				AuthInfo: AuthInfoType("sdfkSD4ljsd;f"),
+				Status:   ContactStatus{OK: true},
+				Fax:      E164Type("123"),
 			},
 			expectedResult: false,
 			expectedError:  ErrInvalidE164Type,
@@ -554,11 +554,11 @@ func TestContact_IsValid(t *testing.T) {
 		{
 			testName: "invalid Postalinfo",
 			Contact: Contact{
-				ID:            ClIDType("myref1234"),
-				RoID:          RoidType("123_CONT-APEX"),
-				Email:         "g@me.com",
-				AuthInfo:      AuthInfoType("sdfkSD4ljsd;f"),
-				ContactStatus: ContactStatus{OK: true},
+				ID:       ClIDType("myref1234"),
+				RoID:     RoidType("123_CONT-APEX"),
+				Email:    "g@me.com",
+				AuthInfo: AuthInfoType("sdfkSD4ljsd;f"),
+				Status:   ContactStatus{OK: true},
 				PostalInfo: [2]*ContactPostalInfo{
 					{
 						Type: "int",
@@ -591,7 +591,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset OK",
 			Contact: Contact{
-				ContactStatus: ContactStatus{OK: true},
+				Status: ContactStatus{OK: true},
 			},
 			status:        ContactStatusOK,
 			expectedError: ErrInvalidContactStatusCombination,
@@ -599,7 +599,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset PendingCreate",
 			Contact: Contact{
-				ContactStatus: ContactStatus{PendingCreate: true},
+				Status: ContactStatus{PendingCreate: true},
 			},
 			status:        ContactStatusPendingCreate,
 			expectedError: nil,
@@ -607,7 +607,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset PendingUpdate",
 			Contact: Contact{
-				ContactStatus: ContactStatus{PendingUpdate: true},
+				Status: ContactStatus{PendingUpdate: true},
 			},
 			status:        ContactStatusPendingUpdate,
 			expectedError: nil,
@@ -615,7 +615,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset PendingDelete",
 			Contact: Contact{
-				ContactStatus: ContactStatus{PendingDelete: true},
+				Status: ContactStatus{PendingDelete: true},
 			},
 			status:        ContactStatusPendingDelete,
 			expectedError: nil,
@@ -623,7 +623,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset PendingTransfer",
 			Contact: Contact{
-				ContactStatus: ContactStatus{PendingTransfer: true},
+				Status: ContactStatus{PendingTransfer: true},
 			},
 			status:        ContactStatusPendingTransfer,
 			expectedError: nil,
@@ -631,7 +631,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset ClientDeleteProhibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ClientDeleteProhibited: true},
+				Status: ContactStatus{ClientDeleteProhibited: true},
 			},
 			status:        ContactStatusClientDeleteProhibited,
 			expectedError: nil,
@@ -639,7 +639,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset ClientTransferProhibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ClientTransferProhibited: true},
+				Status: ContactStatus{ClientTransferProhibited: true},
 			},
 			status:        ContactStatusClientTransferProhibited,
 			expectedError: nil,
@@ -647,7 +647,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset ClientUpdateProhibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ClientUpdateProhibited: true},
+				Status: ContactStatus{ClientUpdateProhibited: true},
 			},
 			status:        ContactStatusClientUpdateProhibited,
 			expectedError: nil,
@@ -655,7 +655,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "try unset OK",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ClientUpdateProhibited: true},
+				Status: ContactStatus{ClientUpdateProhibited: true},
 			},
 			status:        ContactStatusOK,
 			expectedError: ErrContactUpdateNotAllowed,
@@ -663,7 +663,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset OK when not set",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ClientTransferProhibited: true},
+				Status: ContactStatus{ClientTransferProhibited: true},
 			},
 			status:        ContactStatusOK,
 			expectedError: nil,
@@ -671,7 +671,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset linked",
 			Contact: Contact{
-				ContactStatus: ContactStatus{Linked: true},
+				Status: ContactStatus{Linked: true},
 			},
 			status:        ContactStatusLinked,
 			expectedError: nil,
@@ -679,7 +679,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset server delete prohibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ServerDeleteProhibited: true},
+				Status: ContactStatus{ServerDeleteProhibited: true},
 			},
 			status:        ContactStatusServerDeleteProhibited,
 			expectedError: nil,
@@ -687,7 +687,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset server update prohibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ServerUpdateProhibited: true},
+				Status: ContactStatus{ServerUpdateProhibited: true},
 			},
 			status:        ContactStatusServerUpdateProhibited,
 			expectedError: nil,
@@ -695,7 +695,7 @@ func TestContact_UnSetStatus(t *testing.T) {
 		{
 			testName: "unset server transfer prohibited",
 			Contact: Contact{
-				ContactStatus: ContactStatus{ServerTransferProhibited: true},
+				Status: ContactStatus{ServerTransferProhibited: true},
 			},
 			status:        ContactStatusServerTransferProhibited,
 			expectedError: nil,
@@ -708,4 +708,56 @@ func TestContact_UnSetStatus(t *testing.T) {
 			require.Equal(t, tc.expectedError, err)
 		})
 	}
+}
+
+func TestContact_Status_IsNil(t *testing.T) {
+	cs := ContactStatus{}
+
+	require.True(t, cs.IsNil())
+
+	cs = ContactStatus{
+		OK: true,
+	}
+
+	require.False(t, cs.IsNil())
+}
+
+func TestContact_SetFullStatus(t *testing.T) {
+	c, _ := NewContact("myref1234", "123_CONT-APEX", "me@g.com", "sdfkSD4ljsd;f", "199-myrar")
+
+	cs := ContactStatus{
+		PendingCreate: true,
+	}
+
+	err := c.SetFullStatus(cs)
+
+	require.NoError(t, err)
+	require.True(t, c.Status.PendingCreate)
+	require.False(t, c.Status.OK)
+}
+
+func TestContact_SetFullStatus_Error(t *testing.T) {
+	c, _ := NewContact("myref1234", "123_CONT-APEX", "me@g.com", "sdfkSD4ljsd;f", "199-myrar")
+
+	cs := ContactStatus{
+		OK:            true,
+		PendingCreate: true,
+	}
+
+	err := c.SetFullStatus(cs)
+
+	require.Error(t, err)
+	require.True(t, c.Status.OK)
+}
+
+func TestContact_Disclose_IsNil(t *testing.T) {
+	cd := ContactDisclose{}
+
+	require.True(t, cd.IsNil())
+
+	cd = ContactDisclose{
+		NameInt: true,
+	}
+
+	require.False(t, cd.IsNil())
 }

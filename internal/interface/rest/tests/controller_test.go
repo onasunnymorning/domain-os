@@ -1,10 +1,11 @@
 package tests
 
 import (
+	"testing"
+
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	"gorm.io/gorm"
-	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 )
@@ -20,7 +21,7 @@ const (
 	dbPass = "unittest"
 	dbHost = "127.0.0.1"
 	dbPort = "5432"
-	dbName = "regos4_integration_tests"
+	dbName = "dos_integration_tests"
 )
 
 func getTestDB() (*gorm.DB, error) {

@@ -16,13 +16,13 @@ var (
 
 // Addr value object used in Contact and Registrar
 type Address struct {
-	Street1       OptPostalLineType `json:"street1" example:"Boulnes 2545" extensions:"x-order=0"`
-	Street2       OptPostalLineType `json:"street2" example:"Piso8" extensions:"x-order=1"`
-	Street3       OptPostalLineType `json:"street3" example:"Portero" extensions:"x-order=2"`
-	City          PostalLineType    `json:"city" binding:"required" example:"Buenos Aires" extensions:"x-order=3"`
-	StateProvince OptPostalLineType `json:"sp" example:"Palermo SOHO" extensions:"x-order=4"`
-	PostalCode    PCType            `json:"pc" example:"EN234Z" extensions:"x-order=5"`
-	CountryCode   CCType            `json:"cc" binding:"required" example:"AR" extensions:"x-order=6"`
+	Street1       OptPostalLineType `json:"Street1" example:"Boulnes 2545" extensions:"x-order=0"`
+	Street2       OptPostalLineType `json:"Street2" example:"Piso8" extensions:"x-order=1"`
+	Street3       OptPostalLineType `json:"Street3" example:"Portero" extensions:"x-order=2"`
+	City          PostalLineType    `json:"City" binding:"required" example:"Buenos Aires" extensions:"x-order=3"`
+	StateProvince OptPostalLineType `json:"SP" example:"Palermo SOHO" extensions:"x-order=4"`
+	PostalCode    PCType            `json:"PC" example:"EN234Z" extensions:"x-order=5"`
+	CountryCode   CCType            `json:"CC" binding:"required" example:"AR" extensions:"x-order=6"`
 }
 
 // NewAddress creates a new Address

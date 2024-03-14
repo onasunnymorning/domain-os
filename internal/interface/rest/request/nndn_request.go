@@ -6,7 +6,7 @@ import (
 
 // CreateNNDNRequest defines the structure for the create NNDN request payload
 type CreateNNDNRequest struct {
-	Name string `json:"name" binding:"required"`
+	Name string `json:"Name" binding:"required"`
 }
 
 // ToCreateNNDNCommand converts the CreateNNDNRequest to CreateNNDNCommand used by the service layer

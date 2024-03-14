@@ -40,7 +40,7 @@ func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*ent
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(dbContact).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.Join(entities.ErrContactNotFound, err)
+			return nil, entities.ErrContactNotFound
 		}
 		return nil, err
 	}
@@ -70,4 +70,29 @@ func (r *ContactRepository) DeleteContactByID(ctx context.Context, id string) er
 		return err
 	}
 	return nil
+}
+
+// // ListContacts returns a list of contacts
+func (r *ContactRepository) ListContacts(ctx context.Context, pagesize int, cursor string) ([]*entities.Contact, error) {
+	var roidInt int64
+	var err error
+	if cursor != "" {
+		roid := entities.RoidType(cursor)
+		roidInt, err = roid.Int64()
+		if err != nil {
+			return nil, err
+		}
+	}
+	dbContacts := []*Contact{}
+	err = r.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbContacts, "ro_id > ?", roidInt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	contacts := make([]*entities.Contact, len(dbContacts))
+	for i, c := range dbContacts {
+		contacts[i] = FromDBContact(c)
+	}
+
+	return contacts, nil
 }

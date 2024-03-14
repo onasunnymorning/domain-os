@@ -3,16 +3,16 @@ package commands
 import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
 type CreateRegistrarCommand struct {
-	ClID        string                           `json:"clid" binding:"required"`
-	Name        string                           `json:"name" binding:"required"`
-	Email       string                           `json:"email" binding:"required"`
-	PostalInfo  [2]*entities.RegistrarPostalInfo `json:"postalInfo" binding:"required"`
-	GurID       int                              `json:"gurid"`
-	Voice       string                           `json:"voice"`
-	Fax         string                           `json:"fax"`
-	URL         string                           `json:"url"`
-	RdapBaseURL string                           `json:"rdapBaseUrl"`
-	WhoisInfo   *entities.WhoisInfo              `json:"whoisInfo"`
+	ClID        string                           `json:"ClID" binding:"required"`
+	Name        string                           `json:"Name" binding:"required"`
+	Email       string                           `json:"Email" binding:"required"`
+	PostalInfo  [2]*entities.RegistrarPostalInfo `json:"PostalInfo" binding:"required"`
+	GurID       int                              `json:"GurID"`
+	Voice       string                           `json:"Voice"`
+	Fax         string                           `json:"Fax"`
+	URL         string                           `json:"URL"`
+	RdapBaseURL string                           `json:"RdapBaseURL"`
+	WhoisInfo   *entities.WhoisInfo              `json:"WhoisInfo"`
 }
 
 type CreateRegistrarCommandResult struct {

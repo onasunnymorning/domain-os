@@ -3,10 +3,10 @@ package request
 import "github.com/onasunnymorning/domain-os/internal/application/commands"
 
 type CreateRegistrarRequest struct {
-	ClID  string `json:"clid" binding:"required"`
-	Name  string `json:"name" binding:"required"`
-	Email string `json:"email" binding:"required"`
-	GurID int    `json:"gurid"`
+	ClID  string `json:"Clid" binding:"required"`
+	Name  string `json:"Name" binding:"required"`
+	Email string `json:"Email" binding:"required"`
+	GurID int    `json:"GurID"`
 }
 
 func (r *CreateRegistrarRequest) ToCreateRegistrarCommand() (*commands.CreateRegistrarCommand, error) {
@@ -19,5 +19,5 @@ func (r *CreateRegistrarRequest) ToCreateRegistrarCommand() (*commands.CreateReg
 }
 
 type CreateRegistrarFromGurIDRequest struct {
-	Email string `json:"email" binding:"required"`
+	Email string `json:"Email" binding:"required"`
 }

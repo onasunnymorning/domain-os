@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 )
 
 func getValidRegistrar() *entities.Registrar {
+	cr, _ := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
 	r := &entities.Registrar{
 		ClID:        entities.ClIDType("my-registrar-id"),
 		Name:        "My Registrar's Name",
@@ -23,6 +25,8 @@ func getValidRegistrar() *entities.Registrar {
 			Name: entities.DomainName("whois.myregistrar.com"),
 			URL:  entities.URL("http://whois.myregistrar.com"),
 		},
+		CreatedAt: cr,
+		UpdatedAt: cr,
 	}
 
 	a0 := &entities.Address{

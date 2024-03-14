@@ -5,6 +5,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
@@ -15,9 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	_ "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
-	swaggerFiles "github.com/swaggo/files"        // swagger embed files
-	ginSwagger "github.com/swaggo/gin-swagger"    // gin-swagger middleware
+	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
+	swaggerFiles "github.com/swaggo/files"           // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -28,11 +29,35 @@ func inLambda() bool {
 	return false
 }
 
-// @title APEX RegistryOS
-// @version 0.5.1
+// setSwaggerInfo sets the swagger info dynamically based on the environment variables
+func setSwaggerInfo() {
+	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
+	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+}
+
+// runningInDocker returns true if the code is running in a Docker container. We determine this by looking for the /.dockerenv file
+func runningInDocker() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	return false
+}
+
+// @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
-	godotenv.Load()
+	// Load environment variables when not running in Docker
+	if !runningInDocker() {
+		log.Println("Running outside of Docker")
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Error loading .env file")
+		}
+	} else {
+		log.Println("Running in Docker")
+	}
+
+	setSwaggerInfo()
 
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
@@ -46,6 +71,15 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
+
+	// Roid
+	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+	if err != nil {
+		panic(err)
+	}
+	roidService := services.NewRoidService(idGenerator)
+	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
+	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
@@ -70,6 +104,10 @@ func main() {
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	registrarService := services.NewRegistrarService(registrarRepo)
 
+	// Contacts
+	contactRepo := postgres.NewContactRepository(gormDB)
+	contactService := services.NewContactService(contactRepo, *roidService)
+
 	r := gin.Default()
 
 	rest.NewPingController(r)
@@ -79,6 +117,7 @@ func main() {
 	rest.NewSpec5Controller(r, spec5Service)
 	rest.NewIANARegistrarController(r, ianaRegistrarService)
 	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
+	rest.NewContactController(r, contactService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

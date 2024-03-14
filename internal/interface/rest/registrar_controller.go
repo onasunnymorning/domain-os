@@ -1,9 +1,10 @@
 package rest
 
 import (
+	"strconv"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/pkg/errors"
-	"strconv"
 
 	"github.com/docker/docker/pkg/namesgenerator"
 
@@ -97,13 +98,13 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 		return
 	}
 
-	// Set the meta and data if there are results only
+	response.Data = rars
+	// Set the metadata if there are results only
 	if len(rars) > 0 {
-		response.Data = rars
 		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize)
 	}
 
-	ctx.JSON(200, rars)
+	ctx.JSON(200, response)
 }
 
 // Create godoc
@@ -120,17 +121,39 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 	var cmd commands.CreateRegistrarCommand
 	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	result, err := ctrl.rarService.Create(ctx, &cmd)
 	if err != nil {
-		ctx.JSON(500, gin.H{"error": err.Error()})
-		return
+		switch {
+		case errors.Is(err, entities.ErrInvalidClIDType):
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		case errors.Is(err, entities.ErrInvalidEmail):
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		case errors.Is(err, entities.ErrInvalidRegistrarPostalInfo):
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		case errors.Is(err, entities.ErrInvalidE164Type):
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		case errors.Is(err, entities.ErrInvalidURL):
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		default:
+			ctx.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
-	ctx.JSON(200, result)
+	ctx.JSON(201, result)
 }
 
 // DeleteRegistrarByClID godoc

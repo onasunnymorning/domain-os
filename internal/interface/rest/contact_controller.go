@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 type ContactController struct {
@@ -20,9 +22,10 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 		contactService: contactService,
 	}
 
+	e.GET("/contacts", controller.ListContacts)
 	e.GET("/contacts/:id", controller.GetContactByID)
 	e.POST("/contacts", controller.CreateContact)
-	e.PUT("/contacts", controller.UpdateContact)
+	e.PUT("/contacts/:id", controller.UpdateContact)
 	e.DELETE("/contacts/:id", controller.DeleteContactByID)
 
 	return controller
@@ -68,6 +71,10 @@ func (ctrl *ContactController) GetContactByID(ctx *gin.Context) {
 func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	var req commands.CreateContactCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -97,21 +104,47 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /contacts [put]
+// @Router /contacts/:id [put]
 func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
-	var req entities.Contact
+	var req commands.UpdateContactCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	_, err := req.IsValid()
+	// Look up the contact
+	c, err := ctrl.contactService.GetContactByID(ctx, ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	fmt.Printf("\n\nContact Command: %+v\n\n", c)
+
+	// Make the changes
+	c.Email = req.Email
+	c.AuthInfo = req.AuthInfo
+	c.ClID = req.ClID
+	c.CrRr = req.CrRr
+	c.UpRr = req.UpRr
+	c.PostalInfo = req.PostalInfo
+	c.Voice = req.Voice
+	c.Fax = req.Fax
+	c.Status = req.Status
+	c.Disclose = req.Disclose
+
+	fmt.Printf("\n\nContact: %+v\n\n", c)
+
+	c.SetOKStatusIfNeeded()
+	c.UnSetOKStatusIfNeeded()
+
+	// Validate the changes
+	_, err = c.IsValid()
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	contact, err := ctrl.contactService.UpdateContact(ctx, &req)
+	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -144,4 +177,49 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusNoContent, nil)
+}
+
+// ListContacts godoc
+// @Summary List contacts
+// @Description List contacts
+// @Tags Contacts
+// @Produce json
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} entities.Contact
+// @Failure 400
+// @Failure 500
+// @Router /contacts [get]
+func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the contacts from the service
+	contacts, err := ctrl.contactService.ListContacts(ctx, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	response.Data = contacts
+	if len(contacts) > 0 {
+		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize)
+	}
+
+	// Return the response
+	ctx.JSON(200, response)
+
 }

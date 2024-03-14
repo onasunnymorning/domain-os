@@ -2,8 +2,8 @@ package entities
 
 // WhoisInfo Value Object
 type WhoisInfo struct {
-	Name DomainName `json:"name" example:"whois.apex.domains" extensions:"x-order=0"`        // name of the registrar WHOIS server listening on TCP port 43
-	URL  URL        `json:"url" example:"https://apex.domains/whois" extensions:"x-order=1"` // URL of the registrar WHOIS server listening on TCP port 80/443
+	Name DomainName `json:"Name" example:"whois.apex.domains" extensions:"x-order=0"`        // name of the registrar WHOIS server listening on TCP port 43
+	URL  URL        `json:"URL" example:"https://apex.domains/whois" extensions:"x-order=1"` // URL of the registrar WHOIS server listening on TCP port 80/443
 }
 
 // NewWhoisInfo returns a validated WhoisInfo object. It returns an error if any of the input parameters fail validation.

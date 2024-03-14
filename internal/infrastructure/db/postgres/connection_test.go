@@ -3,11 +3,12 @@ package postgres
 import (
 	"database/sql"
 	"fmt"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"log"
 	"os"
 	"testing"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 const (
@@ -16,7 +17,7 @@ const (
 	dbHost       = "127.0.0.1"
 	dbPortString = "5432"
 	dbPort       = 5432
-	dbName       = "regos4_unittests"
+	dbName       = "dos_unittests"
 )
 
 func setupTestDB() *gorm.DB {
