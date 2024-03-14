@@ -69,8 +69,8 @@ func ToDBContact(c *entities.Contact) *Contact {
 	dbContact.AuthInfo = c.AuthInfo.String()
 	dbContact.CreatedAt = c.CreatedAt
 	dbContact.UpdatedAt = c.UpdatedAt
-	dbContact.ContactDisclose = c.ContactDisclose
-	dbContact.ContactStatus = c.ContactStatus
+	dbContact.ContactDisclose = c.Disclose
+	dbContact.ContactStatus = c.Status
 
 	if c.PostalInfo[0] != nil {
 		dbContact.NameInt = c.PostalInfo[0].Name.String()
@@ -123,8 +123,8 @@ func FromDBContact(c *Contact) *entities.Contact {
 	domainContact.AuthInfo = entities.AuthInfoType(c.AuthInfo)
 	domainContact.CreatedAt = c.CreatedAt
 	domainContact.UpdatedAt = c.UpdatedAt
-	domainContact.ContactDisclose = c.ContactDisclose
-	domainContact.ContactStatus = c.ContactStatus
+	domainContact.Disclose = c.ContactDisclose
+	domainContact.Status = c.ContactStatus
 
 	a0 := &entities.Address{
 		Street1:       entities.OptPostalLineType(c.Street1Int),

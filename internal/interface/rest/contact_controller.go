@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -117,6 +118,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	fmt.Printf("\n\nContact Command: %+v\n\n", c)
 
 	// Make the changes
 	c.Email = req.Email
@@ -127,8 +129,10 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	c.PostalInfo = req.PostalInfo
 	c.Voice = req.Voice
 	c.Fax = req.Fax
-	c.ContactStatus = req.ContactStatus
-	c.ContactDisclose = req.ContactDisclose
+	c.Status = req.Status
+	c.Disclose = req.Disclose
+
+	fmt.Printf("\n\nContact: %+v\n\n", c)
 
 	c.SetOKStatusIfNeeded()
 	c.UnSetOKStatusIfNeeded()
