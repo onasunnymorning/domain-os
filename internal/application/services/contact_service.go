@@ -46,7 +46,7 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	}
 	c, err := entities.NewContact(cmd.ID, roid.String(), cmd.Email, cmd.AuthInfo, cmd.ClID)
 	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidContact, err)
+		return nil, err
 	}
 
 	for _, pi := range cmd.PostalInfo {

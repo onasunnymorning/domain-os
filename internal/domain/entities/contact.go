@@ -106,34 +106,34 @@ func (c *Contact) SetFullStatus(status ContactStatus) error {
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9
 // True means disclose, false means don't disclose.
 type ContactDisclose struct {
-	DiscloseNameInt bool `json:"DiscloseNameInt" example:"false"`
-	DiscloseNameLoc bool `json:"DiscloseNameLoc" example:"false"`
-	DiscloseOrgInt  bool `json:"DiscloseOrgInt" example:"false"`
-	DiscloseOrgLoc  bool `json:"DiscloseOrgLoc" example:"false"`
-	DiscloseAddrInt bool `json:"DiscloseAddrInt" example:"false"`
-	DiscloseAddrLoc bool `json:"DiscloseAddrLoc" example:"false"`
-	DiscloseVoice   bool `json:"DiscloseVoice" example:"false"`
-	DiscloseFax     bool `json:"DiscloseFax" example:"false"`
-	DiscloseEmail   bool `json:"DiscloseEmail" example:"false"`
+	NameInt bool `json:"NameInt" example:"false"`
+	NameLoc bool `json:"NameLoc" example:"false"`
+	OrgInt  bool `json:"OrgInt" example:"false"`
+	OrgLoc  bool `json:"OrgLoc" example:"false"`
+	AddrInt bool `json:"AddrInt" example:"false"`
+	AddrLoc bool `json:"AddrLoc" example:"false"`
+	Voice   bool `json:"Voice" example:"false"`
+	Fax     bool `json:"Fax" example:"false"`
+	Email   bool `json:"Email" example:"false"`
 }
 
 // IsNil checks if the ContactDisclose is nil (all fields are false)
 func (d *ContactDisclose) IsNil() bool {
-	return !d.DiscloseNameInt && !d.DiscloseNameLoc && !d.DiscloseOrgInt && !d.DiscloseOrgLoc && !d.DiscloseAddrInt && !d.DiscloseAddrLoc && !d.DiscloseVoice && !d.DiscloseFax && !d.DiscloseEmail
+	return !d.NameInt && !d.NameLoc && !d.OrgInt && !d.OrgLoc && !d.AddrInt && !d.AddrLoc && !d.Voice && !d.Fax && !d.Email
 }
 
 // NewDiscloseStruct creates a new Disclose struct with default values
 func NewDiscloseStruct(v bool) *ContactDisclose {
 	return &ContactDisclose{
-		DiscloseNameInt: v,
-		DiscloseNameLoc: v,
-		DiscloseOrgInt:  v,
-		DiscloseOrgLoc:  v,
-		DiscloseAddrInt: v,
-		DiscloseAddrLoc: v,
-		DiscloseVoice:   v,
-		DiscloseFax:     v,
-		DiscloseEmail:   v,
+		NameInt: v,
+		NameLoc: v,
+		OrgInt:  v,
+		OrgLoc:  v,
+		AddrInt: v,
+		AddrLoc: v,
+		Voice:   v,
+		Fax:     v,
+		Email:   v,
 	}
 }
 

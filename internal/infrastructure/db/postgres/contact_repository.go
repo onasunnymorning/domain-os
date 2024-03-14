@@ -40,7 +40,7 @@ func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*ent
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(dbContact).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.Join(entities.ErrContactNotFound, err)
+			return nil, entities.ErrContactNotFound
 		}
 		return nil, err
 	}
