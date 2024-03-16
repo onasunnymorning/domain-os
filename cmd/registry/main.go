@@ -108,6 +108,12 @@ func main() {
 	contactRepo := postgres.NewContactRepository(gormDB)
 	contactService := services.NewContactService(contactRepo, *roidService)
 
+	// Hosts
+	hostRepo := postgres.NewGormHostRepository(gormDB)
+	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
+	hostService := services.NewHostService(hostRepo, hostAddressRepo, *roidService)
+
+	// Gin router
 	r := gin.Default()
 
 	rest.NewPingController(r)
@@ -118,6 +124,7 @@ func main() {
 	rest.NewIANARegistrarController(r, ianaRegistrarService)
 	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
 	rest.NewContactController(r, contactService)
+	rest.NewHostController(r, hostService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

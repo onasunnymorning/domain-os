@@ -78,6 +78,9 @@ func (r *ContactRepository) ListContacts(ctx context.Context, pagesize int, curs
 	var err error
 	if cursor != "" {
 		roid := entities.RoidType(cursor)
+		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+			return nil, entities.ErrInvalidRoid
+		}
 		roidInt, err = roid.Int64()
 		if err != nil {
 			return nil, err
