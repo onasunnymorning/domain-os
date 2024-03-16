@@ -21,6 +21,8 @@ const (
 )
 
 var (
+	ErrInvalidHost                 = fmt.Errorf("invalid host")
+	ErrHostNotFound                = fmt.Errorf("host not found")
 	ErrDuplicateHostAddress        = fmt.Errorf("duplicate host address")
 	ErrHostAddressNotFound         = fmt.Errorf("host address not found")
 	ErrMaxAddressesPerHostExceeded = fmt.Errorf("maximum number of %d addresses per host exceeded", MAX_ADDRESSES_PER_HOST)
@@ -79,44 +81,47 @@ func NewHost(name, roid, clid string) (*Host, error) {
 }
 
 // AddAddress adds a new address to the host. It will return an error if the address already exists or if the maximum number of addresses per host is exceeded. Or if the address is invalid
-func (h *Host) AddAddress(addr string) error {
+func (h *Host) AddAddress(addr string) (*netip.Addr, error) {
+	if !h.CanBeUpdated() {
+		return nil, ErrHostUpdateProhibited
+	}
 	if len(h.Addresses) >= MAX_ADDRESSES_PER_HOST {
-		return ErrMaxAddressesPerHostExceeded
+		return nil, ErrMaxAddressesPerHostExceeded
 	}
 	// Check if its valid
 	a, err := netip.ParseAddr(addr)
 	if err != nil {
-		return ErrInvalidIP
+		return nil, ErrInvalidIP
 	}
 	// Check if it already exists
 	for _, address := range h.Addresses {
 		if address.String() == a.String() {
-			return ErrDuplicateHostAddress
+			return nil, ErrDuplicateHostAddress
 		}
 	}
 	h.Addresses = append(h.Addresses, a)
-	return nil
+	return &a, nil
 }
 
 // RemoveAddress removes an address from the host. If the address is not found or invalid it will return an error
-func (h *Host) RemoveAddress(addr string) error {
+func (h *Host) RemoveAddress(addr string) (*netip.Addr, error) {
 	if len(h.Addresses) == 0 {
-		return ErrHostAddressNotFound
+		return nil, ErrHostAddressNotFound
 	}
 	// Check if its valid
 	a, err := netip.ParseAddr(addr)
 	if err != nil {
-		return ErrInvalidIP
+		return nil, ErrInvalidIP
 	}
 	// Remove it
 	for i, address := range h.Addresses {
 		if address.String() == a.String() {
 			h.Addresses = append(h.Addresses[:i], h.Addresses[i+1:]...)
-			return nil
+			return &address, nil
 		}
 	}
 	// If we didn't return yet, the address was Not found
-	return ErrHostAddressNotFound
+	return nil, ErrHostAddressNotFound
 }
 
 // CanBeDeleted returns true if the host can be deleted and returns false if a status is set that prevents deletion (ServerDeleteProhibited or ClientDeleteProhibited)
