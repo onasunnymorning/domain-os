@@ -54,8 +54,8 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.AuthInfo = entities.AuthInfoType(dbDom.AuthInfo)
 	d.CreatedAt = dbDom.CreatedAt
 	d.UpdatedAt = dbDom.UpdatedAt
-	d.DomainStatus = dbDom.DomainStatus
-	d.DomainsRGPStatus = dbDom.DomainsRGPStatus
+	d.Status = dbDom.DomainStatus
+	d.RGPStatus = dbDom.DomainsRGPStatus
 	if dbDom.CrRr != nil {
 		d.CrRr = entities.ClIDType(*dbDom.CrRr)
 	}
@@ -84,8 +84,8 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.AuthInfo = d.AuthInfo.String()
 	dbDomain.CreatedAt = d.CreatedAt
 	dbDomain.UpdatedAt = d.UpdatedAt
-	dbDomain.DomainStatus = d.DomainStatus
-	dbDomain.DomainsRGPStatus = d.DomainsRGPStatus
+	dbDomain.DomainStatus = d.Status
+	dbDomain.DomainsRGPStatus = d.RGPStatus
 
 	if d.CrRr != entities.ClIDType("") {
 		rar := d.CrRr.String()

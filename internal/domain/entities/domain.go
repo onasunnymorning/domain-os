@@ -12,26 +12,25 @@ var (
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID         RoidType     `json:"RoID"`
-	Name         DomainName   `json:"Name"`
-	OriginalName string       `json:"OriginalName"`
-	UName        string       `json:"UName"`
-	RegistrantID ClIDType     `json:"RegistrantID"`
-	AdminID      ClIDType     `json:"AdminID"`
-	TechID       ClIDType     `json:"TechID"`
-	BillingID    ClIDType     `json:"BillingID"`
-	ClID         ClIDType     `json:"ClID"`
-	CrRr         ClIDType     `json:"CrRr"`
-	UpRr         ClIDType     `json:"UpRr"`
-	TLDName      DomainName   `json:"TLDName"`
-	ExpiryDate   time.Time    `json:"ExpiryDate"`
-	RenewedYears int          `json:"RenewedYears"`
-	AuthInfo     AuthInfoType `json:"AuthInfo"`
-	CreatedAt    time.Time    `json:"CreatedAt"`
-	UpdatedAt    time.Time    `json:"UpdatedAt"`
-
-	DomainStatus
-	DomainsRGPStatus
+	RoID         RoidType         `json:"RoID"`
+	Name         DomainName       `json:"Name"`
+	OriginalName string           `json:"OriginalName"`
+	UName        string           `json:"UName"`
+	RegistrantID ClIDType         `json:"RegistrantID"`
+	AdminID      ClIDType         `json:"AdminID"`
+	TechID       ClIDType         `json:"TechID"`
+	BillingID    ClIDType         `json:"BillingID"`
+	ClID         ClIDType         `json:"ClID"`
+	CrRr         ClIDType         `json:"CrRr"`
+	UpRr         ClIDType         `json:"UpRr"`
+	TLDName      DomainName       `json:"TLDName"`
+	ExpiryDate   time.Time        `json:"ExpiryDate"`
+	RenewedYears int              `json:"RenewedYears"`
+	AuthInfo     AuthInfoType     `json:"AuthInfo"`
+	CreatedAt    time.Time        `json:"CreatedAt"`
+	UpdatedAt    time.Time        `json:"UpdatedAt"`
+	Status       DomainStatus     `json:"Status"`
+	RGPStatus    DomainsRGPStatus `json:"RGPStatus"`
 }
 
 const (
@@ -135,7 +134,7 @@ func (d *Domain) Validate() error {
 	if err := d.AuthInfo.Validate(); err != nil {
 		return err
 	}
-	if err := d.DomainStatus.Validate(); err != nil {
+	if err := d.Status.Validate(); err != nil {
 		return err
 	}
 	return nil
