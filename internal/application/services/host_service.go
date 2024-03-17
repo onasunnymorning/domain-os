@@ -133,6 +133,10 @@ func (s *HostService) AddHostAddress(ctx context.Context, roidString, ip string)
 	// Add the addresses
 	a, err := host.AddAddress(ip)
 	if err != nil {
+		// If its already there we return the host and make this idempotent
+		if errors.Is(err, entities.ErrDuplicateHostAddress) {
+			return host, nil
+		}
 		return nil, err
 	}
 
@@ -167,6 +171,10 @@ func (s *HostService) RemoveHostAddress(ctx context.Context, roidString, ip stri
 	// Add the addresses
 	a, err := host.RemoveAddress(ip)
 	if err != nil {
+		// If its not there, we return the host and make this idempotent
+		if errors.Is(err, entities.ErrHostAddressNotFound) {
+			return host, nil
+		}
 		return nil, err
 	}
 
