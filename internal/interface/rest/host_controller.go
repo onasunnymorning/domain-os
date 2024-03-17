@@ -22,11 +22,13 @@ func NewHostController(e *gin.Engine, hostService interfaces.HostService) *HostC
 		hostService: hostService,
 	}
 
+	// HOST ROUTES
 	e.GET("/hosts/:roid", c.GetHostByRoID)
 	e.GET("/hosts", c.ListHosts)
 	e.DELETE("/hosts/:roid", c.DeleteHostByRoID)
 	e.POST("/hosts", c.CreateHost)
 
+	// ADDRESSES ROUTES
 	e.POST("/hosts/:roid/addresses/:ip", c.AddAddressToHost)
 	e.DELETE("/hosts/:roid/addresses/:ip", c.RemoveAddressFromHost)
 
