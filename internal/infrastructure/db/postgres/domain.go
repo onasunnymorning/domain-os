@@ -8,26 +8,26 @@ import (
 
 // Domain is the GORM model for the Domain entity
 type Domain struct {
-	RoID                      int64  `gorm:"primaryKey"`
-	Name                      string `grom:"unique"`
-	OriginalName              string
-	UName                     string
-	RegistrantID              string
-	AdminID                   string
-	TechID                    string
-	BillingID                 string
-	ClID                      string
-	CrRr                      *string
-	UpRr                      *string
-	TLDName                   string `gorm:"not null;foreignKey"`
-	TLD                       TLD
-	ExpiryDate                time.Time
-	RenewedYears              int
-	AuthInfo                  string
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
-	entities.DomainStatus     `gorm:"embedded"`
-	entities.DomainsRGPStatus `gorm:"embedded"`
+	RoID                     int64  `gorm:"primaryKey"`
+	Name                     string `grom:"unique"`
+	OriginalName             string
+	UName                    string
+	RegistrantID             string
+	AdminID                  string
+	TechID                   string
+	BillingID                string
+	ClID                     string
+	CrRr                     *string
+	UpRr                     *string
+	TLDName                  string `gorm:"not null;foreignKey"`
+	TLD                      TLD
+	ExpiryDate               time.Time
+	RenewedYears             int
+	AuthInfo                 string
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	entities.DomainStatus    `gorm:"embedded"`
+	entities.DomainRGPStatus `gorm:"embedded"`
 }
 
 // TableName returns the table name for the Domain model
@@ -55,7 +55,7 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.CreatedAt = dbDom.CreatedAt
 	d.UpdatedAt = dbDom.UpdatedAt
 	d.Status = dbDom.DomainStatus
-	d.RGPStatus = dbDom.DomainsRGPStatus
+	d.RGPStatus = dbDom.DomainRGPStatus
 	if dbDom.CrRr != nil {
 		d.CrRr = entities.ClIDType(*dbDom.CrRr)
 	}
@@ -85,7 +85,7 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.CreatedAt = d.CreatedAt
 	dbDomain.UpdatedAt = d.UpdatedAt
 	dbDomain.DomainStatus = d.Status
-	dbDomain.DomainsRGPStatus = d.RGPStatus
+	dbDomain.DomainRGPStatus = d.RGPStatus
 
 	if d.CrRr != entities.ClIDType("") {
 		rar := d.CrRr.String()
