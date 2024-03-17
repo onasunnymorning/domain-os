@@ -55,3 +55,31 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 func (dr *DomainRepository) DeleteDomain(ctx context.Context, id int64) error {
 	return dr.db.WithContext(ctx).Delete(&Domain{}, id).Error
 }
+
+// ListDomains returns a list of Domains
+func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, cursor string) ([]*entities.Domain, error) {
+	var roidInt int64
+	var err error
+	if cursor != "" {
+		roid := entities.RoidType(cursor)
+		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
+			return nil, entities.ErrInvalidRoid
+		}
+		roidInt, err = roid.Int64()
+		if err != nil {
+			return nil, err
+		}
+	}
+	dbDomains := []*Domain{}
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	domains := make([]*entities.Domain, len(dbDomains))
+	for i, d := range dbDomains {
+		domains[i] = ToDomain(d)
+	}
+
+	return domains, nil
+}
