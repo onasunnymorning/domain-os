@@ -170,7 +170,7 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 // @Param        roid path string true "Host ROID"
 // @Param        ip path string true "Host Address"
 // @Produce json
-// @Success 201 {object} entities.host
+// @Success 201 {object} entities.Host
 // @Failure      400
 // @Failure      404
 // @Failure      500
@@ -200,7 +200,7 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 // @Param        roid path string true "Host ROID"
 // @Param        ip path string true "Host Address"
 // @Produce json
-// @Success 201 {object} entities.host
+// @Success 201 {object} entities.Host
 // @Failure      400
 // @Failure      404
 // @Failure      500
