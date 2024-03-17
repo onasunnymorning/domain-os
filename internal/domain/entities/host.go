@@ -39,8 +39,8 @@ type Host struct {
 	Name      DomainName   `json:"Name" exmaple:"ns1.apex.domains" extensions:"x-order=1"`
 	Addresses []netip.Addr `json:"Addresses"`
 	ClID      ClIDType     `json:"ClID" example:"sh8013"`
-	CrRr      ClIDType     `json:"CrRR" example:"sh8013"`
-	UpRr      ClIDType     `json:"UpRR" example:"sh8013"`
+	CrRr      ClIDType     `json:"CrRr" example:"sh8013"`
+	UpRr      ClIDType     `json:"UpRr" example:"sh8013"`
 	CreatedAt time.Time    `json:"CrDate" example:"2023-04-03T22:00:00.0Z"`
 	UpdatedAt time.Time    `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
 	// True if the host is used on a domain that is the parent of the host's FQDN. https://datatracker.ietf.org/doc/html/rfc5732#section-1.1
@@ -61,6 +61,11 @@ type HostStatus struct {
 	ClientUpdateProhibited bool `json:"ClientUpdateProhibited" example:"false"`
 	ServerDeleteProhibited bool `json:"ServerDeleteProhibited" example:"false"`
 	ServerUpdateProhibited bool `json:"ServerUpdateProhibited" example:"false"`
+}
+
+// IsNil checks if the HostStatus is nil (all fields are false)
+func (hs *HostStatus) IsNil() bool {
+	return !hs.OK && !hs.Linked && !hs.PendingCreate && !hs.PendingDelete && !hs.PendingUpdate && !hs.PendingTransfer && !hs.ClientDeleteProhibited && !hs.ClientUpdateProhibited && !hs.ServerDeleteProhibited && !hs.ServerUpdateProhibited
 }
 
 // NewHost creates a new Host with required fields. It will normalize strings
