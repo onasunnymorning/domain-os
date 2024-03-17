@@ -69,6 +69,12 @@ func TestDomain_NewDomain(t *testing.T) {
 			authInfo: "abc123ABC*",
 			wantErr:  ErrInvalidRoid,
 		},
+		{
+			roid:     "123456_HOST-APEX",
+			name:     "example.com",
+			authInfo: "abc123ABC*",
+			wantErr:  ErrInvalidDomainRoID,
+		},
 	}
 
 	for _, tc := range testcases {

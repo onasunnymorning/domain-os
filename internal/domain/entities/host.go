@@ -30,6 +30,7 @@ var (
 	ErrOKStatusMustBeSet           = fmt.Errorf("ok status must be set when no prohibitions are set")
 	ErrUnknownHostStatus           = fmt.Errorf("unknown host status")
 	ErrHostUpdateProhibited        = fmt.Errorf("host update is prohibited")
+	ErrInvalidHostRoID             = fmt.Errorf("invalid Host.RoID.ObjectIdentifier(), expecting '%s'", HOST_ROID_ID)
 )
 
 // Host struct represents a host object based on https://datatracker.ietf.org/doc/html/rfc5732
@@ -261,6 +262,9 @@ func (h *Host) Validate() error {
 	}
 	if err := h.RoID.Validate(); err != nil {
 		return err
+	}
+	if h.RoID.ObjectIdentifier() != HOST_ROID_ID {
+		return ErrInvalidHostRoID
 	}
 	if err := h.ClID.Validate(); err != nil {
 		return err

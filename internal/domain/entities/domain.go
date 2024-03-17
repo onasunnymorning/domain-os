@@ -1,6 +1,13 @@
 package entities
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+var (
+	ErrInvalidDomainRoID = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+)
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
@@ -115,6 +122,9 @@ func NewDomain(roid, name, authInfo string) (*Domain, error) {
 func (d *Domain) Validate() error {
 	if err := d.RoID.Validate(); err != nil {
 		return err
+	}
+	if d.RoID.ObjectIdentifier() != DOMAIN_ROID_ID {
+		return ErrInvalidDomainRoID
 	}
 	if err := d.Name.Validate(); err != nil {
 		return err
