@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
@@ -34,6 +35,9 @@ func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entiti
 	var gormHost Host
 	err := r.db.WithContext(ctx).First(&gormHost, roid).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrHostNotFound
+		}
 		return nil, err
 	}
 	return ToHost(&gormHost), nil

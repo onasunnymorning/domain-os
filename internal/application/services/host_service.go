@@ -26,20 +26,36 @@ func NewHostService(hostRepository repositories.HostRepository, addressRepositor
 }
 
 // CreateHost creates a new host including its optional addresses
-func (s *HostService) CreateHost(ctx context.Context, h *commands.CreateHostCommand) (*entities.Host, error) {
+func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCommand) (*entities.Host, error) {
 	roid, err := s.roidService.GenerateRoid("host")
 	if err != nil {
 		return nil, err
 	}
-	host, err := entities.NewHost(h.Name, roid.String(), h.ClID.String())
+	host, err := entities.NewHost(cmd.Name, roid.String(), cmd.ClID.String())
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidHost, err)
 	}
-	for _, a := range h.Addresses {
+	// Add the addresses
+	for _, a := range cmd.Addresses {
 		_, err := host.AddAddress(a)
 		if err != nil {
 			return nil, errors.Join(entities.ErrInvalidHost, err)
 		}
+	}
+	// Set the optional paramerters
+	if cmd.CrRr != "" {
+		host.CrRr = cmd.CrRr
+	}
+	if cmd.UpRr != "" {
+		host.UpRr = cmd.UpRr
+	}
+	if !cmd.Status.IsNil() {
+		host.Status = cmd.Status
+	}
+
+	// Check if we still have a valid host
+	if err := host.Validate(); err != nil {
+		return nil, errors.Join(entities.ErrInvalidHost, err)
 	}
 
 	dbHost, err := s.hostRepository.CreateHost(ctx, host)

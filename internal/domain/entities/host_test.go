@@ -659,3 +659,28 @@ func TestHost_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestHostStatus_IsNil(t *testing.T) {
+	testcases := []struct {
+		name string
+		hs   HostStatus
+		nils bool
+	}{
+		{
+			name: "nil",
+			hs:   HostStatus{},
+			nils: true,
+		},
+		{
+			name: "not nil",
+			hs:   HostStatus{OK: true},
+			nils: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.nils, tc.hs.IsNil())
+		})
+	}
+}
