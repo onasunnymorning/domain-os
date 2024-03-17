@@ -184,6 +184,10 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, entities.ErrHostUpdateProhibited) {
+			ctx.JSON(403, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
