@@ -33,7 +33,7 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 // GetHostByRoid gets a host by its roid
 func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entities.Host, error) {
 	var gormHost Host
-	err := r.db.WithContext(ctx).First(&gormHost, roid).Error
+	err := r.db.WithContext(ctx).Preload("Addresses").First(&gormHost, roid).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrHostNotFound
