@@ -594,6 +594,17 @@ func TestHost_Validate(t *testing.T) {
 			err: ErrInvalidRoid,
 		},
 		{
+			name: "invalid roid.ObjectIdentifier()",
+			host: &Host{
+				Name:   DomainName("example.com"),
+				RoID:   "12345_DOM-APEX",
+				ClID:   "67890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true},
+			},
+			err: ErrInvalidHostRoID,
+		},
+		{
 			name: "invalid clid",
 			host: &Host{
 				Name:   DomainName("example.com"),
@@ -616,7 +627,7 @@ func TestHost_Validate(t *testing.T) {
 			err: ErrHostStatusIncompatible,
 		},
 		{
-			name: "invalid  addresses",
+			name: "invalid addresses",
 			host: &Host{
 				Name:      DomainName("example.com"),
 				RoID:      "12345_HOST-APEX",
