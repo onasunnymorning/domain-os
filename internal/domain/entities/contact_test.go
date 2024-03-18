@@ -570,6 +570,18 @@ func TestContact_IsValid(t *testing.T) {
 			expectedResult: false,
 			expectedError:  ErrInvalidContactPostalInfo,
 		},
+		{
+			testName: "invalid roid.ObjectIdentifier()",
+			Contact: Contact{
+				ID:       ClIDType("myref1234"),
+				RoID:     RoidType("123_DOM-APEX"),
+				Email:    "g@me.com",
+				AuthInfo: AuthInfoType("sdfkSD4ljsd;f"),
+				Status:   ContactStatus{OK: true},
+			},
+			expectedResult: false,
+			expectedError:  ErrInvalidContactRoID,
+		},
 	}
 
 	for _, tc := range testcases {

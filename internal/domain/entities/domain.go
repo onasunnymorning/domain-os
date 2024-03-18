@@ -1,30 +1,36 @@
 package entities
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+var (
+	ErrInvalidDomainRoID = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+)
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID         RoidType     `json:"RoID"`
-	Name         DomainName   `json:"Name"`
-	OriginalName string       `json:"OriginalName"`
-	UName        string       `json:"UName"`
-	RegistrantID ClIDType     `json:"RegistrantID"`
-	AdminID      ClIDType     `json:"AdminID"`
-	TechID       ClIDType     `json:"TechID"`
-	BillingID    ClIDType     `json:"BillingID"`
-	ClID         ClIDType     `json:"ClID"`
-	CrRr         ClIDType     `json:"CrRr"`
-	UpRr         ClIDType     `json:"UpRr"`
-	TLDName      DomainName   `json:"TLDName"`
-	ExpiryDate   time.Time    `json:"ExpiryDate"`
-	RenewedYears int          `json:"RenewedYears"`
-	AuthInfo     AuthInfoType `json:"AuthInfo"`
-	CreatedAt    time.Time    `json:"CreatedAt"`
-	UpdatedAt    time.Time    `json:"UpdatedAt"`
-
-	DomainStatus
-	DomainsRGPStatus
+	RoID         RoidType        `json:"RoID"`
+	Name         DomainName      `json:"Name"`
+	OriginalName string          `json:"OriginalName"`
+	UName        string          `json:"UName"`
+	RegistrantID ClIDType        `json:"RegistrantID"`
+	AdminID      ClIDType        `json:"AdminID"`
+	TechID       ClIDType        `json:"TechID"`
+	BillingID    ClIDType        `json:"BillingID"`
+	ClID         ClIDType        `json:"ClID"`
+	CrRr         ClIDType        `json:"CrRr"`
+	UpRr         ClIDType        `json:"UpRr"`
+	TLDName      DomainName      `json:"TLDName"`
+	ExpiryDate   time.Time       `json:"ExpiryDate"`
+	RenewedYears int             `json:"RenewedYears"`
+	AuthInfo     AuthInfoType    `json:"AuthInfo"`
+	CreatedAt    time.Time       `json:"CreatedAt"`
+	UpdatedAt    time.Time       `json:"UpdatedAt"`
+	Status       DomainStatus    `json:"Status"`
+	RGPStatus    DomainRGPStatus `json:"RGPStatus"`
 }
 
 const (
@@ -77,8 +83,8 @@ func (ds *DomainStatus) Validate() error {
 	return nil
 }
 
-// DomainsRGPStatus value object
-type DomainsRGPStatus struct {
+// DomainRGPStatus value object
+type DomainRGPStatus struct {
 	AddPeriodEnd           time.Time `json:"AddPeriodEnd"`
 	RenewPeriodEnd         time.Time `json:"RenewPeriodEnd"`
 	AutoRenewPeriodEnd     time.Time `json:"AutoRenewPeriodEnd"`
@@ -116,6 +122,9 @@ func (d *Domain) Validate() error {
 	if err := d.RoID.Validate(); err != nil {
 		return err
 	}
+	if d.RoID.ObjectIdentifier() != DOMAIN_ROID_ID {
+		return ErrInvalidDomainRoID
+	}
 	if err := d.Name.Validate(); err != nil {
 		return err
 	}
@@ -125,7 +134,7 @@ func (d *Domain) Validate() error {
 	if err := d.AuthInfo.Validate(); err != nil {
 		return err
 	}
-	if err := d.DomainStatus.Validate(); err != nil {
+	if err := d.Status.Validate(); err != nil {
 		return err
 	}
 	return nil

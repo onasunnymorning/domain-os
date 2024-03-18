@@ -72,12 +72,15 @@ func (r *ContactRepository) DeleteContactByID(ctx context.Context, id string) er
 	return nil
 }
 
-// // ListContacts returns a list of contacts
+// ListContacts returns a list of contacts
 func (r *ContactRepository) ListContacts(ctx context.Context, pagesize int, cursor string) ([]*entities.Contact, error) {
 	var roidInt int64
 	var err error
 	if cursor != "" {
 		roid := entities.RoidType(cursor)
+		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+			return nil, entities.ErrInvalidRoid
+		}
 		roidInt, err = roid.Int64()
 		if err != nil {
 			return nil, err
