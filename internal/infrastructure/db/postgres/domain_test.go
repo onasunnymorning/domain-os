@@ -73,6 +73,6 @@ func TestDomain_ToDBDomain(t *testing.T) {
 	require.Equal(t, dbDom.CreatedAt, dbDomain.CreatedAt)
 	require.Equal(t, dbDom.UpdatedAt, dbDomain.UpdatedAt)
 	require.Equal(t, dbDom.DomainStatus, dbDomain.DomainStatus)
-	require.Equal(t, dbDom.DomainsRGPStatus, dbDomain.DomainsRGPStatus)
+	require.Equal(t, dbDom.DomainRGPStatus, dbDomain.DomainRGPStatus)
 
 }

@@ -189,4 +189,12 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(contacts)
 	s.Require().Len(contacts, 1)
+
+	contacts, err = repo.ListContacts(context.Background(), 25, "1234_HOST-APEX")
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+	s.Require().Nil(contacts)
+
+	contacts, err = repo.ListContacts(context.Background(), 25, "abc_CONT-APEX")
+	s.Require().Error(err)
+	s.Require().Nil(contacts)
 }

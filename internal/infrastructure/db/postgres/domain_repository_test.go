@@ -68,6 +68,10 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	s.Require().Equal(domain.AuthInfo, createdDomain.AuthInfo)
 	s.Require().NotNil(createdDomain.RoID)
 
+	// Create the same domains again should result in an error
+	_, err = repo.CreateDomain(context.Background(), createdDomain)
+	s.Require().Error(err)
+
 }
 
 func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
@@ -168,5 +172,56 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 
 	// Ensure the domain was deleted
 	_, err = repo.GetDomainByID(context.Background(), roid)
+	s.Require().Error(err)
+}
+
+func (s *DomainSuite) TestDomainRepository_ListDomains() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	_, err = repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+
+	// Create a second domain
+	domain, err = entities.NewDomain("12345_DOM-APEX", "de.domaintesttld", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	createdDomain2, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+
+	// Create a third domain
+	domain, err = entities.NewDomain("123456_DOM-APEX", "prins.domaintesttld", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	createdDomain3, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+
+	// List all three
+	domains, err := repo.ListDomains(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// List 2
+	domains, err = repo.ListDomains(context.Background(), 2, "")
+	s.Require().NoError(err)
+	s.Require().Equal(2, len(domains))
+
+	// list the last one
+	domains, err = repo.ListDomains(context.Background(), 25, createdDomain2.RoID.String())
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(domains))
+	s.Require().Equal(createdDomain3.RoID, domains[0].RoID)
+
+	// Use a bad roid objectidentifier
+	_, err = repo.ListDomains(context.Background(), 25, "1234_CONT-APEX")
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+
+	// Use a bad roid int64
+	_, err = repo.ListDomains(context.Background(), 25, "ABCD_DOM-APEX")
 	s.Require().Error(err)
 }

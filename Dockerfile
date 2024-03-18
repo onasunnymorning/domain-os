@@ -26,7 +26,7 @@ COPY ./cmd/registry ./cmd/registry
 FROM build as build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/registry
-RUN swag init -g main.go -o /docs -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
+RUN swag init -g main.go -o /docs --parseDependency -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
 # build binary
 WORKDIR /
 RUN go build -o adminAPI /cmd/registry/main.go

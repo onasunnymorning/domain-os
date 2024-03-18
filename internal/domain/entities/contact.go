@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"fmt"
 	"net/mail"
 	"time"
 
@@ -49,6 +50,7 @@ var (
 	ErrInvalidContactStatusCombination = errors.New("invalid combination of contact statuses")
 	ErrContactUpdateNotAllowed         = errors.New("contact status prohibits update")
 	ErrPostalInfoTypeExistsAlready     = errors.New("postalinfo of this type already exists")
+	ErrInvalidContactRoID              = fmt.Errorf("invalid Contact.RoID.ObjectIdentifier(), expecting '%s'", CONTACT_ROID_ID)
 )
 
 // Contact is the contact Entity struct Based on https://www.rfc-editor.org/rfc/rfc5733#section-3.1.2
@@ -386,6 +388,9 @@ func (c *Contact) IsValid() (bool, error) {
 	}
 	if err := c.RoID.Validate(); err != nil {
 		return false, err
+	}
+	if c.RoID.ObjectIdentifier() != CONTACT_ROID_ID {
+		return false, ErrInvalidContactRoID
 	}
 	if !c.Status.IsValidContactStatus() {
 		return false, ErrInvalidContactStatusCombination

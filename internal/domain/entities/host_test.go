@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,11 +74,19 @@ func TestAddHostAddress(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
 			var err error
 			for _, addr := range tc.addresses {
-				err = host.AddAddress(addr)
+				_, err = host.AddAddress(addr)
 			}
 			require.Equal(t, tc.err, err)
 		})
 	}
+}
+
+func TestAddHostAddress_UpdateProhibited(t *testing.T) {
+	host, _ := NewHost("example.com", "12345", "67890")
+	host.SetStatus(HostStatusClientUpdateProhibited)
+
+	_, err := host.AddAddress("195.238.2.21")
+	require.ErrorIs(t, err, ErrHostUpdateProhibited)
 }
 
 func TestRemoveHostAddress(t *testing.T) {
@@ -137,10 +146,10 @@ func TestRemoveHostAddress(t *testing.T) {
 			host, _ := NewHost("example.com", "12345", "67890")
 			var err error
 			for _, addr := range tc.addresses {
-				err = host.AddAddress(addr)
+				_, err = host.AddAddress(addr)
 			}
 			for _, addr := range tc.removeAddresses {
-				err = host.RemoveAddress(addr)
+				_, err = host.RemoveAddress(addr)
 			}
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.lenght, len(host.Addresses))
@@ -556,13 +565,14 @@ func TestUnsetHostStatus(t *testing.T) {
 }
 
 func TestHost_Validate(t *testing.T) {
+	validIp, _ := netip.ParseAddr("195.238.2.21")
 	testcases := []struct {
 		name string
 		host *Host
 		err  error
 	}{
 		{
-			name: "valid label doubledash",
+			name: "invalid label doubledash",
 			host: &Host{
 				Name:   DomainName("exa--mple.com"),
 				RoID:   "12345_HOST-APEX",
@@ -582,6 +592,17 @@ func TestHost_Validate(t *testing.T) {
 				Status: HostStatus{OK: true},
 			},
 			err: ErrInvalidRoid,
+		},
+		{
+			name: "invalid roid.ObjectIdentifier()",
+			host: &Host{
+				Name:   DomainName("example.com"),
+				RoID:   "12345_DOM-APEX",
+				ClID:   "67890",
+				CrRr:   "67890",
+				Status: HostStatus{OK: true},
+			},
+			err: ErrInvalidHostRoID,
 		},
 		{
 			name: "invalid clid",
@@ -605,12 +626,61 @@ func TestHost_Validate(t *testing.T) {
 			},
 			err: ErrHostStatusIncompatible,
 		},
+		{
+			name: "invalid addresses",
+			host: &Host{
+				Name:      DomainName("example.com"),
+				RoID:      "12345_HOST-APEX",
+				ClID:      "67890",
+				CrRr:      "67890",
+				Status:    HostStatus{OK: true},
+				Addresses: []netip.Addr{{}},
+			},
+			err: ErrInvalidIP,
+		},
+		{
+			name: "valid including addresses",
+			host: &Host{
+				Name:      DomainName("example.com"),
+				RoID:      "12345_HOST-APEX",
+				ClID:      "67890",
+				CrRr:      "67890",
+				Status:    HostStatus{OK: true},
+				Addresses: []netip.Addr{validIp},
+			},
+			err: nil,
+		},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.host.Validate()
 			require.Equal(t, tc.err, err)
+		})
+	}
+}
+
+func TestHostStatus_IsNil(t *testing.T) {
+	testcases := []struct {
+		name string
+		hs   HostStatus
+		nils bool
+	}{
+		{
+			name: "nil",
+			hs:   HostStatus{},
+			nils: true,
+		},
+		{
+			name: "not nil",
+			hs:   HostStatus{OK: true},
+			nils: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.nils, tc.hs.IsNil())
 		})
 	}
 }
