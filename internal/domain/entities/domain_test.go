@@ -373,3 +373,59 @@ func TestDomain_InvalidStatus(t *testing.T) {
 	require.ErrorIs(t, domain.Validate(), ErrInvalidDomainStatusCombination)
 
 }
+
+func TestDomain_CanBeDeleted(t *testing.T) {
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	require.NoError(t, err)
+
+	require.True(t, domain.CanBeDeleted())
+
+	domain.Status.PendingDelete = true
+	require.False(t, domain.CanBeDeleted())
+
+	domain.Status.PendingDelete = false
+	domain.Status.ClientDeleteProhibited = true
+	require.False(t, domain.CanBeDeleted())
+}
+
+func TestDomain_CanBeUpdated(t *testing.T) {
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	require.NoError(t, err)
+
+	require.True(t, domain.CanBeUpdated())
+
+	domain.Status.PendingUpdate = true
+	require.False(t, domain.CanBeUpdated())
+
+	domain.Status.PendingUpdate = false
+	domain.Status.ClientUpdateProhibited = true
+	require.False(t, domain.CanBeUpdated())
+}
+
+func TestDomain_CanBeRenewed(t *testing.T) {
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	require.NoError(t, err)
+
+	require.True(t, domain.CanBeRenewed())
+
+	domain.Status.PendingRenew = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingRenew = false
+	domain.Status.ClientRenewProhibited = true
+	require.False(t, domain.CanBeRenewed())
+}
+
+func TestDomain_CanBeTransferred(t *testing.T) {
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	require.NoError(t, err)
+
+	require.True(t, domain.CanBeTransferred())
+
+	domain.Status.PendingTransfer = true
+	require.False(t, domain.CanBeTransferred())
+
+	domain.Status.PendingTransfer = false
+	domain.Status.ClientTransferProhibited = true
+	require.False(t, domain.CanBeTransferred())
+}
