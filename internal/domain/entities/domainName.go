@@ -82,6 +82,16 @@ func (d *DomainName) ToUnicode() (string, error) {
 	return s, nil
 }
 
+// IsIDN returns true if the domainname is an IDN. It returns false if it is a non-IDN domain.
+// If the unicode (U-label) string of a domain is different than the ascii (A-label) then we determine we are dealing with an IDN domain.
+func (d *DomainName) IsIDN() (bool, error) {
+	unicode, err := d.ToUnicode()
+	if err != nil {
+		return false, err
+	}
+	return unicode != d.String(), nil
+}
+
 // GetLabels returns a slice of Labels from the domain name
 func (d *DomainName) GetLabels() []Label {
 	labelStrings := strings.Split(d.String(), ".")
