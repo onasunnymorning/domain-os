@@ -3,6 +3,7 @@ package entities
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/idna"
@@ -428,4 +429,14 @@ func TestDomain_CanBeTransferred(t *testing.T) {
 	domain.Status.PendingTransfer = false
 	domain.Status.ClientTransferProhibited = true
 	require.False(t, domain.CanBeTransferred())
+}
+
+func TestDomainRGPStatus_IsNil(t *testing.T) {
+	rgp := DomainRGPStatus{}
+	require.True(t, rgp.IsNil())
+
+	rgp = DomainRGPStatus{
+		AddPeriodEnd: time.Now().UTC(),
+	}
+	require.False(t, rgp.IsNil())
 }

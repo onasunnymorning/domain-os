@@ -3,11 +3,14 @@ package entities
 import (
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 var (
+	ErrInvalidDomain                  = errors.New("invalid domain")
 	ErrInvalidDomainRoID              = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
-	ErrInvalidDomainStatusCombination = fmt.Errorf("invalid Domain status combination")
+	ErrInvalidDomainStatusCombination = errors.New("invalid Domain status combination")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -149,7 +152,14 @@ type DomainRGPStatus struct {
 	PendingDeletePeriodEnd time.Time `json:"PendingDeletePeriodEnd"`
 }
 
-// NewDomain creates a new Domain object. It should only be used directly in internal code (e.g. importing data). When Registering and Renewing domains, use the appropriate methods.
+// IsNil checks if the DomainRGPStatus object is nil
+func (d *DomainRGPStatus) IsNil() bool {
+	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PendingDeletePeriodEnd.IsZero()
+}
+
+// NewDomain creates a new Domain object. It returns an error if the Domain object is invalid.
+// This function is intended to admin functionality such as importing domains from an escrow file.
+// It does not set RGP statuses. If creating a domain in the context of a registration, see RegisterDomain instead
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
@@ -167,7 +177,7 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 		return nil, err
 	}
 
-	d.Status = NewDomainStatus()
+	d.Status = NewDomainStatus() // set the default statuses
 
 	if err := d.Validate(); err != nil {
 		return nil, err

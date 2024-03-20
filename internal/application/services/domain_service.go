@@ -1,6 +1,9 @@
 package services
 
 import (
+	"errors"
+
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"golang.org/x/net/context"
@@ -23,4 +26,71 @@ func NewDomainService(repo repositories.DomainRepository, roidService RoidServic
 // ListDomains returns a list of domains
 func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
 	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
+}
+
+// CreateDomain creates a new domain
+func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
+	var roid entities.RoidType
+	var err error
+	if cmd.RoID == "" {
+		roid, err = s.roidService.GenerateRoid("domain")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		roid = entities.RoidType(cmd.RoID) // Validity will be checked in NewDomain
+	}
+	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
+	if err != nil {
+		return nil, err
+	}
+	// Set the optional fields
+	if cmd.OriginalName != "" {
+		d.OriginalName = cmd.OriginalName
+	}
+	if cmd.RegistrantID != "" {
+		d.RegistrantID = entities.ClIDType(cmd.RegistrantID)
+	}
+	if cmd.AdminID != "" {
+		d.AdminID = entities.ClIDType(cmd.AdminID)
+	}
+	if cmd.TechID != "" {
+		d.TechID = entities.ClIDType(cmd.TechID)
+	}
+	if cmd.BillingID != "" {
+		d.BillingID = entities.ClIDType(cmd.BillingID)
+	}
+	if cmd.CrRr != "" {
+		d.CrRr = entities.ClIDType(cmd.CrRr)
+	}
+	if cmd.UpRr != "" {
+		d.UpRr = entities.ClIDType(cmd.UpRr)
+	}
+	if !cmd.ExpiryDate.IsZero() {
+		d.ExpiryDate = cmd.ExpiryDate
+	}
+	if !cmd.CreatedAt.IsZero() {
+		d.CreatedAt = cmd.CreatedAt
+	}
+	if !cmd.UpdatedAt.IsZero() {
+		d.UpdatedAt = cmd.UpdatedAt
+	}
+	if !cmd.Status.IsNil() {
+		d.Status = cmd.Status
+	}
+	if !cmd.RGPStatus.IsNil() {
+		d.RGPStatus = cmd.RGPStatus
+	}
+	// Check if the domain is valid
+	if err := d.Validate(); err != nil {
+		return nil, errors.Join(err, entities.ErrInvalidDomain)
+	}
+
+	// Save the domain
+	dbDomain, err := s.domainRepository.CreateDomain(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+
+	return dbDomain, nil
 }
