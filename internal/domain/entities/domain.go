@@ -6,7 +6,8 @@ import (
 )
 
 var (
-	ErrInvalidDomainRoID = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	ErrInvalidDomainRoID              = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	ErrInvalidDomainStatusCombination = fmt.Errorf("invalid Domain status combination")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -77,10 +78,65 @@ type DomainStatus struct {
 	PendingDelete            bool `json:"PendingDelete"`
 }
 
+// NewDomainStatus returns a DomainStatus with default settings (Inactive and OK)
+func NewDomainStatus() DomainStatus {
+	return DomainStatus{
+		OK:       true,
+		Inactive: true,
+	}
+}
+
 // Valid checks if the DomainStatus object is valid
 func (ds *DomainStatus) Validate() error {
-	// TODO: Implement validation
+	if ds.IsNil() {
+		return ErrInvalidDomainStatusCombination
+	}
+	if ds.HasPendings() && ds.OK {
+		return ErrInvalidDomainStatusCombination
+	}
+	if ds.HasProhibitions() && ds.OK {
+		return ErrInvalidDomainStatusCombination
+	}
+	if !ds.HasPendings() && !ds.HasProhibitions() && !ds.OK {
+		return ErrInvalidDomainStatusCombination
+	}
 	return nil
+}
+
+// IsNil checks if the Domainstatus has all false values
+func (ds *DomainStatus) IsNil() bool {
+	return !ds.OK && !ds.Inactive && !ds.ClientTransferProhibited && !ds.ClientUpdateProhibited && !ds.ClientDeleteProhibited && !ds.ClientRenewProhibited && !ds.ClientHold && !ds.ServerTransferProhibited && !ds.ServerUpdateProhibited && !ds.ServerDeleteProhibited && !ds.ServerRenewProhibited && !ds.ServerHold && !ds.PendingCreate && !ds.PendingRenew && !ds.PendingTransfer && !ds.PendingUpdate && !ds.PendingRestore && !ds.PendingDelete
+}
+
+// HasProhibitions returns true if the DomainsStatus has any prohibitions set
+func (ds *DomainStatus) HasProhibitions() bool {
+	return ds.ClientTransferProhibited || ds.ClientUpdateProhibited || ds.ClientDeleteProhibited || ds.ClientRenewProhibited || ds.ClientHold || ds.ServerTransferProhibited || ds.ServerUpdateProhibited || ds.ServerDeleteProhibited || ds.ServerRenewProhibited || ds.ServerHold
+}
+
+// HasPendings returns true if the DomainStatus has any pending actions
+func (ds *DomainStatus) HasPendings() bool {
+	return ds.PendingCreate || ds.PendingRenew || ds.PendingTransfer || ds.PendingUpdate || ds.PendingRestore || ds.PendingDelete
+}
+
+// SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
+func (d *Domain) SetOKStatusIfNeeded() {
+	// if nil, we set OK
+	if d.Status.IsNil() {
+		d.Status.OK = true
+		return
+	}
+	// if no prohibitions and no pending exists, we set OK
+	if !d.Status.HasProhibitions() && !d.Status.HasPendings() {
+		d.Status.OK = true
+		return
+	}
+}
+
+// UnSetOKStatusIfNeeded unsets the Domain.Status.OK flag if a prohibition or pending action is present on the DomainStatus
+func (d *Domain) UnSetOKStatusIfNeeded() {
+	if d.Status.HasPendings() || d.Status.HasProhibitions() {
+		d.Status.OK = false
+	}
 }
 
 // DomainRGPStatus value object
@@ -94,12 +150,13 @@ type DomainRGPStatus struct {
 }
 
 // NewDomain creates a new Domain object. It should only be used directly in internal code (e.g. importing data). When Registering and Renewing domains, use the appropriate methods.
-func NewDomain(roid, name, authInfo string) (*Domain, error) {
+func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
 	d := &Domain{
 		RoID:     RoidType(roid),
 		Name:     DomainName(name),
+		ClID:     ClIDType(clid),
 		AuthInfo: AuthInfoType(authInfo),
 	}
 
@@ -109,6 +166,8 @@ func NewDomain(roid, name, authInfo string) (*Domain, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	d.Status = NewDomainStatus()
 
 	if err := d.Validate(); err != nil {
 		return nil, err
@@ -128,7 +187,7 @@ func (d *Domain) Validate() error {
 	if err := d.Name.Validate(); err != nil {
 		return err
 	}
-	if err := d.TLDName.Validate(); err != nil {
+	if err := d.ClID.Validate(); err != nil {
 		return err
 	}
 	if err := d.AuthInfo.Validate(); err != nil {
