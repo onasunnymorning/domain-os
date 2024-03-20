@@ -198,3 +198,23 @@ func (d *Domain) Validate() error {
 	}
 	return nil
 }
+
+// CanBeDeleted checks if the Domain can be deleted (e.g. no delete prohibition is present in its status object: ClientDeleteProhibited or ServerDeleteProhibited). If the domain is alread in pending Delete status, it can't be deleted
+func (d *Domain) CanBeDeleted() bool {
+	return !d.Status.ClientDeleteProhibited && !d.Status.ServerDeleteProhibited && !d.Status.PendingDelete
+}
+
+// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain is alread in pending Renew status, it can't be renewed
+func (d *Domain) CanBeRenewed() bool {
+	return !d.Status.ClientRenewProhibited && !d.Status.ServerRenewProhibited && !d.Status.PendingRenew
+}
+
+// CanBeTransferred checks if the Domain can be transferred (e.g. no transfer prohibition is present in its status object: ClientTransferProhibited or ServerTransferProhibited). If the domain is alread in pending Transfer status, it can't be transferred
+func (d *Domain) CanBeTransferred() bool {
+	return !d.Status.ClientTransferProhibited && !d.Status.ServerTransferProhibited && !d.Status.PendingTransfer
+}
+
+// CanBeUpdated checks if the Domain can be updated (e.g. no update prohibition is present in its status object: ClientUpdateProhibited or ServerUpdateProhibited). If the domain is alread in pending Update status, it can't be updated
+func (d *Domain) CanBeUpdated() bool {
+	return !d.Status.ClientUpdateProhibited && !d.Status.ServerUpdateProhibited && !d.Status.PendingUpdate
+}
