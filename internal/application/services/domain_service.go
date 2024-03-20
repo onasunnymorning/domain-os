@@ -28,7 +28,7 @@ func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor st
 	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
 }
 
-// CreateDomain creates a new domain
+// CreateDomain creates a new domain from a create domain command
 func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
 	var roid entities.RoidType
 	var err error
@@ -87,10 +87,10 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	}
 
 	// Save the domain
-	dbDomain, err := s.domainRepository.CreateDomain(ctx, d)
+	createdDomain, err := s.domainRepository.CreateDomain(ctx, d)
 	if err != nil {
 		return nil, err
 	}
 
-	return dbDomain, nil
+	return createdDomain, nil
 }
