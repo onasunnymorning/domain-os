@@ -23,11 +23,6 @@ func NewDomainService(repo repositories.DomainRepository, roidService RoidServic
 	}
 }
 
-// ListDomains returns a list of domains
-func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
-	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
-}
-
 // CreateDomain creates a new domain from a create domain command
 func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
 	var roid entities.RoidType
@@ -93,4 +88,19 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	}
 
 	return createdDomain, nil
+}
+
+// GetDomainByName retrieves a domain by its name from the repository
+func (s *DomainService) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
+	return s.domainRepository.GetDomainByName(ctx, name)
+}
+
+// DeleteDomainByName deletes a domain by its name from the repository
+func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) error {
+	return s.domainRepository.DeleteDomainByName(ctx, name)
+}
+
+// ListDomains returns a list of domains
+func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
+	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
 }
