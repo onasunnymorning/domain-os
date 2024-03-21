@@ -160,14 +160,14 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 
 	// Delete the domain
 	roid, _ := createdDomain.RoID.Int64()
-	err = repo.DeleteDomain(context.Background(), roid)
+	err = repo.DeleteDomainByID(context.Background(), roid)
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted
 	_, err = repo.GetDomainByID(context.Background(), roid)
 	s.Require().Error(err)
 
-	err = repo.DeleteDomain(context.Background(), roid)
+	err = repo.DeleteDomainByID(context.Background(), roid)
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted

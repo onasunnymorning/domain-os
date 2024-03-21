@@ -38,7 +38,13 @@ func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64) (*entit
 func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
 	d := &Domain{}
 	err := dr.db.Where("name = ?", name).First(d).Error
-	return ToDomain(d), err
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, entities.ErrDomainNotFound
+		}
+		return nil, err
+	}
+	return ToDomain(d), nil
 }
 
 // UpdateDomain updates a domain in the database
@@ -51,9 +57,14 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 	return ToDomain(dbDomain), nil
 }
 
-// DeleteDomain deletes a domain from the database
-func (dr *DomainRepository) DeleteDomain(ctx context.Context, id int64) error {
+// DeleteDomain deletes a domain from the database by its id
+func (dr *DomainRepository) DeleteDomainByID(ctx context.Context, id int64) error {
 	return dr.db.WithContext(ctx).Delete(&Domain{}, id).Error
+}
+
+// DeleteDomain deletes a domain from the database by its name
+func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string) error {
+	return dr.db.WithContext(ctx).Where("name = ?", name).Delete(&Domain{}).Error
 }
 
 // ListDomains returns a list of Domains
