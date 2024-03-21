@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrDomainNotFound                 = errors.New("domain not found")
 	ErrInvalidDomain                  = errors.New("invalid domain")
 	ErrInvalidDomainRoID              = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	ErrInvalidDomainStatusCombination = errors.New("invalid Domain status combination")

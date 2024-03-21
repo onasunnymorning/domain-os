@@ -12,5 +12,5 @@ type DomainRepository interface {
 	GetDomainByName(ctx context.Context, name string) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error)
+	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
 }
