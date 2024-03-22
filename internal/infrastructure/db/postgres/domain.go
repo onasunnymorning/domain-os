@@ -9,7 +9,7 @@ import (
 // Domain is the GORM model for the Domain entity
 type Domain struct {
 	RoID                     int64  `gorm:"primaryKey"`
-	Name                     string `grom:"unique"`
+	Name                     string `gorm:"uniqueIndex,not null"`
 	OriginalName             string
 	UName                    string
 	RegistrantID             string
@@ -21,9 +21,9 @@ type Domain struct {
 	UpRr                     *string
 	TLDName                  string `gorm:"not null;foreignKey"`
 	TLD                      TLD
-	ExpiryDate               time.Time
+	ExpiryDate               time.Time `gorm:"not null"`
 	RenewedYears             int
-	AuthInfo                 string
+	AuthInfo                 string `gorm:"not null"`
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	entities.DomainStatus    `gorm:"embedded"`

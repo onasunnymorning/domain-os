@@ -17,7 +17,7 @@ type Contact struct {
 	ClID                     string
 	CrRr                     *string
 	UpRr                     *string
-	AuthInfo                 string
+	AuthInfo                 string `gorm:"not null"`
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	NameInt                  string
