@@ -7,7 +7,7 @@ import (
 )
 
 type CreateDomainCommand struct {
-	RoID         string                   `json:"RoID"`
+	RoID         string                   `json:"RoID"` // if not provided, it will be generated
 	Name         string                   `json:"Name" binding:"required"`
 	OriginalName string                   `json:"OriginalName"`
 	UName        string                   `json:"UName"`
@@ -18,8 +18,8 @@ type CreateDomainCommand struct {
 	ClID         string                   `json:"ClID" binding:"required"`
 	CrRr         string                   `json:"CrRr"`
 	UpRr         string                   `json:"UpRr"`
-	ExpiryDate   time.Time                `json:"ExpiryDate"`
-	AuthInfo     string                   `json:"AuthInfo"`
+	ExpiryDate   time.Time                `json:"ExpiryDate" binding:"required"`
+	AuthInfo     string                   `json:"AuthInfo"  binding:"required"`
 	CreatedAt    time.Time                `json:"CreatedAt"`
 	UpdatedAt    time.Time                `json:"UpdatedAt"`
 	Status       entities.DomainStatus    `json:"Status"`
