@@ -45,6 +45,9 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	if cmd.OriginalName != "" {
 		d.OriginalName = strings.ToLower(cmd.OriginalName)
 	}
+	if cmd.UName != "" {
+		d.UName = strings.ToLower(cmd.UName)
+	}
 	if cmd.RegistrantID != "" {
 		d.RegistrantID = entities.ClIDType(cmd.RegistrantID)
 	}

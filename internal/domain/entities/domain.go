@@ -149,16 +149,12 @@ func (d *Domain) Validate() error {
 	if err := d.Status.Validate(); err != nil {
 		return err
 	}
-	isIDN, err := d.Name.IsIDN()
-	if err != nil {
-		return err
-	}
-	if !isIDN {
+	if isIDN, _ := d.Name.IsIDN(); !isIDN {
 		if d.OriginalName != "" {
-			return errors.Join(ErrInvalidDomain, ErrOriginalNameFieldReservedForIDN)
+			return ErrOriginalNameFieldReservedForIDN
 		}
 		if d.UName != "" {
-			return errors.Join(ErrInvalidDomain, ErrUNameFieldReservedForIDNDomains)
+			return ErrUNameFieldReservedForIDNDomains
 		}
 	}
 	return nil

@@ -49,10 +49,12 @@ func NewTLD(name string) (*TLD, error) {
 	return tld, nil
 }
 
-// SetUname sets the unicode name of the TLD based on the name. Uname is always set regardless if the name is an IDN. If the name is not an IDN the Uname will be equal to the name.
+// SetUname sets the unicode name of the TLD based on the name. Uname is only set if the tld's domain name is an IDN. If the name is not an IDN the Uname will be empty.
 func (t *TLD) SetUname() {
-	unicode_string, _ := idna.ToUnicode(string(t.Name))
-	t.UName = unicode_string
+	if isIDN, _ := t.Name.IsIDN(); isIDN {
+		unicode_string, _ := idna.ToUnicode(string(t.Name))
+		t.UName = unicode_string
+	}
 }
 
 // Determines TLD type from the name. If the name is 2 characters long, it's a country-code TLD. If it contains a dot, it's a second-level TLD. Otherwise, it's a generic TLD.

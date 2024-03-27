@@ -12,13 +12,13 @@ import (
 
 // NNDN is the GORM representation of an NNDN object for database interaction.
 type NNDN struct {
-	Name      string `gorm:"primaryKey"`           // ASCII Name as primary key
-	UName     string `gorm:"uniqueIndex;not null"` // Unicode Name, unique and not null
-	TLDName   string `gorm:"not null;foreignKey"`  // TLD Name as a foreign key
+	Name      string `gorm:"primaryKey"` // ASCII Name as primary key
+	UName     string // Unicode Name, should only be populated if the blocked string is an IDN
+	TLDName   string `gorm:"not null;foreignKey"` // TLD Name as a foreign key
 	TLD       TLD
-	NameState string    `gorm:"not null"` // State of the NNDN, not null
-	CreatedAt time.Time `gorm:"not null"` // Record creation time, should not be null
-	UpdatedAt time.Time `gorm:"not null"` // Record last update time, should not be null
+	NameState string `gorm:"not null"` // State of the NNDN, not null
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // GormNNDNRepository implements the Repo interface
