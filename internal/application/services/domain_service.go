@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -28,6 +29,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	var roid entities.RoidType
 	var err error
 	if cmd.RoID == "" {
+		// Generate a RoID if none is supplied
 		roid, err = s.roidService.GenerateRoid("domain")
 		if err != nil {
 			return nil, err
@@ -41,7 +43,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	}
 	// Set the optional fields
 	if cmd.OriginalName != "" {
-		d.OriginalName = cmd.OriginalName
+		d.OriginalName = strings.ToLower(cmd.OriginalName)
 	}
 	if cmd.RegistrantID != "" {
 		d.RegistrantID = entities.ClIDType(cmd.RegistrantID)

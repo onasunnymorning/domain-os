@@ -34,20 +34,20 @@ func TestDomain_NewDomain(t *testing.T) {
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "-example.com",
-			authInfo: "abc123",
+			authInfo: "abc123ABC*",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidLabelDash,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     ".com",
-			authInfo: "abc123",
+			authInfo: "abc123ABC*",
 			clid:     "GoMamma",
-			wantErr:  ErrInvalidLabelLength,
+			wantErr:  ErrTLDAsDomain,
 		},
 		{
 			roid:     "123456_DOM-APEX",
-			name:     "example.com",
+			name:     "Example.com",
 			authInfo: "abc123ABC*",
 			clid:     "GoMamma",
 			wantErr:  nil,
@@ -64,21 +64,14 @@ func TestDomain_NewDomain(t *testing.T) {
 			name:     "xn--1.com",
 			authInfo: "abc123ABC*",
 			clid:     "GoMamma",
-			wantErr:  ErrInvalidDomainName,
+			wantErr:  ErrInvalidLabelIDN,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "example.xn--1",
 			authInfo: "abc123ABC*",
 			clid:     "GoMamma",
-			wantErr:  ErrInvalidDomainName,
-		},
-		{
-			roid:     "123456_DOM-APEX",
-			name:     "example.xn--1",
-			authInfo: "abc123ABC*",
-			clid:     "GoMamma",
-			wantErr:  ErrInvalidDomainName,
+			wantErr:  ErrInvalidLabelIDN,
 		},
 		{
 			roid:     "123456_DOM-",
@@ -109,10 +102,10 @@ func TestDomain_NewDomain(t *testing.T) {
 			require.Equal(t, tc.wantErr, err)
 			if err == nil {
 				require.Equal(t, RoidType(tc.roid), d.RoID)
-				require.Equal(t, DomainName(tc.name), d.Name)
+				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
 				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
 				if !strings.Contains(tc.name, "xn--") {
-					require.Equal(t, tc.name, d.UName)
+					require.Equal(t, strings.ToLower(tc.name), d.UName)
 				} else {
 					expected, _ := idna.ToUnicode(tc.name)
 					require.Equal(t, expected, d.UName)
