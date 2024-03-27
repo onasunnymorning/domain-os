@@ -27,9 +27,13 @@ func (s *HostAddressSuite) SetupSuite() {
 	NewGormTLDRepo(s.db)
 
 	// Create a registrar
-	rar, _ := entities.NewRegistrar("199-myrar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	rar, err := entities.NewRegistrar("hostASuiteRar", "hostASuiteRar", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	s.Require().NoError(err)
+	s.Require().NotNil(rar)
 	rarRepo := NewGormRegistrarRepository(s.db)
-	createdRar, _ := rarRepo.Create(context.Background(), rar)
+	createdRar, err := rarRepo.Create(context.Background(), rar)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRar)
 	s.rarClid = createdRar.ClID.String()
 
 	// Create a host

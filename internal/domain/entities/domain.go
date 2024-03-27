@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var (
-	ErrDomainNotFound                 = errors.New("domain not found")
-	ErrInvalidDomain                  = errors.New("invalid domain")
-	ErrTLDAsDomain                    = errors.New("can't create a TLD as a domain")
-	ErrInvalidDomainRoID              = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
-	ErrInvalidDomainStatusCombination = errors.New("invalid Domain status combination")
+	ErrDomainNotFound                  = errors.New("domain not found")
+	ErrInvalidDomain                   = errors.New("invalid domain")
+	ErrTLDAsDomain                     = errors.New("can't create a TLD as a domain")
+	ErrInvalidDomainRoID               = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	ErrInvalidDomainStatusCombination  = errors.New("invalid Domain status combination")
+	ErrUNameFieldReservedForIDNDomains = errors.New("UName field is reserved for IDN domains")
+	ErrOriginalNameFieldReservedForIDN = errors.New("OriginalName field is reserved for IDN domains")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -193,7 +195,9 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 
 	d.TLDName = DomainName(d.Name.ParentDomain())
 
-	d.UName, _ = d.Name.ToUnicode() // Error is already checked in NewDomainName
+	if isIDN, _ := d.Name.IsIDN(); isIDN {
+		d.UName, _ = d.Name.ToUnicode() // Error is already checked in NewDomainName
+	}
 
 	d.Status = NewDomainStatus() // set the default statuses
 
@@ -223,6 +227,18 @@ func (d *Domain) Validate() error {
 	}
 	if err := d.Status.Validate(); err != nil {
 		return err
+	}
+	isIDN, err := d.Name.IsIDN()
+	if err != nil {
+		return err
+	}
+	if !isIDN {
+		if d.OriginalName != "" {
+			return errors.Join(ErrInvalidDomain, ErrOriginalNameFieldReservedForIDN)
+		}
+		if d.UName != "" {
+			return errors.Join(ErrInvalidDomain, ErrUNameFieldReservedForIDNDomains)
+		}
 	}
 	return nil
 }

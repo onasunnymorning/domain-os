@@ -39,7 +39,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 	// Set the optional fields
 	if cmd.OriginalName != "" {
@@ -80,7 +80,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	}
 	// Check if the domain is valid
 	if err := d.Validate(); err != nil {
-		return nil, errors.Join(err, entities.ErrInvalidDomain)
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 
 	// Save the domain

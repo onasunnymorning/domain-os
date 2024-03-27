@@ -26,9 +26,13 @@ func (s *HostSuite) SetupSuite() {
 	NewGormTLDRepo(s.db)
 
 	// Create a registrar
-	rar, _ := entities.NewRegistrar("199-myrar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	rar, err := entities.NewRegistrar("hostSuiteRar", "hostSuiteRar", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	s.Require().NoError(err)
+	s.Require().NotNil(rar)
 	repo := NewGormRegistrarRepository(s.db)
-	createdRar, _ := repo.Create(context.Background(), rar)
+	createdRar, err := repo.Create(context.Background(), rar)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRar)
 	s.rarClid = createdRar.ClID.String()
 }
 
@@ -45,7 +49,7 @@ func (s *HostSuite) TestCreateHost() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 	a, _ := netip.ParseAddr("195.238.2.21")
 	host.Addresses = append(host.Addresses, a)
@@ -62,7 +66,7 @@ func (s *HostSuite) TestCreateHost_Duplicate() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -81,7 +85,7 @@ func (s *HostSuite) TestReadHost() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -109,7 +113,7 @@ func (s *HostSuite) TestUpdateHost() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -129,7 +133,7 @@ func (s *HostSuite) TestDeleteHost() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	createdHost, err := repo.CreateHost(context.Background(), host)
@@ -156,7 +160,7 @@ func (s *HostSuite) TestListHosts() {
 	repo := NewGormHostRepository(tx)
 
 	t := time.Now().UTC()
-	host := getValidHost("199-myrar", &t)
+	host := getValidHost("hostSuiteRar", &t)
 	host.ClID = entities.ClIDType(s.rarClid)
 
 	// Create host 1
