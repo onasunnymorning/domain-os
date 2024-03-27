@@ -10,6 +10,7 @@ import (
 var (
 	ErrDomainNotFound                 = errors.New("domain not found")
 	ErrInvalidDomain                  = errors.New("invalid domain")
+	ErrTLDAsDomain                    = errors.New("can't create a TLD as a domain")
 	ErrInvalidDomainRoID              = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	ErrInvalidDomainStatusCombination = errors.New("invalid Domain status combination")
 )
@@ -19,7 +20,7 @@ var (
 type Domain struct {
 	RoID         RoidType        `json:"RoID"`
 	Name         DomainName      `json:"Name"`
-	OriginalName string          `json:"OriginalName"`
+	OriginalName string          `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name used to generate the IDN variant.
 	UName        string          `json:"UName"`
 	RegistrantID ClIDType        `json:"RegistrantID"`
 	AdminID      ClIDType        `json:"AdminID"`
@@ -62,7 +63,7 @@ const (
 // DomainStatus value object
 // https://www.rfc-editor.org/rfc/rfc5731.html#section-2.3:~:text=%5D.%0A%0A2.3.-,Status%20Values,-A%20domain%20object
 type DomainStatus struct {
-	OK                       bool `json:"ok"`
+	OK                       bool `json:"OK"`
 	Inactive                 bool `json:"inactive"`
 	ClientTransferProhibited bool `json:"ClientTransferProhibited"`
 	ClientUpdateProhibited   bool `json:"ClientUpdateProhibited"`
@@ -164,19 +165,35 @@ func (d *DomainRGPStatus) IsNil() bool {
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
+	n, err := NewDomainName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if n.ParentDomain() == "" {
+		return nil, ErrTLDAsDomain
+	}
+
+	c, err := NewClIDType(clid)
+	if err != nil {
+		return nil, err
+	}
+
+	a, err := NewAuthInfoType(authInfo)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &Domain{
 		RoID:     RoidType(roid),
-		Name:     DomainName(name),
-		ClID:     ClIDType(clid),
-		AuthInfo: AuthInfoType(authInfo),
+		Name:     *n,
+		ClID:     c,
+		AuthInfo: a,
 	}
 
 	d.TLDName = DomainName(d.Name.ParentDomain())
 
-	d.UName, err = d.Name.ToUnicode()
-	if err != nil {
-		return nil, err
-	}
+	d.UName, _ = d.Name.ToUnicode() // Error is already checked in NewDomainName
 
 	d.Status = NewDomainStatus() // set the default statuses
 
