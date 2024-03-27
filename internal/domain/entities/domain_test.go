@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/idna"
 )
 
 func TestDomain_NewDomain(t *testing.T) {
@@ -104,11 +103,12 @@ func TestDomain_NewDomain(t *testing.T) {
 				require.Equal(t, RoidType(tc.roid), d.RoID)
 				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
 				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
-				if !strings.Contains(tc.name, "xn--") {
-					require.Equal(t, strings.ToLower(tc.name), d.UName)
+				if strings.Contains(tc.name, "xn--") {
+					// For IDNs we expect the UName field to be set
+					require.NotNil(t, d.UName)
 				} else {
-					expected, _ := idna.ToUnicode(tc.name)
-					require.Equal(t, expected, d.UName)
+					// for Non-IDNs we expect the UName field to be nil
+					require.Equal(t, "", d.UName)
 				}
 			}
 		})

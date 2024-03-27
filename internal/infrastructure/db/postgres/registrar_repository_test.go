@@ -129,7 +129,7 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar2)
 
-	registrars, err := repo.List(context.Background(), 25, "")
+	registrars, err := repo.List(context.Background(), 2, "")
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 	require.Len(s.T(), registrars, 2)

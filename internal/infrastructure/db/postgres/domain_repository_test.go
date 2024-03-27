@@ -11,9 +11,10 @@ import (
 
 type DomainSuite struct {
 	suite.Suite
-	db      *gorm.DB
-	rarClid string
-	tld     string
+	db        *gorm.DB
+	rarClid   string
+	tld       string
+	contactID string
 }
 
 func TestDomainSuite(t *testing.T) {
@@ -38,6 +39,15 @@ func (s *DomainSuite) SetupSuite() {
 	err = tldRepo.Create(tld)
 	s.Require().NoError(err)
 	s.tld = tld.Name.String()
+
+	// Create a contact
+	contact, err := entities.NewContact("myTestContact007", "1234567899_CONT-APEX", "my@email.me", "st0NGp@ZZ", string(rar.ClID))
+	s.Require().NoError(err)
+	contactRepo := NewContactRepository(s.db)
+	createdContact, err := contactRepo.CreateContact(context.Background(), contact)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact)
+	s.contactID = createdContact.ClID.String()
 }
 
 func (s *DomainSuite) TearDownSuite() {
@@ -60,6 +70,10 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -83,6 +97,10 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -106,6 +124,10 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -130,6 +152,10 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -154,6 +180,10 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -184,6 +214,10 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	_, err = repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 
@@ -191,6 +225,10 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain, err = entities.NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain2, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 
@@ -198,6 +236,10 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain, err = entities.NewDomain("123456_DOM-APEX", "prins.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
 	createdDomain3, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 
