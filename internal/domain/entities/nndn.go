@@ -63,22 +63,25 @@ func NewNNDN(name string) (*NNDN, error) {
 		return nil, err
 	}
 
-	uName, err := domain.ToUnicode()
-	if err != nil {
-		return nil, err
-	}
-
 	tld, err := NewDomainName(domain.ParentDomain())
 	if err != nil {
 		return nil, err
 	}
 
-	return &NNDN{
+	nndn := &NNDN{
 		Name:      *domain,
-		UName:     uName,
 		TLDName:   *tld,
 		NameState: NNDNStateBlocked,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-	}, nil
+	}
+
+	if isIDN, _ := domain.IsIDN(); isIDN {
+		nndn.UName, err = domain.ToUnicode()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nndn, nil
 }

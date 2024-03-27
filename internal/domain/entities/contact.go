@@ -3,6 +3,7 @@ package entities
 import (
 	"fmt"
 	"net/mail"
+	"strings"
 	"time"
 
 	"errors"
@@ -146,7 +147,7 @@ func NewContact(id, roid, email, authInfo, rarClid string) (*Contact, error) {
 	c := &Contact{
 		ID:       ClIDType(NormalizeString(id)),
 		RoID:     RoidType(NormalizeString(roid)),
-		Email:    NormalizeString(email),
+		Email:    strings.ToLower(NormalizeString(email)),
 		AuthInfo: AuthInfoType(NormalizeString(authInfo)),
 		ClID:     ClIDType(NormalizeString(rarClid)),
 	}
