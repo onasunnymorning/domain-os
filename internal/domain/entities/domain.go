@@ -21,8 +21,8 @@ var (
 type Domain struct {
 	RoID         RoidType        `json:"RoID"`
 	Name         DomainName      `json:"Name"`         // in case of IDN, this contains the A-label
-	OriginalName string          `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name used to generate the IDN variant.
-	UName        string          `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
+	OriginalName DomainName      `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
+	UName        DomainName      `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
 	RegistrantID ClIDType        `json:"RegistrantID"`
 	AdminID      ClIDType        `json:"AdminID"`
 	TechID       ClIDType        `json:"TechID"`
@@ -117,7 +117,8 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	d.TLDName = DomainName(d.Name.ParentDomain())
 
 	if isIDN, _ := d.Name.IsIDN(); isIDN {
-		d.UName, _ = d.Name.ToUnicode() // Error is already checked in NewDomainName
+		uName, _ := d.Name.ToUnicode() // Error is already checked in NewDomainName
+		d.UName = DomainName(uName)
 	}
 
 	d.Status = NewDomainStatus() // set the default statuses

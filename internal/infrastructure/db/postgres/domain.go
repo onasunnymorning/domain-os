@@ -41,8 +41,8 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	roidString, _ := entities.NewRoidType(dbDom.RoID, entities.RoidTypeDomain)
 	d.RoID = roidString
 	d.Name = entities.DomainName(dbDom.Name)
-	d.OriginalName = dbDom.OriginalName
-	d.UName = dbDom.UName
+	d.OriginalName = entities.DomainName(dbDom.OriginalName)
+	d.UName = entities.DomainName(dbDom.UName)
 	d.RegistrantID = entities.ClIDType(dbDom.RegistrantID)
 	d.AdminID = entities.ClIDType(dbDom.AdminID)
 	d.TechID = entities.ClIDType(dbDom.TechID)
@@ -71,8 +71,8 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain := &Domain{}
 	dbDomain.RoID, _ = d.RoID.Int64()
 	dbDomain.Name = d.Name.String()
-	dbDomain.OriginalName = d.OriginalName
-	dbDomain.UName = d.UName
+	dbDomain.OriginalName = d.OriginalName.String()
+	dbDomain.UName = d.UName.String()
 	dbDomain.RegistrantID = d.RegistrantID.String()
 	dbDomain.AdminID = d.AdminID.String()
 	dbDomain.TechID = d.TechID.String()
