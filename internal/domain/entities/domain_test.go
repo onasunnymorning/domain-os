@@ -107,7 +107,7 @@ func TestDomain_NewDomain(t *testing.T) {
 					require.NotNil(t, d.UName)
 				} else {
 					// for Non-IDNs we expect the UName field to be nil
-					require.Equal(t, "", d.UName)
+					require.Equal(t, "", d.UName.String())
 				}
 			}
 		})
