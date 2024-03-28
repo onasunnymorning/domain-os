@@ -288,6 +288,31 @@ func TestDomain_Validate(t *testing.T) {
 			},
 			want: nil,
 		},
+		{
+			name: "OriginalName should be an A-label",
+			domain: &Domain{
+				RoID:         "12345_DOM-APEX",
+				Name:         "xn--cario-rta.domaintesttld",
+				UName:        "cariño.domaintesttld",
+				OriginalName: "cariño.domaintesttld",
+				ClID:         "GoMamma",
+				AuthInfo:     "STr0mgP@ZZ",
+				Status:       DomainStatus{OK: true},
+			},
+			want: ErrOriginalNameShouldBeAlabel,
+		},
+		{
+			name: "UName empty for IDN domain",
+			domain: &Domain{
+				RoID:         "12345_DOM-APEX",
+				Name:         "xn--cario-rta.domaintesttld",
+				OriginalName: "xn--cario-rta.domaintesttld",
+				ClID:         "GoMamma",
+				AuthInfo:     "STr0mgP@ZZ",
+				Status:       DomainStatus{OK: true},
+			},
+			want: ErrNoUNameProvidedForIDNDomain,
+		},
 	}
 
 	for _, tc := range testcases {
