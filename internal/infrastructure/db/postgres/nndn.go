@@ -42,7 +42,7 @@ func (NNDN) TableName() string {
 func (n *NNDN) toNNDN() *entities.NNDN {
 	return &entities.NNDN{
 		Name:      entities.DomainName(n.Name),
-		UName:     n.UName,
+		UName:     entities.DomainName(n.UName),
 		TLDName:   entities.DomainName(n.TLDName),
 		NameState: entities.NNDNState(n.NameState),
 		CreatedAt: n.CreatedAt,
@@ -54,7 +54,7 @@ func (n *NNDN) toNNDN() *entities.NNDN {
 func fromNNDN(n *entities.NNDN) *NNDN {
 	return &NNDN{
 		Name:      n.Name.String(),
-		UName:     n.UName,
+		UName:     n.UName.String(),
 		TLDName:   n.TLDName.String(),
 		NameState: string(n.NameState),
 		CreatedAt: n.CreatedAt,
