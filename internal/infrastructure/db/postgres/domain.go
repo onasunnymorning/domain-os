@@ -9,7 +9,7 @@ import (
 // Domain is the GORM model for the Domain entity
 type Domain struct {
 	RoID                     int64  `gorm:"primaryKey"`
-	Name                     string `gorm:"uniqueIndex,not null"`
+	Name                     string `gorm:"uniqueIndex;not null"`
 	OriginalName             string
 	UName                    string
 	RegistrantID             string
