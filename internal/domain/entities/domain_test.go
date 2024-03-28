@@ -313,6 +313,19 @@ func TestDomain_Validate(t *testing.T) {
 			},
 			want: ErrNoUNameProvidedForIDNDomain,
 		},
+		{
+			name: "UName is not the unicode version of the domain name",
+			domain: &Domain{
+				RoID:         "12345_DOM-APEX",
+				Name:         "xn--cario-rta.domaintesttld",
+				UName:        "fûkûp.domaintesttld",
+				OriginalName: "xn--cario-rta.domaintesttld",
+				ClID:         "GoMamma",
+				AuthInfo:     "STr0mgP@ZZ",
+				Status:       DomainStatus{OK: true},
+			},
+			want: ErrUNameDoesNotMatchDomain,
+		},
 	}
 
 	for _, tc := range testcases {
