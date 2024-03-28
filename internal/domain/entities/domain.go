@@ -15,6 +15,7 @@ var (
 	ErrUNameFieldReservedForIDNDomains = errors.New("UName field is reserved for IDN domains")
 	ErrOriginalNameFieldReservedForIDN = errors.New("OriginalName field is reserved for IDN domains")
 	ErrOriginalNameShouldBeAlabel      = errors.New("OriginalName field should be an A-label")
+	ErrOriginalNameEqualToDomain       = errors.New("OriginalName field should not be equal to the domain name, it should point to the a-label of which this domain is a variant")
 	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
 	ErrUNameDoesNotMatchDomain         = errors.New("UName must be the unicode version of the the domain name (a-label)")
 )
@@ -162,7 +163,8 @@ func (d *Domain) Validate() error {
 			return ErrUNameFieldReservedForIDNDomains
 		}
 	} else {
-		// if the domain is an IDN domain, the UName field must not be empty
+		// the domain is an IDN domain
+		// the UName field must not be empty
 		if d.UName == "" {
 			return ErrNoUNameProvidedForIDNDomain
 		}
@@ -173,6 +175,10 @@ func (d *Domain) Validate() error {
 		// if the OriginalName field is not empty, it should be an A-label (contain only ASCII characters)
 		if d.OriginalName != "" && !IsASCII(d.OriginalName.String()) {
 			return ErrOriginalNameShouldBeAlabel
+		}
+		// if the OriginalName field is not empty, it should not be equal to the domain name (it should point to the orignal A-label of which this domain is a variant)
+		if d.OriginalName != "" && d.Name == d.OriginalName {
+			return ErrOriginalNameEqualToDomain
 		}
 	}
 	return nil
