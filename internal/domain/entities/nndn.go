@@ -40,7 +40,7 @@ type NNDN struct {
 
 	// The Unicode representation of the NNDN.
 	// For the IDN variant "xn--fsq.com", this would be "例子.com".
-	UName string
+	UName DomainName
 
 	// Identifier for the Top-Level Domain (TLD) associated with this NNDN.
 	// For "例子.com", the TLDName might correspond to the ".com"
@@ -77,10 +77,11 @@ func NewNNDN(name string) (*NNDN, error) {
 	}
 
 	if isIDN, _ := domain.IsIDN(); isIDN {
-		nndn.UName, err = domain.ToUnicode()
+		uName, err := domain.ToUnicode()
 		if err != nil {
 			return nil, err
 		}
+		nndn.UName = DomainName(uName)
 	}
 
 	return nndn, nil

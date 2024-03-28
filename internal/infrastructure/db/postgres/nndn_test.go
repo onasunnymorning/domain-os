@@ -78,7 +78,7 @@ func (s *NNDNSuite) TestUpdateNNDN() {
 	require.NoError(s.T(), err)
 
 	require.NotNil(s.T(), updatedNNDN)
-	require.Equal(s.T(), "updated-unicode-name", updatedNNDN.UName)
+	require.Equal(s.T(), "updated-unicode-name", updatedNNDN.UName.String())
 }
 
 func (s *NNDNSuite) TestDeleteNNDN() {
