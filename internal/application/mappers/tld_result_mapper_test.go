@@ -18,7 +18,7 @@ func TestNewTLDResultFromTLD(t *testing.T) {
 
 	require.Equal(t, tld.Name.String(), tldResult.Name, "TLDResult Name mismatch")
 	require.Equal(t, tld.Type.String(), tldResult.Type, "TLDResult Type mismatch")
-	require.Equal(t, tld.UName, tldResult.UName, "TLDResult UName mismatch")
+	require.Equal(t, tld.UName.String(), tldResult.UName, "TLDResult UName mismatch")
 	require.Equal(t, tld.CreatedAt, tldResult.CreatedAt, "TLDResult CreatedAt mismatch")
 	require.Equal(t, tld.UpdatedAt, tldResult.UpdatedAt, "TLDResult UpdatedAt mismatch")
 }

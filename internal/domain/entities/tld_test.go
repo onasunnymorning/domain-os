@@ -51,7 +51,7 @@ func TestTLD_SetUname(t *testing.T) {
 
 	for _, test := range tests {
 		test.inputTLD.SetUname()
-		if test.inputTLD.UName != test.expectedUName {
+		if test.inputTLD.UName.String() != test.expectedUName {
 			t.Errorf("Expected UName to be %s, but got %s for input %s", test.expectedUName, test.inputTLD.UName, test.name)
 		}
 	}

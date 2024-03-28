@@ -31,7 +31,7 @@ const (
 type TLD struct {
 	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
 	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
-	UName     string     `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
+	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
 	CreatedAt time.Time  `json:"CreatedAt"`
 	UpdatedAt time.Time  `json:"UpdatedAt"`
 }
@@ -53,7 +53,7 @@ func NewTLD(name string) (*TLD, error) {
 func (t *TLD) SetUname() {
 	if isIDN, _ := t.Name.IsIDN(); isIDN {
 		unicode_string, _ := idna.ToUnicode(string(t.Name))
-		t.UName = unicode_string
+		t.UName = DomainName(unicode_string)
 	}
 }
 
