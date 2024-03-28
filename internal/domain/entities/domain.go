@@ -16,6 +16,7 @@ var (
 	ErrOriginalNameFieldReservedForIDN = errors.New("OriginalName field is reserved for IDN domains")
 	ErrOriginalNameShouldBeAlabel      = errors.New("OriginalName field should be an A-label")
 	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
+	ErrUNameDoesNotMatchDomain         = errors.New("UName must be the unicode version of the the domain name (a-label)")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -164,6 +165,10 @@ func (d *Domain) Validate() error {
 		// if the domain is an IDN domain, the UName field must not be empty
 		if d.UName == "" {
 			return ErrNoUNameProvidedForIDNDomain
+		}
+		// the UName field must be the unicode version of the domain name (a-label)
+		if uLabel, _ := d.Name.ToUnicode(); uLabel != string(d.UName) {
+			return ErrUNameDoesNotMatchDomain
 		}
 		// if the OriginalName field is not empty, it should be an A-label (contain only ASCII characters)
 		if d.OriginalName != "" && !IsASCII(d.OriginalName.String()) {
