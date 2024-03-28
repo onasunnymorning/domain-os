@@ -281,7 +281,7 @@ func TestDomain_Validate(t *testing.T) {
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
 				UName:        "cariño.domaintesttld",
-				OriginalName: "xn--cario-rta.domaintesttld",
+				OriginalName: "xn--carioo-zwa.domaintesttld",
 				ClID:         "GoMamma",
 				AuthInfo:     "STr0mgP@ZZ",
 				Status:       DomainStatus{OK: true},
@@ -325,6 +325,19 @@ func TestDomain_Validate(t *testing.T) {
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrUNameDoesNotMatchDomain,
+		},
+		{
+			name: "Domain Name and OriginalName are the same",
+			domain: &Domain{
+				RoID:         "12345_DOM-APEX",
+				Name:         "xn--cario-rta.domaintesttld",
+				UName:        "cariño.domaintesttld",
+				OriginalName: "xn--cario-rta.domaintesttld",
+				ClID:         "GoMamma",
+				AuthInfo:     "STr0mgP@ZZ",
+				Status:       DomainStatus{OK: true},
+			},
+			want: ErrOriginalNameEqualToDomain,
 		},
 	}
 
