@@ -14,6 +14,8 @@ var (
 	ErrInvalidDomainRoID               = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	ErrUNameFieldReservedForIDNDomains = errors.New("UName field is reserved for IDN domains")
 	ErrOriginalNameFieldReservedForIDN = errors.New("OriginalName field is reserved for IDN domains")
+	ErrOriginalNameShouldBeAlabel      = errors.New("OriginalName field should be an A-label")
+	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -151,11 +153,21 @@ func (d *Domain) Validate() error {
 		return err
 	}
 	if isIDN, _ := d.Name.IsIDN(); !isIDN {
+		// if the domain is not an IDN domain, the OriginalName and UName fields must be empty
 		if d.OriginalName != "" {
 			return ErrOriginalNameFieldReservedForIDN
 		}
 		if d.UName != "" {
 			return ErrUNameFieldReservedForIDNDomains
+		}
+	} else {
+		// if the domain is an IDN domain, the UName field must not be empty
+		if d.UName == "" {
+			return ErrNoUNameProvidedForIDNDomain
+		}
+		// if the OriginalName field is not empty, it should be an A-label (contain only ASCII characters)
+		if d.OriginalName != "" && !IsASCII(d.OriginalName.String()) {
+			return ErrOriginalNameShouldBeAlabel
 		}
 	}
 	return nil
