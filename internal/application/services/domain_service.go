@@ -95,6 +95,43 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	return createdDomain, nil
 }
 
+// UpdateDomain Updates a new domain from a create domain command
+func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
+	// Look up the domain
+	dom, err := s.domainRepository.GetDomainByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	// Make the changes
+	dom.OriginalName = entities.DomainName(upDom.OriginalName)
+	dom.UName = entities.DomainName(upDom.UName)
+	dom.RegistrantID = entities.ClIDType(upDom.RegistrantID)
+	dom.AdminID = entities.ClIDType(upDom.AdminID)
+	dom.TechID = entities.ClIDType(upDom.TechID)
+	dom.BillingID = entities.ClIDType(upDom.BillingID)
+	dom.CrRr = entities.ClIDType(upDom.CrRr)
+	dom.UpRr = entities.ClIDType(upDom.UpRr)
+	dom.ExpiryDate = upDom.ExpiryDate
+	dom.AuthInfo = entities.AuthInfoType(upDom.AuthInfo)
+	dom.CreatedAt = upDom.CreatedAt
+	dom.UpdatedAt = upDom.UpdatedAt
+	dom.Status = upDom.Status
+	dom.RGPStatus = upDom.RGPStatus
+
+	// Validate the domain
+	if err := dom.Validate(); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
+
+	// Save and return
+	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
+
 // GetDomainByName retrieves a domain by its name from the repository
 func (s *DomainService) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
 	return s.domainRepository.GetDomainByName(ctx, name)

@@ -25,6 +25,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.POST("/domains", controller.CreateDomain)
 	e.DELETE("/domains/:name", controller.DeleteDomainByName)
 	e.GET("/domains", controller.ListDomains)
+	e.PUT("/domains/:name", controller.UpdateDomain)
 
 	return controller
 }
@@ -159,4 +160,47 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 
 	// Return the Response
 	ctx.JSON(200, response)
+}
+
+// UpdateDomain godoc
+// @Summary Update a domain
+// @Description Update a domain
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param domain body commands.UpdateDomainCommand true "Domain"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name} [put]
+func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
+
+	var req commands.UpdateDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	domain, err := ctrl.domainService.UpdateDomain(ctx, name, &req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidDomain) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, domain)
 }
