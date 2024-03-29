@@ -186,7 +186,7 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 // @Produce json
 // @Param pageSize query int false "Page Size"
 // @Param cursor query string false "Cursor"
-// @Success 200 {array} entities.Contact
+// @Success 200 {array} response.ListItemResult
 // @Failure 400
 // @Failure 500
 // @Router /contacts [get]

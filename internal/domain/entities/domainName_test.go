@@ -106,3 +106,42 @@ func TestDomainNameUnmarshalJSONError(t *testing.T) {
 		})
 	}
 }
+
+func TestDomainName_IsIDN(t *testing.T) {
+	tests := []struct {
+		name         string
+		domainName   string
+		expectedErr  error
+		expectedBool bool
+	}{
+		{
+			name:         "non-IDN",
+			domainName:   "geoff.apex.domains",
+			expectedErr:  nil,
+			expectedBool: false,
+		},
+		{
+			name:         "IDN",
+			domainName:   "xn--c1yn36f.com",
+			expectedErr:  nil,
+			expectedBool: true,
+		},
+		{
+			name:         "Error",
+			domainName:   "xn--1.com",
+			expectedErr:  ErrInvalidDomainName,
+			expectedBool: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := DomainName(tt.domainName)
+
+			b, err := d.IsIDN()
+			assert.Equal(t, tt.expectedErr, err)
+			assert.Equal(t, b, tt.expectedBool)
+		})
+	}
+
+}

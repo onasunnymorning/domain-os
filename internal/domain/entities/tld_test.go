@@ -40,18 +40,18 @@ func TestTLD_SetUname(t *testing.T) {
 		{
 			name:          "example.com",
 			inputTLD:      &TLD{Name: "example.com"},
-			expectedUName: "example.com",
+			expectedUName: "",
 		},
 		{
 			name:          "ünicode.com",
-			inputTLD:      &TLD{Name: "ünicode.com"},
+			inputTLD:      &TLD{Name: "xn--nicode-2ya.com"},
 			expectedUName: "ünicode.com",
 		},
 	}
 
 	for _, test := range tests {
 		test.inputTLD.SetUname()
-		if test.inputTLD.UName != test.expectedUName {
+		if test.inputTLD.UName.String() != test.expectedUName {
 			t.Errorf("Expected UName to be %s, but got %s for input %s", test.expectedUName, test.inputTLD.UName, test.name)
 		}
 	}

@@ -17,7 +17,7 @@ type Contact struct {
 	ClID                     string
 	CrRr                     *string
 	UpRr                     *string
-	AuthInfo                 string
+	AuthInfo                 string `gorm:"not null"`
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	NameInt                  string
@@ -40,6 +40,12 @@ type Contact struct {
 	CCLoc                    string `gorm:"column:cc_loc"`
 	entities.ContactStatus   `gorm:"embedded"`
 	entities.ContactDisclose `gorm:"embedded"`
+
+	// FK relationships with domains
+	DomsWhereRegistrant []*Domain `gorm:"foreignKey:RegistrantID"`
+	DomsWhereAdmin      []*Domain `gorm:"foreignKey:AdminID"`
+	DomsWhereTech       []*Domain `gorm:"foreignKey:TechID"`
+	DomsWhereBilling    []*Domain `gorm:"foreignKey:BillingID"`
 }
 
 // TableName specifies the table name for contacts
