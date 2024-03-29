@@ -12,4 +12,5 @@ type DomainService interface {
 	CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
 	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 }
