@@ -63,7 +63,7 @@ func NewNNDN(name string) (*NNDN, error) {
 		return nil, err
 	}
 
-	tld, err := NewDomainName(domain.ParentDomain())
+	tld, err := NewDomainName(domain.ParentDomain()) // Untestable Domain and all its labels are already validated
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +76,9 @@ func NewNNDN(name string) (*NNDN, error) {
 		UpdatedAt: time.Now(),
 	}
 
-	if isIDN, _ := domain.IsIDN(); isIDN {
-		uName, err := domain.ToUnicode()
+	// Only set the UName if the domain is an IDN otherwise leave it empty
+	if isIDN, _ := nndn.Name.IsIDN(); isIDN {
+		uName, err := domain.ToUnicode() // Untestable Domain and all its labels are already validated
 		if err != nil {
 			return nil, err
 		}
