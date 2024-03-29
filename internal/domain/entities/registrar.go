@@ -2,6 +2,7 @@ package entities
 
 import (
 	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -55,7 +56,7 @@ func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarP
 		Name:     NormalizeString(name),
 		NickName: NormalizeString(name), // By default, the nickname is the same as the name
 		GurID:    gurid,
-		Email:    NormalizeString(email),
+		Email:    strings.ToLower(NormalizeString(email)),
 		Status:   RegistrarStatusReadonly, // Create the status as readonly by default
 	}
 

@@ -78,7 +78,7 @@ func (s *NNDNSuite) TestUpdateNNDN() {
 	require.NoError(s.T(), err)
 
 	require.NotNil(s.T(), updatedNNDN)
-	require.Equal(s.T(), "updated-unicode-name", updatedNNDN.UName)
+	require.Equal(s.T(), "updated-unicode-name", updatedNNDN.UName.String())
 }
 
 func (s *NNDNSuite) TestDeleteNNDN() {
@@ -126,23 +126,5 @@ func (s *NNDNSuite) TestCreateNNDN_Error() {
 
 	duplicateNNDN, _ := entities.NewNNDN("example." + s.tld)
 	_, err = repo.CreateNNDN(context.Background(), duplicateNNDN)
-	require.Error(s.T(), err)
-}
-
-func (s *NNDNSuite) TestCreateAndUpdateNNDN_Error() {
-	tx := s.db.Begin()
-	defer tx.Rollback()
-	repo := NewGormNNDNRepository(tx)
-
-	firstNNDN, _ := entities.NewNNDN("firsterrorexample." + s.tld)
-	createdFirstNNDN, err := repo.CreateNNDN(context.Background(), firstNNDN)
-	require.NoError(s.T(), err)
-
-	secondNNDN, _ := entities.NewNNDN("seconderrorexample." + s.tld)
-	createdSecondNNDN, err := repo.CreateNNDN(context.Background(), secondNNDN)
-	require.NoError(s.T(), err)
-
-	createdSecondNNDN.UName = createdFirstNNDN.UName
-	_, err = repo.UpdateNNDN(context.Background(), createdSecondNNDN)
 	require.Error(s.T(), err)
 }

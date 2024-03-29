@@ -22,7 +22,7 @@ func ToDBTLD(tld *entities.TLD) *TLD {
 	return &TLD{
 		Name:      tld.Name.String(),
 		Type:      tld.Type.String(),
-		UName:     tld.UName,
+		UName:     tld.UName.String(),
 		CreatedAt: tld.CreatedAt,
 		UpdatedAt: tld.UpdatedAt,
 	}
@@ -33,7 +33,7 @@ func FromDBTLD(dbtld *TLD) *entities.TLD {
 	tld := &entities.TLD{
 		Name:      entities.DomainName(dbtld.Name),
 		Type:      entities.TLDType(dbtld.Type),
-		UName:     dbtld.UName,
+		UName:     entities.DomainName(dbtld.UName),
 		CreatedAt: dbtld.CreatedAt.UTC(),
 		UpdatedAt: dbtld.UpdatedAt.UTC(),
 	}

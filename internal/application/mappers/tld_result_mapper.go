@@ -10,7 +10,7 @@ func NewTLDResultFromTLD(tld *entities.TLD) commands.TLDResult {
 	return commands.TLDResult{
 		Name:      tld.Name.String(),
 		Type:      tld.Type.String(),
-		UName:     tld.UName,
+		UName:     tld.UName.String(),
 		CreatedAt: tld.CreatedAt,
 		UpdatedAt: tld.UpdatedAt,
 	}

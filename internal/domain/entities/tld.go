@@ -31,7 +31,7 @@ const (
 type TLD struct {
 	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
 	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
-	UName     string     `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
+	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
 	CreatedAt time.Time  `json:"CreatedAt"`
 	UpdatedAt time.Time  `json:"UpdatedAt"`
 }
@@ -49,10 +49,12 @@ func NewTLD(name string) (*TLD, error) {
 	return tld, nil
 }
 
-// SetUname sets the unicode name of the TLD based on the name. Uname is always set regardless if the name is an IDN. If the name is not an IDN the Uname will be equal to the name.
+// SetUname sets the unicode name of the TLD based on the name. Uname is only set if the tld's domain name is an IDN. If the name is not an IDN the Uname will be empty.
 func (t *TLD) SetUname() {
-	unicode_string, _ := idna.ToUnicode(string(t.Name))
-	t.UName = unicode_string
+	if isIDN, _ := t.Name.IsIDN(); isIDN {
+		unicode_string, _ := idna.ToUnicode(string(t.Name))
+		t.UName = DomainName(unicode_string)
+	}
 }
 
 // Determines TLD type from the name. If the name is 2 characters long, it's a country-code TLD. If it contains a dot, it's a second-level TLD. Otherwise, it's a generic TLD.

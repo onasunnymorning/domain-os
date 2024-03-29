@@ -5,23 +5,20 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/idna"
 )
 
 func TestNewNNDN(t *testing.T) {
 	t.Run("Valid NNDN Creation", func(t *testing.T) {
 		const (
-			asciiName   = "example.com"
-			unicodeName = "example.com"
-			tldName     = "com"
+			asciiName = "example.com"
+			tldName   = "com"
 		)
 
 		nndn, err := NewNNDN(asciiName)
 		require.NoError(t, err, "Failed to create NNDN")
 
 		require.Equal(t, asciiName, nndn.Name.String(), "ASCII Name mismatch")
-		uNameStr, _ := idna.ToUnicode(nndn.Name.String())
-		require.Equal(t, unicodeName, uNameStr, "Unicode Name mismatch")
+		require.Equal(t, "", nndn.UName.String(), "Unicode Name should be empty for ASCII domain")
 		require.Equal(t, tldName, nndn.TLDName.String(), "TLD Name mismatch")
 		require.True(t, nndn.CreatedAt.Before(time.Now()), "CreatedAt should be before current time")
 		require.True(t, nndn.UpdatedAt.Before(time.Now()), "UpdatedAt should be before current time")
