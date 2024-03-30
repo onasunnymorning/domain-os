@@ -166,3 +166,173 @@ func TestPhase_AddFee(t *testing.T) {
 		})
 	}
 }
+
+func TestPhase_AddPrice(t *testing.T) {
+	tc := []struct {
+		name        string
+		prices      []Price
+		expectedErr error
+	}{
+		{
+			name: "NoErr",
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "NoErr Multiple Currencies",
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "PEN",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "Duplicate Prices",
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: ErrDuplicatePriceEntry,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{}
+			var err error
+			for _, price := range tt.prices {
+				_, err = phase.AddPrice(price)
+			}
+			assert.Equal(t, tt.expectedErr, err)
+		})
+	}
+}
+
+func TestPhase_SetEndFuturePhase(t *testing.T) {
+	tc := []struct {
+		name        string
+		end         time.Time
+		expectedErr error
+	}{
+		{
+			name:        "NoErr",
+			end:         time.Now().Add(time.Hour * 48),
+			expectedErr: nil,
+		},
+		{
+			name:        "Before Start",
+			end:         time.Now().Add(time.Hour * 2),
+			expectedErr: ErrEndDateBeforeStart,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Starts: time.Now().Add(time.Hour * 24),
+			}
+			err := phase.SetEnd(tt.end)
+			assert.Equal(t, tt.expectedErr, err)
+		})
+	}
+}
+
+func TestPhase_SetEndCurrentPhase(t *testing.T) {
+	tc := []struct {
+		name        string
+		end         time.Time
+		expectedErr error
+	}{
+		{
+			name:        "NoErr",
+			end:         time.Now().Add(time.Hour * 48),
+			expectedErr: nil,
+		},
+		{
+			name:        "In the Past",
+			end:         time.Now().Add(-time.Hour * 2),
+			expectedErr: ErrEndDateInPast,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Starts: time.Now().Add(-time.Hour * 24),
+			}
+			err := phase.SetEnd(tt.end)
+			assert.Equal(t, tt.expectedErr, err)
+		})
+	}
+}
+
+func TestPhase_SetEndAlreadySet(t *testing.T) {
+	tc := []struct {
+		name        string
+		end         time.Time
+		expectedErr error
+	}{
+		{
+			name:        "Already Set",
+			end:         time.Now().Add(-time.Hour * 2),
+			expectedErr: ErrEndDateAlreadySet,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Starts: time.Now().Add(-time.Hour * 24),
+				Ends:   &tt.end,
+			}
+			err := phase.SetEnd(tt.end)
+			assert.Equal(t, tt.expectedErr, err)
+		})
+	}
+}
