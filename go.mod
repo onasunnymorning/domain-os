@@ -3,6 +3,7 @@ module github.com/onasunnymorning/domain-os
 go 1.21.3
 
 require (
+	github.com/Rhymond/go-money v1.0.10
 	github.com/THREATINT/go-net v1.2.37
 	github.com/apex/gateway v1.1.2
 	github.com/biter777/countries v1.7.2
@@ -17,6 +18,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
+	github.com/swaggo/swag v1.16.3
 	golang.org/x/net v0.21.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
@@ -58,7 +60,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
-	github.com/swaggo/swag v1.16.3 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	golang.org/x/arch v0.3.0 // indirect
