@@ -12,6 +12,7 @@ var (
 	ErrTLDNotFound        = errors.New("TLD not found")
 	ErrPhaseAlreadyExists = errors.New("phase with this name already exists")
 	ErrPhaseOverlaps      = errors.New("phase date range overlaps with existing phase")
+	ErrNoActivePhase      = errors.New("no active phase found")
 )
 
 // TLDType is a custom type describing the type of TLD
@@ -98,4 +99,26 @@ func (t *TLD) AddPhase(p *Phase) error {
 	}
 	t.Phases = append(t.Phases, *p)
 	return nil
+}
+
+// GetCurrentPhase Returns the current phase, based on the current time. Will return an error if no active phase is found.
+func (t *TLD) GetCurrentPhase() (*Phase, error) {
+	for i := 0; i < len(t.Phases); i++ {
+		// If the end date is nil, just look at the start date
+		if t.Phases[i].Ends == nil {
+			// If the start date is in the past, it is the current phase
+			if t.Phases[i].Starts.Before(time.Now().UTC()) {
+				return &t.Phases[i], nil
+			}
+			// if not, it's a future phase without enddate, we continue looking
+			continue
+		}
+		// If the end date is not nil => it needs to be in the future and the start date in the past
+		if t.Phases[i].Ends.After(time.Now().UTC()) && t.Phases[i].Starts.Before(time.Now().UTC()) {
+			// this must be the current phase
+			return &t.Phases[i], nil
+		}
+	}
+	// if we haven't found anything by now, there is no current phase
+	return nil, ErrNoActivePhase
 }
