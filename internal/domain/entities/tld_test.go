@@ -211,3 +211,92 @@ func TestTLD_GetCurrentPhase(t *testing.T) {
 		}
 	}
 }
+
+func TestTLD_FindPhaseByName(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		expected *Phase
+		err      error
+	}{
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "GA",
+			expected: &Phase{Name: "GA", Type: PhaseTypeGA},
+			err:      nil,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			expected: &Phase{Name: "GA", Type: PhaseTypeGA},
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "Launch",
+			expected: nil,
+			err:      ErrPhaseNotFound,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := test.inputTLD.FindPhaseByName(test.phase)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+		if result != nil && result.Name != test.expected.Name {
+			t.Errorf("Expected phase name to be %s, but got %s for input %s", test.expected.Name, result.Name, test.name)
+		}
+	}
+}
+
+func TestTLD_DeletePhaseByName(t *testing.T) {
+	endDate := time.Now().AddDate(0, 0, -1)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		err      error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "delete current phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
+			phase:    "GA",
+			err:      ErrDeleteCurrentPhase,
+		},
+		{
+			name:     "delete historic phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -2), Ends: &endDate}}},
+			phase:    "GA",
+			err:      ErrDeleteHistoricPhase,
+		},
+		{
+			name:     "Successful delete",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, 1)}}},
+			phase:    "GA",
+			err:      nil,
+		},
+	}
+
+	for _, test := range tests {
+		err := test.inputTLD.DeletePhase(test.phase)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+		if err == nil {
+			if len(test.inputTLD.Phases) != 0 {
+				t.Errorf("Expected TLD to have no phases, but it has some for input %s", test.name)
+			}
+		}
+	}
+}

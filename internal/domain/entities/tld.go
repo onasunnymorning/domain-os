@@ -9,10 +9,13 @@ import (
 )
 
 var (
-	ErrTLDNotFound        = errors.New("TLD not found")
-	ErrPhaseAlreadyExists = errors.New("phase with this name already exists")
-	ErrPhaseOverlaps      = errors.New("phase date range overlaps with existing phase")
-	ErrNoActivePhase      = errors.New("no active phase found")
+	ErrTLDNotFound         = errors.New("TLD not found")
+	ErrPhaseAlreadyExists  = errors.New("phase with this name already exists")
+	ErrPhaseOverlaps       = errors.New("phase date range overlaps with existing phase")
+	ErrNoActivePhase       = errors.New("no active phase found")
+	ErrPhaseNotFound       = errors.New("phase not found")
+	ErrDeleteHistoricPhase = errors.New("cannot delete a historic phase")
+	ErrDeleteCurrentPhase  = errors.New("cannot delete the current phase, set an end date instead")
 )
 
 // TLDType is a custom type describing the type of TLD
@@ -121,4 +124,37 @@ func (t *TLD) GetCurrentPhase() (*Phase, error) {
 	}
 	// if we haven't found anything by now, there is no current phase
 	return nil, ErrNoActivePhase
+}
+
+// DeletePhase deletes a phase from the TLD. Will return an error if the phase is the current phase or if the phase is in the past. We can only delete future phases, in order to keep the history. Only an exact match will delete the phase (ClIDType is case sensitive).
+func (t *TLD) DeletePhase(pn ClIDType) error {
+	phase, err := t.FindPhaseByName(pn)
+	if err != nil {
+		return err
+	}
+	curPhase, err := t.GetCurrentPhase()
+	if err == nil {
+		if pn == curPhase.Name {
+			return ErrDeleteCurrentPhase
+		}
+	}
+	if phase.Starts.Before(time.Now()) {
+		return ErrDeleteHistoricPhase
+	}
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Name == pn {
+			t.Phases = append(t.Phases[:i], t.Phases[i+1:]...)
+		}
+	}
+	return nil
+}
+
+// FindPhaseByName finds a phase by name. Will return an error if the phase is not found. This is case sensitive and only and exact match will return a phase.
+func (t *TLD) FindPhaseByName(pn ClIDType) (*Phase, error) {
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Name == pn {
+			return &t.Phases[i], nil
+		}
+	}
+	return nil, ErrPhaseNotFound
 }
