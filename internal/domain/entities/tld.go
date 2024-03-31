@@ -76,11 +76,21 @@ func (t *TLD) setTLDType() {
 	}
 }
 
-// checkPhaseCanBeAdded is a helper function to determine if a phase can be added to a TLD without overlapping with existing phases. Will return an error if the phase already exists or if it overlaps with an existing phase.
-func (t *TLD) checkPhaseCanBeAdded(new_phase *Phase) error {
+// checkPhaseNameExists is a helper function to determine if a phase name already exists in the TLD. Will return an error if the phase name already exists.
+func (t *TLD) checkPhaseNameExists(pn ClIDType) error {
 	for i := 0; i < len(t.Phases); i++ {
-		if t.Phases[i].Name == new_phase.Name {
+		if t.Phases[i].Name == pn {
 			return ErrPhaseAlreadyExists
+		}
+	}
+	return nil
+}
+
+// checkGAPhaseCanBeAdded is a helper function to determine if a phase can be added to a TLD without overlapping with existing phases. Will return an error if the phase already exists or if it overlaps with an existing phase.
+func (t *TLD) checkGAPhaseCanBeAdded(new_phase *Phase) error {
+	for i := 0; i < len(t.Phases); i++ {
+		if err := t.checkPhaseNameExists(new_phase.Name); err != nil {
+			return err
 		}
 		// if either condition A or condition B are true, we have an overlap
 		var conda, condb bool
@@ -97,7 +107,16 @@ func (t *TLD) checkPhaseCanBeAdded(new_phase *Phase) error {
 
 // AddPhase Adds a phase to the TLD. Will return an error if the phase name already exists or if it overlaps with an existing phase.
 func (t *TLD) AddPhase(p *Phase) error {
-	err := t.checkPhaseCanBeAdded(p)
+	// If the phase is a launch phase, we only need to check if the name already exists (Launch phases may overlap with GA and with other Launch phases)
+	if p.Type == PhaseTypeLaunch {
+		if err := t.checkPhaseNameExists(p.Name); err != nil {
+			return err
+		}
+		t.Phases = append(t.Phases, *p)
+		return nil
+	}
+	// If the phase is a GA phase, we need to check if it can be added without overlapping with existing phases
+	err := t.checkGAPhaseCanBeAdded(p)
 	if err != nil {
 		return err
 	}
@@ -105,9 +124,9 @@ func (t *TLD) AddPhase(p *Phase) error {
 	return nil
 }
 
-// GetCurrentPhase Returns the current phase, based on the current time. Will return an error if no active phase is found.
-func (t *TLD) GetCurrentPhase() (*Phase, error) {
-	for i := 0; i < len(t.Phases); i++ {
+// GetCurrentGAPhase Returns the current phase, based on the current time. Will return an error if no active phase is found.
+func (t *TLD) GetCurrentGAPhase() (*Phase, error) {
+	for i := 0; i < len(t.GetGAPhases()); i++ {
 		// If the end date is nil, just look at the start date
 		if t.Phases[i].Ends == nil {
 			// If the start date is in the past, it is the current phase
@@ -127,15 +146,27 @@ func (t *TLD) GetCurrentPhase() (*Phase, error) {
 	return nil, ErrNoActivePhase
 }
 
+// GetCurrentLaunchPhases returns a slice of all current launch phases
+func (t *TLD) GetCurrentLaunchPhases() []Phase {
+	var phases []Phase
+	for i := 0; i < len(t.GetLaunchPhases()); i++ {
+		if t.Phases[i].Starts.Before(time.Now().UTC()) && (t.Phases[i].Ends == nil || t.Phases[i].Ends.After(time.Now().UTC())) {
+			phases = append(phases, t.Phases[i])
+		}
+	}
+	return phases
+}
+
 // DeletePhase deletes a phase from the TLD. Will return an error if the phase is the current phase or if the phase is in the past. We can only delete future phases, in order to keep the history. Only an exact match will delete the phase (ClIDType is case sensitive).
 func (t *TLD) DeletePhase(pn ClIDType) error {
 	phase, err := t.FindPhaseByName(pn)
+	// TODO: Make idempotent?
 	if err != nil {
 		return err
 	}
-	curPhase, err := t.GetCurrentPhase()
-	if err == nil {
-		if pn == curPhase.Name {
+	curPhases := t.GetCurrentPhases()
+	for i := 0; i < len(curPhases); i++ {
+		if curPhases[i].Name == pn {
 			return ErrDeleteCurrentPhase
 		}
 	}
@@ -203,8 +234,8 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 	if phase.Ends.Before(time.Now().UTC()) {
 		return ErrUpdateHistoricPhase
 	}
-	// Check all OTHER phases
-	for i := 0; i < len(t.Phases); i++ {
+	// Check all OTHER GA phases (no need to check the Launch phases for overlap)
+	for i := 0; i < len(t.GetGAPhases()); i++ {
 		if t.Phases[i].Name == pn {
 			// this is the phase we are modifying no need to compare
 			continue
@@ -248,8 +279,8 @@ func (t *TLD) checkPhaseEndUnset(pn ClIDType) error {
 	if phase.Ends.Before(time.Now().UTC()) {
 		return ErrUpdateHistoricPhase
 	}
-	// Check all other phases for overlap
-	for i := 0; i < len(t.Phases); i++ {
+	// Check all OTHER GA phases for overlap
+	for i := 0; i < len(t.GetGAPhases()); i++ {
 		if t.Phases[i].Name == pn {
 			// This is the phase we are editing, no need to compare
 			continue
@@ -260,4 +291,37 @@ func (t *TLD) checkPhaseEndUnset(pn ClIDType) error {
 		}
 	}
 	return nil
+}
+
+// GetGAPhases returns all phases of type GA
+func (t *TLD) GetGAPhases() []Phase {
+	var phases []Phase
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Type == PhaseTypeGA {
+			phases = append(phases, t.Phases[i])
+		}
+	}
+	return phases
+}
+
+// GetLaunchPhases returns all phases of type Launch
+func (t *TLD) GetLaunchPhases() []Phase {
+	var phases []Phase
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Type == PhaseTypeLaunch {
+			phases = append(phases, t.Phases[i])
+		}
+	}
+	return phases
+}
+
+// GetCurrentPhases returns all current phases GA and Launch
+func (t *TLD) GetCurrentPhases() []Phase {
+	var phases []Phase
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Starts.Before(time.Now().UTC()) && (t.Phases[i].Ends == nil || t.Phases[i].Ends.After(time.Now().UTC())) {
+			phases = append(phases, t.Phases[i])
+		}
+	}
+	return phases
 }

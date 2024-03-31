@@ -149,7 +149,7 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 		{
 			name:     "example.com",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
-			phase:    &Phase{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()},
+			phase:    &Phase{Name: "GA2", Type: PhaseTypeGA, Starts: time.Now()},
 			err:      ErrPhaseOverlaps,
 		},
 	}
@@ -202,7 +202,7 @@ func TestTLD_GetCurrentPhase(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result, err := test.inputTLD.GetCurrentPhase()
+		result, err := test.inputTLD.GetCurrentGAPhase()
 		if err != test.err {
 			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
 		}
@@ -564,4 +564,174 @@ func TestTLD_UnSetPhaseEnd(t *testing.T) {
 		}
 	}
 
+}
+
+func TestTLD_GetGAPhases(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		expected int
+	}{
+		{
+			name:     "no phases",
+			inputTLD: &TLD{Name: "example.com"},
+			expected: 0,
+		},
+		{
+			name:     "one GA phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			expected: 1,
+		},
+		{
+			name:     "one GA and one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}, {Name: "Launch", Type: PhaseTypeLaunch}}},
+			expected: 1,
+		},
+		{
+			name:     "two GA phases",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}, {Name: "GA2", Type: PhaseTypeGA}}},
+			expected: 2,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.inputTLD.GetGAPhases()
+		if len(result) != test.expected {
+			t.Errorf("Expected number of GA phases to be %d, but got %d for input %s", test.expected, len(result), test.name)
+		}
+	}
+}
+
+func TestTLD_CheckPhaseNameExists(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		expected error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			expected: nil,
+		},
+		{
+			name:     "phase exists",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "GA",
+			expected: ErrPhaseAlreadyExists,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.inputTLD.checkPhaseNameExists(test.phase)
+		if result != test.expected {
+			t.Errorf("Expected result to be %v, but got %v for input %s", test.expected, result, test.name)
+		}
+	}
+}
+
+func TestTLD_GetLaunchPhases(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		expected int
+	}{
+		{
+			name:     "no phases",
+			inputTLD: &TLD{Name: "example.com"},
+			expected: 0,
+		},
+		{
+			name:     "one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch}}},
+			expected: 1,
+		},
+		{
+			name:     "one GA and one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}, {Name: "Launch", Type: PhaseTypeLaunch}}},
+			expected: 1,
+		},
+		{
+			name:     "two Launch phases",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch}, {Name: "Launch2", Type: PhaseTypeLaunch}}},
+			expected: 2,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.inputTLD.GetLaunchPhases()
+		if len(result) != test.expected {
+			t.Errorf("Expected number of Launch phases to be %d, but got %d for input %s", test.expected, len(result), test.name)
+		}
+	}
+}
+
+func TestTLD_GetCurrentLaunchPhases(t *testing.T) {
+	endDateTime := time.Now().AddDate(0, 0, 1)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		expected int
+	}{
+		{
+			name:     "no phases",
+			inputTLD: &TLD{Name: "example.com"},
+			expected: 0,
+		},
+		{
+			name:     "one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: 1,
+		},
+		{
+			name:     "one GA and one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}, {Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: 1,
+		},
+		{
+			name:     "two Launch phases",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}, {Name: "Launch2", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: 2,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.inputTLD.GetCurrentLaunchPhases()
+		if len(result) != test.expected {
+			t.Errorf("Expected number of Launch phases to be %d, but got %d for input %s", test.expected, len(result), test.name)
+		}
+	}
+}
+
+func TestTLD_GetCurrentPhases(t *testing.T) {
+	endDateTime := time.Now().AddDate(0, 0, 1)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		expected int
+	}{
+		{
+			name:     "no phases",
+			inputTLD: &TLD{Name: "example.com"},
+			expected: 0,
+		},
+		{
+			name:     "one GA and one Launch phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}, {Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: 2,
+		},
+		{
+			name:     "two Launch phases",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}, {Name: "Launch2", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: 2,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.inputTLD.GetCurrentPhases()
+		if len(result) != test.expected {
+			t.Errorf("Expected number of Launch phases to be %d, but got %d for input %s", test.expected, len(result), test.name)
+		}
+	}
 }
