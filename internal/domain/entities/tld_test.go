@@ -300,3 +300,161 @@ func TestTLD_DeletePhaseByName(t *testing.T) {
 		}
 	}
 }
+
+func TestTLD_EndPhase(t *testing.T) {
+	endDate := time.Now().AddDate(0, 0, 2)
+	pastEndDate := time.Now().AddDate(0, 0, -200)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		endTime  time.Time
+		err      error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			endTime:  time.Now().UTC().AddDate(0, 0, 1),
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "end date in the past",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5)}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, -1),
+			err:      ErrEndDateInPast,
+		},
+		{
+			name:     "end date before start date",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 5)}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, 4),
+			err:      ErrEndDateBeforeStart,
+		},
+		{
+			name:     "Successful end",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -1)}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, 1),
+			err:      nil,
+		},
+		{
+			name:     "Not UTC",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -1)}}},
+			phase:    "GA",
+			endTime:  time.Now().In(time.FixedZone("UTC+1", 3600)).AddDate(0, 0, 1),
+			err:      ErrTimeStampNotUTC,
+		},
+		{
+			name: "Successful end with ended historic phase and non-overlapping new phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureNotOverlapping", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "GA",
+			endTime: time.Now().UTC().AddDate(0, 0, 1),
+			err:     nil,
+		},
+		{
+			name: "non UTC timestamp with ended historic phase and non-overlapping new phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureNotOverlapping", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "GA",
+			endTime: time.Now().AddDate(0, 0, 1),
+			err:     ErrTimeStampNotUTC,
+		},
+		{
+			name: "update will cause overlap with existing phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureOverlapping", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "GA",
+			endTime: time.Now().UTC().AddDate(0, 0, 501),
+			err:     ErrPhaseOverlaps,
+		},
+	}
+
+	for _, test := range tests {
+		_, err := test.inputTLD.EndPhase(test.phase, test.endTime)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+	}
+}
+
+func TestTLD_CheckPhaseEndUpdate(t *testing.T) {
+	endDate := time.Now().AddDate(0, 0, 2)
+	pastEndDate := time.Now().AddDate(0, 0, -200)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		endTime  time.Time
+		err      error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			endTime:  time.Now().UTC().AddDate(0, 0, 1),
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "end date in the past",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5)}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, -1),
+			err:      ErrEndDateInPast,
+		},
+		{
+			name:     "end date before start date",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 5)}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, 4),
+			err:      ErrEndDateBeforeStart,
+		},
+		{
+			name:     "update historic phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, 1),
+			err:      ErrUpdateHistoricPhase,
+		},
+		{
+			name: "Successful end with ended historic phase and non-overlapping new phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureNotOverlapping", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "GA",
+			endTime: time.Now().UTC().AddDate(0, 0, 1),
+			err:     nil,
+		},
+		{
+			name: "update will cause overlap with existing phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureOverlapping", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "GA",
+			endTime: time.Now().UTC().AddDate(0, 0, 501),
+			err:     ErrPhaseOverlaps,
+		},
+	}
+
+	for _, test := range tests {
+		err := test.inputTLD.checkPhaseEndUpdate(test.phase, test.endTime)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+	}
+}
