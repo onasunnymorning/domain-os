@@ -15,6 +15,7 @@ var (
 	ErrNoActivePhase       = errors.New("no active phase found")
 	ErrPhaseNotFound       = errors.New("phase not found")
 	ErrDeleteHistoricPhase = errors.New("cannot delete a historic phase")
+	ErrUpdateHistoricPhase = errors.New("cannot update a historic phase")
 	ErrDeleteCurrentPhase  = errors.New("cannot delete the current phase, set an end date instead")
 )
 
@@ -157,4 +158,65 @@ func (t *TLD) FindPhaseByName(pn ClIDType) (*Phase, error) {
 		}
 	}
 	return nil, ErrPhaseNotFound
+}
+
+// EndPhase sets an end date to a phase. The end date must be in the future and after the start date. Returns an error if the end date is in the past or before the start date. Timestamps are converted to UTC.
+func (t *TLD) EndPhase(pn ClIDType, endTime time.Time) (*Phase, error) {
+	phase, err := t.FindPhaseByName(pn)
+	if err != nil {
+		return nil, err
+	}
+	// If there is no end date, we can set it
+	if phase.Ends == nil {
+		err = phase.SetEnd(endTime)
+		if err != nil {
+			return nil, err
+		}
+		return phase, nil
+	}
+	// If there is already an end date, we need to check if the new end date is valid
+	err = t.checkPhaseEndUpdate(pn, endTime)
+	if err != nil {
+		return nil, err
+	}
+	err = phase.SetEnd(endTime)
+	if err != nil {
+		return nil, err
+	}
+	return phase, nil
+}
+
+// checkPhaseEndUpdate is a helper function to determine if a new phase enddate is valid. The new enddate can't be in the past. We can't update historic phases.
+// The new enddate should not cause any overlap with other phases. If any of these conditions are met, an error is returned.
+func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
+	phase, err := t.FindPhaseByName(pn)
+	if err != nil {
+		return err
+	}
+	if new_end.Before(time.Now().UTC()) {
+		return ErrEndDateInPast
+	}
+	if new_end.Before(phase.Starts) {
+		return ErrEndDateBeforeStart
+	}
+	// Trying to update a historic phase, it's not allowed to change the past
+	if phase.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	// Check all OTHER phases
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Name == pn {
+			// this is the phase we are modifying no need to compare
+			continue
+		}
+		if t.Phases[i].Ends != nil && t.Phases[i].Ends.Before(time.Now().UTC()) {
+			// If the phase has already ended, we dont need to check
+			continue
+		}
+		// If the phase hasn't ended yet, we need to check if the new end date overlaps with the start date of the phase
+		if t.Phases[i].Starts.Before(new_end) {
+			return ErrPhaseOverlaps
+		}
+	}
+	return nil
 }

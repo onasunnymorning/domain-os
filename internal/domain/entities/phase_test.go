@@ -19,25 +19,31 @@ func TestNewPhase(t *testing.T) {
 		{
 			name:        "GA NoErr",
 			phaseType:   "GA",
-			start:       time.Now(),
+			start:       time.Now().UTC(),
 			expectedErr: nil,
 		},
 		{
 			name:        "Launch NoErr",
 			phaseType:   "Launch",
-			start:       time.Now(),
+			start:       time.Now().UTC(),
 			expectedErr: nil,
+		},
+		{
+			name:        "Launch Not UTC",
+			phaseType:   "Launch",
+			start:       time.Now().In(time.FixedZone("UTC+1", 3600)),
+			expectedErr: ErrTimeStampNotUTC,
 		},
 		{
 			name:        "I",
 			phaseType:   "Launch",
-			start:       time.Now(),
+			start:       time.Now().UTC(),
 			expectedErr: errors.Join(ErrInvalidPhaseName, ErrInvalidClIDType),
 		},
 		{
 			name:        "Invalid Type",
 			phaseType:   "Invalid",
-			start:       time.Now(),
+			start:       time.Now().UTC(),
 			expectedErr: ErrInvalidPhaseType,
 		},
 	}
@@ -262,12 +268,17 @@ func TestPhase_SetEndFuturePhase(t *testing.T) {
 	}{
 		{
 			name:        "NoErr",
-			end:         time.Now().Add(time.Hour * 48),
+			end:         time.Now().UTC().Add(time.Hour * 48),
 			expectedErr: nil,
 		},
 		{
+			name:        "Err Not in UTC",
+			end:         time.Now().In(time.FixedZone("UTC+1", 3600)).Add(time.Hour * 48),
+			expectedErr: ErrTimeStampNotUTC,
+		},
+		{
 			name:        "Before Start",
-			end:         time.Now().Add(time.Hour * 2),
+			end:         time.Now().UTC().Add(time.Hour * 2),
 			expectedErr: ErrEndDateBeforeStart,
 		},
 	}
@@ -275,7 +286,7 @@ func TestPhase_SetEndFuturePhase(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			phase := &Phase{
-				Starts: time.Now().Add(time.Hour * 24),
+				Starts: time.Now().UTC().Add(time.Hour * 24),
 			}
 			err := phase.SetEnd(tt.end)
 			assert.Equal(t, tt.expectedErr, err)
@@ -291,12 +302,12 @@ func TestPhase_SetEndCurrentPhase(t *testing.T) {
 	}{
 		{
 			name:        "NoErr",
-			end:         time.Now().Add(time.Hour * 48),
+			end:         time.Now().UTC().Add(time.Hour * 48),
 			expectedErr: nil,
 		},
 		{
 			name:        "In the Past",
-			end:         time.Now().Add(-time.Hour * 2),
+			end:         time.Now().UTC().Add(-time.Hour * 2),
 			expectedErr: ErrEndDateInPast,
 		},
 	}
@@ -304,32 +315,7 @@ func TestPhase_SetEndCurrentPhase(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			phase := &Phase{
-				Starts: time.Now().Add(-time.Hour * 24),
-			}
-			err := phase.SetEnd(tt.end)
-			assert.Equal(t, tt.expectedErr, err)
-		})
-	}
-}
-
-func TestPhase_SetEndAlreadySet(t *testing.T) {
-	tc := []struct {
-		name        string
-		end         time.Time
-		expectedErr error
-	}{
-		{
-			name:        "Already Set",
-			end:         time.Now().Add(-time.Hour * 2),
-			expectedErr: ErrEndDateAlreadySet,
-		},
-	}
-
-	for _, tt := range tc {
-		t.Run(tt.name, func(t *testing.T) {
-			phase := &Phase{
-				Starts: time.Now().Add(-time.Hour * 24),
-				Ends:   &tt.end,
+				Starts: time.Now().UTC().Add(-time.Hour * 24),
 			}
 			err := phase.SetEnd(tt.end)
 			assert.Equal(t, tt.expectedErr, err)
