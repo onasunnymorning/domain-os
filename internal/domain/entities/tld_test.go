@@ -458,3 +458,110 @@ func TestTLD_CheckPhaseEndUpdate(t *testing.T) {
 		}
 	}
 }
+
+func TestTLD_CheckPhaseEndUnset(t *testing.T) {
+	existingEndDatePast := time.Now().UTC().AddDate(0, 0, -100)
+	existingEndDateFar := time.Now().UTC().AddDate(0, 0, 100)
+	existingEndDateNear := time.Now().UTC().AddDate(0, 0, 10)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		err      error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "unset non-existing end date",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5)}}},
+			phase:    "GA",
+			err:      nil,
+		},
+		{
+			name:     "successful removal of enddate",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &existingEndDateFar}}},
+			phase:    "GA",
+			err:      nil,
+		},
+		{
+			name:     "try changing the past",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &existingEndDatePast}}},
+			phase:    "GA",
+			err:      ErrUpdateHistoricPhase,
+		},
+		{
+			name: "removing end date will cause overlap",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &existingEndDateNear},
+				{Name: "Future Phase", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 50), Ends: &existingEndDateFar},
+			}},
+			phase: "GA",
+			err:   ErrPhaseOverlaps,
+		},
+	}
+
+	for _, test := range tests {
+		err := test.inputTLD.checkPhaseEndUnset(test.phase)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+	}
+}
+
+func TestTLD_UnSetPhaseEnd(t *testing.T) {
+	existingEndDatePast := time.Now().UTC().AddDate(0, 0, -100)
+	existingEndDateFar := time.Now().UTC().AddDate(0, 0, 100)
+	existingEndDateNear := time.Now().UTC().AddDate(0, 0, 10)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    ClIDType
+		err      error
+	}{
+		{
+			name:     "phase doesn't exist",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    "ga",
+			err:      ErrPhaseNotFound,
+		},
+		{
+			name:     "unset non-existing end date",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5)}}},
+			phase:    "GA",
+			err:      nil,
+		},
+		{
+			name:     "successful removal of enddate",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &existingEndDateFar}}},
+			phase:    "GA",
+			err:      nil,
+		},
+		{
+			name:     "try changing the past",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &existingEndDatePast}}},
+			phase:    "GA",
+			err:      ErrUpdateHistoricPhase,
+		},
+		{
+			name: "removing end date will cause overlap",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &existingEndDateNear},
+				{Name: "Future Phase", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 50), Ends: &existingEndDateFar},
+			}},
+			phase: "GA",
+			err:   ErrPhaseOverlaps,
+		},
+	}
+
+	for _, test := range tests {
+		_, err := test.inputTLD.UnSetPhaseEnd(test.phase)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+	}
+
+}
