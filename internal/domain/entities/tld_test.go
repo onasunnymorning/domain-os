@@ -1,6 +1,9 @@
 package entities
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestNewTLD(t *testing.T) {
 	tests := []struct {
@@ -120,6 +123,46 @@ func TestTLDType_String(t *testing.T) {
 		result := test.input.String()
 		if result != test.expected {
 			t.Errorf("Expected String() to return %s, but got %s for input %s", test.expected, result, test.name)
+		}
+	}
+}
+
+func TestTLDTeste_AddPhase(t *testing.T) {
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		phase    *Phase
+		err      error
+	}{
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com"},
+			phase:    &Phase{Name: "GA", Type: PhaseTypeGA},
+			err:      nil,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
+			phase:    &Phase{Name: "GA", Type: PhaseTypeGA},
+			err:      ErrPhaseAlreadyExists,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
+			phase:    &Phase{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()},
+			err:      ErrPhaseOverlaps,
+		},
+	}
+
+	for _, test := range tests {
+		err := test.inputTLD.AddPhase(test.phase)
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+		if err == nil {
+			if len(test.inputTLD.Phases) == 0 {
+				t.Errorf("Expected TLD to have a phase, but it has none for input %s", test.name)
+			}
 		}
 	}
 }

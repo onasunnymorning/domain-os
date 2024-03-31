@@ -9,7 +9,9 @@ import (
 )
 
 var (
-	ErrTLDNotFound = errors.New("TLD not found")
+	ErrTLDNotFound        = errors.New("TLD not found")
+	ErrPhaseAlreadyExists = errors.New("phase with this name already exists")
+	ErrPhaseOverlaps      = errors.New("phase date range overlaps with existing phase")
 )
 
 // TLDType is a custom type describing the type of TLD
@@ -31,7 +33,8 @@ const (
 type TLD struct {
 	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
 	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
-	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label)
+	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label). Should be empty if the TLD is not an IDN.
+	Phases    []Phase    `json:"Phases"`
 	CreatedAt time.Time  `json:"CreatedAt"`
 	UpdatedAt time.Time  `json:"UpdatedAt"`
 }
@@ -57,7 +60,7 @@ func (t *TLD) SetUname() {
 	}
 }
 
-// Determines TLD type from the name. If the name is 2 characters long, it's a country-code TLD. If it contains a dot, it's a second-level TLD. Otherwise, it's a generic TLD.
+// setTLDType Determines TLD type from the name. If the name is 2 characters long, it's a country-code TLD. If it contains a dot, it's a second-level TLD. Otherwise, it's a generic TLD.
 func (t *TLD) setTLDType() {
 	if len(string(t.Name)) == 2 {
 		t.Type = TLDTypeCCTLD
@@ -66,4 +69,33 @@ func (t *TLD) setTLDType() {
 	} else {
 		t.Type = TLDTypeGTLD
 	}
+}
+
+// checkPhaseCanBeAdded is a helper function to determine if a phase can be added to a TLD without overlapping with existing phases. Will return an error if the phase already exists or if it overlaps with an existing phase.
+func (t *TLD) checkPhaseCanBeAdded(new_phase *Phase) error {
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Name == new_phase.Name {
+			return ErrPhaseAlreadyExists
+		}
+		// if either condition A or condition B are true, we have an overlap
+		var conda, condb bool
+		// condition A: new phase starts before or at the same time an existing phase ends.
+		conda = !(new_phase.Ends == nil) && (t.Phases[i].Ends.Before(t.Phases[i].Starts) || t.Phases[i].Ends.Equal(t.Phases[i].Starts))
+		// condition B: new phase ends after or at the same time the existing phase starts.
+		condb = !(t.Phases[i].Ends == nil) && (t.Phases[i].Ends.Before(new_phase.Starts) || t.Phases[i].Ends.Equal(new_phase.Starts))
+		if !(conda || condb) {
+			return ErrPhaseOverlaps
+		}
+	}
+	return nil
+}
+
+// AddPhase Adds a phase to the TLD. Will return an error if the phase name already exists or if it overlaps with an existing phase.
+func (t *TLD) AddPhase(p *Phase) error {
+	err := t.checkPhaseCanBeAdded(p)
+	if err != nil {
+		return err
+	}
+	t.Phases = append(t.Phases, *p)
+	return nil
 }
