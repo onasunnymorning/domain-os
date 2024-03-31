@@ -220,3 +220,44 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 	}
 	return nil
 }
+
+// Remove end date of a phase
+func (t *TLD) UnSetPhaseEnd(pn ClIDType) (*Phase, error) {
+	phase, err := t.FindPhaseByName(pn)
+	if err != nil {
+		return nil, err
+	}
+	err = t.checkPhaseEndUnset(pn)
+	if err != nil {
+		return nil, err
+	}
+	phase.Ends = nil
+	return phase, nil
+}
+
+// checkPhaseEndUnset is a helper function to determine if a phase end date can be unset without creating an overlap
+func (t *TLD) checkPhaseEndUnset(pn ClIDType) error {
+	phase, err := t.FindPhaseByName(pn)
+	if err != nil {
+		return err
+	}
+	if phase.Ends == nil {
+		// nothing to do, but don't error to be idempotent
+		return nil
+	}
+	if phase.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	// Check all other phases for overlap
+	for i := 0; i < len(t.Phases); i++ {
+		if t.Phases[i].Name == pn {
+			// This is the phase we are editing, no need to compare
+			continue
+		}
+		// If the other phase starts after this one, and we remove the end date, they will overlap
+		if t.Phases[i].Starts.After(phase.Starts) {
+			return ErrPhaseOverlaps
+		}
+	}
+	return nil
+}
