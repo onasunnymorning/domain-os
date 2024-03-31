@@ -166,3 +166,48 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 		}
 	}
 }
+
+func TestTLD_GetCurrentPhase(t *testing.T) {
+	endDateTime := time.Now().AddDate(0, 0, 1)
+	tests := []struct {
+		name     string
+		inputTLD *TLD
+		expected *Phase
+		err      error
+	}{
+		{
+			name:     "no phases",
+			inputTLD: &TLD{Name: "example.com"},
+			expected: nil,
+			err:      ErrNoActivePhase,
+		},
+		{
+			name:     "with end date",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime}}},
+			expected: &Phase{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime},
+			err:      nil,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
+			expected: &Phase{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)},
+			err:      nil,
+		},
+		{
+			name:     "example.com",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, 1)}}},
+			expected: nil,
+			err:      ErrNoActivePhase,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := test.inputTLD.GetCurrentPhase()
+		if err != test.err {
+			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
+		}
+		if result != nil && result.Name != test.expected.Name {
+			t.Errorf("Expected phase name to be %s, but got %s for input %s", test.expected.Name, result.Name, test.name)
+		}
+	}
+}
