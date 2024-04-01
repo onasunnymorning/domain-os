@@ -19,6 +19,7 @@ func TestPhase_ToEntity(t *testing.T) {
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 		TLDName:         "tld.com",
+		PhasePolicy:     entities.NewPhasePolicy(),
 	}
 	expected := &entities.Phase{
 		ID:              1,
@@ -30,6 +31,7 @@ func TestPhase_ToEntity(t *testing.T) {
 		CreatedAt:       phase.CreatedAt,
 		UpdatedAt:       phase.UpdatedAt,
 		TLDName:         entities.DomainName("tld.com"),
+		Policy:          entities.NewPhasePolicy(),
 	}
 	actual := phase.ToEntity()
 	assert.Equal(t, expected, actual)
@@ -58,4 +60,5 @@ func TestPhase_FromEntity(t *testing.T) {
 	assert.Equal(t, expected.CreatedAt, phase.CreatedAt)
 	assert.Equal(t, expected.UpdatedAt, phase.UpdatedAt)
 	assert.Equal(t, string(expected.TLDName), phase.TLDName)
+	assert.Equal(t, expected.Policy, phase.PhasePolicy)
 }
