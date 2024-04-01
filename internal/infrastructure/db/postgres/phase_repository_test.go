@@ -39,8 +39,8 @@ func (s *PhaseSuite) SetupSuite() {
 
 func (s *PhaseSuite) TearDownSuite() {
 	if s.TLDName != "" {
-		repo := NewGormRegistrarRepository(s.db)
-		_ = repo.Delete(context.Background(), s.TLDName)
+		repo := NewGormTLDRepo(s.db)
+		_ = repo.DeleteByName(s.TLDName)
 	}
 }
 
@@ -57,7 +57,7 @@ func (s *PhaseSuite) TestPhaseRepo_CreatePhase() {
 	phase.TLDName = entities.DomainName(s.TLDName)
 
 	// Create the phase
-	createdPhase, err := repo.CreatePhase(phase)
+	createdPhase, err := repo.CreatePhase(context.Background(), phase)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 	s.Require().Equal(phase.Name, createdPhase.Name)
@@ -69,7 +69,7 @@ func (s *PhaseSuite) TestPhaseRepo_CreatePhase() {
 	s.Require().Nil(createdPhase.Ends)
 
 	// Try and create the same phase again
-	_, err = repo.CreatePhase(phase)
+	_, err = repo.CreatePhase(context.Background(), phase)
 	s.Require().Error(err)
 }
 
@@ -85,11 +85,11 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	phase.TLDName = entities.DomainName(s.TLDName)
 
 	// Create the phase
-	_, err = repo.CreatePhase(phase)
+	_, err = repo.CreatePhase(context.Background(), phase)
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(phase.Name.String())
+	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 	s.Require().Equal(phase.Name, createdPhase.Name)
@@ -101,7 +101,7 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	s.Require().Nil(createdPhase.Ends)
 
 	// Fetch a phase that doesn't exist
-	_, err = repo.GetPhaseByName("DoesNotExist")
+	_, err = repo.GetPhaseByName(context.Background(), "DoesNotExist")
 	s.Require().Error(err)
 }
 
@@ -117,24 +117,24 @@ func (s *PhaseSuite) TestPhaseRepo_DeletePhaseByName() {
 	phase.TLDName = entities.DomainName(s.TLDName)
 
 	// Create the phase
-	_, err = repo.CreatePhase(phase)
+	_, err = repo.CreatePhase(context.Background(), phase)
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(phase.Name.String())
+	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 
 	// Delete the Phase
-	err = repo.DeletePhaseByName(phase.Name.String())
+	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
 	s.Require().NoError(err)
 
 	// Fetch the Phase again
-	_, err = repo.GetPhaseByName(phase.Name.String())
+	_, err = repo.GetPhaseByName(context.Background(), phase.Name.String())
 	s.Require().Error(err)
 
 	// Try and delete a phase again (should not error)
-	err = repo.DeletePhaseByName(phase.Name.String())
+	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
 	s.Require().NoError(err)
 
 }
@@ -151,7 +151,7 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	phase.TLDName = entities.DomainName(s.TLDName)
 
 	// Create the phase
-	createdPhase, err := repo.CreatePhase(phase)
+	createdPhase, err := repo.CreatePhase(context.Background(), phase)
 	s.Require().NoError(err)
 
 	// Update the phase
@@ -161,7 +161,7 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	createdPhase.Policy.BaseCurrency = "PEN"
 	createdPhase.Policy.MaxHorizon = 20
 
-	updatedPhase, err := repo.UpdatePhase(createdPhase)
+	updatedPhase, err := repo.UpdatePhase(context.Background(), createdPhase)
 	s.Require().NoError(err)
 	s.Require().NotNil(updatedPhase)
 	s.Require().Equal(createdPhase.Name, updatedPhase.Name)
@@ -178,6 +178,6 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 
 	// Try and update a phase but remove the TLDName
 	createdPhase.TLDName = ""
-	_, err = repo.UpdatePhase(createdPhase)
+	_, err = repo.UpdatePhase(context.Background(), createdPhase)
 	s.Require().Error(err)
 }

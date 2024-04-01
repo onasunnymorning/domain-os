@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"context"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -16,10 +18,10 @@ func NewGormPhaseRepository(db *gorm.DB) *PhaseRepository {
 }
 
 // CreatePhase creates a new phase
-func (r *PhaseRepository) CreatePhase(phase *entities.Phase) (*entities.Phase, error) {
+func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := r.db.Create(gormPhase).Error
+	err := r.db.WithContext(ctx).Create(gormPhase).Error
 	if err != nil {
 		return nil, err
 	}
@@ -27,9 +29,9 @@ func (r *PhaseRepository) CreatePhase(phase *entities.Phase) (*entities.Phase, e
 }
 
 // GetPhaseByName gets a phase by its name
-func (r *PhaseRepository) GetPhaseByName(name string) (*entities.Phase, error) {
+func (r *PhaseRepository) GetPhaseByName(ctx context.Context, name string) (*entities.Phase, error) {
 	var phase Phase
-	err := r.db.Where("name = ?", name).First(&phase).Error
+	err := r.db.WithContext(ctx).Where("name = ?", name).First(&phase).Error
 	if err != nil {
 		return nil, err
 	}
@@ -37,15 +39,15 @@ func (r *PhaseRepository) GetPhaseByName(name string) (*entities.Phase, error) {
 }
 
 // DeletePhaseByName deletes a phase by its name
-func (r *PhaseRepository) DeletePhaseByName(name string) error {
-	return r.db.Where("name = ?", name).Delete(&Phase{}).Error
+func (r *PhaseRepository) DeletePhaseByName(ctx context.Context, name string) error {
+	return r.db.WithContext(ctx).Where("name = ?", name).Delete(&Phase{}).Error
 }
 
 // UpdatePhase updates a phase
-func (r *PhaseRepository) UpdatePhase(phase *entities.Phase) (*entities.Phase, error) {
+func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := r.db.Save(gormPhase).Error
+	err := r.db.WithContext(ctx).Save(gormPhase).Error
 	if err != nil {
 		return nil, err
 	}
