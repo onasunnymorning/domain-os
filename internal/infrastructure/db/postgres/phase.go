@@ -40,7 +40,7 @@ func (p *Phase) ToEntity() *entities.Phase {
 		CreatedAt:       p.CreatedAt,
 		UpdatedAt:       p.UpdatedAt,
 		TLDName:         entities.DomainName(p.TLDName),
-		PhasePolicy:     p.PhasePolicy,
+		Policy:          p.PhasePolicy,
 	}
 	return phase
 }
@@ -56,5 +56,5 @@ func (p *Phase) FromEntity(phase *entities.Phase) {
 	p.CreatedAt = phase.CreatedAt
 	p.UpdatedAt = phase.UpdatedAt
 	p.TLDName = string(phase.TLDName)
-	p.PhasePolicy = phase.PhasePolicy
+	p.PhasePolicy = phase.Policy
 }

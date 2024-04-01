@@ -157,9 +157,9 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	// Update the phase
 	endDate := time.Now().UTC().AddDate(0, 0, 1)
 	createdPhase.Ends = &endDate
-	createdPhase.AllowAutoRenew = false
-	createdPhase.BaseCurrency = "PEN"
-	createdPhase.MaxHorizon = 20
+	createdPhase.Policy.AllowAutoRenew = false
+	createdPhase.Policy.BaseCurrency = "PEN"
+	createdPhase.Policy.MaxHorizon = 20
 
 	updatedPhase, err := repo.UpdatePhase(createdPhase)
 	s.Require().NoError(err)
@@ -172,9 +172,9 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	s.Require().NotEqual(createdPhase.UpdatedAt, updatedPhase.UpdatedAt)
 	s.Require().NotNil(updatedPhase.Ends)
 	s.Require().Equal(endDate, *updatedPhase.Ends)
-	s.Require().Equal(false, updatedPhase.AllowAutoRenew)
-	s.Require().Equal("PEN", updatedPhase.BaseCurrency)
-	s.Require().Equal(20, updatedPhase.MaxHorizon)
+	s.Require().Equal(false, updatedPhase.Policy.AllowAutoRenew)
+	s.Require().Equal("PEN", updatedPhase.Policy.BaseCurrency)
+	s.Require().Equal(20, updatedPhase.Policy.MaxHorizon)
 
 	// Try and update a phase but remove the TLDName
 	createdPhase.TLDName = ""
