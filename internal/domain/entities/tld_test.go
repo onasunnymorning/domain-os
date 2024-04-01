@@ -153,6 +153,12 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 			err:      ErrPhaseAlreadyExists,
 		},
 		{
+			name:     "GA and Launch name colision",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "SameSame", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
+			phase:    &Phase{Name: "SameSame", Type: PhaseTypeLaunch, Starts: time.Now()},
+			err:      ErrPhaseAlreadyExists,
+		},
+		{
 			name:     "add overlap GA",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
 			phase:    &Phase{Name: "GA2", Type: PhaseTypeGA, Starts: time.Now()},
