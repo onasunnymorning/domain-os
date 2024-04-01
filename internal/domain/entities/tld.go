@@ -105,7 +105,7 @@ func (t *TLD) checkGAPhaseCanBeAdded(new_phase *Phase) error {
 	return nil
 }
 
-// AddPhase Adds a phase to the TLD. Will return an error if the phase name already exists or if it overlaps with an existing phase.
+// AddPhase Adds a phase to the TLD. Will return an error if the phase name already exists or if a GA Phase overlaps with an existing GA Phase.
 func (t *TLD) AddPhase(p *Phase) error {
 	// If the phase is a launch phase, we only need to check if the name already exists (Launch phases may overlap with GA and with other Launch phases)
 	if p.Type == PhaseTypeLaunch {
@@ -115,7 +115,7 @@ func (t *TLD) AddPhase(p *Phase) error {
 		t.Phases = append(t.Phases, *p)
 		return nil
 	}
-	// If the phase is a GA phase, we need to check if it can be added without overlapping with existing phases
+	// If the phase is a GA phase, we need to check if it can be added without overlapping with existing GA phases
 	err := t.checkGAPhaseCanBeAdded(p)
 	if err != nil {
 		return err
@@ -146,7 +146,7 @@ func (t *TLD) GetCurrentGAPhase() (*Phase, error) {
 	return nil, ErrNoActivePhase
 }
 
-// GetCurrentLaunchPhases returns a slice of all current launch phases
+// GetCurrentLaunchPhases returns a slice of all current launch phases. If no active launch phase is found, an empty slice is returned.
 func (t *TLD) GetCurrentLaunchPhases() []Phase {
 	var phases []Phase
 	for i := 0; i < len(t.GetLaunchPhases()); i++ {
@@ -157,7 +157,7 @@ func (t *TLD) GetCurrentLaunchPhases() []Phase {
 	return phases
 }
 
-// DeletePhase deletes a phase from the TLD. Will return an error if the phase is the current phase or if the phase is in the past. We can only delete future phases, in order to keep the history. Only an exact match will delete the phase (ClIDType is case sensitive).
+// DeletePhase deletes a phase from the TLD. Only future phases can be deleted. We keep current and histric phases for tracability. Will return an error if the phase is the current phase or if the phase is in the past. Only an exact match will delete the phase (ClIDType is case sensitive).
 func (t *TLD) DeletePhase(pn ClIDType) error {
 	phase, err := t.FindPhaseByName(pn)
 	// TODO: Make idempotent?
