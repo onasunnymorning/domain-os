@@ -18,6 +18,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&Spec5Label{},
 		&TLD{},
 		&Phase{},
+		&Price{},
+		&Fee{},
 		&NNDN{},
 		&Registrar{},
 		&Contact{},

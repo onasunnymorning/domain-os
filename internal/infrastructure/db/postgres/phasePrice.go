@@ -2,9 +2,8 @@ package postgres
 
 import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
-// Price is the GORM model for the phase_price table
+// Price is the GORM model for the phase_price table. We use a composite primary key to ensure that a price with the same currency is not inserted twice in the same phase
 type Price struct {
-	// We use a composite primary key to ensure that a price with the same currency is not inserted twice in the same phase
 	Currency           string `gorm:"primaryKey"`
 	RegistrationAmount int64
 	RenewalAmount      int64
