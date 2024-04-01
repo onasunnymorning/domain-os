@@ -10,6 +10,7 @@ type Price struct {
 	TransferAmount     int64
 	RestoreAmount      int64
 	PhaseID            int64 `gorm:"primaryKey"`
+	Phase              Phase
 }
 
 // TableName returns the table name for the PhasePrice model
