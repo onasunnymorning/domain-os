@@ -9,6 +9,7 @@ type Fee struct {
 	Amount     int64
 	Refundable *bool
 	PhaseID    int64 `gorm:"primaryKey"`
+	Phase      Phase
 }
 
 // TableName returns the table name for the PhaseFee model

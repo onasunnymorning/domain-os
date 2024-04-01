@@ -63,6 +63,21 @@ func (s *FeeSuite) TearDownSuite() {
 	}
 }
 
+func (s *FeeSuite) TestPhaseRepo_CreateFeeFK() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewFeeRepository(tx)
+
+	// Setup a fee
+	b := true
+	fee, _ := entities.NewFee("USD", "verfication fee", 1000, &b)
+
+	// Create the fee without a phase ID
+	_, err := repo.CreateFee(context.Background(), fee)
+	s.Require().Error(err)
+
+}
+
 func (s *FeeSuite) TestPhaseRepo_CreateFee() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
