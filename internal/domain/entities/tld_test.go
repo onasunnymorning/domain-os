@@ -135,22 +135,43 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 		err      error
 	}{
 		{
-			name:     "example.com",
+			name:     "add first phase",
 			inputTLD: &TLD{Name: "example.com"},
 			phase:    &Phase{Name: "GA", Type: PhaseTypeGA},
 			err:      nil,
 		},
 		{
-			name:     "example.com",
+			name:     "name colision GA",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA}}},
 			phase:    &Phase{Name: "GA", Type: PhaseTypeGA},
 			err:      ErrPhaseAlreadyExists,
 		},
 		{
-			name:     "example.com",
+			name:     "name colision Launch",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch}}},
+			phase:    &Phase{Name: "Launch", Type: PhaseTypeLaunch},
+			err:      ErrPhaseAlreadyExists,
+		},
+		{
+			name:     "add overlap GA",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
 			phase:    &Phase{Name: "GA2", Type: PhaseTypeGA, Starts: time.Now()},
 			err:      ErrPhaseOverlaps,
+		},
+		{
+			name:     "add Launch, overlap GA",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
+			phase:    &Phase{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()},
+			err:      nil,
+		},
+		{
+			name: "add Launch, double overlap GA",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)},
+				{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()},
+			}},
+			phase: &Phase{Name: "Launch2", Type: PhaseTypeLaunch, Starts: time.Now()},
+			err:   nil,
 		},
 	}
 
