@@ -88,3 +88,66 @@ func (s *FeeSuite) TestPhaseRepo_CreateFee() {
 	s.Require().Error(err)
 
 }
+
+func (s *FeeSuite) TestPhaseRepo_GetFee() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewFeeRepository(tx)
+
+	// Setup a fee
+	b := true
+	fee, _ := entities.NewFee("USD", "verfication fee", 1000, &b)
+	fee.PhaseID = s.PhaseID
+
+	// Create the fee
+	createdFee, _ := repo.CreateFee(context.Background(), fee)
+	s.Require().NotNil(createdFee)
+
+	// Read the Fee
+	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	s.Require().NoError(err)
+	s.Require().NotNil(readFee)
+
+	s.Require().Equal(fee.Name, readFee.Name)
+	s.Require().Equal(fee.Currency, readFee.Currency)
+	s.Require().Equal(fee.Amount, readFee.Amount)
+	s.Require().True(*readFee.Refundable)
+
+	// Read a fee that doesn't exist
+	readFee, err = repo.GetFee(context.Background(), s.PhaseID, "non-existent", "USD")
+	s.Require().Error(err)
+	s.Require().Nil(readFee)
+
+}
+
+func (s *FeeSuite) TestPhaseRepo_DeleteFee() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewFeeRepository(tx)
+
+	// Setup a fee
+	b := true
+	fee, _ := entities.NewFee("USD", "verfication fee", 1000, &b)
+	fee.PhaseID = s.PhaseID
+
+	// Create the fee
+	createdFee, _ := repo.CreateFee(context.Background(), fee)
+	s.Require().NotNil(createdFee)
+
+	// Read the Fee
+	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	s.Require().NoError(err)
+	s.Require().NotNil(readFee)
+
+	// Delete the fee
+	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	s.Require().NoError(err)
+
+	// Read the Fee now that it is gone
+	_, err = repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	s.Require().Error(err)
+
+	// Delete the fee again
+	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	s.Require().NoError(err)
+}
