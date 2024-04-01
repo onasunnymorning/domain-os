@@ -181,3 +181,33 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	_, err = repo.UpdatePhase(context.Background(), createdPhase)
 	s.Require().Error(err)
 }
+
+func (s *PhaseSuite) TestPhaseRepo_MultiplePrices() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormPhaseRepository(tx)
+
+	// Setup a phase
+	phase, err := entities.NewPhase("TestPhase", "GA", time.Now().UTC())
+	s.Require().NoError(err)
+	s.Require().NotNil(phase)
+	phase.TLDName = entities.DomainName(s.TLDName)
+
+	// Create a couple of prices
+	prices := [3]*entities.Price{}
+	prices[0], _ = entities.NewPrice("USD", 100, 100, 100, 100)
+	prices[1], _ = entities.NewPrice("EUR", 100, 100, 100, 100)
+	prices[2], _ = entities.NewPrice("GBP", 100, 100, 100, 100)
+	// Add the prices
+	for _, price := range prices {
+		_, err := phase.AddPrice(*price)
+		s.Require().NoError(err)
+	}
+	s.Require().Len(phase.Prices, 3)
+
+	// Create the phase
+	createdPhase, err := repo.CreatePhase(context.Background(), phase)
+	s.Require().NoError(err)
+	// Creating a phase should not create its prices
+	s.Require().Len(createdPhase.Prices, 0)
+}
