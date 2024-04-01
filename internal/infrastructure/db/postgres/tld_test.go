@@ -101,7 +101,7 @@ func (s *TLDSuite) TestListTLD() {
 	err = repo.Create(tld2)
 	require.NoError(s.T(), err)
 
-	tlds, err := repo.List(25, "")
+	tlds, err := repo.List(2, "")
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
