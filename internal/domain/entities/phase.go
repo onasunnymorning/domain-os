@@ -22,7 +22,7 @@ const (
 // PhasetType is a custom type for representing the type of a phase.
 type PhaseType string
 
-// TLD Phase entity
+// Phase entity
 type Phase struct {
 	ID              int64      `json:"id"`
 	Name            ClIDType   `json:"name"`
@@ -34,7 +34,7 @@ type Phase struct {
 	PremiumListName string     `json:"premiumListName"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
-	TLDName         string     `json:"tldName"`
+	TLDName         DomainName `json:"tldName"`
 	PhasePolicy
 }
 
