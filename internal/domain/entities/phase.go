@@ -22,20 +22,20 @@ const (
 // PhasetType is a custom type for representing the type of a phase.
 type PhaseType string
 
-// TLD Phase entity
+// Phase entity
 type Phase struct {
-	ID              int64      `json:"id"`
-	Name            ClIDType   `json:"name"`
-	Type            PhaseType  `json:"type"`
-	Starts          time.Time  `json:"starts"`
-	Ends            *time.Time `json:"ends"`
-	Prices          []Price    `json:"prices"`
-	Fees            []Fee      `json:"fees"`
-	PremiumListName string     `json:"premiumListName"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	TLDName         string     `json:"tldName"`
-	PhasePolicy
+	ID              int64       `json:"id"`
+	Name            ClIDType    `json:"name"`
+	Type            PhaseType   `json:"type"`
+	Starts          time.Time   `json:"starts"`
+	Ends            *time.Time  `json:"ends"`
+	Prices          []Price     `json:"prices"`
+	Fees            []Fee       `json:"fees"`
+	PremiumListName string      `json:"premiumListName"`
+	CreatedAt       time.Time   `json:"createdAt"`
+	UpdatedAt       time.Time   `json:"updatedAt"`
+	TLDName         DomainName  `json:"tldName"`
+	Policy          PhasePolicy `json:"policy"`
 }
 
 // Phase factory. Phase name is of type ClIDType and phaseType is a string (GA or Launch)
@@ -54,10 +54,10 @@ func NewPhase(name, phaseType string, start time.Time) (*Phase, error) {
 		return nil, ErrTimeStampNotUTC
 	}
 	new_phase := &Phase{
-		Name:        validatedName,
-		Type:        PhaseType(phaseType),
-		Starts:      start,
-		PhasePolicy: NewPhasePolicy(),
+		Name:   validatedName,
+		Type:   PhaseType(phaseType),
+		Starts: start,
+		Policy: NewPhasePolicy(),
 	}
 	return new_phase, nil
 }
