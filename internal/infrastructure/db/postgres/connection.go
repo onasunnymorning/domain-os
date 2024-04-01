@@ -17,6 +17,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&IANARegistrar{},
 		&Spec5Label{},
 		&TLD{},
+		&Phase{},
 		&NNDN{},
 		&Registrar{},
 		&Contact{},
