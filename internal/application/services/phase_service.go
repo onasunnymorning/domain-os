@@ -29,7 +29,9 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 	if cmd.Ends != nil {
 		newPhase.Ends = cmd.Ends
 	}
-
+	// Set the TLDName on the phase
+	newPhase.TLDName = entities.DomainName(cmd.TLDName)
+	// Create the phase in the repository
 	dbPhase, err := svc.phaseRepo.CreatePhase(ctx, newPhase)
 	if err != nil {
 		return nil, err
