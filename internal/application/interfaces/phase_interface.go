@@ -10,6 +10,6 @@ import (
 // PhaseService is the interface for the phase service
 type PhaseService interface {
 	CreatePhase(ctx context.Context, cmd *commands.CreatePhaseCommand) (*entities.Phase, error)
-	GetPhaseByTLDAndName(ctx context.Context, name string) (*entities.Phase, error)
-	DeletePhaseByTLDAndName(ctx context.Context, name string) error
+	GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error)
+	DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error
 }
