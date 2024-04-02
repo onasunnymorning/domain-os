@@ -38,7 +38,12 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 	return dbPhase, nil
 }
 
-// GetPhaseByName retrieves a phase by its name
-func (svc *PhaseService) GetPhaseByName(ctx context.Context, name string) (*entities.Phase, error) {
-	return svc.phaseRepo.GetPhaseByName(ctx, name)
+// GetPhaseByTLDAndName retrieves a phase by its name
+func (svc *PhaseService) GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error) {
+	return svc.phaseRepo.GetPhaseByTLDAndName(ctx, tld, name)
+}
+
+// DeletePhaseByTLDAndName deletes a phase by its name
+func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error {
+	return svc.phaseRepo.DeletePhaseByTLDAndName(ctx, tld, name)
 }

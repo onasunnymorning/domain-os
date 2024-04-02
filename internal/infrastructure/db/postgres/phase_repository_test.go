@@ -89,7 +89,7 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
+	createdPhase, err := repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 	s.Require().Equal(phase.Name, createdPhase.Name)
@@ -101,7 +101,7 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	s.Require().Nil(createdPhase.Ends)
 
 	// Fetch a phase that doesn't exist
-	_, err = repo.GetPhaseByName(context.Background(), "DoesNotExist")
+	_, err = repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, "DoesNotExist")
 	s.Require().Error(err)
 }
 
@@ -121,20 +121,20 @@ func (s *PhaseSuite) TestPhaseRepo_DeletePhaseByName() {
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
+	createdPhase, err := repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 
 	// Delete the Phase
-	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
+	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 
 	// Fetch the Phase again
-	_, err = repo.GetPhaseByName(context.Background(), phase.Name.String())
+	_, err = repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().Error(err)
 
 	// Try and delete a phase again (should not error)
-	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
+	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 
 }
