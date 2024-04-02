@@ -28,10 +28,10 @@ func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase
 	return gormPhase.ToEntity(), nil
 }
 
-// GetPhaseByName gets a phase by its name
-func (r *PhaseRepository) GetPhaseByName(ctx context.Context, name string) (*entities.Phase, error) {
+// GetPhaseByTLDAndName gets a phase by its name
+func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error) {
 	var phase Phase
-	err := r.db.WithContext(ctx).Where("name = ?", name).First(&phase).Error
+	err := r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +39,8 @@ func (r *PhaseRepository) GetPhaseByName(ctx context.Context, name string) (*ent
 }
 
 // DeletePhaseByName deletes a phase by its name
-func (r *PhaseRepository) DeletePhaseByName(ctx context.Context, name string) error {
-	return r.db.WithContext(ctx).Where("name = ?", name).Delete(&Phase{}).Error
+func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error {
+	return r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld).Delete(&Phase{}).Error
 }
 
 // UpdatePhase updates a phase
