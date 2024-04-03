@@ -15,11 +15,11 @@ type Phase struct {
 	Ends   *time.Time
 	// Prices          []Price
 	// Fees            []Fee
-	PremiumListName      string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	TLDName              string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
-	TLD                  TLD    // This creates the foreign key relationship
+	PremiumListName string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	TLDName         string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
+	// TLD                  TLD    // This creates the foreign key relationship
 	entities.PhasePolicy `gorm:"embedded"`
 }
 
