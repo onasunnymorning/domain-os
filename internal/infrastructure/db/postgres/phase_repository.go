@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
@@ -55,13 +56,23 @@ func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase
 }
 
 // ListPhasesByTLD lists all phases for a TLD
-func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
+func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error) {
 	var gormPhases []*Phase
-	err := r.db.WithContext(ctx).Where("tld_name = ?", tld).Find(&gormPhases).Error
+	var pageCursorInt64 int64
+	var err error
+	// pageCursor for phases is of type int64, so convert it to int64
+	// TODO: improve error handling
+	if pageCursor != "" {
+		pageCursorInt64, err = strconv.ParseInt(pageCursor, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+	err = r.db.WithContext(ctx).Where("tld_name = ?", tld).Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
 	if err != nil {
 		return nil, err // this is hard to test
 	}
-	var phases []*entities.Phase
+	phases := make([]*entities.Phase, len(gormPhases))
 	for _, phase := range gormPhases {
 		phases = append(phases, phase.ToEntity())
 	}
