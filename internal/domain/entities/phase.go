@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrInvalidPhase        = errors.New("invalid phase")
 	ErrInvalidPhaseName    = errors.New("invalid phase name")
 	ErrInvalidPhaseType    = errors.New("invalid phase type")
 	ErrDuplicatePriceEntry = errors.New("Price entry for this currency already exists")
