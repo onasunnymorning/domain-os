@@ -49,3 +49,8 @@ func (svc *PhaseService) GetPhaseByTLDAndName(ctx context.Context, tld, name str
 func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error {
 	return svc.phaseRepo.DeletePhaseByTLDAndName(ctx, tld, name)
 }
+
+// ListPhasesByTLD retrieves all phases for a TLD
+func (svc *PhaseService) ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
+	return svc.phaseRepo.ListPhasesByTLD(ctx, tld)
+}

@@ -322,3 +322,41 @@ func TestPhase_SetEndCurrentPhase(t *testing.T) {
 		})
 	}
 }
+
+func TestPhase_IsCurrentlyActive(t *testing.T) {
+	tc := []struct {
+		name     string
+		start    time.Time
+		end      time.Time
+		expected bool
+	}{
+		{
+			name:     "Active",
+			start:    time.Now().UTC().Add(-time.Hour * 24),
+			end:      time.Now().UTC().Add(time.Hour * 24),
+			expected: true,
+		},
+		{
+			name:     "Not Active",
+			start:    time.Now().UTC().Add(time.Hour * 24),
+			end:      time.Now().UTC().Add(time.Hour * 48),
+			expected: false,
+		},
+		{
+			name:     "Not Active No End",
+			start:    time.Now().UTC().Add(-time.Hour * 24),
+			end:      time.Time{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Starts: tt.start,
+				Ends:   &tt.end,
+			}
+			assert.Equal(t, tt.expected, phase.IsCurrentlyActive())
+		})
+	}
+}

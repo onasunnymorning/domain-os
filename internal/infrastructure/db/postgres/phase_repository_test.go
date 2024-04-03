@@ -211,3 +211,60 @@ func (s *PhaseSuite) TestPhaseRepo_MultiplePrices() {
 	// Creating a phase should not create its prices
 	s.Require().Len(createdPhase.Prices, 0)
 }
+
+func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormPhaseRepository(tx)
+
+	// Setup a phase
+	phase, err := entities.NewPhase("TestPhase", "GA", time.Now().UTC())
+	s.Require().NoError(err)
+	s.Require().NotNil(phase)
+	phase.TLDName = entities.DomainName(s.TLDName)
+
+	// Create the phase
+	_, err = repo.CreatePhase(context.Background(), phase)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err := repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	s.Require().NoError(err)
+	s.Require().Len(phases, 1)
+	s.Require().Equal(phase.Name, phases[0].Name)
+	s.Require().Equal(phase.Type, phases[0].Type)
+	s.Require().NotNil(phases[0].ID)
+	s.Require().NotNil(phases[0].Starts)
+	s.Require().NotNil(phases[0].CreatedAt)
+	s.Require().NotNil(phases[0].UpdatedAt)
+	s.Require().Nil(phases[0].Ends)
+
+	// Create another phase
+	phase2, err := entities.NewPhase("TestPhase2", "Launch", time.Now().UTC())
+	s.Require().NoError(err)
+	phase2.TLDName = entities.DomainName(s.TLDName)
+	_, err = repo.CreatePhase(context.Background(), phase2)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	s.Require().NoError(err)
+	s.Require().Len(phases, 2)
+
+	// Create a third phase
+	phase3, err := entities.NewPhase("TestPhase3", "Launch", time.Now().UTC())
+	s.Require().NoError(err)
+	phase3.TLDName = entities.DomainName(s.TLDName)
+	_, err = repo.CreatePhase(context.Background(), phase3)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	s.Require().NoError(err)
+	s.Require().Len(phases, 3)
+
+	// List the phases for a TLD that doesn't exist
+	phases, err = repo.ListPhasesByTLD(context.Background(), "DoesNotExist")
+	s.Require().NoError(err)
+	s.Require().Nil(phases)
+}

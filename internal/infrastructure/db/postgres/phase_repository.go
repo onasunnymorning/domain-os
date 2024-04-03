@@ -53,3 +53,17 @@ func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase
 	}
 	return gormPhase.ToEntity(), nil
 }
+
+// ListPhasesByTLD lists all phases for a TLD
+func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
+	var gormPhases []*Phase
+	err := r.db.WithContext(ctx).Where("tld_name = ?", tld).Find(&gormPhases).Error
+	if err != nil {
+		return nil, err // this is hard to test
+	}
+	var phases []*entities.Phase
+	for _, phase := range gormPhases {
+		phases = append(phases, phase.ToEntity())
+	}
+	return phases, nil
+}

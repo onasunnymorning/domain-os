@@ -18,6 +18,9 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 	}
 
 	e.POST("/tlds/:tldName/phases", ctrl.CreatePhase)
+	e.GET("/tlds/:tldName/phases", ctrl.ListPhases)
+	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
+	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
 
 	return ctrl
 }
@@ -98,4 +101,42 @@ func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 	}
 
 	ctx.JSON(204, nil)
+}
+
+// ListPhases godoc
+// @Summary List all phases for a TLD
+// @Description List all phases for a TLD
+// @Tags Phases
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Success 200 {array} entities.Phase
+// @Failure 500
+// @Router /tlds/{tldName}/phases [get]
+func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
+	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"))
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, phases)
+}
+
+// ListActivePhases godoc
+// @Summary List all active phases for a TLD
+// @Description List all active phases for a TLD
+// @Tags Phases
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Success 200 {array} entities.Phase
+// @Failure 500
+// @Router /tlds/{tldName}/phases/active [get]
+func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
+	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"))
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, phases)
 }
