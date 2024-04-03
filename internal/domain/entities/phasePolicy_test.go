@@ -15,7 +15,7 @@ func TestNewPhasePolicy(t *testing.T) {
 	assert.Equal(t, AutoRenewalGP, phasePolicy.AutoRenewalGP)
 	assert.Equal(t, RedemptionGP, phasePolicy.RedemptionGP)
 	assert.Equal(t, PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, TrLockPeriod, phasePolicy.TrLockPeriod)
+	assert.Equal(t, TransferLockPeriod, phasePolicy.TransferLockPeriod)
 	assert.Equal(t, MaxHorizon, phasePolicy.MaxHorizon)
 	assert.Equal(t, AllowAutoRenew, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, RequiresValidation, phasePolicy.RequiresValidation)
