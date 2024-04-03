@@ -119,3 +119,9 @@ func (p *Phase) SetEnd(endDate time.Time) error {
 	p.Ends = &endDate
 	return nil
 }
+
+// IsCurrentlyActive checks if the phase is currently active. A phase is active if the current time is between the start and end date. Or if the end date is nil, the phase is active if the current time is after the start date.
+func (p *Phase) IsCurrentlyActive() bool {
+	now := time.Now().UTC()
+	return p.Starts.Before(now) && (p.Ends == nil || p.Ends.After(now))
+}

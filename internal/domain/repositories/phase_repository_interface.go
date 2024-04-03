@@ -12,4 +12,5 @@ type PhaseRepository interface {
 	GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error)
 	DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error
 	UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
+	ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error)
 }

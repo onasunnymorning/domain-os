@@ -317,7 +317,7 @@ func (t *TLD) GetLaunchPhases() []Phase {
 func (t *TLD) GetCurrentPhases() []Phase {
 	var phases []Phase
 	for i := 0; i < len(t.Phases); i++ {
-		if t.Phases[i].Starts.Before(time.Now().UTC()) && (t.Phases[i].Ends == nil || t.Phases[i].Ends.After(time.Now().UTC())) {
+		if t.Phases[i].IsCurrentlyActive() {
 			phases = append(phases, t.Phases[i])
 		}
 	}
