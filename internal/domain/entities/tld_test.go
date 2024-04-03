@@ -171,6 +171,12 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 			err:      nil,
 		},
 		{
+			name:     "add GA, overlap Launch",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()}}},
+			phase:    &Phase{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)},
+			err:      nil,
+		},
+		{
 			name: "add Launch, double overlap GA",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
 				{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)},
