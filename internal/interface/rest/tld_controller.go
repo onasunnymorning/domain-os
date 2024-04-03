@@ -61,7 +61,7 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
-// @Success 200 {array} entities.TLD
+// @Success 200 {array} response.ListItemResult
 // @Failure 400
 // @Failure 500
 // @Router /tlds [get]

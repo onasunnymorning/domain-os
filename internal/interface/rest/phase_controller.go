@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 // PhaseController is the controller for the Phase entity
@@ -110,17 +111,39 @@ func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
-// @Success 200 {array} entities.Phase
+// @Success 200 {array} response.ListItemResult
 // @Failure 500
 // @Router /tlds/{tldName}/phases [get]
 func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
-	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"))
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"), pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(200, phases)
+	// Set the Data and metadata if there are results only
+	response.Data = phases
+	if len(phases) > 0 {
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+	}
+
+	ctx.JSON(200, response)
 }
 
 // ListActivePhases godoc
@@ -129,15 +152,37 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
-// @Success 200 {array} entities.Phase
+// @Success 200 {array} response.ListItemResult
 // @Failure 500
 // @Router /tlds/{tldName}/phases/active [get]
 func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
-	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx, ctx.Param("tldName"))
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx, ctx.Param("tldName"), pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(200, phases)
+	// Set the Data and metadata if there are results only
+	response.Data = phases
+	if len(phases) > 0 {
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+	}
+
+	ctx.JSON(200, response)
 }

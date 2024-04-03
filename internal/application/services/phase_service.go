@@ -51,13 +51,13 @@ func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tld, name 
 }
 
 // ListPhasesByTLD retrieves all phases for a TLD
-func (svc *PhaseService) ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
-	return svc.phaseRepo.ListPhasesByTLD(ctx, tld)
+func (svc *PhaseService) ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error) {
+	return svc.phaseRepo.ListPhasesByTLD(ctx, tld, pageSize, pageCursor)
 }
 
 // ListActivePhasesByTLD retrieves all active phases for a TLD
-func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
-	phases, err := svc.phaseRepo.ListPhasesByTLD(ctx, tld)
+func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error) {
+	phases, err := svc.phaseRepo.ListPhasesByTLD(ctx, tld, pageSize, pageCursor)
 	if err != nil {
 		return nil, err
 	}
