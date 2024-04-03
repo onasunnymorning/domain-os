@@ -19,6 +19,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 
 	e.POST("/tlds/:tldName/phases", ctrl.CreatePhase)
 	e.GET("/tlds/:tldName/phases", ctrl.ListPhases)
+	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhases)
 	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
 	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
 
@@ -132,7 +133,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/active [get]
 func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
-	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"))
+	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx, ctx.Param("tldName"))
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

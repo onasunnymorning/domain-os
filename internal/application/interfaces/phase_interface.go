@@ -13,4 +13,5 @@ type PhaseService interface {
 	GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error)
 	DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error
 	ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error)
+	ListActivePhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error)
 }
