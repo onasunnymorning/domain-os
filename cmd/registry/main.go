@@ -81,9 +81,15 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
+	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
 
+	// Phases
+	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
+	phaseService := services.NewPhaseService(phaseRepo)
+
+	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
 
@@ -97,7 +103,7 @@ func main() {
 	// Spec5
 	spec5Service := services.NewSpec5Service(spec5Repo)
 
-	// IANA Registrar
+	// IANA Registrars
 	ianaRegistrarService := services.NewIANARegistrarService(iregistrarRepo)
 
 	// Registrars
@@ -130,6 +136,7 @@ func main() {
 	rest.NewContactController(r, contactService)
 	rest.NewHostController(r, hostService)
 	rest.NewDomainController(r, domainService)
+	rest.NewPhaseController(r, phaseService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

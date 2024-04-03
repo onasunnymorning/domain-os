@@ -54,3 +54,20 @@ func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tld, name 
 func (svc *PhaseService) ListPhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
 	return svc.phaseRepo.ListPhasesByTLD(ctx, tld)
 }
+
+// ListActivePhasesByTLD retrieves all active phases for a TLD
+func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string) ([]*entities.Phase, error) {
+	phases, err := svc.phaseRepo.ListPhasesByTLD(ctx, tld)
+	if err != nil {
+		return nil, err
+	}
+
+	activePhases := make([]*entities.Phase, 0)
+	for _, phase := range phases {
+		if phase.IsCurrentlyActive() {
+			activePhases = append(activePhases, phase)
+		}
+	}
+
+	return activePhases, nil
+}
