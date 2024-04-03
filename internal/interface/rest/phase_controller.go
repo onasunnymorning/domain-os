@@ -1,9 +1,12 @@
 package rest
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
@@ -37,6 +40,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 // @Param tldName path string true "TLD name"
 // @Success 200 {object} entities.Phase
 // @Failure 400
+// @Failure 404
 // @Failure 500
 // @Router /tlds/{tldName}/phases [post]
 func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
@@ -56,6 +60,14 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 	// Create the phase
 	phase, err := ctrl.phaseService.CreatePhase(ctx, &cmd)
 	if err != nil {
+		if errors.Is(err, entities.ErrTLDNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrInvalidPhase) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

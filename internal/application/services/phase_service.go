@@ -1,6 +1,8 @@
 package services
 
 import (
+	"errors"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -25,7 +27,7 @@ func NewPhaseService(phaseRepo repositories.PhaseRepository, tldRepo repositorie
 func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePhaseCommand) (*entities.Phase, error) {
 	newPhase, err := entities.NewPhase(cmd.Name, cmd.Type, cmd.Starts)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidPhase, err)
 	}
 	// If and End is provided, set it
 	if cmd.Ends != nil {
@@ -44,7 +46,7 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 	// See if we can add the phase to the TLD
 	err = tld.AddPhase(newPhase)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidPhase, err)
 	}
 
 	// If we were able to add the phase to the TLD, save the Phase to the repository
