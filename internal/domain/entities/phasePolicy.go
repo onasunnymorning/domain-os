@@ -9,7 +9,7 @@ const (
 	TransferGP         = 5
 	RedemptionGP       = 30
 	PendingDeleteGP    = 5
-	TrLockPeriod       = 60
+	TransferLockPeriod = 60
 	MaxHorizon         = 10
 	AllowAutoRenew     = true
 	RequiresValidation = false
@@ -26,7 +26,7 @@ type PhasePolicy struct {
 	TransferGP         int    `json:"transferGP,omitempty" example:"5"`
 	RedemptionGP       int    `json:"redemptionGP,omitempty" example:"30"`
 	PendingDeleteGP    int    `json:"pendingdeleteGP,omitempty" example:"5"`
-	TrLockPeriod       int    `json:"trLock,omitempty" example:"60"`
+	TransferLockPeriod int    `json:"transferLockPeriod,omitempty" example:"60"`
 	MaxHorizon         int    `json:"maxHorizon,omitempty" example:"10"`
 	AllowAutoRenew     bool   `json:"allowAutorenew,omitempty" example:"true"`
 	RequiresValidation bool   `json:"requiresValidation,omitempty" example:"false"`
@@ -43,7 +43,7 @@ func NewPhasePolicy() PhasePolicy {
 		AutoRenewalGP:      AutoRenewalGP,
 		RedemptionGP:       RedemptionGP,
 		PendingDeleteGP:    PendingDeleteGP,
-		TrLockPeriod:       TrLockPeriod,
+		TransferLockPeriod: TransferLockPeriod,
 		MaxHorizon:         MaxHorizon,
 		AllowAutoRenew:     AllowAutoRenew,
 		RequiresValidation: RequiresValidation,
