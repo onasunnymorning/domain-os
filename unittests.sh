@@ -2,7 +2,7 @@
 docker volume rm domain-os_db
 docker run --rm -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres --name testdb -d -p 5432:5432 postgres:16.1
 # run tests
-go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
+go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 # stop db server
 docker stop testdb
 
