@@ -9,12 +9,14 @@ import (
 
 // PhaseService is the implementation of the PhaseService interface
 type PhaseService struct {
+	tldRepo   repositories.TLDRepository
 	phaseRepo repositories.PhaseRepository
 }
 
 // NewPhaseService returns a new instance of PhaseService
-func NewPhaseService(phaseRepo repositories.PhaseRepository) *PhaseService {
+func NewPhaseService(phaseRepo repositories.PhaseRepository, tldRepo repositories.TLDRepository) *PhaseService {
 	return &PhaseService{
+		tldRepo:   tldRepo,
 		phaseRepo: phaseRepo,
 	}
 }
@@ -31,7 +33,21 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 	}
 	// Set the TLDName on the phase
 	newPhase.TLDName = entities.DomainName(cmd.TLDName)
-	// Create the phase in the repository
+
+	// Pass through our entity for validation
+
+	// Get the TLD
+	tld, err := svc.tldRepo.GetByName(cmd.TLDName)
+	if err != nil {
+		return nil, err
+	}
+	// See if we can add the phase to the TLD
+	err = tld.AddPhase(newPhase)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we were able to add the phase to the TLD, save the Phase to the repository
 	dbPhase, err := svc.phaseRepo.CreatePhase(ctx, newPhase)
 	if err != nil {
 		return nil, err

@@ -87,7 +87,7 @@ func main() {
 
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
-	phaseService := services.NewPhaseService(phaseRepo)
+	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
 
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
