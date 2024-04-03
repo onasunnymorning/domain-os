@@ -228,7 +228,7 @@ func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
 	s.Require().NoError(err)
 
 	// List the phases
-	phases, err := repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	phases, err := repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
 	s.Require().NoError(err)
 	s.Require().Len(phases, 1)
 	s.Require().Equal(phase.Name, phases[0].Name)
@@ -247,7 +247,7 @@ func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
 	s.Require().NoError(err)
 
 	// List the phases
-	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
 	s.Require().NoError(err)
 	s.Require().Len(phases, 2)
 
@@ -259,12 +259,16 @@ func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
 	s.Require().NoError(err)
 
 	// List the phases
-	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName)
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
 	s.Require().NoError(err)
 	s.Require().Len(phases, 3)
 
 	// List the phases for a TLD that doesn't exist
-	phases, err = repo.ListPhasesByTLD(context.Background(), "DoesNotExist")
+	phases, err = repo.ListPhasesByTLD(context.Background(), "DoesNotExist", 25, "")
 	s.Require().NoError(err)
-	s.Require().Nil(phases)
+	s.Require().Equal(0, len(phases))
+
+	// Pass in an invalid pageCursor (phase cursor should be an int64)
+	_, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "NotAnInt64")
+	s.Require().Error(err)
 }

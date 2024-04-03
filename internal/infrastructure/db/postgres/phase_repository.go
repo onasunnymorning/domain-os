@@ -73,8 +73,8 @@ func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string, pageS
 		return nil, err // this is hard to test
 	}
 	phases := make([]*entities.Phase, len(gormPhases))
-	for _, phase := range gormPhases {
-		phases = append(phases, phase.ToEntity())
+	for i, phase := range gormPhases {
+		phases[i] = phase.ToEntity()
 	}
 	return phases, nil
 }
