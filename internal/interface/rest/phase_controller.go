@@ -26,6 +26,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhases)
 	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
 	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
+	e.PUT("/tlds/:tldName/phases/:phaseName/end", ctrl.EndPhase)
 
 	return ctrl
 }
@@ -72,7 +73,7 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(200, phase)
+	ctx.JSON(201, phase)
 
 }
 
@@ -95,6 +96,48 @@ func (ctrl *PhaseController) GetPhase(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, phase)
+}
+
+// EndPhase godoc
+// @Summary Sets or updates an end date on a phase by name and tld name
+// @Description Sets or updates an end date on a phase by name and tld name
+// @Tags Phases
+// @Accept json
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param endDate body commands.EndPhaseCommand true "End date to set"
+// @Success 200 {object} entities.Phase
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/end [put]
+func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
+	// Bind the request body to the command
+	var cmd commands.EndPhaseCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Set the TLD in the command
+	cmd.TLDName = ctx.Param("tldName")
+
+	// Set the PhaseName in the command
+	cmd.PhaseName = ctx.Param("phaseName")
+
+	// Pass the new enddate through our entity
+	phase, err := ctrl.phaseService.EndPhase(ctx, &cmd)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, phase)
+
 }
 
 // DeletePhase godoc
