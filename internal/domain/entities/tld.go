@@ -11,7 +11,7 @@ import (
 var (
 	ErrTLDNotFound         = errors.New("TLD not found")
 	ErrPhaseAlreadyExists  = errors.New("phase with this name already exists")
-	ErrPhaseOverlaps       = errors.New("phase date range overlaps with existing phase")
+	ErrGAPhaseOverlaps     = errors.New("GA phase date range overlaps with existing GA phase")
 	ErrNoActivePhase       = errors.New("no active phase found")
 	ErrPhaseNotFound       = errors.New("phase not found")
 	ErrDeleteHistoricPhase = errors.New("cannot delete a historic phase")
@@ -96,7 +96,7 @@ func (t *TLD) checkGAPhaseCanBeAdded(new_phase *Phase) error {
 		// condition B: new phase ends after or at the same time the existing phase starts.
 		condb = !(t.Phases[i].Ends == nil) && (t.Phases[i].Ends.Before(new_phase.Starts) || t.Phases[i].Ends.Equal(new_phase.Starts))
 		if !(conda || condb) {
-			return ErrPhaseOverlaps
+			return ErrGAPhaseOverlaps
 		}
 	}
 	return nil
@@ -228,11 +228,15 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 	if new_end.Before(phase.Starts) {
 		return ErrEndDateBeforeStart
 	}
-	// Trying to update a historic phase, it's not allowed to change the past
+	// Trying to update a historic phase, changing the past can have consequences in the present, you don't want to create a grandfather paradox
 	if phase.Ends.Before(time.Now().UTC()) {
 		return ErrUpdateHistoricPhase
 	}
-	// Check all OTHER GA phases (no need to check the Launch phases for overlap)
+	// If its a launch phase we are ending, we can safely do so
+	if phase.Type == PhaseTypeLaunch {
+		return nil
+	}
+	// If its a GA phase, Check all OTHER GA phases (no need to check the Launch phases for overlap)
 	for i := 0; i < len(t.GetGAPhases()); i++ {
 		if t.Phases[i].Name == pn {
 			// this is the phase we are modifying no need to compare
@@ -244,7 +248,7 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 		}
 		// If the phase hasn't ended yet, we need to check if the new end date overlaps with the start date of the phase
 		if t.Phases[i].Starts.Before(new_end) {
-			return ErrPhaseOverlaps
+			return ErrGAPhaseOverlaps
 		}
 	}
 	return nil
@@ -285,7 +289,7 @@ func (t *TLD) checkPhaseEndUnset(pn ClIDType) error {
 		}
 		// If the other phase starts after this one, and we remove the end date, they will overlap
 		if t.Phases[i].Starts.After(phase.Starts) {
-			return ErrPhaseOverlaps
+			return ErrGAPhaseOverlaps
 		}
 	}
 	return nil

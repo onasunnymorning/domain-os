@@ -14,3 +14,10 @@ type CreatePhaseCommand struct {
 	// TODO: Allow policy tuning
 	// Policy entities.PhasePolicy `json:"policy"`
 }
+
+// EndPhaseCommand is a command for ending a phase
+type EndPhaseCommand struct {
+	Ends      time.Time `json:"ends" binding:"required"`
+	TLDName   string
+	PhaseName string
+}

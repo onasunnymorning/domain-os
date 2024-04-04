@@ -89,3 +89,28 @@ func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string, 
 
 	return activePhases, nil
 }
+
+// EndPhase Sets or updates the enddate on a phase
+func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCommand) (*entities.Phase, error) {
+	// Get the TLD
+	tld, err := svc.tldRepo.GetByName(cmd.TLDName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use our domain functions to set the end and catch any errors
+	endedPhase, err := tld.EndPhase(entities.ClIDType(cmd.PhaseName), cmd.Ends)
+	if err != nil {
+		return nil, err
+	}
+
+	// If there are no conflicts, save to the repository
+	updatedPhase, err := svc.phaseRepo.UpdatePhase(ctx, endedPhase)
+	if err != nil {
+		return nil, err
+	}
+
+	// if all is fine, return the updated phase
+
+	return updatedPhase, nil
+}

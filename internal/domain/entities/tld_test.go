@@ -162,7 +162,7 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 			name:     "add overlap GA",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)}}},
 			phase:    &Phase{Name: "GA2", Type: PhaseTypeGA, Starts: time.Now()},
-			err:      ErrPhaseOverlaps,
+			err:      ErrGAPhaseOverlaps,
 		},
 		{
 			name:     "add Launch, overlap GA",
@@ -410,7 +410,7 @@ func TestTLD_EndPhase(t *testing.T) {
 			}},
 			phase:   "GA",
 			endTime: time.Now().UTC().AddDate(0, 0, 501),
-			err:     ErrPhaseOverlaps,
+			err:     ErrGAPhaseOverlaps,
 		},
 	}
 
@@ -472,6 +472,17 @@ func TestTLD_CheckPhaseEndUpdate(t *testing.T) {
 			err:     nil,
 		},
 		{
+			name: "update will cause overlap but this should not return an error for Launch pahses",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "PreviouslyEnded", Type: PhaseTypeLaunch, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
+				{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().UTC().AddDate(0, 0, -5), Ends: &endDate},
+				{Name: "FutureOverlapping", Type: PhaseTypeLaunch, Starts: time.Now().UTC().AddDate(0, 0, 500)},
+			}},
+			phase:   "Launch",
+			endTime: time.Now().UTC().AddDate(0, 0, 501),
+			err:     nil,
+		},
+		{
 			name: "update will cause overlap with existing phase",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
 				{Name: "PreviouslyEnded", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -500), Ends: &pastEndDate},
@@ -480,7 +491,7 @@ func TestTLD_CheckPhaseEndUpdate(t *testing.T) {
 			}},
 			phase:   "GA",
 			endTime: time.Now().UTC().AddDate(0, 0, 501),
-			err:     ErrPhaseOverlaps,
+			err:     ErrGAPhaseOverlaps,
 		},
 	}
 
@@ -533,7 +544,7 @@ func TestTLD_CheckPhaseEndUnset(t *testing.T) {
 				{Name: "Future Phase", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 50), Ends: &existingEndDateFar},
 			}},
 			phase: "GA",
-			err:   ErrPhaseOverlaps,
+			err:   ErrGAPhaseOverlaps,
 		},
 	}
 
@@ -586,7 +597,7 @@ func TestTLD_UnSetPhaseEnd(t *testing.T) {
 				{Name: "Future Phase", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, 50), Ends: &existingEndDateFar},
 			}},
 			phase: "GA",
-			err:   ErrPhaseOverlaps,
+			err:   ErrGAPhaseOverlaps,
 		},
 	}
 
