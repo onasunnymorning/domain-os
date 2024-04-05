@@ -146,8 +146,9 @@ func (p *Phase) OverlapsWith(other *Phase) bool {
 		}
 	}
 
-	// if the other phase has no end date, and this phase starts after the other phase, they overlap
+	// if the other phase has no end date
 	if other.Ends == nil {
+		// if this phase starts after the other phase, they overlap
 		if p.Starts.After(other.Starts) {
 			return true
 		}
@@ -157,9 +158,22 @@ func (p *Phase) OverlapsWith(other *Phase) bool {
 		}
 	}
 
-	// if both phases have an end date, and the start date of one phase is before the end date of the other phase, they overlap
-	if p.Ends != nil && other.Ends != nil && (p.Starts.Before(*other.Ends) || other.Starts.Before(*p.Ends)) {
-		return true
+	// if both phases have an end date
+	if p.Ends != nil && other.Ends != nil {
+		// if this phase starts first
+		if p.Starts.Before(other.Starts) {
+			// Then it has to end before the other phase starts, or it overlaps
+			if !p.Ends.Before(other.Starts) {
+				return true
+			}
+		}
+		// if the other phase starts first
+		if other.Starts.Before(p.Starts) {
+			// Then it has to end before this phase starts, or it overlaps
+			if !other.Ends.Before(p.Starts) {
+				return true
+			}
+		}
 	}
 
 	// if none of these conditions are met, the phases do not overlap
