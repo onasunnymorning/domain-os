@@ -360,3 +360,57 @@ func TestPhase_IsCurrentlyActive(t *testing.T) {
 		})
 	}
 }
+
+func TestPhase_OverlapsWith(t *testing.T) {
+	tc := []struct {
+		name       string
+		thisStart  string
+		thisEnd    string
+		otherStart string
+		otherEnd   string
+		expected   bool
+	}{
+		{
+			name:       "both no end date",
+			thisStart:  "2021-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2021-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			// VARS
+			var thisStart, thisEnd, otherStart, otherEnd time.Time
+			var err error
+			// SETUP
+			thisStart, err = time.Parse(time.RFC3339, tt.thisStart)
+			assert.Nil(t, err)
+			otherStart, err = time.Parse(time.RFC3339, tt.otherStart)
+			assert.Nil(t, err)
+			// Create the two phases
+			thisPhase, err := NewPhase("thisPhase", "GA", thisStart)
+			assert.Nil(t, err)
+			otherPhase, err := NewPhase("otherPhase", "GA", otherStart)
+			assert.Nil(t, err)
+			// Set the enddates if applicable
+			if tt.thisEnd != "" {
+				thisEnd, err = time.Parse(time.RFC3339, tt.thisEnd)
+				assert.Nil(t, err)
+				err = thisPhase.SetEnd(thisEnd)
+				assert.Nil(t, err)
+			}
+			if tt.otherEnd != "" {
+				otherEnd, err = time.Parse(time.RFC3339, tt.otherEnd)
+				assert.Nil(t, err)
+				err = thisPhase.SetEnd(otherEnd)
+				assert.Nil(t, err)
+			}
+
+			// Run the test
+			assert.Equal(t, tt.expected, thisPhase.OverlapsWith(otherPhase))
+		})
+	}
+}

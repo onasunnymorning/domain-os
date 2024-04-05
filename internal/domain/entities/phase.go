@@ -127,4 +127,42 @@ func (p *Phase) IsCurrentlyActive() bool {
 	return p.Starts.Before(now) && (p.Ends == nil || p.Ends.After(now))
 }
 
-// OverlapsWith checks
+// OverlapsWith checks if the phase overlaps with the phase that is passed in as an argument. This is intended to be used for GA phases, launch phases may overlap.
+func (p *Phase) OverlapsWith(other *Phase) bool {
+	// if both phases no end date, they overlap
+	if p.Ends == nil && other.Ends == nil {
+		return true
+	}
+
+	// if this phase has no end date
+	if p.Ends == nil {
+		// if the other phase starts after this phase, they overlap
+		if other.Starts.After(p.Starts) {
+			return true
+		}
+		// if the other phase's end date is not before this phase's start date, they overlap
+		if !other.Ends.Before(p.Starts) {
+			return true
+		}
+	}
+
+	// if the other phase has no end date, and this phase starts after the other phase, they overlap
+	if other.Ends == nil {
+		if p.Starts.After(other.Starts) {
+			return true
+		}
+		// if this phase's end date is not before the other phase's start date, they overlap
+		if !p.Ends.Before(other.Starts) {
+			return true
+		}
+	}
+
+	// if both phases have an end date, and the start date of one phase is before the end date of the other phase, they overlap
+	if p.Ends != nil && other.Ends != nil && (p.Starts.Before(*other.Ends) || other.Starts.Before(*p.Ends)) {
+		return true
+	}
+
+	// if none of these conditions are met, the phases do not overlap
+	return false
+
+}
