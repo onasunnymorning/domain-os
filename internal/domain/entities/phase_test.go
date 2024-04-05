@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -378,6 +379,86 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			otherEnd:   "",
 			expected:   true,
 		},
+		{
+			name:       "no end + start after",
+			thisStart:  "2021-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2022-01-01T00:00:00Z",
+			otherEnd:   "2123-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "no end + starts on end date",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2121-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "no end + starts just before end date",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2120-12-12T23:59:59Z",
+			expected:   false,
+		},
+		{
+			name:       "other has no end + start after",
+			thisStart:  "2022-01-01T00:00:00Z",
+			thisEnd:    "2123-01-01T00:00:00Z",
+			otherStart: "2021-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+		{
+			name:       "other has no end + starts on end date",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2121-01-01T00:00:00Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+		{
+			name:       "other has no end + starts just before end date",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2120-12-12T23:59:59Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   false,
+		},
+		{
+			name:       "both end and are adjacent with this phase first",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2120-12-12T23:59:59Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "2122-01-01T00:00:00Z",
+			expected:   false,
+		},
+		{
+			name:       "both end and are overlap slightly wiht this phase first",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2121-01-01T00:00:00Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "2122-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "both end and are overlap slightly wiht other phase first",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "2122-01-01T00:00:00Z",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2121-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "both end and are adjacent with the other phase first",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "2122-01-01T00:00:00Z",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2120-12-12T23:59:59Z",
+			expected:   false,
+		},
 	}
 
 	for _, tt := range tc {
@@ -405,11 +486,13 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			if tt.otherEnd != "" {
 				otherEnd, err = time.Parse(time.RFC3339, tt.otherEnd)
 				assert.Nil(t, err)
-				err = thisPhase.SetEnd(otherEnd)
+				err = otherPhase.SetEnd(otherEnd)
 				assert.Nil(t, err)
 			}
 
 			// Run the test
+			fmt.Printf("thisPhase: %v\n", thisPhase)
+			fmt.Printf("otherPhase: %v\n", otherPhase)
 			assert.Equal(t, tt.expected, thisPhase.OverlapsWith(otherPhase))
 		})
 	}
