@@ -128,6 +128,9 @@ func TestTLDType_String(t *testing.T) {
 }
 
 func TestTLDTeste_AddPhase(t *testing.T) {
+	futureEnd := time.Now().UTC().AddDate(2, 0, 0)
+	futureEndFar := time.Now().UTC().AddDate(4, 0, 0)
+	futureEndShort := time.Now().UTC().AddDate(0, 3, 0)
 	tests := []struct {
 		name     string
 		inputTLD *TLD
@@ -183,6 +186,30 @@ func TestTLDTeste_AddPhase(t *testing.T) {
 				{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now()},
 			}},
 			phase: &Phase{Name: "Launch2", Type: PhaseTypeLaunch, Starts: time.Now()},
+			err:   nil,
+		},
+		{
+			name: "future GA phase + new GA phase before that without enddate",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA1", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(1, 0, 0), Ends: &futureEnd},
+			}},
+			phase: &Phase{Name: "GA0", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 1, 0)},
+			err:   ErrGAPhaseOverlaps,
+		},
+		{
+			name: "future GA phase + new GA phase before that with enddate",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA1", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(1, 0, 0), Ends: &futureEnd},
+			}},
+			phase: &Phase{Name: "GA0", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 1, 0), Ends: &futureEndShort},
+			err:   nil,
+		},
+		{
+			name: "future GA phase + new GA phase after that with enddate",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{
+				{Name: "GA1", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(1, 0, 0), Ends: &futureEnd},
+			}},
+			phase: &Phase{Name: "GA0", Type: PhaseTypeGA, Starts: futureEnd.AddDate(0, 0, 1), Ends: &futureEndFar},
 			err:   nil,
 		},
 	}

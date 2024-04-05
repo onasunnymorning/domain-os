@@ -126,3 +126,5 @@ func (p *Phase) IsCurrentlyActive() bool {
 	now := time.Now().UTC()
 	return p.Starts.Before(now) && (p.Ends == nil || p.Ends.After(now))
 }
+
+// OverlapsWith checks
