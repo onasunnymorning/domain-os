@@ -91,6 +91,10 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 func (ctrl *PhaseController) GetPhase(ctx *gin.Context) {
 	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
