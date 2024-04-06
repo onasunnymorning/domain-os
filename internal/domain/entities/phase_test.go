@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -319,6 +320,180 @@ func TestPhase_SetEndCurrentPhase(t *testing.T) {
 			}
 			err := phase.SetEnd(tt.end)
 			assert.Equal(t, tt.expectedErr, err)
+		})
+	}
+}
+
+func TestPhase_IsCurrentlyActive(t *testing.T) {
+	tc := []struct {
+		name     string
+		start    time.Time
+		end      time.Time
+		expected bool
+	}{
+		{
+			name:     "Active",
+			start:    time.Now().UTC().Add(-time.Hour * 24),
+			end:      time.Now().UTC().Add(time.Hour * 24),
+			expected: true,
+		},
+		{
+			name:     "Not Active",
+			start:    time.Now().UTC().Add(time.Hour * 24),
+			end:      time.Now().UTC().Add(time.Hour * 48),
+			expected: false,
+		},
+		{
+			name:     "Not Active No End",
+			start:    time.Now().UTC().Add(-time.Hour * 24),
+			end:      time.Time{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Starts: tt.start,
+				Ends:   &tt.end,
+			}
+			assert.Equal(t, tt.expected, phase.IsCurrentlyActive())
+		})
+	}
+}
+
+func TestPhase_OverlapsWith(t *testing.T) {
+	tc := []struct {
+		name       string
+		thisStart  string
+		thisEnd    string
+		otherStart string
+		otherEnd   string
+		expected   bool
+	}{
+		{
+			name:       "both no end date",
+			thisStart:  "2021-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2021-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+		{
+			name:       "no end + start after",
+			thisStart:  "2021-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2022-01-01T00:00:00Z",
+			otherEnd:   "2123-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "no end + starts on end date",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2121-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "no end + starts just before end date",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2120-12-12T23:59:59Z",
+			expected:   false,
+		},
+		{
+			name:       "other has no end + start after",
+			thisStart:  "2022-01-01T00:00:00Z",
+			thisEnd:    "2123-01-01T00:00:00Z",
+			otherStart: "2021-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+		{
+			name:       "other has no end + starts on end date",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2121-01-01T00:00:00Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   true,
+		},
+		{
+			name:       "other has no end + starts just before end date",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2120-12-12T23:59:59Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "",
+			expected:   false,
+		},
+		{
+			name:       "both end and are adjacent with this phase first",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2120-12-12T23:59:59Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "2122-01-01T00:00:00Z",
+			expected:   false,
+		},
+		{
+			name:       "both end and are overlap slightly wiht this phase first",
+			thisStart:  "2120-01-01T00:00:00Z",
+			thisEnd:    "2121-01-01T00:00:00Z",
+			otherStart: "2121-01-01T00:00:00Z",
+			otherEnd:   "2122-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "both end and are overlap slightly wiht other phase first",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "2122-01-01T00:00:00Z",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2121-01-01T00:00:00Z",
+			expected:   true,
+		},
+		{
+			name:       "both end and are adjacent with the other phase first",
+			thisStart:  "2121-01-01T00:00:00Z",
+			thisEnd:    "2122-01-01T00:00:00Z",
+			otherStart: "2120-01-01T00:00:00Z",
+			otherEnd:   "2120-12-12T23:59:59Z",
+			expected:   false,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			// VARS
+			var thisStart, thisEnd, otherStart, otherEnd time.Time
+			var err error
+			// SETUP
+			thisStart, err = time.Parse(time.RFC3339, tt.thisStart)
+			assert.Nil(t, err)
+			otherStart, err = time.Parse(time.RFC3339, tt.otherStart)
+			assert.Nil(t, err)
+			// Create the two phases
+			thisPhase, err := NewPhase("thisPhase", "GA", thisStart)
+			assert.Nil(t, err)
+			otherPhase, err := NewPhase("otherPhase", "GA", otherStart)
+			assert.Nil(t, err)
+			// Set the enddates if applicable
+			if tt.thisEnd != "" {
+				thisEnd, err = time.Parse(time.RFC3339, tt.thisEnd)
+				assert.Nil(t, err)
+				err = thisPhase.SetEnd(thisEnd)
+				assert.Nil(t, err)
+			}
+			if tt.otherEnd != "" {
+				otherEnd, err = time.Parse(time.RFC3339, tt.otherEnd)
+				assert.Nil(t, err)
+				err = otherPhase.SetEnd(otherEnd)
+				assert.Nil(t, err)
+			}
+
+			// Run the test
+			fmt.Printf("thisPhase: %v\n", thisPhase)
+			fmt.Printf("otherPhase: %v\n", otherPhase)
+			assert.Equal(t, tt.expected, thisPhase.OverlapsWith(otherPhase))
 		})
 	}
 }

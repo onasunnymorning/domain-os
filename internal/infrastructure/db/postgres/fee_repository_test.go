@@ -59,7 +59,7 @@ func (s *FeeSuite) TearDownSuite() {
 	}
 	if s.PhaseName != "" {
 		repo := NewGormPhaseRepository(s.db)
-		_ = repo.DeletePhaseByName(context.Background(), s.PhaseName)
+		_ = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, s.PhaseName)
 	}
 }
 

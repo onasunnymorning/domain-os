@@ -19,10 +19,10 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 		tldService: tldService,
 	}
 
-	e.GET("/tlds/:name", controller.GetTLDByName)
+	e.GET("/tlds/:tldName", controller.GetTLDByName)
 	e.GET("/tlds", controller.ListTLDs)
 	e.POST("/tlds", controller.CreateTLD)
-	e.DELETE("/tlds/:name", controller.DeleteTLDByName)
+	e.DELETE("/tlds/:tldName", controller.DeleteTLDByName)
 
 	return controller
 }
@@ -32,14 +32,14 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 // @Description Get a TLD by name
 // @Tags TLDs
 // @Produce json
-// @Param name path string true "TLD Name"
+// @Param tldName path string true "TLD Name"
 // @Success 200 {object} entities.TLD
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /tlds/{name} [get]
+// @Router /tlds/{tldName} [get]
 func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
-	name := ctx.Param("name")
+	name := ctx.Param("tldName")
 
 	tld, err := ctrl.tldService.GetTLDByName(name)
 	if err != nil {
@@ -61,7 +61,7 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
-// @Success 200 {array} entities.TLD
+// @Success 200 {array} response.ListItemResult
 // @Failure 400
 // @Failure 500
 // @Router /tlds [get]
@@ -104,13 +104,13 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 // @Description Delete a TLD by Name
 // @Tags TLDs
 // @Produce json
-// @Param name path string true "TLD Name"
+// @Param tldName path string true "TLD Name"
 // @Success 204
 // @Failure 400
 // @Failure 500
-// @Router /tlds/{name} [delete]
+// @Router /tlds/{tldName} [delete]
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
-	name := ctx.Param("name")
+	name := ctx.Param("tldName")
 
 	err := ctrl.tldService.DeleteTLDByName(name)
 	if err != nil {

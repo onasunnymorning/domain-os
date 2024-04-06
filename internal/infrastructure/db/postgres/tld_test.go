@@ -16,6 +16,16 @@ func TestToDBTld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// add two phases
+	phase1, err := entities.NewPhase("sunrise", "Launch", time.Now().UTC())
+	require.NoError(t, err)
+	phase2, err := entities.NewPhase("GA1", "GA", time.Now().UTC())
+	require.NoError(t, err)
+	err = tld.AddPhase(phase1)
+	require.NoError(t, err)
+	err = tld.AddPhase(phase2)
+	require.NoError(t, err)
+	require.Len(t, tld.Phases, 2)
 
 	dbtld := ToDBTLD(tld)
 
@@ -24,6 +34,7 @@ func TestToDBTld(t *testing.T) {
 	require.Equal(t, tld.UName.String(), dbtld.UName, "TLD UName mismatch")
 	require.Equal(t, tld.CreatedAt, dbtld.CreatedAt, "TLD CreatedAt mismatch")
 	require.Equal(t, tld.UpdatedAt, dbtld.UpdatedAt, "TLD UpdatedAt mismatch")
+	require.Len(t, dbtld.Phases, 2, "TLD Phases length mismatch")
 }
 
 func TestFromDBTld(t *testing.T) {
@@ -35,6 +46,21 @@ func TestFromDBTld(t *testing.T) {
 		UpdatedAt: entities.RoundTime(time.Now().UTC()),
 	}
 
+	dbtld.Phases = []Phase{
+		{
+			Name:   "sunrise",
+			Type:   "Launch",
+			Starts: time.Now().UTC(),
+			Ends:   nil,
+		},
+		{
+			Name:   "GA",
+			Type:   "GA",
+			Starts: time.Now().UTC(),
+			Ends:   nil,
+		},
+	}
+
 	tld := FromDBTLD(dbtld)
 
 	require.Equal(t, dbtld.Name, tld.Name.String(), "TLD Name mismatch")
@@ -42,6 +68,7 @@ func TestFromDBTld(t *testing.T) {
 	require.Equal(t, dbtld.UName, tld.UName.String(), "TLD UName mismatch")
 	require.Equal(t, dbtld.CreatedAt, tld.CreatedAt, "TLD CreatedAt mismatch")
 	require.Equal(t, dbtld.UpdatedAt, tld.UpdatedAt, "TLD UpdatedAt mismatch")
+	require.Len(t, tld.Phases, 2, "TLD Phases length mismatch")
 }
 
 type TLDSuite struct {
@@ -125,4 +152,23 @@ func (s *TLDSuite) TestUpdateTLD() {
 	require.NotNil(s.T(), readTLD)
 	require.Equal(s.T(), tld, readTLD)
 	require.Equal(s.T(), "country-code", readTLD.Type.String())
+}
+
+func (s *TLDSuite) TestGetTLD() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormTLDRepo(tx)
+
+	tld, _ := entities.NewTLD("com")
+	err := repo.Create(tld)
+	require.NoError(s.T(), err)
+
+	readTLD, err := repo.GetByName(tld.Name.String())
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), readTLD)
+	require.Equal(s.T(), tld, readTLD)
+
+	// Test not found
+	readTLD, err = repo.GetByName("notfound")
+	require.Error(s.T(), err)
 }
