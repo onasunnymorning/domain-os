@@ -89,16 +89,6 @@ func (t *TLD) checkPhaseNameExists(pn ClIDType) error {
 // checkGAPhaseCanBeAdded is a helper function to determine if a phase can be added to a TLD without overlapping with existing GA phases. Will return an error if the phase already exists or if it overlaps with an existing GA phase.
 func (t *TLD) checkGAPhaseCanBeAdded(new_phase *Phase) error {
 	for i := 0; i < len(t.GetGAPhases()); i++ {
-		// // if either condition A or condition B are true, we have an overlap
-		// var conda, condb bool
-		// // condition A: new phase starts before or at the same time an existing phase ends.
-		// conda = !(new_phase.Ends == nil) && (t.Phases[i].Ends.Before(t.Phases[i].Starts) || t.Phases[i].Ends.Equal(t.Phases[i].Starts))
-		// // condition B: new phase ends after or at the same time the existing phase starts.
-		// condb = !(t.Phases[i].Ends == nil) && (t.Phases[i].Ends.Before(new_phase.Starts) || t.Phases[i].Ends.Equal(new_phase.Starts))
-		// if !(conda || condb) {
-		// 	return ErrGAPhaseOverlaps
-		// }
-
 		if new_phase.OverlapsWith(&t.Phases[i]) {
 			return ErrGAPhaseOverlaps
 		}
