@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -34,6 +35,9 @@ func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name st
 	var phase Phase
 	err := r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrPhaseNotFound
+		}
 		return nil, err
 	}
 	return phase.ToEntity(), nil
