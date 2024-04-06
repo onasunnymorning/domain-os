@@ -88,8 +88,8 @@ func (t *TLD) checkPhaseNameExists(pn ClIDType) error {
 
 // checkGAPhaseCanBeAdded is a helper function to determine if a phase can be added to a TLD without overlapping with existing GA phases. Will return an error if the phase already exists or if it overlaps with an existing GA phase.
 func (t *TLD) checkGAPhaseCanBeAdded(new_phase *Phase) error {
-	for i := 0; i < len(t.GetGAPhases()); i++ {
-		if new_phase.OverlapsWith(&t.Phases[i]) {
+	for _, gaPhase := range t.GetGAPhases() {
+		if new_phase.OverlapsWith(&gaPhase) {
 			return ErrGAPhaseOverlaps
 		}
 	}
@@ -118,20 +118,20 @@ func (t *TLD) AddPhase(p *Phase) error {
 
 // GetCurrentGAPhase Returns the current phase, based on the current time. Will return an error if no active phase is found.
 func (t *TLD) GetCurrentGAPhase() (*Phase, error) {
-	for i := 0; i < len(t.GetGAPhases()); i++ {
+	for _, gaPhase := range t.GetGAPhases() {
 		// If the end date is nil, just look at the start date
-		if t.Phases[i].Ends == nil {
+		if gaPhase.Ends == nil {
 			// If the start date is in the past, it is the current phase
-			if t.Phases[i].Starts.Before(time.Now().UTC()) {
-				return &t.Phases[i], nil
+			if gaPhase.Starts.Before(time.Now().UTC()) {
+				return &gaPhase, nil
 			}
 			// if not, it's a future phase without enddate, we continue looking
 			continue
 		}
 		// If the end date is not nil => it needs to be in the future and the start date in the past
-		if t.Phases[i].Ends.After(time.Now().UTC()) && t.Phases[i].Starts.Before(time.Now().UTC()) {
+		if gaPhase.Ends.After(time.Now().UTC()) && gaPhase.Starts.Before(time.Now().UTC()) {
 			// this must be the current phase
-			return &t.Phases[i], nil
+			return &gaPhase, nil
 		}
 	}
 	// if we haven't found anything by now, there is no current phase
@@ -156,9 +156,8 @@ func (t *TLD) DeletePhase(pn ClIDType) error {
 	if err != nil {
 		return err
 	}
-	curPhases := t.GetCurrentPhases()
-	for i := 0; i < len(curPhases); i++ {
-		if curPhases[i].Name == pn {
+	for _, curPhase := range t.GetCurrentPhases() {
+		if curPhase.Name == pn {
 			return ErrDeleteCurrentPhase
 		}
 	}
@@ -231,18 +230,17 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 		return nil
 	}
 	// If its a GA phase, Check all OTHER GA phases (no need to check the Launch phases for overlap)
-	gaPhases := t.GetGAPhases()
-	for i := 0; i < len(gaPhases); i++ {
-		if gaPhases[i].Name == pn {
+	for _, gaPhase := range t.GetGAPhases() {
+		if gaPhase.Name == pn {
 			// this is the phase we are modifying no need to compare
 			continue
 		}
-		if gaPhases[i].Ends != nil && t.Phases[i].Ends.Before(time.Now().UTC()) {
+		if gaPhase.Ends != nil && gaPhase.Ends.Before(time.Now().UTC()) {
 			// If the phase has already ended, we dont need to check
 			continue
 		}
 		// If the phase hasn't ended yet, we need to check if the new end date overlaps with the start date of the phase
-		if gaPhases[i].Starts.Before(new_end) {
+		if gaPhase.Starts.Before(new_end) {
 			return ErrGAPhaseOverlaps
 		}
 	}
@@ -277,13 +275,13 @@ func (t *TLD) checkPhaseEndUnset(pn ClIDType) error {
 		return ErrUpdateHistoricPhase
 	}
 	// Check all OTHER GA phases for overlap
-	for i := 0; i < len(t.GetGAPhases()); i++ {
-		if t.Phases[i].Name == pn {
+	for _, gaPhase := range t.GetGAPhases() {
+		if gaPhase.Name == pn {
 			// This is the phase we are editing, no need to compare
 			continue
 		}
 		// If the other phase starts after this one, and we remove the end date, they will overlap
-		if t.Phases[i].Starts.After(phase.Starts) {
+		if gaPhase.Starts.After(phase.Starts) {
 			return ErrGAPhaseOverlaps
 		}
 	}
