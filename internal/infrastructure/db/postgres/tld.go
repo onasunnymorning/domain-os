@@ -15,17 +15,25 @@ type TLD struct {
 	UName     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Phases    []Phase `gorm:"foreignKey:TLDName;references:Name"`
 }
 
 // ToDBTLD converts a TLD struct to a DBTLD struct
 func ToDBTLD(tld *entities.TLD) *TLD {
-	return &TLD{
+	dbTLD := &TLD{
 		Name:      tld.Name.String(),
 		Type:      tld.Type.String(),
 		UName:     tld.UName.String(),
 		CreatedAt: tld.CreatedAt,
 		UpdatedAt: tld.UpdatedAt,
 	}
+
+	for _, phase := range tld.Phases {
+		dbPhase := &Phase{}
+		dbPhase.FromEntity(&phase)
+		dbTLD.Phases = append(dbTLD.Phases, *dbPhase)
+	}
+	return dbTLD
 }
 
 // FromDBTLD converts a DBTLD struct to a TLD struct
@@ -36,6 +44,11 @@ func FromDBTLD(dbtld *TLD) *entities.TLD {
 		UName:     entities.DomainName(dbtld.UName),
 		CreatedAt: dbtld.CreatedAt.UTC(),
 		UpdatedAt: dbtld.UpdatedAt.UTC(),
+	}
+	for _, dbphase := range dbtld.Phases {
+		phase := dbphase.ToEntity()
+		tld.Phases = append(tld.Phases, *phase)
+
 	}
 	return tld
 }
@@ -56,7 +69,7 @@ func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
 func (repo *GormTLDRepository) GetByName(name string) (*entities.TLD, error) {
 	dbtld := &TLD{}
 
-	err := repo.db.Where("name = ?", name).First(dbtld).Error
+	err := repo.db.Preload("Phases").Where("name = ?", name).First(dbtld).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrTLDNotFound

@@ -89,7 +89,7 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
+	createdPhase, err := repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 	s.Require().Equal(phase.Name, createdPhase.Name)
@@ -101,7 +101,7 @@ func (s *PhaseSuite) TestPhaseRepo_GetPhaseByName() {
 	s.Require().Nil(createdPhase.Ends)
 
 	// Fetch a phase that doesn't exist
-	_, err = repo.GetPhaseByName(context.Background(), "DoesNotExist")
+	_, err = repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, "DoesNotExist")
 	s.Require().Error(err)
 }
 
@@ -121,20 +121,20 @@ func (s *PhaseSuite) TestPhaseRepo_DeletePhaseByName() {
 	s.Require().NoError(err)
 
 	// Fetch the Phase
-	createdPhase, err := repo.GetPhaseByName(context.Background(), phase.Name.String())
+	createdPhase, err := repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPhase)
 
 	// Delete the Phase
-	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
+	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 
 	// Fetch the Phase again
-	_, err = repo.GetPhaseByName(context.Background(), phase.Name.String())
+	_, err = repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().Error(err)
 
 	// Try and delete a phase again (should not error)
-	err = repo.DeletePhaseByName(context.Background(), phase.Name.String())
+	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 
 }
@@ -210,4 +210,65 @@ func (s *PhaseSuite) TestPhaseRepo_MultiplePrices() {
 	s.Require().NoError(err)
 	// Creating a phase should not create its prices
 	s.Require().Len(createdPhase.Prices, 0)
+}
+
+func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormPhaseRepository(tx)
+
+	// Setup a phase
+	phase, err := entities.NewPhase("TestPhase", "GA", time.Now().UTC())
+	s.Require().NoError(err)
+	s.Require().NotNil(phase)
+	phase.TLDName = entities.DomainName(s.TLDName)
+
+	// Create the phase
+	_, err = repo.CreatePhase(context.Background(), phase)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err := repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(phases, 1)
+	s.Require().Equal(phase.Name, phases[0].Name)
+	s.Require().Equal(phase.Type, phases[0].Type)
+	s.Require().NotNil(phases[0].ID)
+	s.Require().NotNil(phases[0].Starts)
+	s.Require().NotNil(phases[0].CreatedAt)
+	s.Require().NotNil(phases[0].UpdatedAt)
+	s.Require().Nil(phases[0].Ends)
+
+	// Create another phase
+	phase2, err := entities.NewPhase("TestPhase2", "Launch", time.Now().UTC())
+	s.Require().NoError(err)
+	phase2.TLDName = entities.DomainName(s.TLDName)
+	_, err = repo.CreatePhase(context.Background(), phase2)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(phases, 2)
+
+	// Create a third phase
+	phase3, err := entities.NewPhase("TestPhase3", "Launch", time.Now().UTC())
+	s.Require().NoError(err)
+	phase3.TLDName = entities.DomainName(s.TLDName)
+	_, err = repo.CreatePhase(context.Background(), phase3)
+	s.Require().NoError(err)
+
+	// List the phases
+	phases, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(phases, 3)
+
+	// List the phases for a TLD that doesn't exist
+	phases, err = repo.ListPhasesByTLD(context.Background(), "DoesNotExist", 25, "")
+	s.Require().NoError(err)
+	s.Require().Equal(0, len(phases))
+
+	// Pass in an invalid pageCursor (phase cursor should be an int64)
+	_, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "NotAnInt64")
+	s.Require().Error(err)
 }
