@@ -231,17 +231,18 @@ func (t *TLD) checkPhaseEndUpdate(pn ClIDType, new_end time.Time) error {
 		return nil
 	}
 	// If its a GA phase, Check all OTHER GA phases (no need to check the Launch phases for overlap)
-	for i := 0; i < len(t.GetGAPhases()); i++ {
-		if t.Phases[i].Name == pn {
+	gaPhases := t.GetGAPhases()
+	for i := 0; i < len(gaPhases); i++ {
+		if gaPhases[i].Name == pn {
 			// this is the phase we are modifying no need to compare
 			continue
 		}
-		if t.Phases[i].Ends != nil && t.Phases[i].Ends.Before(time.Now().UTC()) {
+		if gaPhases[i].Ends != nil && t.Phases[i].Ends.Before(time.Now().UTC()) {
 			// If the phase has already ended, we dont need to check
 			continue
 		}
 		// If the phase hasn't ended yet, we need to check if the new end date overlaps with the start date of the phase
-		if t.Phases[i].Starts.Before(new_end) {
+		if gaPhases[i].Starts.Before(new_end) {
 			return ErrGAPhaseOverlaps
 		}
 	}
