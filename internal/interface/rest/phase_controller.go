@@ -157,6 +157,10 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
+		if errors.Is(err, entities.ErrDeleteCurrentPhase) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

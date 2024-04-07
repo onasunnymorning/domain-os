@@ -15,7 +15,7 @@ type TLD struct {
 	UName     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Phases    []Phase `gorm:"foreignKey:TLDName;references:Name"`
+	Phases    []Phase `gorm:"foreignKey:TLDName;references:Name;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 // ToDBTLD converts a TLD struct to a DBTLD struct
