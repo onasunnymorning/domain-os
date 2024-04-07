@@ -1,12 +1,17 @@
 package services
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+)
+
+var (
+	ErrCannotDeleteTLDWithActivePhases = errors.New("cannot delete TLD with active phases")
 )
 
 // TLDService implements the TLDService interface
@@ -50,7 +55,19 @@ func (svc *TLDService) ListTLDs(pageSize int, pageCursor string) ([]*entities.TL
 	return svc.tldRepository.List(pageSize, pageCursor)
 }
 
-// DeleteTLDByName deletes a TLD by name
+// DeleteTLDByName deletes a TLD by name. To prevent accidental deletions, we check if there are no active phases for the TLD before deleting it.
 func (svc *TLDService) DeleteTLDByName(name string) error {
+	tld, err := svc.tldRepository.GetByName(name)
+	if err != nil {
+		if err == entities.ErrTLDNotFound {
+			// if there is no TLD with the given name, nothing to do, be idempotent
+			return nil
+		}
+		return err
+	}
+
+	if len(tld.GetCurrentPhases()) != 0 {
+		return ErrCannotDeleteTLDWithActivePhases
+	}
 	return svc.tldRepository.DeleteByName(name)
 }

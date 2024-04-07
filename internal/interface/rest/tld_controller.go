@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -114,6 +115,10 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 
 	err := ctrl.tldService.DeleteTLDByName(name)
 	if err != nil {
+		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
