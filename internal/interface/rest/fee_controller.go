@@ -1,0 +1,113 @@
+package rest
+
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+)
+
+// FeeController is the controller for the Fee entity
+type FeeController struct {
+	feeService interfaces.FeeService
+}
+
+// NewFeeController returns a new instance of FeeController
+func NewFeeController(e *gin.Engine, feeService interfaces.FeeService) *FeeController {
+	controller := &FeeController{
+		feeService: feeService,
+	}
+	// Add the routes
+	e.POST("/tlds/:tldName/phases/:phaseName/fees", controller.CreateFee)
+	e.GET("/tlds/:tldName/phases/:phaseName/fees", controller.ListFees)
+	e.DELETE("/tlds/:tldName/phases/:phaseName/fees/:feeName/:currency", controller.DeleteFee)
+
+	return controller
+}
+
+// CreateFee godoc
+// @Summary Create a new fee
+// @Description Create a new fee
+// @Tags Fees
+// @Accept json
+// @Produce json
+// @Param fee body commands.CreateFeeCommand true "Fee to create"
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Success 201 {object} entities.Fee
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/fees [post]
+func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
+	// Bind the request body to the command
+	var cmd commands.CreateFeeCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Set the TLD and phase in the command
+	cmd.TLDName = ctx.Param("tldName")
+	cmd.PhaseName = ctx.Param("phaseName")
+
+	// Call the service to create the fee
+	fee, err := ctrl.feeService.CreateFee(ctx, &cmd)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return the response
+	ctx.JSON(201, fee)
+}
+
+// ListFees godoc
+// @Summary List all fees for a given phase
+// @Description List all fees for a given phase
+// @Tags Fees
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Success 200 {array} entities.Fee
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/fees [get]
+func (ctrl *FeeController) ListFees(ctx *gin.Context) {
+	// Call the service to list the fees
+	fees, err := ctrl.feeService.ListFees(ctx, ctx.Param("phaseName"), ctx.Param("tldName"))
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return the response
+	ctx.JSON(200, fees)
+}
+
+// DeleteFee godoc
+// @Summary Delete a fee
+// @Description Delete a fee
+// @Tags Fees
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param feeName path string true "Fee name"
+// @Param currency path string true "Currency"
+// @Success 204
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/fees/{feeName}/{currency} [delete]
+func (ctrl *FeeController) DeleteFee(ctx *gin.Context) {
+	// Call the service to delete the fee
+	err := ctrl.feeService.DeleteFee(ctx, ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("feeName"), ctx.Param("currency"))
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return the response
+	ctx.JSON(204, nil)
+}

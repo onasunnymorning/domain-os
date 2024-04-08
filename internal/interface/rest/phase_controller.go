@@ -39,7 +39,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 // @Produce json
 // @Param phase body commands.CreatePhaseCommand true "Phase to create"
 // @Param tldName path string true "TLD name"
-// @Success 200 {object} entities.Phase
+// @Success 201 {object} entities.Phase
 // @Failure 400
 // @Failure 404
 // @Failure 500

@@ -84,6 +84,21 @@ func (p *Phase) checkFeeExists(pr Fee) error {
 	return nil
 }
 
+// DeleteFee deletes a fee from the phase
+func (p *Phase) DeleteFee(name, currency string) error {
+	// If the phase has ended, we should not update it, there is also no need to remove any fees as they are historical
+	if p.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	for i := 0; i < len(p.Fees); i++ {
+		if p.Fees[i].Currency == currency && p.Fees[i].Name == name {
+			p.Fees = append(p.Fees[:i], p.Fees[i+1:]...)
+			return nil
+		}
+	}
+	return nil // Fee not found, not an error, be idempotent
+}
+
 // Add a price to the phase
 func (p *Phase) AddPrice(pr Price) (int, error) {
 	err := p.checkPriceExists(pr)

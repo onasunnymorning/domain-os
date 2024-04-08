@@ -497,3 +497,68 @@ func TestPhase_OverlapsWith(t *testing.T) {
 		})
 	}
 }
+
+func TestFee_DeleteFee(t *testing.T) {
+	tc := []struct {
+		name        string
+		phaseEnds   time.Time
+		fees        []Fee
+		expectedErr error
+	}{
+		{
+			name:        "NoErr idempotent",
+			phaseEnds:   time.Now().UTC().Add(time.Hour * 24),
+			fees:        []Fee{},
+			expectedErr: nil,
+		},
+		{
+			name:      "fee1",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			fees: []Fee{
+				{
+					Name:     "fee1",
+					Currency: "USD",
+					Amount:   100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "fee2",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			fees: []Fee{
+				{
+					Name:     "fee1",
+					Currency: "USD",
+					Amount:   100,
+				},
+				{
+					Name:     "fee2",
+					Currency: "USD",
+					Amount:   100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:        "Phase Ended",
+			phaseEnds:   time.Now().UTC().Add(-time.Hour * 24),
+			fees:        []Fee{},
+			expectedErr: ErrUpdateHistoricPhase,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Ends: &tt.phaseEnds,
+				Fees: tt.fees,
+			}
+			err := phase.DeleteFee(tt.name, "USD")
+			assert.Equal(t, tt.expectedErr, err)
+			if len(tt.fees) > 0 {
+				assert.Equal(t, len(tt.fees)-1, len(phase.Fees))
+			}
+		})
+	}
+}

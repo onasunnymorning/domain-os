@@ -14,7 +14,7 @@ type Phase struct {
 	Starts time.Time
 	Ends   *time.Time
 	// Prices          []Price
-	// Fees            []Fee
+	Fees            []Fee
 	PremiumListName string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -42,11 +42,21 @@ func (p *Phase) ToEntity() *entities.Phase {
 		TLDName:         entities.DomainName(p.TLDName),
 		Policy:          p.PhasePolicy,
 	}
+	for _, fee := range p.Fees {
+		phase.Fees = append(phase.Fees, *fee.ToEntity())
+	}
 	return phase
 }
 
 // FromEntity converts a domain model *entities.Phase to a Phase
 func (p *Phase) FromEntity(phase *entities.Phase) {
+	fees := make([]Fee, len(phase.Fees))
+	for i, fee := range phase.Fees {
+		f := &Fee{}
+		f.FromEntity(&fee)
+		fees[i] = *f
+	}
+
 	p.ID = phase.ID
 	p.Name = string(phase.Name)
 	p.Type = string(phase.Type)
