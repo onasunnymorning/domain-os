@@ -4,6 +4,11 @@ import (
 	s "strings"
 
 	"github.com/Rhymond/go-money"
+	"github.com/pkg/errors"
+)
+
+var (
+	ErrInvalidFee = errors.New("invalid fee")
 )
 
 // Fee value object. Amounts are stored in the smallest unit of the currency (e.g. cents for USD)

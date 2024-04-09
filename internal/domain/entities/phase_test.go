@@ -554,11 +554,26 @@ func TestFee_DeleteFee(t *testing.T) {
 				Ends: &tt.phaseEnds,
 				Fees: tt.fees,
 			}
-			err := phase.DeleteFee(tt.name, "USD")
+			err := phase.DeleteFee(tt.name, "usd")
 			assert.Equal(t, tt.expectedErr, err)
 			if len(tt.fees) > 0 {
 				assert.Equal(t, len(tt.fees)-1, len(phase.Fees))
 			}
 		})
 	}
+}
+
+func TestPhase_DeleteFeeNilEnd(t *testing.T) {
+	phase := &Phase{
+		Fees: []Fee{
+			{
+				Name:     "fee1",
+				Currency: "USD",
+				Amount:   100,
+			},
+		},
+	}
+	err := phase.DeleteFee("fee1", "USD")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(phase.Fees))
 }
