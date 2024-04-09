@@ -33,7 +33,7 @@ func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase
 // GetPhaseByTLDAndName gets a phase by its name
 func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error) {
 	var phase Phase
-	err := r.db.WithContext(ctx).Preload("Fees").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
+	err := r.db.WithContext(ctx).Preload("Fees").Preload("Prices").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPhaseNotFound
