@@ -29,7 +29,7 @@ func NewFeeController(e *gin.Engine, feeService interfaces.FeeService) *FeeContr
 
 // CreateFee godoc
 // @Summary Create a new fee
-// @Description Create a new fee
+// @Description Create a new fee. TLD Name and Phase Name are case sensitive. Currency Code will be converted to uppercase before storing. If the fee (defined by the Name + Currency tuple) already exists in the phase a 400 will be returned. If the TLD or Phase do not exist a 404 will be returned. Amounts should be in the smallest unit of the currency (e.g. cents for USD). Refundable is a boolean that indicates if the fee is refundable. If omitted, it will default to false.
 // @Tags Fees
 // @Accept json
 // @Produce json
@@ -73,7 +73,7 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 
 // ListFees godoc
 // @Summary List all fees for a given phase
-// @Description List all fees for a given phase
+// @Description List all fees for a given phase. There is no pagination on this endpoint. TLD Name and Phase Name are case sensitive.
 // @Tags Fees
 // @Produce json
 // @Param tldName path string true "TLD name"
@@ -96,7 +96,7 @@ func (ctrl *FeeController) ListFees(ctx *gin.Context) {
 
 // DeleteFee godoc
 // @Summary Delete a fee
-// @Description Delete a fee
+// @Description Deletes a fee for a given phase. The fee is identified by its name and currency. TLD Name, Fee Name and Phase Name are case sensitive. Currency is not (we always store currency codes in uppercase and will convert the input given to uppercase ). If the fee does not exist a 204 will be returned. If either the TLD or Phase do not exist a 404 will be returned.
 // @Tags Fees
 // @Produce json
 // @Param tldName path string true "TLD name"
