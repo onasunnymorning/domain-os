@@ -61,11 +61,9 @@ func (svc *FeeService) ListFees(ctx context.Context, phaseName, TLDName string) 
 		return nil, err
 	}
 
-	// avoid null response
+	// Copy the fees from phase.Fees to response slice
 	response := make([]entities.Fee, len(phase.Fees))
-	for i, fee := range phase.Fees {
-		response[i] = fee
-	}
+	copy(response, phase.Fees)
 
 	return response, nil
 }
