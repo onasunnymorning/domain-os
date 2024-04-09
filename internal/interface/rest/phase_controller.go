@@ -33,7 +33,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 
 // CreatePhase godoc
 // @Summary Create a new phase
-// @Description Create a new phase
+// @Description Create a new phase. The phase name must be unique within the TLD. The phase name must be a valid slug and is case sensitive. If the TLD does not exist a 404 will be returned. GA phases can not overlap with each other. Launch phases can overlap with each other and can run in parallel with GA phases.
 // @Tags Phases
 // @Accept json
 // @Produce json
@@ -79,7 +79,7 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 
 // GetPhase godoc
 // @Summary Get a phase by name and tld name
-// @Description Get a phase by name and tld name
+// @Description Get a phase by name and tld name. TLD name and phase name are case sensitive.
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
@@ -104,7 +104,7 @@ func (ctrl *PhaseController) GetPhase(ctx *gin.Context) {
 
 // EndPhase godoc
 // @Summary Sets or updates an end date on a phase by name and tld name
-// @Description Sets or updates an end date on a phase by name and tld name
+// @Description Sets or updates an end date on a phase by name and tld name. End date must be in the future and after the start date. TLD name and phase name are case sensitive. The resulting phase will be checked for validity and will be returned if valid.
 // @Tags Phases
 // @Accept json
 // @Produce json
@@ -146,7 +146,7 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 
 // DeletePhase godoc
 // @Summary Delete a phase by name and tld name
-// @Description Delete a phase by name and tld name
+// @Description Delete a phase by name and tld name. TLD name and phase name are case sensitive. You cannot delete the current phase or historical phases, this will result in a 400 error. You can only delete future phases that haven't started yet. Deleting a phase will delete fees and prices associated with the phase if they exists.
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
@@ -157,7 +157,7 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
-		if errors.Is(err, entities.ErrDeleteCurrentPhase) {
+		if errors.Is(err, entities.ErrDeleteCurrentPhase) || errors.Is(err, entities.ErrDeleteHistoricPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -170,7 +170,7 @@ func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 
 // ListPhases godoc
 // @Summary List all phases for a TLD
-// @Description List all phases for a TLD
+// @Description List all phases for a TLD. Phases are returned in order of creation and this endpoint offers pagination. The cursor is the last phase name in the previous page. The pagesize is the number of phases to return. The first page should be requested without a cursor.
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
@@ -211,7 +211,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 
 // ListActivePhases godoc
 // @Summary List all active phases for a TLD
-// @Description List all active phases for a TLD
+// @Description List all active phases for a TLD. Same as ListPhases but only returns active phases (GA and Launch). Phases are returned in order of creation and this endpoint offers pagination. The cursor is the last phase name in the previous page. The pagesize is the number of phases to return. The first page should be requested without a cursor.
 // @Tags Phases
 // @Produce json
 // @Param tldName path string true "TLD name"
