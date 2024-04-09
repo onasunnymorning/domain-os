@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -24,7 +25,7 @@ func NewPriceService(phaseRepo repositories.PhaseRepository, priceRepo repositor
 }
 
 // CreatePrice creates a new price
-func (s *PriceService) CreatePrice(ctx context.Context, cmd commands.CreatePriceCommand) (*entities.Price, error) {
+func (s *PriceService) CreatePrice(ctx context.Context, cmd *commands.CreatePriceCommand) (*entities.Price, error) {
 	// retrieve the phase
 	phase, err := s.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
 	if err != nil {
@@ -82,6 +83,6 @@ func (s *PriceService) DeletePrice(ctx context.Context, phaseName, TLDName, curr
 		return err
 	}
 
-	// if there are no errors, delete the price from the repository
-	return s.priceRepo.DeletePrice(ctx, phase.ID, currency)
+	// if there are no errors, delete the price from the repository, making sure the currency code is uppercase as we always store it in uppercase
+	return s.priceRepo.DeletePrice(ctx, phase.ID, strings.ToUpper(currency))
 }

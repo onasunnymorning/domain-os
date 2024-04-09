@@ -8,13 +8,13 @@ import (
 
 // Phase GORM entity. ID is the primary key and we add a composite unique index ond tldname+name to facilitate human friendly queries
 type Phase struct {
-	ID     int64  `gorm:"primaryKey"`
-	Name   string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
-	Type   string `gorm:"index"`
-	Starts time.Time
-	Ends   *time.Time
-	// Prices          []Price
-	Fees            []Fee `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	ID              int64  `gorm:"primaryKey"`
+	Name            string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
+	Type            string `gorm:"index"`
+	Starts          time.Time
+	Ends            *time.Time
+	Prices          []Price `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Fees            []Fee   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	PremiumListName string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -45,6 +45,9 @@ func (p *Phase) ToEntity() *entities.Phase {
 	for _, fee := range p.Fees {
 		phase.Fees = append(phase.Fees, *fee.ToEntity())
 	}
+	for _, price := range p.Prices {
+		phase.Prices = append(phase.Prices, *price.ToEntity())
+	}
 	return phase
 }
 
@@ -55,6 +58,13 @@ func (p *Phase) FromEntity(phase *entities.Phase) {
 		f := &Fee{}
 		f.FromEntity(&fee)
 		fees[i] = *f
+	}
+
+	prices := make([]Price, len(phase.Prices))
+	for i, price := range phase.Prices {
+		p := &Price{}
+		p.FromEntity(&price)
+		prices[i] = *p
 	}
 
 	p.ID = phase.ID

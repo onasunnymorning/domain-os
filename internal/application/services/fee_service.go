@@ -87,7 +87,7 @@ func (svc *FeeService) DeleteFee(ctx context.Context, phaseName, TLDName, feeNam
 	}
 
 	log.Printf("Deleting fee %s %s from phase %s %s", feeName, currency, TLDName, phaseName)
-	// If there are no errors, delete the fee from the repository
+	// If there are no errors, delete the fee from the repository, make sure to capitalize the currency as we always store it in uppercase
 	err = svc.feeRepo.DeleteFee(ctx, phase.ID, feeName, strings.ToUpper(currency))
 	if err != nil {
 		return err

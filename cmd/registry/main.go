@@ -93,6 +93,10 @@ func main() {
 	feeRepo := postgres.NewFeeRepository(gormDB)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)
 
+	// Prices
+	priceRepo := postgres.NewGormPriceRepository(gormDB)
+	priceService := services.NewPriceService(phaseRepo, priceRepo)
+
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
@@ -142,6 +146,7 @@ func main() {
 	rest.NewDomainController(r, domainService)
 	rest.NewPhaseController(r, phaseService)
 	rest.NewFeeController(r, feeService)
+	rest.NewPriceController(r, priceService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
