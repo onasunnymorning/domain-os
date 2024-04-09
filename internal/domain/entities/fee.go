@@ -4,15 +4,20 @@ import (
 	s "strings"
 
 	"github.com/Rhymond/go-money"
+	"github.com/pkg/errors"
+)
+
+var (
+	ErrInvalidFee = errors.New("invalid fee")
 )
 
 // Fee value object. Amounts are stored in the smallest unit of the currency (e.g. cents for USD)
 type Fee struct {
 	Currency   string `json:"currency" binding:"required" example:"USD"`
-	Name       string `json:"name" binding:"required" example:"sunrise fee"`
+	Name       string `json:"name" binding:"required" example:"sunrise_fee"`
 	Amount     int64  `json:"amount" binding:"required" example:"10000"`
 	Refundable *bool  `json:"refundable" binding:"required" example:"false"`
-	PhaseID    int64  `json:"phaseid"`
+	PhaseID    int64  `json:"-"`
 }
 
 // Fee factory. Validates the currency and returns a new Fee object. Amounts are stored in the smallest unit of the currency (e.g. cents for USD). Then name is normalized.

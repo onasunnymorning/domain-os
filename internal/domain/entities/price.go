@@ -4,6 +4,11 @@ import (
 	s "strings"
 
 	money "github.com/Rhymond/go-money"
+	"github.com/pkg/errors"
+)
+
+var (
+	ErrInvalidPrice = errors.New("invalid price")
 )
 
 // Price value object. Amounts are stored in the smallest unit of the currency (e.g. cents for USD)

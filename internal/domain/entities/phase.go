@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -84,6 +85,21 @@ func (p *Phase) checkFeeExists(pr Fee) error {
 	return nil
 }
 
+// DeleteFee deletes a fee from the phase. We always store currency Codes in uppercase, but this function will also accept lowercase currency codes.
+func (p *Phase) DeleteFee(name, currency string) error {
+	// If the phase has ended, we should not update it, there is also no need to remove any fees as they are historical
+	if p.Ends != nil && p.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	for i := 0; i < len(p.Fees); i++ {
+		if p.Fees[i].Currency == strings.ToUpper(currency) && p.Fees[i].Name == name {
+			p.Fees = append(p.Fees[:i], p.Fees[i+1:]...)
+			return nil
+		}
+	}
+	return nil // Fee not found, not an error, be idempotent
+}
+
 // Add a price to the phase
 func (p *Phase) AddPrice(pr Price) (int, error) {
 	err := p.checkPriceExists(pr)
@@ -103,6 +119,21 @@ func (p *Phase) checkPriceExists(pr Price) error {
 		}
 	}
 	return nil
+}
+
+// DeletePrice deletes a price from the phase. We always store currency Codes in uppercase, but this function will also accept lowercase currency codes.
+func (p *Phase) DeletePrice(currency string) error {
+	// If the phase has ended, we should not update it, there is also no need to remove any prices as they are historical
+	if p.Ends != nil && p.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	for i := 0; i < len(p.Prices); i++ {
+		if p.Prices[i].Currency == strings.ToUpper(currency) {
+			p.Prices = append(p.Prices[:i], p.Prices[i+1:]...)
+			return nil
+		}
+	}
+	return nil // Price not found, not an error, be idempotent
 }
 
 // SetEnd Sets an enddate to a phase. The enddate must be in the future and after the start date. Returns an error if the enddate is in the past or before the start date.

@@ -497,3 +497,171 @@ func TestPhase_OverlapsWith(t *testing.T) {
 		})
 	}
 }
+
+func TestFee_DeleteFee(t *testing.T) {
+	tc := []struct {
+		name        string
+		phaseEnds   time.Time
+		fees        []Fee
+		expectedErr error
+	}{
+		{
+			name:        "NoErr idempotent",
+			phaseEnds:   time.Now().UTC().Add(time.Hour * 24),
+			fees:        []Fee{},
+			expectedErr: nil,
+		},
+		{
+			name:      "fee1",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			fees: []Fee{
+				{
+					Name:     "fee1",
+					Currency: "USD",
+					Amount:   100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "fee2",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			fees: []Fee{
+				{
+					Name:     "fee1",
+					Currency: "USD",
+					Amount:   100,
+				},
+				{
+					Name:     "fee2",
+					Currency: "USD",
+					Amount:   100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:        "Phase Ended",
+			phaseEnds:   time.Now().UTC().Add(-time.Hour * 24),
+			fees:        []Fee{},
+			expectedErr: ErrUpdateHistoricPhase,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Ends: &tt.phaseEnds,
+				Fees: tt.fees,
+			}
+			err := phase.DeleteFee(tt.name, "usd")
+			assert.Equal(t, tt.expectedErr, err)
+			if len(tt.fees) > 0 {
+				assert.Equal(t, len(tt.fees)-1, len(phase.Fees))
+			}
+		})
+	}
+}
+
+func TestPhase_DeleteFeeNilEnd(t *testing.T) {
+	phase := &Phase{
+		Fees: []Fee{
+			{
+				Name:     "fee1",
+				Currency: "USD",
+				Amount:   100,
+			},
+		},
+	}
+	err := phase.DeleteFee("fee1", "USD")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(phase.Fees))
+}
+
+func TestPhase_DeletePriceNilEnd(t *testing.T) {
+	phase := &Phase{
+		Prices: []Price{
+			{
+				RegistrationAmount: 100,
+				RenewalAmount:      100,
+				TransferAmount:     100,
+				RestoreAmount:      100,
+				Currency:           "USD",
+			},
+		},
+	}
+	err := phase.DeletePrice("USD")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(phase.Prices))
+}
+
+func TestFee_DeletePrice(t *testing.T) {
+	tc := []struct {
+		name        string
+		phaseEnds   time.Time
+		prices      []Price
+		expectedErr error
+	}{
+		{
+			name:        "NoErr idempotent",
+			phaseEnds:   time.Now().UTC().Add(time.Hour * 24),
+			prices:      []Price{},
+			expectedErr: nil,
+		},
+		{
+			name:      "price1",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "price2",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:        "Phase Ended",
+			phaseEnds:   time.Now().UTC().Add(-time.Hour * 24),
+			prices:      []Price{},
+			expectedErr: ErrUpdateHistoricPhase,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Ends:   &tt.phaseEnds,
+				Prices: tt.prices,
+			}
+			err := phase.DeletePrice("USD")
+			assert.Equal(t, tt.expectedErr, err)
+			if len(tt.prices) > 0 {
+				assert.Equal(t, len(tt.prices)-1, len(phase.Prices))
+			}
+		})
+	}
+}
