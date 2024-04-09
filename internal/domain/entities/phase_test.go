@@ -577,3 +577,91 @@ func TestPhase_DeleteFeeNilEnd(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(phase.Fees))
 }
+
+func TestPhase_DeletePriceNilEnd(t *testing.T) {
+	phase := &Phase{
+		Prices: []Price{
+			{
+				RegistrationAmount: 100,
+				RenewalAmount:      100,
+				TransferAmount:     100,
+				RestoreAmount:      100,
+				Currency:           "USD",
+			},
+		},
+	}
+	err := phase.DeletePrice("USD")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(phase.Prices))
+}
+
+func TestFee_DeletePrice(t *testing.T) {
+	tc := []struct {
+		name        string
+		phaseEnds   time.Time
+		prices      []Price
+		expectedErr error
+	}{
+		{
+			name:        "NoErr idempotent",
+			phaseEnds:   time.Now().UTC().Add(time.Hour * 24),
+			prices:      []Price{},
+			expectedErr: nil,
+		},
+		{
+			name:      "price1",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "price2",
+			phaseEnds: time.Now().UTC().Add(time.Hour * 24),
+			prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 100,
+					RenewalAmount:      100,
+					TransferAmount:     100,
+					RestoreAmount:      100,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:        "Phase Ended",
+			phaseEnds:   time.Now().UTC().Add(-time.Hour * 24),
+			prices:      []Price{},
+			expectedErr: ErrUpdateHistoricPhase,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := &Phase{
+				Ends:   &tt.phaseEnds,
+				Prices: tt.prices,
+			}
+			err := phase.DeletePrice("USD")
+			assert.Equal(t, tt.expectedErr, err)
+			if len(tt.prices) > 0 {
+				assert.Equal(t, len(tt.prices)-1, len(phase.Prices))
+			}
+		})
+	}
+}

@@ -121,6 +121,21 @@ func (p *Phase) checkPriceExists(pr Price) error {
 	return nil
 }
 
+// DeletePrice deletes a price from the phase. We always store currency Codes in uppercase, but this function will also accept lowercase currency codes.
+func (p *Phase) DeletePrice(currency string) error {
+	// If the phase has ended, we should not update it, there is also no need to remove any prices as they are historical
+	if p.Ends != nil && p.Ends.Before(time.Now().UTC()) {
+		return ErrUpdateHistoricPhase
+	}
+	for i := 0; i < len(p.Prices); i++ {
+		if p.Prices[i].Currency == strings.ToUpper(currency) {
+			p.Prices = append(p.Prices[:i], p.Prices[i+1:]...)
+			return nil
+		}
+	}
+	return nil // Price not found, not an error, be idempotent
+}
+
 // SetEnd Sets an enddate to a phase. The enddate must be in the future and after the start date. Returns an error if the enddate is in the past or before the start date.
 func (p *Phase) SetEnd(endDate time.Time) error {
 	// Check if the end date is in UTC
