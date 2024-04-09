@@ -1,6 +1,10 @@
 package services
 
 import (
+	"errors"
+	"log"
+	"strings"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -26,19 +30,19 @@ func (svc *FeeService) CreateFee(ctx context.Context, cmd *commands.CreateFeeCom
 	// Retrieve the phase
 	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidFee, err)
 	}
 
 	// Create a new fee
 	fee, err := entities.NewFee(cmd.Currency, cmd.Name, cmd.Amount, &cmd.Refundable)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidFee, err)
 	}
 
 	// Add the fee to the phase using our domain logic
 	_, err = phase.AddFee(*fee)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidFee, err)
 	}
 
 	// Set the phase ID
@@ -71,7 +75,7 @@ func (svc *FeeService) ListFees(ctx context.Context, phaseName, TLDName string) 
 // DeleteFee deletes a fee
 func (svc *FeeService) DeleteFee(ctx context.Context, phaseName, TLDName, feeName, currency string) error {
 	// Retrieve the phase
-	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, phaseName, TLDName)
+	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, TLDName, phaseName)
 	if err != nil {
 		return err
 	}
@@ -82,11 +86,11 @@ func (svc *FeeService) DeleteFee(ctx context.Context, phaseName, TLDName, feeNam
 		return err
 	}
 
-	// Delete the fee
-	err = svc.feeRepo.DeleteFee(ctx, phase.ID, feeName, currency)
+	log.Printf("Deleting fee %s %s from phase %s %s", feeName, currency, TLDName, phaseName)
+	// If there are no errors, delete the fee from the repository
+	err = svc.feeRepo.DeleteFee(ctx, phase.ID, feeName, strings.ToUpper(currency))
 	if err != nil {
 		return err
 	}
-
 	return nil
 }

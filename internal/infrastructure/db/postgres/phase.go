@@ -14,7 +14,7 @@ type Phase struct {
 	Starts time.Time
 	Ends   *time.Time
 	// Prices          []Price
-	Fees            []Fee
+	Fees            []Fee `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	PremiumListName string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
