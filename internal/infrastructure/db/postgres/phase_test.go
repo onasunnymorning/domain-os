@@ -125,7 +125,7 @@ func TestPhase_FromEntityWithFeeAndPrice(t *testing.T) {
 	assert.Equal(t, string(expected.TLDName), phase.TLDName)
 	assert.Equal(t, expected.Policy, phase.PhasePolicy)
 	assert.Equal(t, 1, len(phase.Fees))
-	assert.Equal(t, expected.Fees[0].Name, phase.Fees[0].Name)
+	assert.Equal(t, expected.Fees[0].Name.String(), phase.Fees[0].Name)
 	assert.Equal(t, expected.Fees[0].Amount, phase.Fees[0].Amount)
 	assert.Equal(t, 1, len(phase.Prices))
 	assert.Equal(t, expected.Prices[0].Currency, phase.Prices[0].Currency)

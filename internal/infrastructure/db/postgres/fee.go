@@ -20,7 +20,7 @@ func (Fee) TableName() string {
 // FromEntity converts a Fee entity to a Fee model
 func (f *Fee) FromEntity(entity *entities.Fee) {
 	f.Currency = entity.Currency
-	f.Name = entity.Name
+	f.Name = entity.Name.String()
 	f.Amount = entity.Amount
 	f.Refundable = entity.Refundable
 	f.PhaseID = entity.PhaseID
@@ -30,7 +30,7 @@ func (f *Fee) FromEntity(entity *entities.Fee) {
 func (f *Fee) ToEntity() *entities.Fee {
 	return &entities.Fee{
 		Currency:   f.Currency,
-		Name:       f.Name,
+		Name:       entities.ClIDType(f.Name),
 		Amount:     f.Amount,
 		Refundable: f.Refundable,
 		PhaseID:    f.PhaseID,

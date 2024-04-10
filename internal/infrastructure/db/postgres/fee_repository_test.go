@@ -85,7 +85,9 @@ func (s *FeeSuite) TestPhaseRepo_CreateFee() {
 
 	// Setup a fee
 	b := true
-	fee, _ := entities.NewFee("USD", "verfication fee", 1000, &b)
+	fee, err := entities.NewFee("USD", "verfication fee", 1000, &b)
+	s.Require().NoError(err)
+	s.Require().NotNil(fee)
 	fee.PhaseID = s.PhaseID
 
 	// Create the fee
@@ -119,7 +121,7 @@ func (s *FeeSuite) TestPhaseRepo_GetFee() {
 	s.Require().NotNil(createdFee)
 
 	// Read the Fee
-	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name.String(), fee.Currency)
 	s.Require().NoError(err)
 	s.Require().NotNil(readFee)
 
@@ -150,19 +152,19 @@ func (s *FeeSuite) TestPhaseRepo_DeleteFee() {
 	s.Require().NotNil(createdFee)
 
 	// Read the Fee
-	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	readFee, err := repo.GetFee(context.Background(), s.PhaseID, fee.Name.String(), fee.Currency)
 	s.Require().NoError(err)
 	s.Require().NotNil(readFee)
 
 	// Delete the fee
-	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name.String(), fee.Currency)
 	s.Require().NoError(err)
 
 	// Read the Fee now that it is gone
-	_, err = repo.GetFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	_, err = repo.GetFee(context.Background(), s.PhaseID, fee.Name.String(), fee.Currency)
 	s.Require().Error(err)
 
 	// Delete the fee again
-	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name, fee.Currency)
+	err = repo.DeleteFee(context.Background(), s.PhaseID, fee.Name.String(), fee.Currency)
 	s.Require().NoError(err)
 }
