@@ -400,6 +400,13 @@ func TestTLD_EndPhase(t *testing.T) {
 			err:      nil,
 		},
 		{
+			name:     "Update end historic phase",
+			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -1), Ends: &endDate}}},
+			phase:    "GA",
+			endTime:  time.Now().UTC().AddDate(0, 0, -1),
+			err:      ErrEndDateInPast,
+		},
+		{
 			name:     "Not UTC",
 			inputTLD: &TLD{Name: "example.com", Phases: []Phase{{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().UTC().AddDate(0, 0, -1)}}},
 			phase:    "GA",

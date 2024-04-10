@@ -2,7 +2,6 @@ package entities
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -491,8 +490,8 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			}
 
 			// Run the test
-			fmt.Printf("thisPhase: %v\n", thisPhase)
-			fmt.Printf("otherPhase: %v\n", otherPhase)
+			// fmt.Printf("thisPhase: %v\n", thisPhase)
+			// fmt.Printf("otherPhase: %v\n", otherPhase)
 			assert.Equal(t, tt.expected, thisPhase.OverlapsWith(otherPhase))
 		})
 	}
