@@ -72,8 +72,8 @@ func NewNNDN(name string) (*NNDN, error) {
 		Name:      *domain,
 		TLDName:   *tld,
 		NameState: NNDNStateBlocked,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 
 	// Only set the UName if the domain is an IDN otherwise leave it empty
