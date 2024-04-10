@@ -26,7 +26,7 @@ func TestFee_FromEntity(t *testing.T) {
 	fee.FromEntity(entity)
 
 	require.Equal(t, entity.Currency, fee.Currency)
-	require.Equal(t, entity.Name, fee.Name)
+	require.Equal(t, entity.Name.String(), fee.Name)
 	require.Equal(t, entity.Amount, fee.Amount)
 	require.Equal(t, entity.Refundable, fee.Refundable)
 	require.Equal(t, entity.PhaseID, fee.PhaseID)
@@ -46,7 +46,7 @@ func TestFee_ToEntity(t *testing.T) {
 	entity := fee.ToEntity()
 
 	require.Equal(t, fee.Currency, entity.Currency)
-	require.Equal(t, fee.Name, entity.Name)
+	require.Equal(t, fee.Name, entity.Name.String())
 	require.Equal(t, fee.Amount, entity.Amount)
 	require.Equal(t, fee.Refundable, entity.Refundable)
 	require.Equal(t, fee.PhaseID, entity.PhaseID)
