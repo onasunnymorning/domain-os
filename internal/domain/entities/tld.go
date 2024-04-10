@@ -161,7 +161,7 @@ func (t *TLD) DeletePhase(pn ClIDType) error {
 			return ErrDeleteCurrentPhase
 		}
 	}
-	if phase.Starts.Before(time.Now()) {
+	if phase.Starts.Before(time.Now().UTC()) {
 		return ErrDeleteHistoricPhase
 	}
 	for i := 0; i < len(t.Phases); i++ {
@@ -187,6 +187,9 @@ func (t *TLD) EndPhase(pn ClIDType, endTime time.Time) (*Phase, error) {
 	phase, err := t.FindPhaseByName(pn)
 	if err != nil {
 		return nil, err
+	}
+	if !IsUTC(endTime) {
+		return nil, ErrTimeStampNotUTC
 	}
 	// If there is no end date, we can set it
 	if phase.Ends == nil {
