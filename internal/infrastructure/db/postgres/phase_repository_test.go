@@ -26,10 +26,10 @@ func (s *PhaseSuite) SetupSuite() {
 
 	// Create a tld
 	tld, _ := entities.NewTLD("phase.test")
-	err := repo.Create(tld)
+	err := repo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 
-	readTLD, err := repo.GetByName(tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(readTLD)
 	s.Require().Equal(tld, readTLD)
@@ -40,7 +40,7 @@ func (s *PhaseSuite) SetupSuite() {
 func (s *PhaseSuite) TearDownSuite() {
 	if s.TLDName != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(s.TLDName)
+		_ = repo.DeleteByName(context.Background(), s.TLDName)
 	}
 }
 

@@ -25,7 +25,7 @@ func (s *NNDNSuite) SetupSuite() {
 	s.db = getTestDB()
 	tldRepo := NewGormTLDRepo(s.db)
 	tld, _ := entities.NewTLD("nndntld")
-	err := tldRepo.Create(tld)
+	err := tldRepo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 	s.tld = tld.Name.String()
 }
@@ -33,7 +33,7 @@ func (s *NNDNSuite) SetupSuite() {
 func (s *NNDNSuite) TearDownSuite() {
 	if s.tld != "" {
 		tldRepo := NewGormTLDRepo(s.db)
-		err := tldRepo.DeleteByName(s.tld)
+		err := tldRepo.DeleteByName(context.Background(), s.tld)
 		require.NoError(s.T(), err)
 	}
 }
