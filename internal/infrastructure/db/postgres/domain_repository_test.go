@@ -36,7 +36,7 @@ func (s *DomainSuite) SetupSuite() {
 	// Create a TLD
 	tld, _ := entities.NewTLD("domaintesttld")
 	tldRepo := NewGormTLDRepo(s.db)
-	err = tldRepo.Create(tld)
+	err = tldRepo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 	s.tld = tld.Name.String()
 
@@ -53,7 +53,7 @@ func (s *DomainSuite) SetupSuite() {
 func (s *DomainSuite) TearDownSuite() {
 	if s.tld != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(s.tld)
+		_ = repo.DeleteByName(context.Background(), s.tld)
 	}
 	if s.rarClid != "" {
 		repo := NewGormRegistrarRepository(s.db)

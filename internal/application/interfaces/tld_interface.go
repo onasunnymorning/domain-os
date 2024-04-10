@@ -3,11 +3,12 @@ package interfaces
 import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"golang.org/x/net/context"
 )
 
 type TLDService interface {
-	CreateTLD(cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error)
-	GetTLDByName(name string) (*entities.TLD, error)
-	ListTLDs(pageSize int, pageCursor string) ([]*entities.TLD, error)
-	DeleteTLDByName(name string) error
+	CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error)
+	GetTLDByName(ctx context.Context, name string) (*entities.TLD, error)
+	ListTLDs(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error)
+	DeleteTLDByName(ctx context.Context, name string) error
 }

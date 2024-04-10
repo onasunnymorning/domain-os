@@ -5,6 +5,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"golang.org/x/net/context"
 )
 
 // MockTLDRepository is a mock implementation of the TLDRepository interface
@@ -13,13 +14,13 @@ type MockTLDRepository struct {
 }
 
 // CreateTLD creates a TLD
-func (repo *MockTLDRepository) Create(tld *entities.TLD) error {
+func (repo *MockTLDRepository) Create(ctx context.Context, tld *entities.TLD) error {
 	repo.Tlds = append(repo.Tlds, tld)
 	return nil
 }
 
 // GetByName returns a TLD by name
-func (repo *MockTLDRepository) GetByName(name string) (*entities.TLD, error) {
+func (repo *MockTLDRepository) GetByName(ctx context.Context, name string) (*entities.TLD, error) {
 	for _, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			return tld, nil
@@ -29,12 +30,12 @@ func (repo *MockTLDRepository) GetByName(name string) (*entities.TLD, error) {
 }
 
 // List returns a list of all TLDs
-func (repo *MockTLDRepository) List(pageSize int, pageCursor string) ([]*entities.TLD, error) {
+func (repo *MockTLDRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
 	return repo.Tlds, nil
 }
 
 // DeleteByName deletes a TLD by name
-func (repo *MockTLDRepository) DeleteByName(name string) error {
+func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) error {
 	for i, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			repo.Tlds = append(repo.Tlds[:i], repo.Tlds[i+1:]...)
@@ -55,7 +56,7 @@ func TestTLDService_CreateTLD(t *testing.T) {
 
 	cmd := getCreateTLDCommand(tld)
 
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
@@ -82,7 +83,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 		t.Error(err)
 	}
 	cmd := getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
@@ -91,13 +92,13 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 		t.Error(err)
 	}
 	cmd = getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// Get the first TLD
-	tld, err = service.GetTLDByName("apex")
+	tld, err = service.GetTLDByName(context.Background(), "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -106,7 +107,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 	}
 
 	// Get the second TLD
-	tld, err = service.GetTLDByName("com.apex")
+	tld, err = service.GetTLDByName(context.Background(), "com.apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -125,7 +126,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 		t.Error(err)
 	}
 	cmd := getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
@@ -134,13 +135,13 @@ func TestTLDService_ListTLDs(t *testing.T) {
 		t.Error(err)
 	}
 	cmd = getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(100, "")
+	tlds, err := service.ListTLDs(context.Background(), 100, "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -159,7 +160,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 		t.Error(err)
 	}
 	cmd := getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
@@ -168,19 +169,19 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 		t.Error(err)
 	}
 	cmd = getCreateTLDCommand(tld)
-	_, err = service.CreateTLD(cmd)
+	_, err = service.CreateTLD(context.Background(), cmd)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// Delete the first TLD
-	err = service.DeleteTLDByName("apex")
+	err = service.DeleteTLDByName(context.Background(), "apex")
 	if err != nil {
 		t.Error(err)
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(100, "")
+	tlds, err := service.ListTLDs(context.Background(), 100, "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -189,13 +190,13 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// Delete the second TLD
-	err = service.DeleteTLDByName("com.apex")
+	err = service.DeleteTLDByName(context.Background(), "com.apex")
 	if err != nil {
 		t.Error(err)
 	}
 
 	// List all TLDs
-	tlds, err = service.ListTLDs(100, "")
+	tlds, err = service.ListTLDs(context.Background(), 100, "")
 	if err != nil {
 		t.Error(err)
 	}
