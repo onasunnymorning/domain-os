@@ -29,10 +29,10 @@ func (s *PriceSuite) SetupSuite() {
 
 	// Create a tld
 	tld, _ := entities.NewTLD("phaseprice.test")
-	err := repo.Create(tld)
+	err := repo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 
-	readTLD, err := repo.GetByName(tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
 	s.Require().NoError(err)
 	s.Require().NotNil(readTLD)
 	s.Require().Equal(tld, readTLD)
@@ -55,7 +55,7 @@ func (s *PriceSuite) SetupSuite() {
 func (s *PriceSuite) TearDownSuite() {
 	if s.TLDName != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(s.TLDName)
+		_ = repo.DeleteByName(context.Background(), s.TLDName)
 	}
 	if s.PhaseName != "" {
 		repo := NewGormPhaseRepository(s.db)

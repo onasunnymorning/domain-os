@@ -42,7 +42,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	tld, err := ctrl.tldService.GetTLDByName(name)
+	tld, err := ctrl.tldService.GetTLDByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -84,7 +84,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	}
 
 	// Get the tlds from the service
-	tlds, err := ctrl.tldService.ListTLDs(pageSize, pageCursor)
+	tlds, err := ctrl.tldService.ListTLDs(ctx, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -113,7 +113,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	err := ctrl.tldService.DeleteTLDByName(name)
+	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -154,7 +154,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.tldService.CreateTLD(cmd)
+	result, err := ctrl.tldService.CreateTLD(ctx, cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrinvalIdDomainNameLength) || errors.Is(err, entities.ErrInvalidLabelLength) || errors.Is(err, entities.ErrInvalidLabelDash) || errors.Is(err, entities.ErrInvalidLabelDoubleDash) || errors.Is(err, entities.ErrInvalidLabelIDN) || errors.Is(err, entities.ErrLabelContainsInvalidCharacter) {
 			ctx.JSON(400, gin.H{"error": err.Error()})

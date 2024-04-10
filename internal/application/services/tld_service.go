@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -27,13 +28,13 @@ func NewTLDService(tldRepo repositories.TLDRepository) *TLDService {
 }
 
 // CreateTLD creates a new TLD
-func (svc *TLDService) CreateTLD(cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error) {
+func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error) {
 	newTLD, err := entities.NewTLD(cmd.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	err = svc.tldRepository.Create(newTLD)
+	err = svc.tldRepository.Create(ctx, newTLD)
 	if err != nil {
 		return nil, err
 	}
@@ -45,19 +46,19 @@ func (svc *TLDService) CreateTLD(cmd *commands.CreateTLDCommand) (*commands.Crea
 }
 
 // GetTLDByName gets a TLD by name
-func (svc *TLDService) GetTLDByName(name string) (*entities.TLD, error) {
+func (svc *TLDService) GetTLDByName(ctx context.Context, name string) (*entities.TLD, error) {
 	// domain names are case insensitive and we always store them as lowercase
-	return svc.tldRepository.GetByName(strings.ToLower(name))
+	return svc.tldRepository.GetByName(ctx, strings.ToLower(name))
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (svc *TLDService) ListTLDs(pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	return svc.tldRepository.List(pageSize, pageCursor)
+func (svc *TLDService) ListTLDs(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
+	return svc.tldRepository.List(ctx, pageSize, pageCursor)
 }
 
 // DeleteTLDByName deletes a TLD by name. To prevent accidental deletions, we check if there are no active phases for the TLD before deleting it.
-func (svc *TLDService) DeleteTLDByName(name string) error {
-	tld, err := svc.tldRepository.GetByName(name)
+func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
+	tld, err := svc.tldRepository.GetByName(ctx, name)
 	if err != nil {
 		if err == entities.ErrTLDNotFound {
 			// if there is no TLD with the given name, nothing to do, be idempotent
@@ -69,5 +70,5 @@ func (svc *TLDService) DeleteTLDByName(name string) error {
 	if len(tld.GetCurrentPhases()) != 0 {
 		return ErrCannotDeleteTLDWithActivePhases
 	}
-	return svc.tldRepository.DeleteByName(name)
+	return svc.tldRepository.DeleteByName(ctx, name)
 }
