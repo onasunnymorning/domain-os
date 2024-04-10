@@ -10,4 +10,5 @@ type RDEDeposit struct {
 	Resend    int      `xml:"resend,attr"`
 	Watermark string   `xml:"watermark"`
 	FileName  string
+	FileSize  int64
 }

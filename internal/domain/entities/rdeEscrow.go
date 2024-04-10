@@ -15,3 +15,24 @@ var (
 	NNDN_URI      = "urn:ietf:params:xml:ns:rdeNNDN-1.0"
 	REGISTRAR_URI = "urn:ietf:params:xml:ns:rdeRegistrar-1.0"
 )
+
+// RegsitrarMapping maps the ID of the registrar in the RDE Escrow file to the RdeRegistrarInfo
+type RegsitrarMapping map[string]RdeRegistrarInfo
+
+// RegistrarInfo holds counters for the objects associated with a registrar as found in an RDE Escrow file when analyzing that file
+type RdeRegistrarInfo struct {
+	Name          string   `json:"name"`
+	GurID         int      `json:"gurID"`
+	RegistrarClID ClIDType `json:"registrarClID"`
+	DomainCount   int      `json:"domainCount"`
+	HostCount     int      `json:"hostCount"`
+	ContactCount  int      `json:"contactCount"`
+}
+
+// EscrowAnalysis holds errors and warnings as well as files generated and counters
+type EscrowAnalysis struct {
+	// Errors          []string      `json:"errors"`
+	// Warnings        []string      `json:"warnings"`
+	// Files           []FileCounter `json:"files"`
+	MissingContacts []string `json:"missingContacts"`
+}
