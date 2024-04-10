@@ -92,7 +92,7 @@ func (p *Phase) DeleteFee(name, currency string) error {
 		return ErrUpdateHistoricPhase
 	}
 	for i := 0; i < len(p.Fees); i++ {
-		if p.Fees[i].Currency == strings.ToUpper(currency) && p.Fees[i].Name == name {
+		if p.Fees[i].Currency == strings.ToUpper(currency) && p.Fees[i].Name.String() == name {
 			p.Fees = append(p.Fees[:i], p.Fees[i+1:]...)
 			return nil
 		}
