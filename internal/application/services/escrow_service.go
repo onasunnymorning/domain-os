@@ -72,14 +72,11 @@ func (svc *XMLEscrowAnalysisService) GetHeaderJSON() string {
 func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 	// our found flag
 	found := false
-	// open the file
-	f, err := os.Open(svc.Deposit.FileName)
+
+	d, err := svc.getXMLDecoder()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	// create a decoder
-	d := xml.NewDecoder(f)
 
 	log.Printf("Looking for deposit tag in %s ... \n", svc.Deposit.FileName)
 	for {
@@ -92,7 +89,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return ErrDecodingToken
+			return errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type deposit
 		switch se := t.(type) {
@@ -113,14 +110,11 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 	// our found flag
 	found := false
-	// open the file
-	f, err := os.Open(svc.Deposit.FileName)
+
+	d, err := svc.getXMLDecoder()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	// create a decoder
-	d := xml.NewDecoder(f)
 
 	log.Printf("Looking for header tag in %s ... \n", svc.Deposit.FileName)
 	for {
@@ -133,7 +127,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return fmt.Errorf("error decoding token: %s", tokenErr)
+			return errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Check the type
 		switch se := t.(type) {
@@ -155,13 +149,10 @@ func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount
 
 	count := 0
 
-	f, err := os.Open(svc.Deposit.FileName)
+	d, err := svc.getXMLDecoder()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	d := xml.NewDecoder(f)
 
 	log.Printf("Looking up %d registrars in %s ... \n", expectedRegistrarCount, svc.Deposit.FileName)
 
@@ -175,7 +166,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount
 			if tokenErr == io.EOF {
 				break
 			}
-			return ErrDecodingToken
+			return errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type registrar
 		switch se := t.(type) {
@@ -202,4 +193,55 @@ func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount
 		}
 	}
 	return nil
+}
+
+// AnalyzeIDNTableRefs decodes and saves all IDN table references from the escrow file
+func (svc *XMLEscrowAnalysisService) AnalyzeIDNTableRefTags(idnCount int) error {
+	var idnTableRefs []entities.RDEIdnTableReference
+
+	count := 0
+
+	d, err := svc.getXMLDecoder()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Looking up %d IDN table references... \n", idnCount)
+
+	for {
+		if count == idnCount {
+			break
+		}
+		// Read the next token
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			if tokenErr == io.EOF {
+				break
+			}
+			return errors.Join(ErrDecodingToken, tokenErr)
+		}
+
+		switch se := t.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "idnTableRef" {
+				var idnTableRef entities.RDEIdnTableReference
+				if err := d.DecodeElement(&idnTableRef, &se); err != nil {
+					return fmt.Errorf("error decoding IDN table ref: %s", tokenErr)
+				}
+				idnTableRefs = append(idnTableRefs, idnTableRef)
+				count++
+			}
+		}
+	}
+	svc.IDNs = idnTableRefs
+	return nil
+}
+
+// getXMLDecoder opens the XML file and returns an XML decoder
+func (svc *XMLEscrowAnalysisService) getXMLDecoder() (*xml.Decoder, error) {
+	f, err := os.Open(svc.Deposit.FileName)
+	if err != nil {
+		return nil, err
+	}
+	return xml.NewDecoder(f), nil
 }

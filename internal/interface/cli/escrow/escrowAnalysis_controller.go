@@ -35,11 +35,16 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
+	if err := c.svc.AnalyzeIDNTableRefTags(c.svc.Header.IDNCount()); err != nil {
+		return err
+	}
+
 	log.Println("Analysis complete")
 
 	fmt.Println(c.svc.GetDepositJSON())
 	fmt.Println(c.svc.GetHeaderJSON())
 	fmt.Println(c.svc.Registrars)
+	fmt.Println(c.svc.IDNs)
 
 	return nil
 }
