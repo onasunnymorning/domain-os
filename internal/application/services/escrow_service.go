@@ -44,6 +44,9 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowAnalysisService, error) 
 	d.Deposit.FileSize = fi.Size()
 	log.Printf("Escow file %s is %d MB\n", XMLFilename, d.Deposit.FileSize/1024/1024)
 
+	// Initialize the registrar mapping
+	d.RegsistrarMapping = entities.NewRegistrarMapping()
+
 	return &d, nil
 }
 
@@ -145,4 +148,58 @@ func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 		}
 	}
 	return ErrNoHeaderTag
+}
+
+// AnalyzeRegistrarTags Gets all registrars from the escrow file
+func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount int) error {
+
+	count := 0
+
+	f, err := os.Open(svc.Deposit.FileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	d := xml.NewDecoder(f)
+
+	log.Printf("Looking up %d registrars in %s ... \n", expectedRegistrarCount, svc.Deposit.FileName)
+
+	for {
+		if count == expectedRegistrarCount {
+			break
+		}
+		// Read the next token
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			if tokenErr == io.EOF {
+				break
+			}
+			return ErrDecodingToken
+		}
+		// Only process start elements of type registrar
+		switch se := t.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "registrar" {
+				// Skip registrar elements that are not in the registrar namespace
+				if se.Name.Space != entities.REGISTRAR_URI {
+					continue
+				}
+				var registrar entities.RDERegistrar
+				if err := d.DecodeElement(&registrar, &se); err != nil {
+					return fmt.Errorf("error decoding registrar: %s", tokenErr)
+				}
+				// Add registrars to our inventory
+				svc.Registrars = append(svc.Registrars, registrar)
+				// Create an empty RdeRegistrarInfo counter for each registrar in our Mapping.
+				// We will populate these counters when going through the deposit and find objects that belong to this registrar
+				svc.RegsistrarMapping[registrar.ID] = entities.RdeRegistrarInfo{
+					Name:  registrar.Name,
+					GurID: registrar.GurID,
+				}
+				count++
+			}
+		}
+	}
+	return nil
 }
