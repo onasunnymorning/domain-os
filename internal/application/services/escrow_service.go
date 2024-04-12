@@ -42,6 +42,7 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowAnalysisService, error) 
 	// Set filename and size
 	d.Deposit.FileName = XMLFilename
 	d.Deposit.FileSize = fi.Size()
+	log.Printf("Escow file %s is %d MB\n", XMLFilename, d.Deposit.FileSize/1024/1024)
 
 	return &d, nil
 }
@@ -53,6 +54,15 @@ func (svc *XMLEscrowAnalysisService) GetDepositJSON() string {
 		log.Fatal(err)
 	}
 	return string(jsonDepositBytes)
+}
+
+// GetHeader returns the RdeHeader element in JSON format
+func (svc *XMLEscrowAnalysisService) GetHeaderJSON() string {
+	jsonHeaderBytes, err := json.MarshalIndent(svc.Header, "", "	")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(jsonHeaderBytes)
 }
 
 // Analyzes the deposit XML tag
@@ -68,7 +78,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 	// create a decoder
 	d := xml.NewDecoder(f)
 
-	log.Printf("Looking for deposit tag in %s (%d MB)... \n", svc.Deposit.FileName, svc.Deposit.FileSize/1024/1024)
+	log.Printf("Looking for deposit tag in %s ... \n", svc.Deposit.FileName)
 	for {
 		if found {
 			break

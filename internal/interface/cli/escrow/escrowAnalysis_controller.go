@@ -35,5 +35,7 @@ func (c *EscrowAnalysisController) Analyze() error {
 
 	fmt.Println(c.svc.GetDepositJSON())
 
+	fmt.Println(c.svc.GetHeaderJSON())
+
 	return nil
 }
