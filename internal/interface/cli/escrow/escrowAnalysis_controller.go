@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 )
 
 // EscrowAnalysisController is a controller for escrow analysis
 type EscrowAnalysisController struct {
-	svc interfaces.XMLEscrowAnalysisService
+	svc *services.XMLEscrowAnalysisService
 }
 
 // NewEscrowAnalysisController creates a new instance of EscrowAnalysisController
-func NewEscrowAnalysisController(escrowAnalysisService interfaces.XMLEscrowAnalysisService) *EscrowAnalysisController {
+func NewEscrowAnalysisController(escrowAnalysisService *services.XMLEscrowAnalysisService) *EscrowAnalysisController {
 	return &EscrowAnalysisController{
 		svc: escrowAnalysisService,
 	}
@@ -31,11 +31,15 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
+	if err := c.svc.AnalyzeRegistrarTags(c.svc.Header.RegistrarCount()); err != nil {
+		return err
+	}
+
 	log.Println("Analysis complete")
 
 	fmt.Println(c.svc.GetDepositJSON())
-
 	fmt.Println(c.svc.GetHeaderJSON())
+	fmt.Println(c.svc.Registrars)
 
 	return nil
 }

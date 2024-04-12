@@ -29,6 +29,11 @@ type RdeRegistrarInfo struct {
 	ContactCount  int      `json:"contactCount"`
 }
 
+// NewRegistrarMapping creates a new, empty RegistrarMapping
+func NewRegistrarMapping() RegsitrarMapping {
+	return make(RegsitrarMapping)
+}
+
 // EscrowAnalysis holds errors and warnings as well as files generated and counters
 type EscrowAnalysis struct {
 	// Errors          []string      `json:"errors"`
