@@ -4,5 +4,6 @@ package interfaces
 type XMLEscrowAnalysisService interface {
 	AnalyzeDepostTag() error
 	GetDepositJSON() string
+	GetHeaderJSON() string
 	AnalyzeHeaderTag() error
 }
