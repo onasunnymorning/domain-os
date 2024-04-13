@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -20,6 +20,7 @@ var (
 	ErrDecodingToken = errors.New("error decoding token")
 	ErrNoDepositTag  = errors.New("no deposit tag found")
 	ErrNoHeaderTag   = errors.New("no header tag found")
+	ErrDecodingXML   = errors.New("error decoding XML")
 )
 
 // XMLEscrowAnalysisService implements XMLEscrowAnalysisService interface
@@ -82,7 +83,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 		return err
 	}
 
-	log.Printf("Looking for deposit tag in %s ... \n", svc.Deposit.FileName)
+	log.Printf("Analyzing deposit tag in %s (this may take a while for a large file) ... \n", svc.Deposit.FileName)
 	for {
 		if found {
 			break
@@ -100,7 +101,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 		case xml.StartElement:
 			if se.Name.Local == "deposit" {
 				if err := d.DecodeElement(&svc.Deposit, &se); err != nil {
-					return fmt.Errorf("error decoding deposit: %s", tokenErr)
+					return errors.Join(ErrDecodingXML, err)
 				}
 				found = true
 				return nil
@@ -120,7 +121,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 		return err
 	}
 
-	log.Printf("Looking for header tag in %s ... \n", svc.Deposit.FileName)
+	log.Printf("Analyzing header tag in %s ... \n", svc.Deposit.FileName)
 	for {
 		if found {
 			break
@@ -138,7 +139,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 		case xml.StartElement:
 			if se.Name.Local == "header" {
 				if err := d.DecodeElement(&svc.Header, &se); err != nil {
-					return fmt.Errorf("error decoding header: %s", tokenErr)
+					return errors.Join(ErrDecodingXML, err)
 				}
 				found = true
 				return nil
@@ -182,7 +183,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount
 				}
 				var registrar entities.RDERegistrar
 				if err := d.DecodeElement(&registrar, &se); err != nil {
-					return fmt.Errorf("error decoding registrar: %s", tokenErr)
+					return errors.Join(ErrDecodingXML, err)
 				}
 				// Add registrars to our inventory
 				svc.Registrars = append(svc.Registrars, registrar)
@@ -230,7 +231,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeIDNTableRefTags(idnCount int) error 
 			if se.Name.Local == "idnTableRef" {
 				var idnTableRef entities.RDEIdnTableReference
 				if err := d.DecodeElement(&idnTableRef, &se); err != nil {
-					return fmt.Errorf("error decoding IDN table ref: %s", tokenErr)
+					return errors.Join(ErrDecodingXML, err)
 				}
 				idnTableRefs = append(idnTableRefs, idnTableRef)
 				count++
@@ -283,8 +284,8 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 	postalInfoWriter := csv.NewWriter(postalInfoFile)
 	postalInfoCounter := 0
 
-	fmt.Printf("Looking up %d contacts... \n", svc.Header.ContactCount())
-	pbar := progressbar.Default(-1)
+	log.Printf("Looking up %d contacts... \n", svc.Header.ContactCount())
+	pbar := progressbar.Default(int64(svc.Header.ContactCount()))
 
 	for {
 		// Stop when we have found all contacts
@@ -298,12 +299,11 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return fmt.Errorf("error decoding token: %s", tokenErr)
+			return errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type contact
 		switch se := t.(type) {
 		case xml.StartElement:
-			pbar.Add(1)
 			if se.Name.Local == "contact" {
 				// Skip contacts that are not in the contact namespace
 				if se.Name.Space != entities.CONTACT_URI {
@@ -311,7 +311,7 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 				}
 				var contact entities.RDEContact
 				if err := d.DecodeElement(&contact, &se); err != nil {
-					return fmt.Errorf("error decoding contact: %s", tokenErr)
+					return errors.Join(ErrDecodingXML, err)
 				}
 				// Write the contact to the contact file
 				contactWriter.Write([]string{contact.ID, contact.RoID, contact.Voice, contact.Fax, contact.Email, contact.ClID, contact.CrRr, contact.CrDate, contact.UpRr, contact.UpDate})
@@ -352,10 +352,12 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 				objCount.ContactCount++
 				svc.RegsistrarMapping[contact.ClID] = objCount
 				count++
+
+				pbar.Add(1)
 			}
 		}
 	}
-	fmt.Println("Done!")
+	log.Println("Done!")
 	if postalInfoCounter < svc.Header.ContactCount() {
 		log.Printf("🔥 WARNING 🔥 Expected at least %d postalInfo objects, but found %d\n", svc.Header.ContactCount(), postalInfoCounter)
 	}
@@ -368,6 +370,182 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 	checkLineCount(postalInfoFileName, postalInfoCounter)
 	contactWriter.Flush()
 	checkLineCount(outFileName, svc.Header.ContactCount())
+	return nil
+}
+
+// ExtractHosts Extracts hosts from the escrow file and writes them to a CSV file
+// This will output the following files:
+//
+// - {inputFilename}-hosts.csv
+// - {inputFilename}-hostStatuses.csv
+// - {inputFilename}-hostAddresses.csv
+func (svc *XMLEscrowAnalysisService) ExtractHosts() error {
+
+	count := 0
+
+	f, err := os.Open(svc.Deposit.FileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	d := xml.NewDecoder(f)
+
+	// Prepare the CSV file to receive the hosts
+	outFileName := svc.GetDepositFileNameWoExtension() + "-hosts.csv"
+	outFile, err := os.Create(outFileName)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	writer := csv.NewWriter(outFile)
+
+	// Prepare the CSV file to receive the host statuses
+	statusFileName := svc.GetDepositFileNameWoExtension() + "-hostStatuses.csv"
+	statusFile, err := os.Create(statusFileName)
+	if err != nil {
+		return err
+	}
+	defer statusFile.Close()
+	statusWriter := csv.NewWriter(statusFile)
+
+	// Prepare the CSV file to receive the host addresses
+	addrFileName := svc.GetDepositFileNameWoExtension() + "-hostAddresses.csv"
+	addrFile, err := os.Create(addrFileName)
+	if err != nil {
+		return err
+	}
+	defer addrFile.Close()
+	addrWriter := csv.NewWriter(addrFile)
+	addrCounter := 0
+	statusCounter := 0
+
+	log.Printf("Looking up %d hosts... \n", svc.Header.HostCount())
+	pbar := progressbar.Default(int64(svc.Header.HostCount()))
+
+	for {
+		if count == svc.Header.HostCount() {
+			break
+		}
+		// Read the next token
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			if tokenErr == io.EOF {
+				break
+			}
+			return errors.Join(ErrDecodingToken, tokenErr)
+		}
+		// Only process start elements of type host
+		switch se := t.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "host" {
+				// Skip hosts that are not in the host namespace
+				if se.Name.Space != entities.HOST_URI {
+					continue
+				}
+				var host entities.RDEHost
+				if err := d.DecodeElement(&host, &se); err != nil {
+					return errors.Join(ErrDecodingXML, err)
+				}
+				writer.Write([]string{host.Name, host.RoID, host.ClID, host.CrRr, host.CrDate, host.UpRr, host.UpDate})
+				// Set Status in statusFile
+				hStatuses := []string{host.Name}
+				for _, status := range host.Status {
+					statusCounter++
+					hStatuses = append(hStatuses, status.S)
+				}
+				for i, s := range hStatuses {
+					if i == 0 {
+						continue
+					}
+					statusWriter.Write([]string{host.Name, s})
+				}
+				// Set addresses in addrFile
+				for _, addr := range host.Addr {
+					addrCounter++
+					addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
+				}
+
+				// Update counters in Registrar Map
+				objCount := svc.RegsistrarMapping[host.ClID]
+				objCount.HostCount++
+				svc.RegsistrarMapping[host.ClID] = objCount
+				count++
+
+				pbar.Add(1)
+			}
+		}
+	}
+	log.Println("Done!")
+	addrWriter.Flush()
+	checkLineCount(addrFileName, addrCounter)
+	statusWriter.Flush()
+	checkLineCount(statusFileName, statusCounter)
+	writer.Flush()
+	checkLineCount(outFileName, svc.Header.HostCount())
+	return nil
+}
+
+// ExtractNNDNS Extracts statuses from the escrow file and writes them to a CSV file
+// This will output the following files:
+//
+// - {inputFilename}-nndns.csv
+func (svc *XMLEscrowAnalysisService) ExtractNNDNS() error {
+
+	count := 0
+
+	d, err := svc.getXMLDecoder()
+	if err != nil {
+		return err
+	}
+
+	// Prepare the CSV file to receive the nndns
+	outFileName := svc.GetDepositFileNameWoExtension() + "-nndns.csv"
+	outFile, err := os.Create(outFileName)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	writer := csv.NewWriter(outFile)
+
+	log.Printf("Looking up %d nndns... \n", svc.Header.NNDNCount())
+	pbar := progressbar.Default(int64(svc.Header.NNDNCount()))
+
+	for {
+		if count == svc.Header.NNDNCount() {
+			break
+		}
+		// Read the next token
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			if tokenErr == io.EOF {
+				break
+			}
+			return errors.Join(ErrDecodingToken, tokenErr)
+		}
+		// Only process start elements of type nndn
+		switch se := t.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "NNDN" {
+				// Skip nndns that are not in the nndns namespace
+				if se.Name.Space != entities.NNDN_URI {
+					continue
+				}
+				var nndns entities.RDENNDN
+				if err := d.DecodeElement(&nndns, &se); err != nil {
+					return errors.Join(ErrDecodingXML, err)
+				}
+				writer.Write([]string{nndns.AName, nndns.UName, nndns.IDNTableID, nndns.OriginalName, nndns.NameState, nndns.CrDate})
+				count++
+
+				pbar.Add(1)
+			}
+		}
+	}
+	log.Println("Done!")
+	writer.Flush()
+	checkLineCount(outFileName, svc.Header.NNDNCount())
 	return nil
 }
 
@@ -406,6 +584,182 @@ func checkLineCount(filename string, expected int) {
 	}
 }
 
+// ExtractDomains Extracts domains from the escrow file and writes them to a CSV file
+// This will output the following files:
+//
+// - {inputFilename}-domains.csv
+// - {inputFilename}-domainStatuses.csv
+// - {inputFilename}-domainNameservers.csv
+// - {inputFilename}-DomainDnssec.csv
+// - {inputFilename}-domainTransfers.csv
+// - {inputFilename}-uniqueDomainContactIDs.csv
+func (svc *XMLEscrowAnalysisService) ExtractDomains() error {
+
+	count := 0
+
+	d, err := svc.getXMLDecoder()
+	if err != nil {
+		return err
+	}
+
+	// Create a CSV file and writer to write the main domain information to
+	outFileName := svc.GetDepositFileNameWoExtension() + "-domains.csv"
+	outFile, err := os.Create(outFileName)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	domainWriter := csv.NewWriter(outFile)
+
+	// Create a -status CSV file and writer to write the domain statuses to
+	statusFileName := svc.GetDepositFileNameWoExtension() + "-domainStatuses.csv"
+	statusFile, err := os.Create(statusFileName)
+	if err != nil {
+		return err
+	}
+	statusWriter := csv.NewWriter(statusFile)
+	statusCounter := 0
+
+	// Create a -nameserver CSV file and writer to write the nameservers to
+	nameserverFileName := svc.GetDepositFileNameWoExtension() + "-domainNameservers.csv"
+	nameserverFile, err := os.Create(nameserverFileName)
+	if err != nil {
+		return err
+	}
+	nameserverWriter := csv.NewWriter(nameserverFile)
+	nameServerCounter := 0
+
+	// Create a -dnssec CSV file and writer to write the dnssec information to
+	dnssecFileName := svc.GetDepositFileNameWoExtension() + "-DomainDnssec.csv"
+	dnssecFile, err := os.Create(dnssecFileName)
+	if err != nil {
+		return err
+	}
+	dnssecWriter := csv.NewWriter(dnssecFile)
+	dnssecCounter := 0
+
+	// Create a -transfers CSV file and writer to write the transfer information to
+	transferFileName := svc.GetDepositFileNameWoExtension() + "-domainTransfers.csv"
+	transferFile, err := os.Create(transferFileName)
+	if err != nil {
+		return err
+	}
+	transferWriter := csv.NewWriter(transferFile)
+	transferCounter := 0
+
+	// Create a file and writer to write the unique contact IDs to
+	contactIDFileName := svc.GetDepositFileNameWoExtension() + "-uniqueDomainContactIDs.csv"
+	contactIDFile, err := os.Create(contactIDFileName)
+	if err != nil {
+		return err
+	}
+	contactIDWriter := csv.NewWriter(contactIDFile)
+	uniqueContactIDs := make(map[string]bool)
+
+	log.Printf("Looking up %d domains... \n", svc.Header.DomainCount())
+	pbar := progressbar.Default(int64(svc.Header.DomainCount()))
+
+	for {
+		if count == svc.Header.DomainCount() {
+			break
+		}
+		// Read the next token
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			if tokenErr == io.EOF {
+				break
+			}
+			return errors.Join(ErrDecodingToken, tokenErr)
+		}
+		// Only process start elements of type domain
+		switch se := t.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "domain" {
+				// Skip domains that are not in the domain namespace
+				if se.Name.Space != entities.DOMAIN_URI {
+					continue
+				}
+				var dom entities.RDEDomain
+				if err := d.DecodeElement(&dom, &se); err != nil {
+					return errors.Join(ErrDecodingXML, err)
+				}
+				// Write the domain to the domain file
+				domainWriter.Write([]string{string(dom.Name), dom.RoID, dom.UName, dom.IdnTableId, dom.OriginalName, dom.Registrant, dom.ClID, dom.CrRr, dom.CrDate, dom.ExDate, dom.UpRr, dom.UpDate})
+				// Add a line to the contactID file for each contact, only if it does not exist yet
+				for _, contact := range dom.Contact {
+					// Only add it if it is not there already
+					if !uniqueContactIDs[contact.ID] {
+						uniqueContactIDs[contact.ID] = true
+					}
+				}
+				// Write the domain statuses to the status file
+				dStatuses := []string{dom.Name.String()}
+				for _, status := range dom.Status {
+					dStatuses = append(dStatuses, status.S)
+				}
+				for i, s := range dStatuses {
+					if i == 0 {
+						continue
+					}
+					statusCounter++
+					statusWriter.Write([]string{dom.Name.String(), s})
+				}
+				// Write the nameservers to the nameserver file
+				dNameservers := []string{dom.Name.String()}
+				for _, ns := range dom.Ns {
+					dNameservers = append(dNameservers, ns.HostObjs...)
+				}
+				for i, ns := range dNameservers {
+					if i == 0 {
+						continue
+					}
+					nameServerCounter++
+					nameserverWriter.Write([]string{dom.Name.String(), ns})
+				}
+				// Write the dnssec information to the dnssec file
+				for _, dsData := range dom.SecDNS.DSData {
+					dnssecCounter++
+					dnssecWriter.Write([]string{dom.Name.String(), strconv.Itoa(dsData.KeyTag), strconv.Itoa(dsData.Alg), strconv.Itoa(dsData.DigestType), dsData.Digest})
+				}
+				// Write the transfer information to the transfer file
+				if dom.TrnData.TrStatus.State != "" {
+					transferCounter++
+					transferWriter.Write([]string{dom.Name.String(), dom.TrnData.TrStatus.State, dom.TrnData.ReRr.RegID, dom.TrnData.ReDate, dom.TrnData.ReRr.RegID, dom.TrnData.AcDate, dom.TrnData.ExDate})
+				}
+
+				// Update counters in Registrar Map
+				objCount := svc.RegsistrarMapping[dom.ClID]
+				objCount.DomainCount++
+				svc.RegsistrarMapping[dom.ClID] = objCount
+				count++
+
+				pbar.Add(1)
+			}
+		}
+	}
+	// Write the unique contact IDs to the contactID file
+	for k := range uniqueContactIDs {
+		contactIDWriter.Write([]string{k})
+	}
+	contactIDWriter.Flush()
+	log.Printf("✅  Written %d unique contact IDs used by Domains to : %s", len(uniqueContactIDs), contactIDFileName)
+	log.Println("Done!")
+	if statusCounter < svc.Header.DomainCount() {
+		log.Printf("🔥 WARNING 🔥 Expected at least %d status objects, but found %d\n", svc.Header.DomainCount(), statusCounter)
+	}
+	statusWriter.Flush()
+	checkLineCount(statusFileName, statusCounter)
+	nameserverWriter.Flush()
+	checkLineCount(nameserverFileName, nameServerCounter)
+	dnssecWriter.Flush()
+	checkLineCount(dnssecFileName, dnssecCounter)
+	transferWriter.Flush()
+	checkLineCount(transferFileName, transferCounter)
+	domainWriter.Flush()
+	checkLineCount(outFileName, svc.Header.DomainCount())
+	return nil
+}
+
 // Count the number of lines in a file by looking for \n occurrences. Use this to check against the number of objects in the header
 func CountLines(r io.Reader) (int, error) {
 	var count int
@@ -429,4 +783,64 @@ func CountLines(r io.Reader) (int, error) {
 	}
 
 	return count, err
+}
+
+// getUniqueContactIDs Extracts the contact IDs from the contact file and returns them as a map
+func (svc *XMLEscrowAnalysisService) getUniqueContactIDs() (map[string]bool, error) {
+	contactIDs := make(map[string]bool)
+	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-contacts.csv")
+	if err != nil {
+		return contactIDs, err
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return contactIDs, err
+	}
+	for _, record := range records {
+		contactIDs[record[0]] = true
+	}
+	return contactIDs, nil
+}
+
+// LookForMissingContacts Looks if all the uniqueContactIDs used on domains are present in the contact file. It saves the results in the escrow object
+func (svc *XMLEscrowAnalysisService) LookForMissingContacts() error {
+	contactIDs, err := svc.getUniqueContactIDs()
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-uniqueDomainContactIDs.csv")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return err
+	}
+	errorCount := 0
+	missingContactIDs := []string{}
+	for _, record := range records {
+		if !contactIDs[record[0]] {
+			errorCount++
+			missingContactIDs = append(missingContactIDs, record[0])
+		}
+	}
+	if errorCount > 0 {
+		svc.Analysis.MissingContacts = missingContactIDs
+		log.Printf("🔥 WARNING 🔥 Found %d missing contact IDs in %s \n", errorCount, svc.GetDepositFileNameWoExtension()+"-uniqueDomainContactIDs.csv")
+	} else {
+		log.Printf("✅ Found all domain contact IDs in the contact file\n")
+
+	}
+	return nil
+}
+
+// UnlinkedContactCheck Checks if the number of contacts is more than 4 times the number of domains. This could indicate unlinked contacts. This requires the header to be analyzed before use.
+func (svc *XMLEscrowAnalysisService) UnlinkedContactCheck() {
+	if svc.Header.ContactCount() > svc.Header.DomainCount()*4 {
+		log.Println("🔥 WARNING 🔥 Deposit contains more contacts than four times the number of domains, this could indicate the presence of unlinked contacts in the deposit")
+	}
 }

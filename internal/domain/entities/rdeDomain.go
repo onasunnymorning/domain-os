@@ -22,7 +22,8 @@ type RDEDomain struct {
 	ExDate       string               `xml:"exDate"`
 	UpRr         string               `xml:"upRr"`
 	UpDate       string               `xml:"upDate"`
-	SecDNS       []RDESecDNS          `xml:"secDNS"`
+	SecDNS       RDESecDNS            `xml:"secDNS"`
+	TrnData      TrnData              `xml:"trnData"`
 }
 
 type RDEDomainStatus struct {
@@ -42,9 +43,36 @@ type RDEDomainContact struct {
 	ID   string `xml:",chardata"`
 }
 
-type RDESecDNS struct {
+type DSData struct {
 	KeyTag     int    `xml:"keyTag"`
 	Alg        int    `xml:"alg"`
 	DigestType int    `xml:"digestType"`
 	Digest     string `xml:"digest"`
+}
+
+type RDESecDNS struct {
+	DSData []DSData `xml:"dsData"`
+}
+
+type TrnData struct {
+	TrStatus TrStatus `xml:"trStatus"`
+	ReRr     ReRr     `xml:"reRr"`
+	ReDate   string   `xml:"reDate"`
+	AcRr     AcRr     `xml:"acRr"`
+	AcDate   string   `xml:"acDate"`
+	ExDate   string   `xml:"exDate,omitempty"`
+}
+
+type TrStatus struct {
+	State string `xml:",chardata"`
+}
+
+type ReRr struct {
+	RegID  string `xml:",chardata"`
+	Client string `xml:"client,attr,omitempty"`
+}
+
+type AcRr struct {
+	RegID  string `xml:",chardata"`
+	Client string `xml:"client,attr,omitempty"`
 }
