@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// Removes newlines(\n), tabs(\t), and carriage(\r) returns from a string and replaces them with spaces
+// Removes newlines(\n), tabs(\t), and carriage returns(\r) from a string and replaces them with spaces
 // Removes multiple spaces and replaces them with one space
 // Trims leading and trailing spaces
 func NormalizeString(s string) string {
