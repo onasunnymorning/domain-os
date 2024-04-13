@@ -60,6 +60,10 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
+	if err := c.svc.MapRegistrars(); err != nil {
+		return err
+	}
+
 	log.Println("Analysis complete")
 
 	if err := c.svc.SaveAnalysis(); err != nil {

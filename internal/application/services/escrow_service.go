@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -543,7 +544,6 @@ func (svc *XMLEscrowAnalysisService) ExtractNNDNS() error {
 			}
 		}
 	}
-	log.Println("Done!")
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.NNDNCount())
 	return nil
@@ -854,5 +854,87 @@ func (svc *XMLEscrowAnalysisService) SaveAnalysis() error {
 	analysisFileName := svc.GetDepositFileNameWoExtension() + "-analysis.json"
 	os.WriteFile(analysisFileName, bytes, 0644)
 	log.Printf("✅  Saved analysis to: %s\n", analysisFileName)
+	return nil
+}
+
+// MapRegistrars Tries to find all registrars from the deposit in the repository through the registrars API and link their IDs
+func (svc *XMLEscrowAnalysisService) MapRegistrars() error {
+	log.Println("Mapping Registrars ...")
+	if svc.Registrars == nil {
+		return errors.New("no registrars to map, have you analyzed registrar-section of the escrow file?")
+	}
+
+	outFile, err := os.Create(svc.GetDepositFileNameWoExtension() + "-registrarMapping.csv")
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
+
+	// BASE_URL := "http://domain-os-admin-api-1:8080"
+	BASE_URL := "http://localhost:8080"
+	bearer := "Bearer " + os.Getenv("EPP_API_TOKEN")
+
+	var found = 0
+	var missing = 0
+
+	for _, rar := range svc.Registrars {
+
+		URL := BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
+
+		req, err := http.NewRequest("GET", URL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Add("Authorization", bearer)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// not found
+		if resp.StatusCode == 404 {
+			missing++
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		// success
+		if resp.StatusCode == 200 {
+			var responseRar entities.Registrar
+			err = json.NewDecoder(resp.Body).Decode(&responseRar)
+			if err != nil {
+				log.Printf("error decoding registrar: %s", err)
+			}
+			// update mapping
+			rarMap := svc.RegsistrarMapping[rar.ID]
+			rarMap.Name = rar.Name
+			rarMap.GurID = rar.GurID
+			rarMap.RegistrarClID = responseRar.ClID
+			svc.RegsistrarMapping[rar.ID] = rarMap
+			found++
+			continue
+		}
+
+		// other error
+		log.Printf("got a %s: %s", resp.Status, URL)
+		missing++
+
+	}
+	// write mapping to file
+	for k, v := range svc.RegsistrarMapping {
+		writer.Write([]string{k, v.Name, strconv.Itoa(v.GurID), v.RegistrarClID.String(), strconv.Itoa(v.DomainCount), strconv.Itoa(v.HostCount), strconv.Itoa(v.ContactCount)})
+	}
+
+	if missing > 0 {
+		log.Printf("🔥 WARNING 🔥 Could not map %d registrars\n", missing)
+	} else {
+		log.Printf("✅ Found all registrars\n")
+	}
+
 	return nil
 }

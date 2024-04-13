@@ -24,6 +24,9 @@ func main() {
 
 	escrowController := escrow.NewEscrowAnalysisController(escrowService)
 
-	escrowController.Analyze()
+	err = escrowController.Analyze()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
