@@ -31,7 +31,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars/:clid", controller.GetByClID)
 	e.GET("/registrars", controller.List)
 	e.POST("/registrars", controller.Create)
-	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
+	e.POST("/registrars/gurid/:gurid", controller.CreateRegistrarByGurID)
 	e.DELETE("/registrars/:clid", controller.DeleteRegistrarByClID)
 
 	return controller
