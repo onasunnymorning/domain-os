@@ -30,6 +30,8 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
+	c.svc.UnlinkedContactCheck()
+
 	if err := c.svc.AnalyzeRegistrarTags(c.svc.Header.RegistrarCount()); err != nil {
 		return err
 	}
@@ -39,6 +41,22 @@ func (c *EscrowAnalysisController) Analyze() error {
 	}
 
 	if err := c.svc.ExtractContacts(); err != nil {
+		return err
+	}
+
+	if err := c.svc.ExtractDomains(); err != nil {
+		return err
+	}
+
+	if err := c.svc.ExtractHosts(); err != nil {
+		return err
+	}
+
+	if err := c.svc.ExtractNNDNS(); err != nil {
+		return err
+	}
+
+	if err := c.svc.LookForMissingContacts(); err != nil {
 		return err
 	}
 
