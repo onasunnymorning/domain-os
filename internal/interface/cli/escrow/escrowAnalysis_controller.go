@@ -1,7 +1,6 @@
 package escrow
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -39,12 +38,11 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
-	log.Println("Analysis complete")
+	if err := c.svc.ExtractContacts(); err != nil {
+		return err
+	}
 
-	fmt.Println(c.svc.GetDepositJSON())
-	fmt.Println(c.svc.GetHeaderJSON())
-	fmt.Println(c.svc.Registrars)
-	fmt.Println(c.svc.IDNs)
+	log.Println("Analysis complete")
 
 	return nil
 }
