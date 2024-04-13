@@ -844,3 +844,15 @@ func (svc *XMLEscrowAnalysisService) UnlinkedContactCheck() {
 		log.Println("🔥 WARNING 🔥 Deposit contains more contacts than four times the number of domains, this could indicate the presence of unlinked contacts in the deposit")
 	}
 }
+
+// Save Analysis to a JSON file
+func (svc *XMLEscrowAnalysisService) SaveAnalysis() error {
+	bytes, err := json.MarshalIndent(svc, "", "	")
+	if err != nil {
+		return err
+	}
+	analysisFileName := svc.GetDepositFileNameWoExtension() + "-analysis.json"
+	os.WriteFile(analysisFileName, bytes, 0644)
+	log.Printf("✅  Saved analysis to: %s\n", analysisFileName)
+	return nil
+}

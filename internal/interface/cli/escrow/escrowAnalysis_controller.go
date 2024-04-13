@@ -62,5 +62,9 @@ func (c *EscrowAnalysisController) Analyze() error {
 
 	log.Println("Analysis complete")
 
+	if err := c.svc.SaveAnalysis(); err != nil {
+		return err
+	}
+
 	return nil
 }
