@@ -31,7 +31,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars/:clid", controller.GetByClID)
 	e.GET("/registrars", controller.List)
 	e.POST("/registrars", controller.Create)
-	e.POST("/registrars/gurid/:gurid", controller.CreateRegistrarByGurID)
+	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
 	e.DELETE("/registrars/:clid", controller.DeleteRegistrarByClID)
 
 	return controller
@@ -189,7 +189,7 @@ func (ctrl *RegistrarController) DeleteRegistrarByClID(ctx *gin.Context) {
 // @Success 200 {object} commands.CreateRegistrarCommandResult
 // @Failure 400
 // @Failure 500
-// @Router /registrars/gurid/{gurid} [post]
+// @Router /registrars/{gurid} [post]
 func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
 	// Get the email from the request body
 	var req request.CreateRegistrarFromGurIDRequest
