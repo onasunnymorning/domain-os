@@ -24,8 +24,8 @@ var (
 	ErrDecodingXML   = errors.New("error decoding XML")
 )
 
-// XMLEscrowAnalysisService implements XMLEscrowAnalysisService interface
-type XMLEscrowAnalysisService struct {
+// XMLEscrowService implements XMLEscrowService interface
+type XMLEscrowService struct {
 	Deposit           entities.RDEDeposit             `json:"deposit"`
 	Header            entities.RDEHeader              `json:"header"`
 	Registrars        []entities.RDERegistrar         `json:"registrars"`
@@ -35,7 +35,7 @@ type XMLEscrowAnalysisService struct {
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
-func NewXMLEscrowService(XMLFilename string) (*XMLEscrowAnalysisService, error) {
+func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 	// Fail fast if we can't open the file
 	f, _ := os.Open(XMLFilename)
 	defer f.Close()
@@ -44,7 +44,7 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowAnalysisService, error) 
 		return nil, err
 	}
 
-	d := XMLEscrowAnalysisService{}
+	d := XMLEscrowService{}
 	// Set filename and size
 	d.Deposit.FileName = XMLFilename
 	d.Deposit.FileSize = fi.Size()
@@ -57,7 +57,7 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowAnalysisService, error) 
 }
 
 // GetDeposit returns the RdeDeposit element in JSON format
-func (svc *XMLEscrowAnalysisService) GetDepositJSON() string {
+func (svc *XMLEscrowService) GetDepositJSON() string {
 	jsonDepositBytes, err := json.MarshalIndent(svc.Deposit, "", "	")
 	if err != nil {
 		log.Fatal(err)
@@ -66,7 +66,7 @@ func (svc *XMLEscrowAnalysisService) GetDepositJSON() string {
 }
 
 // GetHeader returns the RdeHeader element in JSON format
-func (svc *XMLEscrowAnalysisService) GetHeaderJSON() string {
+func (svc *XMLEscrowService) GetHeaderJSON() string {
 	jsonHeaderBytes, err := json.MarshalIndent(svc.Header, "", "	")
 	if err != nil {
 		log.Fatal(err)
@@ -75,7 +75,7 @@ func (svc *XMLEscrowAnalysisService) GetHeaderJSON() string {
 }
 
 // Analyzes the deposit XML tag
-func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
+func (svc *XMLEscrowService) AnalyzeDepostTag() error {
 	// our found flag
 	found := false
 
@@ -113,7 +113,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeDepostTag() error {
 }
 
 // AnalyzeHeaderTag Analyzes the header tag
-func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
+func (svc *XMLEscrowService) AnalyzeHeaderTag() error {
 	// our found flag
 	found := false
 
@@ -151,7 +151,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeHeaderTag() error {
 }
 
 // AnalyzeRegistrarTags Gets all registrars from the escrow file
-func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount int) error {
+func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) error {
 
 	count := 0
 
@@ -202,7 +202,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeRegistrarTags(expectedRegistrarCount
 }
 
 // AnalyzeIDNTableRefs decodes and saves all IDN table references from the escrow file
-func (svc *XMLEscrowAnalysisService) AnalyzeIDNTableRefTags(idnCount int) error {
+func (svc *XMLEscrowService) AnalyzeIDNTableRefTags(idnCount int) error {
 	var idnTableRefs []entities.RDEIdnTableReference
 
 	count := 0
@@ -249,7 +249,7 @@ func (svc *XMLEscrowAnalysisService) AnalyzeIDNTableRefTags(idnCount int) error 
 // - {inputFilename}-contacts.csv
 // - {inputFilename}-contactStatuses.csv
 // - {inputFilename}-contactPostalInfo.csv
-func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
+func (svc *XMLEscrowService) ExtractContacts() error {
 
 	count := 0
 
@@ -380,7 +380,7 @@ func (svc *XMLEscrowAnalysisService) ExtractContacts() error {
 // - {inputFilename}-hosts.csv
 // - {inputFilename}-hostStatuses.csv
 // - {inputFilename}-hostAddresses.csv
-func (svc *XMLEscrowAnalysisService) ExtractHosts() error {
+func (svc *XMLEscrowService) ExtractHosts() error {
 
 	count := 0
 
@@ -491,7 +491,7 @@ func (svc *XMLEscrowAnalysisService) ExtractHosts() error {
 // This will output the following files:
 //
 // - {inputFilename}-nndns.csv
-func (svc *XMLEscrowAnalysisService) ExtractNNDNS() error {
+func (svc *XMLEscrowService) ExtractNNDNS() error {
 
 	count := 0
 
@@ -550,7 +550,7 @@ func (svc *XMLEscrowAnalysisService) ExtractNNDNS() error {
 }
 
 // getXMLDecoder opens the XML file and returns an XML decoder
-func (svc *XMLEscrowAnalysisService) getXMLDecoder() (*xml.Decoder, error) {
+func (svc *XMLEscrowService) getXMLDecoder() (*xml.Decoder, error) {
 	f, err := os.Open(svc.Deposit.FileName)
 	if err != nil {
 		return nil, err
@@ -559,7 +559,7 @@ func (svc *XMLEscrowAnalysisService) getXMLDecoder() (*xml.Decoder, error) {
 }
 
 // GetDepositFileNameWoExtension Returns the XML Deposit Filename without exitension
-func (svc *XMLEscrowAnalysisService) GetDepositFileNameWoExtension() string {
+func (svc *XMLEscrowService) GetDepositFileNameWoExtension() string {
 	return strings.Join(strings.Split(svc.Deposit.FileName, ".")[0:len(strings.Split(svc.Deposit.FileName, "."))-1], ".")
 }
 
@@ -593,7 +593,7 @@ func checkLineCount(filename string, expected int) {
 // - {inputFilename}-DomainDnssec.csv
 // - {inputFilename}-domainTransfers.csv
 // - {inputFilename}-uniqueDomainContactIDs.csv
-func (svc *XMLEscrowAnalysisService) ExtractDomains() error {
+func (svc *XMLEscrowService) ExtractDomains() error {
 
 	count := 0
 
@@ -786,7 +786,7 @@ func CountLines(r io.Reader) (int, error) {
 }
 
 // getUniqueContactIDs Extracts the contact IDs from the contact file and returns them as a map
-func (svc *XMLEscrowAnalysisService) getUniqueContactIDs() (map[string]bool, error) {
+func (svc *XMLEscrowService) getUniqueContactIDs() (map[string]bool, error) {
 	contactIDs := make(map[string]bool)
 	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-contacts.csv")
 	if err != nil {
@@ -805,7 +805,7 @@ func (svc *XMLEscrowAnalysisService) getUniqueContactIDs() (map[string]bool, err
 }
 
 // LookForMissingContacts Looks if all the uniqueContactIDs used on domains are present in the contact file. It saves the results in the escrow object
-func (svc *XMLEscrowAnalysisService) LookForMissingContacts() error {
+func (svc *XMLEscrowService) LookForMissingContacts() error {
 	contactIDs, err := svc.getUniqueContactIDs()
 	if err != nil {
 		return err
@@ -839,14 +839,14 @@ func (svc *XMLEscrowAnalysisService) LookForMissingContacts() error {
 }
 
 // UnlinkedContactCheck Checks if the number of contacts is more than 4 times the number of domains. This could indicate unlinked contacts. This requires the header to be analyzed before use.
-func (svc *XMLEscrowAnalysisService) UnlinkedContactCheck() {
+func (svc *XMLEscrowService) UnlinkedContactCheck() {
 	if svc.Header.ContactCount() > svc.Header.DomainCount()*4 {
 		log.Println("🔥 WARNING 🔥 Deposit contains more contacts than four times the number of domains, this could indicate the presence of unlinked contacts in the deposit")
 	}
 }
 
 // Save Analysis to a JSON file
-func (svc *XMLEscrowAnalysisService) SaveAnalysis() error {
+func (svc *XMLEscrowService) SaveAnalysis() error {
 	bytes, err := json.MarshalIndent(svc, "", "	")
 	if err != nil {
 		return err
@@ -858,7 +858,7 @@ func (svc *XMLEscrowAnalysisService) SaveAnalysis() error {
 }
 
 // MapRegistrars Tries to find all registrars from the deposit in the repository through the registrars API and link their IDs
-func (svc *XMLEscrowAnalysisService) MapRegistrars() error {
+func (svc *XMLEscrowService) MapRegistrars() error {
 	log.Println("Mapping Registrars ...")
 	if svc.Registrars == nil {
 		return errors.New("no registrars to map, have you analyzed registrar-section of the escrow file?")
