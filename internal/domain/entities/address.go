@@ -10,6 +10,7 @@ var (
 	ErrInvalidCity              = errors.New("invalid city")
 	ErrInvalidPostalCode        = errors.New("invalid postal code")
 	ErrInvalidStreet            = errors.New("invalid street")
+	ErrInvalidStreetCount       = errors.New("invalid street count")
 	ErrInvalidStateProvince     = errors.New("invalid state/province")
 	ErrInvalidASCIIInIntAddress = errors.New("invalid address: non-ASCII in INT object")
 )
