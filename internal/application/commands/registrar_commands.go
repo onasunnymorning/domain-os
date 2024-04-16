@@ -1,6 +1,8 @@
 package commands
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import (
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+)
 
 type CreateRegistrarCommand struct {
 	ClID        string                           `json:"ClID" binding:"required"`

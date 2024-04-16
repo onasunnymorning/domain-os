@@ -8,11 +8,11 @@ import (
 
 // EscrowAnalysisController is a controller for escrow analysis
 type EscrowAnalysisController struct {
-	svc *services.XMLEscrowAnalysisService
+	svc *services.XMLEscrowService
 }
 
 // NewEscrowAnalysisController creates a new instance of EscrowAnalysisController
-func NewEscrowAnalysisController(escrowAnalysisService *services.XMLEscrowAnalysisService) *EscrowAnalysisController {
+func NewEscrowAnalysisController(escrowAnalysisService *services.XMLEscrowService) *EscrowAnalysisController {
 	return &EscrowAnalysisController{
 		svc: escrowAnalysisService,
 	}
