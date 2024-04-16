@@ -40,6 +40,15 @@ func TestNewWhoisInfo(t *testing.T) {
 			},
 			err: nil,
 		},
+		{
+			name: "",
+			url:  "https://apex.domains/whois",
+			expected: &WhoisInfo{
+				Name: "",
+				URL:  "https://apex.domains/whois",
+			},
+			err: nil,
+		},
 	}
 
 	for _, test := range tests {
