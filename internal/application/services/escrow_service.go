@@ -186,6 +186,13 @@ func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) er
 				if err := d.DecodeElement(&registrar, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
+				// Pass it through our entity for validation (if we have a valid escrow that doesn't messup 'int' and 'loc' postalinfo)
+				_, err = registrar.ToEntity()
+				if err != nil {
+					log.Printf("Error parsing registrar %s: %s\n", registrar.Name, err)
+					log.Printf("Registrar.PostalInfo: %v\n", registrar.PostalInfo)
+					panic(err)
+				}
 				// Add registrars to our inventory
 				svc.Registrars = append(svc.Registrars, registrar)
 				// Create an empty RdeRegistrarInfo counter for each registrar in our Mapping.

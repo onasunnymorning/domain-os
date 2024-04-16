@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 const (
@@ -125,7 +125,7 @@ func (r *Registrar) Validate() error {
 func (r *Registrar) AddPostalInfo(pi *RegistrarPostalInfo) error {
 	// Fail fast if we get an  invalid PostalInfo object
 	if err := pi.IsValid(); err != nil {
-		return ErrInvalidRegistrarPostalInfo
+		return errors.Join(ErrInvalidRegistrarPostalInfo, err)
 
 	}
 	// In the 2-item array, store the 'int' postalinfo first, the 'loc' postalinfo in second position

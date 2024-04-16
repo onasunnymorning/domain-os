@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/xml"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -39,6 +40,11 @@ func (r *RDERegistrarPostalInfo) ToEntity() (*RegistrarPostalInfo, error) {
 	a, err := r.Address.ToEntity()
 	if err != nil {
 		return nil, err
+	}
+	// TODO: FIXME: remove this - if we get a dirty deposit that has non-ASCII characters in an INT postalinfo, we override the int postalinfo to loc
+	isASCII, _ := a.IsASCII()
+	if !isASCII {
+		r.Type = "loc"
 	}
 	rpi, err := NewRegistrarPostalInfo(r.Type, a)
 	if err != nil {
@@ -134,6 +140,10 @@ func (r *RDERegistrar) ToEntity() (*Registrar, error) {
 		rarPi[i] = pi
 
 	}
+	// TODO: FIXME: remove this - Sometimes we get multiple email addresses in the email field separated by comma
+	if len(strings.Split(r.Email, ",")) > 1 {
+		r.Email = strings.Split(r.Email, ",")[0]
+	}
 	rar, err := NewRegistrar(r.ID, r.Name, r.Email, r.GurID, rarPi)
 	if err != nil {
 		return nil, err
@@ -168,7 +178,12 @@ func (r *RDERegistrar) ToEntity() (*Registrar, error) {
 	}
 	rar.WhoisInfo = *wi
 
-	rar.Status = RegistrarStatus(r.Status.S)
+	// Often there is no status so we set it to ok if it is empty
+	if r.Status.S == "" {
+		rar.Status = RegistrarStatusOK
+	} else {
+		rar.Status = RegistrarStatus(r.Status.S)
+	}
 
 	err = rar.Validate()
 	if err != nil {
