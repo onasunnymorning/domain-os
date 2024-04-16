@@ -1,15 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/biter777/countries"
+	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
@@ -143,8 +148,8 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	// Make a slice of CSVRegistrars
 	registrars := make([]CSVRegistrar, len(data)-1)
-
 	for i, line := range data {
 		if i == 0 {
 			// Skip the header
@@ -166,16 +171,23 @@ func main() {
 		}
 	}
 
-	for _, r := range registrars {
+	// Covert to a slice of CreateRegistrarCommands
+	createCommands := make([]commands.CreateRegistrarCommand, len(registrars))
+	for i, r := range registrars {
 		addr, err := r.Address()
 		if err != nil {
 			log.Fatalf("Error getting address: %v", err)
 		}
 
+		randomName := namesgenerator.GetRandomName(0)
+		if len(randomName) > 16 {
+			randomName = randomName[:15]
+		}
 		rarCmd := commands.CreateRegistrarCommand{
+			ClID:  randomName,
 			Name:  r.Name,
 			Email: r.ContactEmail(),
-			Voice: r.ContactPhone(),
+			Voice: strings.ReplaceAll(r.ContactPhone(), " ", "."),
 			GurID: r.IANAID,
 			URL:   r.Link,
 			PostalInfo: [2]*entities.RegistrarPostalInfo{
@@ -186,6 +198,31 @@ func main() {
 			},
 		}
 
-		fmt.Println(rarCmd)
+		createCommands[i] = rarCmd
+	}
+
+	// Create the registrars
+	for _, cmd := range createCommands {
+		fmt.Println(cmd)
+		postBody, err := json.Marshal(cmd)
+		if err != nil {
+			log.Fatalf("Error marshaling command: %v", err)
+		}
+
+		resp, err := http.Post("http://localhost:8080/registrars", "application/json", bytes.NewBuffer(postBody))
+		if err != nil {
+			log.Fatalf("Error posting registrar %s: %v", cmd.Name, err)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			log.Fatalf("Error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
+		}
+
+		log.Printf("Registrar %s created\n", cmd.Name)
 	}
 }
