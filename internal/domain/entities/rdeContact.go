@@ -21,11 +21,33 @@ type RDEContact struct {
 	Disclose   RDEDisclose            `xml:"disclose"`
 }
 
+// RDEContactPostalInfo is a struct that facilitates the parsing of the postalInfo element in the RDE XML
 type RDEContactPostalInfo struct {
 	XMLName xml.Name `xml:"postalInfo"`
 	Type    string   `xml:"type,attr"`
+	Name    string   `xml:"name"`
 	Org     string   `xml:"org"`
 	Address RDEAddress
+}
+
+// ToEntity converts the RDEContactPostalInfo to an ContactPostalInfo entity
+func (p *RDEContactPostalInfo) ToEntity() (*ContactPostalInfo, error) {
+	addr, err := p.Address.ToEntity()
+	if err != nil {
+		return nil, err
+	}
+	cpi, err := NewContactPostalInfo(p.Type, p.Name, addr)
+	if err != nil {
+		return nil, err
+	}
+	if p.Org != "" {
+		org, err := NewOptPostalLineType(p.Org)
+		if err != nil {
+			return nil, err
+		}
+		cpi.Org = *org
+	}
+	return cpi, nil
 }
 
 type RDEContactStatus struct {
