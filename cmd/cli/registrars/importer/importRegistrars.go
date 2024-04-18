@@ -54,15 +54,16 @@ func (r CSVRegistrar) CreateSlug() (string, error) {
 	slug = entities.RemoveNonAlphaNumeric(slug)
 	// remove all dots '.'
 	slug = strings.ReplaceAll(slug, ".", "")
-	// if the string is longer than 16 characters, truncate it to 13 to leave some space for the IANAID
-	if len(slug) > 10 {
-		slug = slug[:10]
-	}
 	// if the string starts or ends with a dash, remove it
 	slug = strings.Trim(slug, "-")
 	// prepend the IANAID to the slug
 	slug = fmt.Sprintf("%d-%s", r.IANAID, slug)
-	fmt.Println(slug)
+	// if the string is longer than 16 characters, truncate it
+	if len(slug) > 16 {
+		slug = slug[:16]
+	}
+	// if the string starts or ends with a dash, remove it
+	slug = strings.Trim(slug, "-")
 	// validate as a ClIDType
 	clidSlug, err := entities.NewClIDType(slug)
 	return clidSlug.String(), err
@@ -271,6 +272,6 @@ func main() {
 			log.Fatalf("Error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
 		}
 
-		log.Printf("Registrar %s created as %s\n", cmd.Name, cmd.ClID)
+		// log.Printf("Registrar %s created as %s\n", cmd.Name, cmd.ClID)
 	}
 }
