@@ -886,10 +886,20 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	var found = 0
 	var missing = 0
+	var missingGurIDs = []int{}
 
 	for _, rar := range svc.Registrars {
 
-		URL := BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
+		var URL string
+
+		// Handle special cases of reserved GurIDs
+		if rar.GurID == 9997 {
+			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
+		} else if rar.GurID == 9999 || rar.GurID == 119 {
+			URL = BASE_URL + "/registrars/9999" + "-" + svc.Header.TLD
+		} else {
+			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
+		}
 
 		req, err := http.NewRequest("GET", URL, nil)
 		if err != nil {
@@ -904,7 +914,13 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 		// not found
 		if resp.StatusCode == 404 {
+			// If the regsitrar is in the deposit but not found, we can skip it if it has no domains
+			if svc.RegsistrarMapping[rar.ID].DomainCount == 0 {
+				log.Printf("Registrar %s with GurID %d not found, but has no domains, skipping ...", rar.Name, rar.GurID)
+				continue
+			}
 			missing++
+			missingGurIDs = append(missingGurIDs, rar.GurID)
 			continue
 		}
 
@@ -930,6 +946,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		// other error
 		log.Printf("got a %s: %s", resp.Status, URL)
 		missing++
+		missingGurIDs = append(missingGurIDs, rar.GurID)
 
 	}
 	// write mapping to file
@@ -939,8 +956,9 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	if missing > 0 {
 		log.Printf("🔥 WARNING 🔥 Could not map %d registrars\n", missing)
+		log.Printf("The following registrars' GurIDs could not be found: %v\n", missingGurIDs)
 	} else {
-		log.Printf("✅ Found all registrars\n")
+		log.Printf("✅ Found all important registrars\n")
 	}
 
 	return nil
