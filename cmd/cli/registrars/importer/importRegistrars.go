@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/biter777/countries"
-	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
@@ -41,18 +40,61 @@ func (r CSVRegistrar) ContactName() string {
 	return strings.Split(r.Contact, "+")[0]
 }
 
+// CreateSlug creates a slug from the registrar name that is a valid ClIDType
+func (r CSVRegistrar) CreateSlug() (string, error) {
+	// split the string by comma ',' and return the frist part
+	slug := strings.Split(r.Name, ",")[0]
+	// lowercase the string
+	slug = strings.ToLower(slug)
+	// Remove all Non-ASCII characters
+	slug = entities.RemoveNonASCII(slug)
+	// replace all spaces ' ' with dashes '-'
+	slug = strings.ReplaceAll(slug, " ", "-")
+	// Remove all Non-AlphaNumeric characters
+	slug = entities.RemoveNonAlphaNumeric(slug)
+	// remove all dots '.'
+	slug = strings.ReplaceAll(slug, ".", "")
+	// if the string is longer than 16 characters, truncate it to 13 to leave some space for the IANAID
+	if len(slug) > 10 {
+		slug = slug[:10]
+	}
+	// if the string starts or ends with a dash, remove it
+	slug = strings.Trim(slug, "-")
+	// prepend the IANAID to the slug
+	slug = fmt.Sprintf("%d-%s", r.IANAID, slug)
+	fmt.Println(slug)
+	// validate as a ClIDType
+	clidSlug, err := entities.NewClIDType(slug)
+	return clidSlug.String(), err
+}
+
 // ContactPhone returns the phone number of the contact person (the second part of the contact string, after the `+` sign)
 func (r CSVRegistrar) ContactPhone() string {
 	var phoneSlice []string
 	if !strings.Contains(r.Contact, "+") {
 		// in case there is no phone number, the phone number will be `null`
-		phoneSlice = strings.Split(strings.Split(r.Contact, "null")[1], " ")[0 : len(strings.Split(strings.Split(r.Contact, "null")[1], " "))-1]
+		// phoneSlice = strings.Split(strings.Split(r.Contact, "null")[1], " ")[0 : len(strings.Split(strings.Split(r.Contact, "null")[1], " "))-1]
+		phoneSlice = []string{""}
 	} else {
 		phoneSlice = strings.Split(strings.Split(r.Contact, "+")[1], " ")[0 : len(strings.Split(strings.Split(r.Contact, "+")[1], " "))-1]
 	}
 
 	// join the phoneSlice to get the phone number
-	return "+" + cleanPhone([]byte(strings.Join(phoneSlice, " ")))
+	cleaned := cleanPhone([]byte(strings.Join(phoneSlice, " ")))
+	// replace the first space with a '.'
+	cleaned = strings.Replace(cleaned, " ", ".", 1)
+	// remove all remaining spaces
+	cleaned = strings.ReplaceAll(cleaned, " ", "")
+
+	// Validate the phone number
+	validated, err := entities.NewE164Type("+" + cleaned)
+	if err != nil {
+		// log.Printf("Error validating phone number %s: %v - Removing phone number", cleaned, err)
+		return ""
+	}
+
+	return validated.String()
+
 }
 
 // cleanPhone removes all characters from the phone number string that are not numbers
@@ -120,7 +162,7 @@ func (r CSVRegistrar) Address() (*entities.Address, error) {
 	}
 
 	return &entities.Address{
-		City:        entities.PostalLineType(country.Capital().Type()),
+		City:        entities.PostalLineType(country.Capital().Info().Name),
 		CountryCode: entities.CCType(country.Alpha2()),
 	}, nil
 }
@@ -173,21 +215,22 @@ func main() {
 
 	// Covert to a slice of CreateRegistrarCommands
 	createCommands := make([]commands.CreateRegistrarCommand, len(registrars))
+	seen := make(map[string]bool)
 	for i, r := range registrars {
 		addr, err := r.Address()
 		if err != nil {
 			log.Fatalf("Error getting address: %v", err)
 		}
 
-		randomName := namesgenerator.GetRandomName(0)
-		if len(randomName) > 16 {
-			randomName = randomName[:15]
+		clidName, err := r.CreateSlug()
+		if err != nil {
+			log.Printf("Error creating slug for registrar %s: %v", r.Name, err)
 		}
 		rarCmd := commands.CreateRegistrarCommand{
-			ClID:  randomName,
+			ClID:  clidName,
 			Name:  r.Name,
 			Email: r.ContactEmail(),
-			Voice: strings.ReplaceAll(r.ContactPhone(), " ", "."),
+			Voice: r.ContactPhone(),
 			GurID: r.IANAID,
 			URL:   r.Link,
 			PostalInfo: [2]*entities.RegistrarPostalInfo{
@@ -198,12 +241,17 @@ func main() {
 			},
 		}
 
+		// Check for duplicate ClIDs
+		if seen[rarCmd.ClID] {
+			log.Fatalf("Duplicate Registrar.ClID: %s", rarCmd.ClID)
+		}
+		seen[rarCmd.ClID] = true
+
 		createCommands[i] = rarCmd
 	}
 
 	// Create the registrars
 	for _, cmd := range createCommands {
-		fmt.Println(cmd)
 		postBody, err := json.Marshal(cmd)
 		if err != nil {
 			log.Fatalf("Error marshaling command: %v", err)
@@ -223,6 +271,6 @@ func main() {
 			log.Fatalf("Error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
 		}
 
-		log.Printf("Registrar %s created\n", cmd.Name)
+		log.Printf("Registrar %s created as %s\n", cmd.Name, cmd.ClID)
 	}
 }
