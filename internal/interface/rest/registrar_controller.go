@@ -29,6 +29,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	}
 
 	e.GET("/registrars/:clid", controller.GetByClID)
+	e.GET("/registrars/gurid/:gurid", controller.GetByGurID)
 	e.GET("/registrars", controller.List)
 	e.POST("/registrars", controller.Create)
 	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
@@ -52,6 +53,38 @@ func (ctrl *RegistrarController) GetByClID(ctx *gin.Context) {
 	clid := ctx.Param("clid")
 
 	rar, err := ctrl.rarService.GetByClID(ctx, clid)
+	if err != nil {
+		if errors.Is(err, entities.ErrRegistrarNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, rar)
+}
+
+// GetByGurID godoc
+// @Summary Get a Registrar by GurID
+// @Description Get a Registrar by GurID
+// @Tags Registrars
+// @Produce json
+// @Param gurid path int true "Registrar GurID"
+// @Success 200 {object} entities.Registrar
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /registrars/gurid/{gurid} [get]
+func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
+	guridString := ctx.Param("gurid")
+	gurid, err := strconv.Atoi(guridString)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": ErrInvalidGurID.Error()})
+		return
+	}
+
+	rar, err := ctrl.rarService.GetByGurID(ctx, gurid)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

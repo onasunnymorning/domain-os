@@ -85,6 +85,11 @@ func (s *RegistrarService) GetByClID(ctx context.Context, clid string) (*entitie
 	return s.registrarRepository.GetByClID(ctx, clid)
 }
 
+// GetByGurID returns a registrar by its GurID
+func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByGurID(ctx, gurID)
+}
+
 // List returns a list of registrars
 func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
 	return s.registrarRepository.List(ctx, pagesize, pagecursor)
