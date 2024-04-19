@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/xml"
+	"time"
 )
 
 type RDEDomain struct {
@@ -24,6 +25,105 @@ type RDEDomain struct {
 	UpDate       string               `xml:"upDate"`
 	SecDNS       RDESecDNS            `xml:"secDNS"`
 	TrnData      TrnData              `xml:"trnData"`
+}
+
+// ToEntity converts the RDEDomain to a Domain entity
+func (d *RDEDomain) ToEntity() (*Domain, error) {
+	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
+	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
+	if err != nil {
+		return nil, err // Untestable, just catching the error incase our AuthInfoType is validation changes
+	}
+	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, string(aInfo))
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the optional fields
+	if d.UName != "" {
+		domain.UName = DomainName(d.UName)
+	}
+	// TODO: Set this when the Domain has IDN support
+	// if d.IdnTableId != "" {
+	// 	domain.IdnTableId = d.IdnTableId
+	// }
+	if d.OriginalName != "" {
+		domain.OriginalName = DomainName(d.OriginalName)
+	}
+	if d.CrRr != "" {
+		crrr, err := NewClIDType(d.CrRr)
+		if err != nil {
+			return nil, err
+		}
+		domain.CrRr = crrr
+	}
+	if d.CrDate != "" {
+		date, err := time.Parse(time.RFC3339, d.CrDate)
+		if err != nil {
+			return nil, err
+		}
+		domain.CreatedAt = date
+	}
+	if d.UpRr != "" {
+		uprr, err := NewClIDType(d.UpRr)
+		if err != nil {
+			return nil, err
+		}
+		domain.UpRr = uprr
+	}
+	if d.UpDate != "" {
+		date, err := time.Parse(time.RFC3339, d.UpDate)
+		if err != nil {
+			return nil, err
+		}
+		domain.UpdatedAt = date
+	}
+	// Set contact information
+	if d.Registrant != "" {
+		c, err := NewClIDType(d.Registrant)
+		if err != nil {
+			return nil, err
+		}
+		domain.RegistrantID = c
+	}
+	if len(d.Contact) > 0 {
+		for _, contact := range d.Contact {
+			switch contact.Type {
+			case "admin":
+				c, err := NewClIDType(contact.ID)
+				if err != nil {
+					return nil, err
+				}
+				domain.AdminID = c
+			case "tech":
+				c, err := NewClIDType(contact.ID)
+				if err != nil {
+					return nil, err
+				}
+				domain.TechID = c
+			case "billing":
+				c, err := NewClIDType(contact.ID)
+				if err != nil {
+					return nil, err
+				}
+				domain.BillingID = c
+			default:
+				return nil, ErrInvalidContact
+			}
+		}
+	}
+	// TODO: FIXME: Set the status
+	// for _, status := range d.Status {
+	// 	err := domain.SetStatus(status.S)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
+	// TODO: FIXME: Add the nameservers
+
+	return domain, nil
+
 }
 
 type RDEDomainStatus struct {
