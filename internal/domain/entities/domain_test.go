@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestDomain_NewDomain(t *testing.T) {
 func TestDomain_InvalidStatus(t *testing.T) {
 	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	require.NoError(t, err)
-	domain.Status.ClientHold = true
+	domain.Status.OK = true
 
 	require.ErrorIs(t, domain.Validate(), ErrInvalidDomainStatusCombination)
 
@@ -345,6 +346,47 @@ func TestDomain_Validate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, tc.domain.Validate())
 		})
+	}
+
+}
+
+func TestDomain_SetStatus(t *testing.T) {
+	testcases := []struct {
+		Name        string
+		ds          DomainStatus
+		StatusToSet string
+		wantErr     error
+	}{
+		{
+			Name: "invalid satus value",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: "invalid",
+			wantErr:     ErrInvalidDomainStatus,
+		},
+		{
+			Name: "idempotent prohibition",
+			ds: DomainStatus{
+				ServerUpdateProhibited: true,
+			},
+			StatusToSet: "serverUpdateProhibited",
+			wantErr:     nil,
+		},
+	}
+
+	for _, tc := range testcases {
+		d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+		require.NoError(t, err)
+		require.NotNil(t, d)
+		d.Status = tc.ds
+
+		err = d.SetStatus(tc.StatusToSet)
+		require.Equal(t, tc.wantErr, err)
+		if err == nil {
+			r := reflect.ValueOf(d.Status)
+			require.True(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToSet[0]))+tc.StatusToSet[1:]).Bool())
+		}
 	}
 
 }

@@ -44,27 +44,6 @@ type Domain struct {
 	RGPStatus    DomainRGPStatus `json:"RGPStatus"`
 }
 
-const (
-	DomainStatusOK                       = "OK"
-	DomainStatusInactive                 = "Inactive"
-	DomainStatusClientTransferProhibited = "clientTransferProhibited"
-	DomainStatusClientUpdateProhibited   = "clientUpdateProhibited"
-	DomainStatusClientDeleteProhibited   = "clientDeleteProhibited"
-	DomainStatusClientRenewProhibited    = "clientRenewProhibited"
-	DomainStatusClientHold               = "clientHold"
-	DomainStatusServerTransferProhibited = "serverTransferProhibited"
-	DomainStatusServerUpdateProhibited   = "serverUpdateProhibited"
-	DomainStatusServerDeleteProhibited   = "serverDeleteProhibited"
-	DomainStatusServerRenewProhibited    = "serverRenewProhibited"
-	DomainStatusServerHold               = "serverHold"
-	DomainStatusPendingCreate            = "pendingCreate"
-	DomainStatusPendingRenew             = "pendingRenew"
-	DomainStatusPendingTransfer          = "pendingTransfer"
-	DomainStatusPendingUpdate            = "pendingUpdate"
-	DomainStatusPendingRestore           = "pendingRestore"
-	DomainStatusPendingDelete            = "pendingDelete"
-)
-
 // SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
 func (d *Domain) SetOKStatusIfNeeded() {
 	// if nil, we set OK

@@ -34,9 +34,55 @@ func TestDomainStatus_Validate(t *testing.T) {
 			wantErr: ErrInvalidDomainStatusCombination,
 		},
 		{
-			Name: "inactive but missing ok",
+			Name: "inactive and ok",
 			ds: DomainStatus{
 				Inactive: true,
+				OK:       true,
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name:    "ok missing",
+			ds:      DomainStatus{},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name: "pendingDelete with delete prohibition",
+			ds: DomainStatus{
+				PendingDelete:          true,
+				ClientDeleteProhibited: true,
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name: "pendingUpdate with update prohibition",
+			ds: DomainStatus{
+				PendingUpdate:          true,
+				ServerUpdateProhibited: true,
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name: "pendingRenew with renew prohibition",
+			ds: DomainStatus{
+				PendingRenew:          true,
+				ClientRenewProhibited: true,
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name: "pendingTransfer with transfer prohibition",
+			ds: DomainStatus{
+				PendingTransfer:          true,
+				ServerTransferProhibited: true,
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			Name: "more than one pending",
+			ds: DomainStatus{
+				PendingTransfer: true,
+				PendingRenew:    true,
 			},
 			wantErr: ErrInvalidDomainStatusCombination,
 		},
@@ -246,6 +292,48 @@ func TestDomainStatus_UnSetOK(t *testing.T) {
 
 func TestDomainStatus_NewDomainStatus(t *testing.T) {
 	ds := NewDomainStatus()
-	require.True(t, ds.OK)
+	require.False(t, ds.OK)
 	require.True(t, ds.Inactive)
+}
+func TestDomainStatus_HasHold(t *testing.T) {
+	testcases := []struct {
+		name string
+		ds   DomainStatus
+		want bool
+	}{
+		{
+			name: "no hold",
+			ds:   DomainStatus{},
+			want: false,
+		},
+		{
+			name: "ClientHold",
+			ds: DomainStatus{
+				ClientHold: true,
+			},
+			want: true,
+		},
+		{
+			name: "ServerHold",
+			ds: DomainStatus{
+				ServerHold: true,
+			},
+			want: true,
+		},
+		{
+			name: "both holds",
+			ds: DomainStatus{
+				ClientHold: true,
+				ServerHold: true,
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range testcases {
+		d := Domain{
+			Status: tc.ds,
+		}
+		require.Equal(t, tc.want, d.Status.HasHold())
+	}
 }
