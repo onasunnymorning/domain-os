@@ -352,13 +352,13 @@ func TestDomain_Validate(t *testing.T) {
 
 func TestDomain_SetStatus(t *testing.T) {
 	testcases := []struct {
-		Name        string
+		name        string
 		ds          DomainStatus
 		StatusToSet string
 		wantErr     error
 	}{
 		{
-			Name: "invalid satus value",
+			name: "invalid satus value",
 			ds: DomainStatus{
 				OK: true,
 			},
@@ -366,27 +366,195 @@ func TestDomain_SetStatus(t *testing.T) {
 			wantErr:     ErrInvalidDomainStatus,
 		},
 		{
-			Name: "idempotent prohibition",
+			name: "idempotent prohibition",
 			ds: DomainStatus{
 				ServerUpdateProhibited: true,
 			},
-			StatusToSet: "serverUpdateProhibited",
+			StatusToSet: DomainStatusServerUpdateProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set inactive with pre-existing prohibitions",
+			ds: DomainStatus{
+				ServerDeleteProhibited: true,
+			},
+			StatusToSet: DomainStatusInactive,
+			wantErr:     nil,
+		},
+		{
+			name: "set OK with pre-existing prohibitions",
+			ds: DomainStatus{
+				ServerDeleteProhibited: true,
+			},
+			StatusToSet: DomainStatusOK,
+			wantErr:     ErrInvalidDomainStatusCombination,
+		},
+		{
+			name: "set OK with only inactive",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			StatusToSet: DomainStatusOK,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Transfer prohibited with only inactive",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			StatusToSet: DomainStatusClientTransferProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Transfer prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusClientTransferProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Update prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusClientUpdateProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Delete prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusClientDeleteProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Renew prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusClientRenewProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Client Hold with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusClientHold,
+			wantErr:     nil,
+		},
+		{
+			name: "set Server Transfer prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusServerTransferProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Server Update prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusServerUpdateProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Server Delete prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusServerDeleteProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Server Renew prohibited with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusServerRenewProhibited,
+			wantErr:     nil,
+		},
+		{
+			name: "set Server Hold with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusServerHold,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Create with only inactive",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			StatusToSet: DomainStatusPendingCreate,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Renew with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusPendingRenew,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Transfer with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusPendingTransfer,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Update with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusPendingUpdate,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Restore with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusPendingRestore,
+			wantErr:     nil,
+		},
+		{
+			name: "set Pending Delete with only OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToSet: DomainStatusPendingDelete,
 			wantErr:     nil,
 		},
 	}
 
 	for _, tc := range testcases {
-		d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
-		require.NoError(t, err)
-		require.NotNil(t, d)
-		d.Status = tc.ds
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+			require.NoError(t, err)
+			require.NotNil(t, d)
+			d.Status = tc.ds
 
-		err = d.SetStatus(tc.StatusToSet)
-		require.Equal(t, tc.wantErr, err)
-		if err == nil {
-			r := reflect.ValueOf(d.Status)
-			require.True(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToSet[0]))+tc.StatusToSet[1:]).Bool())
-		}
+			err = d.SetStatus(tc.StatusToSet)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				r := reflect.ValueOf(d.Status)
+				if tc.StatusToSet == DomainStatusOK {
+					require.True(t, r.FieldByName("OK").Bool())
+					require.False(t, r.FieldByName("Inactive").Bool())
+				} else {
+					require.True(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToSet[0]))+tc.StatusToSet[1:]).Bool())
+					require.False(t, r.FieldByName("OK").Bool())
+				}
+			}
+		})
 	}
 
 }
