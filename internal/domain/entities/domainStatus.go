@@ -1,14 +1,15 @@
 package entities
 
 import (
+	"fmt"
 	"slices"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 const (
-	DomainStatusOK                       = "OK"
-	DomainStatusInactive                 = "Inactive"
+	DomainStatusOK                       = "ok"
+	DomainStatusInactive                 = "inactive"
 	DomainStatusClientTransferProhibited = "clientTransferProhibited"
 	DomainStatusClientUpdateProhibited   = "clientUpdateProhibited"
 	DomainStatusClientDeleteProhibited   = "clientDeleteProhibited"
@@ -58,7 +59,7 @@ var (
 // https://www.rfc-editor.org/rfc/rfc5731.html#section-2.3:~:text=%5D.%0A%0A2.3.-,Status%20Values,-A%20domain%20object
 type DomainStatus struct {
 	OK                       bool `json:"OK"`
-	Inactive                 bool `json:"inactive"`
+	Inactive                 bool `json:"Inactive"`
 	ClientTransferProhibited bool `json:"ClientTransferProhibited"`
 	ClientUpdateProhibited   bool `json:"ClientUpdateProhibited"`
 	ClientDeleteProhibited   bool `json:"ClientDeleteProhibited"`
@@ -121,22 +122,26 @@ func (ds *DomainStatus) Validate() error {
 func (d *Domain) SetStatus(s string) error {
 	// Unknown status value
 	if !slices.Contains(ValidDomainStatuses, s) {
-		return ErrInvalidDomainStatus
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("unknown Domain status: %s", s))
 	}
 
-	//  Ensure idempotence when setting prohibitions that are already set
+	//  Ensure idempotence when setting Update prohibitions that are already set
 	if (s == DomainStatusClientUpdateProhibited && d.Status.ClientUpdateProhibited) || (s == DomainStatusServerUpdateProhibited && d.Status.ServerUpdateProhibited) {
 		return nil
 	}
 
-	// If a prohibition is present, only allow setting inactive status
-	if d.Status.HasProhibitions() && s != DomainStatusInactive {
-		return ErrDomainUpdateNotAllowed
-	}
+	// // If a prohibition is present, only allow setting inactive status
+	// if d.Status.HasProhibitions() && s != DomainStatusInactive {
+	// 	return ErrDomainUpdateNotAllowed
+	// }
 
 	switch s {
 	case "ok":
+		if d.Status.HasProhibitions() || d.Status.HasPendings() {
+			return ErrInvalidDomainStatusCombination
+		}
 		d.Status.OK = true
+		d.Status.Inactive = false
 	case "inactive":
 		d.Status.Inactive = true
 	case "clientTransferProhibited":
