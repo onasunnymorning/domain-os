@@ -1038,3 +1038,57 @@ func TestDomain_AddHost(t *testing.T) {
 	}
 
 }
+func TestDomain_RemoveHost(t *testing.T) {
+	d := &Domain{
+		Hosts: []*Host{
+			{Name: DomainName("host1")},
+			{Name: DomainName("host2")},
+			{Name: DomainName("host3")},
+		},
+		Status: DomainStatus{
+			Inactive: false,
+		},
+	}
+
+	t.Run("Remove existing host", func(t *testing.T) {
+		host := &Host{Name: "host2"}
+		err := d.RemoveHost(host)
+		require.NoError(t, err)
+		require.Len(t, d.Hosts, 2)
+		require.Equal(t, "host1", d.Hosts[0].Name.String())
+		require.Equal(t, "host3", d.Hosts[1].Name.String())
+		require.False(t, d.Status.Inactive)
+	})
+
+	t.Run("Remove non-existing host", func(t *testing.T) {
+		host := &Host{Name: "host4"}
+		err := d.RemoveHost(host)
+		require.Equal(t, ErrHostNotFound, err)
+		require.Len(t, d.Hosts, 2)
+		require.Equal(t, "host1", d.Hosts[0].Name.String())
+		require.Equal(t, "host3", d.Hosts[1].Name.String())
+		require.False(t, d.Status.Inactive)
+	})
+
+	t.Run("Remove all hosts", func(t *testing.T) {
+		host := &Host{Name: "host1"}
+		err := d.RemoveHost(host)
+		require.NoError(t, err)
+		require.Len(t, d.Hosts, 1)
+		require.False(t, d.Status.Inactive)
+
+		host = &Host{Name: "host3"}
+		err = d.RemoveHost(host)
+		require.NoError(t, err)
+		require.Len(t, d.Hosts, 0)
+		require.True(t, d.Status.Inactive)
+	})
+
+	t.Run("Remove host from empty list", func(t *testing.T) {
+		d := &Domain{}
+		host := &Host{Name: "host1"}
+		err := d.RemoveHost(host)
+		require.Equal(t, ErrHostNotFound, err)
+		require.Empty(t, d.Hosts)
+	})
+}
