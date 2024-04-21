@@ -164,26 +164,13 @@ func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 
 	result, err := ctrl.rarService.Create(ctx, &cmd)
 	if err != nil {
-		switch {
-		case errors.Is(err, entities.ErrInvalidClIDType):
+		if errors.Is(err, entities.ErrInvalidRegistrar) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		case errors.Is(err, entities.ErrInvalidEmail):
-			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		case errors.Is(err, entities.ErrInvalidRegistrarPostalInfo):
-			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		case errors.Is(err, entities.ErrInvalidE164Type):
-			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		case errors.Is(err, entities.ErrInvalidURL):
-			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		default:
-			ctx.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+
 	}
 
 	ctx.JSON(201, result)

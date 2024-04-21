@@ -22,7 +22,7 @@ func NewSpec5Controller(e *gin.Engine, spec5Service interfaces.Spec5Service) *Sp
 	return controller
 }
 
-// ListAll godoc
+// List godoc
 // @Summary List Spec5 labels
 // @Description List Spec5 labels from our internal repository. If you need to update the Spec5 label list, please use the /sync endpoint.
 // @Tags Spec5Labels
@@ -54,8 +54,8 @@ func (ctrl *Spec5Controller) List(ctx *gin.Context) {
 	}
 
 	// Set the meta and data if there are results only
+	response.Data = spec5Labels
 	if len(spec5Labels) > 0 {
-		response.Data = spec5Labels
 		response.SetMeta(ctx, spec5Labels[len(spec5Labels)-1].Label, len(spec5Labels), pageSize)
 	}
 
