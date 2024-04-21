@@ -42,6 +42,7 @@ type Domain struct {
 	UpdatedAt    time.Time       `json:"UpdatedAt"`
 	Status       DomainStatus    `json:"Status"`
 	RGPStatus    DomainRGPStatus `json:"RGPStatus"`
+	Hosts        []*Host         `json:"Hosts"`
 }
 
 // SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
@@ -56,6 +57,16 @@ func (d *Domain) SetOKStatusIfNeeded() {
 		d.Status.OK = true
 		return
 	}
+}
+
+// SetUnsetInactiveStatus is to be triggered when making changes to the hosts. Sets Domain.Status.Inactive = true if the domain has no hosts associated with it. It will set Domain.Status.Inactive = false otherwise.
+func (d *Domain) SetUnsetInactiveStatus() {
+	d.Status.Inactive = !d.HasHosts()
+}
+
+// HasHosts checks if the domain has hosts associated with it
+func (d *Domain) HasHosts() bool {
+	return len(d.Hosts) > 0
 }
 
 // UnSetOKStatusIfNeeded unsets the Domain.Status.OK flag if a prohibition or pending action is present on the DomainStatus

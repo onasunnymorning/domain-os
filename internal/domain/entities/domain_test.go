@@ -119,6 +119,7 @@ func TestDomain_InvalidStatus(t *testing.T) {
 	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	require.NoError(t, err)
 	domain.Status.OK = true
+	domain.Status.PendingDelete = true
 
 	require.ErrorIs(t, domain.Validate(), ErrInvalidDomainStatusCombination)
 
@@ -379,7 +380,7 @@ func TestDomain_SetStatus(t *testing.T) {
 				ServerDeleteProhibited: true,
 			},
 			StatusToSet: DomainStatusInactive,
-			wantErr:     nil,
+			wantErr:     ErrInvalidDomainStatus,
 		},
 		{
 			name: "set OK with pre-existing prohibitions",
@@ -387,7 +388,7 @@ func TestDomain_SetStatus(t *testing.T) {
 				ServerDeleteProhibited: true,
 			},
 			StatusToSet: DomainStatusOK,
-			wantErr:     ErrInvalidDomainStatusCombination,
+			wantErr:     ErrInvalidDomainStatus,
 		},
 		{
 			name: "set OK with only inactive",
@@ -395,7 +396,7 @@ func TestDomain_SetStatus(t *testing.T) {
 				Inactive: true,
 			},
 			StatusToSet: DomainStatusOK,
-			wantErr:     nil,
+			wantErr:     ErrInvalidDomainStatus,
 		},
 		{
 			name: "set Client Transfer prohibited with only inactive",
@@ -546,13 +547,293 @@ func TestDomain_SetStatus(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 			if err == nil {
 				r := reflect.ValueOf(d.Status)
-				if tc.StatusToSet == DomainStatusOK {
-					require.True(t, r.FieldByName("OK").Bool())
-					require.False(t, r.FieldByName("Inactive").Bool())
-				} else {
-					require.True(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToSet[0]))+tc.StatusToSet[1:]).Bool())
-					require.False(t, r.FieldByName("OK").Bool())
-				}
+				require.True(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToSet[0]))+tc.StatusToSet[1:]).Bool())
+				require.False(t, r.FieldByName("OK").Bool())
+			}
+		})
+	}
+
+}
+
+func TestDomain_HasHosts(t *testing.T) {
+	testcases := []struct {
+		name  string
+		hosts []*Host
+		want  bool
+	}{
+		{
+			name:  "no hosts",
+			hosts: nil,
+			want:  false,
+		},
+		{
+			name: "has one host",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "has two hosts",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+				{
+					Name: "ns2.example.com",
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "STr0mgP@ZZ")
+			require.NoError(t, err)
+			require.NotNil(t, d)
+			d.Hosts = tc.hosts
+
+			require.Equal(t, tc.want, d.HasHosts())
+		})
+	}
+}
+
+func TestDomain_SetUnsetInactiveStatus(t *testing.T) {
+	testcases := []struct {
+		name  string
+		hosts []*Host
+		want  bool
+	}{
+		{
+			name:  "no hosts",
+			hosts: nil,
+			want:  true,
+		},
+		{
+			name: "has one host",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "has two hosts",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+				{
+					Name: "ns2.example.com",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "STr0mgP@ZZ")
+			require.NoError(t, err)
+			require.NotNil(t, d)
+			d.Hosts = tc.hosts
+
+			d.SetUnsetInactiveStatus()
+
+			require.Equal(t, tc.want, d.Status.Inactive)
+		})
+	}
+}
+
+func TestDomain_UnSetStatus(t *testing.T) {
+	testcases := []struct {
+		name          string
+		ds            DomainStatus
+		StatusToUnSet string
+		wantErr       error
+	}{
+		{
+			name: "invalid satus value",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToUnSet: "invalid",
+			wantErr:       ErrInvalidDomainStatus,
+		},
+		{
+			name: "Try and set OK",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToUnSet: DomainStatusOK,
+			wantErr:       ErrInvalidDomainStatus,
+		},
+		{
+			name: "Try and set inactive",
+			ds: DomainStatus{
+				OK: true,
+			},
+			StatusToUnSet: DomainStatusInactive,
+			wantErr:       ErrInvalidDomainStatus,
+		},
+		{
+			name: "unset Client Transfer prohibited with only inactive",
+			ds: DomainStatus{
+				ClientTransferProhibited: true,
+				Inactive:                 true,
+			},
+			StatusToUnSet: DomainStatusClientTransferProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Client Transfer prohibited with only OK",
+			ds: DomainStatus{
+				ClientTransferProhibited: true,
+			},
+			StatusToUnSet: DomainStatusClientTransferProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Client Update prohibited with only OK",
+			ds: DomainStatus{
+				ClientUpdateProhibited: true,
+			},
+			StatusToUnSet: DomainStatusClientUpdateProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Client Delete prohibited with only OK",
+			ds: DomainStatus{
+				ClientDeleteProhibited: true,
+			},
+			StatusToUnSet: DomainStatusClientDeleteProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Client Renew prohibited with only OK",
+			ds: DomainStatus{
+				ClientRenewProhibited: true,
+			},
+			StatusToUnSet: DomainStatusClientRenewProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Client Hold with only OK",
+			ds: DomainStatus{
+				ClientHold: true,
+			},
+			StatusToUnSet: DomainStatusClientHold,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Server Transfer prohibited with only OK",
+			ds: DomainStatus{
+				ServerTransferProhibited: true,
+			},
+			StatusToUnSet: DomainStatusServerTransferProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Server Update prohibited with only OK",
+			ds: DomainStatus{
+				ServerUpdateProhibited: true,
+			},
+			StatusToUnSet: DomainStatusServerUpdateProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Server Delete prohibited with only OK",
+			ds: DomainStatus{
+				ServerDeleteProhibited: true,
+			},
+			StatusToUnSet: DomainStatusServerDeleteProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Server Renew prohibited with only OK",
+			ds: DomainStatus{
+				ServerRenewProhibited: true,
+			},
+			StatusToUnSet: DomainStatusServerRenewProhibited,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Server Hold with only OK",
+			ds: DomainStatus{
+				ServerHold: true,
+			},
+			StatusToUnSet: DomainStatusServerHold,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Create with only inactive",
+			ds: DomainStatus{
+				PendingCreate: true,
+			},
+			StatusToUnSet: DomainStatusPendingCreate,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Renew with only OK",
+			ds: DomainStatus{
+				PendingRenew: true,
+			},
+			StatusToUnSet: DomainStatusPendingRenew,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Transfer with only OK",
+			ds: DomainStatus{
+				PendingTransfer: true,
+			},
+			StatusToUnSet: DomainStatusPendingTransfer,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Update with only OK",
+			ds: DomainStatus{
+				PendingUpdate: true,
+			},
+			StatusToUnSet: DomainStatusPendingUpdate,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Restore with only OK",
+			ds: DomainStatus{
+				PendingRestore: true,
+			},
+			StatusToUnSet: DomainStatusPendingRestore,
+			wantErr:       nil,
+		},
+		{
+			name: "unset Pending Delete with only OK",
+			ds: DomainStatus{
+				PendingDelete: true,
+			},
+			StatusToUnSet: DomainStatusPendingDelete,
+			wantErr:       nil,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+			require.NoError(t, err)
+			require.NotNil(t, d)
+			d.Status = tc.ds
+			// Make sure the domain has no host so we always expect inactive to be set
+
+			err = d.UnSetStatus(tc.StatusToUnSet)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				r := reflect.ValueOf(d.Status)
+				require.False(t, reflect.Indirect(r).FieldByName(strings.ToUpper(string(tc.StatusToUnSet[0]))+tc.StatusToUnSet[1:]).Bool())
+				require.True(t, d.Status.OK)
+				require.True(t, d.Status.Inactive)
 			}
 		})
 	}
