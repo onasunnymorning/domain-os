@@ -39,7 +39,7 @@ func TestDomainStatus_Validate(t *testing.T) {
 				Inactive: true,
 				OK:       true,
 			},
-			wantErr: ErrInvalidDomainStatusCombination,
+			wantErr: nil,
 		},
 		{
 			Name:    "ok missing",

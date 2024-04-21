@@ -96,9 +96,6 @@ func (ds *DomainStatus) Validate() error {
 	if ds.HasProhibitions() && ds.OK {
 		return ErrInvalidDomainStatusCombination
 	}
-	if ds.Inactive && ds.OK {
-		return ErrInvalidDomainStatusCombination
-	}
 	if ds.PendingDelete && (ds.ClientDeleteProhibited || ds.ServerDeleteProhibited) {
 		return ErrInvalidDomainStatusCombination
 	}
@@ -124,26 +121,19 @@ func (d *Domain) SetStatus(s string) error {
 	if !slices.Contains(ValidDomainStatuses, s) {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("unknown Domain status: %s", s))
 	}
+	if s == DomainStatusOK {
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot set Domain status to OK, it will be set automatically if no prohibitions or pending actions are set"))
+	}
+	if s == DomainStatusInactive {
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot set Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
+	}
 
 	//  Ensure idempotence when setting Update prohibitions that are already set
 	if (s == DomainStatusClientUpdateProhibited && d.Status.ClientUpdateProhibited) || (s == DomainStatusServerUpdateProhibited && d.Status.ServerUpdateProhibited) {
 		return nil
 	}
 
-	// // If a prohibition is present, only allow setting inactive status
-	// if d.Status.HasProhibitions() && s != DomainStatusInactive {
-	// 	return ErrDomainUpdateNotAllowed
-	// }
-
 	switch s {
-	case "ok":
-		if d.Status.HasProhibitions() || d.Status.HasPendings() {
-			return ErrInvalidDomainStatusCombination
-		}
-		d.Status.OK = true
-		d.Status.Inactive = false
-	case "inactive":
-		d.Status.Inactive = true
 	case "clientTransferProhibited":
 		d.Status.ClientTransferProhibited = true
 	case "clientUpdateProhibited":
@@ -177,8 +167,65 @@ func (d *Domain) SetStatus(s string) error {
 	case "pendingDelete":
 		d.Status.PendingDelete = true
 	}
+	// SetUnset the Inactive status if needed
+	d.SetUnsetInactiveStatus()
 	// Check if as a result of the update we need to unset the OK status
 	d.UnSetOKStatusIfNeeded()
+
+	return d.Status.Validate()
+}
+
+// UnSetStatus unsets the status of the DomainStatus object
+func (d *Domain) UnSetStatus(s string) error {
+	// Unknown status value
+	if !slices.Contains(ValidDomainStatuses, s) {
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("unknown Domain status: %s", s))
+	}
+	if s == DomainStatusOK {
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot unset Domain status to OK, it will be set automatically if no prohibitions or pending actions are set"))
+	}
+	if s == DomainStatusInactive {
+		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot unset Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
+	}
+
+	switch s {
+	case "clientTransferProhibited":
+		d.Status.ClientTransferProhibited = false
+	case "clientUpdateProhibited":
+		d.Status.ClientUpdateProhibited = false
+	case "clientDeleteProhibited":
+		d.Status.ClientDeleteProhibited = false
+	case "clientRenewProhibited":
+		d.Status.ClientRenewProhibited = false
+	case "clientHold":
+		d.Status.ClientHold = false
+	case "serverTransferProhibited":
+		d.Status.ServerTransferProhibited = false
+	case "serverUpdateProhibited":
+		d.Status.ServerUpdateProhibited = false
+	case "serverDeleteProhibited":
+		d.Status.ServerDeleteProhibited = false
+	case "serverRenewProhibited":
+		d.Status.ServerRenewProhibited = false
+	case "serverHold":
+		d.Status.ServerHold = false
+	case "pendingCreate":
+		d.Status.PendingCreate = false
+	case "pendingRenew":
+		d.Status.PendingRenew = false
+	case "pendingTransfer":
+		d.Status.PendingTransfer = false
+	case "pendingUpdate":
+		d.Status.PendingUpdate = false
+	case "pendingRestore":
+		d.Status.PendingRestore = false
+	case "pendingDelete":
+		d.Status.PendingDelete = false
+	}
+	// SetUnset the Inactive status if needed
+	d.SetUnsetInactiveStatus()
+	// Check if as a result of the update we need to unset the OK status
+	d.SetOKStatusIfNeeded()
 
 	return d.Status.Validate()
 }
@@ -188,7 +235,7 @@ func (ds *DomainStatus) IsNil() bool {
 	return !ds.OK && !ds.Inactive && !ds.ClientTransferProhibited && !ds.ClientUpdateProhibited && !ds.ClientDeleteProhibited && !ds.ClientRenewProhibited && !ds.ClientHold && !ds.ServerTransferProhibited && !ds.ServerUpdateProhibited && !ds.ServerDeleteProhibited && !ds.ServerRenewProhibited && !ds.ServerHold && !ds.PendingCreate && !ds.PendingRenew && !ds.PendingTransfer && !ds.PendingUpdate && !ds.PendingRestore && !ds.PendingDelete
 }
 
-// HasProhibitions returns true if the DomainsStatus has any prohibitions set
+// HasProhibitions returns true if the DomainsStatus has any prohibitions set. This includes ClientHold and ServerHold
 func (ds *DomainStatus) HasProhibitions() bool {
 	return ds.ClientTransferProhibited || ds.ClientUpdateProhibited || ds.ClientDeleteProhibited || ds.ClientRenewProhibited || ds.ClientHold || ds.ServerTransferProhibited || ds.ServerUpdateProhibited || ds.ServerDeleteProhibited || ds.ServerRenewProhibited || ds.ServerHold
 }
