@@ -129,7 +129,7 @@ func main() {
 
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, *roidService)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService)
 
 	// Gin router
 	r := gin.Default()

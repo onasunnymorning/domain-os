@@ -94,3 +94,13 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, curso
 
 	return domains, nil
 }
+
+// AddHostToDomain adds a domain_hosts association to the database
+func (dr *DomainRepository) AddHostToDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
+	return dr.db.WithContext(ctx).Model(&Domain{}).Association("Hosts").Append(&Host{RoID: hostRoid})
+}
+
+// RemoveHostFromDomain removes a domain_hosts association from the database
+func (dr *DomainRepository) RemoveHostFromDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
+	return dr.db.WithContext(ctx).Model(&Domain{}).Association("Hosts").Delete(&Host{RoID: hostRoid})
+}

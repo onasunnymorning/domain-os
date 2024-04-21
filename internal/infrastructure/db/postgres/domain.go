@@ -28,6 +28,7 @@ type Domain struct {
 	UpdatedAt                time.Time
 	entities.DomainStatus    `gorm:"embedded"`
 	entities.DomainRGPStatus `gorm:"embedded"`
+	Hosts                    []Host `gorm:"many2many:domain_hosts;"`
 }
 
 // TableName returns the table name for the Domain model

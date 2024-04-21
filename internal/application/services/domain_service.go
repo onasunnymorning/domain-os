@@ -13,13 +13,15 @@ import (
 // DomainService immplements the DomainService interface
 type DomainService struct {
 	domainRepository repositories.DomainRepository
+	hostRepository   repositories.HostRepository
 	roidService      RoidService
 }
 
 // NewDomainService returns a new instance of a DomainService
-func NewDomainService(repo repositories.DomainRepository, roidService RoidService) *DomainService {
+func NewDomainService(dRepo repositories.DomainRepository, hRepo repositories.HostRepository, roidService RoidService) *DomainService {
 	return &DomainService{
-		domainRepository: repo,
+		domainRepository: dRepo,
+		hostRepository:   hRepo,
 		roidService:      roidService,
 	}
 }
@@ -145,4 +147,85 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 // ListDomains returns a list of domains
 func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error) {
 	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
+}
+
+// AddHostToDomain adds a host to a domain
+func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name)
+	if err != nil {
+		return err
+	}
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+
+	// Get the host
+	hRoid := entities.RoidType(roid)
+	if err := hRoid.Validate(); err != nil {
+		return err
+	}
+	if hRoid.ObjectIdentifier() != entities.HOST_ROID_ID {
+		return entities.ErrInvalidHostRoID
+	}
+	hostRoidInt, err := hRoid.Int64()
+	if err != nil {
+		return err
+	}
+
+	host, err := s.hostRepository.GetHostByRoid(ctx, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Add the host to the domain
+	_, err = dom.AddHost(host)
+	if err != nil {
+		return err
+	}
+
+	// If no error, save the association to the DB and return
+	return s.domainRepository.AddHostToDomain(ctx, domRoidInt, hostRoidInt)
+
+}
+
+// RemoveHostFromDomain removes a host from a domain
+func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name)
+	if err != nil {
+		return err
+	}
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+
+	// Get the host
+	hRoid := entities.RoidType(roid)
+	if err := hRoid.Validate(); err != nil {
+		return err
+	}
+	if hRoid.ObjectIdentifier() != entities.HOST_ROID_ID {
+		return entities.ErrInvalidHostRoID
+	}
+	hostRoidInt, err := hRoid.Int64()
+	if err != nil {
+		return err
+	}
+
+	host, err := s.hostRepository.GetHostByRoid(ctx, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Remove the host from the domain
+	err = dom.RemoveHost(host)
+	if err != nil {
+		return err
+	}
+
+	// If no error, save the association to the DB and return
+	return s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
 }

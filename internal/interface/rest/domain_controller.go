@@ -21,11 +21,14 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 		domainService: domService,
 	}
 
-	e.GET("/domains/:name", controller.GetDomainByName)
 	e.POST("/domains", controller.CreateDomain)
+	e.GET("/domains/:name", controller.GetDomainByName)
+	e.PUT("/domains/:name", controller.UpdateDomain)
 	e.DELETE("/domains/:name", controller.DeleteDomainByName)
 	e.GET("/domains", controller.ListDomains)
-	e.PUT("/domains/:name", controller.UpdateDomain)
+
+	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
+	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
 
 	return controller
 }
@@ -203,4 +206,59 @@ func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, domain)
+}
+
+// AddHostToDomain godoc
+// @Summary Add a host to a domain
+// @Description Add a host to a domain
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param roid path string true "Host RoID"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/hosts/{roid} [post]
+func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
+	// Use the service to add the host to the domain
+	err := ctrl.domainService.AddHostToDomain(ctx, ctx.Param("name"), ctx.Param("roid"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	// Return result
+	ctx.JSON(204, nil)
+}
+
+// RemoveHostFromDomain godoc
+// @Summary Remove a host from a domain
+// @Description Remove a host from a domain
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param roid path string true "Host RoID"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/hosts/{roid} [delete]
+func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
+	// Use the service to remove the host from the domain
+	err := ctrl.domainService.RemoveHostFromDomain(ctx, ctx.Param("name"), ctx.Param("roid"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return result
+	ctx.JSON(204, nil)
 }
