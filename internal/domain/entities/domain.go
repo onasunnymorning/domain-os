@@ -25,7 +25,7 @@ var (
 	ErrMaxHostsPerDomainExceeded       = errors.New("domain can contain 10 hosts at most")
 	ErrDuplicateHost                   = errors.New("a host with this name is already associated with domain")
 	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
-	ErrInBailiwickHostsMustHaveAddress = errors.New("Hosts must have at least one address to be used In-Bailiwick")
+	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -236,4 +236,19 @@ func (d *Domain) containsHost(host *Host) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// RemoveHost Removes a host from the domain sets the Domain.Status.Inactive flag if needed.
+func (d *Domain) RemoveHost(host *Host) error {
+	if len(d.Hosts) == 0 {
+		return ErrHostNotFound // Catch and ignore this error downstream if you want to be idempotent
+	}
+	index, hasHostAssociation := d.containsHost(host)
+	if !hasHostAssociation {
+		return ErrHostNotFound // Catch and ignore this error downstream if you want to be idempotent
+	}
+	d.Hosts = append(d.Hosts[:index], d.Hosts[index+1:]...)
+	// Update the inactive status
+	d.SetUnsetInactiveStatus()
+	return nil
 }
