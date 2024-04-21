@@ -15,6 +15,7 @@ const (
 )
 
 var (
+	ErrInvalidRegistrar              = errors.New("invalid registrar")
 	ErrRegistrarNotFound             = errors.New("registrar not found")
 	ErrRegistrarMissingEmail         = errors.New("missing email: a valid email is required")
 	ErrRegistrarMissingName          = errors.New("missing name: a valid name and unique name is required")
