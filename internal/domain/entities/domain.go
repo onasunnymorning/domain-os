@@ -7,6 +7,10 @@ import (
 	"errors"
 )
 
+const (
+	MaxHostsPerDomain = 10
+)
+
 var (
 	ErrDomainNotFound                  = errors.New("domain not found")
 	ErrInvalidDomain                   = errors.New("invalid domain")
@@ -18,6 +22,10 @@ var (
 	ErrOriginalNameEqualToDomain       = errors.New("OriginalName field should not be equal to the domain name, it should point to the a-label of which this domain is a variant")
 	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
 	ErrUNameDoesNotMatchDomain         = errors.New("UName must be the unicode version of the the domain name (a-label)")
+	ErrMaxHostsPerDomainExceeded       = errors.New("domain can contain 10 hosts at most")
+	ErrDuplicateHost                   = errors.New("a host with this name is already associated with domain")
+	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
+	ErrInBailiwickHostsMustHaveAddress = errors.New("Hosts must have at least one address to be used In-Bailiwick")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -192,4 +200,40 @@ func (d *Domain) CanBeTransferred() bool {
 // CanBeUpdated checks if the Domain can be updated (e.g. no update prohibition is present in its status object: ClientUpdateProhibited or ServerUpdateProhibited). If the domain is alread in pending Update status, it can't be updated
 func (d *Domain) CanBeUpdated() bool {
 	return !d.Status.ClientUpdateProhibited && !d.Status.ServerUpdateProhibited && !d.Status.PendingUpdate
+}
+
+// AddHost Adds a host to the domain and updates the Domain.Status.Inactive flag if needed.
+func (d *Domain) AddHost(host *Host) (int, error) {
+	if !d.CanBeUpdated() {
+		return 0, ErrDomainUpdateNotAllowed
+	}
+	// Hard maximum of 10 hosts per domain TODO: Make configurable
+	if len(d.Hosts) >= MaxHostsPerDomain {
+		return 0, ErrMaxHostsPerDomainExceeded
+	}
+	_, hasHostAssociation := d.containsHost(host)
+	if hasHostAssociation {
+		return 0, ErrDuplicateHost
+	}
+	if d.ClID != host.ClID {
+		return 0, ErrHostSponsorMismatch
+	}
+	// Require at least one address if the host is being used in-bailiwick.
+	if host.Name.ParentDomain() == string(d.Name) && len(host.Addresses) == 0 {
+		return 0, ErrInBailiwickHostsMustHaveAddress
+	}
+	d.Hosts = append(d.Hosts, host)
+	// Update the inactive status
+	d.SetUnsetInactiveStatus()
+	return len(d.Hosts), nil
+}
+
+// containsHost Checks if the domain contains the host and returns the index and true if it does
+func (d *Domain) containsHost(host *Host) (int, bool) {
+	for i, h := range d.Hosts {
+		if h.Name == host.Name {
+			return i, true
+		}
+	}
+	return 0, false
 }
