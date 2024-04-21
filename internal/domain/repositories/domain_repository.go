@@ -13,4 +13,6 @@ type DomainRepository interface {
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
 	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
+	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 }
