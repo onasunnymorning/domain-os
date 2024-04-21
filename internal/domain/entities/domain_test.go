@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -835,6 +836,204 @@ func TestDomain_UnSetStatus(t *testing.T) {
 				require.True(t, d.Status.OK)
 				require.True(t, d.Status.Inactive)
 			}
+		})
+	}
+
+}
+func TestDomain_containsHost(t *testing.T) {
+	d := &Domain{
+		Hosts: []*Host{
+			{Name: "host1"},
+			{Name: "host2"},
+			{Name: "host3"},
+		},
+	}
+
+	t.Run("existing host", func(t *testing.T) {
+		host := &Host{Name: "host2"}
+		index, found := d.containsHost(host)
+		require.True(t, found)
+		require.Equal(t, 1, index)
+	})
+
+	t.Run("non-existing host", func(t *testing.T) {
+		host := &Host{Name: "host4"}
+		_, found := d.containsHost(host)
+		require.False(t, found)
+	})
+}
+
+func TestDomain_AddHost(t *testing.T) {
+	ip, _ := netip.ParseAddr("195.238.2.21")
+	testcases := []struct {
+		name          string
+		domain        *Domain
+		host          *Host
+		wantErr       error
+		wantHostCount int
+		wantInactive  bool
+	}{
+		{
+			name: "domain can't be updated",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status: DomainStatus{
+					Inactive:               true,
+					ClientUpdateProhibited: true,
+				},
+			},
+			host: &Host{
+				Name: "ns1.inti.raymi",
+			},
+			wantErr:       ErrDomainUpdateNotAllowed,
+			wantHostCount: 0,
+			wantInactive:  true,
+		},
+		{
+			name: "max hosts exceeded",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Hosts: []*Host{
+					{Name: "ns1.inti.raymi"},
+					{Name: "ns2.inti.raymi"},
+					{Name: "ns3.inti.raymi"},
+					{Name: "ns4.inti.raymi"},
+					{Name: "ns5.inti.raymi"},
+					{Name: "ns6.inti.raymi"},
+					{Name: "ns7.inti.raymi"},
+					{Name: "ns8.inti.raymi"},
+					{Name: "ns9.inti.raymi"},
+					{Name: "ns10.inti.raymi"},
+				},
+				Status: DomainStatus{
+					Inactive: false,
+				},
+			},
+			host: &Host{
+				Name: "ns11.inti.raymi",
+			},
+			wantErr:       ErrMaxHostsPerDomainExceeded,
+			wantHostCount: 10,
+			wantInactive:  false,
+		},
+		{
+			name: "duplicate host",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Hosts: []*Host{
+					{Name: "ns1.inti.raymi"},
+				},
+				Status: DomainStatus{
+					Inactive: false,
+				},
+			},
+			host: &Host{
+				Name: "ns1.inti.raymi",
+			},
+			wantErr:       ErrDuplicateHost,
+			wantHostCount: 1,
+			wantInactive:  false,
+		},
+		{
+			name: "sponsorship mismatch",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Hosts: []*Host{
+					{Name: "ns1.inti.raymi"},
+				},
+				Status: DomainStatus{
+					Inactive: false,
+				},
+			},
+			host:          &Host{Name: "ns2.cusco.raymi"},
+			wantErr:       ErrHostSponsorMismatch,
+			wantHostCount: 1,
+			wantInactive:  false,
+		},
+		{
+			name: "in-bailiwick without address",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Hosts: []*Host{
+					{Name: "ns1.inti.raymi"},
+				},
+				Status: DomainStatus{
+					Inactive: false,
+				},
+			},
+			host: &Host{
+				Name: "ns2.inti.raymi",
+				ClID: "GoMamma",
+			},
+			wantErr:       ErrInBailiwickHostsMustHaveAddress,
+			wantHostCount: 1,
+			wantInactive:  false,
+		},
+		{
+			name: "in-bailiwick with address",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Hosts: []*Host{
+					{Name: "ns1.inti.raymi"},
+				},
+				Status: DomainStatus{
+					Inactive: false,
+				},
+			},
+			host: &Host{
+				Name:      "ns2.inti.raymi",
+				Addresses: []netip.Addr{ip},
+				ClID:      "GoMamma",
+			},
+			wantErr:       nil,
+			wantHostCount: 2,
+			wantInactive:  false,
+		},
+		{
+			name: "firsthost",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status: DomainStatus{
+					Inactive: true,
+				},
+			},
+			host: &Host{
+				Name: "ns2.cloud.raymi",
+				ClID: "GoMamma",
+			},
+			wantErr:       nil,
+			wantHostCount: 1,
+			wantInactive:  false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.domain.AddHost(tc.host)
+			require.ErrorIs(t, tc.wantErr, err)
+			require.Equal(t, tc.wantHostCount, len(tc.domain.Hosts))
+			require.Equal(t, tc.wantInactive, tc.domain.Status.Inactive)
 		})
 	}
 
