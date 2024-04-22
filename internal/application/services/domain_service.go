@@ -101,7 +101,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 // UpdateDomain Updates a new domain from a create domain command
 func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
 	// Look up the domain
-	dom, err := s.domainRepository.GetDomainByName(ctx, name)
+	dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +136,8 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 }
 
 // GetDomainByName retrieves a domain by its name from the repository
-func (s *DomainService) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
-	return s.domainRepository.GetDomainByName(ctx, name)
+func (s *DomainService) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
+	return s.domainRepository.GetDomainByName(ctx, name, preloadHosts)
 }
 
 // DeleteDomainByName deletes a domain by its name from the repository
@@ -153,7 +153,7 @@ func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor st
 // AddHostToDomain adds a host to a domain
 func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string) error {
 	// Get the domain
-	dom, err := s.GetDomainByName(ctx, name)
+	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 // RemoveHostFromDomain removes a host from a domain
 func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
 	// Get the domain
-	dom, err := s.GetDomainByName(ctx, name)
+	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
 		return err
 	}
@@ -222,7 +222,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 		return err
 	}
 
-	fmt.Println(host)
+	fmt.Println()
 	// Remove the host from the domain
 	err = dom.RemoveHost(host)
 	if err != nil {

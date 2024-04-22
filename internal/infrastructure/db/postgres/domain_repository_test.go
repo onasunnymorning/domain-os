@@ -106,7 +106,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	s.Require().NotNil(createdDomain)
 
 	// Get the domain
-	foundDomain, err := repo.GetDomainByName(context.Background(), domain.Name.String())
+	foundDomain, err := repo.GetDomainByName(context.Background(), domain.Name.String(), false)
 	s.Require().NoError(err)
 	s.Require().NotNil(foundDomain)
 	s.Require().Equal(createdDomain.Name, foundDomain.Name)
@@ -134,7 +134,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 
 	// Get the domain
 	roid, _ := createdDomain.RoID.Int64()
-	foundDomain, err := repo.GetDomainByID(context.Background(), roid)
+	foundDomain, err := repo.GetDomainByID(context.Background(), roid, false)
 	s.Require().NoError(err)
 	s.Require().NotNil(foundDomain)
 	s.Require().Equal(createdDomain.Name, foundDomain.Name)
@@ -194,14 +194,14 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted
-	_, err = repo.GetDomainByID(context.Background(), roid)
+	_, err = repo.GetDomainByID(context.Background(), roid, false)
 	s.Require().Error(err)
 
 	err = repo.DeleteDomainByID(context.Background(), roid)
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted
-	_, err = repo.GetDomainByID(context.Background(), roid)
+	_, err = repo.GetDomainByID(context.Background(), roid, false)
 	s.Require().Error(err)
 }
 
