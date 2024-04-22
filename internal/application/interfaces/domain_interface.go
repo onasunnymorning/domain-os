@@ -13,6 +13,6 @@ type DomainService interface {
 	DeleteDomainByName(ctx context.Context, name string) error
 	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
-	AddHostToDomain(ctx context.Context, name string, hostName string) error
-	RemoveHostFromDomain(ctx context.Context, name string, hostName string) error
+	AddHostToDomain(ctx context.Context, name string, hostRoID string) error
+	RemoveHostFromDomain(ctx context.Context, name string, hostRoID string) error
 }
