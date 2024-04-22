@@ -46,7 +46,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	domain, err := ctrl.domainService.GetDomainByName(ctx, name)
+	domain, err := ctrl.domainService.GetDomainByName(ctx, name, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

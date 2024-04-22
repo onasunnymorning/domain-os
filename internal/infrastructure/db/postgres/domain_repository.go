@@ -28,16 +28,32 @@ func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain
 }
 
 // GetDomainByID retrieves a domain from the database by its ID
-func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64) (*entities.Domain, error) {
+func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64, preloadHosts bool) (*entities.Domain, error) {
+	var err error
 	d := &Domain{}
-	err := dr.db.WithContext(ctx).Preload("Hosts").First(d, id).Error
+	if preloadHosts {
+		err = dr.db.WithContext(ctx).Preload("Hosts").First(d, id).Error
+	} else {
+		err = dr.db.WithContext(ctx).First(d, id).Error
+	}
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, entities.ErrDomainNotFound
+		}
+		return nil, err
+	}
 	return ToDomain(d), err
 }
 
 // GetDomainByName retrieves a domain from the database by its name
-func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
+func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
+	var err error
 	d := &Domain{}
-	err := dr.db.WithContext(ctx).Preload("Hosts").Where("name = ?", name).First(d).Error
+	if preloadHosts {
+		err = dr.db.WithContext(ctx).Preload("Hosts").Where("name = ?", name).First(d).Error
+	} else {
+		err = dr.db.WithContext(ctx).Where("name = ?", name).First(d).Error
+	}
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, entities.ErrDomainNotFound
