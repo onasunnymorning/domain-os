@@ -30,14 +30,14 @@ func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain
 // GetDomainByID retrieves a domain from the database by its ID
 func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64) (*entities.Domain, error) {
 	d := &Domain{}
-	err := dr.db.First(d, id).Error
+	err := dr.db.WithContext(ctx).Preload("Hosts").First(d, id).Error
 	return ToDomain(d), err
 }
 
 // GetDomainByName retrieves a domain from the database by its name
 func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
 	d := &Domain{}
-	err := dr.db.Where("name = ?", name).First(d).Error
+	err := dr.db.WithContext(ctx).Preload("Hosts").Where("name = ?", name).First(d).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, entities.ErrDomainNotFound
@@ -97,10 +97,10 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, curso
 
 // AddHostToDomain adds a domain_hosts association to the database
 func (dr *DomainRepository) AddHostToDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
-	return dr.db.WithContext(ctx).Model(&Domain{}).Association("Hosts").Append(&Host{RoID: hostRoid})
+	return dr.db.WithContext(ctx).Model(&Domain{RoID: domRoID}).Association("Hosts").Append(&Host{RoID: hostRoid})
 }
 
 // RemoveHostFromDomain removes a domain_hosts association from the database
 func (dr *DomainRepository) RemoveHostFromDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
-	return dr.db.WithContext(ctx).Model(&Domain{}).Association("Hosts").Delete(&Host{RoID: hostRoid})
+	return dr.db.WithContext(ctx).Model(&Domain{RoID: domRoID}).Association("Hosts").Delete(&Host{RoID: hostRoid})
 }

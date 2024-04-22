@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -197,6 +198,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 	if err != nil {
 		return err
 	}
+	fmt.Println(dom)
 	domRoidInt, err := dom.RoID.Int64()
 	if err != nil {
 		return err
@@ -220,6 +222,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 		return err
 	}
 
+	fmt.Println(host)
 	// Remove the host from the domain
 	err = dom.RemoveHost(host)
 	if err != nil {
