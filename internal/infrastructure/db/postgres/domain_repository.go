@@ -20,7 +20,7 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 // CreateDomain creates a new domain in the database
 func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
-	err := dr.db.WithContext(ctx).Create(dbDomain).Error
+	err := dr.db.WithContext(ctx).Omit("Hosts").Create(dbDomain).Error
 	if err != nil {
 		return nil, err
 	}
