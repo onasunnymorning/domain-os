@@ -143,6 +143,48 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 	s.Require().Equal(createdDomain.RoID, foundDomain.RoID)
 }
 
+func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
+	// Saving a Domain object which has hosts should not save the hosts, instead the hosts should be added separately
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+	domain.Hosts = []*entities.Host{
+		{
+			RoID: "12345_HOST-APEX",
+			Name: "ns1.apex.domains",
+			ClID: "domaintestRar",
+		},
+		{
+			RoID: "12346_HOST-APEX",
+			Name: "ns2.apex.domains",
+			ClID: "domaintestRar",
+		},
+	}
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+
+	// Get the domain
+	roid, _ := createdDomain.RoID.Int64()
+	foundDomain, err := repo.GetDomainByID(context.Background(), roid, true) // preaload hosts to ensure that if they were accidentally created, the test will fail
+	s.Require().NoError(err)
+	s.Require().NotNil(foundDomain)
+	s.Require().Equal(createdDomain.Name, foundDomain.Name)
+	s.Require().Equal(createdDomain.ClID, foundDomain.ClID)
+	s.Require().Equal(createdDomain.AuthInfo, foundDomain.AuthInfo)
+	s.Require().Equal(createdDomain.RoID, foundDomain.RoID)
+	s.Require().Equal(0, len(foundDomain.Hosts)) // it should fail here if the hosts were created
+}
+
 func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
