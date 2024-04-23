@@ -45,7 +45,7 @@ type Host struct {
 	UpdatedAt time.Time    `json:"UpDate" example:"2023-04-03T22:00:00.0Z"`
 	// True if the host is used on a domain that is the parent of the host's FQDN. https://datatracker.ietf.org/doc/html/rfc5732#section-1.1
 	// This is set/unset by the Domain.AddHost() and Domain.RemoveHost() when a host is added/removed from a domain.
-	InBailiwick bool       `json:"InBailiwick"  example:"true"`
+	InBailiwick bool       `json:"InBailiwick"  example:"true"` // Not implemented yet
 	Status      HostStatus `json:"Status"`
 }
 

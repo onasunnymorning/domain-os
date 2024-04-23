@@ -218,9 +218,16 @@ func (d *Domain) AddHost(host *Host) (int, error) {
 	if d.ClID != host.ClID {
 		return 0, ErrHostSponsorMismatch
 	}
-	// Require at least one address if the host is being used in-bailiwick.
-	if host.Name.ParentDomain() == string(d.Name) && len(host.Addresses) == 0 {
-		return 0, ErrInBailiwickHostsMustHaveAddress
+	if host.Name.ParentDomain() == string(d.Name) {
+		// Require at least one address if the host is being used in-bailiwick.
+		if len(host.Addresses) == 0 {
+			return 0, ErrInBailiwickHostsMustHaveAddress
+		}
+	}
+	// Set the hosts linked status to true
+	err := host.SetStatus(HostStatusLinked)
+	if err != nil {
+		return 0, err
 	}
 	d.Hosts = append(d.Hosts, host)
 	// Update the inactive status
