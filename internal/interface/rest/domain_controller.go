@@ -228,6 +228,10 @@ func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, entities.ErrInBailiwickHostsMustHaveAddress) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
