@@ -900,16 +900,46 @@ func TestDomain_AddHost(t *testing.T) {
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Hosts: []*Host{
-					{Name: "ns1.inti.raymi"},
-					{Name: "ns2.inti.raymi"},
-					{Name: "ns3.inti.raymi"},
-					{Name: "ns4.inti.raymi"},
-					{Name: "ns5.inti.raymi"},
-					{Name: "ns6.inti.raymi"},
-					{Name: "ns7.inti.raymi"},
-					{Name: "ns8.inti.raymi"},
-					{Name: "ns9.inti.raymi"},
-					{Name: "ns10.inti.raymi"},
+					{
+						Name:   "ns1.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns2.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns3.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns4.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns5.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns6.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns7.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns8.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns9.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
+					{
+						Name:   "ns10.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
 				},
 				Status: DomainStatus{
 					Inactive: false,
@@ -930,7 +960,10 @@ func TestDomain_AddHost(t *testing.T) {
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Hosts: []*Host{
-					{Name: "ns1.inti.raymi"},
+					{
+						Name:   "ns1.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
 				},
 				Status: DomainStatus{
 					Inactive: false,
@@ -951,7 +984,10 @@ func TestDomain_AddHost(t *testing.T) {
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Hosts: []*Host{
-					{Name: "ns1.inti.raymi"},
+					{
+						Name:   "ns1.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
 				},
 				Status: DomainStatus{
 					Inactive: false,
@@ -970,7 +1006,10 @@ func TestDomain_AddHost(t *testing.T) {
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Hosts: []*Host{
-					{Name: "ns1.inti.raymi"},
+					{
+						Name:   "ns1.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
 				},
 				Status: DomainStatus{
 					Inactive: false,
@@ -992,7 +1031,10 @@ func TestDomain_AddHost(t *testing.T) {
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Hosts: []*Host{
-					{Name: "ns1.inti.raymi"},
+					{
+						Name:   "ns1.inti.raymi",
+						Status: HostStatus{Linked: true},
+					},
 				},
 				Status: DomainStatus{
 					Inactive: false,
@@ -1002,6 +1044,9 @@ func TestDomain_AddHost(t *testing.T) {
 				Name:      "ns2.inti.raymi",
 				Addresses: []netip.Addr{ip},
 				ClID:      "GoMamma",
+				Status: HostStatus{
+					OK: true,
+				},
 			},
 			wantErr:       nil,
 			wantHostCount: 2,
@@ -1021,19 +1066,48 @@ func TestDomain_AddHost(t *testing.T) {
 			host: &Host{
 				Name: "ns2.cloud.raymi",
 				ClID: "GoMamma",
+				Status: HostStatus{
+					OK: true,
+				},
 			},
 			wantErr:       nil,
 			wantHostCount: 1,
 			wantInactive:  false,
+		},
+		{
+			name: "host with conflicting status",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status: DomainStatus{
+					Inactive: true,
+				},
+			},
+			host: &Host{
+				Name: "ns2.cloud.raymi",
+				ClID: "GoMamma",
+				Status: HostStatus{
+					PendingCreate: true,
+					PendingUpdate: true,
+				},
+			},
+			wantErr:       ErrHostStatusIncompatible,
+			wantHostCount: 0,
+			wantInactive:  true,
 		},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := tc.domain.AddHost(tc.host)
-			require.ErrorIs(t, tc.wantErr, err)
+			require.ErrorIs(t, err, tc.wantErr)
 			require.Equal(t, tc.wantHostCount, len(tc.domain.Hosts))
 			require.Equal(t, tc.wantInactive, tc.domain.Status.Inactive)
+			for _, h := range tc.domain.Hosts {
+				require.True(t, h.Status.Linked)
+			}
 		})
 	}
 
