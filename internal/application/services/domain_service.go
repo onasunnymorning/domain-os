@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"log"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -187,8 +189,20 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	}
 
 	// If no error, save the association to the DB and return
-	return s.domainRepository.AddHostToDomain(ctx, domRoidInt, hostRoidInt)
+	err = s.domainRepository.AddHostToDomain(ctx, domRoidInt, hostRoidInt)
+	if err != nil {
+		return err
+	}
 
+	// TODO: FIXME: Also save the domain in case the inactive flag changed
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		// Our operation is successful, but we can't update the domain
+		// This is not a critical error, we need to fix this with a transaction
+		log.Printf("Failed to update domain %s: %v", dom.RoID.String(), err)
+	}
+
+	return nil
 }
 
 // RemoveHostFromDomain removes a host from a domain
@@ -229,6 +243,38 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 		return err
 	}
 
-	// If no error, save the association to the DB and return
-	return s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
+	// If no error, save the association to the DB
+	err = s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// TODO: FIXME: This should be handled by a DB transaction not the service
+	// Save the domain in case the inactive flag changed
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		// Our operation is successful, but we can't update the domain
+		// This is not a critical error, we need to fix this with a transaction
+		log.Printf("Failed to update domain %s: %v", dom.RoID.String(), err)
+	}
+	// Check if the host is associated with any other domains
+	count, err := s.hostRepository.GetHostAssociationCount(ctx, hostRoidInt)
+	if err != nil {
+		// Our operation is successful, but we can't determine if the host is associated with any other domains
+		log.Printf("Failed to get host association count for host %s: %v", host.RoID.String(), err)
+	}
+	if count == 0 {
+		// If not, unset the linked flag
+		err := host.UnsetStatus(entities.HostStatusLinked)
+		if err != nil {
+			// Our operation is successful, but we can't unset the linked flag
+			log.Printf("Failed to unset linked flag on host %s: %v", host.RoID.String(), err)
+		}
+		_, err = s.hostRepository.UpdateHost(ctx, host)
+		if err != nil {
+			// Our operation is successful, but we can't update the host
+			log.Printf("Failed to update host %s: %v", host.RoID.String(), err)
+		}
+	}
+	return nil
 }
