@@ -230,9 +230,10 @@ func (d *Domain) AddHost(host *Host) (int, error) {
 		return 0, err
 	}
 	d.Hosts = append(d.Hosts, host)
-	// Update the inactive status
+	// Update the inactive status and set OK if needed
 	d.SetUnsetInactiveStatus()
-	return len(d.Hosts), nil
+	d.SetOKStatusIfNeeded()
+	return len(d.Hosts) - 1, nil
 }
 
 // containsHost Checks if the domain contains the host and returns the index and true if it does
