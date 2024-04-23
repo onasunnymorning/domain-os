@@ -1101,8 +1101,11 @@ func TestDomain_AddHost(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.domain.AddHost(tc.host)
+			i, err := tc.domain.AddHost(tc.host)
 			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				require.Equal(t, tc.wantHostCount-1, i)
+			}
 			require.Equal(t, tc.wantHostCount, len(tc.domain.Hosts))
 			require.Equal(t, tc.wantInactive, tc.domain.Status.Inactive)
 			for _, h := range tc.domain.Hosts {

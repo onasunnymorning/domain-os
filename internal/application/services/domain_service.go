@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"log"
@@ -159,10 +158,6 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	if err != nil {
 		return err
 	}
-	domRoidInt, err := dom.RoID.Int64()
-	if err != nil {
-		return err
-	}
 
 	// Get the host
 	hRoid := entities.RoidType(roid)
@@ -183,23 +178,24 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	}
 
 	// Add the host to the domain
-	_, err = dom.AddHost(host)
+	i, err := dom.AddHost(host)
 	if err != nil {
+		if errors.Is(err, entities.ErrDuplicateHost) {
+			return nil // No error if the host is already associated, idempotent
+		}
 		return err
 	}
 
-	// If no error, save the association to the DB and return
-	err = s.domainRepository.AddHostToDomain(ctx, domRoidInt, hostRoidInt)
-	if err != nil {
-		return err
-	}
-
-	// TODO: FIXME: Also save the domain in case the inactive flag changed
+	// Update the Domain which will save the association as well
 	_, err = s.domainRepository.UpdateDomain(ctx, dom)
 	if err != nil {
-		// Our operation is successful, but we can't update the domain
-		// This is not a critical error, we need to fix this with a transaction
-		log.Printf("Failed to update domain %s: %v", dom.RoID.String(), err)
+		return err
+	}
+
+	// Update the host to set the linked flag
+	_, err = s.hostRepository.UpdateHost(ctx, dom.Hosts[i])
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -212,7 +208,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 	if err != nil {
 		return err
 	}
-	fmt.Println(dom)
+
 	domRoidInt, err := dom.RoID.Int64()
 	if err != nil {
 		return err
@@ -236,26 +232,22 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 		return err
 	}
 
-	fmt.Println()
 	// Remove the host from the domain
 	err = dom.RemoveHost(host)
 	if err != nil {
 		return err
 	}
 
-	// If no error, save the association to the DB
+	// Remove tha association
 	err = s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
 	if err != nil {
 		return err
 	}
 
-	// TODO: FIXME: This should be handled by a DB transaction not the service
-	// Save the domain in case the inactive flag changed
+	// Save the domain, this will update the association
 	_, err = s.domainRepository.UpdateDomain(ctx, dom)
 	if err != nil {
-		// Our operation is successful, but we can't update the domain
-		// This is not a critical error, we need to fix this with a transaction
-		log.Printf("Failed to update domain %s: %v", dom.RoID.String(), err)
+		return err
 	}
 	// Check if the host is associated with any other domains
 	count, err := s.hostRepository.GetHostAssociationCount(ctx, hostRoidInt)
@@ -270,6 +262,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 			// Our operation is successful, but we can't unset the linked flag
 			log.Printf("Failed to unset linked flag on host %s: %v", host.RoID.String(), err)
 		}
+		// Update the host
 		_, err = s.hostRepository.UpdateHost(ctx, host)
 		if err != nil {
 			// Our operation is successful, but we can't update the host
