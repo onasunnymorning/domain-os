@@ -6,7 +6,7 @@ import (
 )
 
 type RDEDomain struct {
-	XMLName      xml.Name             `xml:"domain"`
+	XMLName      xml.Name             `xml:"domain" json:"-"`
 	Name         DomainName           `xml:"name"` // element that contains the fully qualified name of the domain name object. For IDNs, the A-label is used
 	RoID         string               `xml:"roid"` // element that contains the ROID assigned to the domain name object when it was created
 	UName        string               `xml:"uName"`

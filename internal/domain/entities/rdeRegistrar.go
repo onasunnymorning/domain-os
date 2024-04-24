@@ -14,7 +14,7 @@ var (
 
 // RDEWhoisInfo facilitates the parsing of the whoisInfo element in the RDE XML
 type RDEWhoisInfo struct {
-	XMLName xml.Name `xml:"whoisInfo"`
+	XMLName xml.Name `xml:"whoisInfo" json:"-"`
 	Name    string   `xml:"name"`
 	URL     string   `xml:"url"`
 }
@@ -30,7 +30,7 @@ func (w *RDEWhoisInfo) ToEntity() (*WhoisInfo, error) {
 
 // RDERegistrarPostalInfo facilitates the parsing of the postalInfo element in the RDE XML
 type RDERegistrarPostalInfo struct {
-	XMLName xml.Name `xml:"postalInfo"`
+	XMLName xml.Name `xml:"postalInfo" json:"-"`
 	Type    string   `xml:"type,attr"`
 	Address RDEAddress
 }
@@ -55,7 +55,7 @@ func (r *RDERegistrarPostalInfo) ToEntity() (*RegistrarPostalInfo, error) {
 
 // RDEAddress facilitates the parsing of the addr element in the RDE XML
 type RDEAddress struct {
-	XMLName       xml.Name `xml:"addr"`
+	XMLName       xml.Name `xml:"addr" json:"-"`
 	Street        []string `xml:"street"`
 	City          string   `xml:"city"`
 	StateProvince string   `xml:"sp"`
@@ -110,7 +110,7 @@ func (a *RDEAddress) ToEntity() (*Address, error) {
 
 // RDERegistrar facilitates the parsing of the registrar element in the RDE XML
 type RDERegistrar struct {
-	XMLName    xml.Name                 `xml:"registrar"`
+	XMLName    xml.Name                 `xml:"registrar" json:"-"`
 	ID         string                   `xml:"id"`
 	Name       string                   `xml:"name"`
 	GurID      int                      `xml:"gurid"`

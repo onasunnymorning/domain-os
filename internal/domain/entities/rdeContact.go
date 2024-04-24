@@ -7,7 +7,7 @@ import (
 
 // RDEContact  is a struct that facilitates the parsing of the Contact elements in the RDE XML
 type RDEContact struct {
-	XMLName    xml.Name               `xml:"contact"`
+	XMLName    xml.Name               `xml:"contact" json:"-"`
 	ID         string                 `xml:"id"`
 	RoID       string                 `xml:"roid"`
 	Status     []RDEContactStatus     `xml:"status"`
@@ -114,7 +114,7 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 
 // RDEContactPostalInfo is a struct that facilitates the parsing of the postalInfo element in the RDE XML
 type RDEContactPostalInfo struct {
-	XMLName xml.Name `xml:"postalInfo"`
+	XMLName xml.Name `xml:"postalInfo" json:"-"`
 	Type    string   `xml:"type,attr"`
 	Name    string   `xml:"name"`
 	Org     string   `xml:"org"`
