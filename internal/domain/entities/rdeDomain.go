@@ -112,13 +112,17 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 			}
 		}
 	}
-	// TODO: FIXME: Set the status
-	// for _, status := range d.Status {
-	// 	err := domain.SetStatus(status.S)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
+	// Set the status
+	for _, status := range d.Status {
+		if status.S == DomainStatusOK || status.S == DomainStatusInactive {
+			// These are set automatically, so we can skip them
+			continue
+		}
+		err := domain.SetStatus(status.S)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// TODO: FIXME: Add the nameservers
 

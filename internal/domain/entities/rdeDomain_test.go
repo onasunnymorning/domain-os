@@ -275,6 +275,53 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 				UpRr:         "GoMamma",
 				UpDate:       "2021-01-01T00:00:00Z",
 				Registrant:   "GoMamma",
+				Status: []RDEDomainStatus{
+					{
+						S: "pendingDelete",
+					},
+					{
+						S: "pendingCreate",
+					},
+				},
+				Contact: []RDEDomainContact{
+					{
+						ID:   "GoMamma",
+						Type: "admin",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "tech",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "billing",
+					},
+				},
+			},
+			domain:  nil,
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+		{
+			name: "valid domain",
+			rdeDomain: &RDEDomain{
+				Name:         "apex.domains",
+				RoID:         "12345_DOM-APEX",
+				UName:        "apex.domains",
+				OriginalName: "apex.domains",
+				ClID:         "GoMamma",
+				CrRr:         "GoMamma",
+				CrDate:       "2021-01-01T00:00:00Z",
+				UpRr:         "GoMamma",
+				UpDate:       "2021-01-01T00:00:00Z",
+				Registrant:   "GoMamma",
+				Status: []RDEDomainStatus{
+					{
+						S: "pendingDelete",
+					},
+					{
+						S: "inactive",
+					},
+				},
 				Contact: []RDEDomainContact{
 					{
 						ID:   "GoMamma",
@@ -304,6 +351,11 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 				AdminID:      "GoMamma",
 				TechID:       "GoMamma",
 				BillingID:    "GoMamma",
+				Status: DomainStatus{
+					PendingDelete: true,
+					Inactive:      true,
+					OK:            false,
+				},
 			},
 			wantErr: nil,
 		},
@@ -327,6 +379,7 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 				require.Equal(t, tt.domain.AdminID, domain.AdminID)
 				require.Equal(t, tt.domain.BillingID, domain.BillingID)
 				require.Equal(t, tt.domain.TechID, domain.TechID)
+				require.Equal(t, tt.domain.Status, domain.Status)
 			}
 		})
 	}
