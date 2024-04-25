@@ -321,6 +321,11 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				if err := d.DecodeElement(&contact, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
+				// Validate the data using our domain model
+				_, err = contact.ToEntity()
+				if err != nil {
+					return errors.Join(errors.New("error converting RDEContact to entity"), err)
+				}
 				// Write the contact to the contact file
 				contactWriter.Write([]string{contact.ID, contact.RoID, contact.Voice, contact.Fax, contact.Email, contact.ClID, contact.CrRr, contact.CrDate, contact.UpRr, contact.UpDate})
 				// Set Status in statusFile

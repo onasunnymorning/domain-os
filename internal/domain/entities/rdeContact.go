@@ -127,6 +127,11 @@ func (p *RDEContactPostalInfo) ToEntity() (*ContactPostalInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO: FIXME: remove this - if we get a dirty deposit that has non-ASCII characters in an INT postalinfo, we override the int postalinfo to loc
+	isASCII, _ := addr.IsASCII()
+	if !isASCII {
+		p.Type = "loc"
+	}
 	cpi, err := NewContactPostalInfo(p.Type, p.Name, addr)
 	if err != nil {
 		return nil, err
