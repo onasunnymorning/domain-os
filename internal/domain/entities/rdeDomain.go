@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+var (
+	RdeDomainCSVHeader = []string{"Name", "RoID", "UName", "IdnTableId", "OriginalName", "Registrant", "ClID", "CrRr", "CrDate", "ExDate", "UpRr", "UpDate"}
+)
+
 type RDEDomain struct {
 	XMLName      xml.Name             `xml:"domain" json:"-"`
 	Name         DomainName           `xml:"name"` // element that contains the fully qualified name of the domain name object. For IDNs, the A-label is used
@@ -25,6 +29,11 @@ type RDEDomain struct {
 	UpDate       string               `xml:"upDate"`
 	SecDNS       RDESecDNS            `xml:"secDNS"`
 	TrnData      TrnData              `xml:"trnData"`
+}
+
+// ToCSV converts the RDEDomain to a slice of strings ([]string) for CSV export. The fields are defined in RdeDomainCSVHeader
+func (d *RDEDomain) ToCSV() []string {
+	return []string{string(d.Name), d.RoID, d.UName, d.IdnTableId, d.OriginalName, d.Registrant, d.ClID, d.CrRr, d.CrDate, d.ExDate, d.UpRr, d.UpDate}
 }
 
 // ToEntity converts the RDEDomain to a Domain entity
