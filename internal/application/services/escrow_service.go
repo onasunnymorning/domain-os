@@ -457,7 +457,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 				if err := d.DecodeElement(&host, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				writer.Write([]string{host.Name, host.RoID, host.ClID, host.CrRr, host.CrDate, host.UpRr, host.UpDate})
+				writer.Write(host.ToCSV())
 				// Set Status in statusFile
 				hStatuses := []string{host.Name}
 				for _, status := range host.Status {

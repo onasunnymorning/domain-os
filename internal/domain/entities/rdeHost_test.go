@@ -181,3 +181,44 @@ func TestRDEHost_ToEntity(t *testing.T) {
 	}
 
 }
+
+func TestRDEHost_ToCSV(t *testing.T) {
+	tests := []struct {
+		name     string
+		rdeHost  *RDEHost
+		expected []string
+	}{
+		{
+			name: "valid host",
+			rdeHost: &RDEHost{
+				Name:   "example.com",
+				RoID:   "12345_HOST-APEX",
+				ClID:   "client1",
+				CrRr:   "admin",
+				UpRr:   "admin",
+				CrDate: "2022-01-01T00:00:00Z",
+				UpDate: "2022-01-02T00:00:00Z",
+			},
+			expected: []string{"example.com", "12345_HOST-APEX", "client1", "admin", "2022-01-01T00:00:00Z", "admin", "2022-01-02T00:00:00Z"},
+		},
+		{
+			name: "empty fields",
+			rdeHost: &RDEHost{
+				Name:   "example.com",
+				RoID:   "12345_HOST-APEX",
+				ClID:   "client1",
+				CrDate: "2022-01-01T00:00:00Z",
+				UpDate: "2022-01-02T00:00:00Z",
+			},
+			expected: []string{"example.com", "12345_HOST-APEX", "client1", "", "2022-01-01T00:00:00Z", "", "2022-01-02T00:00:00Z"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.rdeHost.ToCSV()
+			require.Equal(t, tc.expected, actual)
+			require.Equal(t, len(RDE_HOST_CSV_HEADER), len(actual))
+		})
+	}
+}
