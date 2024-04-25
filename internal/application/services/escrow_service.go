@@ -693,7 +693,7 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 					return errors.Join(ErrDecodingXML, err)
 				}
 				// Write the domain to the domain file
-				domainWriter.Write([]string{string(dom.Name), dom.RoID, dom.UName, dom.IdnTableId, dom.OriginalName, dom.Registrant, dom.ClID, dom.CrRr, dom.CrDate, dom.ExDate, dom.UpRr, dom.UpDate})
+				domainWriter.Write(dom.ToCSV())
 				// Add a line to the contactID file for each contact, only if it does not exist yet
 				for _, contact := range dom.Contact {
 					// Only add it if it is not there already
