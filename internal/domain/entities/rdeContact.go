@@ -2,6 +2,8 @@ package entities
 
 import (
 	"encoding/xml"
+	"reflect"
+	"strings"
 	"time"
 )
 
@@ -107,12 +109,18 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 	}
 
 	// Set the statuses
-	for _, status := range c.Status {
-		err := contact.SetStatus(ContactStatusType(status.S))
-		if err != nil {
-			return nil, err
-		}
+	// This will break if we first set a prohibition and later set another status
+	// for _, status := range c.Status {
+	// 	err := contact.SetStatus(ContactStatusType(status.S))
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+	cs, err := getContactStatusFromRDEContactStatus(c.Status)
+	if err != nil {
+		return nil, err
 	}
+	contact.Status = cs
 
 	// Validate the contact and return it
 	if _, err := contact.IsValid(); err != nil {
@@ -144,8 +152,8 @@ func (p *RDEContactPostalInfo) ToEntity() (*ContactPostalInfo, error) {
 		return nil, err
 	}
 	// TODO: FIXME: remove this - if we get a dirty deposit that has non-ASCII characters in an INT postalinfo, we override the int postalinfo to loc
-	isASCII, _ := addr.IsASCII()
-	if !isASCII {
+	asciiAddr, _ := addr.IsASCII()
+	if !asciiAddr || !IsASCII(p.Name) || !IsASCII(p.Org) {
 		p.Type = "loc"
 	}
 	cpi, err := NewContactPostalInfo(p.Type, p.Name, addr)
@@ -191,4 +199,31 @@ func (d *RDEDisclose) ToEntity() (*ContactDisclose, error) {
 
 type RDEContactWithType struct {
 	Type string `xml:"type,attr"`
+}
+
+// getContactStatusFromRDEContactStatus returns a ContactStatusType from a []RDEContactStatus slice
+func getContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactStatus, error) {
+	var cs ContactStatus
+	for _, status := range statuses {
+		// pointer to struct - addressable
+		ps := reflect.ValueOf(&cs)
+		// struct
+		s := ps.Elem()
+		if s.Kind() == reflect.Struct {
+			// exported field
+			f := s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:])
+			if f.IsValid() {
+				// A Value can be changed only if it is
+				// addressable and was not obtained by
+				// the use of unexported struct fields.
+				if f.CanSet() {
+					// change value of N
+					if f.Kind() == reflect.Bool {
+						f.SetBool(true)
+					}
+				}
+			}
+		}
+	}
+	return cs, nil
 }

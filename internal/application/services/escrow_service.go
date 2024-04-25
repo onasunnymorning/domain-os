@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -32,6 +34,8 @@ type XMLEscrowService struct {
 	IDNs              []entities.RDEIdnTableReference `json:"idns"`
 	RegsistrarMapping entities.RegsitrarMapping       `json:"registrarMapping"`
 	Analysis          entities.EscrowAnalysis         `json:"analysis"`
+	RoidMapping       entities.RoIDMapping            `json:"roidMapping"`
+	roidService       *RoidService                    `json:"-"`
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
@@ -52,6 +56,16 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 
 	// Initialize the registrar mapping
 	d.RegsistrarMapping = entities.NewRegistrarMapping()
+
+	// Initialize the RoID mapping
+	d.RoidMapping = entities.NewRoIDMapping()
+
+	// Setup RoidService
+	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+	if err != nil {
+		panic(err)
+	}
+	d.roidService = NewRoidService(idGenerator)
 
 	return &d, nil
 }
@@ -321,6 +335,21 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				if err := d.DecodeElement(&contact, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
+				// Generate a new RoID for the contact and add it to our mapping
+				newRoid, err := svc.roidService.GenerateRoid(entities.RoidTypeContact)
+				if err != nil {
+					return err
+				}
+				svc.RoidMapping[contact.RoID] = newRoid
+				// Now we can update the contact with the new RoID
+				contact.RoID = newRoid.String()
+
+				// Lets validate the contact using our entity
+				_, err = contact.ToEntity()
+				if err != nil {
+					return errors.Join(fmt.Errorf("invalid contact: %s", contact), err)
+				}
+
 				// Write the contact to the contact file
 				contactWriter.Write(contact.ToCSV())
 				// Set Status in statusFile
