@@ -12,6 +12,9 @@ WORKDIR /
 # Install swag
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 
+# Install UPX for binary compression
+RUN apk add upx
+
 # Go dependencies
 COPY go.mod ./
 COPY go.sum ./
@@ -29,7 +32,8 @@ WORKDIR /cmd/registry
 RUN swag init -g main.go -o /docs --parseDependency -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
 # build binary
 WORKDIR /
-RUN go build -o adminAPI /cmd/registry/main.go
+RUN go build -ldflags="-s -w" -o adminAPI /cmd/registry/main.go
+# RUN upx --brute /adminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 
 # Create API release image

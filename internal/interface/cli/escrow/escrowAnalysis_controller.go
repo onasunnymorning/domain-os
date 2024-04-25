@@ -72,8 +72,3 @@ func (c *EscrowAnalysisController) Analyze() error {
 
 	return nil
 }
-
-// Import calls the escrow analysis service to import the data into the database
-func (c *EscrowAnalysisController) Import() error {
-	return nil
-}
