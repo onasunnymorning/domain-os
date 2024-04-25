@@ -618,3 +618,101 @@ func TestRDERegistrar_ToEntity(t *testing.T) {
 		})
 	}
 }
+func TestRDEAddress_ToCSV(t *testing.T) {
+	// Test cases
+	tests := []struct {
+		name     string
+		address  *RDEAddress
+		expected []string
+	}{
+		{
+			name:    "Empty address",
+			address: &RDEAddress{},
+			expected: []string{
+				"",
+				"",
+				"",
+				"",
+				"",
+				"",
+				"",
+			},
+		},
+		{
+			name: "Address with 3 street lines",
+			address: &RDEAddress{
+				Street: []string{
+					"Street 1",
+					"Street 2",
+					"Street 3",
+				},
+				City:          "New York",
+				StateProvince: "NY",
+				PostalCode:    "12345",
+				CountryCode:   "US",
+			},
+			expected: []string{
+				"Street 1",
+				"Street 2",
+				"Street 3",
+				"New York",
+				"NY",
+				"12345",
+				"US",
+			},
+		},
+		{
+			name: "Address with less than 3 street lines",
+			address: &RDEAddress{
+				Street: []string{
+					"Street 1",
+					"Street 2",
+				},
+				City:          "Los Angeles",
+				StateProvince: "CA",
+				PostalCode:    "54321",
+				CountryCode:   "US",
+			},
+			expected: []string{
+				"Street 1",
+				"Street 2",
+				"",
+				"Los Angeles",
+				"CA",
+				"54321",
+				"US",
+			},
+		},
+		{
+			name: "Address with more than 3 street lines",
+			address: &RDEAddress{
+				Street: []string{
+					"Street 1",
+					"Street 2",
+					"Street 3",
+					"Street 4",
+				},
+				City:          "London",
+				StateProvince: "London",
+				PostalCode:    "SW1A 1AA",
+				CountryCode:   "GB",
+			},
+			expected: []string{
+				"Street 1",
+				"Street 2",
+				"Street 3",
+				"London",
+				"London",
+				"SW1A 1AA",
+				"GB",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.address.ToCSV()
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

@@ -603,3 +603,76 @@ func TestRDEContact_ToEntity(t *testing.T) {
 		})
 	}
 }
+func TestRDEContact_ToCSV(t *testing.T) {
+	// Test cases
+	tests := []struct {
+		name     string
+		contact  *RDEContact
+		expected []string
+	}{
+		{
+			name: "Valid contact",
+			contact: &RDEContact{
+				ID:     "123456",
+				RoID:   "123456_CONT-APEX",
+				Email:  "myemail@me.com",
+				ClID:   "123456",
+				Voice:  "+51.123456",
+				Fax:    "+51.123456",
+				CrRr:   "123456",
+				UpRr:   "123456",
+				CrDate: "2021-01-01T00:00:00Z",
+				UpDate: "2021-01-01T00:00:00Z",
+			},
+			expected: []string{"123456", "123456_CONT-APEX", "+51.123456", "+51.123456", "myemail@me.com", "123456", "123456", "2021-01-01T00:00:00Z", "123456", "2021-01-01T00:00:00Z"},
+		},
+		// Add more test cases here...
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.contact.ToCSV()
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestRDEContactPostalInfo_ToCSV(t *testing.T) {
+	// Test cases
+	tests := []struct {
+		name     string
+		postal   *RDEContactPostalInfo
+		expected []string
+	}{
+		{
+			name: "Valid postal info",
+			postal: &RDEContactPostalInfo{
+				Type: "int",
+				Name: "myName",
+				Org:  "myOrganization",
+				Address: RDEAddress{
+					City:        "New York",
+					CountryCode: "US",
+				},
+			},
+			expected: []string{"int", "myName", "myOrganization", "", "", "", "New York", "", "", "US"},
+		},
+		{
+			name: "Empty postal info",
+			postal: &RDEContactPostalInfo{
+				Type:    "",
+				Name:    "",
+				Org:     "",
+				Address: RDEAddress{},
+			},
+			expected: []string{"", "", "", "", "", "", "", "", "", ""},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.postal.ToCSV()
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

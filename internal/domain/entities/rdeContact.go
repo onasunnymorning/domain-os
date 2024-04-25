@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+var (
+	RdeContactCSVHeader           = []string{"ID", "RoID", "Voice", "Fax", "Email", "ClID", "CrRr", "CrDate", "UpRr", "UpDate"}
+	RdeContactPostalInfoCSVHeader = []string{"Type", "Name", "Org", "Street1", "Street2", "Street3", "City", "StateProvince", "PostalCode", "CountryCode"}
+)
+
 // RDEContact  is a struct that facilitates the parsing of the Contact elements in the RDE XML
 type RDEContact struct {
 	XMLName    xml.Name               `xml:"contact" json:"-"`
@@ -21,6 +26,11 @@ type RDEContact struct {
 	UpRr       string                 `xml:"upRr"`
 	UpDate     string                 `xml:"upDate"`
 	Disclose   RDEDisclose            `xml:"disclose"`
+}
+
+// ToCSV converts the RDEContact to a slice of strings ([]string) for CSV export. The fields are defined in RdeContactCSVHeader
+func (c *RDEContact) ToCSV() []string {
+	return []string{c.ID, c.RoID, c.Voice, c.Fax, c.Email, c.ClID, c.CrRr, c.CrDate, c.UpRr, c.UpDate}
 }
 
 // ToEntity converts the RDEContact to an Contact entity
@@ -119,6 +129,12 @@ type RDEContactPostalInfo struct {
 	Name    string   `xml:"name"`
 	Org     string   `xml:"org"`
 	Address RDEAddress
+}
+
+// ToCSV converts the RDEContactPostalInfo to a slice of strings ([]string) for CSV export. The fields are defined in RdeContactPostalInfoCSVHeader
+func (p *RDEContactPostalInfo) ToCSV() []string {
+	addr := p.Address.ToCSV()
+	return append([]string{p.Type, p.Name, p.Org}, addr...)
 }
 
 // ToEntity converts the RDEContactPostalInfo to an ContactPostalInfo entity
