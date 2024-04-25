@@ -2,6 +2,10 @@ package entities
 
 import "time"
 
+var (
+	RdeHostCSVHeader = []string{"Name", "RoID", "ClID", "CrRr", "CrDate", "UpRr", "UpDate"}
+)
+
 type RDEHost struct {
 	Name   string          `xml:"name"`
 	RoID   string          `xml:"roid"`
@@ -12,6 +16,11 @@ type RDEHost struct {
 	CrDate string          `xml:"crDate"`
 	UpRr   string          `xml:"upRr"`
 	UpDate string          `xml:"upDate"`
+}
+
+// ToCSV converts the RDEHost to a slice of strings ([]string) for CSV export. The fields are defined in RdeHostCSVHeader
+func (h *RDEHost) ToCSV() []string {
+	return []string{h.Name, h.RoID, h.ClID, h.CrRr, h.CrDate, h.UpRr, h.UpDate}
 }
 
 // ToEntity converts the RDEHost to an Host entity

@@ -386,24 +386,52 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 
 }
 func TestRDEDomain_ToCSV(t *testing.T) {
-	d := &RDEDomain{
-		Name:         "apex.domains",
-		RoID:         "12345_DOM-APEX",
-		UName:        "apex.domains",
-		IdnTableId:   "idnTableId",
-		OriginalName: "apex.domains",
-		Registrant:   "GoMamma",
-		ClID:         "GoMamma",
-		CrRr:         "GoMamma",
-		CrDate:       "2021-01-01T00:00:00Z",
-		ExDate:       "2022-01-01T00:00:00Z",
-		UpRr:         "GoMamma",
-		UpDate:       "2021-01-01T00:00:00Z",
+	tc := []struct {
+		name string
+		d    *RDEDomain
+		want []string
+	}{{
+		name: "valid domain",
+		d: &RDEDomain{
+			Name:         "apex.domains",
+			RoID:         "12345_DOM-APEX",
+			UName:        "apex.domains",
+			IdnTableId:   "idnTableId",
+			OriginalName: "apex.domains",
+			Registrant:   "GoMamma",
+			ClID:         "GoMamma",
+			CrRr:         "GoMamma",
+			CrDate:       "2021-01-01T00:00:00Z",
+			ExDate:       "2022-01-01T00:00:00Z",
+			UpRr:         "GoMamma",
+			UpDate:       "2021-01-01T00:00:00Z",
+		},
+		want: []string{"apex.domains", "12345_DOM-APEX", "apex.domains", "idnTableId", "apex.domains", "GoMamma", "GoMamma", "GoMamma", "2021-01-01T00:00:00Z", "2022-01-01T00:00:00Z", "GoMamma", "2021-01-01T00:00:00Z"},
+	},
+		{
+			name: "empty fields",
+			d: &RDEDomain{
+				Name:         "apex.domains",
+				RoID:         "12345_DOM-APEX",
+				UName:        "apex.domains",
+				IdnTableId:   "idnTableId",
+				OriginalName: "apex.domains",
+				Registrant:   "GoMamma",
+				ClID:         "GoMamma",
+				CrDate:       "2021-01-01T00:00:00Z",
+				UpRr:         "GoMamma",
+				UpDate:       "2021-01-01T00:00:00Z",
+			},
+			want: []string{"apex.domains", "12345_DOM-APEX", "apex.domains", "idnTableId", "apex.domains", "GoMamma", "GoMamma", "", "2021-01-01T00:00:00Z", "", "GoMamma", "2021-01-01T00:00:00Z"},
+		},
 	}
 
-	want := []string{"apex.domains", "12345_DOM-APEX", "apex.domains", "idnTableId", "apex.domains", "GoMamma", "GoMamma", "GoMamma", "2021-01-01T00:00:00Z", "2022-01-01T00:00:00Z", "GoMamma", "2021-01-01T00:00:00Z"}
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.d.ToCSV()
 
-	got := d.ToCSV()
-
-	require.Equal(t, want, got)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, len(RDE_DOMAIN_CSV_HEADER), len(got))
+		})
+	}
 }

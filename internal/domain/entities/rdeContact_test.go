@@ -633,6 +633,7 @@ func TestRDEContact_ToCSV(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := tc.contact.ToCSV()
 			require.Equal(t, tc.expected, actual)
+			require.Equal(t, len(RdeContactCSVHeader), len(actual))
 		})
 	}
 }
@@ -673,6 +674,7 @@ func TestRDEContactPostalInfo_ToCSV(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := tc.postal.ToCSV()
 			require.Equal(t, tc.expected, actual)
+			require.Equal(t, len(RdeContactPostalInfoCSVHeader), len(actual))
 		})
 	}
 }
