@@ -321,13 +321,8 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				if err := d.DecodeElement(&contact, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				// Validate the data using our domain model
-				_, err = contact.ToEntity()
-				if err != nil {
-					return errors.Join(errors.New("error converting RDEContact to entity"), err)
-				}
 				// Write the contact to the contact file
-				contactWriter.Write([]string{contact.ID, contact.RoID, contact.Voice, contact.Fax, contact.Email, contact.ClID, contact.CrRr, contact.CrDate, contact.UpRr, contact.UpDate})
+				contactWriter.Write(contact.ToCSV())
 				// Set Status in statusFile
 				cStatuses := []string{contact.ID}
 				for _, status := range contact.Status {
@@ -344,16 +339,18 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				cPostalInfo := make(map[int][]string)
 				for i, postalInfo := range contact.PostalInfo {
 					postalInfoCounter++
-					cPostalInfo[i] = append(cPostalInfo[i], contact.ID)
-					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Type, postalInfo.Org)
-					// This is clunky but we need to ensure there are always 3 Street elements for CSV length consistency
-					// First add the ones that are there
-					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.Street...)
-					// Then add empty strings for the ones that are missing
-					for i := 3 - len(postalInfo.Address.Street); i == 0; i-- {
-						cPostalInfo[i] = append(cPostalInfo[i], "")
-					}
-					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.City, postalInfo.Address.StateProvince, postalInfo.Address.PostalCode, postalInfo.Address.CountryCode)
+					cPostalInfo[i] = append(cPostalInfo[i], contact.ID)            // Add the contact ID as the first element
+					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.ToCSV()...) // Add the postal info
+					// cPostalInfo[i] = append(cPostalInfo[i], contact.ID)
+					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Type, postalInfo.Org)
+					// // This is clunky but we need to ensure there are always 3 Street elements for CSV length consistency
+					// // First add the ones that are there
+					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.Street...)
+					// // Then add empty strings for the ones that are missing
+					// for i := 3 - len(postalInfo.Address.Street); i == 0; i-- {
+					// 	cPostalInfo[i] = append(cPostalInfo[i], "")
+					// }
+					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.City, postalInfo.Address.StateProvince, postalInfo.Address.PostalCode, postalInfo.Address.CountryCode)
 				}
 
 				for _, v := range cPostalInfo {

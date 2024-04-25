@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrInvalidPostalInfoCount = errors.New("invalid postal info count")
+	RdeAddressCSVHeader       = []string{"Street1", "Street2", "Street3", "City", "StateProvince", "PostalCode", "CountryCode"}
 )
 
 // RDEWhoisInfo facilitates the parsing of the whoisInfo element in the RDE XML
@@ -61,6 +62,21 @@ type RDEAddress struct {
 	StateProvince string   `xml:"sp"`
 	PostalCode    string   `xml:"pc"`
 	CountryCode   string   `xml:"cc"`
+}
+
+// ToCSV converts the RDEAddress to a slice of strings ([]string) for CSV export. The fields are defined in RdeAddressCSVHeader
+func (a *RDEAddress) ToCSV() []string {
+	var addr []string
+	// Always ensure 3 street lines are present
+	for i := 0; i < 3; i++ {
+		if i < len(a.Street) {
+			addr = append(addr, a.Street[i])
+		} else {
+			addr = append(addr, "")
+		}
+	}
+	addr = append(addr, a.City, a.StateProvince, a.PostalCode, a.CountryCode)
+	return addr
 }
 
 // ToEntity converts the RDEAddress to an Address entity. Relies on the constructor to create a new Address object and validate it.
