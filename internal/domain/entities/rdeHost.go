@@ -68,7 +68,7 @@ func (h *RDEHost) ToEntity() (*Host, error) {
 	}
 	// Add the addresses
 	for _, addr := range h.Addr {
-		_, err := host.AddAddress(addr.IP)
+		_, err := host.AddAddress(addr.ID)
 		if err != nil {
 			return nil, err
 		}
