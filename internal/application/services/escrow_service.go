@@ -344,10 +344,10 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				// Now we can update the contact with the new RoID
 				contact.RoID = newRoid.String()
 
-				// Lets validate the contact using our entity
+				// Lets validate the contact using our create contact command
 				_, err = contact.ToEntity()
 				if err != nil {
-					return errors.Join(fmt.Errorf("invalid contact: %s", contact), err)
+					return errors.Join(fmt.Errorf("invalid contact: %v", contact), err)
 				}
 
 				// Write the contact to the contact file
