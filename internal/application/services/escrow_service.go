@@ -397,6 +397,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 func (svc *XMLEscrowService) ExtractHosts() error {
 
 	count := 0
+	errCount := 0
 
 	f, err := os.Open(svc.Deposit.FileName)
 	if err != nil {
@@ -462,6 +463,15 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 				if err := d.DecodeElement(&host, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
+
+				// Validate using a CreateHostCommand
+				cmd := commands.CreateHostCommand{}
+				err = cmd.FromRdeHost(&host)
+				if err != nil {
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
+				}
+
 				writer.Write(host.ToCSV())
 				// Set Status in statusFile
 				hStatuses := []string{host.Name}
@@ -498,6 +508,9 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 	checkLineCount(statusFileName, statusCounter)
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.HostCount())
+	if errCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
+	}
 	return nil
 }
 
