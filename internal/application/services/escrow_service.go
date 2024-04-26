@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -14,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -34,8 +33,6 @@ type XMLEscrowService struct {
 	IDNs              []entities.RDEIdnTableReference `json:"idns"`
 	RegsistrarMapping entities.RegsitrarMapping       `json:"registrarMapping"`
 	Analysis          entities.EscrowAnalysis         `json:"analysis"`
-	RoidMapping       entities.RoIDMapping            `json:"roidMapping"`
-	roidService       *RoidService                    `json:"-"`
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
@@ -56,16 +53,6 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 
 	// Initialize the registrar mapping
 	d.RegsistrarMapping = entities.NewRegistrarMapping()
-
-	// Initialize the RoID mapping
-	d.RoidMapping = entities.NewRoIDMapping()
-
-	// Setup RoidService
-	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
-	if err != nil {
-		panic(err)
-	}
-	d.roidService = NewRoidService(idGenerator)
 
 	return &d, nil
 }
@@ -331,30 +318,23 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				if se.Name.Space != entities.CONTACT_URI {
 					continue
 				}
-				var contact entities.RDEContact
-				if err := d.DecodeElement(&contact, &se); err != nil {
+				var rdeContact entities.RDEContact
+				if err := d.DecodeElement(&rdeContact, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				// Generate a new RoID for the contact and add it to our mapping
-				newRoid, err := svc.roidService.GenerateRoid(entities.RoidTypeContact)
-				if err != nil {
-					return err
-				}
-				svc.RoidMapping[contact.RoID] = newRoid
-				// Now we can update the contact with the new RoID
-				contact.RoID = newRoid.String()
 
-				// Lets validate the contact using our create contact command
-				_, err = contact.ToEntity()
+				// Validate using a CreateContactCommand
+				cmd := commands.CreateContactCommand{}
+				err = cmd.FromRdeContact(&rdeContact)
 				if err != nil {
-					return errors.Join(fmt.Errorf("invalid contact: %v", contact), err)
+					return errors.Join(err, errors.New("error creating contact command"))
 				}
 
 				// Write the contact to the contact file
-				contactWriter.Write(contact.ToCSV())
+				contactWriter.Write(rdeContact.ToCSV())
 				// Set Status in statusFile
-				cStatuses := []string{contact.ID}
-				for _, status := range contact.Status {
+				cStatuses := []string{rdeContact.ID}
+				for _, status := range rdeContact.Status {
 					cStatuses = append(cStatuses, status.S)
 				}
 				for i, s := range cStatuses {
@@ -362,13 +342,13 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 						continue
 					}
 					statusCounter++
-					statusWriter.Write([]string{contact.ID, s})
+					statusWriter.Write([]string{rdeContact.ID, s})
 				}
 				// Set postalInfo in postalInfoFile
 				cPostalInfo := make(map[int][]string)
-				for i, postalInfo := range contact.PostalInfo {
+				for i, postalInfo := range rdeContact.PostalInfo {
 					postalInfoCounter++
-					cPostalInfo[i] = append(cPostalInfo[i], contact.ID)            // Add the contact ID as the first element
+					cPostalInfo[i] = append(cPostalInfo[i], rdeContact.ID)         // Add the contact ID as the first element
 					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.ToCSV()...) // Add the postal info
 					// cPostalInfo[i] = append(cPostalInfo[i], contact.ID)
 					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Type, postalInfo.Org)
@@ -387,9 +367,9 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				}
 
 				// Update counters in Registrar Map
-				objCount := svc.RegsistrarMapping[contact.ClID]
+				objCount := svc.RegsistrarMapping[rdeContact.ClID]
 				objCount.ContactCount++
-				svc.RegsistrarMapping[contact.ClID] = objCount
+				svc.RegsistrarMapping[rdeContact.ClID] = objCount
 				count++
 
 				pbar.Add(1)

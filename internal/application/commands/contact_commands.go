@@ -43,27 +43,36 @@ func NewCreateContactCommand(id, email, authinfo, clid string) (*CreateContactCo
 }
 
 // FromRdeContact creates a new CreateContactCommand from an RDEContact
-func FromRdeContact(rdeContact *entities.RDEContact) (*CreateContactCommand, error) {
+func (cmd *CreateContactCommand) FromRdeContact(rdeContact *entities.RDEContact) error {
 	postalInfos := [2]*entities.ContactPostalInfo{}
 	for i, postal := range rdeContact.PostalInfo {
 		postalInfo, err := postal.ToEntity()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		postalInfos[i] = postalInfo
 	}
 	// TODO: implement Disclose
 
+	// TODO: Automatically deal with RoIDs:
+	// If a valid Roid is in the RDEContact, use it in the cmd (importing our own escrows)
+	// If not, do not add a RoID to the command so the system will generate one (importing external escrows)
+
 	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
 	aInfo, err := entities.NewAuthInfoType("escr0W1mP*rt")
 	if err != nil {
-		return nil, err // Untestable, just catching the error incase our AuthInfoType is validation changes
+		return err // Untestable, just catching the error incase our AuthInfoType is validation changes
 	}
-	// Create a new create contact command object
-	cmd, err := NewCreateContactCommand(rdeContact.ID, rdeContact.Email, aInfo.String(), rdeContact.ClID)
+	// Set the required fields
+	_, err = NewCreateContactCommand(rdeContact.ID, rdeContact.Email, aInfo.String(), rdeContact.ClID)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	cmd.ID = rdeContact.ID
+	cmd.Email = rdeContact.Email
+	cmd.AuthInfo = aInfo.String()
+	cmd.ClID = rdeContact.ClID
+
 	// Add the postal info and disclose to the contact
 	cmd.PostalInfo = postalInfos
 	// Set the optional fields
@@ -76,14 +85,14 @@ func FromRdeContact(rdeContact *entities.RDEContact) (*CreateContactCommand, err
 	if rdeContact.CrDate != "" {
 		crd, err := time.Parse(time.RFC3339, rdeContact.CrDate)
 		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidTimeFormat, err)
+			return errors.Join(entities.ErrInvalidTimeFormat, err)
 		}
 		cmd.CreatedAt = crd
 	}
 	if rdeContact.UpDate != "" {
 		upd, err := time.Parse(time.RFC3339, rdeContact.UpDate)
 		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidTimeFormat, err)
+			return errors.Join(entities.ErrInvalidTimeFormat, err)
 		}
 		cmd.UpdatedAt = upd
 	}
@@ -96,17 +105,19 @@ func FromRdeContact(rdeContact *entities.RDEContact) (*CreateContactCommand, err
 	// Set the status
 	cs, err := entities.GetContactStatusFromRDEContactStatus(rdeContact.Status)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// Validate the status
 	if !cs.IsValidContactStatus() {
-		return nil, entities.ErrInvalidContactStatusCombination
+		return entities.ErrInvalidContactStatusCombination
 	}
 	cmd.Status = cs
 
 	// Make sure it is a valid command
 
-	return cmd, nil
+	_, err = cmd.ToContact()
+
+	return err
 
 }
 
@@ -131,7 +142,7 @@ func (cmd *CreateContactCommand) ToContact() (*entities.Contact, error) {
 
 	if _, err := contact.IsValid(); err != nil {
 		// If the command doesn't have the optional RoID set, exclude it from the validation as a RoID will be generated on object creation
-		if errors.Is(entities.ErrInvalidRoid, err) || cmd.RoID == "" {
+		if errors.Is(err, entities.ErrInvalidRoid) || cmd.RoID == "" {
 			return contact, nil
 		}
 		return nil, err

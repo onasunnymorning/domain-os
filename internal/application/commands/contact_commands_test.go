@@ -324,7 +324,8 @@ func TestFromRdeContact(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd, err := FromRdeContact(tc.rdeContact)
+			cmd := &CreateContactCommand{}
+			err := cmd.FromRdeContact(tc.rdeContact)
 			require.ErrorIs(t, err, tc.wantErr)
 			if err == nil {
 				require.Equal(t, tc.cmd, cmd)
@@ -425,6 +426,74 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			},
 			expectedResult: nil,
 			expectedError:  entities.ErrInvalidClIDType,
+		},
+		{
+			name: "invalid postalinfo type",
+			command: &CreateContactCommand{
+				ID:        "validClID",
+				RoID:      "12345_CONT-APEX",
+				Email:     "email@me.com",
+				AuthInfo:  "escr0W1mP*rt",
+				ClID:      "myRegstrarID",
+				CrRr:      "myRegstrarID",
+				CreatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				UpRr:      "myRegstrarID",
+				UpdatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Voice:     "+1.123345345",
+				Fax:       "+1.123345345",
+				Status: entities.ContactStatus{
+					OK: true,
+				},
+				PostalInfo: [2]*entities.ContactPostalInfo{
+					{
+						Type: "invalid",
+						Name: "name",
+						Org:  "org",
+						Address: &entities.Address{
+							Street1:     "street",
+							City:        "Ollantaytambo",
+							PostalCode:  "pc",
+							CountryCode: "PE",
+						},
+					},
+				},
+			},
+			expectedResult: nil,
+			expectedError:  entities.ErrInvalidContactPostalInfo,
+		},
+		{
+			name: "invalid postalinfo",
+			command: &CreateContactCommand{
+				ID:        "validClID",
+				RoID:      "12345_CONT-APEX",
+				Email:     "email@me.com",
+				AuthInfo:  "escr0W1mP*rt",
+				ClID:      "myRegstrarID",
+				CrRr:      "myRegstrarID",
+				CreatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				UpRr:      "myRegstrarID",
+				UpdatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Voice:     "+1.123345345",
+				Fax:       "+1.123345345",
+				Status: entities.ContactStatus{
+					OK: true,
+				},
+				PostalInfo: [2]*entities.ContactPostalInfo{
+					{
+						Type: "int",
+						Name: "name",
+						Org:  "org",
+						Address: &entities.Address{
+							Street1:     "strïet",
+							City:        "Ollantaytambo",
+							PostalCode:  "pc",
+							CountryCode: "PE",
+						},
+					},
+				},
+			},
+			expectedResult: nil,
+			expectedError:  entities.ErrInvalidContactPostalInfo,
 		},
 	}
 
