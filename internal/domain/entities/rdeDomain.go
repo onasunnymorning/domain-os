@@ -135,6 +135,11 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 
 	// TODO: FIXME: Add the nameservers
 
+	err = domain.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	return domain, nil
 
 }
