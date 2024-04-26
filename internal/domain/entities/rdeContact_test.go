@@ -140,7 +140,7 @@ func TestRDEContact_ToEntity(t *testing.T) {
 				UpDate: "2021-01-01T00:00:00Z",
 				Status: []RDEContactStatus{
 					{
-						S: "ok",
+						S: "OK",
 					},
 				},
 				PostalInfo: []RDEContactPostalInfo{
@@ -368,90 +368,90 @@ func TestRDEContact_ToEntity(t *testing.T) {
 			expected: nil,
 			err:      ErrInvalidE164Type,
 		},
-		// {
-		// 	name: "Invalid CrDate",
-		// 	contact: &RDEContact{
-		// 		ID:     "123456",
-		// 		RoID:   "123456_CONT-APEX",
-		// 		Email:  "myemail@me.com",
-		// 		ClID:   "123456",
-		// 		Voice:  "+51.123456",
-		// 		Fax:    "+51.123456",
-		// 		CrRr:   "123456",
-		// 		UpRr:   "123456",
-		// 		CrDate: "2021--01-01T00:00:00Z",
-		// 		UpDate: "2021-01-01T00:00:00Z",
-		// 		Status: []RDEContactStatus{
-		// 			{
-		// 				S: "ok",
-		// 			},
-		// 		},
-		// 		PostalInfo: []RDEContactPostalInfo{
-		// 			{
-		// 				Type: "int",
-		// 				Name: "myName",
-		// 				Org:  "myOrganization",
-		// 				Address: RDEAddress{
-		// 					City:        "New York",
-		// 					CountryCode: "US",
-		// 				},
-		// 			},
-		// 			{
-		// 				Type: "loc",
-		// 				Name: "myNûme",
-		// 				Org:  "myOrganïzation",
-		// 				Address: RDEAddress{
-		// 					City:        "Cûzco",
-		// 					CountryCode: "PE",
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	expected: nil,
-		// 	err:      ErrInvalidE164Type,
-		// },
-		// {
-		// 	name: "Invalid UpDate",
-		// 	contact: &RDEContact{
-		// 		ID:     "123456",
-		// 		RoID:   "123456_CONT-APEX",
-		// 		Email:  "myemail@me.com",
-		// 		ClID:   "123456",
-		// 		Voice:  "+51.123456",
-		// 		Fax:    "+51.123456",
-		// 		CrRr:   "123456",
-		// 		UpRr:   "123456",
-		// 		CrDate: "2021-01-01T00:00:00Z",
-		// 		UpDate: "2021--01-01T00:00:00Z",
-		// 		Status: []RDEContactStatus{
-		// 			{
-		// 				S: "ok",
-		// 			},
-		// 		},
-		// 		PostalInfo: []RDEContactPostalInfo{
-		// 			{
-		// 				Type: "int",
-		// 				Name: "myName",
-		// 				Org:  "myOrganization",
-		// 				Address: RDEAddress{
-		// 					City:        "New York",
-		// 					CountryCode: "US",
-		// 				},
-		// 			},
-		// 			{
-		// 				Type: "loc",
-		// 				Name: "myNûme",
-		// 				Org:  "myOrganïzation",
-		// 				Address: RDEAddress{
-		// 					City:        "Cûzco",
-		// 					CountryCode: "PE",
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	expected: nil,
-		// 	err:      ErrInvalidE164Type,
-		// },
+		{
+			name: "Invalid CrDate",
+			contact: &RDEContact{
+				ID:     "123456",
+				RoID:   "123456_CONT-APEX",
+				Email:  "myemail@me.com",
+				ClID:   "123456",
+				Voice:  "+51.123456",
+				Fax:    "+51.123456",
+				CrRr:   "123456",
+				UpRr:   "123456",
+				CrDate: "2021--01-01T00:00:00Z",
+				UpDate: "2021-01-01T00:00:00Z",
+				Status: []RDEContactStatus{
+					{
+						S: "ok",
+					},
+				},
+				PostalInfo: []RDEContactPostalInfo{
+					{
+						Type: "int",
+						Name: "myName",
+						Org:  "myOrganization",
+						Address: RDEAddress{
+							City:        "New York",
+							CountryCode: "US",
+						},
+					},
+					{
+						Type: "loc",
+						Name: "myNûme",
+						Org:  "myOrganïzation",
+						Address: RDEAddress{
+							City:        "Cûzco",
+							CountryCode: "PE",
+						},
+					},
+				},
+			},
+			expected: nil,
+			err:      ErrInvalidTimeFormat,
+		},
+		{
+			name: "Invalid UpDate",
+			contact: &RDEContact{
+				ID:     "123456",
+				RoID:   "123456_CONT-APEX",
+				Email:  "myemail@me.com",
+				ClID:   "123456",
+				Voice:  "+51.123456",
+				Fax:    "+51.123456",
+				CrRr:   "123456",
+				UpRr:   "123456",
+				CrDate: "2021-01-01T00:00:00Z",
+				UpDate: "2021--01-01T00:00:00Z",
+				Status: []RDEContactStatus{
+					{
+						S: "ok",
+					},
+				},
+				PostalInfo: []RDEContactPostalInfo{
+					{
+						Type: "int",
+						Name: "myName",
+						Org:  "myOrganization",
+						Address: RDEAddress{
+							City:        "New York",
+							CountryCode: "US",
+						},
+					},
+					{
+						Type: "loc",
+						Name: "myNûme",
+						Org:  "myOrganïzation",
+						Address: RDEAddress{
+							City:        "Cûzco",
+							CountryCode: "PE",
+						},
+					},
+				},
+			},
+			expected: nil,
+			err:      ErrInvalidTimeFormat,
+		},
 		{
 			name: "Invalid CrRr",
 			contact: &RDEContact{
@@ -576,7 +576,7 @@ func TestRDEContact_ToEntity(t *testing.T) {
 				},
 			},
 			expected: nil,
-			err:      ErrInvalidContactStatusCombination,
+			err:      ErrInvalidContactStatus,
 		},
 	}
 

@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/xml"
+	"errors"
 	"reflect"
 	"strings"
 	"time"
@@ -81,14 +82,14 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 	if c.CrDate != "" {
 		date, err := time.Parse(time.RFC3339, c.CrDate)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(ErrInvalidTimeFormat, err)
 		}
 		contact.CreatedAt = date
 	}
 	if c.UpDate != "" {
 		date, err := time.Parse(time.RFC3339, c.UpDate)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(ErrInvalidTimeFormat, err)
 		}
 		contact.UpdatedAt = date
 	}
@@ -116,7 +117,7 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 	// 		return nil, err
 	// 	}
 	// }
-	cs, err := getContactStatusFromRDEContactStatus(c.Status)
+	cs, err := GetContactStatusFromRDEContactStatus(c.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +202,8 @@ type RDEContactWithType struct {
 	Type string `xml:"type,attr"`
 }
 
-// getContactStatusFromRDEContactStatus returns a ContactStatusType from a []RDEContactStatus slice
-func getContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactStatus, error) {
+// GetContactStatusFromRDEContactStatus returns a ContactStatusType from a []RDEContactStatus slice
+func GetContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactStatus, error) {
 	var cs ContactStatus
 	for _, status := range statuses {
 		// pointer to struct - addressable
@@ -211,7 +212,7 @@ func getContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactS
 		s := ps.Elem()
 		if s.Kind() == reflect.Struct {
 			// exported field
-			f := s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:])
+			f := s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:]) // uppercase the first character to match the struct field
 			if f.IsValid() {
 				// A Value can be changed only if it is
 				// addressable and was not obtained by
@@ -222,6 +223,8 @@ func getContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactS
 						f.SetBool(true)
 					}
 				}
+			} else {
+				return cs, ErrInvalidContactStatus
 			}
 		}
 	}

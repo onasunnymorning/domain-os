@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrTimeStampNotUTC = errors.New("timestamp is not in UTC")
+	ErrTimeStampNotUTC   = errors.New("timestamp is not in UTC")
+	ErrInvalidTimeFormat = errors.New("invalid time format")
 )
 
 // RoundTime rounds time.Time to the nearest microsecond to avoid precision issues with storage layers that use microsecond and golang nanosecond

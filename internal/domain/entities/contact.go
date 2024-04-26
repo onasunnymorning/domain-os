@@ -46,6 +46,7 @@ const (
 
 var (
 	ErrContactNotFound                 = errors.New("contact not found")
+	ErrInvalidContactStatus            = errors.New("invalid contact status")
 	ErrInvalidContact                  = errors.New("invalid contact")
 	ErrContactAlreadyExists            = errors.New("contact already exists")
 	ErrInvalidContactStatusCombination = errors.New("invalid combination of contact statuses")
