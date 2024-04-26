@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -260,6 +261,7 @@ func (svc *XMLEscrowService) AnalyzeIDNTableRefTags(idnCount int) error {
 func (svc *XMLEscrowService) ExtractContacts() error {
 
 	count := 0
+	errCount := 0
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
@@ -327,7 +329,8 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				cmd := commands.CreateContactCommand{}
 				err = cmd.FromRdeContact(&rdeContact)
 				if err != nil {
-					return errors.Join(err, errors.New("error creating contact command"))
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating contact command for %s: %s", rdeContact.ID, err))
 				}
 
 				// Write the contact to the contact file
@@ -350,16 +353,6 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 					postalInfoCounter++
 					cPostalInfo[i] = append(cPostalInfo[i], rdeContact.ID)         // Add the contact ID as the first element
 					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.ToCSV()...) // Add the postal info
-					// cPostalInfo[i] = append(cPostalInfo[i], contact.ID)
-					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Type, postalInfo.Org)
-					// // This is clunky but we need to ensure there are always 3 Street elements for CSV length consistency
-					// // First add the ones that are there
-					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.Street...)
-					// // Then add empty strings for the ones that are missing
-					// for i := 3 - len(postalInfo.Address.Street); i == 0; i-- {
-					// 	cPostalInfo[i] = append(cPostalInfo[i], "")
-					// }
-					// cPostalInfo[i] = append(cPostalInfo[i], postalInfo.Address.City, postalInfo.Address.StateProvince, postalInfo.Address.PostalCode, postalInfo.Address.CountryCode)
 				}
 
 				for _, v := range cPostalInfo {
@@ -389,6 +382,9 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 	checkLineCount(postalInfoFileName, postalInfoCounter)
 	contactWriter.Flush()
 	checkLineCount(outFileName, svc.Header.ContactCount())
+	if errCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
+	}
 	return nil
 }
 
@@ -512,6 +508,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 func (svc *XMLEscrowService) ExtractNNDNS() error {
 
 	count := 0
+	errCount := 0
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
@@ -551,11 +548,21 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 				if se.Name.Space != entities.NNDN_URI {
 					continue
 				}
-				var nndns entities.RDENNDN
-				if err := d.DecodeElement(&nndns, &se); err != nil {
+				var rdeNNDN entities.RDENNDN
+				if err := d.DecodeElement(&rdeNNDN, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				writer.Write([]string{nndns.AName, nndns.UName, nndns.IDNTableID, nndns.OriginalName, nndns.NameState, nndns.CrDate})
+
+				// Validate using a CreateNNDNCommand
+				cmd := commands.CreateNNDNCommand{}
+				err = cmd.FromRDENNDN(&rdeNNDN)
+				if err != nil {
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating NNDN command for %s: %s", rdeNNDN.AName, err))
+				}
+
+				// Write to CSV
+				writer.Write(rdeNNDN.ToCSV())
 				count++
 
 				pbar.Add(1)
@@ -564,6 +571,9 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 	}
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.NNDNCount())
+	if errCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing NNDNs. See analysis file for details\n", errCount)
+	}
 	return nil
 }
 

@@ -1,22 +1,18 @@
 package commands
 
-import "time"
-
-// CreateNNDNCommandResult is the result of the CreateNNDNCommand
-type CreateNNDNCommandResult struct {
-	Result NNDNResult
-}
+import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
 // CreateNNDNCommand is the command to create a NNDN
 type CreateNNDNCommand struct {
-	Name string
+	Name string `json:"name" binding:"required"`
 }
 
-// NNDNResult is the result converting an entity NNDN to a command NNDNResult
-type NNDNResult struct {
-	Name      string
-	Type      string
-	UName     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+// FromRDENNDN creates a new CreateNNDNCommand from an RDENNDN
+func (cmd *CreateNNDNCommand) FromRDENNDN(rdeNNDN *entities.RDENNDN) error {
+	nndn, err := entities.NewNNDN(rdeNNDN.AName)
+	if err != nil {
+		return err
+	}
+	cmd.Name = nndn.Name.String()
+	return nil
 }
