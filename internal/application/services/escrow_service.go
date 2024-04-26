@@ -624,6 +624,7 @@ func checkLineCount(filename string, expected int) {
 func (svc *XMLEscrowService) ExtractDomains() error {
 
 	count := 0
+	errCount := 0
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
@@ -711,6 +712,15 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 				if err := d.DecodeElement(&dom, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
+
+				// Validate using a CreateDomainCommand
+				cmd := commands.CreateDomainCommand{}
+				err = cmd.FromRdeDomain(&dom)
+				if err != nil {
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating domain command for %s: %s", dom.Name, err))
+				}
+
 				// Write the domain to the domain file
 				domainWriter.Write(dom.ToCSV())
 				// Add a line to the contactID file for each contact, only if it does not exist yet
@@ -785,6 +795,9 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 	checkLineCount(transferFileName, transferCounter)
 	domainWriter.Flush()
 	checkLineCount(outFileName, svc.Header.DomainCount())
+	if errCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing domains. See analysis file for details\n", errCount)
+	}
 	return nil
 }
 

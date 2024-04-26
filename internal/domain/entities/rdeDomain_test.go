@@ -263,7 +263,7 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 			wantErr: ErrInvalidContact,
 		},
 		{
-			name: "valid domain",
+			name: "invalid domain status",
 			rdeDomain: &RDEDomain{
 				Name:         "apex.domains",
 				RoID:         "12345_DOM-APEX",
@@ -302,7 +302,7 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 			wantErr: ErrInvalidDomainStatusCombination,
 		},
 		{
-			name: "valid domain",
+			name: "invalid originalname for non-idn domain",
 			rdeDomain: &RDEDomain{
 				Name:         "apex.domains",
 				RoID:         "12345_DOM-APEX",
@@ -337,11 +337,84 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 					},
 				},
 			},
+			domain:  nil,
+			wantErr: ErrOriginalNameFieldReservedForIDN,
+		},
+		{
+			name: "invalid uname for non-idn domain",
+			rdeDomain: &RDEDomain{
+				Name:       "apex.domains",
+				RoID:       "12345_DOM-APEX",
+				UName:      "apex.domains",
+				ClID:       "GoMamma",
+				CrRr:       "GoMamma",
+				CrDate:     "2021-01-01T00:00:00Z",
+				UpRr:       "GoMamma",
+				UpDate:     "2021-01-01T00:00:00Z",
+				Registrant: "GoMamma",
+				Status: []RDEDomainStatus{
+					{
+						S: "pendingDelete",
+					},
+					{
+						S: "inactive",
+					},
+				},
+				Contact: []RDEDomainContact{
+					{
+						ID:   "GoMamma",
+						Type: "admin",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "tech",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "billing",
+					},
+				},
+			},
+			domain:  nil,
+			wantErr: ErrUNameFieldReservedForIDNDomains,
+		},
+		{
+			name: "valid domain",
+			rdeDomain: &RDEDomain{
+				Name:       "apex.domains",
+				RoID:       "12345_DOM-APEX",
+				ClID:       "GoMamma",
+				CrRr:       "GoMamma",
+				CrDate:     "2021-01-01T00:00:00Z",
+				UpRr:       "GoMamma",
+				UpDate:     "2021-01-01T00:00:00Z",
+				Registrant: "GoMamma",
+				Status: []RDEDomainStatus{
+					{
+						S: "pendingDelete",
+					},
+					{
+						S: "inactive",
+					},
+				},
+				Contact: []RDEDomainContact{
+					{
+						ID:   "GoMamma",
+						Type: "admin",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "tech",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "billing",
+					},
+				},
+			},
 			domain: &Domain{
 				Name:         DomainName("apex.domains"),
 				RoID:         "12345_DOM-APEX",
-				UName:        DomainName("apex.domains"),
-				OriginalName: DomainName("apex.domains"),
 				ClID:         "GoMamma",
 				CrRr:         "GoMamma",
 				UpRr:         "GoMamma",
