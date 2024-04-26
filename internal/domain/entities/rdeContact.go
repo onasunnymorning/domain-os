@@ -110,14 +110,7 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 	}
 
 	// Set the statuses
-	// This will break if we first set a prohibition and later set another status
-	// for _, status := range c.Status {
-	// 	err := contact.SetStatus(ContactStatusType(status.S))
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
-	cs, err := GetContactStatusFromRDEContactStatus(c.Status)
+	cs, err := GetContactStatusFromRDEContactStatus(c.Status) // We use this instead of SetStatus because we can't guarantee the order of the statuses, which may break in case a prohibition is set first
 	if err != nil {
 		return nil, err
 	}
