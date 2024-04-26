@@ -36,8 +36,8 @@ func NewRegistrarMapping() RegsitrarMapping {
 
 // EscrowAnalysis holds errors and warnings as well as files generated and counters
 type EscrowAnalysis struct {
-	// Errors          []string      `json:"errors"`
-	// Warnings        []string      `json:"warnings"`
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
 	// Files           []FileCounter `json:"files"`
 	MissingContacts []string `json:"missingContacts"`
 }
