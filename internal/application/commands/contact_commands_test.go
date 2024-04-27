@@ -179,7 +179,7 @@ func TestFromRdeContact(t *testing.T) {
 				UpRr:   "myRegstrarID",
 			},
 			cmd:     nil,
-			wantErr: ErrMissingCreateContactCommandFields,
+			wantErr: entities.ErrInvalidClIDType,
 		},
 		{
 			name: "invalid CrDate",
