@@ -61,7 +61,19 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 		return nil, err
 	}
 	// Add the postal info and disclose to the contact
-	contact.PostalInfo = postalInfos
+	for _, pi := range postalInfos {
+		if pi == nil {
+			continue
+		}
+		err = contact.AddPostalInfo(pi)
+		if err != nil {
+			// TODO: FIXME: this is related to ContactPostalInfo.ToEntity() overwriting the Type to loc if it's not ASCII. As a result of this we could end up with two loc postal infos...
+			if errors.Is(err, ErrPostalInfoTypeExistsAlready) {
+				continue
+			}
+			return nil, err
+		}
+	}
 	contact.Disclose = *disclose
 
 	// Set the optional fields

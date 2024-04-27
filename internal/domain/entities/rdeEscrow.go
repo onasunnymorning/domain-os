@@ -41,3 +41,24 @@ type EscrowAnalysis struct {
 	// Files           []FileCounter `json:"files"`
 	MissingContacts []string `json:"missingContacts"`
 }
+
+// EscrowImport holds errors and warnings as well as files generated and counters
+type EscrowImport struct {
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
+	Contacts struct {
+		Created  int `json:"created"`
+		Existing int `json:"existing"`
+		Failed   int `json:"failed"`
+	} `json:"contacts"`
+	Hosts struct {
+		Created  int `json:"created"`
+		Existing int `json:"existing"`
+		Failed   int `json:"failed"`
+	} `json:"hosts"`
+	Domains struct {
+		Created  int `json:"created"`
+		Existing int `json:"existing"`
+		Failed   int `json:"failed"`
+	} `json:"domains"`
+}

@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// FLAGS
-	filename := flag.String("f", "", "(path to) filename")
+	filename := flag.String("f", "", "(path to) the XML escrow filename")
 	flag.Parse()
 
 	if *filename == "" {

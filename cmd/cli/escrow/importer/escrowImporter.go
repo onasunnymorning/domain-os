@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/cli/escrow"
 )
 
@@ -13,27 +12,22 @@ import (
 
 func main() {
 	// FLAGS
-	dirName := flag.String("d", "", "(path to) directory containing escrow analysis files")
+	filename := flag.String("f", "", "(path to) the XML escrow filename")
+	analysisFile := flag.String("a", "", "(path to) the analysis file produced by the escrow analyzer")
 	flag.Parse()
 
-	if *dirName == "" {
-		log.Fatal("Please provide a directory containing escrow analysis files")
+	if *filename == "" || *analysisFile == "" {
+		log.Fatal("Please provide a filename for the escrow and the analysis file produced by the escrow analyzer")
 	}
 
-	escrowService, err := services.NewXMLEscrowService(*dirName)
+	escrowService, err := services.NewXMLEscrowService(*filename)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
-	if err != nil {
-		panic(err)
-	}
-	roidService := services.NewRoidService(idGenerator)
+	importController := escrow.NewEscrowImportController(escrowService)
 
-	importController := escrow.NewEscrowImportController(escrowService, roidService)
-
-	err = importController.Import()
+	err = importController.Import(*analysisFile, *filename)
 	if err != nil {
 		log.Fatal(err)
 	}

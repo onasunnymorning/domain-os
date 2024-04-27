@@ -20,10 +20,13 @@ import (
 )
 
 var (
-	ErrDecodingToken = errors.New("error decoding token")
-	ErrNoDepositTag  = errors.New("no deposit tag found")
-	ErrNoHeaderTag   = errors.New("no header tag found")
-	ErrDecodingXML   = errors.New("error decoding XML")
+	ErrDecodingToken                      = errors.New("error decoding token")
+	ErrNoDepositTag                       = errors.New("no deposit tag found")
+	ErrNoHeaderTag                        = errors.New("no header tag found")
+	ErrDecodingXML                        = errors.New("error decoding XML")
+	ErrAnalysisContainsErrors             = errors.New("analysis shows errors")
+	ErrAnalysisFileDoesNotMatchEscrowFile = errors.New("analysis file does not match escrow file")
+	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -34,6 +37,7 @@ type XMLEscrowService struct {
 	IDNs              []entities.RDEIdnTableReference `json:"idns"`
 	RegsistrarMapping entities.RegsitrarMapping       `json:"registrarMapping"`
 	Analysis          entities.EscrowAnalysis         `json:"analysis"`
+	Import            entities.EscrowImport           `json:"import"`
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
@@ -258,21 +262,22 @@ func (svc *XMLEscrowService) AnalyzeIDNTableRefTags(idnCount int) error {
 // - {inputFilename}-contacts.csv
 // - {inputFilename}-contactStatuses.csv
 // - {inputFilename}-contactPostalInfo.csv
-func (svc *XMLEscrowService) ExtractContacts() error {
+func (svc *XMLEscrowService) ExtractContacts() ([]commands.CreateContactCommand, error) {
 
 	count := 0
 	errCount := 0
+	createCommands := []commands.CreateContactCommand{}
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Prepare the CSV file to receive the contacts
 	outFileName := svc.GetDepositFileNameWoExtension() + "-contacts.csv"
 	outFile, err := os.Create(outFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer outFile.Close()
 	contactWriter := csv.NewWriter(outFile)
@@ -281,7 +286,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 	statusFileName := svc.GetDepositFileNameWoExtension() + "-contactStatuses.csv"
 	statusFile, err := os.Create(statusFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	statusWriter := csv.NewWriter(statusFile)
 	statusCounter := 0
@@ -290,7 +295,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 	postalInfoFileName := svc.GetDepositFileNameWoExtension() + "-contactPostalInfo.csv"
 	postalInfoFile, err := os.Create(postalInfoFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	postalInfoWriter := csv.NewWriter(postalInfoFile)
 	postalInfoCounter := 0
@@ -310,7 +315,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return errors.Join(ErrDecodingToken, tokenErr)
+			return nil, errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type contact
 		switch se := t.(type) {
@@ -322,7 +327,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 				}
 				var rdeContact entities.RDEContact
 				if err := d.DecodeElement(&rdeContact, &se); err != nil {
-					return errors.Join(ErrDecodingXML, err)
+					return nil, errors.Join(ErrDecodingXML, err)
 				}
 
 				// Validate using a CreateContactCommand
@@ -332,6 +337,8 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 					errCount++
 					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating contact command for %s: %s", rdeContact.ID, err))
 				}
+				// Add the command to our slice of create commands
+				createCommands = append(createCommands, cmd)
 
 				// Write the contact to the contact file
 				contactWriter.Write(rdeContact.ToCSV())
@@ -385,7 +392,7 @@ func (svc *XMLEscrowService) ExtractContacts() error {
 	if errCount > 0 {
 		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
 	}
-	return nil
+	return createCommands, nil
 }
 
 // ExtractHosts Extracts hosts from the escrow file and writes them to a CSV file
@@ -911,6 +918,18 @@ func (svc *XMLEscrowService) SaveAnalysis() error {
 	return nil
 }
 
+// Save the Import Struct to a JSON file
+func (svc *XMLEscrowService) SaveImportResult() error {
+	bytes, err := json.MarshalIndent(svc.Import, "", "	")
+	if err != nil {
+		return err
+	}
+	importFileName := svc.GetDepositFileNameWoExtension() + "-import.json"
+	os.WriteFile(importFileName, bytes, 0644)
+	log.Printf("✅  Saved import to: %s\n", importFileName)
+	return nil
+}
+
 // MapRegistrars Tries to find all registrars from the deposit in the repository through the registrars API and link their IDs
 func (svc *XMLEscrowService) MapRegistrars() error {
 	log.Println("Mapping Registrars ...")
@@ -1008,5 +1027,149 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		log.Printf("✅ Found all important registrars\n")
 	}
 
+	return nil
+}
+
+// Loads the analysis file produced by the escrow analyzer. Input should be provided by the user
+func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string) error {
+	f, err := os.Open(analysisFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Read the contents of the file into a byte slice
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal the file contents into the Analysis struct
+	err = json.Unmarshal(data, &svc)
+	if err != nil {
+		return err
+	}
+
+	if svc.Deposit.FileName != escrowFile {
+		return ErrAnalysisFileDoesNotMatchEscrowFile
+	}
+
+	log.Println("Analysis file loaded successfully")
+
+	if len(svc.Analysis.Errors) != 0 {
+		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d errors", len(svc.Analysis.Errors))
+		for _, e := range svc.Analysis.Errors {
+			log.Println(e)
+		}
+
+		log.Println("Cannot proceed with import due to errors in the analysis file. Please fix the errors and try again.")
+		return ErrAnalysisContainsErrors
+	}
+
+	if len(svc.Analysis.Warnings) != 0 {
+		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
+		for _, w := range svc.Analysis.Warnings {
+			log.Println(w)
+		}
+		log.Println("Proceeding with import despite warnings in the analysis file.")
+	}
+
+	return nil
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// CreateContacts Creates the contacts in the repository through the Admin API
+func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand) error {
+	// Setup up the API client
+	URL := "http://localhost:8080/contacts"
+	// TODO: Add authentication
+
+	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
+	log.Printf("Creating %d contacts... \n", svc.Header.ContactCount())
+	pbar := progressbar.Default(int64(len(cmds)))
+	for _, cmd := range cmds {
+
+		// First map the registrar ID to the registrar ClID
+		registrar, ok := svc.RegsistrarMapping[cmd.ClID]
+		if !ok {
+			svc.Import.Contacts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
+			continue
+		}
+		cmd.ClID = registrar.RegistrarClID.String()
+		// Do the same for CrRR and UpRR
+		if cmd.CrRr != "" {
+			registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
+			if !ok {
+				svc.Import.Contacts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
+				continue
+			}
+			cmd.CrRr = registrar.RegistrarClID.String()
+		}
+		if cmd.UpRr != "" {
+			registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
+			if !ok {
+				svc.Import.Contacts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
+				continue
+			}
+			cmd.UpRr = registrar.RegistrarClID.String()
+		}
+
+		// UnMarshal the command into a JSON object
+		jsonCmd, err := json.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+		// Send the request
+		req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+		if err != nil {
+			return err
+		}
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// Success
+		if resp.StatusCode == 201 {
+			svc.Import.Contacts.Created++
+		}
+
+		// Exists or Failed
+		if resp.StatusCode == 400 {
+			// if the contact already exists, we can skip it, we need to check the body for that
+			var response ErrorResponse
+			defer resp.Body.Close()
+			err = json.NewDecoder(resp.Body).Decode(&response)
+			if err != nil {
+				return err
+			}
+			// Exists, skip
+			if strings.Contains(response.Error, "contact already exists") {
+				svc.Import.Contacts.Existing++
+			} else {
+				// Failed, log error
+				svc.Import.Contacts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating contact with id %s: %s", cmd.ID, response.Error))
+			}
+		}
+		pbar.Add(1)
+	}
+
+	if svc.Import.Contacts.Failed > 0 {
+		log.Printf("🔥 WARNING 🔥 %d contacts failed to be created\n", svc.Import.Contacts.Failed)
+		for _, e := range svc.Import.Errors {
+			log.Println(e)
+		}
+		return ErrImportFailed
+	}
+
+	log.Printf("✅ Created all contacts successfully\n")
 	return nil
 }
