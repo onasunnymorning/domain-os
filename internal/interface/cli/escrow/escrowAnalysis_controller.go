@@ -40,7 +40,7 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
-	if err := c.svc.ExtractContacts(); err != nil {
+	if _, err := c.svc.ExtractContacts(); err != nil {
 		return err
 	}
 
