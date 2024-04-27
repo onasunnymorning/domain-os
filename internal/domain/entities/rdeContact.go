@@ -205,7 +205,12 @@ func GetContactStatusFromRDEContactStatus(statuses []RDEContactStatus) (ContactS
 		s := ps.Elem()
 		if s.Kind() == reflect.Struct {
 			// exported field
-			f := s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:]) // uppercase the first character to match the struct field
+			var f reflect.Value
+			if strings.ToLower(status.S) == "ok" {
+				f = s.FieldByName(strings.ToUpper(string(status.S))) // uppercase OK completely
+			} else {
+				f = s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:]) // uppercase the first character to match the struct field
+			}
 			if f.IsValid() {
 				// A Value can be changed only if it is
 				// addressable and was not obtained by
