@@ -156,6 +156,7 @@ func (svc *XMLEscrowService) AnalyzeHeaderTag() error {
 func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) error {
 
 	count := 0
+	errCount := 0
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
@@ -191,9 +192,8 @@ func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) er
 				// Pass it through our entity for validation (if we have a valid escrow that doesn't messup 'int' and 'loc' postalinfo)
 				_, err = registrar.ToEntity()
 				if err != nil {
-					log.Printf("Error parsing registrar %s: %s\n", registrar.Name, err)
-					log.Printf("Registrar.PostalInfo: %v\n", registrar.PostalInfo)
-					panic(err)
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Errors, fmt.Sprintf("Error parsing registrar entity for %s: %s", registrar.Name, err))
 				}
 				// Add registrars to our inventory
 				svc.Registrars = append(svc.Registrars, registrar)
