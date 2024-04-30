@@ -38,6 +38,7 @@ type XMLEscrowService struct {
 	RegsistrarMapping entities.RegsitrarMapping       `json:"registrarMapping"`
 	Analysis          entities.EscrowAnalysis         `json:"analysis"`
 	Import            entities.EscrowImport           `json:"import"`
+	uniqueContactIDs  map[string]bool                 `json:"-"`
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
@@ -58,6 +59,9 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 
 	// Initialize the registrar mapping
 	d.RegsistrarMapping = entities.NewRegistrarMapping()
+
+	// Initialize the unique contact IDs map
+	d.uniqueContactIDs = make(map[string]bool)
 
 	return &d, nil
 }
@@ -262,9 +266,10 @@ func (svc *XMLEscrowService) AnalyzeIDNTableRefTags(idnCount int) error {
 // - {inputFilename}-contacts.csv
 // - {inputFilename}-contactStatuses.csv
 // - {inputFilename}-contactPostalInfo.csv
-func (svc *XMLEscrowService) ExtractContacts() ([]commands.CreateContactCommand, error) {
+func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.CreateContactCommand, error) {
 
 	count := 0
+	unlinkedCount := 0
 	errCount := 0
 	createCommands := []commands.CreateContactCommand{}
 
@@ -330,57 +335,68 @@ func (svc *XMLEscrowService) ExtractContacts() ([]commands.CreateContactCommand,
 					return nil, errors.Join(ErrDecodingXML, err)
 				}
 
-				// Validate using a CreateContactCommand
-				cmd := commands.CreateContactCommand{}
-				err = cmd.FromRdeContact(&rdeContact)
-				if err != nil {
-					errCount++
-					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating contact command for %s: %s", rdeContact.ID, err))
-				}
-				// Add the command to our slice of create commands
-				createCommands = append(createCommands, cmd)
-
-				// Write the contact to the contact file
-				contactWriter.Write(rdeContact.ToCSV())
-				// Set Status in statusFile
-				cStatuses := []string{rdeContact.ID}
-				for _, status := range rdeContact.Status {
-					cStatuses = append(cStatuses, status.S)
-				}
-				for i, s := range cStatuses {
-					if i == 0 {
-						continue
+				// Only process linked contacts.
+				// Sometimes contacts have status linked, but are not linked to a domain in this deposit. In this case we will also skip them
+				if rdeContact.IsLinked() && svc.uniqueContactIDs[rdeContact.ID] {
+					// Validate using a CreateContactCommand
+					cmd := commands.CreateContactCommand{}
+					err = cmd.FromRdeContact(&rdeContact)
+					if err != nil {
+						errCount++
+						svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating contact command for %s: %s", rdeContact.ID, err))
 					}
-					statusCounter++
-					statusWriter.Write([]string{rdeContact.ID, s})
-				}
-				// Set postalInfo in postalInfoFile
-				cPostalInfo := make(map[int][]string)
-				for i, postalInfo := range rdeContact.PostalInfo {
-					postalInfoCounter++
-					cPostalInfo[i] = append(cPostalInfo[i], rdeContact.ID)         // Add the contact ID as the first element
-					cPostalInfo[i] = append(cPostalInfo[i], postalInfo.ToCSV()...) // Add the postal info
-				}
+					// Add the command to our slice of create commands, if required AND the contact is linked, otherwise no need to import it
+					if returnCommands && cmd.Status.Linked {
+						createCommands = append(createCommands, cmd)
+					}
 
-				for _, v := range cPostalInfo {
-					postalInfoWriter.Write(v)
-				}
+					// Write the contact to the contact file
+					contactWriter.Write(rdeContact.ToCSV())
+					// Set Status in statusFile
+					cStatuses := []string{rdeContact.ID}
+					for _, status := range rdeContact.Status {
+						cStatuses = append(cStatuses, status.S)
+					}
+					for i, s := range cStatuses {
+						if i == 0 {
+							continue
+						}
+						statusCounter++
+						statusWriter.Write([]string{rdeContact.ID, s})
+					}
+					// Set postalInfo in postalInfoFile
+					cPostalInfo := make(map[int][]string)
+					for i, postalInfo := range rdeContact.PostalInfo {
+						postalInfoCounter++
+						cPostalInfo[i] = append(cPostalInfo[i], rdeContact.ID)         // Add the contact ID as the first element
+						cPostalInfo[i] = append(cPostalInfo[i], postalInfo.ToCSV()...) // Add the postal info
+					}
 
-				// Update counters in Registrar Map
-				objCount := svc.RegsistrarMapping[rdeContact.ClID]
-				objCount.ContactCount++
-				svc.RegsistrarMapping[rdeContact.ClID] = objCount
-				count++
+					for _, v := range cPostalInfo {
+						postalInfoWriter.Write(v)
+					}
+
+					// Update counters in Registrar Map
+					objCount := svc.RegsistrarMapping[rdeContact.ClID]
+					objCount.ContactCount++
+					svc.RegsistrarMapping[rdeContact.ClID] = objCount
+					count++
+				} else {
+					unlinkedCount++
+				}
 
 				pbar.Add(1)
 			}
 		}
 	}
 	log.Println("Done!")
-	if postalInfoCounter < svc.Header.ContactCount() {
+	if unlinkedCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d unlinked contacts were found in the escrow file and will not be imported\n", unlinkedCount)
+	}
+	if postalInfoCounter < svc.Header.ContactCount()-unlinkedCount {
 		log.Printf("🔥 WARNING 🔥 Expected at least %d postalInfo objects, but found %d\n", svc.Header.ContactCount(), postalInfoCounter)
 	}
-	if statusCounter < svc.Header.ContactCount() {
+	if statusCounter < svc.Header.ContactCount()-unlinkedCount {
 		log.Printf("🔥 WARNING 🔥 Expected at least %d status objects, but found %d\n", svc.Header.ContactCount(), statusCounter)
 	}
 	statusWriter.Flush()
@@ -388,7 +404,7 @@ func (svc *XMLEscrowService) ExtractContacts() ([]commands.CreateContactCommand,
 	postalInfoWriter.Flush()
 	checkLineCount(postalInfoFileName, postalInfoCounter)
 	contactWriter.Flush()
-	checkLineCount(outFileName, svc.Header.ContactCount())
+	checkLineCount(outFileName, svc.Header.ContactCount()-unlinkedCount)
 	if errCount > 0 {
 		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
 	}
@@ -401,14 +417,16 @@ func (svc *XMLEscrowService) ExtractContacts() ([]commands.CreateContactCommand,
 // - {inputFilename}-hosts.csv
 // - {inputFilename}-hostStatuses.csv
 // - {inputFilename}-hostAddresses.csv
-func (svc *XMLEscrowService) ExtractHosts() error {
+func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.CreateHostCommand, error) {
 
 	count := 0
+	unlinkedCount := 0
 	errCount := 0
+	hostCmds := []commands.CreateHostCommand{}
 
 	f, err := os.Open(svc.Deposit.FileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -418,7 +436,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 	outFileName := svc.GetDepositFileNameWoExtension() + "-hosts.csv"
 	outFile, err := os.Create(outFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer outFile.Close()
 	writer := csv.NewWriter(outFile)
@@ -427,7 +445,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 	statusFileName := svc.GetDepositFileNameWoExtension() + "-hostStatuses.csv"
 	statusFile, err := os.Create(statusFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer statusFile.Close()
 	statusWriter := csv.NewWriter(statusFile)
@@ -436,7 +454,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 	addrFileName := svc.GetDepositFileNameWoExtension() + "-hostAddresses.csv"
 	addrFile, err := os.Create(addrFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer addrFile.Close()
 	addrWriter := csv.NewWriter(addrFile)
@@ -456,7 +474,7 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return errors.Join(ErrDecodingToken, tokenErr)
+			return nil, errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type host
 		switch se := t.(type) {
@@ -468,57 +486,71 @@ func (svc *XMLEscrowService) ExtractHosts() error {
 				}
 				var host entities.RDEHost
 				if err := d.DecodeElement(&host, &se); err != nil {
-					return errors.Join(ErrDecodingXML, err)
+					return nil, errors.Join(ErrDecodingXML, err)
 				}
 
-				// Validate using a CreateHostCommand
-				cmd := commands.CreateHostCommand{}
-				err = cmd.FromRdeHost(&host)
-				if err != nil {
-					errCount++
-					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
-				}
+				// Only process linked hosts
+				if host.IsLinked() {
 
-				writer.Write(host.ToCSV())
-				// Set Status in statusFile
-				hStatuses := []string{host.Name}
-				for _, status := range host.Status {
-					statusCounter++
-					hStatuses = append(hStatuses, status.S)
-				}
-				for i, s := range hStatuses {
-					if i == 0 {
-						continue
+					// Validate using a CreateHostCommand
+					cmd := commands.CreateHostCommand{}
+					err = cmd.FromRdeHost(&host)
+					if err != nil {
+						errCount++
+						svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
 					}
-					statusWriter.Write([]string{host.Name, s})
-				}
-				// Set addresses in addrFile
-				for _, addr := range host.Addr {
-					addrCounter++
-					addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
-				}
 
-				// Update counters in Registrar Map
-				objCount := svc.RegsistrarMapping[host.ClID]
-				objCount.HostCount++
-				svc.RegsistrarMapping[host.ClID] = objCount
-				count++
+					// Add the command to our slice of create commands, if required AND the host is linked, otherwise no need to import it
+					if returnHostCommands && cmd.Status.Linked {
+						hostCmds = append(hostCmds, cmd)
+					}
+
+					writer.Write(host.ToCSV())
+					// Set Status in statusFile
+					hStatuses := []string{host.Name}
+					for _, status := range host.Status {
+						statusCounter++
+						hStatuses = append(hStatuses, status.S)
+					}
+					for i, s := range hStatuses {
+						if i == 0 {
+							continue
+						}
+						statusWriter.Write([]string{host.Name, s})
+					}
+					// Set addresses in addrFile
+					for _, addr := range host.Addr {
+						addrCounter++
+						addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
+					}
+
+					// Update counters in Registrar Map
+					objCount := svc.RegsistrarMapping[host.ClID]
+					objCount.HostCount++
+					svc.RegsistrarMapping[host.ClID] = objCount
+					count++
+				} else {
+					unlinkedCount++
+				}
 
 				pbar.Add(1)
 			}
 		}
 	}
 	log.Println("Done!")
+	if unlinkedCount > 0 {
+		log.Printf("🔥 WARNING 🔥 %d unlinked hosts were found in the escrow file and will not be imported\n", unlinkedCount)
+	}
 	addrWriter.Flush()
 	checkLineCount(addrFileName, addrCounter)
 	statusWriter.Flush()
 	checkLineCount(statusFileName, statusCounter)
 	writer.Flush()
-	checkLineCount(outFileName, svc.Header.HostCount())
+	checkLineCount(outFileName, svc.Header.HostCount()-unlinkedCount)
 	if errCount > 0 {
 		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
 	}
-	return nil
+	return hostCmds, nil
 }
 
 // ExtractNNDNS Extracts statuses from the escrow file and writes them to a CSV file
@@ -703,7 +735,6 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 		return err
 	}
 	contactIDWriter := csv.NewWriter(contactIDFile)
-	uniqueContactIDs := make(map[string]bool)
 
 	log.Printf("Looking up %d domains... \n", svc.Header.DomainCount())
 	pbar := progressbar.Default(int64(svc.Header.DomainCount()))
@@ -746,8 +777,8 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 				// Add a line to the contactID file for each contact, only if it does not exist yet
 				for _, contact := range dom.Contact {
 					// Only add it if it is not there already
-					if !uniqueContactIDs[contact.ID] {
-						uniqueContactIDs[contact.ID] = true
+					if !svc.uniqueContactIDs[contact.ID] {
+						svc.uniqueContactIDs[contact.ID] = true
 					}
 				}
 				// Write the domain statuses to the status file
@@ -796,11 +827,11 @@ func (svc *XMLEscrowService) ExtractDomains() error {
 		}
 	}
 	// Write the unique contact IDs to the contactID file
-	for k := range uniqueContactIDs {
+	for k := range svc.uniqueContactIDs {
 		contactIDWriter.Write([]string{k})
 	}
 	contactIDWriter.Flush()
-	log.Printf("✅  Written %d unique contact IDs used by Domains to : %s", len(uniqueContactIDs), contactIDFileName)
+	log.Printf("✅  Written %d unique contact IDs used by Domains to : %s", len(svc.uniqueContactIDs), contactIDFileName)
 	log.Println("Done!")
 	if statusCounter < svc.Header.DomainCount() {
 		log.Printf("🔥 WARNING 🔥 Expected at least %d status objects, but found %d\n", svc.Header.DomainCount(), statusCounter)
@@ -865,9 +896,20 @@ func (svc *XMLEscrowService) getUniqueContactIDs() (map[string]bool, error) {
 	return contactIDs, nil
 }
 
+// LoadUniqueContactIDs Loads the unique contact IDs from the contact file
+func (svc *XMLEscrowService) LoadUniqueContactIDs() error {
+	var err error
+	svc.uniqueContactIDs, err = svc.getUniqueContactIDs()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // LookForMissingContacts Looks if all the uniqueContactIDs used on domains are present in the contact file. It saves the results in the escrow object
 func (svc *XMLEscrowService) LookForMissingContacts() error {
-	contactIDs, err := svc.getUniqueContactIDs()
+	var err error
+	svc.uniqueContactIDs, err = svc.getUniqueContactIDs()
 	if err != nil {
 		return err
 	}
@@ -884,7 +926,7 @@ func (svc *XMLEscrowService) LookForMissingContacts() error {
 	errorCount := 0
 	missingContactIDs := []string{}
 	for _, record := range records {
-		if !contactIDs[record[0]] {
+		if !svc.uniqueContactIDs[record[0]] {
 			errorCount++
 			missingContactIDs = append(missingContactIDs, record[0])
 		}
@@ -961,6 +1003,8 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		// Handle special cases of reserved GurIDs
 		if rar.GurID == 9997 {
 			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
+		} else if rar.GurID == 9998 {
+			URL = BASE_URL + "/registrars/9998" + "-" + svc.Header.TLD
 		} else if rar.GurID == 9999 || rar.GurID == 119 {
 			URL = BASE_URL + "/registrars/9999" + "-" + svc.Header.TLD
 		} else {
@@ -1088,7 +1132,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 	// TODO: Add authentication
 
 	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
-	log.Printf("Creating %d contacts... \n", svc.Header.ContactCount())
+	log.Printf("Creating %d contacts... \n", len(cmds))
 	pbar := progressbar.Default(int64(len(cmds)))
 	for _, cmd := range cmds {
 
@@ -1171,5 +1215,98 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 	}
 
 	log.Printf("✅ Created all contacts successfully\n")
+	return nil
+}
+
+// CreateContacts Creates the contacts in the repository through the Admin API
+func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) error {
+	// Setup up the API client
+	URL := "http://localhost:8080/hosts"
+	// TODO: Add authentication
+
+	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
+	log.Printf("Creating %d hosts... \n", len(cmds))
+	pbar := progressbar.Default(int64(len(cmds)))
+	for _, cmd := range cmds {
+
+		// First map the registrar ID to the registrar ClID
+		registrar, ok := svc.RegsistrarMapping[cmd.ClID.String()]
+		if !ok {
+			svc.Import.Contacts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
+			continue
+		}
+		cmd.ClID = registrar.RegistrarClID
+		// Do the same for CrRR and UpRR
+		if cmd.CrRr != "" {
+			registrar, ok := svc.RegsistrarMapping[cmd.CrRr.String()]
+			if !ok {
+				svc.Import.Contacts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
+				continue
+			}
+			cmd.CrRr = registrar.RegistrarClID
+		}
+		if cmd.UpRr != "" {
+			registrar, ok := svc.RegsistrarMapping[cmd.UpRr.String()]
+			if !ok {
+				svc.Import.Contacts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
+				continue
+			}
+			cmd.UpRr = registrar.RegistrarClID
+		}
+
+		// UnMarshal the command into a JSON object
+		jsonCmd, err := json.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+		// Send the request
+		req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+		if err != nil {
+			return err
+		}
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// Success
+		if resp.StatusCode == 201 {
+			svc.Import.Hosts.Created++
+		}
+
+		// Exists or Failed
+		if resp.StatusCode == 400 {
+			// if the contact already exists, we can skip it, we need to check the body for that
+			var response ErrorResponse
+			defer resp.Body.Close()
+			err = json.NewDecoder(resp.Body).Decode(&response)
+			if err != nil {
+				return err
+			}
+			// Exists, skip
+			if strings.Contains(response.Error, "host already exists") {
+				svc.Import.Hosts.Existing++
+			} else {
+				// Failed, log error
+				svc.Import.Hosts.Failed++
+				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating host with name %s: %s", cmd.Name, response.Error))
+			}
+		}
+		pbar.Add(1)
+	}
+
+	if svc.Import.Hosts.Failed > 0 {
+		log.Printf("🔥 WARNING 🔥 %d hosts failed to be created\n", svc.Import.Hosts.Failed)
+		for _, e := range svc.Import.Errors {
+			log.Println(e)
+		}
+		return ErrImportFailed
+	}
+
+	log.Printf("✅ Created all hosts successfully\n")
 	return nil
 }

@@ -23,6 +23,16 @@ func (h *RDEHost) ToCSV() []string {
 	return []string{h.Name, h.RoID, h.ClID, h.CrRr, h.CrDate, h.UpRr, h.UpDate}
 }
 
+// IsLinked returns true if the host is linked to a domain (contains status "linked")
+func (h *RDEHost) IsLinked() bool {
+	for _, status := range h.Status {
+		if status.S == "linked" {
+			return true
+		}
+	}
+	return false
+}
+
 // ToEntity converts the RDEHost to an Host entity
 func (h *RDEHost) ToEntity() (*Host, error) {
 	host, err := NewHost(h.Name, h.RoID, h.ClID)

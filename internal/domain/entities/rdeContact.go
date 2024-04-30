@@ -31,6 +31,16 @@ type RDEContact struct {
 	Disclose   RDEDisclose            `xml:"disclose"`
 }
 
+// Islinked returns true if the contact is linked to a domain (contains status "linked")
+func (c *RDEContact) IsLinked() bool {
+	for _, status := range c.Status {
+		if status.S == "linked" {
+			return true
+		}
+	}
+	return false
+}
+
 // ToCSV converts the RDEContact to a slice of strings ([]string) for CSV export. The fields are defined in RdeContactCSVHeader
 func (c *RDEContact) ToCSV() []string {
 	return []string{c.ID, c.RoID, c.Voice, c.Fax, c.Email, c.ClID, c.CrRr, c.CrDate, c.UpRr, c.UpDate}
@@ -127,6 +137,7 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 		return nil, err
 	}
 	contact.Status = cs
+	contact.SetOKStatusIfNeeded()
 
 	// Validate the contact and return it
 	if _, err := contact.IsValid(); err != nil {
@@ -161,6 +172,11 @@ func (p *RDEContactPostalInfo) ToEntity() (*ContactPostalInfo, error) {
 	asciiAddr, _ := addr.IsASCII()
 	if !asciiAddr || !IsASCII(p.Name) || !IsASCII(p.Org) {
 		p.Type = "loc"
+	}
+
+	// TODO: FIXM: We add "NA" for empty fields to pass validation, this should be removed when we have a proper validation
+	if NormalizeString(p.Name) == "" {
+		p.Name = "NA"
 	}
 	cpi, err := NewContactPostalInfo(p.Type, p.Name, addr)
 	if err != nil {

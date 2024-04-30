@@ -114,6 +114,69 @@ func TestFromRdeContact(t *testing.T) {
 			wantErr: nil,
 		},
 		{
+			name: "valid with RoID",
+			rdeContact: &entities.RDEContact{
+				ID:    "validClID",
+				RoID:  "12345_CONT-APEX",
+				Email: "email@me.com",
+				ClID:  "myRegstrarID",
+				Status: []entities.RDEContactStatus{
+					{
+						S: "OK",
+					},
+				},
+				PostalInfo: []entities.RDEContactPostalInfo{
+					{
+						Type: "int",
+						Name: "name",
+						Org:  "org",
+						Address: entities.RDEAddress{
+							Street:      []string{"street"},
+							City:        "Ollantaytambo",
+							PostalCode:  "pc",
+							CountryCode: "PE",
+						},
+					},
+				},
+				Voice:  "+1.123345345",
+				Fax:    "+1.123345345",
+				CrDate: "2021-01-01T00:00:00Z",
+				UpDate: "2021-01-01T00:00:00Z",
+				CrRr:   "myRegstrarID",
+				UpRr:   "myRegstrarID",
+			},
+			cmd: &CreateContactCommand{
+				ID:       "validClID",
+				RoID:     "12345_CONT-APEX",
+				Email:    "email@me.com",
+				AuthInfo: "escr0W1mP*rt",
+				ClID:     "myRegstrarID",
+				Status: entities.ContactStatus{
+					OK: true,
+				},
+				PostalInfo: [2]*entities.ContactPostalInfo{
+					{
+						Type: "int",
+						Name: "name",
+						Org:  "org",
+						Address: &entities.Address{
+							Street1:     "street",
+							City:        "Ollantaytambo",
+							PostalCode:  "pc",
+							CountryCode: "PE",
+						},
+					},
+				},
+				Voice:     "+1.123345345",
+				Fax:       "+1.123345345",
+				CrRr:      "myRegstrarID",
+				CreatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				UpRr:      "myRegstrarID",
+				UpdatedAt: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			wantErr: nil,
+		},
+		{
 			name: "invalid postalinfo type",
 			rdeContact: &entities.RDEContact{
 				ID:    "validClID",

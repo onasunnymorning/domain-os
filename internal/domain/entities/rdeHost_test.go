@@ -239,3 +239,39 @@ func TestRDEHost_ToCSV(t *testing.T) {
 		})
 	}
 }
+func TestRDEHost_IsLinked(t *testing.T) {
+	tests := []struct {
+		name     string
+		rdeHost  *RDEHost
+		expected bool
+	}{
+		{
+			name: "linked status",
+			rdeHost: &RDEHost{
+				Status: []RDEHostStatus{{S: "linked"}, {S: "ok"}},
+			},
+			expected: true,
+		},
+		{
+			name: "no linked status",
+			rdeHost: &RDEHost{
+				Status: []RDEHostStatus{{S: "pendingTransfer"}, {S: "pendingCreate"}},
+			},
+			expected: false,
+		},
+		{
+			name: "empty status",
+			rdeHost: &RDEHost{
+				Status: []RDEHostStatus{},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.rdeHost.IsLinked()
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

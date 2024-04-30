@@ -109,6 +109,7 @@ func (c *Contact) SetFullStatus(status ContactStatus) error {
 
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9
 // True means disclose, false means don't disclose.
+// TODO: FIXME: this creates only columns 'addr_loc' and addr_int' as booleans, I suspect because the other ones already exist. Easy way to fix woul be do prepend disclose for gorm?
 type ContactDisclose struct {
 	NameInt bool `json:"NameInt" example:"false"`
 	NameLoc bool `json:"NameLoc" example:"false"`

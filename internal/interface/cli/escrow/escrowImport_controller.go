@@ -24,12 +24,18 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 		return err
 	}
 
+	// Load the unique contact IDs from file
+	err = c.svc.LoadUniqueContactIDs()
+	if err != nil {
+		return err
+	}
+
 	// Check the TLD is in a state allowing import
 	// TODO: Implement this
 	// e.g. check if the TLD has no domains/contacts/hosts or create a flag that indicates that import is possible
 
 	// Import the Contacts
-	contactCmds, err := c.svc.ExtractContacts()
+	contactCmds, err := c.svc.ExtractContacts(true)
 	if err != nil {
 		return err
 	}
@@ -39,6 +45,11 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 	}
 
 	// Import the Hosts
+	hostCmds, err := c.svc.ExtractHosts(true)
+	if err != nil {
+		return err
+	}
+	err = c.svc.CreateHosts(hostCmds)
 
 	// Import the Domains
 
