@@ -40,15 +40,15 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
-	if _, err := c.svc.ExtractContacts(); err != nil {
-		return err
-	}
-
 	if err := c.svc.ExtractDomains(); err != nil {
 		return err
 	}
 
-	if err := c.svc.ExtractHosts(); err != nil {
+	if _, err := c.svc.ExtractContacts(false); err != nil {
+		return err
+	}
+
+	if _, err := c.svc.ExtractHosts(false); err != nil {
 		return err
 	}
 

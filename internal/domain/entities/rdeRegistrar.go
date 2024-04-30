@@ -81,6 +81,13 @@ func (a *RDEAddress) ToCSV() []string {
 
 // ToEntity converts the RDEAddress to an Address entity. Relies on the constructor to create a new Address object and validate it.
 func (a *RDEAddress) ToEntity() (*Address, error) {
+	// TODO: FIXME: we add "NA" for empty fields to pass validation, this should be removed when we have a proper validation
+	if NormalizeString(a.City) == "" {
+		a.City = "NA"
+	}
+	if NormalizeString(a.CountryCode) == "" {
+		a.CountryCode = "NA"
+	}
 	addr, err := NewAddress(a.City, a.CountryCode)
 	if err != nil {
 		return nil, err
