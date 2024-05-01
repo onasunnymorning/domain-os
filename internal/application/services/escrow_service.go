@@ -1037,8 +1037,11 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		if resp.StatusCode == 404 {
 			// If the regsitrar is in the deposit but not found, we can skip it if it has no domains
 			if svc.RegsistrarMapping[rar.ID].DomainCount == 0 {
-				log.Printf("Registrar %s with GurID %d not found, but has no domains, skipping ...", rar.Name, rar.GurID)
-				continue
+				if svc.RegsistrarMapping[rar.ID].HostCount == 0 && svc.RegsistrarMapping[rar.ID].ContactCount == 0 {
+					log.Printf("Registrar %s with GurID %d not found, but has no objects, skipping ...", rar.Name, rar.GurID)
+					continue
+				}
+				svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, svc.RegsistrarMapping[rar.ID].HostCount, svc.RegsistrarMapping[rar.ID].ContactCount))
 			}
 			missing++
 			missingGurIDs = append(missingGurIDs, rar.GurID)
