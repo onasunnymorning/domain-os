@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,10 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 	gormHost := ToDBHost(host)
 	err := r.db.WithContext(ctx).Omit("Addresses").Create(gormHost).Error // We Omit addresses we want to manage these through the address repository
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, entities.ErrHostAlreadyExists
+		}
 		return nil, err
 	}
 	return ToHost(gormHost), nil

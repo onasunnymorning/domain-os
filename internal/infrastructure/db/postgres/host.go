@@ -10,8 +10,8 @@ import (
 // Host is the GORM model for the host table
 type Host struct {
 	RoID                int64  `gorm:"primaryKey"`
-	Name                string `gorm:"not null"`
-	ClID                string `gorm:"not null"`
+	Name                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null"`
+	ClID                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null"`
 	CrRr                *string
 	UpRr                *string
 	InBailiwick         bool

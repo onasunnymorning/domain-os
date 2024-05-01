@@ -60,6 +60,9 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 
 	dbHost, err := s.hostRepository.CreateHost(ctx, host)
 	if err != nil {
+		if errors.Is(err, entities.ErrHostAlreadyExists) {
+			return nil, errors.Join(entities.ErrInvalidHost, err)
+		}
 		return nil, err
 	}
 
