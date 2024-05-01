@@ -28,6 +28,7 @@ type Domain struct {
 	UpdatedAt                time.Time
 	entities.DomainStatus    `gorm:"embedded"`
 	entities.DomainRGPStatus `gorm:"embedded"`
+	Hosts                    []Host `gorm:"many2many:domain_hosts;"`
 }
 
 // TableName returns the table name for the Domain model
@@ -63,6 +64,10 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 		d.UpRr = entities.ClIDType(*dbDom.UpRr)
 	}
 
+	for _, h := range dbDom.Hosts {
+		d.Hosts = append(d.Hosts, ToHost(&h))
+	}
+
 	return d
 }
 
@@ -94,6 +99,10 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	if d.UpRr != entities.ClIDType("") {
 		rar := d.UpRr.String()
 		dbDomain.UpRr = &rar
+	}
+
+	for _, h := range d.Hosts {
+		dbDomain.Hosts = append(dbDomain.Hosts, *ToDBHost(h))
 	}
 
 	return dbDomain

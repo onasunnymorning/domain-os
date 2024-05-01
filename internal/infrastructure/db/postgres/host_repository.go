@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,10 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 	gormHost := ToDBHost(host)
 	err := r.db.WithContext(ctx).Omit("Addresses").Create(gormHost).Error // We Omit addresses we want to manage these through the address repository
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, entities.ErrHostAlreadyExists
+		}
 		return nil, err
 	}
 	return ToHost(gormHost), nil
@@ -86,4 +91,14 @@ func (r *HostRepository) ListHosts(ctx context.Context, pageSize int, cursor str
 	}
 
 	return hosts, nil
+}
+
+// GetHostAssociationCount returns the number of domains a host is associated with. This can be used to determine if a host needs the linked flag to be unset
+func (r *HostRepository) GetHostAssociationCount(ctx context.Context, roid int64) (int64, error) {
+	var count int64
+	err := r.db.Raw("SELECT COUNT(*) FROM domain_hosts WHERE host_ro_id = ?", roid).Scan(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

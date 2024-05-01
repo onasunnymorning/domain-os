@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -20,24 +22,44 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 // CreateDomain creates a new domain in the database
 func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
-	err := dr.db.WithContext(ctx).Create(dbDomain).Error
+	err := dr.db.WithContext(ctx).Omit("Hosts").Create(dbDomain).Error // Omit Hosts - they should be Created separately and added to the domain with AddHostToDomain
 	if err != nil {
+		var perr *pgconn.PgError
+		if errors.As(err, &perr) && perr.Code == "23505" {
+			return nil, entities.ErrDomainAlreadyExists
+		}
 		return nil, err
 	}
 	return ToDomain(dbDomain), nil
 }
 
 // GetDomainByID retrieves a domain from the database by its ID
-func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64) (*entities.Domain, error) {
+func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64, preloadHosts bool) (*entities.Domain, error) {
+	var err error
 	d := &Domain{}
-	err := dr.db.First(d, id).Error
+	if preloadHosts {
+		err = dr.db.WithContext(ctx).Preload("Hosts").First(d, id).Error
+	} else {
+		err = dr.db.WithContext(ctx).First(d, id).Error
+	}
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, entities.ErrDomainNotFound
+		}
+		return nil, err
+	}
 	return ToDomain(d), err
 }
 
 // GetDomainByName retrieves a domain from the database by its name
-func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
+func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
+	var err error
 	d := &Domain{}
-	err := dr.db.Where("name = ?", name).First(d).Error
+	if preloadHosts {
+		err = dr.db.WithContext(ctx).Preload("Hosts").Where("name = ?", name).First(d).Error
+	} else {
+		err = dr.db.WithContext(ctx).Where("name = ?", name).First(d).Error
+	}
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, entities.ErrDomainNotFound
@@ -93,4 +115,14 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, curso
 	}
 
 	return domains, nil
+}
+
+// AddHostToDomain adds a domain_hosts association to the database
+func (dr *DomainRepository) AddHostToDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
+	return dr.db.WithContext(ctx).Model(&Domain{RoID: domRoID}).Association("Hosts").Append(&Host{RoID: hostRoid})
+}
+
+// RemoveHostFromDomain removes a domain_hosts association from the database
+func (dr *DomainRepository) RemoveHostFromDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
+	return dr.db.WithContext(ctx).Model(&Domain{RoID: domRoID}).Association("Hosts").Delete(&Host{RoID: hostRoid})
 }

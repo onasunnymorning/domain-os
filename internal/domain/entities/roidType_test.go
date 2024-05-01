@@ -84,3 +84,23 @@ func TestRoidType_SystemIdentifier(t *testing.T) {
 
 	require.Equal(t, expectedSystemIdentifier, actualSystemIdentifier)
 }
+func TestRoidType_Validate(t *testing.T) {
+	validRoid := RoidType("12345_CONT-APEX")
+	missingDashRoid := RoidType("invalid_roid")
+	missingUnderscoreRoid := RoidType("invalid-roid")
+
+	t.Run("ValidRoid", func(t *testing.T) {
+		err := validRoid.Validate()
+		require.NoError(t, err)
+	})
+
+	t.Run("Missing Dash", func(t *testing.T) {
+		err := missingDashRoid.Validate()
+		require.EqualError(t, err, ErrInvalidRoid.Error())
+	})
+
+	t.Run("Missing Underscore", func(t *testing.T) {
+		err := missingUnderscoreRoid.Validate()
+		require.EqualError(t, err, ErrInvalidRoid.Error())
+	})
+}

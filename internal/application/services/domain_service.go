@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 
+	"log"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -13,13 +15,15 @@ import (
 // DomainService immplements the DomainService interface
 type DomainService struct {
 	domainRepository repositories.DomainRepository
+	hostRepository   repositories.HostRepository
 	roidService      RoidService
 }
 
 // NewDomainService returns a new instance of a DomainService
-func NewDomainService(repo repositories.DomainRepository, roidService RoidService) *DomainService {
+func NewDomainService(dRepo repositories.DomainRepository, hRepo repositories.HostRepository, roidService RoidService) *DomainService {
 	return &DomainService{
-		domainRepository: repo,
+		domainRepository: dRepo,
+		hostRepository:   hRepo,
 		roidService:      roidService,
 	}
 }
@@ -89,6 +93,9 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	// Save the domain
 	createdDomain, err := s.domainRepository.CreateDomain(ctx, d)
 	if err != nil {
+		if errors.Is(err, entities.ErrDomainAlreadyExists) {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
 		return nil, err
 	}
 
@@ -98,7 +105,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 // UpdateDomain Updates a new domain from a create domain command
 func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
 	// Look up the domain
-	dom, err := s.domainRepository.GetDomainByName(ctx, name)
+	dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +140,8 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 }
 
 // GetDomainByName retrieves a domain by its name from the repository
-func (s *DomainService) GetDomainByName(ctx context.Context, name string) (*entities.Domain, error) {
-	return s.domainRepository.GetDomainByName(ctx, name)
+func (s *DomainService) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
+	return s.domainRepository.GetDomainByName(ctx, name, preloadHosts)
 }
 
 // DeleteDomainByName deletes a domain by its name from the repository
@@ -145,4 +152,125 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 // ListDomains returns a list of domains
 func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error) {
 	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
+}
+
+// AddHostToDomain adds a host to a domain
+func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name, true)
+	if err != nil {
+		return err
+	}
+
+	// Get the host
+	hRoid := entities.RoidType(roid)
+	if err := hRoid.Validate(); err != nil {
+		return err
+	}
+	if hRoid.ObjectIdentifier() != entities.HOST_ROID_ID {
+		return entities.ErrInvalidHostRoID
+	}
+	hostRoidInt, err := hRoid.Int64()
+	if err != nil {
+		return err
+	}
+
+	host, err := s.hostRepository.GetHostByRoid(ctx, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Add the host to the domain
+	i, err := dom.AddHost(host)
+	if err != nil {
+		if errors.Is(err, entities.ErrDuplicateHost) {
+			return nil // No error if the host is already associated, idempotent
+		}
+		return err
+	}
+
+	// Update the Domain which will save the association as well
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+
+	// Update the host to set the linked flag
+	_, err = s.hostRepository.UpdateHost(ctx, dom.Hosts[i])
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveHostFromDomain removes a host from a domain
+func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name, true)
+	if err != nil {
+		return err
+	}
+
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+
+	// Get the host
+	hRoid := entities.RoidType(roid)
+	if err := hRoid.Validate(); err != nil {
+		return err
+	}
+	if hRoid.ObjectIdentifier() != entities.HOST_ROID_ID {
+		return entities.ErrInvalidHostRoID
+	}
+	hostRoidInt, err := hRoid.Int64()
+	if err != nil {
+		return err
+	}
+
+	host, err := s.hostRepository.GetHostByRoid(ctx, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Remove the host from the domain
+	err = dom.RemoveHost(host)
+	if err != nil {
+		return err
+	}
+
+	// Remove tha association
+	err = s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Save the domain, this will update the association
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+	// Check if the host is associated with any other domains
+	count, err := s.hostRepository.GetHostAssociationCount(ctx, hostRoidInt)
+	if err != nil {
+		// Our operation is successful, but we can't determine if the host is associated with any other domains
+		log.Printf("Failed to get host association count for host %s: %v", host.RoID.String(), err)
+	}
+	if count == 0 {
+		// If not, unset the linked flag
+		err := host.UnsetStatus(entities.HostStatusLinked)
+		if err != nil {
+			// Our operation is successful, but we can't unset the linked flag
+			log.Printf("Failed to unset linked flag on host %s: %v", host.RoID.String(), err)
+		}
+		// Update the host
+		_, err = s.hostRepository.UpdateHost(ctx, host)
+		if err != nil {
+			// Our operation is successful, but we can't update the host
+			log.Printf("Failed to update host %s: %v", host.RoID.String(), err)
+		}
+	}
+	return nil
 }

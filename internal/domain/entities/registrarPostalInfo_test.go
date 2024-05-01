@@ -77,7 +77,7 @@ func TestNewRegistrarPostalInfo(t *testing.T) {
 	for _, test := range tests {
 		actual, err := NewRegistrarPostalInfo(test.inputType, test.inputAddress)
 		require.Equal(t, test.expected, actual, "RegistrarPostalInfo mismatch")
-		require.Equal(t, test.expectedErr, err, "Error mismatch")
+		require.ErrorIs(t, err, test.expectedErr, "Error mismatch")
 		if test.expectedErr == nil {
 			require.Nil(t, actual.IsValid(), "IsValid() should return nil")
 		}

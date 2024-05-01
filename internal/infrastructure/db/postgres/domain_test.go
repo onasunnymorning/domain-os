@@ -28,6 +28,14 @@ func getValidDBDomain() *Domain {
 		TLDName:      "domaintesttld",
 		RenewedYears: 1,
 		AuthInfo:     "abc123",
+		Hosts: []Host{
+			{
+				Name: "ns1.example.com",
+			},
+			{
+				Name: "ns2.example.com",
+			},
+		},
 	}
 }
 
@@ -49,6 +57,7 @@ func TestDomain_ToDomain(t *testing.T) {
 	require.Equal(t, dbDomain.TLDName, d.TLDName.String())
 	require.Equal(t, dbDomain.RenewedYears, d.RenewedYears)
 	require.Equal(t, dbDomain.AuthInfo, d.AuthInfo.String())
+	require.Equal(t, len(dbDomain.Hosts), len(d.Hosts))
 }
 
 func TestDomain_ToDBDomain(t *testing.T) {
@@ -74,5 +83,6 @@ func TestDomain_ToDBDomain(t *testing.T) {
 	require.Equal(t, dbDom.UpdatedAt, dbDomain.UpdatedAt)
 	require.Equal(t, dbDom.DomainStatus, dbDomain.DomainStatus)
 	require.Equal(t, dbDom.DomainRGPStatus, dbDomain.DomainRGPStatus)
+	require.Equal(t, len(dbDom.Hosts), len(dbDomain.Hosts))
 
 }

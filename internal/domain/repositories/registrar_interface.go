@@ -9,6 +9,7 @@ import (
 // RegistrarRepository is the interface for the registrar repository
 type RegistrarRepository interface {
 	GetByClID(ctx context.Context, clid string) (*entities.Registrar, error)
+	GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error)
 	Create(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error

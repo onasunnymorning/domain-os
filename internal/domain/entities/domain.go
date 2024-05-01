@@ -7,8 +7,13 @@ import (
 	"errors"
 )
 
+const (
+	MaxHostsPerDomain = 10
+)
+
 var (
 	ErrDomainNotFound                  = errors.New("domain not found")
+	ErrDomainAlreadyExists             = errors.New("domain already exists")
 	ErrInvalidDomain                   = errors.New("invalid domain")
 	ErrTLDAsDomain                     = errors.New("can't create a TLD as a domain")
 	ErrInvalidDomainRoID               = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
@@ -18,6 +23,10 @@ var (
 	ErrOriginalNameEqualToDomain       = errors.New("OriginalName field should not be equal to the domain name, it should point to the a-label of which this domain is a variant")
 	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
 	ErrUNameDoesNotMatchDomain         = errors.New("UName must be the unicode version of the the domain name (a-label)")
+	ErrMaxHostsPerDomainExceeded       = errors.New("domain can contain 10 hosts at most")
+	ErrDuplicateHost                   = errors.New("a host with this name is already associated with domain")
+	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
+	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -42,28 +51,8 @@ type Domain struct {
 	UpdatedAt    time.Time       `json:"UpdatedAt"`
 	Status       DomainStatus    `json:"Status"`
 	RGPStatus    DomainRGPStatus `json:"RGPStatus"`
+	Hosts        []*Host         `json:"Hosts"`
 }
-
-const (
-	DomainStatusOK                       = "OK"
-	DomainStatusInactive                 = "Inactive"
-	DomainStatusClientTransferProhibited = "clientTransferProhibited"
-	DomainStatusClientUpdateProhibited   = "clientUpdateProhibited"
-	DomainStatusClientDeleteProhibited   = "clientDeleteProhibited"
-	DomainStatusClientRenewProhibited    = "clientRenewProhibited"
-	DomainStatusClientHold               = "clientHold"
-	DomainStatusServerTransferProhibited = "serverTransferProhibited"
-	DomainStatusServerUpdateProhibited   = "serverUpdateProhibited"
-	DomainStatusServerDeleteProhibited   = "serverDeleteProhibited"
-	DomainStatusServerRenewProhibited    = "serverRenewProhibited"
-	DomainStatusServerHold               = "serverHold"
-	DomainStatusPendingCreate            = "pendingCreate"
-	DomainStatusPendingRenew             = "pendingRenew"
-	DomainStatusPendingTransfer          = "pendingTransfer"
-	DomainStatusPendingUpdate            = "pendingUpdate"
-	DomainStatusPendingRestore           = "pendingRestore"
-	DomainStatusPendingDelete            = "pendingDelete"
-)
 
 // SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
 func (d *Domain) SetOKStatusIfNeeded() {
@@ -77,6 +66,16 @@ func (d *Domain) SetOKStatusIfNeeded() {
 		d.Status.OK = true
 		return
 	}
+}
+
+// SetUnsetInactiveStatus is to be triggered when making changes to the hosts. Sets Domain.Status.Inactive = true if the domain has no hosts associated with it. It will set Domain.Status.Inactive = false otherwise.
+func (d *Domain) SetUnsetInactiveStatus() {
+	d.Status.Inactive = !d.HasHosts()
+}
+
+// HasHosts checks if the domain has hosts associated with it
+func (d *Domain) HasHosts() bool {
+	return len(d.Hosts) > 0
 }
 
 // UnSetOKStatusIfNeeded unsets the Domain.Status.OK flag if a prohibition or pending action is present on the DomainStatus
@@ -202,4 +201,63 @@ func (d *Domain) CanBeTransferred() bool {
 // CanBeUpdated checks if the Domain can be updated (e.g. no update prohibition is present in its status object: ClientUpdateProhibited or ServerUpdateProhibited). If the domain is alread in pending Update status, it can't be updated
 func (d *Domain) CanBeUpdated() bool {
 	return !d.Status.ClientUpdateProhibited && !d.Status.ServerUpdateProhibited && !d.Status.PendingUpdate
+}
+
+// AddHost Adds a host to the domain and updates the Domain.Status.Inactive flag if needed.
+func (d *Domain) AddHost(host *Host) (int, error) {
+	if !d.CanBeUpdated() {
+		return 0, ErrDomainUpdateNotAllowed
+	}
+	// Hard maximum of 10 hosts per domain TODO: Make configurable
+	if len(d.Hosts) >= MaxHostsPerDomain {
+		return 0, ErrMaxHostsPerDomainExceeded
+	}
+	_, hasHostAssociation := d.containsHost(host)
+	if hasHostAssociation {
+		return 0, ErrDuplicateHost
+	}
+	if d.ClID != host.ClID {
+		return 0, ErrHostSponsorMismatch
+	}
+	if host.Name.ParentDomain() == string(d.Name) {
+		// Require at least one address if the host is being used in-bailiwick.
+		if len(host.Addresses) == 0 {
+			return 0, ErrInBailiwickHostsMustHaveAddress
+		}
+	}
+	// Set the hosts linked status to true
+	err := host.SetStatus(HostStatusLinked)
+	if err != nil {
+		return 0, err
+	}
+	d.Hosts = append(d.Hosts, host)
+	// Update the inactive status and set OK if needed
+	d.SetUnsetInactiveStatus()
+	d.SetOKStatusIfNeeded()
+	return len(d.Hosts) - 1, nil
+}
+
+// containsHost Checks if the domain contains the host and returns the index and true if it does
+func (d *Domain) containsHost(host *Host) (int, bool) {
+	for i, h := range d.Hosts {
+		if h.Name == host.Name {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// RemoveHost Removes a host from the domain sets the Domain.Status.Inactive flag if needed.
+func (d *Domain) RemoveHost(host *Host) error {
+	if len(d.Hosts) == 0 {
+		return ErrHostNotFound // Catch and ignore this error downstream if you want to be idempotent
+	}
+	index, hasHostAssociation := d.containsHost(host)
+	if !hasHostAssociation {
+		return ErrHostNotFound // Catch and ignore this error downstream if you want to be idempotent
+	}
+	d.Hosts = append(d.Hosts[:index], d.Hosts[index+1:]...)
+	// Update the inactive status
+	d.SetUnsetInactiveStatus()
+	return nil
 }

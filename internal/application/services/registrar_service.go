@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -24,49 +25,49 @@ func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *
 func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
 	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID, cmd.PostalInfo)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 	}
 
 	// Add the optional fields
 	if cmd.Voice != "" {
 		v, err := entities.NewE164Type(cmd.Voice)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.Voice = *v
 	}
 	if cmd.Fax != "" {
 		f, err := entities.NewE164Type(cmd.Fax)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.Fax = *f
 	}
 	if cmd.URL != "" {
 		url, err := entities.NewURL(cmd.URL)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.URL = *url
 	}
 	if cmd.RdapBaseURL != "" {
 		rdapBaseURL, err := entities.NewURL(cmd.RdapBaseURL)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.RdapBaseURL = *rdapBaseURL
 	}
 	if cmd.WhoisInfo != nil {
 		wi, err := entities.NewWhoisInfo(cmd.WhoisInfo.Name.String(), cmd.WhoisInfo.URL.String())
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.WhoisInfo = *wi
 	}
 
 	// Check if the registrar is valid
 	if err := newRar.Validate(); err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 	}
 
 	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
@@ -83,6 +84,11 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 // GetByClID returns a registrar by its ClID
 func (s *RegistrarService) GetByClID(ctx context.Context, clid string) (*entities.Registrar, error) {
 	return s.registrarRepository.GetByClID(ctx, clid)
+}
+
+// GetByGurID returns a registrar by its GurID
+func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByGurID(ctx, gurID)
 }
 
 // List returns a list of registrars

@@ -68,6 +68,11 @@ func (s *RegistrarSuite) TestReadRegistrar() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readRegistrar)
 	require.Equal(s.T(), createdRegistrar, readRegistrar)
+
+	readRegistrar, err = repo.GetByGurID(context.Background(), registrar.GurID)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), readRegistrar)
+	require.Equal(s.T(), createdRegistrar, readRegistrar)
 }
 
 func (s *RegistrarSuite) TestUpdateRegistrar() {
