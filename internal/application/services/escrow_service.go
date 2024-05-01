@@ -383,6 +383,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 					count++
 				} else {
 					unlinkedCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Unlinked contact %s will not be imported", rdeContact.ID))
 				}
 
 				pbar.Add(1)
@@ -780,6 +781,11 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 				// Write the domain to the domain file
 				domainWriter.Write(dom.ToCSV())
 				// Add a line to the contactID file for each contact, only if it does not exist yet
+				// Start with the registrant
+				if !svc.uniqueContactIDs[dom.Registrant] {
+					svc.uniqueContactIDs[dom.Registrant] = true
+				}
+				// Now loop over the contacts
 				for _, contact := range dom.Contact {
 					// Only add it if it is not there already
 					if !svc.uniqueContactIDs[contact.ID] {
@@ -1203,8 +1209,8 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 			// Exists, skip
 			if strings.Contains(response.Error, "contact already exists") {
 				svc.Import.Contacts.Existing++
+				continue
 			}
-			continue
 		}
 		svc.Import.Contacts.Failed++
 		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating contact with id %s: %s", cmd.ID, response.Error))
@@ -1297,8 +1303,8 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) erro
 			// Exists, skip
 			if strings.Contains(response.Error, "host already exists") {
 				svc.Import.Hosts.Existing++
+				continue
 			}
-			continue
 		}
 
 		svc.Import.Hosts.Failed++
@@ -1393,11 +1399,12 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 			// Exists, skip
 			if strings.Contains(response.Error, "domain already exists") {
 				svc.Import.Domains.Existing++
+				continue
 			}
-			continue
 		}
 		svc.Import.Domains.Failed++
 		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating domain with name %s: %s", cmd.Name, response.Error))
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Create Domain Command: %v", cmd))
 
 	}
 
