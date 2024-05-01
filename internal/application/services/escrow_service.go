@@ -1402,7 +1402,7 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 	}
 
 	if svc.Import.Domains.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d domains failed to be created\n", svc.Import.Hosts.Failed)
+		log.Printf("🔥 WARNING 🔥 %d domains failed to be created\n", svc.Import.Domains.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}

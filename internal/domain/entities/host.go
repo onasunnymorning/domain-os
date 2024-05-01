@@ -23,6 +23,7 @@ const (
 var (
 	ErrInvalidHost                 = fmt.Errorf("invalid host")
 	ErrHostNotFound                = fmt.Errorf("host not found")
+	ErrHostAlreadyExists           = fmt.Errorf("host already exists - hostnames must be unique for every registrar")
 	ErrDuplicateHostAddress        = fmt.Errorf("duplicate host address")
 	ErrHostAddressNotFound         = fmt.Errorf("host address not found")
 	ErrMaxAddressesPerHostExceeded = fmt.Errorf("maximum number of %d addresses per host exceeded", MAX_ADDRESSES_PER_HOST)
