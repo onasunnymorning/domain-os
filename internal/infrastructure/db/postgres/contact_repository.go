@@ -3,8 +3,8 @@ package postgres
 import (
 	"context"
 	"errors"
-	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -25,7 +25,8 @@ func (r *ContactRepository) CreateContact(ctx context.Context, c *entities.Conta
 
 	err := r.db.WithContext(ctx).Create(dbContact).Error
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+		var perr *pgconn.PgError
+		if errors.As(err, &perr) && perr.Code == "23505" {
 			return nil, errors.Join(entities.ErrContactAlreadyExists, err)
 		}
 		return nil, err

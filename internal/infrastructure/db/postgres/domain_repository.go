@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -22,6 +24,10 @@ func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain
 	dbDomain := ToDBDomain(d)
 	err := dr.db.WithContext(ctx).Omit("Hosts").Create(dbDomain).Error // Omit Hosts - they should be Created separately and added to the domain with AddHostToDomain
 	if err != nil {
+		var perr *pgconn.PgError
+		if errors.As(err, &perr) && perr.Code == "23505" {
+			return nil, entities.ErrDomainAlreadyExists
+		}
 		return nil, err
 	}
 	return ToDomain(dbDomain), nil

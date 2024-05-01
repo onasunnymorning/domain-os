@@ -2,6 +2,7 @@ package commands
 
 import (
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
@@ -17,19 +18,21 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 		{
 			name: "valid RDEDomain with valid Roid",
 			rdeDomain: &entities.RDEDomain{
-				RoID: "12345_DOM-APEX",
-				Name: "example.com",
-				ClID: "test",
-				CrRr: "test",
-				UpRr: "test",
+				RoID:   "12345_DOM-APEX",
+				Name:   "example.com",
+				ClID:   "test",
+				ExDate: "2021-01-01T00:00:00Z",
+				CrRr:   "test",
+				UpRr:   "test",
 			},
 			cmd: &CreateDomainCommand{
-				RoID:     "12345_DOM-APEX",
-				Name:     "example.com",
-				ClID:     "test",
-				CrRr:     "test",
-				UpRr:     "test",
-				AuthInfo: "escr0W1mP*rt",
+				RoID:       "12345_DOM-APEX",
+				Name:       "example.com",
+				ClID:       "test",
+				CrRr:       "test",
+				UpRr:       "test",
+				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
@@ -39,18 +42,20 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 		{
 			name: "valid RDEDomain with INvalid Roid",
 			rdeDomain: &entities.RDEDomain{
-				RoID: "12345",
-				Name: "example.com",
-				ClID: "test",
-				CrRr: "test",
-				UpRr: "test",
+				RoID:   "12345",
+				Name:   "example.com",
+				ClID:   "test",
+				ExDate: "2021-01-01T00:00:00Z",
+				CrRr:   "test",
+				UpRr:   "test",
 			},
 			cmd: &CreateDomainCommand{
-				Name:     "example.com",
-				ClID:     "test",
-				CrRr:     "test",
-				UpRr:     "test",
-				AuthInfo: "escr0W1mP*rt",
+				Name:       "example.com",
+				ClID:       "test",
+				CrRr:       "test",
+				UpRr:       "test",
+				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
+				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
