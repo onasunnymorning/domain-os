@@ -93,6 +93,9 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	// Save the domain
 	createdDomain, err := s.domainRepository.CreateDomain(ctx, d)
 	if err != nil {
+		if errors.Is(err, entities.ErrDomainAlreadyExists) {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
 		return nil, err
 	}
 

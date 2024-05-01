@@ -50,8 +50,19 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 		return err
 	}
 	err = c.svc.CreateHosts(hostCmds)
+	if err != nil {
+		return err
+	}
 
 	// Import the Domains
+	domainCmds, err := c.svc.ExtractDomains(true)
+	if err != nil {
+		return err
+	}
+	err = c.svc.CreateDomains(domainCmds)
+	if err != nil {
+		return err
+	}
 
 	// QA the import was successful
 

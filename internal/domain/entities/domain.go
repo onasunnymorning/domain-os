@@ -13,6 +13,7 @@ const (
 
 var (
 	ErrDomainNotFound                  = errors.New("domain not found")
+	ErrDomainAlreadyExists             = errors.New("domain already exists")
 	ErrInvalidDomain                   = errors.New("invalid domain")
 	ErrTLDAsDomain                     = errors.New("can't create a TLD as a domain")
 	ErrInvalidDomainRoID               = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
