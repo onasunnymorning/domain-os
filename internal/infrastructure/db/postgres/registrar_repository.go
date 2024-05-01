@@ -89,6 +89,23 @@ func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string) (*
 	return rar, nil
 }
 
+// GetByGurID looks up a Registrar by its GurID and returns it
+func (r *GormRegistrarRepository) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
+	dbRar := &Registrar{}
+
+	err := r.db.WithContext(ctx).Where("gur_id = ?", gurID).First(dbRar).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrRegistrarNotFound
+		}
+		return nil, err
+	}
+
+	rar := FromDBRegistrar(dbRar)
+
+	return rar, nil
+}
+
 // Create Creates a new Registrar in the repository
 func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
 	// Map

@@ -6,7 +6,7 @@ import (
 
 // Top level structure for IANA XML Registry
 type IcannXmlSpec5Registry struct {
-	XMLName    xml.Name   `xml:"registry"`
+	XMLName    xml.Name   `xml:"registry" json:"-"`
 	Id         string     `xml:"id,attr"`
 	Title      string     `xml:"title"`
 	Created    string     `xml:"created"`
@@ -17,7 +17,7 @@ type IcannXmlSpec5Registry struct {
 
 // Second level structure for IANA XML Registry
 type Registry struct {
-	XMLName xml.Name `xml:"registry"`
+	XMLName xml.Name `xml:"registry" json:"-"`
 	Id      string   `xml:"id,attr"`
 	Title   string   `xml:"title"`
 	Xref    struct {
@@ -30,7 +30,7 @@ type Registry struct {
 
 // Record-level structure for IANA XML Registry
 type Record struct {
-	XMLName xml.Name `xml:"record"`
+	XMLName xml.Name `xml:"record" json:"-"`
 	Name    string   `xml:"name"`
 	Label1  string   `xml:"label1"`
 	Label2  string   `xml:"label2"`

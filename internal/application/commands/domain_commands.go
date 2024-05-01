@@ -27,6 +27,47 @@ type CreateDomainCommand struct {
 	RGPStatus    entities.DomainRGPStatus `json:"RGPStatus"`
 }
 
+// FromRdeDomain creates a CreateDomainCommand from an RdeDomain
+func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) error {
+	// Check if we have a valid RoID (this will only be the case if we are importing our own escrows).
+	// If the Roid is invalid, use a valid one to pass through domain validation and unset it in the final command to have one generated.
+	roid := entities.RoidType(rdeDomain.RoID)
+	if roid.Validate() != nil || roid.ObjectIdentifier() != "DOM" {
+		// set a dummy valid RoID to pass through domain validation
+		rdeDomain.RoID = "1_DOM-APEX"
+	}
+
+	// Create the domain entity from our RDEDomain, this will validate the domain
+	dom, err := rdeDomain.ToEntity()
+	if err != nil {
+		return err
+	}
+
+	// Now that we have a a valid domain, convert it to a command
+	// Only set the RoID if it is not the dummy RoID
+	if dom.RoID.String() != "1_DOM-APEX" {
+		cmd.RoID = dom.RoID.String()
+	}
+	cmd.Name = dom.Name.String()
+	cmd.OriginalName = dom.OriginalName.String()
+	cmd.UName = dom.UName.String()
+	cmd.RegistrantID = dom.RegistrantID.String()
+	cmd.AdminID = dom.AdminID.String()
+	cmd.TechID = dom.TechID.String()
+	cmd.BillingID = dom.BillingID.String()
+	cmd.ClID = dom.ClID.String()
+	cmd.CrRr = dom.CrRr.String()
+	cmd.UpRr = dom.UpRr.String()
+	cmd.ExpiryDate = dom.ExpiryDate
+	cmd.AuthInfo = dom.AuthInfo.String()
+	cmd.CreatedAt = dom.CreatedAt
+	cmd.UpdatedAt = dom.UpdatedAt
+	cmd.Status = dom.Status
+	cmd.RGPStatus = dom.RGPStatus
+
+	return nil
+}
+
 // UpdateDomainCommand is a command to update a domain. RoID and Name are not updatable, please delete and create a new domain if you need to change these fields
 type UpdateDomainCommand struct {
 	OriginalName string                   `json:"OriginalName"`

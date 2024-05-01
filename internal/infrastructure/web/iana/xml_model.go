@@ -4,7 +4,7 @@ import "encoding/xml"
 
 // Top level structure for IANA XML Registry
 type IanaXmlRegistry struct {
-	XMLName  xml.Name `xml:"registry"`
+	XMLName  xml.Name `xml:"registry" json:"-"`
 	Title    string   `xml:"title"`
 	Updated  string   `xml:"updated"`
 	Registry Registry `xml:"registry"`
@@ -12,7 +12,7 @@ type IanaXmlRegistry struct {
 
 // Second level structure for IANA XML Registry
 type Registry struct {
-	XMLName xml.Name          `xml:"registry"`
+	XMLName xml.Name          `xml:"registry" json:"-"`
 	Id      string            `xml:"id,attr"`
 	Title   string            `xml:"title"`
 	RegRule string            `xml:"registration_rule"`
@@ -21,7 +21,7 @@ type Registry struct {
 
 // Third level structure for IANA XML Registry
 type RegistrarRecord struct {
-	XMLName xml.Name `xml:"record"`
+	XMLName xml.Name `xml:"record" json:"-"`
 	Updated string   `xml:"updated,attr"`
 	Value   string   `xml:"value"`
 	Name    string   `xml:"name"`
@@ -31,6 +31,6 @@ type RegistrarRecord struct {
 
 // RDAP URL structure for IANA XML Registry
 type RdapURL struct {
-	XMLName xml.Name `xml:"rdapurl" json:"rdapurl"`
+	XMLName xml.Name `xml:"rdapurl" json:"rdapurl" json:"-"`
 	Server  string   `xml:"server" json:"server"`
 }

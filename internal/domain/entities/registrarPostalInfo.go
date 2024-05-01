@@ -1,6 +1,6 @@
 package entities
 
-import "github.com/pkg/errors"
+import "errors"
 
 var (
 	ErrInvalidRegistrarPostalInfo = errors.New("invalid registrar postalinfo")
@@ -23,7 +23,7 @@ func NewRegistrarPostalInfo(t string, Address *Address) (*RegistrarPostalInfo, e
 		Address: Address,
 	}
 	if err := a.IsValid(); err != nil {
-		return nil, ErrInvalidRegistrarPostalInfo
+		return nil, errors.Join(ErrInvalidRegistrarPostalInfo, err)
 	}
 	return a, nil
 }

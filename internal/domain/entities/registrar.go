@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 const (
@@ -15,6 +15,7 @@ const (
 )
 
 var (
+	ErrInvalidRegistrar              = errors.New("invalid registrar")
 	ErrRegistrarNotFound             = errors.New("registrar not found")
 	ErrRegistrarMissingEmail         = errors.New("missing email: a valid email is required")
 	ErrRegistrarMissingName          = errors.New("missing name: a valid name and unique name is required")
@@ -125,7 +126,7 @@ func (r *Registrar) Validate() error {
 func (r *Registrar) AddPostalInfo(pi *RegistrarPostalInfo) error {
 	// Fail fast if we get an  invalid PostalInfo object
 	if err := pi.IsValid(); err != nil {
-		return ErrInvalidRegistrarPostalInfo
+		return errors.Join(ErrInvalidRegistrarPostalInfo, err)
 
 	}
 	// In the 2-item array, store the 'int' postalinfo first, the 'loc' postalinfo in second position

@@ -60,6 +60,9 @@ func (r RoidType) Validate() error {
 	if !regex.MatchString(string(r)) {
 		return ErrInvalidRoid
 	}
+	if !strings.Contains(string(r), "_") {
+		return ErrInvalidRoid
+	}
 	return nil
 }
 
