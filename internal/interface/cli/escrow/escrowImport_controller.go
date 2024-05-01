@@ -37,30 +37,36 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 	// Import the Contacts
 	contactCmds, err := c.svc.ExtractContacts(true)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 	err = c.svc.CreateContacts(contactCmds)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 
 	// Import the Hosts
 	hostCmds, err := c.svc.ExtractHosts(true)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 	err = c.svc.CreateHosts(hostCmds)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 
 	// Import the Domains
 	domainCmds, err := c.svc.ExtractDomains(true)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 	err = c.svc.CreateDomains(domainCmds)
 	if err != nil {
+		c.svc.SaveImportResult()
 		return err
 	}
 
