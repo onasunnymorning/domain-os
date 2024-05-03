@@ -23,17 +23,14 @@ func (r *AccreditationRepository) CreateAccreditation(ctx context.Context, tldNa
 }
 
 // DeleteAccreditation deletes an accreditation
-func (r *AccreditationRepository) DeleteAccreditation(ctx context.Context, tld *entities.TLD, rar *entities.Registrar) error {
-	dbTLD := ToDBTLD(tld)
-	dbRar := ToDBRegistrar(rar)
-	return r.db.WithContext(ctx).Model(&dbTLD).Association("Registrars").Delete(&dbRar)
+func (r *AccreditationRepository) DeleteAccreditation(ctx context.Context, tldName, rarClID string) error {
+	return r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Delete(&Registrar{ClID: rarClID})
 }
 
 // ListTLDRegistrars lists registrars for a TLD
-func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tld *entities.TLD) ([]*entities.Registrar, error) {
-	dbTLD := ToDBTLD(tld)
+func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tldName string) ([]*entities.Registrar, error) {
 	dbRars := []*Registrar{}
-	err := r.db.WithContext(ctx).Model(&dbTLD).Association("Registrars").Find(&dbRars)
+	err := r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Find(&dbRars)
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +44,9 @@ func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSiz
 }
 
 // ListRegistrarTLDs lists TLDs for a registrar
-func (r *AccreditationRepository) ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rar *entities.Registrar) ([]*entities.TLD, error) {
-	dbRar := ToDBRegistrar(rar)
+func (r *AccreditationRepository) ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error) {
 	dbTLDs := []*TLD{}
-	err := r.db.WithContext(ctx).Model(&dbRar).Association("TLDs").Find(&dbTLDs)
+	err := r.db.WithContext(ctx).Model(&Registrar{ClID: rarClID}).Association("TLDs").Find(&dbTLDs)
 	if err != nil {
 		return nil, err
 	}

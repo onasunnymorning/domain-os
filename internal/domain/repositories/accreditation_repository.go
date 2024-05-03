@@ -8,7 +8,7 @@ import (
 
 type AccreditationRepository interface {
 	CreateAccreditation(ctx context.Context, tldName, rarClID string) error
-	DeleteAccreditation(ctx context.Context, tld *entities.TLD, rar *entities.Registrar) error
-	ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tld *entities.TLD) ([]*entities.Registrar, error)
-	ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rar *entities.Registrar) ([]*entities.TLD, error)
+	DeleteAccreditation(ctx context.Context, tldName, rarClID string) error
+	ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tldName string) ([]*entities.Registrar, error)
+	ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error)
 }
