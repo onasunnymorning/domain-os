@@ -18,8 +18,8 @@ func NewAccreditationRepository(db *gorm.DB) *AccreditationRepository {
 }
 
 // CreateAccreditation creates a new accreditation
-func (r *AccreditationRepository) CreateAccreditation(ctx context.Context, tld *entities.TLD, rar *entities.Registrar) error {
-	return r.db.WithContext(ctx).Model(&TLD{Name: tld.Name.String()}).Association("Registrars").Append(&Registrar{ClID: rar.ClID.String()})
+func (r *AccreditationRepository) CreateAccreditation(ctx context.Context, tldName, rarClID string) error {
+	return r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Append(&Registrar{ClID: rarClID})
 }
 
 // DeleteAccreditation deletes an accreditation
