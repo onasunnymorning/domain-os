@@ -9,7 +9,7 @@ import (
 
 // NewHTTPClient returns an HTTP client including a cookie jar
 func NewHTTPClient(mc *MosapiConfig) (*http.Client, error) {
-	if slices.Contains(SupportedAuthTypes, mc.AuthType) == false {
+	if !slices.Contains(SupportedAuthTypes, mc.AuthType) {
 		return nil, ErrUnsupportedAuthType
 	}
 	// In case of Basic Auth, just create a cookie jar
