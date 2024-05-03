@@ -119,7 +119,7 @@ func main() {
 	}
 
 	accRepo := postgres.NewAccreditationRepository(gormDB)
-	err = accRepo.CreateAccreditation(context.Background(), tld, rar)
+	err = accRepo.CreateAccreditation(context.Background(), tld.Name.String(), rar.ClID.String())
 	if err != nil {
 		log.Println(err)
 	}

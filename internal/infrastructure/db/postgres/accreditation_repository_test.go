@@ -65,7 +65,7 @@ func (s *AccreditationSuite) TestCreateAccreditation() {
 	defer tx.Rollback()
 	repo := NewAccreditationRepository(tx)
 
-	err := repo.CreateAccreditation(context.Background(), s.tld, s.rar)
+	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
 }
@@ -85,7 +85,7 @@ func (s *AccreditationSuite) TestListTLDRegistrars() {
 	defer tx.Rollback()
 	repo := NewAccreditationRepository(tx)
 
-	err := repo.CreateAccreditation(context.Background(), s.tld, s.rar)
+	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
 	rars, err := repo.ListTLDRegistrars(context.Background(), 10, "", s.tld)
@@ -106,7 +106,7 @@ func (s *AccreditationSuite) TestListRegistrarTLDs() {
 	defer tx.Rollback()
 	repo := NewAccreditationRepository(tx)
 
-	err := repo.CreateAccreditation(context.Background(), s.tld, s.rar)
+	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
 	tlds, err := repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar)
