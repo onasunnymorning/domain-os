@@ -125,7 +125,7 @@ func main() {
 	}
 
 	// Get the Accreditation by TLD
-	rars, err := accRepo.ListTLDRegistrars(context.Background(), 10, "", tld)
+	rars, err := accRepo.ListTLDRegistrars(context.Background(), 10, "", tld.Name.String())
 	if err != nil {
 		log.Println(err)
 	}
@@ -133,7 +133,7 @@ func main() {
 	log.Printf("TLD Registrars: %s", rars[0].ClID)
 
 	// Get the Accreditation by Registrar
-	tlds, err := accRepo.ListRegistrarTLDs(context.Background(), 10, "", rar)
+	tlds, err := accRepo.ListRegistrarTLDs(context.Background(), 10, "", rar.ClID.String())
 	if err != nil {
 		log.Println(err)
 	}
@@ -141,13 +141,13 @@ func main() {
 	log.Printf("Registrar TLDs: %s", tlds[0].Name)
 
 	// Delete the accreditation
-	err = accRepo.DeleteAccreditation(context.Background(), tld, rar)
+	err = accRepo.DeleteAccreditation(context.Background(), tld.Name.String(), rar.ClID.String())
 	if err != nil {
 		log.Println(err)
 	}
 
 	// Get the Accreditation by Registrar
-	tlds, err = accRepo.ListRegistrarTLDs(context.Background(), 10, "", rar)
+	tlds, err = accRepo.ListRegistrarTLDs(context.Background(), 10, "", rar.ClID.String())
 	if err != nil {
 		log.Println(err)
 	}

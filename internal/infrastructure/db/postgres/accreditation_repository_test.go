@@ -75,7 +75,7 @@ func (s *AccreditationSuite) TestDeleteAccreditation_Idempotent() {
 	defer tx.Rollback()
 	repo := NewAccreditationRepository(tx)
 
-	err := repo.DeleteAccreditation(context.Background(), s.tld, s.rar)
+	err := repo.DeleteAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
 }
@@ -88,15 +88,15 @@ func (s *AccreditationSuite) TestListTLDRegistrars() {
 	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
-	rars, err := repo.ListTLDRegistrars(context.Background(), 10, "", s.tld)
+	rars, err := repo.ListTLDRegistrars(context.Background(), 10, "", s.tld.Name.String())
 	s.Require().NoError(err)
 	s.Require().Len(rars, 1)
 
 	// Delete the accreditation
-	err = repo.DeleteAccreditation(context.Background(), s.tld, s.rar)
+	err = repo.DeleteAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
-	rars, err = repo.ListTLDRegistrars(context.Background(), 10, "", s.tld)
+	rars, err = repo.ListTLDRegistrars(context.Background(), 10, "", s.tld.Name.String())
 	s.Require().NoError(err)
 	s.Require().Len(rars, 0)
 }
@@ -109,15 +109,15 @@ func (s *AccreditationSuite) TestListRegistrarTLDs() {
 	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
-	tlds, err := repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar)
+	tlds, err := repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar.ClID.String())
 	s.Require().NoError(err)
 	s.Require().Len(tlds, 1)
 
 	// Delete the accreditation
-	err = repo.DeleteAccreditation(context.Background(), s.tld, s.rar)
+	err = repo.DeleteAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
-	tlds, err = repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar)
+	tlds, err = repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar.ClID.String())
 	s.Require().NoError(err)
 	s.Require().Len(tlds, 0)
 }
