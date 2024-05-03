@@ -14,6 +14,9 @@ type TLD struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Phases    []Phase `gorm:"foreignKey:TLDName;references:Name;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+
+	// Many to Many relationship with Registrars (AKA accreditations)
+	Registrars []Registrar `gorm:"many2many:accreditations;"`
 }
 
 // ToDBTLD converts a TLD struct to a DBTLD struct

@@ -3,62 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
-
-// Registrar is the GORM representation of a Registrar
-type Registrar struct {
-	ClID        string `gorm:"primary_key"`
-	Name        string `gorm:"unique;not null"`
-	NickName    string `gorm:"unique;not null"`
-	GurID       int
-	Email       string
-	Status      string `gorm:"not null"`
-	Street1Int  string
-	Street2Int  string
-	Street3Int  string
-	CityInt     string
-	SPInt       string `gorm:"column:sp_int"`
-	PCInt       string `gorm:"column:pc_int"`
-	CCInt       string `gorm:"column:cc_int"`
-	Street1Loc  string
-	Street2Loc  string
-	Street3Loc  string
-	CityLoc     string
-	SPLoc       string `gorm:"column:sp_loc"`
-	PCLoc       string `gorm:"column:pc_loc"`
-	CCLoc       string `gorm:"column:cc_loc"`
-	Voice       string
-	Fax         string
-	URL         string
-	Whois43     string
-	Whois80     string
-	RdapBaseUrl string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-
-	// FK relationships with contacts
-	Contacts        []*Contact `gorm:"foreignKey:ClID"`
-	ContactsCreated []*Contact `gorm:"foreignKey:CrRr"`
-	ContactsUpdated []*Contact `gorm:"foreignKey:UpRr"`
-
-	// FK relationships with hosts
-	Hosts        []*Host `gorm:"foreignKey:ClID"`
-	HostsCreated []*Host `gorm:"foreignKey:CrRr"`
-	HostsUpdated []*Host `gorm:"foreignKey:UpRr"`
-
-	// FK relationships with domains
-	Domains        []*Domain `gorm:"foreignKey:ClID"`
-	DomainsCreated []*Domain `gorm:"foreignKey:CrRr"`
-	DomainsUpdated []*Domain `gorm:"foreignKey:UpRr"`
-}
-
-func (Registrar) TableName() string {
-	return "registrars"
-}
 
 // GormRegistrarRepository implements the RegistrarRepository interface
 type GormRegistrarRepository struct {
