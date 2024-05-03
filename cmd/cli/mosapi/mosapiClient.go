@@ -14,11 +14,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Login
+	err = client.Login()
+	if err != nil {
+		log.Fatal(err)
+	}
 	// Get the status of the TLD
 	status, err := client.GetState()
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	log.Println(status)
+
+	// Logout
+	err = client.Logout()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 }

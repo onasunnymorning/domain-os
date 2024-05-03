@@ -72,7 +72,7 @@ func NewMosapiClientConfig() *MosapiConfig {
 		TLD:      "build",
 		AuthType: AuthTypeBasic,
 		Username: "build_ry",
-		Password: "build_ry",
+		Password: "ntw{-N+k!H9X%h~^",
 		Version:  V2,
 		Entity:   EntityRegistry,
 	}
