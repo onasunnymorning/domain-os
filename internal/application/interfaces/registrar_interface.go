@@ -9,7 +9,7 @@ import (
 
 // RegistrarService is the interface for the registrar service
 type RegistrarService interface {
-	GetByClID(ctx context.Context, clid string) (*entities.Registrar, error)
+	GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error)
 	GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error)
 	Create(ctx context.Context, rar *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error)
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)

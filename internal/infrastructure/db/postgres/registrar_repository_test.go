@@ -64,7 +64,7 @@ func (s *RegistrarSuite) TestReadRegistrar() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
 
-	readRegistrar, err := repo.GetByClID(context.Background(), registrar.ClID.String())
+	readRegistrar, err := repo.GetByClID(context.Background(), registrar.ClID.String(), false)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readRegistrar)
 	require.Equal(s.T(), createdRegistrar, readRegistrar)
@@ -73,6 +73,11 @@ func (s *RegistrarSuite) TestReadRegistrar() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readRegistrar)
 	require.Equal(s.T(), createdRegistrar, readRegistrar)
+
+	// Error record not found
+	readRegistrar, err = repo.GetByGurID(context.Background(), 1234556657)
+	require.ErrorIs(s.T(), err, entities.ErrRegistrarNotFound)
+	require.Nil(s.T(), readRegistrar)
 }
 
 func (s *RegistrarSuite) TestUpdateRegistrar() {
@@ -107,13 +112,13 @@ func (s *RegistrarSuite) TestDeleteRegistrar() {
 	err = repo.Delete(context.Background(), createdRegistrar.ClID.String())
 	require.NoError(s.T(), err)
 
-	_, err = repo.GetByClID(context.Background(), createdRegistrar.ClID.String())
+	_, err = repo.GetByClID(context.Background(), createdRegistrar.ClID.String(), false)
 	require.Error(s.T(), err)
 
 	err = repo.Delete(context.Background(), createdRegistrar.ClID.String())
 	require.NoError(s.T(), err)
 
-	_, err = repo.GetByClID(context.Background(), createdRegistrar.ClID.String())
+	_, err = repo.GetByClID(context.Background(), createdRegistrar.ClID.String(), false)
 	require.Error(s.T(), err)
 }
 

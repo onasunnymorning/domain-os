@@ -118,6 +118,10 @@ func main() {
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	registrarService := services.NewRegistrarService(registrarRepo)
 
+	// Accreditations
+	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
+	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo)
+
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
 	contactService := services.NewContactService(contactRepo, *roidService)
@@ -147,6 +151,7 @@ func main() {
 	rest.NewPhaseController(r, phaseService)
 	rest.NewFeeController(r, feeService)
 	rest.NewPriceController(r, priceService)
+	rest.NewAccreditationController(r, accreditationService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
