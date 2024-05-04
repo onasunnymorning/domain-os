@@ -16,7 +16,7 @@ func getValidRegistrar() *entities.Registrar {
 		NickName:    "MyReg",
 		GurID:       119,
 		Email:       "g@me.com",
-		Status:      entities.RegistrarStatus("active"),
+		Status:      entities.RegistrarStatus(entities.RegistrarStatusOK),
 		Voice:       entities.E164Type("+1.12345678"),
 		Fax:         entities.E164Type("+1.987654321"),
 		URL:         entities.URL("http://myregistrar.com"),
@@ -62,6 +62,13 @@ func getValidRegistrar() *entities.Registrar {
 	}
 
 	r.AddPostalInfo(p1)
+
+	r.AccreditFor(&entities.TLD{
+		Name: entities.DomainName("com"),
+	})
+	r.AccreditFor(&entities.TLD{
+		Name: entities.DomainName("net"),
+	})
 
 	return r
 }

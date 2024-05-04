@@ -102,6 +102,10 @@ func ToDBRegistrar(r *entities.Registrar) *Registrar {
 		}
 	}
 
+	for _, tld := range r.TLDs {
+		rar.TLDs = append(rar.TLDs, *ToDBTLD(tld))
+	}
+
 	return rar
 }
 
@@ -158,6 +162,10 @@ func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 	}
 
 	registrar.AddPostalInfo(pi1)
+
+	for _, tld := range dbr.TLDs {
+		registrar.TLDs = append(registrar.TLDs, FromDBTLD(&tld))
+	}
 
 	return registrar
 }
