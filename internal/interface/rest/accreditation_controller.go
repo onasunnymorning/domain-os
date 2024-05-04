@@ -114,7 +114,7 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 		return
 	}
 
-	accreditations, err := ctrl.accService.ListRegistrarTLDs(ctx, pageSize, pageCursor, rarClID)
+	tlds, err := ctrl.accService.ListRegistrarTLDs(ctx, pageSize, pageCursor, rarClID)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -124,9 +124,9 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 		return
 	}
 	// Pour into our response struct
-	response.Data = accreditations
-	if len(accreditations) > 0 {
-		response.SetMeta(ctx, accreditations[len(accreditations)-1].Name.String(), len(accreditations), pageSize)
+	response.Data = tlds
+	if len(tlds) > 0 {
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
 	}
 
 	// Return the response
@@ -162,7 +162,7 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 		return
 	}
 
-	accreditations, err := ctrl.accService.ListTLDRegistrars(ctx, pageSize, pageCursor, tldName)
+	rars, err := ctrl.accService.ListTLDRegistrars(ctx, pageSize, pageCursor, tldName)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -172,9 +172,9 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 		return
 	}
 	// Pour into our response struct
-	response.Data = accreditations
-	if len(accreditations) > 0 {
-		response.SetMeta(ctx, accreditations[len(accreditations)-1].ClID.String(), len(accreditations), pageSize)
+	response.Data = rars
+	if len(rars) > 0 {
+		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize)
 	}
 
 	// Return the response

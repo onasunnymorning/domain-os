@@ -30,7 +30,8 @@ func (r *AccreditationRepository) DeleteAccreditation(ctx context.Context, tldNa
 // ListTLDRegistrars lists registrars for a TLD
 func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tldName string) ([]*entities.Registrar, error) {
 	dbRars := []*Registrar{}
-	err := r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Find(&dbRars)
+
+	err := r.db.WithContext(ctx).Order("cl_id ASC").Limit(pageSize).Model(&TLD{Name: tldName}).Association("Registrars").Find(&dbRars, "cl_id > ?", cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSiz
 // ListRegistrarTLDs lists TLDs for a registrar
 func (r *AccreditationRepository) ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error) {
 	dbTLDs := []*TLD{}
-	err := r.db.WithContext(ctx).Model(&Registrar{ClID: rarClID}).Association("TLDs").Find(&dbTLDs)
+	err := r.db.WithContext(ctx).Order("name ASC").Limit(pageSize).Model(&Registrar{ClID: rarClID}).Association("TLDs").Find(&dbTLDs, "name > ?", cursor)
 	if err != nil {
 		return nil, err
 	}
