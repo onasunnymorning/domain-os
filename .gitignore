@@ -16,6 +16,7 @@
 
 # ENV
 .env
+.env.backup
 
 # MAC
 .DS_Store
