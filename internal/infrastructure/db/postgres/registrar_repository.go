@@ -59,7 +59,7 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	// Map
 	dbRar := ToDBRegistrar(rar)
 
-	err := r.db.WithContext(ctx).Create(dbRar).Error
+	err := r.db.WithContext(ctx).Omit("TLDs").Create(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (r *GormRegistrarRepository) Update(ctx context.Context, rar *entities.Regi
 	// map
 	dbRar := ToDBRegistrar(rar)
 
-	err := r.db.WithContext(ctx).Save(dbRar).Error
+	err := r.db.WithContext(ctx).Omit("Addresses").Save(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
 	if err != nil {
 		return nil, err
 	}
