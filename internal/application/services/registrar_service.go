@@ -82,8 +82,8 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 }
 
 // GetByClID returns a registrar by its ClID
-func (s *RegistrarService) GetByClID(ctx context.Context, clid string) (*entities.Registrar, error) {
-	return s.registrarRepository.GetByClID(ctx, clid)
+func (s *RegistrarService) GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByClID(ctx, clid, preloadTLDs)
 }
 
 // GetByGurID returns a registrar by its GurID
