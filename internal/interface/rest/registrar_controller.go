@@ -32,6 +32,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars/gurid/:gurid", controller.GetByGurID)
 	e.GET("/registrars", controller.List)
 	e.POST("/registrars", controller.Create)
+	e.PUT("/registrars/:clid", controller.UpdateRegistrar)
 	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
 	e.DELETE("/registrars/:clid", controller.DeleteRegistrarByClID)
 
@@ -245,6 +246,46 @@ func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
 	}
 
 	result, err := ctrl.rarService.Create(ctx, &cmd)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, result)
+}
+
+// UpdateRegistrar godoc
+// @Summary Update a Registrar
+// @Description Update a Registrar
+// @Tags Registrars
+// @Accept json
+// @Produce json
+// @Param clid path string true "Registrar Client ID"
+// @Param registrar body entities.Registrar true "Registrar"
+// @Success 200 {object} entities.Registrar
+// @Failure 400
+// @Failure 500
+// @Router /registrars/{clid} [put]
+func (ctrl *RegistrarController) UpdateRegistrar(ctx *gin.Context) {
+	var rar entities.Registrar
+	if err := ctx.ShouldBindJSON(&rar); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// We don't allow changing the ClID since it is the main identifier that links to all other objects
+	if rar.ClID.String() != ctx.Param("clid") {
+		ctx.JSON(400, gin.H{"error": "ClID cannot be changed"})
+		return
+	}
+
+	// Make sure we are saving a valid registrar
+	if err := rar.Validate(); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := ctrl.rarService.Update(ctx, &rar)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
