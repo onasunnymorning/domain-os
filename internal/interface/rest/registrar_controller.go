@@ -53,7 +53,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 func (ctrl *RegistrarController) GetByClID(ctx *gin.Context) {
 	clid := ctx.Param("clid")
 
-	rar, err := ctrl.rarService.GetByClID(ctx, clid)
+	rar, err := ctrl.rarService.GetByClID(ctx, clid, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

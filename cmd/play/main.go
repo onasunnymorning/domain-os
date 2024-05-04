@@ -113,7 +113,7 @@ func main() {
 	}
 
 	// Get the Registrar
-	rar, err := rarRepo.GetByClID(context.Background(), "199-myrar")
+	rar, err := rarRepo.GetByClID(context.Background(), "199-myrar", false)
 	if err != nil {
 		log.Println(err)
 	}

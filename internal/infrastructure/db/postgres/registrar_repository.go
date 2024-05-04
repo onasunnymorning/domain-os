@@ -21,10 +21,16 @@ func NewGormRegistrarRepository(db *gorm.DB) *GormRegistrarRepository {
 }
 
 // GetByClID looks up a Regsitrar by ite ClID and returns it
-func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string) (*entities.Registrar, error) {
+func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error) {
 	dbRar := &Registrar{}
+	var err error
 
-	err := r.db.WithContext(ctx).Where("cl_id = ?", clid).First(dbRar).Error
+	if preloadTLDs {
+		err = r.db.WithContext(ctx).Preload("TLDs").Where("cl_id = ?", clid).First(dbRar).Error
+	} else {
+		err = r.db.WithContext(ctx).Where("cl_id = ?", clid).First(dbRar).Error
+	}
+
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrRegistrarNotFound
@@ -38,6 +44,7 @@ func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string) (*
 }
 
 // GetByGurID looks up a Registrar by its GurID and returns it
+// TODO: FIXME: This may retrun multiple results (e.g. 9999), so we need to handle this like a list endpoint
 func (r *GormRegistrarRepository) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
 	dbRar := &Registrar{}
 
@@ -64,7 +71,7 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 		return nil, err
 	}
 	// Read the data from the repo to ensure we return the same data that was written
-	soredDbRar, err := r.GetByClID(ctx, rar.ClID.String())
+	soredDbRar, err := r.GetByClID(ctx, rar.ClID.String(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -77,13 +84,13 @@ func (r *GormRegistrarRepository) Update(ctx context.Context, rar *entities.Regi
 	// map
 	dbRar := ToDBRegistrar(rar)
 
-	err := r.db.WithContext(ctx).Omit("Addresses").Save(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
+	err := r.db.WithContext(ctx).Omit("TLDs").Save(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
 	if err != nil {
 		return nil, err
 	}
 
 	// Read the data from the repo to ensure we return the same data that was written
-	storedDbRar, err := r.GetByClID(ctx, rar.ClID.String())
+	storedDbRar, err := r.GetByClID(ctx, rar.ClID.String(), false)
 	if err != nil {
 		return nil, err
 	}
