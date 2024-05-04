@@ -301,3 +301,128 @@ func TestRegistrarStatus_String(t *testing.T) {
 		})
 	}
 }
+func TestRegistrar_IsAccreditedFor(t *testing.T) {
+	r := &Registrar{
+		TLDs: []*TLD{
+			{Name: "com"},
+			{Name: "net"},
+			{Name: "org"},
+		},
+	}
+
+	// Test case 1: Accredited TLD
+	index, accredited := r.IsAccreditedFor(&TLD{Name: "net"})
+	require.True(t, accredited)
+	require.Equal(t, 1, index)
+
+	// Test case 2: Non-accredited TLD
+	index, accredited = r.IsAccreditedFor(&TLD{Name: "io"})
+	require.False(t, accredited)
+	require.Equal(t, 0, index)
+}
+func TestRegistrar_AccreditFor(t *testing.T) {
+	r := &Registrar{
+		TLDs: []*TLD{
+			{Name: "com"},
+			{Name: "net"},
+			{Name: "org"},
+		},
+		Status: RegistrarStatusOK,
+		GurID:  123,
+	}
+
+	// Test case 1: Accredited TLD
+	err := r.AccreditFor(&TLD{Name: "net"})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(r.TLDs))
+
+	// Test case 2: Regstrar status prevents accreditation
+	r.Status = RegistrarStatusTerminated
+	err = r.AccreditFor(&TLD{Name: "io", Type: TLDTypeCCTLD})
+	require.EqualError(t, err, ErrRegistrarStatusPreventsAccreditation.Error())
+	require.Equal(t, 3, len(r.TLDs))
+
+	// Test case 3: Registrar is not ICANN accredited
+	r.Status = RegistrarStatusOK
+	r.GurID = 0
+	// Fail if is a GTLD
+	err = r.AccreditFor(&TLD{Name: "apex", Type: TLDTypeGTLD})
+	require.EqualError(t, err, ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs.Error())
+	require.Equal(t, 3, len(r.TLDs))
+	// Success if is ccTLD
+	err = r.AccreditFor(&TLD{Name: "io", Type: TLDTypeCCTLD})
+	require.NoError(t, err)
+	require.Equal(t, 4, len(r.TLDs))
+
+	// Test case 4: Accredited GTLD
+	r.GurID = 1123
+	err = r.AccreditFor(&TLD{Name: "apex", Type: TLDTypeGTLD})
+	require.NoError(t, err)
+	require.Equal(t, 5, len(r.TLDs))
+}
+
+func TestRegistrar_DeAccreditFor(t *testing.T) {
+	r := &Registrar{
+		TLDs: []*TLD{
+			{Name: "com"},
+			{Name: "net"},
+			{Name: "org"},
+		},
+		Status: RegistrarStatusOK,
+		GurID:  123,
+	}
+
+	// Test case 1: Deaccredit TLD that isnot accredited
+	err := r.DeAccreditFor(&TLD{Name: "apex"})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(r.TLDs))
+
+	// Test case 2: DEaccredit TLD that is accredited
+	err = r.DeAccreditFor(&TLD{Name: "com"})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(r.TLDs))
+
+	// Test case 3: DEaccredit TLD that is accredited
+	err = r.DeAccreditFor(&TLD{Name: "net"})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(r.TLDs))
+
+	// Test case 4: DEaccredit TLD that is accredited
+	err = r.DeAccreditFor(&TLD{Name: "org"})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(r.TLDs))
+
+	// Test case 5: DEaccredit TLD that is no longer accredited
+	err = r.DeAccreditFor(&TLD{Name: "com"})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(r.TLDs))
+}
+
+func TestRegistrar_AddPostalInfo(t *testing.T) {
+	testcases := []struct {
+		name        string
+		reg         *Registrar
+		postal      *RegistrarPostalInfo
+		expectedErr error
+	}{
+		{
+			name:        "two int postal info",
+			reg:         getValidRegistrar(),
+			postal:      getValidRegistrarPostalInfo("int"),
+			expectedErr: ErrRegistrarPostalInfoTypeExists,
+		},
+		{
+			name:        "two loc postal info",
+			reg:         getValidRegistrar(),
+			postal:      getValidRegistrarPostalInfo("loc"),
+			expectedErr: ErrRegistrarPostalInfoTypeExists,
+		},
+	}
+
+	for _, test := range testcases {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.reg.AddPostalInfo(test.postal)
+			require.Equal(t, test.expectedErr, err)
+		})
+	}
+}

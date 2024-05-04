@@ -15,12 +15,14 @@ const (
 )
 
 var (
-	ErrInvalidRegistrar              = errors.New("invalid registrar")
-	ErrRegistrarNotFound             = errors.New("registrar not found")
-	ErrRegistrarMissingEmail         = errors.New("missing email: a valid email is required")
-	ErrRegistrarMissingName          = errors.New("missing name: a valid name and unique name is required")
-	ErrInvalidRegistrarStatus        = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
-	ErrRegistrarPostalInfoTypeExists = errors.New("postalinfo of this type already exists")
+	ErrInvalidRegistrar                                 = errors.New("invalid registrar")
+	ErrRegistrarNotFound                                = errors.New("registrar not found")
+	ErrRegistrarMissingEmail                            = errors.New("missing email: a valid email is required")
+	ErrRegistrarMissingName                             = errors.New("missing name: a valid name and unique name is required")
+	ErrInvalidRegistrarStatus                           = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
+	ErrRegistrarPostalInfoTypeExists                    = errors.New("postalinfo of this type already exists")
+	ErrRegistrarStatusPreventsAccreditation             = errors.New("registrar status prevents accreditation")
+	ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs = errors.New("only ICANN accredited registrars can accredit for gTLDs")
 )
 
 // RegistrarStatus is a type for registrar status
@@ -48,6 +50,7 @@ type Registrar struct {
 	RdapBaseURL URL
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	TLDs        []*TLD
 }
 
 // NewRegistrar creates a new instance of Registrar
@@ -158,5 +161,42 @@ func (r *Registrar) RemovePostalInfo(t string) error {
 	if t == "loc" {
 		r.PostalInfo[1] = nil
 	}
+	return nil
+}
+
+// Checks if a registrar is accredited for a particular TLD
+func (r *Registrar) IsAccreditedFor(tld *TLD) (int, bool) {
+	for i, a := range r.TLDs {
+		if tld.Name == a.Name {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// Accreditation is the process by which a registrar is granted the ability to register domain names in a particular TLD.
+func (r *Registrar) AccreditFor(tld *TLD) error {
+	_, isAccredited := r.IsAccreditedFor(tld)
+	if isAccredited {
+		return nil // Idempotent
+	}
+	if r.Status != "ok" {
+		return ErrRegistrarStatusPreventsAccreditation
+	}
+	if r.GurID == 0 && tld.Type == TLDTypeGTLD {
+		return ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs
+	}
+
+	r.TLDs = append(r.TLDs, tld)
+	return nil
+}
+
+// DeAccreditation is the process by which a registrar is removed from the list of registrars that are allowed to register domain names in a particular TLD.
+func (r *Registrar) DeAccreditFor(tld *TLD) error {
+	index, isAccredited := r.IsAccreditedFor(tld)
+	if !isAccredited {
+		return nil // Idempotent
+	}
+	r.TLDs = append(r.TLDs[:index], r.TLDs[index+1:]...)
 	return nil
 }
