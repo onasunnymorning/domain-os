@@ -56,3 +56,20 @@ func (r *RegistryOperatorRepository) Update(ctx context.Context, ro *entities.Re
 func (r *RegistryOperatorRepository) DeleteByRyID(ctx context.Context, ryID string) error {
 	return r.db.WithContext(ctx).Where("ry_id = ?", ryID).Delete(&RegistryOperator{}).Error
 }
+
+// List retrieves RegistryOperators from the database
+func (r *RegistryOperatorRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.RegistryOperator, error) {
+	dbRos := []*RegistryOperator{}
+
+	err := r.db.WithContext(ctx).Order("ry_id ASC").Limit(pagesize).Find(&dbRos, "ry_id > ?", cursor).Error
+	if err != nil {
+		return nil, err
+	}
+
+	ros := make([]*entities.RegistryOperator, len(dbRos))
+	for i, dbRo := range dbRos {
+		ros[i] = dbRo.ToEntity()
+	}
+
+	return ros, nil
+}

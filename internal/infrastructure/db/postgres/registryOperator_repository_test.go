@@ -103,3 +103,53 @@ func (s *RySuite) TestDeleteRy() {
 	err = repo.DeleteByRyID(context.Background(), "non-existent")
 	s.Require().NoError(err)
 }
+
+func (s *RySuite) TestListRos() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGORMRegistryOperatorRepository(tx)
+
+	ry1, _ := entities.NewRegistryOperator("ra-dix", "Radix Inc.", "s@radix.com")
+	createdRy1, err := repo.Create(context.Background(), ry1)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy1)
+
+	ry2, _ := entities.NewRegistryOperator("xyz", "XYZ Inc.", "d@xyz.com")
+	createdRy2, err := repo.Create(context.Background(), ry2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy2)
+
+	ry3, _ := entities.NewRegistryOperator("abc", "ABC Inc.", "me@abx.com")
+	createdRy3, err := repo.Create(context.Background(), ry3)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy3)
+
+	ros, err := repo.List(context.Background(), 2, "")
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+
+	ros, err = repo.List(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(ros, 3)
+
+	err = repo.DeleteByRyID(context.Background(), "ra-dix")
+	s.Require().NoError(err)
+
+	ros, err = repo.List(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+
+	err = repo.DeleteByRyID(context.Background(), "xyz")
+	s.Require().NoError(err)
+
+	ros, err = repo.List(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+
+	err = repo.DeleteByRyID(context.Background(), "abc")
+	s.Require().NoError(err)
+
+	ros, err = repo.List(context.Background(), 25, "")
+	s.Require().NoError(err)
+	s.Require().Len(ros, 0)
+}
