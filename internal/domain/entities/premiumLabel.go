@@ -22,15 +22,15 @@ type PremiumLabel struct {
 	Class              string `json:"class"`
 }
 
-// NewPremiumLabel creates a new PremiumLabel instance. It validates the currency, label and class (class string must be a valid label too).
+// NewPremiumLabel creates a new PremiumLabel instance. It validates the currency, label and class (class string must be a valid clIDType).
 func NewPremiumLabel(label Label, registrationAmount, renewalAmount, transferAmount, restoreAmount uint64, currency, class string) (*PremiumLabel, error) {
 	validatedLabel := Label(label)
 	if err := validatedLabel.Validate(); err != nil {
 		return nil, err
 	}
-	validatedClass := Label(class)
-	if err := validatedClass.Validate(); err != nil {
-		return nil, errors.Join(ErrInvalidPremiumClass, err)
+	validatedClass, err := NewClIDType(class)
+	if err != nil {
+		return nil, ErrInvalidPremiumClass
 	}
 
 	// Validate currency

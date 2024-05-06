@@ -48,7 +48,7 @@ func TestNewPremiumLabel_InvalidClass(t *testing.T) {
 	transferAmount := uint64(20)
 	restoreAmount := uint64(30)
 	currency := "USD"
-	class := "inva--lid"
+	class := "thisisnotavalidclidtype"
 
 	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class)
 	require.Error(t, err, "Expected error for invalid class")
