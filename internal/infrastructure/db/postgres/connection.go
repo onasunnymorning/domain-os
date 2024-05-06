@@ -16,6 +16,7 @@ func AutoMigrate(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&IANARegistrar{},
 		&Spec5Label{},
+		&RegistryOperator{},
 		&TLD{},
 		&Phase{},
 		&Price{},
@@ -26,6 +27,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Host{},
 		&HostAddress{},
 		&Domain{},
+		&PremiumList{},
 	)
 	if err != nil {
 		return err
