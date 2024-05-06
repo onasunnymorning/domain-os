@@ -6,6 +6,7 @@ import (
 
 var (
 	ErrInvalidPremiumListName = errors.New("invalid premium list name")
+	ErrPremiumListNotFound    = errors.New("premium list not found")
 )
 
 // PremiumList represents a premium list entity

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
@@ -34,6 +35,9 @@ func (plr *PremiumListRepository) Create(ctx context.Context, premiumList *entit
 func (plr *PremiumListRepository) GetByName(ctx context.Context, name string) (*entities.PremiumList, error) {
 	pl := &PremiumList{}
 	if err := plr.db.WithContext(ctx).Where("name = ?", name).First(pl).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrPremiumListNotFound
+		}
 		return nil, err
 	}
 	return pl.ToEntity(), nil
