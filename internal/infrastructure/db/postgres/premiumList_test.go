@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
@@ -18,8 +19,8 @@ func TestPremiumList_ToEntity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pl := &PremiumList{
 				Name:      "example",
-				CreatedAt: "2021-08-01T00:00:00Z",
-				UpdatedAt: "2021-08-01T00:00:00Z",
+				CreatedAt: time.Date(2021, 8, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt: time.Date(2021, 8, 1, 0, 0, 0, 0, time.UTC),
 			}
 			entity := pl.ToEntity()
 			if entity.Name != pl.Name {
@@ -48,8 +49,8 @@ func TestPremiumList_FromEntity(t *testing.T) {
 			pl := &PremiumList{}
 			entity := &entities.PremiumList{
 				Name:      "example",
-				CreatedAt: "2021-08-01T00:00:00Z",
-				UpdatedAt: "2021-08-01T00:00:00Z",
+				CreatedAt: time.Date(2021, 8, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt: time.Date(2021, 8, 1, 0, 0, 0, 0, time.UTC),
 			}
 			pl.FromEntity(entity)
 			if pl.Name != entity.Name {

@@ -21,6 +21,7 @@ func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListServi
 
 	e.POST("/premium/lists", ctrl.CreateList)
 	e.GET("/premium/lists/:name", ctrl.GetListByName)
+	e.DELETE("/premium/lists/:name", ctrl.DeleteListByName)
 	e.GET("/premium/lists", ctrl.ListPremiumLists)
 
 	return ctrl
@@ -123,4 +124,26 @@ func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, response)
+}
+
+// DeleteListByName godoc
+// @Summary Delete a Premium List by name
+// @Description Delete a Premium List by name
+// @Tags Premium Lists
+// @Produce json
+// @Param name path string true "Name of the Premium List"
+// @Success 204
+// @Failure 404
+// @Failure 500
+// @Router /premium/lists/{name} [delete]
+func (ctrl *PremiumController) DeleteListByName(ctx *gin.Context) {
+	name := ctx.Param("name")
+
+	err := ctrl.listService.DeleteListByName(ctx, name)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
 }
