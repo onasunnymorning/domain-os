@@ -23,6 +23,8 @@ type RegistryOperator struct {
 	Fax       E164Type `json:"Fax"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	PremiumLists []*PremiumList
 }
 
 // NewRegistryOperator creates a new instance of RegistryOperator

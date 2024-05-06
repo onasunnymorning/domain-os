@@ -48,6 +48,14 @@ func TestRegistryOperator_FromEntity(t *testing.T) {
 		Fax:       "+123456",
 		CreatedAt: time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
+		PremiumLists: []*PremiumList{
+			{
+				Name: "premium-list1",
+			},
+			{
+				Name: "premium-list2",
+			},
+		},
 	}
 
 	ro.FromEntity(&e)
@@ -60,5 +68,6 @@ func TestRegistryOperator_FromEntity(t *testing.T) {
 	assert.Equal(t, e.Fax.String(), ro.Fax)
 	assert.Equal(t, e.CreatedAt, ro.CreatedAt)
 	assert.Equal(t, e.UpdatedAt, ro.UpdatedAt)
+	assert.Equal(t, len(e.PremiumLists), len(ro.PremiumLists))
 
 }

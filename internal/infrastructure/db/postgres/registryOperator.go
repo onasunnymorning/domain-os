@@ -16,6 +16,8 @@ type RegistryOperator struct {
 	Fax       string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	PremiumLists []*PremiumList `gorm:"foreignKey:RyID"`
 }
 
 // TableName returns the table name for the RegistryOperator entity
@@ -25,15 +27,20 @@ func (RegistryOperator) TableName() string {
 
 // ToEntity converts the RegistryOperator to an entity
 func (ro *RegistryOperator) ToEntity() *entities.RegistryOperator {
+	pls := make([]*entities.PremiumList, len(ro.PremiumLists))
+	for i, pl := range ro.PremiumLists {
+		pls[i] = pl.ToEntity()
+	}
 	return &entities.RegistryOperator{
-		RyID:      entities.ClIDType(ro.RyID),
-		Name:      ro.Name,
-		URL:       entities.URL(ro.URL),
-		Email:     ro.Email,
-		Voice:     entities.E164Type(ro.Voice),
-		Fax:       entities.E164Type(ro.Fax),
-		CreatedAt: ro.CreatedAt,
-		UpdatedAt: ro.UpdatedAt,
+		RyID:         entities.ClIDType(ro.RyID),
+		Name:         ro.Name,
+		URL:          entities.URL(ro.URL),
+		Email:        ro.Email,
+		Voice:        entities.E164Type(ro.Voice),
+		Fax:          entities.E164Type(ro.Fax),
+		CreatedAt:    ro.CreatedAt,
+		UpdatedAt:    ro.UpdatedAt,
+		PremiumLists: pls,
 	}
 }
 
@@ -47,4 +54,11 @@ func (ro *RegistryOperator) FromEntity(e *entities.RegistryOperator) {
 	ro.Fax = e.Fax.String()
 	ro.CreatedAt = e.CreatedAt
 	ro.UpdatedAt = e.UpdatedAt
+
+	pls := make([]*PremiumList, len(e.PremiumLists))
+	for i, pl := range e.PremiumLists {
+		pls[i] = &PremiumList{}
+		pls[i].FromEntity(pl)
+	}
+	ro.PremiumLists = pls
 }

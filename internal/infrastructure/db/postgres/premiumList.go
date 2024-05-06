@@ -7,6 +7,7 @@ import (
 // PremiumList represents a premium list in our repository
 type PremiumList struct {
 	Name      string `gorm:"primaryKey"`
+	RyID      string
 	CreatedAt string
 	UpdatedAt string
 }
@@ -22,6 +23,7 @@ func (pl *PremiumList) ToEntity() *entities.PremiumList {
 		Name:      pl.Name,
 		CreatedAt: pl.CreatedAt,
 		UpdatedAt: pl.UpdatedAt,
+		RyID:      entities.ClIDType(pl.RyID),
 	}
 }
 
@@ -30,4 +32,5 @@ func (pl *PremiumList) FromEntity(premiumList *entities.PremiumList) {
 	pl.Name = premiumList.Name
 	pl.CreatedAt = premiumList.CreatedAt
 	pl.UpdatedAt = premiumList.UpdatedAt
+	pl.RyID = premiumList.RyID.String()
 }
