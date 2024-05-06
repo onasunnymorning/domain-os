@@ -11,7 +11,8 @@ import (
 
 type PLSuite struct {
 	suite.Suite
-	db *gorm.DB
+	db   *gorm.DB
+	ryID string
 }
 
 func TestPLSuite(t *testing.T) {
@@ -20,7 +21,22 @@ func TestPLSuite(t *testing.T) {
 
 func (s *PLSuite) SetupSuite() {
 	s.db = setupTestDB()
-	NewGORMPremiumListRepository(s.db)
+
+	//  Create a RegistryOperator
+	repo := NewGORMRegistryOperatorRepository(s.db)
+
+	ro, _ := entities.NewRegistryOperator("myOperator", "http://example.com", "e@mail.com")
+	_, err := repo.Create(context.Background(), ro)
+	s.Require().NoError(err)
+
+	s.ryID = ro.RyID.String()
+}
+
+func (s *PLSuite) TearDownSuite() {
+	if s.ryID != "" {
+		repo := NewGORMRegistryOperatorRepository(s.db)
+		_ = repo.DeleteByRyID(context.Background(), s.ryID)
+	}
 }
 
 func (s *PLSuite) TestCreateList() {
@@ -28,7 +44,7 @@ func (s *PLSuite) TestCreateList() {
 	defer tx.Rollback()
 	repo := NewGORMPremiumListRepository(tx)
 
-	pl, _ := entities.NewPremiumList("myPremiums")
+	pl, _ := entities.NewPremiumList("myPremiums", s.ryID)
 	createdPL, err := repo.Create(context.Background(), pl)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL)
@@ -44,7 +60,7 @@ func (s *PLSuite) TestGetByName() {
 	defer tx.Rollback()
 	repo := NewGORMPremiumListRepository(tx)
 
-	pl, _ := entities.NewPremiumList("myPremiums")
+	pl, _ := entities.NewPremiumList("myPremiums", s.ryID)
 	createdPL, err := repo.Create(context.Background(), pl)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL)
@@ -60,7 +76,7 @@ func (s *PLSuite) TestDeleteByName() {
 	defer tx.Rollback()
 	repo := NewGORMPremiumListRepository(tx)
 
-	pl, _ := entities.NewPremiumList("myPremiums")
+	pl, _ := entities.NewPremiumList("myPremiums", s.ryID)
 	createdPL, err := repo.Create(context.Background(), pl)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL)
@@ -82,12 +98,12 @@ func (s *PLSuite) TestList() {
 	defer tx.Rollback()
 	repo := NewGORMPremiumListRepository(tx)
 
-	pl1, _ := entities.NewPremiumList("myPremiums")
+	pl1, _ := entities.NewPremiumList("myPremiums", s.ryID)
 	createdPL1, err := repo.Create(context.Background(), pl1)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL1)
 
-	pl2, _ := entities.NewPremiumList("myPremiums2")
+	pl2, _ := entities.NewPremiumList("myPremiums2", s.ryID)
 	createdPL2, err := repo.Create(context.Background(), pl2)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL2)
