@@ -7,6 +7,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 // RegistryOperatorController is the controller for Registry Operator endpoints
@@ -22,6 +23,7 @@ func NewRegistryOperatorController(e *gin.Engine, ryService interfaces.RegistryO
 
 	// Add routes
 	e.POST("/registry-operators", ctrl.Create)
+	e.GET("/registry-operators", ctrl.List)
 	e.GET("/registry-operators/:ryid", ctrl.GetByRyID)
 	e.PUT("/registry-operators/:ryid", ctrl.Update)
 	e.DELETE("/registry-operators/:ryid", ctrl.DeleteByRyID)
@@ -155,4 +157,47 @@ func (ctrl *RegistryOperatorController) DeleteByRyID(ctx *gin.Context) {
 	}
 
 	ctx.JSON(204, nil)
+}
+
+// List godoc
+// @Summary List Registry Operators
+// @Description List Registry Operators
+// @Tags Registry Operators
+// @Produce json
+// @Param pagesize query int false "Page size"
+// @Param pagecursor query string false "Page cursor"
+// @Success 200 {array} entities.RegistryOperator
+// @Failure 400
+// @Failure 500
+// @Router /registry-operators [get]
+func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ros, err := ctrl.ryService.List(ctx, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	response.Data = ros
+	// Set the metadata if there are results only
+	if len(ros) > 0 {
+		response.SetMeta(ctx, ros[len(ros)-1].RyID.String(), len(ros), pageSize)
+	}
+
+	ctx.JSON(200, response)
 }

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -24,13 +25,13 @@ func NewRegistryOperatorService(ryRepo repositories.RegistryOperatorRepository) 
 func (s *RegistryOperatorService) Create(ctx context.Context, cmd *commands.CreateRegistryOperatorCommand) (*entities.RegistryOperator, error) {
 	ry, err := entities.NewRegistryOperator(cmd.RyID, cmd.Name, cmd.Email)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidRegistryOperator, err)
 	}
 
 	if cmd.Voice != "" {
 		v, err := entities.NewE164Type(cmd.Voice)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistryOperator, err)
 		}
 		ry.Voice = *v
 	}
@@ -38,7 +39,7 @@ func (s *RegistryOperatorService) Create(ctx context.Context, cmd *commands.Crea
 	if cmd.Fax != "" {
 		f, err := entities.NewE164Type(cmd.Fax)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistryOperator, err)
 		}
 		ry.Fax = *f
 	}
@@ -46,7 +47,7 @@ func (s *RegistryOperatorService) Create(ctx context.Context, cmd *commands.Crea
 	if cmd.URL != "" {
 		url, err := entities.NewURL(cmd.URL)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(entities.ErrInvalidRegistryOperator, err)
 		}
 		ry.URL = *url
 	}
@@ -67,4 +68,9 @@ func (s *RegistryOperatorService) Update(ctx context.Context, ry *entities.Regis
 // DeleteByRyID deletes a RegistryOperator by its RyID
 func (s *RegistryOperatorService) DeleteByRyID(ctx context.Context, ryid string) error {
 	return s.ryRepo.DeleteByRyID(ctx, ryid)
+}
+
+// List retrieves RegistryOperators
+func (s *RegistryOperatorService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistryOperator, error) {
+	return s.ryRepo.List(ctx, pagesize, pagecursor)
 }
