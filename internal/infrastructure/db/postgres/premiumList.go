@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"time"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -8,8 +10,8 @@ import (
 type PremiumList struct {
 	Name      string `gorm:"primaryKey"`
 	RyID      string
-	CreatedAt string
-	UpdatedAt string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // TableName returns the table name for the PremiumList model

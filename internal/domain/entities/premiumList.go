@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"time"
 )
 
 var (
@@ -11,11 +12,11 @@ var (
 
 // PremiumList represents a premium list entity
 type PremiumList struct {
-	Name          string          `json:"name"`
-	RyID          ClIDType        `json:"ryID"`
-	PremiumLabels []*PremiumLabel `json:"premiumLabels"`
-	CreatedAt     string          `json:"createdAt"`
-	UpdatedAt     string          `json:"updatedAt"`
+	Name          string          `json:"Name"`
+	RyID          ClIDType        `json:"RyID"`
+	PremiumLabels []*PremiumLabel `json:"PremiumLabels,omitempty"`
+	CreatedAt     time.Time       `json:"CreatedAt"`
+	UpdatedAt     time.Time       `json:"UpdatedAt"`
 }
 
 // NewPremiumList creates a new PremiumList instance
@@ -32,5 +33,7 @@ func NewPremiumList(name, ryid string) (*PremiumList, error) {
 		Name:          string(validatedName),
 		RyID:          validatedRyID,
 		PremiumLabels: []*PremiumLabel{},
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
 	}, nil
 }
