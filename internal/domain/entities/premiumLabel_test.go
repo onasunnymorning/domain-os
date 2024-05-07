@@ -14,8 +14,9 @@ func TestNewPremiumLabel(t *testing.T) {
 	restoreAmount := uint64(30)
 	currency := "USD"
 	class := "premium"
+	listName := "example-list"
 
-	pl, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class)
+	pl, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.NoError(t, err, "Failed to create PremiumLabel")
 
 	require.Equal(t, label, pl.Label, "Label mismatch")
@@ -25,6 +26,7 @@ func TestNewPremiumLabel(t *testing.T) {
 	require.Equal(t, restoreAmount, pl.RestoreAmount, "RestoreAmount mismatch")
 	require.Equal(t, currency, pl.Currency, "Currency mismatch")
 	require.Equal(t, class, pl.Class, "Class mismatch")
+	require.Equal(t, listName, pl.PremiumListName, "ListName mismatch")
 }
 
 func TestNewPremiumLabel_InvalidLabel(t *testing.T) {
@@ -35,8 +37,9 @@ func TestNewPremiumLabel_InvalidLabel(t *testing.T) {
 	restoreAmount := uint64(30)
 	currency := "USD"
 	class := "premium"
+	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class)
+	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for invalid label")
 	require.Contains(t, err.Error(), "invalid label", "Error message mismatch")
 }
@@ -49,8 +52,9 @@ func TestNewPremiumLabel_InvalidClass(t *testing.T) {
 	restoreAmount := uint64(30)
 	currency := "USD"
 	class := "thisisnotavalidclidtype"
+	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class)
+	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for invalid class")
 	require.Contains(t, err.Error(), "invalid premium class", "Error message mismatch")
 }
@@ -63,8 +67,9 @@ func TestNewPremiumLabel_UnknownCurrency(t *testing.T) {
 	restoreAmount := uint64(30)
 	currency := "XYZ"
 	class := "premium"
+	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class)
+	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for unknown currency")
 	require.Contains(t, err.Error(), "unknown currency", "Error message mismatch")
 }

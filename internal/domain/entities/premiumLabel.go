@@ -8,22 +8,24 @@ import (
 )
 
 var (
-	ErrInvalidPremiumClass = errors.New("invalid premium class")
+	ErrInvalidPremiumClass  = errors.New("invalid premium class")
+	ErrPremiumLabelNotFound = errors.New("premium label not found")
 )
 
 // PremiumLabel represents a premium label entity
 type PremiumLabel struct {
-	Label              Label  `json:"label"`
-	RegistrationAmount uint64 `json:"registrationAmount"`
-	RenewalAmount      uint64 `json:"renewalAmount"`
-	TransferAmount     uint64 `json:"transferAmount"`
-	RestoreAmount      uint64 `json:"restoreAmount"`
-	Currency           string `json:"currency"`
-	Class              string `json:"class"`
+	Label              Label
+	PremiumListName    string
+	RegistrationAmount uint64
+	RenewalAmount      uint64
+	TransferAmount     uint64
+	RestoreAmount      uint64
+	Currency           string
+	Class              string
 }
 
 // NewPremiumLabel creates a new PremiumLabel instance. It validates the currency, label and class (class string must be a valid clIDType).
-func NewPremiumLabel(label Label, registrationAmount, renewalAmount, transferAmount, restoreAmount uint64, currency, class string) (*PremiumLabel, error) {
+func NewPremiumLabel(label Label, registrationAmount, renewalAmount, transferAmount, restoreAmount uint64, currency, class, listName string) (*PremiumLabel, error) {
 	validatedLabel := Label(label)
 	if err := validatedLabel.Validate(); err != nil {
 		return nil, err
@@ -41,6 +43,7 @@ func NewPremiumLabel(label Label, registrationAmount, renewalAmount, transferAmo
 
 	return &PremiumLabel{
 		Label:              validatedLabel,
+		PremiumListName:    listName,
 		RegistrationAmount: registrationAmount,
 		RenewalAmount:      renewalAmount,
 		TransferAmount:     transferAmount,

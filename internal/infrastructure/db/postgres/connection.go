@@ -28,6 +28,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&HostAddress{},
 		&Domain{},
 		&PremiumList{},
+		&PremiumLabel{},
 	)
 	if err != nil {
 		return err
