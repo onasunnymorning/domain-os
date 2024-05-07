@@ -39,6 +39,6 @@ func (pls *PremiumLabelService) DeleteLabelByLabelListAndCurrency(ctx context.Co
 }
 
 // ListLabels retrieves a list of premium labels
-func (pls *PremiumLabelService) ListLabels(ctx context.Context, pagesize int, cursor string) ([]*entities.PremiumLabel, error) {
-	return pls.labelRepo.List(ctx, pagesize, cursor)
+func (pls *PremiumLabelService) ListLabels(ctx context.Context, pagesize int, cursor, listName, currency string) ([]*entities.PremiumLabel, error) {
+	return pls.labelRepo.List(ctx, pagesize, cursor, listName, currency)
 }

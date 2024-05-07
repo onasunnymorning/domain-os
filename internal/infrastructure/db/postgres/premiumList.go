@@ -12,7 +12,7 @@ type PremiumList struct {
 	RyID          string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	PremiumLabels []PremiumLabel `gorm:"foreignKey:PremiumListName"`
+	PremiumLabels []PremiumLabel `gorm:"foreignKey:PremiumListName;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 // TableName returns the table name for the PremiumList model

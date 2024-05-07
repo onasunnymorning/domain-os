@@ -140,12 +140,12 @@ func (s *PLabelSuite) TestPremiumLabelRepo_List() {
 	_, err = repo.Create(context.Background(), pl3)
 	s.Require().NoError(err)
 
-	pls, err := repo.List(context.Background(), 10, "")
+	pls, err := repo.List(context.Background(), 10, "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(pls, 3)
 
 	// Limit to 2
-	pls, err = repo.List(context.Background(), 2, "")
+	pls, err = repo.List(context.Background(), 2, "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(pls, 2)
 
@@ -154,7 +154,7 @@ func (s *PLabelSuite) TestPremiumLabelRepo_List() {
 	s.Require().NoError(err)
 
 	// List again
-	pls, err = repo.List(context.Background(), 10, "")
+	pls, err = repo.List(context.Background(), 10, "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(pls, 2)
 
@@ -165,7 +165,7 @@ func (s *PLabelSuite) TestPremiumLabelRepo_List() {
 	s.Require().NoError(err)
 
 	// List again
-	pls, err = repo.List(context.Background(), 10, "")
+	pls, err = repo.List(context.Background(), 10, "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(pls, 0)
 }

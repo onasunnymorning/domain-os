@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -25,7 +26,8 @@ func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListServi
 	e.DELETE("/premium/lists/:name", ctrl.DeleteListByName)
 	e.GET("/premium/lists", ctrl.ListPremiumLists)
 
-	e.GET("/premium/labels", ctrl.ListLabels)
+	e.GET("/premium/labels", ctrl.ListPremiumLabels)
+
 	e.POST("/premium/lists/:name/labels", ctrl.CreateLabel)
 	e.GET("/premium/lists/:name/labels/:label/:currency", ctrl.GetLabelByLabelListAndCurrency)
 	e.DELETE("/premium/lists/:name/labels/:label/:currency", ctrl.DeleteLabelByLabelListAndCurrency)
@@ -238,7 +240,7 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 	ctx.JSON(204, nil)
 }
 
-// ListLabels godoc
+// ListPremiumLabels godoc
 // @Summary List Premium Labels
 // @Description List Premium Labels.
 // @Tags Premium Labels
@@ -246,7 +248,7 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 // @Success 200 {array} entities.PremiumLabel
 // @Failure 500
 // @Router /premium/labels [get]
-func (ctrl *PremiumController) ListLabels(ctx *gin.Context) {
+func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -263,7 +265,12 @@ func (ctrl *PremiumController) ListLabels(ctx *gin.Context) {
 		return
 	}
 
-	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor)
+	// filter options
+	// this endpoint allows filtering by currency and list
+	listName := ctx.Query("list")
+	currency := strings.ToUpper(ctx.Query("currency"))
+
+	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor, listName, currency)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

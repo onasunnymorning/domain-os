@@ -12,5 +12,5 @@ type PremiumLabelService interface {
 	CreateLabel(ctx context.Context, cmd commands.CreatePremiumLabelCommand) (*entities.PremiumLabel, error)
 	GetLabelByLabelListAndCurrency(ctx context.Context, label, list, currency string) (*entities.PremiumLabel, error)
 	DeleteLabelByLabelListAndCurrency(ctx context.Context, label, list, currency string) error
-	ListLabels(ctx context.Context, pagesize int, cursor string) ([]*entities.PremiumLabel, error)
+	ListLabels(ctx context.Context, pagesize int, cursor, listName, currency string) ([]*entities.PremiumLabel, error)
 }
