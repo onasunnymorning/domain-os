@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewPremiumLabel(t *testing.T) {
-	label := Label("example")
+	labelString := "example"
 	registrationAmount := uint64(100)
 	renewalAmount := uint64(50)
 	transferAmount := uint64(20)
@@ -16,10 +16,10 @@ func TestNewPremiumLabel(t *testing.T) {
 	class := "premium"
 	listName := "example-list"
 
-	pl, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
+	pl, err := NewPremiumLabel(labelString, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.NoError(t, err, "Failed to create PremiumLabel")
 
-	require.Equal(t, label, pl.Label, "Label mismatch")
+	require.Equal(t, labelString, pl.Label.String(), "Label mismatch")
 	require.Equal(t, registrationAmount, pl.RegistrationAmount, "RegistrationAmount mismatch")
 	require.Equal(t, renewalAmount, pl.RenewalAmount, "RenewalAmount mismatch")
 	require.Equal(t, transferAmount, pl.TransferAmount, "TransferAmount mismatch")
@@ -30,7 +30,7 @@ func TestNewPremiumLabel(t *testing.T) {
 }
 
 func TestNewPremiumLabel_InvalidLabel(t *testing.T) {
-	label := Label("inva--lid")
+	labelString := "inva--lid"
 	registrationAmount := uint64(100)
 	renewalAmount := uint64(50)
 	transferAmount := uint64(20)
@@ -39,13 +39,13 @@ func TestNewPremiumLabel_InvalidLabel(t *testing.T) {
 	class := "premium"
 	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
+	_, err := NewPremiumLabel(labelString, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for invalid label")
 	require.Contains(t, err.Error(), "invalid label", "Error message mismatch")
 }
 
 func TestNewPremiumLabel_InvalidClass(t *testing.T) {
-	label := Label("example")
+	labelString := "example"
 	registrationAmount := uint64(100)
 	renewalAmount := uint64(50)
 	transferAmount := uint64(20)
@@ -54,13 +54,13 @@ func TestNewPremiumLabel_InvalidClass(t *testing.T) {
 	class := "thisisnotavalidclidtype"
 	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
+	_, err := NewPremiumLabel(labelString, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for invalid class")
 	require.Contains(t, err.Error(), "invalid premium class", "Error message mismatch")
 }
 
 func TestNewPremiumLabel_UnknownCurrency(t *testing.T) {
-	label := Label("example")
+	labelString := "example"
 	registrationAmount := uint64(100)
 	renewalAmount := uint64(50)
 	transferAmount := uint64(20)
@@ -69,7 +69,7 @@ func TestNewPremiumLabel_UnknownCurrency(t *testing.T) {
 	class := "premium"
 	listName := "example-list"
 
-	_, err := NewPremiumLabel(label, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
+	_, err := NewPremiumLabel(labelString, registrationAmount, renewalAmount, transferAmount, restoreAmount, currency, class, listName)
 	require.Error(t, err, "Expected error for unknown currency")
 	require.Contains(t, err.Error(), "unknown currency", "Error message mismatch")
 }

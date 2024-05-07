@@ -101,9 +101,12 @@ func main() {
 	priceRepo := postgres.NewGormPriceRepository(gormDB)
 	priceService := services.NewPriceService(phaseRepo, priceRepo)
 
-	// Premium Lists and Entries
+	// Premium Lists
 	premiumListRepo := postgres.NewGORMPremiumListRepository(gormDB)
 	premiumListService := services.NewPremiumListService(premiumListRepo)
+	// Premium Labels
+	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
+	premiumLabelService := services.NewPremiumLabelService(premiumLabelRepo)
 
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
@@ -161,7 +164,7 @@ func main() {
 	rest.NewFeeController(r, feeService)
 	rest.NewPriceController(r, priceService)
 	rest.NewAccreditationController(r, accreditationService)
-	rest.NewPremiumController(r, premiumListService)
+	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

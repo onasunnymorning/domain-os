@@ -25,7 +25,7 @@ type PremiumLabel struct {
 }
 
 // NewPremiumLabel creates a new PremiumLabel instance. It validates the currency, label and class (class string must be a valid clIDType).
-func NewPremiumLabel(label Label, registrationAmount, renewalAmount, transferAmount, restoreAmount uint64, currency, class, listName string) (*PremiumLabel, error) {
+func NewPremiumLabel(label string, registrationAmount, renewalAmount, transferAmount, restoreAmount uint64, currency, class, listName string) (*PremiumLabel, error) {
 	validatedLabel := Label(label)
 	if err := validatedLabel.Validate(); err != nil {
 		return nil, err
