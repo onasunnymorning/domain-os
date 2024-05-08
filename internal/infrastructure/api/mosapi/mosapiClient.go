@@ -91,11 +91,11 @@ func NewMosapiClientConfig() *MosapiConfig {
 }
 
 // BASEURL returns the base URL for the MOSAPICient given the current configuration. It supports PROD or OTE environments
-func (c *MosapiClient) BaseURL(env string) (string, error) {
-	if !slices.Contains(SupportedMOSAPIEnvironments, strings.ToUpper(env)) {
+func (c *MosapiClient) BaseURL() (string, error) {
+	if !slices.Contains(SupportedMOSAPIEnvironments, strings.ToUpper(c.Config.Environment)) {
 		return "", ErrUnsupportedEnvironment
 	}
-	if strings.ToUpper(env) == "PROD" {
+	if strings.ToUpper(c.Config.Environment) == "PROD" {
 		return MOSAPI_URL + "/" + c.Config.Entity + "/" + c.Config.TLD + "/" + c.Config.Version, nil
 	}
 	return MOSAPI_OTE_URL + "/" + c.Config.Entity + "/" + c.Config.TLD + "/" + c.Config.Version, nil
@@ -103,12 +103,13 @@ func (c *MosapiClient) BaseURL(env string) (string, error) {
 
 // Login does a GET request to the login endpoint of the MOSAPI
 func (c *MosapiClient) Login() error {
-	baseURL, err := c.BaseURL(c.Config.Environment)
+	baseURL, err := c.BaseURL()
 	if err != nil {
 		return err
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/v2") // the login endpoint does not have the version
-	req, err := http.NewRequest("GET", baseURL+"/"+c.Config.TLD+"/login", nil)
+	loginURL := baseURL + "/login"
+	req, err := http.NewRequest("GET", loginURL, nil)
 	if err != nil {
 		return err
 	}
@@ -128,7 +129,7 @@ func (c *MosapiClient) Login() error {
 
 // Logout does a GET request to the logout endpoint of the MOSAPI
 func (c *MosapiClient) Logout() error {
-	baseURL, err := c.BaseURL(c.Config.Environment)
+	baseURL, err := c.BaseURL()
 	if err != nil {
 		return err
 	}
@@ -152,7 +153,14 @@ func (c *MosapiClient) Logout() error {
 
 // GetState does a GET request to the state endpoint of the MOSAPI and returns the response as a StateResponse
 func (c *MosapiClient) GetState() (*StateResponse, error) {
-	baseURL, err := c.BaseURL(c.Config.Environment)
+	if c.Config.AuthType == AuthTypeBasic {
+		err := c.Login()
+		if err != nil {
+			return nil, err
+		}
+		defer c.Logout()
+	}
+	baseURL, err := c.BaseURL()
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +196,7 @@ func (c *MosapiClient) GetAlarm(service string) (*AlarmResponse, error) {
 	if !slices.Contains(SupportedServices, strings.ToUpper(service)) {
 		return nil, ErrUnsupportedService
 	}
-	baseURL, err := c.BaseURL(c.Config.Environment)
+	baseURL, err := c.BaseURL()
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +232,7 @@ func (c *MosapiClient) GetDowntime(service string) (*DowntimeResponse, error) {
 	if !slices.Contains(SupportedServices, strings.ToUpper(service)) {
 		return nil, ErrUnsupportedService
 	}
-	baseURL, err := c.BaseURL(c.Config.Environment)
+	baseURL, err := c.BaseURL()
 	if err != nil {
 		return nil, err
 	}
