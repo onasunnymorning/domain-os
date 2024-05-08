@@ -10,66 +10,63 @@ import (
 
 func TestPhase_ToEntity(t *testing.T) {
 	phase := &Phase{
-		ID:              1,
-		Name:            "TestPhase",
-		Type:            "GA",
-		Starts:          time.Now().UTC(),
-		Ends:            nil,
-		PremiumListName: "PremiumList",
-		CreatedAt:       time.Now().UTC(),
-		UpdatedAt:       time.Now().UTC(),
-		TLDName:         "tld.com",
-		PhasePolicy:     entities.NewPhasePolicy(),
+		ID:          1,
+		Name:        "TestPhase",
+		Type:        "GA",
+		Starts:      time.Now().UTC(),
+		Ends:        nil,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+		TLDName:     "tld.com",
+		PhasePolicy: entities.NewPhasePolicy(),
 	}
 	expected := &entities.Phase{
-		ID:              1,
-		Name:            entities.ClIDType("TestPhase"),
-		Type:            entities.PhaseType("GA"),
-		Starts:          phase.Starts,
-		Ends:            phase.Ends,
-		PremiumListName: "PremiumList",
-		CreatedAt:       phase.CreatedAt,
-		UpdatedAt:       phase.UpdatedAt,
-		TLDName:         entities.DomainName("tld.com"),
-		Policy:          entities.NewPhasePolicy(),
+		ID:        1,
+		Name:      entities.ClIDType("TestPhase"),
+		Type:      entities.PhaseType("GA"),
+		Starts:    phase.Starts,
+		Ends:      phase.Ends,
+		CreatedAt: phase.CreatedAt,
+		UpdatedAt: phase.UpdatedAt,
+		TLDName:   entities.DomainName("tld.com"),
+		Policy:    entities.NewPhasePolicy(),
 	}
 	actual := phase.ToEntity()
 	assert.Equal(t, expected, actual)
 }
 func TestPhase_ToEntityWithFeeAndPrice(t *testing.T) {
 	phase := &Phase{
-		ID:              1,
-		Name:            "TestPhase",
-		Type:            "GA",
-		Starts:          time.Now().UTC(),
-		Ends:            nil,
-		PremiumListName: "PremiumList",
-		CreatedAt:       time.Now().UTC(),
-		UpdatedAt:       time.Now().UTC(),
-		TLDName:         "tld.com",
-		PhasePolicy:     entities.NewPhasePolicy(),
-		Fees:            []Fee{{Name: "TestFee", Amount: 100}},
-		Prices:          []Price{{Currency: "PEN", RegistrationAmount: 100}},
+		ID:          1,
+		Name:        "TestPhase",
+		Type:        "GA",
+		Starts:      time.Now().UTC(),
+		Ends:        nil,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+		TLDName:     "tld.com",
+		PhasePolicy: entities.NewPhasePolicy(),
+		Fees:        []Fee{{Name: "TestFee", Amount: 100}},
+		Prices:      []Price{{Currency: "PEN", RegistrationAmount: 100}},
 	}
 	expected := &entities.Phase{
-		ID:              1,
-		Name:            entities.ClIDType("TestPhase"),
-		Type:            entities.PhaseType("GA"),
-		Starts:          phase.Starts,
-		Ends:            phase.Ends,
-		PremiumListName: "PremiumList",
-		CreatedAt:       phase.CreatedAt,
-		UpdatedAt:       phase.UpdatedAt,
-		TLDName:         entities.DomainName("tld.com"),
-		Policy:          entities.NewPhasePolicy(),
-		Fees:            []entities.Fee{{Name: "TestFee", Amount: 100}},
-		Prices:          []entities.Price{{Currency: "PEN", RegistrationAmount: 100}},
+		ID:        1,
+		Name:      entities.ClIDType("TestPhase"),
+		Type:      entities.PhaseType("GA"),
+		Starts:    phase.Starts,
+		Ends:      phase.Ends,
+		CreatedAt: phase.CreatedAt,
+		UpdatedAt: phase.UpdatedAt,
+		TLDName:   entities.DomainName("tld.com"),
+		Policy:    entities.NewPhasePolicy(),
+		Fees:      []entities.Fee{{Name: "TestFee", Amount: 100}},
+		Prices:    []entities.Price{{Currency: "PEN", RegistrationAmount: 100}},
 	}
 	actual := phase.ToEntity()
 	assert.Equal(t, expected, actual)
 }
 
 func TestPhase_FromEntity(t *testing.T) {
+	plist := "PremiumList"
 	phase := &Phase{}
 	expected := &entities.Phase{
 		ID:              1,
@@ -77,7 +74,7 @@ func TestPhase_FromEntity(t *testing.T) {
 		Type:            entities.PhaseType("GA"),
 		Starts:          time.Now().UTC(),
 		Ends:            nil,
-		PremiumListName: "PremiumList",
+		PremiumListName: &plist,
 		CreatedAt:       time.Now().UTC(),
 		UpdatedAt:       time.Now().UTC(),
 		TLDName:         entities.DomainName("tld.com"),
@@ -96,6 +93,7 @@ func TestPhase_FromEntity(t *testing.T) {
 }
 
 func TestPhase_FromEntityWithFeeAndPrice(t *testing.T) {
+	plist := "PremiumList"
 	phase := &Phase{
 		Fees:   []Fee{{Name: "TestFee", Amount: 100}},
 		Prices: []Price{{Currency: "PEN", RegistrationAmount: 100}},
@@ -106,7 +104,7 @@ func TestPhase_FromEntityWithFeeAndPrice(t *testing.T) {
 		Type:            entities.PhaseType("GA"),
 		Starts:          time.Now().UTC(),
 		Ends:            nil,
-		PremiumListName: "PremiumList",
+		PremiumListName: &plist,
 		CreatedAt:       time.Now().UTC(),
 		UpdatedAt:       time.Now().UTC(),
 		TLDName:         entities.DomainName("tld.com"),

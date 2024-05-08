@@ -15,4 +15,5 @@ type PhaseService interface {
 	ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	ListActivePhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	EndPhase(ctx context.Context, cmd *commands.EndPhaseCommand) (*entities.Phase, error)
+	UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
 }
