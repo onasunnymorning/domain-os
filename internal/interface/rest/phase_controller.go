@@ -27,6 +27,8 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
 	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
 	e.PUT("/tlds/:tldName/phases/:phaseName/end", ctrl.EndPhase)
+	e.POST("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
+	e.DELETE("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.UnSetPremiumList)
 
 	return ctrl
 }
@@ -248,4 +250,76 @@ func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, response)
+}
+
+// SetPremiumList godoc
+// @Summary Set a premium list for a phase
+// @Description Set a premium list for a phase. The premium list must exist.
+// @Tags Phases
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param premiumListName path string true "Premium list name"
+// @Success 200
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/premium-list/{premiumListName} [put]
+func (ctrl *PhaseController) SetPremiumList(ctx *gin.Context) {
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	plist := ctx.Param("premiumListName")
+	phase.PremiumListName = &plist
+
+	phase, err = ctrl.phaseService.UpdatePhase(ctx, phase)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, phase)
+}
+
+// UnSetPremiumList godoc
+// @Summary Unset a premium list for a phase
+// @Description Unset a premium list for a phase.
+// @Tags Phases
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param premiumListName path string true "Premium list name"
+// @Success 200
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/premium-list/{premiumListName} [delete]
+func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	phase.PremiumListName = nil
+
+	phase, err = ctrl.phaseService.UpdatePhase(ctx, phase)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, phase)
 }

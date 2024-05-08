@@ -130,3 +130,8 @@ func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCom
 
 	return updatedPhase, nil
 }
+
+// UpdatePhase updates a phase
+func (svc *PhaseService) UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
+	return svc.phaseRepo.UpdatePhase(ctx, phase)
+}
