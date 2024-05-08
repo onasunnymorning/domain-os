@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
@@ -54,8 +53,10 @@ func (s *RySuite) TestGetByRyID() {
 	s.Require().NoError(err)
 	s.Require().NotNil(fetchedRy)
 	// Round the time to milliseconds before comparing
-	createdRy.CreatedAt = createdRy.CreatedAt.Truncate(time.Nanosecond)
-	createdRy.UpdatedAt = createdRy.UpdatedAt.Truncate(time.Nanosecond)
+	createdRy.CreatedAt = entities.RoundTime(createdRy.CreatedAt)
+	createdRy.UpdatedAt = entities.RoundTime(createdRy.UpdatedAt)
+	fetchedRy.CreatedAt = entities.RoundTime(fetchedRy.CreatedAt)
+	fetchedRy.UpdatedAt = entities.RoundTime(fetchedRy.UpdatedAt)
 	s.Require().Equal(createdRy, fetchedRy)
 
 	// Try and fetch a non-existent registry operator
