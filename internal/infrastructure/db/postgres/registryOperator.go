@@ -38,8 +38,8 @@ func (ro *RegistryOperator) ToEntity() *entities.RegistryOperator {
 		Email:        ro.Email,
 		Voice:        entities.E164Type(ro.Voice),
 		Fax:          entities.E164Type(ro.Fax),
-		CreatedAt:    ro.CreatedAt,
-		UpdatedAt:    ro.UpdatedAt,
+		CreatedAt:    ro.CreatedAt.UTC(),
+		UpdatedAt:    ro.UpdatedAt.UTC(),
 		PremiumLists: pls,
 	}
 }
@@ -52,8 +52,8 @@ func (ro *RegistryOperator) FromEntity(e *entities.RegistryOperator) {
 	ro.Email = e.Email
 	ro.Voice = e.Voice.String()
 	ro.Fax = e.Fax.String()
-	ro.CreatedAt = e.CreatedAt
-	ro.UpdatedAt = e.UpdatedAt
+	ro.CreatedAt = e.CreatedAt.UTC()
+	ro.UpdatedAt = e.UpdatedAt.UTC()
 
 	pls := make([]*PremiumList, len(e.PremiumLists))
 	for i, pl := range e.PremiumLists {

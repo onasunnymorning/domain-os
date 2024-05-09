@@ -52,11 +52,6 @@ func (s *RySuite) TestGetByRyID() {
 	fetchedRy, err := repo.GetByRyID(context.Background(), "ra-dix")
 	s.Require().NoError(err)
 	s.Require().NotNil(fetchedRy)
-	// Round the time to milliseconds before comparing
-	createdRy.CreatedAt = entities.RoundTime(createdRy.CreatedAt)
-	createdRy.UpdatedAt = entities.RoundTime(createdRy.UpdatedAt)
-	fetchedRy.CreatedAt = entities.RoundTime(fetchedRy.CreatedAt)
-	fetchedRy.UpdatedAt = entities.RoundTime(fetchedRy.UpdatedAt)
 	s.Require().Equal(createdRy, fetchedRy)
 
 	// Try and fetch a non-existent registry operator

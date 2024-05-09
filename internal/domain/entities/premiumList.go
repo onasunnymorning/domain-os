@@ -33,7 +33,7 @@ func NewPremiumList(name, ryid string) (*PremiumList, error) {
 		Name:          string(validatedName),
 		RyID:          validatedRyID,
 		PremiumLabels: []*PremiumLabel{},
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		CreatedAt:     RoundTime(time.Now().UTC()),
+		UpdatedAt:     RoundTime(time.Now().UTC()),
 	}, nil
 }

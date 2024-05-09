@@ -42,7 +42,7 @@ func NewRegistryOperator(ryID, name, email string) (*RegistryOperator, error) {
 		RyID:      validatedRyID,
 		Name:      NormalizeString(name),
 		Email:     strings.ToLower(email),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: RoundTime(time.Now().UTC()),
+		UpdatedAt: RoundTime(time.Now().UTC()),
 	}, nil
 }
