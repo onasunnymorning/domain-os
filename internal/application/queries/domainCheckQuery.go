@@ -31,6 +31,7 @@ type DomainCheckResult struct {
 	DomainName  entities.DomainName
 	TimeStamp   time.Time
 	Available   bool
+	Reason      string
 	PricePoints DomainPricePoints
 }
 
