@@ -68,12 +68,6 @@ func (s *PLSuite) TestGetByName() {
 	fetchedPL, err := repo.GetByName(context.Background(), "myPremiums")
 	s.Require().NoError(err)
 	s.Require().NotNil(fetchedPL)
-	// Round the times for comparison
-	// Round the time to milliseconds before comparing
-	createdPL.CreatedAt = entities.RoundTime(createdPL.CreatedAt)
-	createdPL.UpdatedAt = entities.RoundTime(createdPL.UpdatedAt)
-	fetchedPL.CreatedAt = entities.RoundTime(fetchedPL.CreatedAt)
-	fetchedPL.UpdatedAt = entities.RoundTime(fetchedPL.UpdatedAt)
 	s.Require().Equal(createdPL, fetchedPL)
 }
 
