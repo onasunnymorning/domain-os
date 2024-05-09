@@ -15,7 +15,8 @@ type Phase struct {
 	Ends            *time.Time
 	Prices          []Price `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	Fees            []Fee   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	PremiumListName string
+	PremiumListName *string
+	PremiumList     *PremiumList
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	TLDName         string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
@@ -31,16 +32,18 @@ func (Phase) TableName() string {
 // ToEntity converts a Phase to a domain model *entities.Phase
 func (p *Phase) ToEntity() *entities.Phase {
 	phase := &entities.Phase{
-		ID:              p.ID,
-		Name:            entities.ClIDType(p.Name),
-		Type:            entities.PhaseType(p.Type),
-		Starts:          p.Starts,
-		Ends:            p.Ends,
-		PremiumListName: p.PremiumListName,
-		CreatedAt:       p.CreatedAt,
-		UpdatedAt:       p.UpdatedAt,
-		TLDName:         entities.DomainName(p.TLDName),
-		Policy:          p.PhasePolicy,
+		ID:        p.ID,
+		Name:      entities.ClIDType(p.Name),
+		Type:      entities.PhaseType(p.Type),
+		Starts:    p.Starts,
+		Ends:      p.Ends,
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
+		TLDName:   entities.DomainName(p.TLDName),
+		Policy:    p.PhasePolicy,
+	}
+	if p.PremiumListName != nil {
+		phase.PremiumListName = p.PremiumListName
 	}
 	for _, fee := range p.Fees {
 		phase.Fees = append(phase.Fees, *fee.ToEntity())
@@ -72,9 +75,12 @@ func (p *Phase) FromEntity(phase *entities.Phase) {
 	p.Type = string(phase.Type)
 	p.Starts = phase.Starts
 	p.Ends = phase.Ends
-	p.PremiumListName = phase.PremiumListName
 	p.CreatedAt = phase.CreatedAt
 	p.UpdatedAt = phase.UpdatedAt
 	p.TLDName = string(phase.TLDName)
 	p.PhasePolicy = phase.Policy
+
+	if phase.PremiumListName != nil {
+		p.PremiumListName = phase.PremiumListName
+	}
 }

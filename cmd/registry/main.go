@@ -81,6 +81,10 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
+	// Registry Operators
+	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
+	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
+
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
@@ -96,6 +100,13 @@ func main() {
 	// Prices
 	priceRepo := postgres.NewGormPriceRepository(gormDB)
 	priceService := services.NewPriceService(phaseRepo, priceRepo)
+
+	// Premium Lists
+	premiumListRepo := postgres.NewGORMPremiumListRepository(gormDB)
+	premiumListService := services.NewPremiumListService(premiumListRepo)
+	// Premium Labels
+	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
+	premiumLabelService := services.NewPremiumLabelService(premiumLabelRepo)
 
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
@@ -139,6 +150,7 @@ func main() {
 	r := gin.Default()
 
 	rest.NewPingController(r)
+	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
 	rest.NewSyncController(r, syncService)
@@ -152,6 +164,7 @@ func main() {
 	rest.NewFeeController(r, feeService)
 	rest.NewPriceController(r, priceService)
 	rest.NewAccreditationController(r, accreditationService)
+	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
