@@ -46,6 +46,7 @@ func (ctrl *DomainCheckController) CheckDomain(ctx *gin.Context) {
 
 	// Set the phase name if it was provided
 	q.PhaseName = ctx.Query("phase")
+	q.Currency = ctx.Query("currency")
 
 	// Call the service to check the domain
 	result, err := ctrl.DomainCheckService.CheckDomain(ctx, q)

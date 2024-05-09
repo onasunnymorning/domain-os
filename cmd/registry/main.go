@@ -147,7 +147,7 @@ func main() {
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService)
 
 	// DomainCheck
-	domainCheckService := services.NewDomainCheckService(domainRepo, tldRepo, premiumLabelRepo, phaseRepo)
+	domainCheckService := services.NewDomainCheckService(domainRepo, nndnRepo, tldRepo, premiumLabelRepo, phaseRepo)
 
 	// Gin router
 	r := gin.Default()

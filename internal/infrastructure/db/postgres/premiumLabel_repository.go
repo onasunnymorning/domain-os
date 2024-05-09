@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
@@ -33,7 +34,7 @@ func (plr *PremiumLabelRepository) Create(ctx context.Context, premiumLabel *ent
 // GetByLabelListAndCurrency retrieves a premium label by label, list, and currency
 func (plr *PremiumLabelRepository) GetByLabelListAndCurrency(ctx context.Context, label, list, currency string) (*entities.PremiumLabel, error) {
 	pl := &PremiumLabel{}
-	if err := plr.db.WithContext(ctx).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, currency).First(pl).Error; err != nil {
+	if err := plr.db.WithContext(ctx).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, strings.ToUpper(currency)).First(pl).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPremiumLabelNotFound
 		}
