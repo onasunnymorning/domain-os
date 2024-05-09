@@ -33,7 +33,7 @@ type Phase struct {
 	Ends            *time.Time  `json:"ends"`
 	Prices          []Price     `json:"prices"`
 	Fees            []Fee       `json:"fees"`
-	PremiumListName string      `json:"premiumListName"`
+	PremiumListName *string     `json:"premiumListName"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
 	TLDName         DomainName  `json:"tldName"`
