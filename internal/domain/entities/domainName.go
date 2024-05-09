@@ -57,6 +57,12 @@ func (d *DomainName) ParentDomain() string {
 	return strings.Join(labels[1:], ".")
 }
 
+// Returns the first label of the domain name
+func (d *DomainName) Label() string {
+	labels := strings.Split(string(*d), ".")
+	return labels[0]
+}
+
 // Returns the domain name as a string
 func (d *DomainName) String() string {
 	return string(*d)

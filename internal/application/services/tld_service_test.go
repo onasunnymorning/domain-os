@@ -20,7 +20,7 @@ func (repo *MockTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 }
 
 // GetByName returns a TLD by name
-func (repo *MockTLDRepository) GetByName(ctx context.Context, name string) (*entities.TLD, error) {
+func (repo *MockTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	for _, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			return tld, nil
@@ -98,7 +98,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 	}
 
 	// Get the first TLD
-	tld, err = service.GetTLDByName(context.Background(), "apex")
+	tld, err = service.GetTLDByName(context.Background(), "apex", false)
 	if err != nil {
 		t.Error(err)
 	}
@@ -107,7 +107,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 	}
 
 	// Get the second TLD
-	tld, err = service.GetTLDByName(context.Background(), "com.apex")
+	tld, err = service.GetTLDByName(context.Background(), "com.apex", false)
 	if err != nil {
 		t.Error(err)
 	}
