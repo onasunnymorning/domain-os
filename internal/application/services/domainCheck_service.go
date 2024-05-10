@@ -146,7 +146,7 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 	if !q.IncludeFees {
 		return result, nil
 	}
-	// If fees are required, prepare the result
+	// If fees are requested, prepare the result
 	result.PricePoints = &queries.DomainPricePoints{}
 
 	// Get the full phase from the repo to ensure preloading the price and fee objects
