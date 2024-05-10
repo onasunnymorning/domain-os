@@ -760,3 +760,35 @@ func TestGetFees(t *testing.T) {
 		t.Errorf("Incorrect fee retrieved")
 	}
 }
+
+func TestPhase_CanUpdate(t *testing.T) {
+	// Create a new Phase with a future end date
+	endDate := time.Now().Add(time.Hour)
+	phase := &Phase{
+		Ends: &endDate,
+	}
+
+	// Assert that CanUpdate returns true
+	canupdate, err := phase.CanUpdate()
+	assert.True(t, canupdate)
+	assert.NoError(t, err)
+
+	// Create a new Phase with a past end date
+	endDate = time.Now().Add(-time.Hour)
+	phase = &Phase{
+		Ends: &endDate,
+	}
+
+	// Assert that CanUpdate returns false
+	canupdate, err = phase.CanUpdate()
+	assert.False(t, canupdate)
+	assert.ErrorIs(t, err, ErrUpdateHistoricPhase)
+
+	// Create a new Phase without an end date
+	phase = &Phase{}
+
+	// Assert that CanUpdate returns true
+	canupdate, err = phase.CanUpdate()
+	assert.True(t, canupdate)
+	assert.NoError(t, err)
+}

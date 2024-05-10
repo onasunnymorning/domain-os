@@ -233,3 +233,14 @@ func (p *Phase) GetFees(currency string) []Fee {
 	}
 	return fees
 }
+
+// CanUpdate checks if the phase can be updated. A phase can be updated if it has not ended yet.
+func (p *Phase) CanUpdate() (bool, error) {
+	if p.Ends == nil {
+		return true, nil
+	}
+	if p.Ends.Before(time.Now().UTC()) {
+		return false, ErrUpdateHistoricPhase
+	}
+	return true, nil
+}

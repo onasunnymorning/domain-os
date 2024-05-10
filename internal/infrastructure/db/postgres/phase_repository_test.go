@@ -155,9 +155,10 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	s.Require().NoError(err)
 
 	// Update the phase
+	f := false
 	endDate := time.Now().UTC().AddDate(0, 0, 1)
 	createdPhase.Ends = &endDate
-	createdPhase.Policy.AllowAutoRenew = false
+	createdPhase.Policy.AllowAutoRenew = &f
 	createdPhase.Policy.BaseCurrency = "PEN"
 	createdPhase.Policy.MaxHorizon = 20
 
@@ -172,7 +173,7 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	s.Require().NotEqual(createdPhase.UpdatedAt, updatedPhase.UpdatedAt)
 	s.Require().NotNil(updatedPhase.Ends)
 	s.Require().Equal(endDate, *updatedPhase.Ends)
-	s.Require().Equal(false, updatedPhase.Policy.AllowAutoRenew)
+	s.Require().Equal(&f, updatedPhase.Policy.AllowAutoRenew)
 	s.Require().Equal("PEN", updatedPhase.Policy.BaseCurrency)
 	s.Require().Equal(20, updatedPhase.Policy.MaxHorizon)
 

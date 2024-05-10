@@ -1,6 +1,7 @@
 package entities
 
 const (
+	// Default values for a TLD phase
 	MinLabelLength     = 1
 	MaxLabelLength     = 63
 	RegistrationGP     = 5
@@ -28,13 +29,15 @@ type PhasePolicy struct {
 	PendingDeleteGP    int    `json:"pendingdeleteGP,omitempty" example:"5"`
 	TransferLockPeriod int    `json:"transferLockPeriod,omitempty" example:"60"`
 	MaxHorizon         int    `json:"maxHorizon,omitempty" example:"10"`
-	AllowAutoRenew     bool   `json:"allowAutorenew,omitempty" example:"true"`
-	RequiresValidation bool   `json:"requiresValidation,omitempty" example:"false"`
+	AllowAutoRenew     *bool  `json:"allowAutorenew,omitempty" example:"true"`
+	RequiresValidation *bool  `json:"requiresValidation,omitempty" example:"false"`
 	BaseCurrency       string `json:"baseCurrency,omitempty" example:"USD"`
 }
 
 // PhasePolicy factory. This returns a new PhasePolicy object with default values
 func NewPhasePolicy() PhasePolicy {
+	ar := AllowAutoRenew
+	rv := RequiresValidation
 	return PhasePolicy{
 		MinLabelLength:     MinLabelLength,
 		MaxLabelLength:     MaxLabelLength,
@@ -45,8 +48,8 @@ func NewPhasePolicy() PhasePolicy {
 		PendingDeleteGP:    PendingDeleteGP,
 		TransferLockPeriod: TransferLockPeriod,
 		MaxHorizon:         MaxHorizon,
-		AllowAutoRenew:     AllowAutoRenew,
-		RequiresValidation: RequiresValidation,
+		AllowAutoRenew:     &ar,
+		RequiresValidation: &rv,
 		BaseCurrency:       BaseCurrency,
 	}
 }
@@ -54,4 +57,47 @@ func NewPhasePolicy() PhasePolicy {
 // DomainIsAllowed checks if a domain is allowed in the current phase.
 func (p *PhasePolicy) LabelIsAllowed(label string) bool {
 	return len(label) >= p.MinLabelLength && len(label) <= p.MaxLabelLength
+}
+
+// UpdatePolicy updates the policy with the values from the passed in policy. It will keep the default values for any fields that are not set in the passed in policy.
+func (p *PhasePolicy) UpdatePolicy(newPolicy *PhasePolicy) {
+	if newPolicy.MinLabelLength != 0 {
+		p.MinLabelLength = newPolicy.MinLabelLength
+	}
+	if newPolicy.MaxLabelLength != 0 {
+		p.MaxLabelLength = newPolicy.MaxLabelLength
+	}
+	if newPolicy.RegistrationGP != 0 {
+		p.RegistrationGP = newPolicy.RegistrationGP
+	}
+	if newPolicy.RenewalGP != 0 {
+		p.RenewalGP = newPolicy.RenewalGP
+	}
+	if newPolicy.AutoRenewalGP != 0 {
+		p.AutoRenewalGP = newPolicy.AutoRenewalGP
+	}
+	if newPolicy.TransferGP != 0 {
+		p.TransferGP = newPolicy.TransferGP
+	}
+	if newPolicy.RedemptionGP != 0 {
+		p.RedemptionGP = newPolicy.RedemptionGP
+	}
+	if newPolicy.PendingDeleteGP != 0 {
+		p.PendingDeleteGP = newPolicy.PendingDeleteGP
+	}
+	if newPolicy.TransferLockPeriod != 0 {
+		p.TransferLockPeriod = newPolicy.TransferLockPeriod
+	}
+	if newPolicy.MaxHorizon != 0 {
+		p.MaxHorizon = newPolicy.MaxHorizon
+	}
+	if newPolicy.AllowAutoRenew != nil {
+		p.AllowAutoRenew = newPolicy.AllowAutoRenew
+	}
+	if newPolicy.RequiresValidation != nil {
+		p.RequiresValidation = newPolicy.RequiresValidation
+	}
+	if newPolicy.BaseCurrency != "" {
+		p.BaseCurrency = newPolicy.BaseCurrency
+	}
 }
