@@ -14,7 +14,6 @@ import (
 
 	"github.com/apex/gateway"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
 	swaggerFiles "github.com/swaggo/files"           // swagger embed files
@@ -63,17 +62,8 @@ func main() {
 	// Load environment variables when not running in Docker
 	if !runningInDocker() {
 		log.Println("Running outside of Docker")
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("Error loading .env file")
-		}
 	} else {
 		log.Println("Running in Docker")
-	}
-
-	newRelicApp, err := initNewRelicAPM()
-	if err != nil {
-		log.Fatal("Error initializing New Relic APM")
 	}
 
 	setSwaggerInfo()
@@ -171,8 +161,16 @@ func main() {
 	// Gin router
 	r := gin.Default()
 
-	// Add New Relic APM middleware
-	r.Use(nrgin.Middleware(newRelicApp))
+	// Add New Relic APM middleware if we are in DEV environment
+	log.Println("ENV: ", os.Getenv("ENV"))
+	if os.Getenv("ENV") == "DEV" {
+		log.Println("Running in DEV environment, initializing New Relic APM")
+		newRelicApp, err := initNewRelicAPM()
+		if err != nil {
+			log.Fatal("Error initializing New Relic APM")
+		}
+		r.Use(nrgin.Middleware(newRelicApp))
+	}
 
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)

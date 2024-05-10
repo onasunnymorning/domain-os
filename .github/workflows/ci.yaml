@@ -72,6 +72,8 @@ jobs:
           API_PORT: 8080
           API_HOST: domain-os-admin-api-1
           BRANCH: ${{ github.sha }}
+          ENV: CI
+          GIN_MODE: debug
 
   retag:
     name: Retag images
