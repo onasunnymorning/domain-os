@@ -133,6 +133,8 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 	}
 	// Create the result object
 	result := queries.NewDomainCheckQueryResult(q.DomainName)
+	// set the phase name
+	result.PhaseName = phase.Name.String()
 	// set the availability and reason
 	result.Available = avail
 	if !avail {
