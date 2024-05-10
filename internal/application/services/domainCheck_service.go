@@ -147,7 +147,7 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 	// If fees are required, prepare the result
 	result.PricePoints = &queries.DomainPricePoints{}
 
-	// Get the phase again preloading the price and fee objects
+	// Get the full phase from the repo to ensure preloading the price and fee objects
 	phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, tld.Name.String(), phase.Name.String())
 	if err != nil {
 		return nil, err

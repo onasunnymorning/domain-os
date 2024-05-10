@@ -8,10 +8,10 @@ import (
 
 // DomainCheckQuery represents a query to check the availability of a domain name.
 type DomainCheckQuery struct {
-	DomainName  entities.DomainName
-	IncludeFees bool
-	PhaseName   string
-	Currency    string
+	DomainName  entities.DomainName // Fail fast, if the domain name is invalid
+	IncludeFees bool                // Include fees in the result e.g. fee extension
+	PhaseName   string              // Phase name - if empty the current GA phase is assumed
+	Currency    string              // Currency to use for the price check
 }
 
 // NewDomainCheckQuery creates a new instance of DomainCheckQuery. If the domain name is invalid, an error is returned so we can fail fast.
@@ -32,7 +32,7 @@ type DomainCheckResult struct {
 	TimeStamp   time.Time
 	Available   bool
 	Reason      string
-	PricePoints *DomainPricePoints `json:",omitempty"`
+	PricePoints *DomainPricePoints `json:",omitempty"` // don't include if nil
 }
 
 // DomainPricePoints represents the all the price points for a domain.

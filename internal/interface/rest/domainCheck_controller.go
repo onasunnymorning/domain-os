@@ -1,9 +1,12 @@
 package rest
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 // DomainCheckController is the controller for doing domain checks
@@ -51,6 +54,10 @@ func (ctrl *DomainCheckController) CheckDomain(ctx *gin.Context) {
 	// Call the service to check the domain
 	result, err := ctrl.DomainCheckService.CheckDomain(ctx, q)
 	if err != nil {
+		if errors.Is(err, entities.ErrTLDNotFound) || errors.Is(err, entities.ErrPhaseNotFound) || errors.Is(err, entities.ErrNoActivePhase) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
