@@ -28,10 +28,11 @@ func NewDomainCheckQuery(domainName string, includeFees bool) (*DomainCheckQuery
 
 // DomainCheckResult represents the result of a domain check query.
 type DomainCheckResult struct {
-	DomainName  entities.DomainName
 	TimeStamp   time.Time
+	DomainName  entities.DomainName
 	Available   bool
 	Reason      string
+	PhaseName   string
 	PricePoints *DomainPricePoints `json:",omitempty"` // don't include if nil
 }
 
