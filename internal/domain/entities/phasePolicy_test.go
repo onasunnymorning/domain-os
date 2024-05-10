@@ -21,3 +21,37 @@ func TestNewPhasePolicy(t *testing.T) {
 	assert.Equal(t, RequiresValidation, phasePolicy.RequiresValidation)
 	assert.Equal(t, BaseCurrency, phasePolicy.BaseCurrency)
 }
+func TestPhasePolicy_LabelIsAllowed(t *testing.T) {
+	phasePolicy := NewPhasePolicy()
+
+	// Test case: label length is within the allowed range
+	label := "example"
+	expected := true
+	actual := phasePolicy.LabelIsAllowed(label)
+	assert.Equal(t, expected, actual)
+
+	// Test case: label length is equal than the minimum allowed length
+	label = "a"
+	expected = true
+	actual = phasePolicy.LabelIsAllowed(label)
+	assert.Equal(t, expected, actual)
+
+	// Test case: label length is less than the minimum allowed length
+	label = ""
+	expected = false
+	actual = phasePolicy.LabelIsAllowed(label)
+	assert.Equal(t, expected, actual)
+
+	// Test case: label length is greater than the maximum allowed length
+	label = "thisisaverylonglabelthatexceedsthemaximumallowedlengthofsixtythreecharacters"
+	expected = false
+	actual = phasePolicy.LabelIsAllowed(label)
+	assert.Equal(t, expected, actual)
+
+	// Test case: label length is less than the minimum allowed length
+	phasePolicy.MinLabelLength = 2
+	label = "a"
+	expected = false
+	actual = phasePolicy.LabelIsAllowed(label)
+	assert.Equal(t, expected, actual)
+}

@@ -32,7 +32,7 @@ type DomainCheckResult struct {
 	TimeStamp   time.Time
 	Available   bool
 	Reason      string
-	PricePoints DomainPricePoints
+	PricePoints *DomainPricePoints `json:",omitempty"`
 }
 
 // DomainPricePoints represents the all the price points for a domain.

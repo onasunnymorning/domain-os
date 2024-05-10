@@ -50,3 +50,8 @@ func NewPhasePolicy() PhasePolicy {
 		BaseCurrency:       BaseCurrency,
 	}
 }
+
+// DomainIsAllowed checks if a domain is allowed in the current phase.
+func (p *PhasePolicy) LabelIsAllowed(label string) bool {
+	return len(label) >= p.MinLabelLength && len(label) <= p.MaxLabelLength
+}
