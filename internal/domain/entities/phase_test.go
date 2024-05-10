@@ -664,3 +664,99 @@ func TestFee_DeletePrice(t *testing.T) {
 		})
 	}
 }
+func TestPhase_GetPrice(t *testing.T) {
+	tc := []struct {
+		name        string
+		currency    string
+		phase       *Phase
+		expected    *Price
+		expectedErr error
+	}{
+		{
+			name:     "Existing Price",
+			currency: "USD",
+			phase: &Phase{
+				Prices: []Price{
+					{
+						Currency:           "USD",
+						RegistrationAmount: 100,
+						RenewalAmount:      100,
+						TransferAmount:     100,
+						RestoreAmount:      100,
+					},
+				},
+			},
+			expected: &Price{
+				Currency:           "USD",
+				RegistrationAmount: 100,
+				RenewalAmount:      100,
+				TransferAmount:     100,
+				RestoreAmount:      100,
+			},
+			expectedErr: nil,
+		},
+		{
+			name:     "Non-Existing Price",
+			currency: "EUR",
+			phase: &Phase{
+				Prices: []Price{
+					{
+						Currency:           "USD",
+						RegistrationAmount: 100,
+						RenewalAmount:      100,
+						TransferAmount:     100,
+						RestoreAmount:      100,
+					},
+				},
+			},
+			expected:    nil,
+			expectedErr: ErrPriceNotFound,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			price, err := tt.phase.GetPrice(tt.currency)
+			assert.Equal(t, tt.expectedErr, err)
+			assert.Equal(t, tt.expected, price)
+		})
+	}
+}
+
+func TestGetFees(t *testing.T) {
+	// Create a new phase
+	phase := &Phase{
+		Fees: []Fee{
+			{Currency: "USD", Name: "Fee 1", Amount: 10.0},
+			{Currency: "USD", Name: "Fee 2", Amount: 20.0},
+			{Currency: "EUR", Name: "Fee 3", Amount: 30.0},
+		},
+	}
+
+	// Test case 1: Get fees for existing currency "USD"
+	fees := phase.GetFees("USD")
+	if len(fees) != 2 {
+		t.Errorf("Expected 2 fees, got %d", len(fees))
+	}
+	if fees[0].Currency != "USD" || fees[0].Name != "Fee 1" || fees[0].Amount != 10.0 {
+		t.Errorf("Incorrect fee retrieved")
+	}
+	if fees[1].Currency != "USD" || fees[1].Name != "Fee 2" || fees[1].Amount != 20.0 {
+		t.Errorf("Incorrect fee retrieved")
+	}
+
+	// Test case 2: Get fees for non-existing currency "GBP"
+	fees = phase.GetFees("GBP")
+	if len(fees) != 0 {
+		t.Errorf("Expected 0 fees, got %d", len(fees))
+	}
+
+	// Test case 3: Get fees for existing currency "EUR"
+	fees = phase.GetFees("EUR")
+	if len(fees) != 1 {
+		t.Errorf("Expected 1 fee, got %d", len(fees))
+	}
+	if fees[0].Currency != "EUR" || fees[0].Name != "Fee 3" || fees[0].Amount != 30.0 {
+		t.Errorf("Incorrect fee retrieved")
+	}
+}

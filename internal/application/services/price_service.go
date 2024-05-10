@@ -56,7 +56,7 @@ func (s *PriceService) CreatePrice(ctx context.Context, cmd *commands.CreatePric
 
 // ListPrices lists all prices for a given phase
 func (s *PriceService) ListPrices(ctx context.Context, phaseName, TLDName string) ([]entities.Price, error) {
-	// retrieve the phase including the fees
+	// retrieve the phase including the prices
 	phase, err := s.phaseRepo.GetPhaseByTLDAndName(ctx, TLDName, phaseName)
 	if err != nil {
 		return nil, err
@@ -67,6 +67,18 @@ func (s *PriceService) ListPrices(ctx context.Context, phaseName, TLDName string
 	copy(prices, phase.Prices)
 
 	return prices, nil
+}
+
+// GetPrice gets a price by its currency
+func (s *PriceService) GetPrice(ctx context.Context, phaseName, TLDName, currency string) (*entities.Price, error) {
+	// retrieve the phase
+	phase, err := s.phaseRepo.GetPhaseByTLDAndName(ctx, TLDName, phaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	// use our domain logic to get the price
+	return phase.GetPrice(currency)
 }
 
 // DeletePrice deletes a price

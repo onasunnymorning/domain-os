@@ -3,11 +3,21 @@ package services
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+)
+
+var (
+	// ErrDomainExists is returned when a domain already exists
+	ErrDomainExists = errors.New("domain exists")
+	// ErrDomainBlocked is returned when a domain is blocked
+	ErrDomainBlocked = errors.New("domain is blocked")
+	// ErrPhaseRequired is returned when a phase is required to check domain availability
+	ErrPhaseRequired = errors.New("phase is required to check domain availability")
+	// ErrLabelNotValidInPhase is returned when a label is not valid in a phase
+	ErrLabelNotValidInPhase = errors.New("label is not valid in this phase")
 )
 
 // DomainCheckService is the implementation of the DomainCheckService interface
@@ -30,6 +40,71 @@ func NewDomainCheckService(dr repositories.DomainRepository, nr repositories.NND
 	}
 }
 
+// CheckDomainExists checks if a domain exists. If the domain exists, the function returns true, otherwise it returns false. If an error occurs, it is returned.
+func (svc *DomainCheckService) CheckDomainExists(ctx context.Context, domainName string) (bool, error) {
+	_, err := svc.domainRepo.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// CheckDomainIsBlocked checks if a domain is blocked. If the domain is blocked, the function returns true, otherwise it returns false. If an error occurs, it is returned.
+func (svc *DomainCheckService) CheckDomainIsBlocked(ctx context.Context, domainName string) (bool, error) {
+	_, err := svc.nndnRepo.GetNNDN(ctx, domainName)
+	if err != nil {
+		if errors.Is(err, entities.ErrNNDNNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// CheckDomainAvailability checks if a domain is available. A domain is availabel if
+// * it is a valid domain name
+// * it does not exist
+// * it is not blocked
+// * it is allowed in the current phase
+func (svc *DomainCheckService) CheckDomainAvailability(ctx context.Context, domainName string, phase *entities.Phase) (bool, error) {
+	if phase == nil {
+		return false, ErrPhaseRequired
+	}
+	dom, err := entities.NewDomainName(domainName)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if the domain exists
+	exists, err := svc.CheckDomainExists(ctx, domainName)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, ErrDomainExists
+	}
+
+	// Check if the domain is blocked
+	blocked, err := svc.CheckDomainIsBlocked(ctx, domainName)
+	if err != nil {
+		return false, err
+	}
+	if blocked {
+		return false, ErrDomainBlocked
+	}
+
+	// Check if the domain is allowed in the current phase
+	if !phase.Policy.LabelIsAllowed(dom.Label()) {
+		return false, ErrLabelNotValidInPhase
+	}
+
+	// If all checks pass, the domain is available
+	return true, nil
+}
+
 // CheckDomain checks the availability of a domain name
 func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error) {
 	// check if the TLD exists
@@ -45,47 +120,23 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		phases := tld.GetCurrentPhases()
-		for _, p := range phases {
-			if p.Name.String() == q.PhaseName {
-				phase = &p
-				break
-			}
+	} else { // if the phase is provided, get the phase by name
+		phase, err = tld.FindPhaseByName(entities.ClIDType(q.PhaseName))
+		if err != nil {
+			return nil, err
 		}
-		// if we didn't find the phase by name, return an error
-		return nil, entities.ErrPhaseNotFound
 	}
 
+	avail, err := svc.CheckDomainAvailability(ctx, q.DomainName.String(), phase)
+	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) {
+		return nil, err
+	}
 	// Create the result object
 	result := queries.NewDomainCheckQueryResult(q.DomainName)
-	result.Available = true
-	// Check the availability
-	dom, err := svc.domainRepo.GetDomainByName(ctx, q.DomainName.String(), false)
-	if err != nil && !errors.Is(err, entities.ErrDomainNotFound) {
-		return nil, err
-	}
-	// If the domain exists, set availability
-	if dom != nil {
-		result.Available = false
-		result.Reason = "In Use"
-		// Return the result now if fees are not required
-		if !q.IncludeFees {
-			return result, nil
-		}
-	}
-	nndn, err := svc.nndnRepo.GetNNDN(ctx, q.DomainName.String())
-	if err != nil && !errors.Is(err, entities.ErrNNDNNotFound) {
-		return nil, err
-	}
-	// If the domain exists in the NNDN, it is blocked, return the result immediately
-	if nndn != nil {
-		result.Available = false
-		result.Reason = string(nndn.NameState)
-		// Return the result now if fees are not required
-		if !q.IncludeFees {
-			return result, nil
-		}
+	// set the availability and reason
+	result.Available = avail
+	if !avail {
+		result.Reason = err.Error()
 	}
 
 	// So far so good, the domain doesn't exist and is not blocked
@@ -94,7 +145,7 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 		return result, nil
 	}
 	// If fees are required, prepare the result
-	result.PricePoints = queries.DomainPricePoints{}
+	result.PricePoints = &queries.DomainPricePoints{}
 
 	// GET THE PRICE and FEE objects for the phase and currency
 
@@ -104,19 +155,12 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 		return nil, err
 	}
 
-	// Find the price entry for the currency
-	for _, price := range phase.Prices {
-		if price.Currency == strings.ToUpper(q.Currency) {
-			result.PricePoints.Price = &price
-			break
-		}
-	}
-	// Find all fees for the currency
-	for _, fee := range phase.Fees {
-		if fee.Currency == strings.ToUpper(q.Currency) {
-			result.PricePoints.Fees = append(result.PricePoints.Fees, fee)
-		}
-	}
+	// set the price for the currency.
+	result.PricePoints.Price, _ = phase.GetPrice(q.Currency)
+
+	// set the fees for the currency
+	result.PricePoints.Fees = phase.GetFees(q.Currency)
+
 	// Get the PremiumLabels for the premiumList associated with the phase
 	if phase.PremiumListName != nil {
 		result.PricePoints.PremiumPrice, err = svc.premiumLabelRepo.GetByLabelListAndCurrency(ctx, q.DomainName.Label(), *phase.PremiumListName, q.Currency)
