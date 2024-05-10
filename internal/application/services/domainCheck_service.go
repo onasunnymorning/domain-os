@@ -66,9 +66,9 @@ func (svc *DomainCheckService) CheckDomainIsBlocked(ctx context.Context, domainN
 
 // CheckDomainAvailability checks if a domain is available. A domain is availabel if
 // * it is a valid domain name
+// * it is allowed in the current phase
 // * it does not exist
 // * it is not blocked
-// * it is allowed in the current phase
 func (svc *DomainCheckService) CheckDomainAvailability(ctx context.Context, domainName string, phase *entities.Phase) (bool, error) {
 	if phase == nil {
 		return false, ErrPhaseRequired
@@ -76,6 +76,11 @@ func (svc *DomainCheckService) CheckDomainAvailability(ctx context.Context, doma
 	dom, err := entities.NewDomainName(domainName)
 	if err != nil {
 		return false, err
+	}
+
+	// Check if the domain label is valid in the current phase
+	if !phase.Policy.LabelIsAllowed(dom.Label()) {
+		return false, ErrLabelNotValidInPhase
 	}
 
 	// Check if the domain exists
@@ -94,11 +99,6 @@ func (svc *DomainCheckService) CheckDomainAvailability(ctx context.Context, doma
 	}
 	if blocked {
 		return false, ErrDomainBlocked
-	}
-
-	// Check if the domain is allowed in the current phase
-	if !phase.Policy.LabelIsAllowed(dom.Label()) {
-		return false, ErrLabelNotValidInPhase
 	}
 
 	// If all checks pass, the domain is available
@@ -146,8 +146,6 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 	}
 	// If fees are required, prepare the result
 	result.PricePoints = &queries.DomainPricePoints{}
-
-	// GET THE PRICE and FEE objects for the phase and currency
 
 	// Get the phase again preloading the price and fee objects
 	phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, tld.Name.String(), phase.Name.String())
