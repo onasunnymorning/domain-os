@@ -19,6 +19,10 @@ import (
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
 	swaggerFiles "github.com/swaggo/files"           // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
+
+	// NeW Relic APM
+	nrgin "github.com/newrelic/go-agent/v3/integrations/nrgin"
+	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -43,6 +47,16 @@ func runningInDocker() bool {
 	return false
 }
 
+// initNewRelicAPM initializes New Relic APM
+func initNewRelicAPM() (*newrelic.Application, error) {
+	return newrelic.NewApplication(
+		newrelic.ConfigAppName("domain-os"),
+		newrelic.ConfigLicense("07597dba536368f708cf36d68937d4bfFFFFNRAL"),
+		newrelic.ConfigAppLogForwardingEnabled(true),
+	)
+
+}
+
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
@@ -55,6 +69,11 @@ func main() {
 		}
 	} else {
 		log.Println("Running in Docker")
+	}
+
+	newRelicApp, err := initNewRelicAPM()
+	if err != nil {
+		log.Fatal("Error initializing New Relic APM")
 	}
 
 	setSwaggerInfo()
@@ -151,6 +170,9 @@ func main() {
 
 	// Gin router
 	r := gin.Default()
+
+	// Add New Relic APM middleware
+	r.Use(nrgin.Middleware(newRelicApp))
 
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
