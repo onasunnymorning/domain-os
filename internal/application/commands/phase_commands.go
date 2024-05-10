@@ -2,6 +2,8 @@ package commands
 
 import (
 	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 // CreatePhaseCommand is a command for creating a phase
@@ -13,6 +15,11 @@ type CreatePhaseCommand struct {
 	TLDName string     `json:"-"`
 	// TODO: Allow policy tuning
 	// Policy entities.PhasePolicy `json:"policy"`
+}
+
+// UpdatePhasePolicyCommand is a command for updating a phase
+type UpdatePhasePolicyCommand struct {
+	Policy *entities.PhasePolicy
 }
 
 // EndPhaseCommand is a command for ending a phase

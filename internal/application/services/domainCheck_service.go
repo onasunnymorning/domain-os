@@ -128,7 +128,7 @@ func (svc *DomainCheckService) CheckDomain(ctx context.Context, q *queries.Domai
 	}
 
 	avail, err := svc.CheckDomainAvailability(ctx, q.DomainName.String(), phase)
-	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) {
+	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) && !errors.Is(err, ErrLabelNotValidInPhase) {
 		return nil, err
 	}
 	// Create the result object
