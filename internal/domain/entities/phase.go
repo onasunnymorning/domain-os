@@ -14,6 +14,7 @@ var (
 	ErrDuplicateFeeEntry   = errors.New("Fee entry with this name and currency already exists")
 	ErrEndDateBeforeStart  = errors.New("end date is before start date")
 	ErrEndDateInPast       = errors.New("end date is in the past")
+	ErrPriceNotFound       = errors.New("price not found")
 )
 
 const (
@@ -210,4 +211,36 @@ func (p *Phase) OverlapsWith(other *Phase) bool {
 	// if none of these conditions are met, the phases do not overlap
 	return false
 
+}
+
+// GetPrice returns the price for a given currency
+func (p *Phase) GetPrice(currency string) (*Price, error) {
+	for i := 0; i < len(p.Prices); i++ {
+		if p.Prices[i].Currency == strings.ToUpper(currency) {
+			return &p.Prices[i], nil
+		}
+	}
+	return nil, ErrPriceNotFound
+}
+
+// GetFees returns the fees for a given currency
+func (p *Phase) GetFees(currency string) []Fee {
+	var fees []Fee
+	for i := 0; i < len(p.Fees); i++ {
+		if p.Fees[i].Currency == strings.ToUpper(currency) {
+			fees = append(fees, p.Fees[i])
+		}
+	}
+	return fees
+}
+
+// CanUpdate checks if the phase can be updated. A phase can be updated if it has not ended yet.
+func (p *Phase) CanUpdate() (bool, error) {
+	if p.Ends == nil {
+		return true, nil
+	}
+	if p.Ends.Before(time.Now().UTC()) {
+		return false, ErrUpdateHistoricPhase
+	}
+	return true, nil
 }

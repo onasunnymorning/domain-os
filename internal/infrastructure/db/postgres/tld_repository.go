@@ -21,10 +21,15 @@ func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
 }
 
 // GetByName returns a TLD by name
-func (repo *GormTLDRepository) GetByName(ctx context.Context, name string) (*entities.TLD, error) {
+func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	dbtld := &TLD{}
+	var err error
 
-	err := repo.db.WithContext(ctx).Preload("Phases").Where("name = ?", name).First(dbtld).Error
+	if preloadAll {
+		err = repo.db.WithContext(ctx).Preload("Phases.Prices").Preload("Phases.Fees").Where("name = ?", name).First(dbtld).Error
+	} else {
+		err = repo.db.WithContext(ctx).Preload("Phases").Where("name = ?", name).First(dbtld).Error
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrTLDNotFound
@@ -48,7 +53,7 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 	}
 
 	// Read the data from the repo to ensure we return the same data that was written
-	storedDBTLD, err := repo.GetByName(ctx, tld.Name.String())
+	storedDBTLD, err := repo.GetByName(ctx, tld.Name.String(), false)
 	if err != nil {
 		return err
 	}
@@ -92,7 +97,7 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 	}
 
 	// Read the data from the repo to ensure we return the same data that was written
-	storedDBTLD, err := repo.GetByName(ctx, tld.Name.String())
+	storedDBTLD, err := repo.GetByName(ctx, tld.Name.String(), false)
 	if err != nil {
 		return err
 	}

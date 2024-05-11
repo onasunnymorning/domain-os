@@ -48,11 +48,11 @@ func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, tld, name
 	return r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld).Delete(&Phase{}).Error
 }
 
-// UpdatePhase updates a phase
+// UpdatePhase updates a phase. It will Omit Price and Fee updates. Use specific prices and fees repository for that
 func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := r.db.WithContext(ctx).Save(gormPhase).Error
+	err := r.db.WithContext(ctx).Omit("Prices").Omit("Fees").Save(gormPhase).Error
 	if err != nil {
 		return nil, err
 	}

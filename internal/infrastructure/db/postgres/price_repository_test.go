@@ -32,7 +32,7 @@ func (s *PriceSuite) SetupSuite() {
 	err := repo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 
-	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)
 	s.Require().NoError(err)
 	s.Require().NotNil(readTLD)
 	s.Require().Equal(tld, readTLD)

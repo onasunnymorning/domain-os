@@ -29,7 +29,7 @@ func NewAccreditationService(accRepo repositories.AccreditationRepository, rarRe
 // CreateAccreditation creates an accreditation
 func (s *AccreditationService) CreateAccreditation(ctx context.Context, tldName, rarClID string) error {
 	// Get the TLD
-	tld, err := s.tldRepo.GetByName(ctx, tldName)
+	tld, err := s.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
 		return errors.Join(ErrInvalidAccreditation, err)
 	}
@@ -53,7 +53,7 @@ func (s *AccreditationService) CreateAccreditation(ctx context.Context, tldName,
 // DeleteAccreditation deletes an accreditation
 func (s *AccreditationService) DeleteAccreditation(ctx context.Context, tldName, rarClID string) error {
 	// Get the TLD
-	tld, err := s.tldRepo.GetByName(ctx, tldName)
+	tld, err := s.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
 		return errors.Join(ErrInvalidAccreditation, err)
 	}

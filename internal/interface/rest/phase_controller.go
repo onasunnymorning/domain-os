@@ -25,6 +25,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 	e.GET("/tlds/:tldName/phases", ctrl.ListPhases)
 	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhases)
 	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
+	e.PUT("/tlds/:tldName/phases/:phaseName/policy", ctrl.UpdatePhasePolicy)
 	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
 	e.PUT("/tlds/:tldName/phases/:phaseName/end", ctrl.EndPhase)
 	e.POST("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
@@ -322,4 +323,62 @@ func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, phase)
+}
+
+// UpdatePhasePolicy godoc
+// @Summary Update a phase's polkcy
+// @Description Update a phase's policy.
+// @Tags Phases
+// @Accept json
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param phase body commands.UpdatePhasePolicyCommand true "Phase to update"
+// @Success 200 {object} entities.Phase
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/policy [put]
+func (ctrl *PhaseController) UpdatePhasePolicy(ctx *gin.Context) {
+	// Bind the request body to the command
+	var cmd commands.UpdatePhasePolicyCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// get the phase
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if we are allowed to update
+	if _, err := phase.CanUpdate(); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// update the policy
+	if cmd.Policy != nil {
+		phase.Policy.UpdatePolicy(cmd.Policy)
+	}
+
+	// Update the phase
+	updatedPhase, err := ctrl.phaseService.UpdatePhase(ctx, phase)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, updatedPhase)
 }

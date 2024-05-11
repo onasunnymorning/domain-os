@@ -33,7 +33,7 @@ func (s *TLDSuite) TestCreateTLD() {
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
-	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readTLD)
 	require.Equal(s.T(), tld, readTLD)
@@ -86,7 +86,7 @@ func (s *TLDSuite) TestUpdateTLD() {
 	err = repo.Update(context.Background(), tld)
 	require.NoError(s.T(), err)
 
-	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readTLD)
 	require.Equal(s.T(), tld, readTLD)
@@ -102,12 +102,12 @@ func (s *TLDSuite) TestGetTLD() {
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
-	readTLD, err := repo.GetByName(context.Background(), tld.Name.String())
+	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readTLD)
 	require.Equal(s.T(), tld, readTLD)
 
 	// Test not found
-	readTLD, err = repo.GetByName(context.Background(), "notfound")
+	readTLD, err = repo.GetByName(context.Background(), "notfound", false)
 	require.Error(s.T(), err)
 }

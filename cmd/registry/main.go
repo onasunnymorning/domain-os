@@ -14,11 +14,14 @@ import (
 
 	"github.com/apex/gateway"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
 	swaggerFiles "github.com/swaggo/files"           // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
+
+	// NeW Relic APM
+	nrgin "github.com/newrelic/go-agent/v3/integrations/nrgin"
+	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -43,16 +46,22 @@ func runningInDocker() bool {
 	return false
 }
 
+// initNewRelicAPM initializes New Relic APM
+func initNewRelicAPM() (*newrelic.Application, error) {
+	return newrelic.NewApplication(
+		newrelic.ConfigAppName("domain-os"),
+		newrelic.ConfigLicense("07597dba536368f708cf36d68937d4bfFFFFNRAL"),
+		newrelic.ConfigAppLogForwardingEnabled(true),
+	)
+
+}
+
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
 	// Load environment variables when not running in Docker
 	if !runningInDocker() {
 		log.Println("Running outside of Docker")
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("Error loading .env file")
-		}
 	} else {
 		log.Println("Running in Docker")
 	}
@@ -146,8 +155,22 @@ func main() {
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService)
 
+	// DomainCheck
+	domainCheckService := services.NewDomainCheckService(domainRepo, nndnRepo, tldRepo, premiumLabelRepo, phaseRepo)
+
 	// Gin router
 	r := gin.Default()
+
+	// Add New Relic APM middleware if we are in DEV environment
+	log.Println("ENV: ", os.Getenv("ENV"))
+	if os.Getenv("ENV") == "DEV" {
+		log.Println("Running in DEV environment, initializing New Relic APM")
+		newRelicApp, err := initNewRelicAPM()
+		if err != nil {
+			log.Fatal("Error initializing New Relic APM")
+		}
+		r.Use(nrgin.Middleware(newRelicApp))
+	}
 
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
@@ -165,6 +188,7 @@ func main() {
 	rest.NewPriceController(r, priceService)
 	rest.NewAccreditationController(r, accreditationService)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
+	rest.NewDomainCheckController(r, domainCheckService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
