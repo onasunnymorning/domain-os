@@ -46,9 +46,9 @@ func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCom
 }
 
 // GetTLDByName gets a TLD by name
-func (svc *TLDService) GetTLDByName(ctx context.Context, name string) (*entities.TLD, error) {
+func (svc *TLDService) GetTLDByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	// domain names are case insensitive and we always store them as lowercase
-	return svc.tldRepository.GetByName(ctx, strings.ToLower(name))
+	return svc.tldRepository.GetByName(ctx, strings.ToLower(name), false)
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
@@ -58,7 +58,7 @@ func (svc *TLDService) ListTLDs(ctx context.Context, pageSize int, pageCursor st
 
 // DeleteTLDByName deletes a TLD by name. To prevent accidental deletions, we check if there are no active phases for the TLD before deleting it.
 func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
-	tld, err := svc.tldRepository.GetByName(ctx, name)
+	tld, err := svc.tldRepository.GetByName(ctx, name, false)
 	if err != nil {
 		if err == entities.ErrTLDNotFound {
 			// if there is no TLD with the given name, nothing to do, be idempotent

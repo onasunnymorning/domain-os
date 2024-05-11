@@ -266,11 +266,12 @@ func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
 	}
 
 	// filter options
-	// this endpoint allows filtering by currency and list
+	// this endpoint allows filtering by currency, listName and label
 	listName := ctx.Query("list")
 	currency := strings.ToUpper(ctx.Query("currency"))
+	label := ctx.Query("label")
 
-	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor, listName, currency)
+	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor, listName, currency, label)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

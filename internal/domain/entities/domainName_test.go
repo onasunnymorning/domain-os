@@ -65,6 +65,28 @@ func TestDomainName_ParentDomain(t *testing.T) {
 	}
 }
 
+func TestDomainName_Label(t *testing.T) {
+	tests := []struct {
+		name     string
+		domain   string
+		expected string
+	}{
+		{"example.com", "example.com", "example"},
+		{"sub.example.com", "sub.example.com", "sub"},
+		{"www.sub.example.com", "www.sub.example.com", "www"},
+		{"example", "example", "example"},
+		{"", "", ""},
+	}
+
+	for _, test := range tests {
+		d := DomainName(test.domain)
+		label := d.Label()
+		if label != test.expected {
+			t.Errorf("Expected parent domain to be %s, but got %s for domain %s", test.expected, label, test.domain)
+		}
+	}
+}
+
 func TestUnmarshallJson(t *testing.T) {
 	// Test UnmarshalJSON method
 	bytes := []byte(`"example.com"`)

@@ -36,6 +36,8 @@ services:
       db:
         condition: service_healthy
     environment:
+      - ENV=${ENV}
+      - GIN_MODE=${GIN_MODE}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}

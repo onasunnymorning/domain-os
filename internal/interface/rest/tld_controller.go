@@ -42,7 +42,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	tld, err := ctrl.tldService.GetTLDByName(ctx, name)
+	tld, err := ctrl.tldService.GetTLDByName(ctx, name, false)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

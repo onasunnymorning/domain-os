@@ -39,7 +39,7 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 	// Pass through our entity for validation
 
 	// Get the TLD
-	tld, err := svc.tldRepo.GetByName(ctx, cmd.TLDName)
+	tld, err := svc.tldRepo.GetByName(ctx, cmd.TLDName, false)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (svc *PhaseService) GetPhaseByTLDAndName(ctx context.Context, tld, name str
 
 // DeletePhaseByTLDAndName deletes a phase by its name
 func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tldName, name string) error {
-	tld, err := svc.tldRepo.GetByName(ctx, tldName)
+	tld, err := svc.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
 		// If the TLD is not found, there aren't any phases, so we return nil to stay idempotent
 		if errors.Is(err, entities.ErrTLDNotFound) {
@@ -109,7 +109,7 @@ func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string, 
 // EndPhase Sets or updates the enddate on a phase
 func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCommand) (*entities.Phase, error) {
 	// Get the TLD
-	tld, err := svc.tldRepo.GetByName(ctx, cmd.TLDName)
+	tld, err := svc.tldRepo.GetByName(ctx, cmd.TLDName, false)
 	if err != nil {
 		return nil, err
 	}
