@@ -11,13 +11,11 @@ require (
 	github.com/docker/docker v25.0.2+incompatible
 	github.com/gin-gonic/gin v1.9.1
 	github.com/jackc/pgx/v5 v5.4.3
-	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/newrelic/go-agent/v3 v3.33.0
 	github.com/newrelic/go-agent/v3/integrations/nrgin v1.3.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.31.1
-	github.com/pkg/errors v0.9.1
 	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/stretchr/testify v1.8.4
 	github.com/swaggo/files v1.0.1
@@ -64,6 +62,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
