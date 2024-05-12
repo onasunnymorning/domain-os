@@ -6,7 +6,25 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
-// CreateDomainCommand is a command to create a domain
+// RegisterDomainCommand is a command to register a domain
+type RegisterDomainCommand struct {
+	Name         string   `json:"Name" binding:"required"`
+	ClID         string   `json:"ClID" binding:"required"`
+	AuthInfo     string   `json:"AuthInfo"  binding:"required"`
+	RegistrantID string   `json:"RegistrantID" binding:"required"` // Contacts must exist before registering a domain
+	AdminID      string   `json:"AdminID" binding:"required"`      // Contacts must exist before registering a domain
+	TechID       string   `json:"TechID" binding:"required"`       // Contacts must exist before registering a domain
+	BillingID    string   `json:"BillingID" binding:"required"`    // Contacts must exist before registering a domain
+	Years        int      `json:"Years"`                           // if not provided, it will be 1
+	HostNames    []string `json:"HostNames"`                       // HostNames must exist before registering a domain
+	PhaseName    string   `json:"PhaseName"`                       // Optional, if provided the domain will be registered (and validated) in this phase, if omitted the active GA phase will be used
+	Fee          struct {
+		Currency string  `json:"Currency"`
+		Amount   float64 `json:"Amount"`
+	} `json:"Fee"` // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+}
+
+// CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar operations should use the RegisterDomainCommand and RenewDomainCommand ...
 type CreateDomainCommand struct {
 	RoID         string                   `json:"RoID"` // if not provided, it will be generated
 	Name         string                   `json:"Name" binding:"required"`
