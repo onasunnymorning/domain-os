@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 	"golang.org/x/net/idna"
 )
 

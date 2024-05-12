@@ -3,7 +3,7 @@ package entities
 import (
 	"time"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 // NNDNState is a custom type for representing the state of an NNDN object.

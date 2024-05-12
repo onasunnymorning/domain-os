@@ -3,8 +3,9 @@ package rest
 import (
 	"strconv"
 
+	"errors"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/pkg/errors"
 
 	"github.com/docker/docker/pkg/namesgenerator"
 

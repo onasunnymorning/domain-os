@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/pkg/errors"
+	"errors"
 	"golang.org/x/net/idna"
 )
 

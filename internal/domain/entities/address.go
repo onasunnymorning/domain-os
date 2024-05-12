@@ -1,6 +1,6 @@
 package entities
 
-import "github.com/pkg/errors"
+import "errors"
 
 // Inspiration for this entity comes from: https://www.rfc-editor.org/rfc/rfc9022.html#name-rderegistrarregistrar-eleme
 // Matching the RFC is important for interoperability with other systems such as EPP, RDDS, RDAP, Escrow, etc.

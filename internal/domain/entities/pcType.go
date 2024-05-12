@@ -1,6 +1,6 @@
 package entities
 
-import "github.com/pkg/errors"
+import "errors"
 
 const (
 	PCTYPE_MAX_LENGTH = 16
