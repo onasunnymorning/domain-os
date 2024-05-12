@@ -3,8 +3,9 @@ package entities
 import (
 	"strings"
 
+	"errors"
+
 	"github.com/biter777/countries"
-	"github.com/pkg/errors"
 )
 
 // <simpleType name="ccType">

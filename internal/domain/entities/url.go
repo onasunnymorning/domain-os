@@ -3,8 +3,8 @@ package entities
 import (
 	"strings"
 
+	"errors"
 	gonet "github.com/THREATINT/go-net"
-	"github.com/pkg/errors"
 )
 
 var (

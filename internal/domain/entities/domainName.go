@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
+
 	"golang.org/x/net/idna"
 )
 
