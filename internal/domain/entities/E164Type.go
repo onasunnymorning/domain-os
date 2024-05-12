@@ -3,7 +3,7 @@ package entities
 import (
 	"regexp"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 // <simpleType name="e164StringType">

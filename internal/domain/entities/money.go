@@ -1,6 +1,6 @@
 package entities
 
-import "github.com/pkg/errors"
+import "errors"
 
 var (
 	ErrUnknownCurrency = errors.New("unknown currency")

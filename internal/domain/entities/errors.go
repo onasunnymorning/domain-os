@@ -1,6 +1,6 @@
 package entities
 
-import "github.com/pkg/errors"
+import "errors"
 
 var (
 	ErrInvalidEmail = errors.New("invalid email")

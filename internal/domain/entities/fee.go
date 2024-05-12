@@ -3,8 +3,8 @@ package entities
 import (
 	s "strings"
 
+	"errors"
 	"github.com/Rhymond/go-money"
-	"github.com/pkg/errors"
 )
 
 var (

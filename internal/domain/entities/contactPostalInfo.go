@@ -3,7 +3,7 @@ package entities
 import (
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var (
