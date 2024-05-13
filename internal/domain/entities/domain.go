@@ -28,6 +28,10 @@ var (
 	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
 	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
 	ErrPhaseNotProvided                = errors.New("phase is mandatory for registration")
+	ErrDomainRenewNotAllowed           = errors.New("domain renew not allowed")
+	ErrDomainRenewExceedsMaxHorizon    = errors.New("domain renew exceeds the maximum horizon")
+	ErrInvalidRenewal                  = errors.New("invalid renewal")
+	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -190,9 +194,9 @@ func (d *Domain) CanBeDeleted() bool {
 	return !d.Status.ClientDeleteProhibited && !d.Status.ServerDeleteProhibited && !d.Status.PendingDelete
 }
 
-// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain is alread in pending Renew status, it can't be renewed
+// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain has any panding status, it can't be renewed
 func (d *Domain) CanBeRenewed() bool {
-	return !d.Status.ClientRenewProhibited && !d.Status.ServerRenewProhibited && !d.Status.PendingRenew
+	return !d.Status.ClientRenewProhibited && !d.Status.ServerRenewProhibited && !d.Status.HasPendings()
 }
 
 // CanBeTransferred checks if the Domain can be transferred (e.g. no transfer prohibition is present in its status object: ClientTransferProhibited or ServerTransferProhibited). If the domain is alread in pending Transfer status, it can't be transferred
@@ -296,4 +300,35 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 	dom.BillingID = ClIDType(billingID)
 
 	return dom, nil
+}
+
+// RenewDomain renews a domain and sets the new expiry date and appropriate RGP statuses. Since renew does not support the launch phase extension, the phase should always be the current GA phase.
+func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
+	if phase == nil {
+		return errors.Join(ErrInvalidRenewal, ErrPhaseNotProvided)
+	}
+	if years == 0 {
+		return errors.Join(ErrInvalidRenewal, ErrZeroRenewalPeriod)
+
+	}
+	if !d.CanBeRenewed() {
+		return errors.Join(ErrInvalidRenewal, ErrDomainRenewNotAllowed)
+	}
+
+	// Check if we exceed the maximum renewal period
+	if d.ExpiryDate.AddDate(years, 0, 0).After(time.Now().UTC().AddDate(phase.Policy.MaxHorizon, 0, 0)) {
+		return errors.Join(ErrInvalidRenewal, ErrDomainRenewExceedsMaxHorizon)
+	}
+
+	d.ExpiryDate = d.ExpiryDate.AddDate(years, 0, 0)
+	d.RenewedYears += years
+
+	// Set the RGP statuses
+	if isAutoRenew {
+		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.AutoRenewalGP)
+	} else {
+		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
+	}
+
+	return nil
 }

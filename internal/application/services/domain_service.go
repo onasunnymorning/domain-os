@@ -515,3 +515,43 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	return createdDomain, nil
 
 }
+
+// RenewDomain renews a domain
+func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error) {
+	// Get the domain wihtout the hosts
+	dom, err := svc.GetDomainByName(ctx, cmd.Name, false)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidRenewal, err)
+	}
+
+	// Check if the Current Registrar ClID matches the command
+	if dom.ClID != entities.ClIDType(cmd.ClID) {
+		return nil, errors.Join(entities.ErrInvalidRenewal, entities.ErrInvalidRegistrar)
+	}
+
+	// Get the TLD including the phases
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Always use the current Ga phase policy for renewals (phase extention does not apply to renews)
+	phase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidRenewal, err)
+	}
+
+	// Renew the domain using our entity
+	err = dom.Renew(cmd.Years, false, phase)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the domain
+	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}

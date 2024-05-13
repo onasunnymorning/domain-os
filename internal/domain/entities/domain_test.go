@@ -169,6 +169,22 @@ func TestDomain_CanBeRenewed(t *testing.T) {
 	domain.Status.PendingRenew = false
 	domain.Status.ClientRenewProhibited = true
 	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.ClientRenewProhibited = false
+	domain.Status.PendingDelete = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingDelete = false
+	domain.Status.PendingCreate = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingCreate = false
+	domain.Status.PendingTransfer = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingTransfer = false
+	domain.Status.PendingRestore = true
+	require.False(t, domain.CanBeRenewed())
 }
 
 func TestDomain_CanBeTransferred(t *testing.T) {
@@ -1228,4 +1244,91 @@ func TestRegisterDomain(t *testing.T) {
 	_, err = RegisterDomain(roid, "example..com", clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
 	assert.Error(t, err)
 	assert.Equal(t, ErrInvalidLabelLength, err)
+}
+
+func TestDomain_Renew(t *testing.T) {
+	dom := &Domain{
+		RoID:     "12345_DOM-APEX",
+		Name:     "a.pex.domains",
+		ClID:     "GoMamma",
+		AuthInfo: "STr0mgP@ZZ",
+	}
+	testcases := []struct {
+		name      string
+		domStatus *DomainStatus
+		expDate   time.Time
+		years     int
+		auto      bool
+		phase     *Phase
+		wantErr   error
+	}{
+		{
+			name:      "phase is nil",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     0,
+			phase:     nil,
+			wantErr:   ErrPhaseNotProvided,
+		},
+		{
+			name:      "zero years",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     0,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			wantErr:   ErrZeroRenewalPeriod,
+		},
+		{
+			name:      "can't be renewed",
+			domStatus: &DomainStatus{PendingCreate: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     1,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			wantErr:   ErrDomainRenewNotAllowed,
+		},
+		{
+			name:      "exceed max horizon",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Now().UTC(),
+			years:     11,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5, MaxHorizon: 10}},
+			wantErr:   ErrDomainRenewExceedsMaxHorizon,
+		},
+		{
+			name:      "valid explicit renew",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     4,
+			phase:     &Phase{Policy: PhasePolicy{RenewalGP: 5, MaxHorizon: 10}},
+			wantErr:   nil,
+		},
+		{
+			name:      "valid auto renew",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     1,
+			auto:      true,
+			phase:     &Phase{Policy: PhasePolicy{AutoRenewalGP: 45, MaxHorizon: 10}},
+			wantErr:   nil,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			dom.RenewedYears = 0
+			dom.Status = *tc.domStatus
+			dom.ExpiryDate = tc.expDate
+			err := dom.Renew(tc.years, tc.auto, tc.phase)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.Equal(t, tc.expDate.AddDate(tc.years, 0, 0), dom.ExpiryDate)
+				assert.Equal(t, tc.years, dom.RenewedYears)
+				if tc.auto {
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.AutoRenewalGP).Truncate(time.Hour), dom.RGPStatus.AutoRenewPeriodEnd.Truncate(time.Hour))
+				} else {
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.RenewalGP).Truncate(time.Hour), dom.RGPStatus.RenewPeriodEnd.Truncate(time.Hour))
+				}
+			}
+		})
+	}
 }
