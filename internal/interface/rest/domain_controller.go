@@ -32,8 +32,8 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
 	// Registrar endpoints
-	e.POST("/domains/registration", controller.RegisterDomain) // use this when a registrar is registering a domain
 	e.GET("/domains/check/:name", controller.CheckDomain)
+	e.POST("/domains/registration", controller.RegisterDomain) // use this when a registrar is registering a domain
 	e.POST("/domains/renewal/:name", controller.RenewDomain)
 
 	return controller
@@ -385,5 +385,5 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(201, domain)
+	ctx.JSON(200, domain)
 }
