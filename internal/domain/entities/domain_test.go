@@ -5,8 +5,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tj/assert"
 )
 
 func TestDomain_NewDomain(t *testing.T) {
@@ -104,6 +106,7 @@ func TestDomain_NewDomain(t *testing.T) {
 				require.Equal(t, RoidType(tc.roid), d.RoID)
 				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
 				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
+				require.Equal(t, ClIDType(tc.clid), d.ClID)
 				if strings.Contains(tc.name, "xn--") {
 					// For IDNs we expect the UName field to be set
 					require.NotNil(t, d.UName)
@@ -1168,4 +1171,61 @@ func TestDomain_RemoveHost(t *testing.T) {
 		require.Equal(t, ErrHostNotFound, err)
 		require.Empty(t, d.Hosts)
 	})
+}
+func TestRegisterDomain(t *testing.T) {
+	// Test case 1: Valid domain registration
+	roid := "123456_DOM-APEX"
+	name := "example.com"
+	clid := "client123"
+	authInfo := "STr0mgP@ZZ"
+	registrantID := "registrant123"
+	adminID := "admin123"
+	techID := "tech123"
+	billingID := "billing123"
+	phase := &Phase{
+		Name: "registration",
+		Policy: PhasePolicy{
+			RegistrationGP:     30,
+			TransferLockPeriod: 60,
+			AutoRenewalGP:      7,
+		},
+	}
+	years := 2
+
+	domain, err := RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, domain)
+	assert.Equal(t, roid, string(domain.RoID))
+	assert.Equal(t, name, string(domain.Name))
+	assert.Equal(t, clid, string(domain.ClID))
+	assert.Equal(t, clid, string(domain.CrRr))
+	assert.Equal(t, years-1, domain.RenewedYears)
+	assert.Equal(t, authInfo, string(domain.AuthInfo))
+	assert.Equal(t, registrantID, string(domain.RegistrantID))
+	assert.Equal(t, adminID, string(domain.AdminID))
+	assert.Equal(t, techID, string(domain.TechID))
+	assert.Equal(t, billingID, string(domain.BillingID))
+	expectedExpiryDate := time.Now().UTC().AddDate(years, 0, 0)
+	assert.Equal(t, expectedExpiryDate.Year(), domain.ExpiryDate.Year())
+	assert.Equal(t, expectedExpiryDate.Month(), domain.ExpiryDate.Month())
+	assert.Equal(t, expectedExpiryDate.Day(), domain.ExpiryDate.Day())
+	expectedRegistrationGPEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
+	assert.Equal(t, expectedRegistrationGPEnd.Year(), domain.RGPStatus.AddPeriodEnd.Year())
+	assert.Equal(t, expectedRegistrationGPEnd.Month(), domain.RGPStatus.AddPeriodEnd.Month())
+	assert.Equal(t, expectedRegistrationGPEnd.Day(), domain.RGPStatus.AddPeriodEnd.Day())
+	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockPeriod)
+	assert.Equal(t, expectedTransferLockPeriodEnd.Year(), domain.RGPStatus.TransferLockPeriodEnd.Year())
+	assert.Equal(t, expectedTransferLockPeriodEnd.Month(), domain.RGPStatus.TransferLockPeriodEnd.Month())
+	assert.Equal(t, expectedTransferLockPeriodEnd.Day(), domain.RGPStatus.TransferLockPeriodEnd.Day())
+
+	// Test case 2: Missing phase
+	_, err = RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, nil, years)
+	assert.Error(t, err)
+	assert.Equal(t, ErrPhaseNotProvided, err)
+
+	// Test case 3: Invalid domain name
+	_, err = RegisterDomain(roid, "example..com", clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
+	assert.Error(t, err)
+	assert.Equal(t, ErrInvalidLabelLength, err)
 }
