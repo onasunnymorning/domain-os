@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"log"
@@ -456,7 +455,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 	if !checkResult.Available {
-		return nil, errors.New(checkResult.Reason)
+		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
 
 	//TODO: FIXME do a fee check here - dependent on currency conversion
@@ -492,7 +491,6 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 
 	// Add the hosts if there are any
-	fmt.Println("Hosts in command: ", cmd.HostNames)
 	for _, h := range cmd.HostNames {
 		// Lookup the host
 		host, err := svc.hostRepository.GetHostByNameAndClID(ctx, strings.ToLower(h), cmd.ClID)
@@ -504,11 +502,6 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	fmt.Printf("Domain: %v\n", dom.Name)
-	for _, h := range dom.Hosts {
-		fmt.Printf("Host: %v\n", h.Name)
 	}
 
 	// Save the domain
