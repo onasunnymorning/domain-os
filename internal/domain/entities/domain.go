@@ -322,6 +322,7 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 
 	d.ExpiryDate = d.ExpiryDate.AddDate(years, 0, 0)
 	d.RenewedYears += years
+	d.UpRr = d.ClID
 
 	// Set the RGP statuses
 	if isAutoRenew {

@@ -1323,6 +1323,7 @@ func TestDomain_Renew(t *testing.T) {
 			if err == nil {
 				assert.Equal(t, tc.expDate.AddDate(tc.years, 0, 0), dom.ExpiryDate)
 				assert.Equal(t, tc.years, dom.RenewedYears)
+				assert.Equal(t, dom.ClID, dom.UpRr)
 				if tc.auto {
 					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.AutoRenewalGP).Truncate(time.Hour), dom.RGPStatus.AutoRenewPeriodEnd.Truncate(time.Hour))
 				} else {
