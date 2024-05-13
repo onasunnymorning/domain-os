@@ -448,6 +448,13 @@ func TestSetHostStatus(t *testing.T) {
 			err:  ErrHostUpdateProhibited,
 			ok:   false,
 		},
+		{
+			name: " set linked when update is prohinited",
+			hs:   HostStatus{ClientUpdateProhibited: true},
+			s:    HostStatusLinked,
+			err:  nil,
+			ok:   false,
+		},
 	}
 
 	for _, tc := range testcases {

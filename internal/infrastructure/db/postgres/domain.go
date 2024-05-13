@@ -28,7 +28,7 @@ type Domain struct {
 	UpdatedAt                time.Time
 	entities.DomainStatus    `gorm:"embedded"`
 	entities.DomainRGPStatus `gorm:"embedded"`
-	Hosts                    []Host `gorm:"many2many:domain_hosts;"`
+	Hosts                    []Host `gorm:"many2many:domain_hosts;constraint:OnDelete:CASCADE;"`
 }
 
 // TableName returns the table name for the Domain model
