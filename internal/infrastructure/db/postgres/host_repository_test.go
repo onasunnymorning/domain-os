@@ -203,3 +203,28 @@ func (s *HostSuite) TestListHosts() {
 	s.Require().Nil(hosts)
 
 }
+func (s *HostSuite) TestGetHostByNameAndClID() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormHostRepository(tx)
+
+	t := time.Now().UTC()
+	host := getValidHost("hostSuiteRar", &t)
+	host.ClID = entities.ClIDType(s.rarClid)
+
+	createdHost, err := repo.CreateHost(context.Background(), host)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdHost)
+
+	readHost, err := repo.GetHostByNameAndClID(context.Background(), createdHost.Name.String(), createdHost.ClID.String())
+	s.Require().NoError(err)
+	s.Require().NotNil(readHost)
+	s.Require().Equal(createdHost.Name, readHost.Name)
+	s.Require().Equal(createdHost.ClID, readHost.ClID)
+	s.Require().Equal(createdHost.CrRr, readHost.CrRr)
+	s.Require().Equal(createdHost.UpRr, readHost.UpRr)
+	s.Require().Equal(createdHost.InBailiwick, readHost.InBailiwick)
+	s.Require().Equal(createdHost.Status.ServerDeleteProhibited, readHost.Status.ServerDeleteProhibited)
+	s.Require().Equal(createdHost.Status, readHost.Status)
+	s.Require().Equal(createdHost.RoID, readHost.RoID)
+}

@@ -438,5 +438,72 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 
 // RegisterDomain registers a domain
 func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error) {
-	return nil, nil
+	// Check if the domain is available
+	includeFees := cmd.Fee == commands.FeeExtension{} // If the fee extension is proivded, include the fees in the check
+	q, err := queries.NewDomainCheckQuery(cmd.Name, includeFees)
+	if err != nil {
+		return nil, err
+	}
+	checkResult, err := svc.CheckDomain(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	if !checkResult.Available {
+		return nil, errors.New(checkResult.Reason)
+	}
+	//TODO: FIXME do a fee check here - dependent on currency conversion
+
+	// Get the Phase
+	domainName := entities.DomainName(cmd.Name)
+	tld, err := svc.tldRepo.GetByName(ctx, domainName.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+	var phase *entities.Phase
+	if cmd.PhaseName == "" {
+		// If no phase is provided we will use the current GA phase
+		phase, err = tld.GetCurrentGAPhase()
+	} else {
+		// If a phase is provided we will use that
+		phase, err = tld.FindPhaseByName(entities.ClIDType(cmd.PhaseName))
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the domain entity
+	roid, err := svc.roidService.GenerateRoid(entities.RoidTypeDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the hosts if there are any
+	for _, h := range cmd.HostNames {
+		// Lookup the host
+		host, err := svc.hostRepository.GetHostByNameAndClID(ctx, h, cmd.ClID)
+		if err != nil {
+			return nil, err
+		}
+		// Add the host to the domain
+		_, err = dom.AddHost(host)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Save the domain
+	// This should save the host associtations as well => to be tested
+	createdDomain, err := svc.domainRepository.CreateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	// return
+	return createdDomain, nil
+
 }

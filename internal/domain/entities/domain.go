@@ -27,6 +27,7 @@ var (
 	ErrDuplicateHost                   = errors.New("a host with this name is already associated with domain")
 	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
 	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
+	ErrPhaseNotProvided                = errors.New("phase is mandatory for registration")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -125,6 +126,7 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	}
 
 	d.Status = NewDomainStatus() // set the default statuses
+	d.CreatedAt = time.Now().UTC()
 
 	if err := d.Validate(); err != nil {
 		return nil, err
@@ -260,4 +262,38 @@ func (d *Domain) RemoveHost(host *Host) error {
 	// Update the inactive status
 	d.SetUnsetInactiveStatus()
 	return nil
+}
+
+// RegisterDomain creates a new Domain object and sets all required (RGP) statuses
+func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID string, phase *Phase, years int) (*Domain, error) {
+	if phase == nil {
+		return nil, ErrPhaseNotProvided
+	}
+	dom, err := NewDomain(roid, name, clid, authInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the create registrar
+	dom.CrRr = dom.ClID
+
+	// Set the RGP statuses
+	dom.RGPStatus.AddPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
+	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockPeriod)
+
+	// Set the expiry date
+	dom.ExpiryDate = dom.CreatedAt.AddDate(years, 0, 0)
+
+	// If the registration period is more than 1 year, set the renewed years
+	if years > 1 {
+		dom.RenewedYears = years - 1
+	}
+
+	// Set the contacts
+	dom.RegistrantID = ClIDType(registrantID)
+	dom.AdminID = ClIDType(adminID)
+	dom.TechID = ClIDType(techID)
+	dom.BillingID = ClIDType(billingID)
+
+	return dom, nil
 }
