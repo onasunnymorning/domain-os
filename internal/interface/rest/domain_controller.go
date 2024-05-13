@@ -33,7 +33,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
 	// Registrar endpoints
 	e.GET("/domains/check/:name", controller.CheckDomain)
-	e.POST("/domains/registration", controller.RegisterDomain) // use this when a registrar is registering a domain
+	e.POST("/domains/registration/:name", controller.RegisterDomain) // use this when a registrar is registering a domain
 	e.POST("/domains/renewal/:name", controller.RenewDomain)
 
 	return controller
@@ -283,8 +283,9 @@ func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 // @Success 201 {object} entities.Domain
 // @Failure 400
 // @Failure 500
-// @Router /domains/registration [post]
+// @Router /domains/registration/{name} [post]
 func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
 	var req commands.RegisterDomainCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		if err.Error() == "EOF" {
@@ -292,6 +293,10 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 			return
 		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
 		return
 	}
 
