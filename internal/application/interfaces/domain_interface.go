@@ -23,4 +23,6 @@ type DomainService interface {
 	CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error)
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
+	// RenewDomain renews a domain as a registrar and supports the fee extension
+	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error)
 }

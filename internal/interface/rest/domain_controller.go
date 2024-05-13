@@ -34,6 +34,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	// Registrar endpoints
 	e.POST("/domains/registration", controller.RegisterDomain) // use this when a registrar is registering a domain
 	e.GET("/domains/check/:name", controller.CheckDomain)
+	e.POST("/domains/renewal/:name", controller.RenewDomain)
 
 	return controller
 }
@@ -345,4 +346,44 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, result)
+}
+
+// RenewDomain godoc
+// @Summary Renew a domain as a Registrar
+// @Description Renew a domain as a Registrar. Is modelled after the EPP renew command.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain body commands.RenewDomainCommand true "Domain"
+// @Success 201 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/renewal/{name} [post]
+func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
+	var req commands.RenewDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
+		return
+	}
+
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRenewal) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(201, domain)
 }
