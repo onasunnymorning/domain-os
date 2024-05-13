@@ -142,20 +142,9 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().Equal(domain.Name, retrievedDomain.Name)
 	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
 
-	// try and delete the domain
+	// try and delete the domain with hosts associated, should fail
 	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
-	s.Require().NoError(err)
-
-	// Ensure the domain was deleted
-	_, err = repo.GetDomainByName(context.Background(), createdDomain.Name.String(), false)
 	s.Require().Error(err)
-
-	// Ensure the hosts were NOT deleted
-	for _, host := range s.hosts {
-		hoRoID, _ := host.RoID.Int64()
-		_, err = NewGormHostRepository(tx).GetHostByRoid(context.Background(), hoRoID)
-		s.Require().NoError(err)
-	}
 }
 
 func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
