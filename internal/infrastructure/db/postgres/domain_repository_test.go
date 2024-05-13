@@ -232,6 +232,11 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	s.Require().Equal(createdDomain.ClID, foundDomain.ClID)
 	s.Require().Equal(createdDomain.AuthInfo, foundDomain.AuthInfo)
 	s.Require().Equal(createdDomain.RoID, foundDomain.RoID)
+
+	// Try get a domain that doesn't exist
+	_, err = repo.GetDomainByName(context.Background(), "nonexistent.domaintesttld", false)
+	s.Require().Error(err)
+
 }
 
 func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
