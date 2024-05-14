@@ -39,26 +39,27 @@ var (
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID         RoidType        `json:"RoID"`
-	Name         DomainName      `json:"Name"`         // in case of IDN, this contains the A-label
-	OriginalName DomainName      `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
-	UName        DomainName      `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
-	RegistrantID ClIDType        `json:"RegistrantID"`
-	AdminID      ClIDType        `json:"AdminID"`
-	TechID       ClIDType        `json:"TechID"`
-	BillingID    ClIDType        `json:"BillingID"`
-	ClID         ClIDType        `json:"ClID"`
-	CrRr         ClIDType        `json:"CrRr"`
-	UpRr         ClIDType        `json:"UpRr"`
-	TLDName      DomainName      `json:"TLDName"`
-	ExpiryDate   time.Time       `json:"ExpiryDate"`
-	RenewedYears int             `json:"RenewedYears"`
-	AuthInfo     AuthInfoType    `json:"AuthInfo"`
-	CreatedAt    time.Time       `json:"CreatedAt"`
-	UpdatedAt    time.Time       `json:"UpdatedAt"`
-	Status       DomainStatus    `json:"Status"`
-	RGPStatus    DomainRGPStatus `json:"RGPStatus"`
-	Hosts        []*Host         `json:"Hosts"`
+	RoID           RoidType             `json:"RoID"`
+	Name           DomainName           `json:"Name"`         // in case of IDN, this contains the A-label
+	OriginalName   DomainName           `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
+	UName          DomainName           `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
+	RegistrantID   ClIDType             `json:"RegistrantID"`
+	AdminID        ClIDType             `json:"AdminID"`
+	TechID         ClIDType             `json:"TechID"`
+	BillingID      ClIDType             `json:"BillingID"`
+	ClID           ClIDType             `json:"ClID"`
+	CrRr           ClIDType             `json:"CrRr"`
+	UpRr           ClIDType             `json:"UpRr"`
+	TLDName        DomainName           `json:"TLDName"`
+	ExpiryDate     time.Time            `json:"ExpiryDate"`
+	RenewedYears   int                  `json:"RenewedYears"`
+	AuthInfo       AuthInfoType         `json:"AuthInfo"`
+	CreatedAt      time.Time            `json:"CreatedAt"`
+	UpdatedAt      time.Time            `json:"UpdatedAt"`
+	Status         DomainStatus         `json:"Status"`
+	RGPStatus      DomainRGPStatus      `json:"RGPStatus"`
+	GrandFathering DomainGrandFathering `json:"GrandFathering"`
+	Hosts          []*Host              `json:"Hosts"`
 }
 
 // SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
