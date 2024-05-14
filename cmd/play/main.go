@@ -10,8 +10,8 @@ import (
 
 func main() {
 
-	dollar := money.New(10000, "USD")
-	eur := money.New(9288, "EUR")
+	dollar := money.New(1, "USD")
+	eur := money.New(1, "EUR")
 
 	fx := entities.FX{
 		Date: time.Now(),
