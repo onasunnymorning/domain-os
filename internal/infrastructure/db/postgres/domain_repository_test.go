@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -15,6 +16,7 @@ type DomainSuite struct {
 	rarClid   string
 	tld       string
 	contactID string
+	hosts     []*entities.Host
 }
 
 func TestDomainSuite(t *testing.T) {
@@ -23,7 +25,6 @@ func TestDomainSuite(t *testing.T) {
 
 func (s *DomainSuite) SetupSuite() {
 	s.db = setupTestDB()
-	NewGormTLDRepo(s.db)
 
 	// Create a registrar
 	rar, _ := entities.NewRegistrar("domaintestRar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
@@ -48,6 +49,20 @@ func (s *DomainSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact)
 	s.contactID = createdContact.ClID.String()
+
+	// Create some hosts
+	hostRepo := NewGormHostRepository(s.db)
+	for i := 0; i < 3; i++ {
+		host, err := entities.NewHost("ns"+fmt.Sprint(i)+".apex.domains", fmt.Sprint(i)+"1234_HOST-APEX", "domaintestRar")
+		s.Require().NoError(err)
+		s.Require().NotNil(host)
+
+		createdHost, err := hostRepo.CreateHost(context.Background(), host)
+		s.Require().NoError(err)
+		s.Require().NotNil(createdHost)
+
+		s.hosts = append(s.hosts, createdHost)
+	}
 }
 
 func (s *DomainSuite) TearDownSuite() {
@@ -58,6 +73,13 @@ func (s *DomainSuite) TearDownSuite() {
 	if s.rarClid != "" {
 		repo := NewGormRegistrarRepository(s.db)
 		_ = repo.Delete(context.Background(), s.rarClid)
+	}
+	if s.hosts != nil {
+		repo := NewGormHostRepository(s.db)
+		for _, host := range s.hosts {
+			hoRoID, _ := host.RoID.Int64()
+			_ = repo.DeleteHostByRoid(context.Background(), hoRoID)
+		}
 	}
 }
 
@@ -88,6 +110,103 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 
 }
 
+func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+	// Add some hosts
+	domain.Hosts = s.hosts
+
+	// Create the domain
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+	s.Require().Equal(domain.Name, createdDomain.Name)
+	s.Require().Equal(domain.ClID, createdDomain.ClID)
+	s.Require().Equal(domain.AuthInfo, createdDomain.AuthInfo)
+	s.Require().NotNil(createdDomain.RoID)
+
+	// Retrieve the domain and check if the hosts are there
+	retrievedDomain, err := repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(domain.Name, retrievedDomain.Name)
+	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
+
+	// try and delete the domain with hosts associated, should fail
+	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	s.Require().Error(err)
+}
+
+func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+
+	// Create the domain
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+	s.Require().Equal(domain.Name, createdDomain.Name)
+	s.Require().Equal(domain.ClID, createdDomain.ClID)
+	s.Require().Equal(domain.AuthInfo, createdDomain.AuthInfo)
+	s.Require().NotNil(createdDomain.RoID)
+
+	// Add some hosts
+	for _, host := range s.hosts {
+		hoRoID, _ := host.RoID.Int64()
+		domRoID, _ := createdDomain.RoID.Int64()
+		err = repo.AddHostToDomain(context.Background(), domRoID, hoRoID)
+		s.Require().NoError(err)
+	}
+
+	// Retrieve the domain and check if the hosts are there
+	retrievedDomain, err := repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(domain.Name, retrievedDomain.Name)
+	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
+
+	// Remove the hosts
+	for _, host := range s.hosts {
+		hoRoID, _ := host.RoID.Int64()
+		domRoID, _ := createdDomain.RoID.Int64()
+		err = repo.RemoveHostFromDomain(context.Background(), domRoID, hoRoID)
+		s.Require().NoError(err)
+	}
+
+	// Retrieve the domain and check if the hosts are there
+	retrievedDomain, err = repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(domain.Name, retrievedDomain.Name)
+	s.Require().Equal(0, len(retrievedDomain.Hosts))
+
+	// Check if the hosts still exist
+	for _, host := range s.hosts {
+		hoRoID, _ := host.RoID.Int64()
+		_, err = NewGormHostRepository(tx).GetHostByRoid(context.Background(), hoRoID)
+		s.Require().NoError(err)
+	}
+}
 func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
@@ -113,6 +232,11 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	s.Require().Equal(createdDomain.ClID, foundDomain.ClID)
 	s.Require().Equal(createdDomain.AuthInfo, foundDomain.AuthInfo)
 	s.Require().Equal(createdDomain.RoID, foundDomain.RoID)
+
+	// Try get a domain that doesn't exist
+	_, err = repo.GetDomainByName(context.Background(), "nonexistent.domaintesttld", false)
+	s.Require().Error(err)
+
 }
 
 func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
@@ -144,7 +268,6 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 }
 
 func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
-	// Saving a Domain object which has hosts should not save the hosts, instead the hosts should be added separately
 	tx := s.db.Begin()
 	defer tx.Rollback()
 	repo := NewDomainRepository(tx)
@@ -157,18 +280,7 @@ func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	domain.Hosts = []*entities.Host{
-		{
-			RoID: "12345_HOST-APEX",
-			Name: "ns1.apex.domains",
-			ClID: "domaintestRar",
-		},
-		{
-			RoID: "12346_HOST-APEX",
-			Name: "ns2.apex.domains",
-			ClID: "domaintestRar",
-		},
-	}
+	domain.Hosts = s.hosts
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -182,7 +294,7 @@ func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 	s.Require().Equal(createdDomain.ClID, foundDomain.ClID)
 	s.Require().Equal(createdDomain.AuthInfo, foundDomain.AuthInfo)
 	s.Require().Equal(createdDomain.RoID, foundDomain.RoID)
-	s.Require().Equal(0, len(foundDomain.Hosts)) // it should fail here if the hosts were created
+	s.Require().Equal(len(s.hosts), len(foundDomain.Hosts)) // it should fail here if the hosts were created
 }
 
 func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
@@ -308,4 +420,48 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	// Use a bad roid int64
 	_, err = repo.ListDomains(context.Background(), 25, "ABCD_DOM-APEX")
 	s.Require().Error(err)
+}
+
+// UpdateDomainWith hosts checks if a domain that has host associations is updated doesn't lose the hosts.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+	domain.Hosts = s.hosts
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+	s.Require().Equal(len(s.hosts), len(createdDomain.Hosts))
+
+	// Retrieve the domains without hosts
+	retrievedDomain, err := repo.GetDomainByName(context.Background(), createdDomain.Name.String(), false)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(0, len(retrievedDomain.Hosts))
+
+	// Update the domain
+	createdDomain.AuthInfo = "newAu123$th"
+	updatedDomain, err := repo.UpdateDomain(context.Background(), createdDomain)
+	s.Require().NoError(err)
+	s.Require().NotNil(updatedDomain)
+	s.Require().Equal(createdDomain.Name, updatedDomain.Name)
+	s.Require().Equal(createdDomain.ClID, updatedDomain.ClID)
+	s.Require().Equal(createdDomain.AuthInfo, updatedDomain.AuthInfo)
+	s.Require().Equal(createdDomain.RoID, updatedDomain.RoID)
+
+	// Retrieve the domain with hosts
+	retrievedDomain, err = repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
+	s.Require().Equal("newAu123$th", retrievedDomain.AuthInfo.String())
 }

@@ -5,8 +5,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tj/assert"
 )
 
 func TestDomain_NewDomain(t *testing.T) {
@@ -104,6 +106,7 @@ func TestDomain_NewDomain(t *testing.T) {
 				require.Equal(t, RoidType(tc.roid), d.RoID)
 				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
 				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
+				require.Equal(t, ClIDType(tc.clid), d.ClID)
 				if strings.Contains(tc.name, "xn--") {
 					// For IDNs we expect the UName field to be set
 					require.NotNil(t, d.UName)
@@ -165,6 +168,22 @@ func TestDomain_CanBeRenewed(t *testing.T) {
 
 	domain.Status.PendingRenew = false
 	domain.Status.ClientRenewProhibited = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.ClientRenewProhibited = false
+	domain.Status.PendingDelete = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingDelete = false
+	domain.Status.PendingCreate = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingCreate = false
+	domain.Status.PendingTransfer = true
+	require.False(t, domain.CanBeRenewed())
+
+	domain.Status.PendingTransfer = false
+	domain.Status.PendingRestore = true
 	require.False(t, domain.CanBeRenewed())
 }
 
@@ -1168,4 +1187,323 @@ func TestDomain_RemoveHost(t *testing.T) {
 		require.Equal(t, ErrHostNotFound, err)
 		require.Empty(t, d.Hosts)
 	})
+}
+func TestRegisterDomain(t *testing.T) {
+	// Test case 1: Valid domain registration
+	roid := "123456_DOM-APEX"
+	name := "example.com"
+	clid := "client123"
+	authInfo := "STr0mgP@ZZ"
+	registrantID := "registrant123"
+	adminID := "admin123"
+	techID := "tech123"
+	billingID := "billing123"
+	phase := &Phase{
+		Name: "registration",
+		Policy: PhasePolicy{
+			RegistrationGP:     30,
+			TransferLockPeriod: 60,
+			AutoRenewalGP:      7,
+		},
+	}
+	years := 2
+
+	domain, err := RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, domain)
+	assert.Equal(t, roid, string(domain.RoID))
+	assert.Equal(t, name, string(domain.Name))
+	assert.Equal(t, clid, string(domain.ClID))
+	assert.Equal(t, clid, string(domain.CrRr))
+	assert.Equal(t, years-1, domain.RenewedYears)
+	assert.Equal(t, authInfo, string(domain.AuthInfo))
+	assert.Equal(t, registrantID, string(domain.RegistrantID))
+	assert.Equal(t, adminID, string(domain.AdminID))
+	assert.Equal(t, techID, string(domain.TechID))
+	assert.Equal(t, billingID, string(domain.BillingID))
+	expectedExpiryDate := time.Now().UTC().AddDate(years, 0, 0)
+	assert.Equal(t, expectedExpiryDate.Year(), domain.ExpiryDate.Year())
+	assert.Equal(t, expectedExpiryDate.Month(), domain.ExpiryDate.Month())
+	assert.Equal(t, expectedExpiryDate.Day(), domain.ExpiryDate.Day())
+	expectedRegistrationGPEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
+	assert.Equal(t, expectedRegistrationGPEnd.Year(), domain.RGPStatus.AddPeriodEnd.Year())
+	assert.Equal(t, expectedRegistrationGPEnd.Month(), domain.RGPStatus.AddPeriodEnd.Month())
+	assert.Equal(t, expectedRegistrationGPEnd.Day(), domain.RGPStatus.AddPeriodEnd.Day())
+	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockPeriod)
+	assert.Equal(t, expectedTransferLockPeriodEnd.Year(), domain.RGPStatus.TransferLockPeriodEnd.Year())
+	assert.Equal(t, expectedTransferLockPeriodEnd.Month(), domain.RGPStatus.TransferLockPeriodEnd.Month())
+	assert.Equal(t, expectedTransferLockPeriodEnd.Day(), domain.RGPStatus.TransferLockPeriodEnd.Day())
+
+	// Test case 2: Missing phase
+	_, err = RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, nil, years)
+	assert.Error(t, err)
+	assert.Equal(t, ErrPhaseNotProvided, err)
+
+	// Test case 3: Invalid domain name
+	_, err = RegisterDomain(roid, "example..com", clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
+	assert.Error(t, err)
+	assert.Equal(t, ErrInvalidLabelLength, err)
+}
+
+func TestDomain_Renew(t *testing.T) {
+	dom := &Domain{
+		RoID:     "12345_DOM-APEX",
+		Name:     "a.pex.domains",
+		ClID:     "GoMamma",
+		AuthInfo: "STr0mgP@ZZ",
+	}
+	testcases := []struct {
+		name      string
+		domStatus *DomainStatus
+		expDate   time.Time
+		years     int
+		auto      bool
+		phase     *Phase
+		wantErr   error
+	}{
+		{
+			name:      "phase is nil",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     0,
+			phase:     nil,
+			wantErr:   ErrPhaseNotProvided,
+		},
+		{
+			name:      "zero years",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     0,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			wantErr:   ErrZeroRenewalPeriod,
+		},
+		{
+			name:      "can't be renewed",
+			domStatus: &DomainStatus{PendingCreate: true},
+			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     1,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			wantErr:   ErrDomainRenewNotAllowed,
+		},
+		{
+			name:      "exceed max horizon",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Now().UTC(),
+			years:     11,
+			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5, MaxHorizon: 10}},
+			wantErr:   ErrDomainRenewExceedsMaxHorizon,
+		},
+		{
+			name:      "valid explicit renew",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     4,
+			phase:     &Phase{Policy: PhasePolicy{RenewalGP: 5, MaxHorizon: 10}},
+			wantErr:   nil,
+		},
+		{
+			name:      "valid auto renew",
+			domStatus: &DomainStatus{OK: true},
+			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+			years:     1,
+			auto:      true,
+			phase:     &Phase{Policy: PhasePolicy{AutoRenewalGP: 45, MaxHorizon: 10}},
+			wantErr:   nil,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			dom.RenewedYears = 0
+			dom.Status = *tc.domStatus
+			dom.ExpiryDate = tc.expDate
+			err := dom.Renew(tc.years, tc.auto, tc.phase)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.Equal(t, tc.expDate.AddDate(tc.years, 0, 0), dom.ExpiryDate)
+				assert.Equal(t, tc.years, dom.RenewedYears)
+				assert.Equal(t, dom.ClID, dom.UpRr)
+				if tc.auto {
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.AutoRenewalGP).Truncate(time.Hour), dom.RGPStatus.AutoRenewPeriodEnd.Truncate(time.Hour))
+				} else {
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.RenewalGP).Truncate(time.Hour), dom.RGPStatus.RenewPeriodEnd.Truncate(time.Hour))
+				}
+			}
+		})
+	}
+}
+
+func TestDomain_CanBeRestored(t *testing.T) {
+	testcases := []struct {
+		name            string
+		DomainStatus    DomainStatus
+		DomainRGPStatus DomainRGPStatus
+		want            bool
+	}{
+		{
+			name:         "domain can be restored",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			want: true,
+		},
+		{
+			name:         "domain not in pendingDelete",
+			DomainStatus: DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			want: false,
+		},
+		{
+			name:         "domain not in redemption period",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status:    tc.DomainStatus,
+				RGPStatus: tc.DomainRGPStatus,
+			}
+
+			assert.Equal(t, tc.want, d.CanBeRestored())
+		})
+	}
+}
+
+func TestDomain_Restore(t *testing.T) {
+	testcases := []struct {
+		name            string
+		DomainStatus    DomainStatus
+		DomainRGPStatus DomainRGPStatus
+		wantErr         error
+	}{
+		{
+			name:         "domain can be restored",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: nil,
+		},
+		{
+			name:         "domain not in pendingDelete",
+			DomainStatus: DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrDomainRestoreNotAllowed,
+		},
+		{
+			name:         "domain not in redemption period",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
+			},
+			wantErr: ErrDomainRestoreNotAllowed,
+		},
+		{
+			name:         "status prevents updates",
+			DomainStatus: DomainStatus{PendingDelete: true, ClientUpdateProhibited: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrDomainUpdateNotAllowed,
+		},
+		{
+			name:         "conflicting statusses",
+			DomainStatus: DomainStatus{PendingDelete: true, PendingTransfer: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status:    tc.DomainStatus,
+				RGPStatus: tc.DomainRGPStatus,
+			}
+
+			err := d.Restore()
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.False(t, d.Status.PendingDelete)
+				assert.True(t, d.Status.PendingRestore)
+				assert.False(t, d.Status.OK)
+			}
+		})
+	}
+
+}
+
+func TestDomain_MarkForDeletion(t *testing.T) {
+	testcases := []struct {
+		name         string
+		DomainStatus DomainStatus
+		Phase        *Phase
+		wantErr      error
+	}{
+		{
+			name:         "domain can be marked for deletion",
+			DomainStatus: DomainStatus{OK: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name:         "domain not deletable",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: ErrDomainDeleteNotAllowed,
+		},
+		{
+			name:         "status prevents updates",
+			DomainStatus: DomainStatus{ClientUpdateProhibited: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: ErrDomainUpdateNotAllowed,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status: tc.DomainStatus,
+			}
+
+			err := d.MarkForDeletion(tc.Phase)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.True(t, d.Status.PendingDelete)
+				assert.False(t, d.Status.OK)
+				assert.NotNil(t, d.RGPStatus.PendingDeletePeriodEnd)
+				assert.NotNil(t, d.RGPStatus.RedemptionPeriodEnd)
+			}
+		})
+	}
+
 }

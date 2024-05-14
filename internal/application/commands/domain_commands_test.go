@@ -21,6 +21,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				RoID:   "12345_DOM-APEX",
 				Name:   "example.com",
 				ClID:   "test",
+				CrDate: "2020-01-01T00:00:00Z",
 				ExDate: "2021-01-01T00:00:00Z",
 				CrRr:   "test",
 				UpRr:   "test",
@@ -31,6 +32,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				ClID:       "test",
 				CrRr:       "test",
 				UpRr:       "test",
+				CreatedAt:  time.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
 				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
 				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
@@ -45,6 +47,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				RoID:   "12345",
 				Name:   "example.com",
 				ClID:   "test",
+				CrDate: "2020-01-01T00:00:00Z",
 				ExDate: "2021-01-01T00:00:00Z",
 				CrRr:   "test",
 				UpRr:   "test",
@@ -54,6 +57,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				ClID:       "test",
 				CrRr:       "test",
 				UpRr:       "test",
+				CreatedAt:  time.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
 				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
 				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
