@@ -9,7 +9,7 @@ type DomainRGPStatus struct {
 	AutoRenewPeriodEnd     time.Time `json:"AutoRenewPeriodEnd"`
 	TransferLockPeriodEnd  time.Time `json:"TransferLockPeriodEnd"`
 	RedemptionPeriodEnd    time.Time `json:"RedemptionPeriodEnd"`
-	PendingDeletePeriodEnd time.Time `json:"PendingDeletePeriodEnd"`
+	PendingDeletePeriodEnd time.Time `json:"PendingDeletePeriodEnd"` // AKA purge date
 }
 
 // IsNil checks if the DomainRGPStatus object is nil

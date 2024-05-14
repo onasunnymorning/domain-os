@@ -421,3 +421,47 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	_, err = repo.ListDomains(context.Background(), 25, "ABCD_DOM-APEX")
 	s.Require().Error(err)
 }
+
+// UpdateDomainWith hosts checks if a domain that has host associations is updated doesn't lose the hosts.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+	domain.Hosts = s.hosts
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+	s.Require().Equal(len(s.hosts), len(createdDomain.Hosts))
+
+	// Retrieve the domains without hosts
+	retrievedDomain, err := repo.GetDomainByName(context.Background(), createdDomain.Name.String(), false)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(0, len(retrievedDomain.Hosts))
+
+	// Update the domain
+	createdDomain.AuthInfo = "newAu123$th"
+	updatedDomain, err := repo.UpdateDomain(context.Background(), createdDomain)
+	s.Require().NoError(err)
+	s.Require().NotNil(updatedDomain)
+	s.Require().Equal(createdDomain.Name, updatedDomain.Name)
+	s.Require().Equal(createdDomain.ClID, updatedDomain.ClID)
+	s.Require().Equal(createdDomain.AuthInfo, updatedDomain.AuthInfo)
+	s.Require().Equal(createdDomain.RoID, updatedDomain.RoID)
+
+	// Retrieve the domain with hosts
+	retrievedDomain, err = repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
+	s.Require().Equal("newAu123$th", retrievedDomain.AuthInfo.String())
+}
