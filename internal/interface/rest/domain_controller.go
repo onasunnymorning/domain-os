@@ -31,11 +31,12 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	// Add and remove hosts
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
-	// Registrar endpoints
+	// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
 	e.GET("/domains/check/:name", controller.CheckDomain)
-	e.POST("/domains/registration/:name", controller.RegisterDomain) // use this when a registrar is registering a domain
+	e.POST("/domains/registration/:name", controller.RegisterDomain)
 	e.POST("/domains/renewal/:name", controller.RenewDomain)
-	e.DELETE("/domains/delete/:name", controller.MarkDomainForDeletion) // DELETE is used for EPP delete command
+	e.DELETE("/domains/delete/:name", controller.MarkDomainForDeletion)
+	e.POST("/domains/restore/:name", controller.RestoreDomain)
 
 	return controller
 }
@@ -412,6 +413,35 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 			return
 		}
 		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
+}
+
+// RestoreDomain godoc
+// @Summary Restore a domain
+// @Description Restore a domain. It marks the domain as pendingRestore and fires off an event. The domain will be restored by the registry when the restore event is processed.
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/restore/{name} [post]
+func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
+	dom, err := ctrl.domainService.RestoreDomain(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainRestoreNotAllowed) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

@@ -27,4 +27,6 @@ type DomainService interface {
 	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error)
 	// MarkDomainForDelete marks a domain for deletion as a registrar
 	MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error)
+	// RestoreDomain restores a domain as a registrar
+	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 }
