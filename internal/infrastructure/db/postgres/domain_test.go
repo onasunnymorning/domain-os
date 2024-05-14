@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,6 +14,7 @@ func TestDomain_TableName(t *testing.T) {
 }
 
 func getValidDBDomain() *Domain {
+	t := time.Now().AddDate(1, 0, 0)
 	rarClid := "domaintestRar"
 	return &Domain{
 		RoID:         123456,
@@ -35,6 +38,12 @@ func getValidDBDomain() *Domain {
 			{
 				Name: "ns2.example.com",
 			},
+		},
+		DomainGrandFathering: entities.DomainGrandFathering{
+			GFAmount:          100,
+			GFCurrency:        "USD",
+			GFExpiryCondition: "transfer",
+			GFVoidDate:        &t,
 		},
 	}
 }
