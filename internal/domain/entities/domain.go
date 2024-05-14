@@ -369,11 +369,11 @@ func (d *Domain) Restore() error {
 	// Unset the pending delete status and set the pending restore status
 	err := d.UnSetStatus(DomainStatusPendingDelete)
 	if err != nil {
-		return err
+		return errors.Join(ErrDomainRestoreNotAllowed, err)
 	}
 	err = d.SetStatus(DomainStatusPendingRestore)
 	if err != nil {
-		return err
+		return errors.Join(ErrDomainRestoreNotAllowed, err)
 	}
 	// Set the registrar who made the update
 	d.UpRr = d.ClID

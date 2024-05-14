@@ -590,3 +590,26 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 
 	return updatedDomain, nil
 }
+
+// RestoreDomain restores a domain. It does a soft restore by setting the status tu pendingRestore. Another process will pick this up and complete the restore.
+func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error) {
+	// Get the domain
+	dom, err := svc.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Restore the domain
+	err = dom.Restore()
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the domain
+	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
