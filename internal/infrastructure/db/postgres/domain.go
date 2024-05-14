@@ -8,27 +8,28 @@ import (
 
 // Domain is the GORM model for the Domain entity
 type Domain struct {
-	RoID                     int64  `gorm:"primaryKey"`
-	Name                     string `gorm:"uniqueIndex;not null"`
-	OriginalName             string
-	UName                    string
-	RegistrantID             string
-	AdminID                  string
-	TechID                   string
-	BillingID                string
-	ClID                     string
-	CrRr                     *string
-	UpRr                     *string
-	TLDName                  string `gorm:"not null;foreignKey"`
-	TLD                      TLD
-	ExpiryDate               time.Time `gorm:"not null"`
-	RenewedYears             int
-	AuthInfo                 string `gorm:"not null"`
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
-	entities.DomainStatus    `gorm:"embedded"`
-	entities.DomainRGPStatus `gorm:"embedded"`
-	Hosts                    []Host `gorm:"many2many:domain_hosts;"`
+	RoID                          int64  `gorm:"primaryKey"`
+	Name                          string `gorm:"uniqueIndex;not null"`
+	OriginalName                  string
+	UName                         string
+	RegistrantID                  string
+	AdminID                       string
+	TechID                        string
+	BillingID                     string
+	ClID                          string
+	CrRr                          *string
+	UpRr                          *string
+	TLDName                       string `gorm:"not null;foreignKey"`
+	TLD                           TLD
+	ExpiryDate                    time.Time `gorm:"not null"`
+	RenewedYears                  int
+	AuthInfo                      string `gorm:"not null"`
+	CreatedAt                     time.Time
+	UpdatedAt                     time.Time
+	entities.DomainStatus         `gorm:"embedded"`
+	entities.DomainRGPStatus      `gorm:"embedded"`
+	entities.DomainGrandFathering `gorm:"embedded"`
+	Hosts                         []Host `gorm:"many2many:domain_hosts;"`
 }
 
 // TableName returns the table name for the Domain model
@@ -57,6 +58,7 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.UpdatedAt = dbDom.UpdatedAt
 	d.Status = dbDom.DomainStatus
 	d.RGPStatus = dbDom.DomainRGPStatus
+	d.GrandFathering = dbDom.DomainGrandFathering
 	if dbDom.CrRr != nil {
 		d.CrRr = entities.ClIDType(*dbDom.CrRr)
 	}
@@ -91,6 +93,7 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.UpdatedAt = d.UpdatedAt
 	dbDomain.DomainStatus = d.Status
 	dbDomain.DomainRGPStatus = d.RGPStatus
+	dbDomain.DomainGrandFathering = d.GrandFathering
 
 	if d.CrRr != entities.ClIDType("") {
 		rar := d.CrRr.String()
