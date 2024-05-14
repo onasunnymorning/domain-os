@@ -128,9 +128,8 @@ func (d *Domain) SetStatus(s string) error {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot set Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
 	}
 
-	//  Ensure idempotence when setting Update prohibitions that are already set
-	if (s == DomainStatusClientUpdateProhibited && d.Status.ClientUpdateProhibited) || (s == DomainStatusServerUpdateProhibited && d.Status.ServerUpdateProhibited) {
-		return nil
+	if d.Status.UpdateProhibited() && !(s == DomainStatusClientUpdateProhibited || s == DomainStatusServerUpdateProhibited) {
+		return ErrDomainUpdateNotAllowed
 	}
 
 	switch s {
@@ -186,6 +185,10 @@ func (d *Domain) UnSetStatus(s string) error {
 	}
 	if s == DomainStatusInactive {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot unset Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
+	}
+
+	if d.Status.UpdateProhibited() && !(s == DomainStatusClientUpdateProhibited || s == DomainStatusServerUpdateProhibited) {
+		return ErrDomainUpdateNotAllowed
 	}
 
 	switch s {
@@ -248,4 +251,9 @@ func (ds *DomainStatus) HasPendings() bool {
 // HasHold returns true if the DomainStatus has any hold status set (ClientHold or ServerHold)
 func (ds *DomainStatus) HasHold() bool {
 	return ds.ClientHold || ds.ServerHold
+}
+
+// UpdateProhibited returns true if the DomainStatus has any update prohibitions set (ClientUpdateProhibited or ServerUpdateProhibited)
+func (ds *DomainStatus) UpdateProhibited() bool {
+	return ds.ClientUpdateProhibited || ds.ServerUpdateProhibited
 }

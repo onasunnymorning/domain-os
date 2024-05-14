@@ -47,6 +47,7 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// Set the ExpiryDate
 	domain.ExpiryDate, err = time.Parse(time.RFC3339, d.ExDate)
 	if err != nil {

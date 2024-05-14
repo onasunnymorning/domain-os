@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -21,14 +22,21 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 		domainService: domService,
 	}
 
-	e.POST("/domains", controller.CreateDomain)
+	// Admin endpoints
+	e.POST("/domains", controller.CreateDomain) // use this when importing or creating a domain as an admin with full control
 	e.GET("/domains/:name", controller.GetDomainByName)
 	e.PUT("/domains/:name", controller.UpdateDomain)
 	e.DELETE("/domains/:name", controller.DeleteDomainByName)
 	e.GET("/domains", controller.ListDomains)
-
+	// Add and remove hosts
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
+	// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
+	e.GET("/domains/check/:name", controller.CheckDomain)
+	e.POST("/domains/registration/:name", controller.RegisterDomain)
+	e.POST("/domains/renewal/:name", controller.RenewDomain)
+	e.DELETE("/domains/delete/:name", controller.MarkDomainForDeletion)
+	e.POST("/domains/restore/:name", controller.RestoreDomain)
 
 	return controller
 }
@@ -265,4 +273,181 @@ func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 
 	// Return result
 	ctx.JSON(204, nil)
+}
+
+// RegisterDomain godoc
+// @Summary Register a domain as a Registrar
+// @Description Register a domain as a Registrar. Is modelled after the EPP create command.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain body commands.RegisterDomainCommand true "Domain"
+// @Success 201 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/registration/{name} [post]
+func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
+	var req commands.RegisterDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
+		return
+	}
+
+	domain, err := ctrl.domainService.RegisterDomain(ctx, &req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidDomain) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(201, domain)
+}
+
+// CheckDomain godoc
+// @Summary Check if a domain is available
+// @Description Check if a domain is available
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param includeFees query bool false "Include fees in the response"
+// @Success 200 {object} queries.DomainCheckResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/check/{name} [get]
+func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
+	includeFees := ctx.DefaultQuery("includeFees", "false")
+
+	// Create a query object
+	q, err := queries.NewDomainCheckQuery(name, includeFees == "true")
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set the phase name if it was provided
+	q.PhaseName = ctx.Query("phase")
+	q.Currency = ctx.Query("currency")
+
+	// Call the service to check the domain
+	result, err := ctrl.domainService.CheckDomain(ctx, q)
+	if err != nil {
+		if errors.Is(err, entities.ErrTLDNotFound) || errors.Is(err, entities.ErrPhaseNotFound) || errors.Is(err, entities.ErrNoActivePhase) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, result)
+}
+
+// RenewDomain godoc
+// @Summary Renew a domain as a Registrar
+// @Description Renew a domain as a Registrar. Is modelled after the EPP renew command.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain body commands.RenewDomainCommand true "Domain"
+// @Success 201 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/renewal/{name} [post]
+func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
+	name := ctx.Param("name")
+	var req commands.RenewDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
+		return
+	}
+
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRenewal) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, domain)
+}
+
+// MarkDomainForDeletion godoc
+// @Summary Mark a domain for deletion
+// @Description Mark a domain for deletion. Is modelled after the EPP delete command.
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/delete/{name} [delete]
+func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
+	dom, err := ctrl.domainService.MarkDomainForDeletion(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
+}
+
+// RestoreDomain godoc
+// @Summary Restore a domain
+// @Description Restore a domain. It marks the domain as pendingRestore and fires off an event. The domain will be restored by the registry when the restore event is processed.
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/restore/{name} [post]
+func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
+	dom, err := ctrl.domainService.RestoreDomain(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainRestoreNotAllowed) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
 }

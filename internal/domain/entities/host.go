@@ -196,7 +196,7 @@ func (h *Host) UnsetOKIfNeeded() {
 // SetStatus sets the status of the host and validates it. It will return an error if the status is incompatible
 func (h *Host) SetStatus(s string) error {
 	// If Update is prohibited, the only update allowed is to remove the prohibition (or in this case set it when it is already set)
-	if !h.CanBeUpdated() && (s != HostStatusClientUpdateProhibited && s != HostStatusServerUpdateProhibited) {
+	if !h.CanBeUpdated() && (s != HostStatusClientUpdateProhibited && s != HostStatusServerUpdateProhibited && s != HostStatusLinked) {
 		return ErrHostUpdateProhibited
 	}
 	switch s {

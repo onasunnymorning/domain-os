@@ -48,6 +48,19 @@ func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entiti
 	return ToHost(&gormHost), nil
 }
 
+// GetHostByNameAndClID gets a host by its name and clid
+func (r *HostRepository) GetHostByNameAndClID(ctx context.Context, name string, clid string) (*entities.Host, error) {
+	var gormHost Host
+	err := r.db.WithContext(ctx).Preload("Addresses").Where("name = ? AND cl_id = ?", name, clid).First(&gormHost).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrHostNotFound
+		}
+		return nil, err
+	}
+	return ToHost(&gormHost), nil
+}
+
 // UpdateHost updates a host
 func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*entities.Host, error) {
 	// If we don't remove the addresses here, they will be present in the response, which could lead the user to believe they were updated, while in face we Omit them
