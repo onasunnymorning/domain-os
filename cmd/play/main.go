@@ -1,28 +1,31 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
+	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/Rhymond/go-money"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 func main() {
-	domCommand := commands.RegisterDomainCommand{
-		Name:         "example.com",
-		ClID:         "cl1234",
-		AuthInfo:     "1234",
-		RegistrantID: "reg1234",
-		AdminID:      "admin1234",
-		TechID:       "tech1234",
-		BillingID:    "bill1234",
-		Years:        1,
-		HostNames:    []string{"ns1.example.com", "ns2.example.com"},
+
+	dollar := money.New(10000, "USD")
+	eur := money.New(9288, "EUR")
+
+	fx := entities.FX{
+		Date: time.Now(),
+		From: "USD",
+		To:   "EUR",
+		Rate: 0.92884,
 	}
 
-	jsondata, err := json.Marshal(domCommand)
-	if err != nil {
-		panic(err)
-	}
+	result, _ := fx.Convert(dollar)
 
-	println(string(jsondata))
+	fmt.Println(result.Display())
+
+	equal, _ := eur.Equals(result)
+
+	fmt.Println(equal)
+
 }
