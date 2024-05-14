@@ -32,6 +32,8 @@ var (
 	ErrDomainRenewExceedsMaxHorizon    = errors.New("domain renew exceeds the maximum horizon")
 	ErrInvalidRenewal                  = errors.New("invalid renewal")
 	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
+	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
+	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -209,6 +211,11 @@ func (d *Domain) CanBeUpdated() bool {
 	return !d.Status.ClientUpdateProhibited && !d.Status.ServerUpdateProhibited && !d.Status.PendingUpdate
 }
 
+// CanBeRestored checks if the Domain can be restored (if we are in the redemption grace period)
+func (d *Domain) CanBeRestored() bool {
+	return time.Now().UTC().Before(d.RGPStatus.RedemptionPeriodEnd) && d.Status.PendingDelete
+}
+
 // AddHost Adds a host to the domain and updates the Domain.Status.Inactive flag if needed.
 func (d *Domain) AddHost(host *Host) (int, error) {
 	if !d.CanBeUpdated() {
@@ -330,6 +337,46 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	} else {
 		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
 	}
+
+	return nil
+}
+
+// MarkForDeletion ititiates the end-of-life lifecycle for a domain. It sets the domain status to PendingDelete and sets the appropriate RGP statuses.
+func (d *Domain) MarkForDeletion(phase *Phase) error {
+	if !d.CanBeDeleted() {
+		return ErrDomainDeleteNotAllowed
+	}
+
+	err := d.SetStatus(DomainStatusPendingDelete)
+	if err != nil {
+		return err
+	}
+	d.UpRr = d.ClID
+
+	// Set the RGP statuses
+	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
+	d.RGPStatus.PendingDeletePeriodEnd = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
+
+	return nil
+}
+
+// Restore restores a domain if is is pendingDelete and within the redemption grace period
+func (d *Domain) Restore() error {
+	if !d.CanBeRestored() {
+		return ErrDomainRestoreNotAllowed
+	}
+
+	// Unset the pending delete status and set the pending restore status
+	err := d.UnSetStatus(DomainStatusPendingDelete)
+	if err != nil {
+		return err
+	}
+	err = d.SetStatus(DomainStatusPendingRestore)
+	if err != nil {
+		return err
+	}
+	// Set the registrar who made the update
+	d.UpRr = d.ClID
 
 	return nil
 }

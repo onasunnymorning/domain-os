@@ -1333,3 +1333,177 @@ func TestDomain_Renew(t *testing.T) {
 		})
 	}
 }
+
+func TestDomain_CanBeRestored(t *testing.T) {
+	testcases := []struct {
+		name            string
+		DomainStatus    DomainStatus
+		DomainRGPStatus DomainRGPStatus
+		want            bool
+	}{
+		{
+			name:         "domain can be restored",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			want: true,
+		},
+		{
+			name:         "domain not in pendingDelete",
+			DomainStatus: DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			want: false,
+		},
+		{
+			name:         "domain not in redemption period",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status:    tc.DomainStatus,
+				RGPStatus: tc.DomainRGPStatus,
+			}
+
+			assert.Equal(t, tc.want, d.CanBeRestored())
+		})
+	}
+}
+
+func TestDomain_Restore(t *testing.T) {
+	testcases := []struct {
+		name            string
+		DomainStatus    DomainStatus
+		DomainRGPStatus DomainRGPStatus
+		wantErr         error
+	}{
+		{
+			name:         "domain can be restored",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: nil,
+		},
+		{
+			name:         "domain not in pendingDelete",
+			DomainStatus: DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrDomainRestoreNotAllowed,
+		},
+		{
+			name:         "domain not in redemption period",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
+			},
+			wantErr: ErrDomainRestoreNotAllowed,
+		},
+		{
+			name:         "status prevents updates",
+			DomainStatus: DomainStatus{PendingDelete: true, ClientUpdateProhibited: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrDomainUpdateNotAllowed,
+		},
+		{
+			name:         "conflicting statusses",
+			DomainStatus: DomainStatus{PendingDelete: true, PendingTransfer: true},
+			DomainRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
+			},
+			wantErr: ErrInvalidDomainStatusCombination,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status:    tc.DomainStatus,
+				RGPStatus: tc.DomainRGPStatus,
+			}
+
+			err := d.Restore()
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.False(t, d.Status.PendingDelete)
+				assert.True(t, d.Status.PendingRestore)
+				assert.False(t, d.Status.OK)
+			}
+		})
+	}
+
+}
+
+func TestDomain_MarkForDeletion(t *testing.T) {
+	testcases := []struct {
+		name         string
+		DomainStatus DomainStatus
+		Phase        *Phase
+		wantErr      error
+	}{
+		{
+			name:         "domain can be marked for deletion",
+			DomainStatus: DomainStatus{OK: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name:         "domain not deletable",
+			DomainStatus: DomainStatus{PendingDelete: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: ErrDomainDeleteNotAllowed,
+		},
+		{
+			name:         "status prevents updates",
+			DomainStatus: DomainStatus{ClientUpdateProhibited: true},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: ErrDomainUpdateNotAllowed,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status: tc.DomainStatus,
+			}
+
+			err := d.MarkForDeletion(tc.Phase)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.True(t, d.Status.PendingDelete)
+				assert.False(t, d.Status.OK)
+				assert.NotNil(t, d.RGPStatus.PendingDeletePeriodEnd)
+				assert.NotNil(t, d.RGPStatus.RedemptionPeriodEnd)
+			}
+		})
+	}
+
+}

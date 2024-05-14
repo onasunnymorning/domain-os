@@ -35,6 +35,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.GET("/domains/check/:name", controller.CheckDomain)
 	e.POST("/domains/registration/:name", controller.RegisterDomain) // use this when a registrar is registering a domain
 	e.POST("/domains/renewal/:name", controller.RenewDomain)
+	e.DELETE("/domains/delete/:name", controller.MarkDomainForDeletion) // DELETE is used for EPP delete command
 
 	return controller
 }
@@ -391,4 +392,32 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, domain)
+}
+
+// MarkDomainForDeletion godoc
+// @Summary Mark a domain for deletion
+// @Description Mark a domain for deletion. Is modelled after the EPP delete command.
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/delete/{name} [delete]
+func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
+	dom, err := ctrl.domainService.MarkDomainForDeletion(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
 }

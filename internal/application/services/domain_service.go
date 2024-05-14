@@ -555,3 +555,38 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 
 	return updatedDomain, nil
 }
+
+// MarkForDelete marks a domain for deletion
+func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error) {
+	// Get the domain
+	dom, err := svc.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the TLD and phases
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the current GA phase
+	phase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark the domain for deletion
+	err = dom.MarkForDeletion(phase)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the domain
+	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
