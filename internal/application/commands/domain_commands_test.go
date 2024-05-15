@@ -92,3 +92,41 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 	}
 
 }
+func TestUpdateDomainCommand_FromEntity(t *testing.T) {
+	dom := &entities.Domain{
+		OriginalName: entities.DomainName("example.com"),
+		UName:        entities.DomainName("example.com"),
+		RegistrantID: entities.ClIDType("registrant"),
+		AdminID:      entities.ClIDType("admin"),
+		TechID:       entities.ClIDType("tech"),
+		BillingID:    entities.ClIDType("billing"),
+		ClID:         entities.ClIDType("client"),
+		CrRr:         entities.ClIDType("test"),
+		UpRr:         entities.ClIDType("test"),
+		ExpiryDate:   time.Now(),
+		AuthInfo:     entities.AuthInfoType("authinfo"),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		Status:       entities.DomainStatus{},
+		RGPStatus:    entities.DomainRGPStatus{},
+	}
+
+	cmd := &UpdateDomainCommand{}
+	cmd.FromEntity(dom)
+
+	require.Equal(t, dom.OriginalName.String(), cmd.OriginalName)
+	require.Equal(t, dom.UName.String(), cmd.UName)
+	require.Equal(t, dom.RegistrantID.String(), cmd.RegistrantID)
+	require.Equal(t, dom.AdminID.String(), cmd.AdminID)
+	require.Equal(t, dom.TechID.String(), cmd.TechID)
+	require.Equal(t, dom.BillingID.String(), cmd.BillingID)
+	require.Equal(t, dom.ClID.String(), cmd.ClID)
+	require.Equal(t, dom.CrRr.String(), cmd.CrRr)
+	require.Equal(t, dom.UpRr.String(), cmd.UpRr)
+	require.Equal(t, dom.ExpiryDate, cmd.ExpiryDate)
+	require.Equal(t, dom.AuthInfo.String(), cmd.AuthInfo)
+	require.Equal(t, dom.CreatedAt, cmd.CreatedAt)
+	require.Equal(t, dom.UpdatedAt, cmd.UpdatedAt)
+	require.Equal(t, dom.Status, cmd.Status)
+	require.Equal(t, dom.RGPStatus, cmd.RGPStatus)
+}
