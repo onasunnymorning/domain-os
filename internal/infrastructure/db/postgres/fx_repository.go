@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
 
@@ -29,12 +30,17 @@ func (r *FXRepository) UpdateAll(fxs []*FX) error {
 }
 
 // ListByBaseCurrency lists all exchange rates by base currency
-func (r *FXRepository) ListByBaseCurrency(baseCurrency string) ([]*FX, error) {
+func (r *FXRepository) ListByBaseCurrency(baseCurrency string) ([]*entities.FX, error) {
 	var fxs []*FX
 	err := r.db.Where("base = ?", baseCurrency).Find(&fxs).Error
 	if err != nil {
 		return nil, err
 	}
 
-	return fxs, nil
+	result := make([]*entities.FX, len(fxs))
+	for i, fx := range fxs {
+		result[i] = fx.ToEntity()
+	}
+
+	return result, nil
 }
