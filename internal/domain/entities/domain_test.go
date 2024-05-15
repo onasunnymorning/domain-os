@@ -107,6 +107,7 @@ func TestDomain_NewDomain(t *testing.T) {
 				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
 				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
 				require.Equal(t, ClIDType(tc.clid), d.ClID)
+				require.False(t, d.DropCatch)
 				if strings.Contains(tc.name, "xn--") {
 					// For IDNs we expect the UName field to be set
 					require.NotNil(t, d.UName)

@@ -31,6 +31,9 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	// Add and remove hosts
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
+	// Set domain to dropcatch (will be blocked when deleted)
+	e.POST("/domains/:name/dropcatch", controller.SetDropCatch)
+	e.DELETE("/domains/:name/dropcatch", controller.UnSetDropCatch)
 	// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
 	e.GET("/domains/check/:name", controller.CheckDomain)
 	e.POST("/domains/registration/:name", controller.RegisterDomain)
@@ -450,4 +453,57 @@ func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, dom)
+}
+
+// SetDropCatch godoc
+// @Summary Set a domain to dropcatch
+// @Description Set a domain to dropcatch. When it gets deleted it will automatically create an NNDN with this name and set the category to dropcatched.
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/dropcatch [post]
+func (ctrl *DomainController) SetDropCatch(ctx *gin.Context) {
+	// use the service to set the domain.DropCatch flag
+	err := ctrl.domainService.DropCatchDomain(ctx, ctx.Param("name"), true)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
+}
+
+// UnSetDropCatch godoc
+// @Summary Removes the dropcatch flag from the domain
+// @Description Removes the dropcatch flag from the domain
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/dropcatch [delete]
+func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
+	// use the service to un set the domain.DropCatch flag
+	err := ctrl.domainService.DropCatchDomain(ctx, ctx.Param("name"), false)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
+
 }

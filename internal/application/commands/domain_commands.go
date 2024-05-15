@@ -49,6 +49,7 @@ type CreateDomainCommand struct {
 	CrRr         string                   `json:"CrRr"`
 	UpRr         string                   `json:"UpRr"`
 	ExpiryDate   time.Time                `json:"ExpiryDate" binding:"required"`
+	DropCatch    bool                     `json:"DropCatch"`
 	AuthInfo     string                   `json:"AuthInfo"  binding:"required"`
 	CreatedAt    time.Time                `json:"CreatedAt"`
 	UpdatedAt    time.Time                `json:"UpdatedAt"`
@@ -109,9 +110,30 @@ type UpdateDomainCommand struct {
 	CrRr         string                   `json:"CrRr"`
 	UpRr         string                   `json:"UpRr"`
 	ExpiryDate   time.Time                `json:"ExpiryDate" binding:"required"`
+	DropCatch    bool                     `json:"DropCatch"`
 	AuthInfo     string                   `json:"AuthInfo"  binding:"required"`
 	CreatedAt    time.Time                `json:"CreatedAt"`
 	UpdatedAt    time.Time                `json:"UpdatedAt"`
 	Status       entities.DomainStatus    `json:"Status"`
 	RGPStatus    entities.DomainRGPStatus `json:"RGPStatus"`
+}
+
+// FromEntity converts a domain entity to an UpdateDomainCommand
+func (cmd *UpdateDomainCommand) FromEntity(dom *entities.Domain) {
+	cmd.OriginalName = dom.OriginalName.String()
+	cmd.UName = dom.UName.String()
+	cmd.RegistrantID = dom.RegistrantID.String()
+	cmd.AdminID = dom.AdminID.String()
+	cmd.TechID = dom.TechID.String()
+	cmd.BillingID = dom.BillingID.String()
+	cmd.ClID = dom.ClID.String()
+	cmd.CrRr = dom.CrRr.String()
+	cmd.UpRr = dom.UpRr.String()
+	cmd.ExpiryDate = dom.ExpiryDate
+	cmd.DropCatch = dom.DropCatch
+	cmd.AuthInfo = dom.AuthInfo.String()
+	cmd.CreatedAt = dom.CreatedAt
+	cmd.UpdatedAt = dom.UpdatedAt
+	cmd.Status = dom.Status
+	cmd.RGPStatus = dom.RGPStatus
 }

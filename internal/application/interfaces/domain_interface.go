@@ -17,6 +17,7 @@ type DomainService interface {
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, name string, hostRoID string) error
 	RemoveHostFromDomain(ctx context.Context, name string, hostRoID string) error
+	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available and supports the fee extension
