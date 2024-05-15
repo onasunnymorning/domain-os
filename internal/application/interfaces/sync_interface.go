@@ -5,4 +5,5 @@ package interfaces
 type SyncService interface {
 	RefreshSpec5Labels() error
 	RefreshIANARegistrars() error
+	RefreshFXRates(baseCurrency string) error
 }
