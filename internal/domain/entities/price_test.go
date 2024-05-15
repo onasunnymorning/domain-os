@@ -11,10 +11,10 @@ func TestNewPrice(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, "USD", price.Currency)
-	assert.Equal(t, int64(100), price.RegistrationAmount)
-	assert.Equal(t, int64(100), price.RenewalAmount)
-	assert.Equal(t, int64(100), price.TransferAmount)
-	assert.Equal(t, int64(100), price.RestoreAmount)
+	assert.Equal(t, uint64(100), price.RegistrationAmount)
+	assert.Equal(t, uint64(100), price.RenewalAmount)
+	assert.Equal(t, uint64(100), price.TransferAmount)
+	assert.Equal(t, uint64(100), price.RestoreAmount)
 }
 
 func TestNewPrice_InvalidCurrency(t *testing.T) {

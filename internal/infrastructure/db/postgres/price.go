@@ -5,10 +5,10 @@ import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 // Price is the GORM model for the phase_price table. We use a composite primary key to ensure that a price with the same currency is not inserted twice in the same phase
 type Price struct {
 	Currency           string `gorm:"primaryKey"`
-	RegistrationAmount int64
-	RenewalAmount      int64
-	TransferAmount     int64
-	RestoreAmount      int64
+	RegistrationAmount uint64
+	RenewalAmount      uint64
+	TransferAmount     uint64
+	RestoreAmount      uint64
 	PhaseID            int64 `gorm:"primaryKey"`
 	Phase              Phase
 }
