@@ -36,7 +36,7 @@ func (c *OpenFXClient) LatestRatesURL() string {
 	return c.BaseURL() + LATESTRATES
 }
 
-// GetLatestRates fetches the latest exchange rates from the OpenExchangerates API
+// GetLatestRates fetches the latest exchange rates from the OpenExchangerates API. If targetCurrencies is empty, all rates are returned.
 func (c *OpenFXClient) GetLatestRates(baseCurrency string, targetCurrencies []string) (*LatestRatesResponse, error) {
 	req, err := http.NewRequest("GET", c.LatestRatesURL(), nil)
 	if err != nil {
@@ -45,7 +45,9 @@ func (c *OpenFXClient) GetLatestRates(baseCurrency string, targetCurrencies []st
 	q := req.URL.Query()
 	q.Add("app_id", c.AppID)
 	q.Add("base", baseCurrency)
-	q.Add("symbols", strings.Join(targetCurrencies, ","))
+	if len(targetCurrencies) > 0 {
+		q.Add("symbols", strings.Join(targetCurrencies, ","))
+	}
 	req.URL.RawQuery = q.Encode()
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
