@@ -1,4 +1,4 @@
-package fixer
+package openfx
 
 import "net/http"
 
