@@ -44,3 +44,14 @@ func (r *FXRepository) ListByBaseCurrency(baseCurrency string) ([]*entities.FX, 
 
 	return result, nil
 }
+
+// GetByBaseAndTargetCurrency gets the exchange rate for a base and target currency
+func (r *FXRepository) GetByBaseAndTargetCurrency(baseCurrency, targetCurrency string) (*entities.FX, error) {
+	var fx FX
+	err := r.db.Where("base = ? AND target = ?", baseCurrency, targetCurrency).First(&fx).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return fx.ToEntity(), nil
+}

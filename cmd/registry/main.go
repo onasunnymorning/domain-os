@@ -123,6 +123,7 @@ func main() {
 
 	// FX
 	fxRepo := postgres.NewFXRepository(gormDB)
+	fxService := services.NewFXService(fxRepo)
 
 	// Sync
 	ianaRepo := iana.NewIANARRepository()
@@ -188,6 +189,7 @@ func main() {
 	rest.NewPriceController(r, priceService)
 	rest.NewAccreditationController(r, accreditationService)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
+	rest.NewFXController(r, fxService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

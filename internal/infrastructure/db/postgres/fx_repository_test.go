@@ -57,4 +57,11 @@ func (s *FXSuite) TestFX_UpdateAll() {
 	s.Require().NoError(err)
 	s.Require().Len(list, 3)
 
+	// Check if we can get one record
+	fx, err := repo.GetByBaseAndTargetCurrency("USD", "JPY")
+	s.Require().NoError(err)
+	s.Require().Equal("USD", fx.BaseCurrency)
+	s.Require().Equal("JPY", fx.TargetCurrency)
+	s.Require().Equal(100.0, fx.Rate)
+
 }
