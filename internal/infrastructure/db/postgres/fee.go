@@ -6,7 +6,7 @@ import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 type Fee struct {
 	Currency   string `gorm:"primaryKey"`
 	Name       string `gorm:"primaryKey"`
-	Amount     int64
+	Amount     uint64
 	Refundable *bool
 	PhaseID    int64 `gorm:"primaryKey"`
 	Phase      Phase
