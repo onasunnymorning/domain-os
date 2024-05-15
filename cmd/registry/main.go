@@ -121,12 +121,15 @@ func main() {
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
 
+	// FX
+	fxRepo := postgres.NewFXRepository(gormDB)
+
 	// Sync
 	ianaRepo := iana.NewIANARRepository()
 	icannRepo := icann.NewICANNRepo()
 	spec5Repo := postgres.NewSpec5Repository(gormDB)
 	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
-	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo)
+	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)
 
 	// Spec5
 	spec5Service := services.NewSpec5Service(spec5Repo)

@@ -17,6 +17,8 @@ func main() {
 		fmt.Println(err)
 	}
 
+	fmt.Printf("Got %d rates from OpenFX\n", len(response.Rates))
+
 	// Convert the response to a slice of postgres.FX structs
 	fxs := []postgres.FX{}
 	for currency, rate := range response.Rates {
