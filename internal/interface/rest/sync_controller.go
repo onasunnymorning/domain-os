@@ -23,6 +23,7 @@ func NewSyncController(e *gin.Engine, syncService interfaces.SyncService) *SyncC
 
 	e.PUT("/sync/icann-spec5", controller.SyncSpec5)
 	e.PUT("/sync/iana-registrars", controller.SyncRegistrars)
+	e.PUT("/sync/fx/:currency", controller.SyncFX)
 
 	return controller
 }
@@ -69,6 +70,31 @@ func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
 	}
 
 	result := &SyncResult{Message: "Successfully synced IANA registrars"}
+
+	ctx.JSON(200, result)
+}
+
+// SyncFX godoc
+// @Summary Sync FX from OpenFX to the database
+// @Description Reads in the exchange rates from OpenFX API (https://openexchangerates.org/) and refreshes the database.
+// @Description This will replace all FXRates in the database.
+// @Description Use this endpoint when there is an update to the exchange rates by OpenFX.
+// @Description Expect this endpoint to be slow, as it downloads and processes the JSON file from another server and then updates the database.
+// @Tags Sync
+// @Produce json
+// @Param currency path string true "The base currency to sync"
+// @Success 200 {object} SyncResult
+// @Failure 500
+// @Router /sync/fx/:currency [put]
+func (ctrl *SyncController) SyncFX(ctx *gin.Context) {
+	baseCurrency := ctx.Param("currency")
+	err := ctrl.syncService.RefreshFXRates(baseCurrency)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	result := &SyncResult{Message: "Successfully synced FX rates"}
 
 	ctx.JSON(200, result)
 }

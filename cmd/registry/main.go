@@ -121,12 +121,16 @@ func main() {
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
 
+	// FX
+	fxRepo := postgres.NewFXRepository(gormDB)
+	fxService := services.NewFXService(fxRepo)
+
 	// Sync
 	ianaRepo := iana.NewIANARRepository()
 	icannRepo := icann.NewICANNRepo()
 	spec5Repo := postgres.NewSpec5Repository(gormDB)
 	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
-	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo)
+	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)
 
 	// Spec5
 	spec5Service := services.NewSpec5Service(spec5Repo)
@@ -185,6 +189,7 @@ func main() {
 	rest.NewPriceController(r, priceService)
 	rest.NewAccreditationController(r, accreditationService)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
+	rest.NewFXController(r, fxService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

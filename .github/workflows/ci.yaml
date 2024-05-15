@@ -61,6 +61,7 @@ jobs:
       - name: Run Integration Tests
         run: docker compose -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
         env:
+          OPENEXCHANGERATES_APP_ID: ${{ secrets.OPENEXCHANGERATES_APP_ID }}
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_COLLECTION_ID: ${{ vars.POSTMAN_COLLECTION_ID }}
           POSTMAN_ENVIRONMENT_ID: ${{ vars.POSTMAN_ENVIRONMENT_ID }}

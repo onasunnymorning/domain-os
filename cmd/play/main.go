@@ -1,28 +1,36 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
+	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/openfx"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 )
 
 func main() {
-	domCommand := commands.RegisterDomainCommand{
-		Name:         "example.com",
-		ClID:         "cl1234",
-		AuthInfo:     "1234",
-		RegistrantID: "reg1234",
-		AdminID:      "admin1234",
-		TechID:       "tech1234",
-		BillingID:    "bill1234",
-		Years:        1,
-		HostNames:    []string{"ns1.example.com", "ns2.example.com"},
-	}
 
-	jsondata, err := json.Marshal(domCommand)
+	// Get an updated list of exchange rates from the OpenFX API
+	client := openfx.NewFxClient()
+	response, err := client.GetLatestRates("USD", []string{})
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 
-	println(string(jsondata))
+	fmt.Printf("Got %d rates from OpenFX\n", len(response.Rates))
+
+	// Convert the response to a slice of postgres.FX structs
+	fxs := []postgres.FX{}
+	for currency, rate := range response.Rates {
+		fx := postgres.FX{
+			Date:   time.Unix(response.Timestamp, 0).UTC(),
+			Base:   response.Base,
+			Target: currency,
+			Rate:   rate,
+		}
+		fxs = append(fxs, fx)
+	}
+
+	// Bulk insert the exchange rates into the database
+
 }
