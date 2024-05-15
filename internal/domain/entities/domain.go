@@ -52,6 +52,7 @@ type Domain struct {
 	UpRr           ClIDType             `json:"UpRr"`
 	TLDName        DomainName           `json:"TLDName"`
 	ExpiryDate     time.Time            `json:"ExpiryDate"`
+	DropCatch      bool                 `json:"DropCatch"`
 	RenewedYears   int                  `json:"RenewedYears"`
 	AuthInfo       AuthInfoType         `json:"AuthInfo"`
 	CreatedAt      time.Time            `json:"CreatedAt"`

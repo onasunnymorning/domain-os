@@ -22,6 +22,7 @@ type Domain struct {
 	TLDName                       string `gorm:"not null;foreignKey"`
 	TLD                           TLD
 	ExpiryDate                    time.Time `gorm:"not null"`
+	DropCatch                     bool
 	RenewedYears                  int
 	AuthInfo                      string `gorm:"not null"`
 	CreatedAt                     time.Time
@@ -52,6 +53,7 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.ClID = entities.ClIDType(dbDom.ClID)
 	d.TLDName = entities.DomainName(dbDom.TLDName)
 	d.ExpiryDate = dbDom.ExpiryDate
+	d.DropCatch = dbDom.DropCatch
 	d.RenewedYears = dbDom.RenewedYears
 	d.AuthInfo = entities.AuthInfoType(dbDom.AuthInfo)
 	d.CreatedAt = dbDom.CreatedAt
@@ -87,6 +89,7 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.ClID = d.ClID.String()
 	dbDomain.TLDName = d.TLDName.String()
 	dbDomain.ExpiryDate = d.ExpiryDate
+	dbDomain.DropCatch = d.DropCatch
 	dbDomain.RenewedYears = d.RenewedYears
 	dbDomain.AuthInfo = d.AuthInfo.String()
 	dbDomain.CreatedAt = d.CreatedAt
