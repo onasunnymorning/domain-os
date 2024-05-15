@@ -9,7 +9,8 @@ import (
 // FX represents a foreign exchange rate in the database
 type FX struct {
 	Date      time.Time `gorm:"primaryKey"`
-	Ticker    string    `gorm:"primaryKey"`
+	Base      string    `gorm:"primaryKey"`
+	Target    string    `gorm:"primaryKey"`
 	Rate      float64
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -20,29 +21,20 @@ func (FX) TableName() string {
 	return "fx"
 }
 
-// TickerFrom returns the 'from' currency of the FX model (e.g. USDPEN would return USD)
-func (fx *FX) TickerFrom() string {
-	return fx.Ticker[:3]
-}
-
-// TickerTo returns the 'to' currency of the FX model (e.g. USDPEN would return PEN)
-func (fx *FX) TickerTo() string {
-	return fx.Ticker[3:]
-}
-
-// ToEntity converts the FX model to an FX entity
+// ToEntity converts the FX struct to an entities.FX struct
 func (fx *FX) ToEntity() *entities.FX {
 	return &entities.FX{
-		Date: fx.Date,
-		From: fx.TickerFrom(),
-		To:   fx.TickerTo(),
-		Rate: fx.Rate,
+		Date:           fx.Date,
+		BaseCurrency:   fx.Base,
+		TargetCurrency: fx.Target,
+		Rate:           fx.Rate,
 	}
 }
 
-// FromEntity converts an FX entity to an FX model
+// FromEntity converts an entities.FX struct to an FX struct
 func (fx *FX) FromEntity(entity *entities.FX) {
 	fx.Date = entity.Date
-	fx.Ticker = entity.From + entity.To
+	fx.Base = entity.BaseCurrency
+	fx.Target = entity.TargetCurrency
 	fx.Rate = entity.Rate
 }

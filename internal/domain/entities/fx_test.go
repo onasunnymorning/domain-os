@@ -18,9 +18,9 @@ func TestFX_Convert(t *testing.T) {
 		{
 			name: "USD to EUR",
 			fx: &FX{
-				From: "USD",
-				To:   "EUR",
-				Rate: 0.88,
+				BaseCurrency:   "USD",
+				TargetCurrency: "EUR",
+				Rate:           0.88,
 			},
 			from: money.New(10000, "USD"),
 			to:   money.New(8800, "EUR"),
@@ -29,9 +29,9 @@ func TestFX_Convert(t *testing.T) {
 		{
 			name: "USD to EUR large",
 			fx: &FX{
-				From: "USD",
-				To:   "EUR",
-				Rate: 0.92884123,
+				BaseCurrency:   "USD",
+				TargetCurrency: "EUR",
+				Rate:           0.92884123,
 			},
 			from: money.New(100000000, "USD"),
 			to:   money.New(92884123, "EUR"),
@@ -40,9 +40,9 @@ func TestFX_Convert(t *testing.T) {
 		{
 			name: "USD to EUR small",
 			fx: &FX{
-				From: "USD",
-				To:   "EUR",
-				Rate: 0.92884123,
+				BaseCurrency:   "USD",
+				TargetCurrency: "EUR",
+				Rate:           0.92884123,
 			},
 			from: money.New(2, "USD"),
 			to:   money.New(1, "EUR"),
@@ -51,9 +51,9 @@ func TestFX_Convert(t *testing.T) {
 		{
 			name: "USD to EUR very small with correction",
 			fx: &FX{
-				From: "USD",
-				To:   "EUR",
-				Rate: 0.92884123,
+				BaseCurrency:   "USD",
+				TargetCurrency: "EUR",
+				Rate:           0.92884123,
 			},
 			from: money.New(1, "USD"),
 			to:   money.New(1, "EUR"),
@@ -62,9 +62,9 @@ func TestFX_Convert(t *testing.T) {
 		{
 			name: "currency mismatch",
 			fx: &FX{
-				From: "USD",
-				To:   "EUR",
-				Rate: 0.92884123,
+				BaseCurrency:   "USD",
+				TargetCurrency: "EUR",
+				Rate:           0.92884123,
 			},
 			from: money.New(100, "PEN"),
 			to:   money.New(100, "EUR"),
