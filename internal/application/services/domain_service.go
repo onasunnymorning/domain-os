@@ -613,3 +613,27 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 
 	return updatedDomain, nil
 }
+
+// DropCatch sets or unsets the DropCatch flag on a domain
+func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string, dropcatch bool) error {
+	// Get the domain
+	dom, err := svc.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return err
+	}
+
+	// Set or unset the DropCatch flag
+	if dropcatch {
+		dom.DropCatch = true
+	} else {
+		dom.DropCatch = false
+	}
+
+	// Save the domain
+	_, err = svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
