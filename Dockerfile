@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.21.3-alpine3.18 as build
+FROM golang:1.22.3-alpine3.18 as build
 
 WORKDIR /
 
