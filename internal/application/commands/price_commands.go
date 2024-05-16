@@ -5,8 +5,8 @@ type CreatePriceCommand struct {
 	PhaseName          string `json:"-"`
 	TLDName            string `json:"-"`
 	Currency           string `json:"currency"  binding:"required" example:"USD"`
-	RegistrationAmount int64  `json:"registrationAmount"  binding:"required" example:"1000"`
-	RenewalAmount      int64  `json:"renewalAmount"  binding:"required" example:"1000"`
-	TransferAmount     int64  `json:"transferAmount"  binding:"required" example:"1000"`
-	RestoreAmount      int64  `json:"restoreAmount"  binding:"required" example:"1000"`
+	RegistrationAmount uint64 `json:"registrationAmount"  binding:"required" example:"1000"`
+	RenewalAmount      uint64 `json:"renewalAmount"  binding:"required" example:"1000"`
+	TransferAmount     uint64 `json:"transferAmount"  binding:"required" example:"1000"`
+	RestoreAmount      uint64 `json:"restoreAmount"  binding:"required" example:"1000"`
 }
