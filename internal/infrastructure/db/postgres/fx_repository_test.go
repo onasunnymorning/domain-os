@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -49,16 +50,16 @@ func (s *FXSuite) TestFX_UpdateAll() {
 	}
 
 	repo := NewFXRepository(s.db)
-	err := repo.UpdateAll(fxs)
+	err := repo.UpdateAll(context.Background(), fxs)
 	s.Require().NoError(err)
 
 	// Check that the records were inserted
-	list, err := repo.ListByBaseCurrency("USD")
+	list, err := repo.ListByBaseCurrency(context.Background(), "USD")
 	s.Require().NoError(err)
 	s.Require().Len(list, 3)
 
 	// Check if we can get one record
-	fx, err := repo.GetByBaseAndTargetCurrency("USD", "JPY")
+	fx, err := repo.GetByBaseAndTargetCurrency(context.Background(), "USD", "JPY")
 	s.Require().NoError(err)
 	s.Require().Equal("USD", fx.BaseCurrency)
 	s.Require().Equal("JPY", fx.TargetCurrency)

@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -18,11 +20,11 @@ func NewFXService(fxRepo repositories.FXRepository) *FXService {
 }
 
 // ListByBaseCurrency lists all exchange rates by base currency
-func (s *FXService) ListByBaseCurrency(baseCurrency string) ([]*entities.FX, error) {
-	return s.fxRepo.ListByBaseCurrency(baseCurrency)
+func (s *FXService) ListByBaseCurrency(ctx context.Context, baseCurrency string) ([]*entities.FX, error) {
+	return s.fxRepo.ListByBaseCurrency(ctx, baseCurrency)
 }
 
 // GetByBaseAndTargetCurrency gets the exchange rate for a base and target currency
-func (s *FXService) GetByBaseAndTargetCurrency(baseCurrency, targetCurrency string) (*entities.FX, error) {
-	return s.fxRepo.GetByBaseAndTargetCurrency(baseCurrency, targetCurrency)
+func (s *FXService) GetByBaseAndTargetCurrency(ctx context.Context, baseCurrency, targetCurrency string) (*entities.FX, error) {
+	return s.fxRepo.GetByBaseAndTargetCurrency(ctx, baseCurrency, targetCurrency)
 }

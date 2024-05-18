@@ -51,7 +51,7 @@ func (s *IANARarSuite) TestUpdateAll() {
 		},
 	}
 
-	err := repo.UpdateAll(rars)
+	err := repo.UpdateAll(context.Background(), rars)
 	require.Nil(s.T(), err)
 }
 
@@ -75,7 +75,7 @@ func (s *IANARarSuite) TestList() {
 		},
 	}
 
-	err := repo.UpdateAll(rars)
+	err := repo.UpdateAll(context.Background(), rars)
 	require.Nil(s.T(), err)
 
 	list, err := repo.List(context.Background(), 25, "", "", "")
@@ -111,7 +111,7 @@ func (s *IANARarSuite) TestGetByGurID() {
 		},
 	}
 
-	err := repo.UpdateAll(rars)
+	err := repo.UpdateAll(context.Background(), rars)
 	require.Nil(s.T(), err)
 
 	rar, err := repo.GetByGurID(context.Background(), 1234)

@@ -478,7 +478,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 
 	// If we need to convert currencies, include the FX rate
 	if needsFX {
-		result.PricePoints.FX, err = svc.fxRepo.GetByBaseAndTargetCurrency(phase.Policy.BaseCurrency, q.Currency)
+		result.PricePoints.FX, err = svc.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, q.Currency)
 		if err != nil {
 			return nil, err
 		}
