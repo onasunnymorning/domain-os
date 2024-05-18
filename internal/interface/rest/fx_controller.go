@@ -36,7 +36,7 @@ func NewFXController(e *gin.Engine, fxService interfaces.FXService) *FXControlle
 func (ctrl *FXController) ListByBaseCurrency(ctx *gin.Context) {
 	baseCurrency := strings.ToUpper(ctx.Param("baseCurrency"))
 
-	fxs, err := ctrl.fxService.ListByBaseCurrency(baseCurrency)
+	fxs, err := ctrl.fxService.ListByBaseCurrency(ctx, baseCurrency)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -59,7 +59,7 @@ func (ctrl *FXController) GetByBaseAndTargetCurrency(ctx *gin.Context) {
 	baseCurrency := strings.ToUpper(ctx.Param("baseCurrency"))
 	targetCurrency := strings.ToUpper(ctx.Param("targetCurrency"))
 
-	fx, err := ctrl.fxService.GetByBaseAndTargetCurrency(baseCurrency, targetCurrency)
+	fx, err := ctrl.fxService.GetByBaseAndTargetCurrency(ctx, baseCurrency, targetCurrency)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

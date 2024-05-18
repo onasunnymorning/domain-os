@@ -40,7 +40,7 @@ func NewSyncController(e *gin.Engine, syncService interfaces.SyncService) *SyncC
 // @Failure 500
 // @Router /sync/icann-spec5 [put]
 func (ctrl *SyncController) SyncSpec5(ctx *gin.Context) {
-	err := ctrl.syncService.RefreshSpec5Labels()
+	err := ctrl.syncService.RefreshSpec5Labels(ctx)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -63,7 +63,7 @@ func (ctrl *SyncController) SyncSpec5(ctx *gin.Context) {
 // @Failure 500
 // @Router /sync/iana-registrars [put]
 func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
-	err := ctrl.syncService.RefreshIANARegistrars()
+	err := ctrl.syncService.RefreshIANARegistrars(ctx)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -88,7 +88,7 @@ func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
 // @Router /sync/fx/:currency [put]
 func (ctrl *SyncController) SyncFX(ctx *gin.Context) {
 	baseCurrency := ctx.Param("currency")
-	err := ctrl.syncService.RefreshFXRates(baseCurrency)
+	err := ctrl.syncService.RefreshFXRates(ctx, baseCurrency)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

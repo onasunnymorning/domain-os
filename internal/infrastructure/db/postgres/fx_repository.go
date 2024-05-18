@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"context"
+
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -18,9 +20,9 @@ func NewFXRepository(db *gorm.DB) *FXRepository {
 }
 
 // UpdateAll updates all exchange rates in the database
-func (r *FXRepository) UpdateAll(fxs []*FX) error {
+func (r *FXRepository) UpdateAll(ctx context.Context, fxs []*FX) error {
 	// Drop all records from the fx table for a given currency
-	err := r.db.Where("base = ?", fxs[0].Base).Delete(&FX{}).Error
+	err := r.db.WithContext(ctx).Where("base = ?", fxs[0].Base).Delete(&FX{}).Error
 	if err != nil {
 		return err
 	}
@@ -30,9 +32,9 @@ func (r *FXRepository) UpdateAll(fxs []*FX) error {
 }
 
 // ListByBaseCurrency lists all exchange rates by base currency
-func (r *FXRepository) ListByBaseCurrency(baseCurrency string) ([]*entities.FX, error) {
+func (r *FXRepository) ListByBaseCurrency(ctx context.Context, baseCurrency string) ([]*entities.FX, error) {
 	var fxs []*FX
-	err := r.db.Where("base = ?", baseCurrency).Find(&fxs).Error
+	err := r.db.WithContext(ctx).Where("base = ?", baseCurrency).Find(&fxs).Error
 	if err != nil {
 		return nil, err
 	}
@@ -46,9 +48,9 @@ func (r *FXRepository) ListByBaseCurrency(baseCurrency string) ([]*entities.FX, 
 }
 
 // GetByBaseAndTargetCurrency gets the exchange rate for a base and target currency
-func (r *FXRepository) GetByBaseAndTargetCurrency(baseCurrency, targetCurrency string) (*entities.FX, error) {
+func (r *FXRepository) GetByBaseAndTargetCurrency(ctx context.Context, baseCurrency, targetCurrency string) (*entities.FX, error) {
 	var fx FX
-	err := r.db.Where("base = ? AND target = ?", baseCurrency, targetCurrency).First(&fx).Error
+	err := r.db.WithContext(ctx).Where("base = ? AND target = ?", baseCurrency, targetCurrency).First(&fx).Error
 	if err != nil {
 		return nil, err
 	}

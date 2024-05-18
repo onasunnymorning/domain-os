@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -43,14 +44,14 @@ func NewSyncService(
 // RefreshSpec5Labels deletes and recreates all Spec5Labels using the ICANN XML registry as a source
 // This is only needed when ICANN updates their XML registry. This happens very infrequently.
 // Use this when the system is initialized, after that only when ICANN notifies you of an update to the XML registry
-func (s *SyncService) RefreshSpec5Labels() error {
+func (s *SyncService) RefreshSpec5Labels(ctx context.Context) error {
 	// Get the list of labels from the ICANN XML registry
 	labels, err := s.IcannRepository.ListSpec5Labels()
 	if err != nil {
 		return err
 	}
 	// Replace the existing list of labels in the database with the new list
-	err = s.Spec5Repository.UpdateAll(labels)
+	err = s.Spec5Repository.UpdateAll(ctx, labels)
 	if err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func (s *SyncService) RefreshSpec5Labels() error {
 // This is only needed when IANA updates their XML registry. This happens not very frequently
 // Use this when the system is initialized, after that only when IANA or ICANN notifies you of an update to the XML registry
 // Or you receive a termination notice from ICANN for a registrar
-func (s *SyncService) RefreshIANARegistrars() error {
+func (s *SyncService) RefreshIANARegistrars(ctx context.Context) error {
 	// Get the list of registrars from the IANA XML registry
 	registrars, err := s.IanaRepository.ListRegistrars()
 	if err != nil {
@@ -69,7 +70,7 @@ func (s *SyncService) RefreshIANARegistrars() error {
 	}
 
 	// Replace the existing list of registrars in the database with the new list
-	err = s.registrarRepository.UpdateAll(registrars)
+	err = s.registrarRepository.UpdateAll(ctx, registrars)
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func (s *SyncService) RefreshIANARegistrars() error {
 }
 
 // RefreshFXRates deletes and recreates all FXRates using the Open Exchange Rates API as a source
-func (s *SyncService) RefreshFXRates(baseCurrency string) error {
+func (s *SyncService) RefreshFXRates(ctx context.Context, baseCurrency string) error {
 	// Get the latest Rates from the Open Exchange Rates API
 	client := openfx.NewFxClient()
 	response, err := client.GetLatestRates(baseCurrency, []string{})
@@ -102,5 +103,5 @@ func (s *SyncService) RefreshFXRates(baseCurrency string) error {
 	}
 
 	// Replace the existing list of FXRates in the database with the new list
-	return s.FXRepository.UpdateAll(fxs)
+	return s.FXRepository.UpdateAll(ctx, fxs)
 }
