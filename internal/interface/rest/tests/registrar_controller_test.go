@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -135,7 +136,7 @@ var _ = Describe("RegistrarController", func() {
 		})
 
 		It("should create a new registrar by GurID", func() {
-			err := ianaRepo.UpdateAll([]*entities.IANARegistrar{
+			err := ianaRepo.UpdateAll(context.Background(), []*entities.IANARegistrar{
 				{
 					GurID:   12345,
 					Name:    "Example Registrar Name",

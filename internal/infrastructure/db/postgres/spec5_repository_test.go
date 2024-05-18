@@ -45,7 +45,7 @@ func (s *Spec5Suite) TestUpdateAll() {
 		},
 	}
 
-	err := repo.UpdateAll(labels)
+	err := repo.UpdateAll(context.Background(), labels)
 	require.NoError(s.T(), err)
 }
 
@@ -65,7 +65,7 @@ func (s *Spec5Suite) TestReadAll() {
 		},
 	}
 
-	err := repo.UpdateAll(labels)
+	err := repo.UpdateAll(context.Background(), labels)
 	require.NoError(s.T(), err)
 
 	readLabels, err := repo.List(context.Background(), 25, "")

@@ -32,9 +32,9 @@ func NewSpec5Repository(db *gorm.DB) *Spec5Repository {
 }
 
 // UpdateAll updates all Spec5Labels in the database
-func (r *Spec5Repository) UpdateAll(labels []*entities.Spec5Label) error {
+func (r *Spec5Repository) UpdateAll(ctx context.Context, labels []*entities.Spec5Label) error {
 	// Drop all records from the spec5_labels table
-	err := r.db.Exec("DELETE FROM spec5_labels").Error
+	err := r.db.WithContext(ctx).Exec("DELETE FROM spec5_labels").Error
 	if err != nil {
 		return err
 	}
@@ -46,13 +46,13 @@ func (r *Spec5Repository) UpdateAll(labels []*entities.Spec5Label) error {
 	}
 
 	// Insert all records into the spec5_labels table
-	return r.db.Create(&dbLabels).Error
+	return r.db.WithContext(ctx).Create(&dbLabels).Error
 }
 
 // ListAll returns all Spec5Labels in the database
 func (r *Spec5Repository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Spec5Label, error) {
 	var dbLabels []*Spec5Label
-	err := r.db.Order("label ASC").Limit(pageSize).Find(&dbLabels, "label > ?", pageCursor).Error
+	err := r.db.WithContext(ctx).Order("label ASC").Limit(pageSize).Find(&dbLabels, "label > ?", pageCursor).Error
 	if err != nil {
 		return nil, err
 	}
