@@ -35,11 +35,11 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.POST("/domains/:name/dropcatch", controller.SetDropCatch)
 	e.DELETE("/domains/:name/dropcatch", controller.UnSetDropCatch)
 	// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
-	e.GET("/domains/check/:name", controller.CheckDomain)
-	e.POST("/domains/registration/:name", controller.RegisterDomain)
-	e.POST("/domains/renewal/:name", controller.RenewDomain)
-	e.DELETE("/domains/delete/:name", controller.MarkDomainForDeletion)
-	e.POST("/domains/restore/:name", controller.RestoreDomain)
+	e.GET("/domains/:name/check", controller.CheckDomain)
+	e.POST("/domains/:name/register", controller.RegisterDomain)
+	e.POST("/domains/:name/renew", controller.RenewDomain)
+	e.DELETE("/domains/:name/markdelete", controller.MarkDomainForDeletion)
+	e.POST("/domains/:name/restore", controller.RestoreDomain)
 
 	return controller
 }
@@ -288,7 +288,7 @@ func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 // @Success 201 {object} entities.Domain
 // @Failure 400
 // @Failure 500
-// @Router /domains/registration/{name} [post]
+// @Router /domains/{name}/register [post]
 func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 	name := ctx.Param("name")
 	var req commands.RegisterDomainCommand
@@ -328,7 +328,7 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 // @Success 200 {object} queries.DomainCheckResult
 // @Failure 400
 // @Failure 500
-// @Router /domains/check/{name} [get]
+// @Router /domains/{name}/check [get]
 func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 	name := ctx.Param("name")
 	includeFees := ctx.DefaultQuery("includeFees", "false")
@@ -368,7 +368,7 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 // @Success 201 {object} entities.Domain
 // @Failure 400
 // @Failure 500
-// @Router /domains/renewal/{name} [post]
+// @Router /domains/{name}/renew [post]
 func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 	name := ctx.Param("name")
 	var req commands.RenewDomainCommand
@@ -407,7 +407,7 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 // @Success 200 {object} entities.Domain
 // @Failure 400
 // @Failure 500
-// @Router /domains/delete/{name} [delete]
+// @Router /domains/{name}/markdelete [delete]
 func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 	dom, err := ctrl.domainService.MarkDomainForDeletion(ctx, ctx.Param("name"))
 	if err != nil {
@@ -436,7 +436,7 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /domains/restore/{name} [post]
+// @Router /domains/{name}/restore [post]
 func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
 	dom, err := ctrl.domainService.RestoreDomain(ctx, ctx.Param("name"))
 	if err != nil {
