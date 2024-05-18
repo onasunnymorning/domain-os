@@ -33,6 +33,7 @@ type DomainService struct {
 	tldRepo          repositories.TLDRepository
 	phaseRepo        repositories.PhaseRepository
 	premiumLabelRepo repositories.PremiumLabelRepository
+	fxRepo           repositories.FXRepository
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -44,6 +45,7 @@ func NewDomainService(
 	tldRepo repositories.TLDRepository,
 	phr repositories.PhaseRepository,
 	plr repositories.PremiumLabelRepository,
+	fxr repositories.FXRepository,
 ) *DomainService {
 	return &DomainService{
 		domainRepository: dRepo,
@@ -53,6 +55,7 @@ func NewDomainService(
 		tldRepo:          tldRepo,
 		phaseRepo:        phr,
 		premiumLabelRepo: plr,
+		fxRepo:           fxr,
 	}
 }
 
@@ -370,6 +373,8 @@ func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainNam
 
 // CheckDomain checks the availability of a domain name
 func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error) {
+	// Make sure the currency is uppercased
+	q.Currency = strings.ToUpper(q.Currency)
 	// check if the TLD exists
 	tld, err := svc.tldRepo.GetByName(ctx, q.DomainName.ParentDomain(), true)
 	if err != nil {
@@ -418,16 +423,47 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 		return nil, err
 	}
 
+	var needsFX bool // Flag to check if we need to convert the price to the requested currency
+
 	// set the price for the currency.
-	result.PricePoints.Price, _ = phase.GetPrice(q.Currency)
+	result.PricePoints.Price, err = phase.GetPrice(q.Currency)
+	if errors.Is(err, entities.ErrPriceNotFound) && q.Currency != phase.Policy.BaseCurrency {
+		// If the price is not found for the requested currency, try to get the price in the base currency
+		result.PricePoints.Price, _ = phase.GetPrice(phase.Policy.BaseCurrency)
+		if result.PricePoints.Price != nil {
+			needsFX = true
+		}
+	}
 
 	// set the fees for the currency
 	result.PricePoints.Fees = phase.GetFees(q.Currency)
+	if len(result.PricePoints.Fees) == 0 && q.Currency != phase.Policy.BaseCurrency {
+		// If the fees are not found for the requested currency, try to get the fees in the base currency
+		result.PricePoints.Fees = phase.GetFees(phase.Policy.BaseCurrency)
+		if len(result.PricePoints.Fees) > 0 {
+			needsFX = true
+		}
+	}
 
 	// Get the PremiumLabels for the premiumList associated with the phase
 	if phase.PremiumListName != nil {
 		result.PricePoints.PremiumPrice, err = svc.premiumLabelRepo.GetByLabelListAndCurrency(ctx, q.DomainName.Label(), *phase.PremiumListName, q.Currency)
 		if err != nil && !errors.Is(err, entities.ErrPremiumLabelNotFound) {
+			return nil, err
+		}
+		// If the premium price is not found for the requested currency, try to get the premium price in the base currency
+		if errors.Is(err, entities.ErrPremiumLabelNotFound) && q.Currency != phase.Policy.BaseCurrency {
+			result.PricePoints.PremiumPrice, _ = svc.premiumLabelRepo.GetByLabelListAndCurrency(ctx, q.DomainName.Label(), *phase.PremiumListName, phase.Policy.BaseCurrency)
+			if result.PricePoints.PremiumPrice != nil {
+				needsFX = true
+			}
+		}
+	}
+
+	// If we need to convert currencies, include the FX rate
+	if needsFX {
+		result.PricePoints.FX, err = svc.fxRepo.GetByBaseAndTargetCurrency(phase.Policy.BaseCurrency, q.Currency)
+		if err != nil {
 			return nil, err
 		}
 	}
