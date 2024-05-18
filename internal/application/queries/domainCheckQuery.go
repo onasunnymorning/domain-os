@@ -41,6 +41,7 @@ type DomainPricePoints struct {
 	Price        *entities.Price
 	Fees         []entities.Fee
 	PremiumPrice *entities.PremiumLabel
+	FX           *entities.FX
 }
 
 // NewDomainCheckQueryResult creates a new instance of DomainCheckQueryResult.
