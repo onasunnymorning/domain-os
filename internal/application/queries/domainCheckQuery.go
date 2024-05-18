@@ -38,10 +38,11 @@ type DomainCheckResult struct {
 
 // DomainPricePoints represents the all the price points for a domain.
 type DomainPricePoints struct {
-	Price        *entities.Price
-	Fees         []entities.Fee
-	PremiumPrice *entities.PremiumLabel
-	FX           *entities.FX
+	Price          *entities.Price
+	Fees           []entities.Fee
+	PremiumPrice   *entities.PremiumLabel
+	GrandFathering *entities.DomainGrandFathering
+	FX             *entities.FX
 }
 
 // NewDomainCheckQueryResult creates a new instance of DomainCheckQueryResult.

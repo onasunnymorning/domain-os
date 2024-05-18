@@ -116,6 +116,8 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	if !cmd.RGPStatus.IsNil() {
 		d.RGPStatus = cmd.RGPStatus
 	}
+	d.GrandFathering = cmd.GrandFathering
+
 	// Check if the domain is valid
 	if err := d.Validate(); err != nil {
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
@@ -155,6 +157,7 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	dom.UpdatedAt = upDom.UpdatedAt
 	dom.Status = upDom.Status
 	dom.RGPStatus = upDom.RGPStatus
+	dom.GrandFathering = upDom.GrandFathering
 
 	// Validate the domain
 	if err := dom.Validate(); err != nil {
@@ -416,6 +419,19 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 	}
 	// If fees are requested, prepare the result
 	result.PricePoints = &queries.DomainPricePoints{}
+
+	// If the domain exists, we can check for Grandfathering
+	if !avail && result.Reason == ErrDomainExists.Error() {
+		// Get the domain
+		dom, err := svc.GetDomainByName(ctx, q.DomainName.String(), false)
+		if err != nil {
+			return nil, err
+		}
+		// Check if the domain is grandfathered
+		if dom.GrandFathering.GFExpiryCondition != "" {
+			result.PricePoints.GrandFathering = &dom.GrandFathering
+		}
+	}
 
 	// Get the full phase from the repo to ensure preloading the price and fee objects
 	phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, tld.Name.String(), phase.Name.String())
