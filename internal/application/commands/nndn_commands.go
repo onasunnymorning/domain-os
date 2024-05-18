@@ -4,7 +4,8 @@ import "github.com/onasunnymorning/domain-os/internal/domain/entities"
 
 // CreateNNDNCommand is the command to create a NNDN
 type CreateNNDNCommand struct {
-	Name string `json:"name" binding:"required"`
+	Name   string `json:"name" binding:"required"`
+	Reason string `json:"reason"`
 }
 
 // FromRDENNDN creates a new CreateNNDNCommand from an RDENNDN
