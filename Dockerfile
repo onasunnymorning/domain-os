@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.21.3-alpine3.18 as build
+FROM golang:1.22.3-alpine3.18 as build
 
 WORKDIR /
 
@@ -37,7 +37,7 @@ RUN go build -ldflags="-s -w" -o adminAPI /cmd/registry/main.go
 
 
 # Create API release image
-FROM alpine:3.18 as admin-api
+FROM alpine:3.19 as admin-api
 # Copy our static executable
 COPY --from=build-admin-api /adminAPI /adminAPI
 
