@@ -17,6 +17,7 @@ type NNDN struct {
 	TLDName   string `gorm:"not null;foreignKey"` // TLD Name as a foreign key
 	TLD       TLD
 	NameState string `gorm:"not null"` // State of the NNDN, not null
+	Reason    string // Reason for the NNDN being blocked
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -45,6 +46,7 @@ func (n *NNDN) toNNDN() *entities.NNDN {
 		UName:     entities.DomainName(n.UName),
 		TLDName:   entities.DomainName(n.TLDName),
 		NameState: entities.NNDNState(n.NameState),
+		Reason:    entities.ClIDType(n.Reason),
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 	}
@@ -57,6 +59,7 @@ func fromNNDN(n *entities.NNDN) *NNDN {
 		UName:     n.UName.String(),
 		TLDName:   n.TLDName.String(),
 		NameState: string(n.NameState),
+		Reason:    string(n.Reason),
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 	}
