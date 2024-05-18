@@ -3,8 +3,9 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"gorm.io/gorm"
 	"testing"
+
+	"gorm.io/gorm"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
@@ -55,6 +56,7 @@ func (s *NNDNSuite) TestReadNNDN() {
 	repo := NewGormNNDNRepository(tx)
 
 	nndn, _ := entities.NewNNDN("example." + s.tld)
+	nndn.Reason = "test-reason"
 	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
 	require.NoError(s.T(), err)
 
@@ -62,6 +64,7 @@ func (s *NNDNSuite) TestReadNNDN() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), readNNDN)
 	require.Equal(s.T(), createdNNDN.Name, readNNDN.Name)
+	require.Equal(s.T(), createdNNDN.Reason, readNNDN.Reason)
 }
 
 func (s *NNDNSuite) TestUpdateNNDN() {

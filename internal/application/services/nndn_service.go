@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -26,6 +27,13 @@ func (svc *NNDNService) CreateNNDN(ctx context.Context, cmd *commands.CreateNNDN
 	newNNDN, err := entities.NewNNDN(cmd.Name)
 	if err != nil {
 		return nil, err
+	}
+	if cmd.Reason != "" {
+		r, err := entities.NewClIDType(cmd.Reason)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidNNDN, err)
+		}
+		newNNDN.Reason = r
 	}
 
 	_, err = svc.nndnRepository.CreateNNDN(ctx, newNNDN)

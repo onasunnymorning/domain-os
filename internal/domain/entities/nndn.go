@@ -18,6 +18,7 @@ const (
 
 var (
 	ErrNNDNNotFound = errors.New("NNDN not found")
+	ErrInvalidNNDN  = errors.New("invalid NNDN")
 )
 
 // NNDN represents a non-standard domain Name object in a domain Name registry.
@@ -48,6 +49,9 @@ type NNDN struct {
 
 	// Indicates the state of the NNDN: 'blocked', 'withheld', or 'mirrored'.
 	NameState NNDNState
+
+	// Reason for the NNDN being blocked. This can be set by the user to create a basic form of categorization. Unlike NameState this can be chosen freely.
+	Reason ClIDType
 
 	// Timestamp of NNDN object creation. Example: 2024-01-19T15:04:05Z
 	CreatedAt time.Time
