@@ -37,7 +37,7 @@ RUN go build -ldflags="-s -w" -o adminAPI /cmd/registry/main.go
 
 
 # Create API release image
-FROM alpine:3.18 as admin-api
+FROM alpine:3.19 as admin-api
 # Copy our static executable
 COPY --from=build-admin-api /adminAPI /adminAPI
 
