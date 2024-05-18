@@ -340,9 +340,13 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 		return
 	}
 
-	// Set the phase name if it was provided
+	// Set the phase name and currency if it was provided
 	q.PhaseName = ctx.Query("phase")
 	q.Currency = ctx.Query("currency")
+	if q.IncludeFees && q.Currency == "" {
+		ctx.JSON(400, gin.H{"error": "currency is required when requesting fees"})
+		return
+	}
 
 	// Call the service to check the domain
 	result, err := ctrl.domainService.CheckDomain(ctx, q)
