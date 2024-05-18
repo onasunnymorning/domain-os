@@ -19,8 +19,8 @@ func NewFXRepository(db *gorm.DB) *FXRepository {
 
 // UpdateAll updates all exchange rates in the database
 func (r *FXRepository) UpdateAll(fxs []*FX) error {
-	// Drop all records from the fx table
-	err := r.db.Exec("DELETE FROM fx").Error
+	// Drop all records from the fx table for a given currency
+	err := r.db.Where("base = ?", fxs[0].Base).Delete(&FX{}).Error
 	if err != nil {
 		return err
 	}
