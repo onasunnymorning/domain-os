@@ -35,15 +35,15 @@ func NewIANARegistrarRepository(db *gorm.DB) *IANARegistrarRepository {
 }
 
 // UpdateAll updates all IANARegistrars in the database
-func (r *IANARegistrarRepository) UpdateAll(registrars []*entities.IANARegistrar) error {
+func (r *IANARegistrarRepository) UpdateAll(ctx context.Context, registrars []*entities.IANARegistrar) error {
 	// Drop all records from the iana_registrars table
-	err := r.db.Exec("DELETE FROM iana_registrars").Error
+	err := r.db.WithContext(ctx).Exec("DELETE FROM iana_registrars").Error
 	if err != nil {
 		return err
 	}
 
 	// Insert all records into the iana_registrars table
-	return r.db.Create(&registrars).Error
+	return r.db.WithContext(ctx).Create(&registrars).Error
 }
 
 // ListAll returns all IANARegistrars in the database
@@ -63,13 +63,13 @@ func (r *IANARegistrarRepository) List(ctx context.Context, pageSize int, pageCu
 	// Get the next page of results
 	if nameSearchString == "" {
 		// If no nameSearchString, then just get the next page of results
-		err = r.db.Order("gur_id ASC").Limit(pageSize).Where(&IANARegistrar{Status: status}).Find(&dbRegistrars, "gur_id > ?", pageCursorInt).Error
+		err = r.db.WithContext(ctx).Order("gur_id ASC").Limit(pageSize).Where(&IANARegistrar{Status: status}).Find(&dbRegistrars, "gur_id > ?", pageCursorInt).Error
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// If there is a nameSearchString, then get the next page of results that match the nameSearchString using ILIKE (case insensitive)
-		err = r.db.Order("gur_id ASC").Limit(pageSize).Where(&IANARegistrar{Status: status}).Where("name ILIKE ?", "%"+nameSearchString+"%").Find(&dbRegistrars, "gur_id > ?", pageCursorInt).Error
+		err = r.db.WithContext(ctx).Order("gur_id ASC").Limit(pageSize).Where(&IANARegistrar{Status: status}).Where("name ILIKE ?", "%"+nameSearchString+"%").Find(&dbRegistrars, "gur_id > ?", pageCursorInt).Error
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func (r *IANARegistrarRepository) List(ctx context.Context, pageSize int, pageCu
 // GetByGurID Retrieves gets a IANARegistrar by GurID
 func (r *IANARegistrarRepository) GetByGurID(ctx context.Context, gurID int) (*entities.IANARegistrar, error) {
 	var dbRegistrar IANARegistrar
-	err := r.db.First(&dbRegistrar, "gur_id = ?", gurID).Error
+	err := r.db.WithContext(ctx).First(&dbRegistrar, "gur_id = ?", gurID).Error
 	if err != nil {
 		return nil, err
 	}
