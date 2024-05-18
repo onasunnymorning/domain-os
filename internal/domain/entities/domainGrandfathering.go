@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -14,6 +15,7 @@ const (
 var (
 	// ErrInvalidExpiryCondition is an error that is returned when the expiry condition is invalid
 	ErrInvalidGFExpiryCondition = errors.New("invalid expiry condition - must be transfer, delete or date")
+	ValidGFExpiryConditions     = []string{GFConditionTransfer, GFConditionDelete, GFConditionDate}
 )
 
 // DomainGrandFathering is a struct that represents the grandfathering conditions of a domain
@@ -26,7 +28,7 @@ type DomainGrandFathering struct {
 
 // NewDomainGrandFathering is a constructor for DomainGrandFathering
 func NewDomainGrandFathering(amount uint64, currency string, expiryCondition string, expiryDate *time.Time) (*DomainGrandFathering, error) {
-	if expiryCondition != GFConditionTransfer && expiryCondition != GFConditionDelete && expiryCondition != GFConditionDate {
+	if !slices.Contains(ValidGFExpiryConditions, expiryCondition) {
 		return nil, ErrInvalidGFExpiryCondition
 	}
 	return &DomainGrandFathering{

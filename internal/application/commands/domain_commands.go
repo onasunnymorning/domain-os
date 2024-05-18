@@ -37,24 +37,25 @@ type FeeExtension struct {
 
 // CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar operations should use the RegisterDomainCommand and RenewDomainCommand ...
 type CreateDomainCommand struct {
-	RoID         string                   `json:"RoID"` // if not provided, it will be generated
-	Name         string                   `json:"Name" binding:"required"`
-	OriginalName string                   `json:"OriginalName"`
-	UName        string                   `json:"UName"`
-	RegistrantID string                   `json:"RegistrantID" binding:"required"`
-	AdminID      string                   `json:"AdminID" binding:"required"`
-	TechID       string                   `json:"TechID" binding:"required"`
-	BillingID    string                   `json:"BillingID" binding:"required"`
-	ClID         string                   `json:"ClID" binding:"required"`
-	CrRr         string                   `json:"CrRr"`
-	UpRr         string                   `json:"UpRr"`
-	ExpiryDate   time.Time                `json:"ExpiryDate" binding:"required"`
-	DropCatch    bool                     `json:"DropCatch"`
-	AuthInfo     string                   `json:"AuthInfo"  binding:"required"`
-	CreatedAt    time.Time                `json:"CreatedAt"`
-	UpdatedAt    time.Time                `json:"UpdatedAt"`
-	Status       entities.DomainStatus    `json:"Status"`
-	RGPStatus    entities.DomainRGPStatus `json:"RGPStatus"`
+	RoID           string                        `json:"RoID"` // if not provided, it will be generated
+	Name           string                        `json:"Name" binding:"required"`
+	OriginalName   string                        `json:"OriginalName"`
+	UName          string                        `json:"UName"`
+	RegistrantID   string                        `json:"RegistrantID" binding:"required"`
+	AdminID        string                        `json:"AdminID" binding:"required"`
+	TechID         string                        `json:"TechID" binding:"required"`
+	BillingID      string                        `json:"BillingID" binding:"required"`
+	ClID           string                        `json:"ClID" binding:"required"`
+	CrRr           string                        `json:"CrRr"`
+	UpRr           string                        `json:"UpRr"`
+	ExpiryDate     time.Time                     `json:"ExpiryDate" binding:"required"`
+	DropCatch      bool                          `json:"DropCatch"`
+	AuthInfo       string                        `json:"AuthInfo"  binding:"required"`
+	CreatedAt      time.Time                     `json:"CreatedAt"`
+	UpdatedAt      time.Time                     `json:"UpdatedAt"`
+	Status         entities.DomainStatus         `json:"Status"`
+	RGPStatus      entities.DomainRGPStatus      `json:"RGPStatus"`
+	GrandFathering entities.DomainGrandFathering `json:"GrandFathering"`
 }
 
 // FromRdeDomain creates a CreateDomainCommand from an RdeDomain
@@ -100,22 +101,23 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 
 // UpdateDomainCommand is a command to update a domain. RoID and Name are not updatable, please delete and create a new domain if you need to change these fields
 type UpdateDomainCommand struct {
-	OriginalName string                   `json:"OriginalName"`
-	UName        string                   `json:"UName"`
-	RegistrantID string                   `json:"RegistrantID" binding:"required"`
-	AdminID      string                   `json:"AdminID" binding:"required"`
-	TechID       string                   `json:"TechID" binding:"required"`
-	BillingID    string                   `json:"BillingID" binding:"required"`
-	ClID         string                   `json:"ClID" binding:"required"`
-	CrRr         string                   `json:"CrRr"`
-	UpRr         string                   `json:"UpRr"`
-	ExpiryDate   time.Time                `json:"ExpiryDate" binding:"required"`
-	DropCatch    bool                     `json:"DropCatch"`
-	AuthInfo     string                   `json:"AuthInfo"  binding:"required"`
-	CreatedAt    time.Time                `json:"CreatedAt"`
-	UpdatedAt    time.Time                `json:"UpdatedAt"`
-	Status       entities.DomainStatus    `json:"Status"`
-	RGPStatus    entities.DomainRGPStatus `json:"RGPStatus"`
+	OriginalName   string                        `json:"OriginalName"`
+	UName          string                        `json:"UName"`
+	RegistrantID   string                        `json:"RegistrantID" binding:"required"`
+	AdminID        string                        `json:"AdminID" binding:"required"`
+	TechID         string                        `json:"TechID" binding:"required"`
+	BillingID      string                        `json:"BillingID" binding:"required"`
+	ClID           string                        `json:"ClID" binding:"required"`
+	CrRr           string                        `json:"CrRr"`
+	UpRr           string                        `json:"UpRr"`
+	ExpiryDate     time.Time                     `json:"ExpiryDate" binding:"required"`
+	DropCatch      bool                          `json:"DropCatch"`
+	AuthInfo       string                        `json:"AuthInfo"  binding:"required"`
+	CreatedAt      time.Time                     `json:"CreatedAt"`
+	UpdatedAt      time.Time                     `json:"UpdatedAt"`
+	Status         entities.DomainStatus         `json:"Status"`
+	RGPStatus      entities.DomainRGPStatus      `json:"RGPStatus"`
+	GrandFathering entities.DomainGrandFathering `json:"GrandFathering"`
 }
 
 // FromEntity converts a domain entity to an UpdateDomainCommand
