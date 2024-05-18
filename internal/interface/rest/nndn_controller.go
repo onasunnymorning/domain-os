@@ -143,6 +143,10 @@ func (ctrl *NNDNController) CreateNNDN(ctx *gin.Context) {
 
 	result, err := ctrl.nndnService.CreateNNDN(ctx, cmd)
 	if err != nil {
+		if errors.Is(err, entities.ErrInvalidNNDN) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
