@@ -333,7 +333,7 @@ func (svc *DomainService) CheckDomainIsBlocked(ctx context.Context, domainName s
 	return true, nil
 }
 
-// CheckDomainAvailability checks if a domain is available. A domain is availabel if
+// CheckDomainAvailability checks if a domain is available. A domain is available if
 // * it is a valid domain name
 // * it is allowed in the current phase
 // * it does not exist

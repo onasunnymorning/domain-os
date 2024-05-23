@@ -382,3 +382,11 @@ func (d *Domain) Restore() error {
 
 	return nil
 }
+
+// IsGrandFathered checks if the domain is grand fathered
+func (d *Domain) IsGrandFathered() bool {
+	if d.GrandFathering.GFAmount == 0 && d.GrandFathering.GFCurrency == "" {
+		return false
+	}
+	return true
+}

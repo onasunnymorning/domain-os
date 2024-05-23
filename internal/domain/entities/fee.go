@@ -4,6 +4,7 @@ import (
 	s "strings"
 
 	"errors"
+
 	"github.com/Rhymond/go-money"
 )
 
@@ -37,4 +38,9 @@ func NewFee(cur, name string, amount uint64, refundable *bool) (*Fee, error) {
 		Amount:     amount,
 		Refundable: refundable,
 	}, nil
+}
+
+// GetMoney returns a money.Money object for that fee
+func (f *Fee) GetMoney() *money.Money {
+	return money.New(int64(f.Amount), f.Currency)
 }
