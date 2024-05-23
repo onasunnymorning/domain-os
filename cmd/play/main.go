@@ -69,12 +69,18 @@ func main() {
 		TransactionType: entities.TransactionTypeRegistration,
 		PhaseName:       "GA1",
 		Currency:        "PEN",
-		Years:           1,
+		Years:           2,
 		ClID:            "reg007",
 	}
 
 	// Get a Quote
-	q, err := pe.GetQuote(qr)
+	// q, err := pe.GetQuote(qr)
+	// if err != nil {
+	// 	log.Fatalf("error getting quote: %v", err)
+	// }
+
+	// Get a Quote Simplified
+	q, err := pe.GetQuoteSimplified(qr)
 	if err != nil {
 		log.Fatalf("error getting quote: %v", err)
 	}
