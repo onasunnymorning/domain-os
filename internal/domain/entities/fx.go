@@ -27,11 +27,11 @@ func (fx *FX) Convert(source *money.Money) (*money.Money, error) {
 	if source.Currency().Code != fx.BaseCurrency {
 		return nil, errors.Join(ErrFXConversion, fmt.Errorf("input from currency (%s) does not match FX from currency (%s) ", source.Currency().Code, fx.BaseCurrency))
 	}
-	s := big.NewFloat(source.AsMajorUnits())     // Convert our source amount to a big.Float
-	r := big.NewFloat(fx.Rate)                   // Convert our rate to a big.Float
-	var d big.Float                              // Declare a big.Float to hold the result
-	d.Mul(s, r)                                  // Multiply the source amount by the rate
-	fmt.Printf("%f x %f = %f\n", s, r, &d)       // Print the calculation
+	s := big.NewFloat(source.AsMajorUnits()) // Convert our source amount to a big.Float
+	r := big.NewFloat(fx.Rate)               // Convert our rate to a big.Float
+	var d big.Float                          // Declare a big.Float to hold the result
+	d.Mul(s, r)                              // Multiply the source amount by the rate
+	// fmt.Printf("%f x %f = %f\n", s, r, &d)       // Print the calculation
 	f, err := strconv.ParseFloat(d.String(), 64) // Convert the result to a float64
 	if err != nil {
 		return nil, err

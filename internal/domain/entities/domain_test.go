@@ -1508,3 +1508,25 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 	}
 
 }
+func TestIsGrandFathered(t *testing.T) {
+	// Create a domain object with GrandFathering status
+	d := &Domain{
+		GrandFathering: DomainGrandFathering{
+			GFAmount:   100,
+			GFCurrency: "USD",
+		},
+	}
+
+	// Assert that the domain is indeed grand fathered
+	if !d.IsGrandFathered() {
+		t.Errorf("Expected domain to be grand fathered, but it is not")
+	}
+
+	d = &Domain{}
+
+	// Assert that the domain is not grand fathered
+	if d.IsGrandFathered() {
+		t.Errorf("Expected domain to not be grand fathered, but it is")
+	}
+
+}
