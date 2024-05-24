@@ -333,7 +333,7 @@ func (svc *DomainService) CheckDomainIsBlocked(ctx context.Context, domainName s
 	return true, nil
 }
 
-// CheckDomainAvailability checks if a domain is available. A domain is availabel if
+// CheckDomainAvailability checks if a domain is available. A domain is available if
 // * it is a valid domain name
 // * it is allowed in the current phase
 // * it does not exist
@@ -491,7 +491,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 // RegisterDomain registers a domain
 func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error) {
 	// Check if the domain is available
-	includeFees := cmd.Fee == commands.FeeExtension{} // If the fee extension is proivded, include the fees in the check
+	includeFees := cmd.Fee != commands.FeeExtension{} // If the fee extension is not empty, include the fees in the check
 	q, err := queries.NewDomainCheckQuery(cmd.Name, includeFees)
 	if err != nil {
 		return nil, err
