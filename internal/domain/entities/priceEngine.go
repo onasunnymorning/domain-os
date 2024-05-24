@@ -31,10 +31,11 @@ func NewPriceEngine(phase Phase, dom Domain, fx FX, pe []*PremiumLabel) *PriceEn
 		PremiumEntries: pe,
 		FXRate:         fx,
 		Domain:         dom,
+		Quote:          &Quote{},
 	}
 }
 
-// setQuoteParams sets the quote parameters that need to be copied from the price engine.
+// setQuoteParams sets the quote parameters that need to be copied from the price engine. You must have instantiated the Quote before calling this method.
 func (pe *PriceEngine) setQuoteParams() {
 	pe.Quote.FXRate = &pe.FXRate
 	pe.Quote.DomainName = pe.Domain.Name
@@ -163,6 +164,7 @@ func (pe *PriceEngine) GetQuoteSimplified(qr QuoteRequest) (*Quote, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	pe.setQuoteParams()
 
 	// First look at optional fees that need to be applied on top of pricing
@@ -199,7 +201,8 @@ func (pe *PriceEngine) GetQuoteSimplified(qr QuoteRequest) (*Quote, error) {
 
 // GetQuote calculates the price for a transaction and returns a Quote entity.
 func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
-	if qr.PhaseName != pe.Phase.Name.String() {
+	// Check if the phase name is valid in case it was provided
+	if qr.PhaseName != pe.Phase.Name.String() && qr.PhaseName != "" {
 		return nil, ErrInvalidPhaseName
 	}
 	pe.QuoteRequest = qr
