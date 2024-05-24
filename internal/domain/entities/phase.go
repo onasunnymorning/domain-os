@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Rhymond/go-money"
 )
 
 var (
@@ -221,6 +223,30 @@ func (p *Phase) GetPrice(currency string) (*Price, error) {
 		}
 	}
 	return nil, ErrPriceNotFound
+}
+
+// GetTransactionPriceAsMoney returns a money object with the cost of a given transaction in the target currency. If needed, it will convert the price to the target currency using the FX rate.
+func (p *Phase) GetTransactionPriceAsMoney(targetCurrency string, transactionType string, fx FX) (*money.Money, error) {
+	price, err := p.GetPrice(targetCurrency)
+	if err != nil {
+		if !errors.Is(err, ErrPriceNotFound) {
+			// if we get an error that is not ErrPriceNotFound, we return it
+			return nil, err
+		}
+		// If the price is not found, we try to get the price in the base currency
+		price, err = p.GetPrice(fx.BaseCurrency)
+		if err != nil {
+			return nil, err
+		}
+		pm, err := price.GetMoney(transactionType)
+		if err != nil {
+			return nil, err
+		}
+		// We return it converted to the target currency
+		return fx.Convert(pm)
+	}
+	// if we had a price in the target currency, we return it
+	return price.GetMoney(transactionType)
 }
 
 // GetFees returns the fees for a given currency

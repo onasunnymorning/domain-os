@@ -38,3 +38,22 @@ func NewPrice(cur string, reg, ren, tr, res uint64) (*Price, error) {
 		RestoreAmount:      res,
 	}, nil
 }
+
+// GetMoney returns a money.Money object for the given transaction type
+func (p *Price) GetMoney(transactionType string) (*money.Money, error) {
+	var amount uint64
+	switch transactionType {
+	case TransactionTypeRegistration:
+		amount = p.RegistrationAmount
+	case TransactionTypeRenewal:
+		amount = p.RenewalAmount
+	case TransactionTypeTransfer:
+		amount = p.TransferAmount
+	case TransactionTypeRestore:
+		amount = p.RestoreAmount
+	default:
+		return nil, ErrInvalidTransactionType
+	}
+
+	return money.New(int64(amount), p.Currency), nil
+}

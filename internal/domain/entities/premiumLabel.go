@@ -52,3 +52,19 @@ func NewPremiumLabel(label string, registrationAmount, renewalAmount, transferAm
 		Class:              validatedClass.String(),
 	}, nil
 }
+
+// GetMoney returns the money instance for the given transaction type
+func (pl *PremiumLabel) GetMoney(transactionType string) (*money.Money, error) {
+	switch transactionType {
+	case "registration":
+		return money.New(int64(pl.RegistrationAmount), pl.Currency), nil
+	case "renewal":
+		return money.New(int64(pl.RenewalAmount), pl.Currency), nil
+	case "transfer":
+		return money.New(int64(pl.TransferAmount), pl.Currency), nil
+	case "restore":
+		return money.New(int64(pl.RestoreAmount), pl.Currency), nil
+	default:
+		return nil, ErrInvalidTransactionType
+	}
+}

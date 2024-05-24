@@ -51,7 +51,6 @@ func (plr *PremiumLabelRepository) DeleteByLabelListAndCurrency(ctx context.Cont
 // List retrieves a list of premium labels
 func (plr *PremiumLabelRepository) List(ctx context.Context, pagesize int, cursor, listName, currency, label string) ([]*entities.PremiumLabel, error) {
 	dbpls := []*PremiumLabel{}
-
 	err := plr.db.WithContext(ctx).Where(&PremiumLabel{PremiumListName: listName, Currency: currency, Label: label}).Order("label ASC").Limit(pagesize).Find(&dbpls, "label > ?", cursor).Error
 	if err != nil {
 		return nil, err
