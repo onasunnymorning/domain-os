@@ -15,7 +15,7 @@ type Quote struct {
 	DomainName      DomainName
 	Years           int
 	TransactionType string
-	Phase           *Phase
+	Phase           *Phase // `json:"-"`
 	Clid            ClIDType
 	Class           string
 }

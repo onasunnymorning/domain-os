@@ -125,5 +125,5 @@ func (s *QuoteService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (*
 	calc := entities.NewPriceEngine(*phase, *domain, *fx, pe)
 
 	// Get/Return the quote
-	return calc.GetQuote(*q.ToEntity())
+	return calc.GetQuoteSimplified(*q.ToEntity())
 }
