@@ -31,6 +31,7 @@ func NewPriceEngine(phase Phase, dom Domain, fx FX, pe []*PremiumLabel) *PriceEn
 		FXRate:         fx,
 		Domain:         dom,
 		Quote:          &Quote{},
+		QuoteRequest:   QuoteRequest{},
 	}
 }
 
