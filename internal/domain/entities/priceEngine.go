@@ -3,8 +3,6 @@ package entities
 import (
 	"errors"
 	"fmt"
-
-	"github.com/Rhymond/go-money"
 )
 
 var (
@@ -154,7 +152,8 @@ func (pe *PriceEngine) addPhasePrice() error {
 
 // GetQuoteSimplified calculates the price for a transaction and returns a Quote entity.
 func (pe *PriceEngine) GetQuoteSimplified(qr QuoteRequest) (*Quote, error) {
-	if qr.PhaseName != pe.Phase.Name.String() {
+	// Check if the phase name is valid in case it was provided
+	if qr.PhaseName != pe.Phase.Name.String() && qr.PhaseName != "" {
 		return nil, ErrInvalidPhaseName
 	}
 	pe.QuoteRequest = qr
@@ -199,186 +198,186 @@ func (pe *PriceEngine) GetQuoteSimplified(qr QuoteRequest) (*Quote, error) {
 	return pe.Quote, nil
 }
 
-// GetQuote calculates the price for a transaction and returns a Quote entity.
-func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
-	// Check if the phase name is valid in case it was provided
-	if qr.PhaseName != pe.Phase.Name.String() && qr.PhaseName != "" {
-		return nil, ErrInvalidPhaseName
-	}
-	pe.QuoteRequest = qr
+// // GetQuote calculates the price for a transaction and returns a Quote entity.
+// func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
+// 	// Check if the phase name is valid in case it was provided
+// 	if qr.PhaseName != pe.Phase.Name.String() && qr.PhaseName != "" {
+// 		return nil, ErrInvalidPhaseName
+// 	}
+// 	pe.QuoteRequest = qr
 
-	var err error
-	pe.Quote, err = NewQuoteFromQuoteRequest(qr)
-	if err != nil {
-		return nil, err
-	}
-	pe.setQuoteParams()
+// 	var err error
+// 	pe.Quote, err = NewQuoteFromQuoteRequest(qr)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	pe.setQuoteParams()
 
-	// Add any additional fees for the phase
-	if pe.Phase.Fees != nil {
-		needsFX := false
-		fees := pe.Phase.GetFees(qr.Currency)
-		if fees == nil {
-			fees = pe.Phase.GetFees(pe.Phase.Policy.BaseCurrency)
-			needsFX = true
-		}
-		for _, fee := range fees {
-			pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
-				Name:       fee.Name,
-				Amount:     uint64(fee.Amount),
-				Currency:   fee.Currency,
-				Refundable: fee.Refundable,
-			})
-			if needsFX {
-				feeMoney, err := pe.FXRate.Convert(money.New(int64(fee.Amount), fee.Currency))
-				if err != nil {
-					return nil, err
-				}
-				pe.Quote.Price, err = pe.Quote.Price.Add(feeMoney)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				pe.Quote.Price, err = pe.Quote.Price.Add(money.New(int64(fee.Amount), fee.Currency))
-				if err != nil {
-					return nil, err
-				}
-			}
+// 	// Add any additional fees for the phase
+// 	if pe.Phase.Fees != nil {
+// 		needsFX := false
+// 		fees := pe.Phase.GetFees(qr.Currency)
+// 		if fees == nil {
+// 			fees = pe.Phase.GetFees(pe.Phase.Policy.BaseCurrency)
+// 			needsFX = true
+// 		}
+// 		for _, fee := range fees {
+// 			pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
+// 				Name:       fee.Name,
+// 				Amount:     uint64(fee.Amount),
+// 				Currency:   fee.Currency,
+// 				Refundable: fee.Refundable,
+// 			})
+// 			if needsFX {
+// 				feeMoney, err := pe.FXRate.Convert(money.New(int64(fee.Amount), fee.Currency))
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 				pe.Quote.Price, err = pe.Quote.Price.Add(feeMoney)
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 			} else {
+// 				pe.Quote.Price, err = pe.Quote.Price.Add(money.New(int64(fee.Amount), fee.Currency))
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 			}
 
-		}
+// 		}
 
-	}
+// 	}
 
-	// The rest of the items will be refundable
-	refundable := true
+// 	// The rest of the items will be refundable
+// 	refundable := true
 
-	// If the domain has grandfathering and the transaction is renew, then that is our price
-	if pe.Domain.IsGrandFathered() && qr.TransactionType == "renew" {
-		if pe.Domain.GrandFathering.GFCurrency == qr.Currency {
-			gf := money.New(int64(pe.Domain.GrandFathering.GFAmount), qr.Currency)
-			if gf == nil {
-				return nil, ErrInvalidGrandFatheringPrice
-			}
-			for i := 0; i < qr.Years; i++ {
-				pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
-					Name:       "GrandFathering",
-					Amount:     uint64(gf.Amount()),
-					Currency:   gf.Currency().Code,
-					Refundable: &refundable,
-				})
-			}
-			gf = gf.Multiply(int64(qr.Years))
-			pe.Quote.Price, err = pe.Quote.Price.Add(gf)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			gf, err := pe.FXRate.Convert(money.New(int64(pe.Domain.GrandFathering.GFAmount), qr.Currency))
-			if err != nil {
-				return nil, err
-			}
-			for i := 0; i < qr.Years; i++ {
-				pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
-					Name:       "GrandFathering",
-					Amount:     uint64(gf.Amount()),
-					Currency:   gf.Currency().Code,
-					Refundable: &refundable,
-				})
-			}
-			gf = gf.Multiply(int64(qr.Years))
-			pe.Quote.Price, err = pe.Quote.Price.Add(gf)
-			if err != nil {
-				return nil, err
-			}
-		}
-		// if the domain is not grandfathered, we can return the price at this point
-		return pe.Quote, nil
-	}
+// 	// If the domain has grandfathering and the transaction is renew, then that is our price
+// 	if pe.Domain.IsGrandFathered() && qr.TransactionType == "renew" {
+// 		if pe.Domain.GrandFathering.GFCurrency == qr.Currency {
+// 			gf := money.New(int64(pe.Domain.GrandFathering.GFAmount), qr.Currency)
+// 			if gf == nil {
+// 				return nil, ErrInvalidGrandFatheringPrice
+// 			}
+// 			for i := 0; i < qr.Years; i++ {
+// 				pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
+// 					Name:       "GrandFathering",
+// 					Amount:     uint64(gf.Amount()),
+// 					Currency:   gf.Currency().Code,
+// 					Refundable: &refundable,
+// 				})
+// 			}
+// 			gf = gf.Multiply(int64(qr.Years))
+// 			pe.Quote.Price, err = pe.Quote.Price.Add(gf)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		} else {
+// 			gf, err := pe.FXRate.Convert(money.New(int64(pe.Domain.GrandFathering.GFAmount), qr.Currency))
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			for i := 0; i < qr.Years; i++ {
+// 				pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
+// 					Name:       "GrandFathering",
+// 					Amount:     uint64(gf.Amount()),
+// 					Currency:   gf.Currency().Code,
+// 					Refundable: &refundable,
+// 				})
+// 			}
+// 			gf = gf.Multiply(int64(qr.Years))
+// 			pe.Quote.Price, err = pe.Quote.Price.Add(gf)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		}
+// 		// if the domain is not grandfathered, we can return the price at this point
+// 		return pe.Quote, nil
+// 	}
 
-	// If the domain is not grandfathered, check if there is a premium price
-	if len(pe.PremiumEntries) > 0 {
-		for _, pl := range pe.PremiumEntries {
-			if pl.Label == Label(pe.Domain.Name.Label()) {
-				moneyToAdd, err := pl.GetMoney(qr.TransactionType)
-				if err != nil {
-					return nil, err
-				}
-				for i := 0; i < qr.Years; i++ {
-					pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
-						Name:       "premium fee",
-						Amount:     uint64(moneyToAdd.Amount()),
-						Currency:   moneyToAdd.Currency().Code,
-						Refundable: &refundable,
-					})
-				}
-				moneyToAdd = moneyToAdd.Multiply(int64(qr.Years))
-				pe.Quote.Class = pl.Class
-				if pl.Currency == qr.Currency {
-					pe.Quote.Price, err = pe.Quote.Price.Add(moneyToAdd)
-					if err != nil {
-						return nil, err
-					}
-				} else {
-					moneyToAddInCorrectCurrency, err := pe.FXRate.Convert(moneyToAdd)
-					if err != nil {
-						return nil, err
-					}
-					pe.Quote.Price, err = pe.Quote.Price.Add(moneyToAddInCorrectCurrency)
-					if err != nil {
-						return nil, err
-					}
-				}
-			}
-		}
-		// if we found a premium price, we can return the price at this point
-		return pe.Quote, nil
-	}
+// 	// If the domain is not grandfathered, check if there is a premium price
+// 	if len(pe.PremiumEntries) > 0 {
+// 		for _, pl := range pe.PremiumEntries {
+// 			if pl.Label == Label(pe.Domain.Name.Label()) {
+// 				moneyToAdd, err := pl.GetMoney(qr.TransactionType)
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 				for i := 0; i < qr.Years; i++ {
+// 					pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
+// 						Name:       "premium fee",
+// 						Amount:     uint64(moneyToAdd.Amount()),
+// 						Currency:   moneyToAdd.Currency().Code,
+// 						Refundable: &refundable,
+// 					})
+// 				}
+// 				moneyToAdd = moneyToAdd.Multiply(int64(qr.Years))
+// 				pe.Quote.Class = pl.Class
+// 				if pl.Currency == qr.Currency {
+// 					pe.Quote.Price, err = pe.Quote.Price.Add(moneyToAdd)
+// 					if err != nil {
+// 						return nil, err
+// 					}
+// 				} else {
+// 					moneyToAddInCorrectCurrency, err := pe.FXRate.Convert(moneyToAdd)
+// 					if err != nil {
+// 						return nil, err
+// 					}
+// 					pe.Quote.Price, err = pe.Quote.Price.Add(moneyToAddInCorrectCurrency)
+// 					if err != nil {
+// 						return nil, err
+// 					}
+// 				}
+// 			}
+// 		}
+// 		// if we found a premium price, we can return the price at this point
+// 		return pe.Quote, nil
+// 	}
 
-	// Fall back on the phase price
-	needsFX := false
-	if pe.Phase.Prices != nil {
-		// See if we have a price in the requested currency
-		price, err := pe.Phase.GetPrice(qr.Currency)
-		if err != nil {
-			if !errors.Is(err, ErrPriceNotFound) {
-				return nil, err
-			}
-			// Try and find it in the base currency
-			needsFX = true
-			price, err = pe.Phase.GetPrice(pe.Phase.Policy.BaseCurrency)
-			if err != nil {
-				return nil, err
-			}
-		}
-		priceMoneyToAdd, err := price.GetMoney(qr.TransactionType)
-		if err != nil {
-			return nil, err
-		}
-		// Add the fee to the quote, as many times as years
-		for i := 0; i < qr.Years; i++ {
-			pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
-				Name:       ClIDType(fmt.Sprintf("%s fee", qr.TransactionType)),
-				Amount:     uint64(priceMoneyToAdd.Amount()),
-				Currency:   price.Currency,
-				Refundable: &refundable,
-			})
-		}
-		priceMoneyToAdd = priceMoneyToAdd.Multiply(int64(qr.Years))
-		if needsFX {
-			priceMoneyToAdd, err = pe.FXRate.Convert(priceMoneyToAdd)
-			if err != nil {
-				return nil, err
-			}
-		}
-		pe.Quote.Price, err = pe.Quote.Price.Add(priceMoneyToAdd)
-		if err != nil {
-			return nil, err
-		}
-		// if we found a price, we can return the price at this point
-		return pe.Quote, nil
-	}
+// 	// Fall back on the phase price
+// 	needsFX := false
+// 	if pe.Phase.Prices != nil {
+// 		// See if we have a price in the requested currency
+// 		price, err := pe.Phase.GetPrice(qr.Currency)
+// 		if err != nil {
+// 			if !errors.Is(err, ErrPriceNotFound) {
+// 				return nil, err
+// 			}
+// 			// Try and find it in the base currency
+// 			needsFX = true
+// 			price, err = pe.Phase.GetPrice(pe.Phase.Policy.BaseCurrency)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		}
+// 		priceMoneyToAdd, err := price.GetMoney(qr.TransactionType)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		// Add the fee to the quote, as many times as years
+// 		for i := 0; i < qr.Years; i++ {
+// 			pe.Quote.Fees = append(pe.Quote.Fees, &Fee{
+// 				Name:       ClIDType(fmt.Sprintf("%s fee", qr.TransactionType)),
+// 				Amount:     uint64(priceMoneyToAdd.Amount()),
+// 				Currency:   price.Currency,
+// 				Refundable: &refundable,
+// 			})
+// 		}
+// 		priceMoneyToAdd = priceMoneyToAdd.Multiply(int64(qr.Years))
+// 		if needsFX {
+// 			priceMoneyToAdd, err = pe.FXRate.Convert(priceMoneyToAdd)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		}
+// 		pe.Quote.Price, err = pe.Quote.Price.Add(priceMoneyToAdd)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		// if we found a price, we can return the price at this point
+// 		return pe.Quote, nil
+// 	}
 
-	// If we haven't got a price at this point, none is available so we're assuming free (0)
-	// we can just retutn the quote as the fees are already applied
-	return pe.Quote, nil
-}
+// 	// If we haven't got a price at this point, none is available so we're assuming free (0)
+// 	// we can just retutn the quote as the fees are already applied
+// 	return pe.Quote, nil
+// }
