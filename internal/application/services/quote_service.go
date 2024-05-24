@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -54,57 +54,42 @@ func (s *QuoteService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (*
 	// If no phase name is provided, default to the "Currently Active GA Phase"
 	var phase *entities.Phase
 	if q.PhaseName == "" {
-		fmt.Println("### Getting Current GA phase ###")
 		phase, err = tld.GetCurrentGAPhase()
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("### Current GA phase: " + phase.Name.String() + " ###")
 	} else {
 		// Otherwise, use the specified phase
-		fmt.Println("### Getting phase by NAME ###")
 		phase, err = tld.FindPhaseByName(entities.ClIDType(q.PhaseName))
 		if err != nil {
 			return nil, err
 		}
 	}
 	if phase == nil {
-		fmt.Println("### NIL PHASE ###")
 		return nil, entities.ErrPhaseNotFound
 	}
 
-	// Get the domain
-	fmt.Println("### GETTING DOMAIN ###")
 	domain, err := s.domainRepo.GetDomainByName(ctx, domainName.String(), false)
-	fmt.Printf("### DOMAIN %v ###\n", domain)
+	// Get the domain
 	if err != nil {
 		if !errors.Is(err, entities.ErrDomainNotFound) {
 			// If there was an error other than domain not found, return it
 			return nil, err
 		}
 		// If we don't have the domain, create a placeholder
-		fmt.Println("### CREATING PLACEHOLDER DOMAIN ###")
 		domain, err = entities.NewDomain("123_DOM-APEX", domainName.String(), q.ClID, "str0ngP@zz")
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	fmt.Printf("### DOML %v ###\n", domain)
-	fmt.Printf("### PHASE %v ###\n", phase)
 	// Get the PremiumLabels in all currencies
-	var pe []*entities.PremiumLabel
+	pe := []*entities.PremiumLabel{}
 	if phase.PremiumListName != nil {
-		fmt.Println("#### LISTNAME" + *phase.PremiumListName)
-		fmt.Println("#### domainName" + domainName.Label())
-		pe, err := s.premiumLabelRepo.List(ctx, 25, "", *phase.PremiumListName, "", domainName.Label())
+		pe, err = s.premiumLabelRepo.List(ctx, 25, "", *phase.PremiumListName, "", domainName.Label())
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("### PE %v ###\n", pe)
-	} else {
-		pe = []*entities.PremiumLabel{}
-		fmt.Println("### NO PREMIUM LABELS ###")
 	}
 
 	// Create a default FX in case we don't need FX
@@ -114,7 +99,7 @@ func (s *QuoteService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (*
 		Rate:           1,
 	}
 	if q.Currency != phase.Policy.BaseCurrency {
-		fx, err = s.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, q.Currency)
+		fx, err = s.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, strings.ToUpper(q.Currency))
 		if err != nil {
 			// If we don't have an FX rate, and we need it, return an error
 			return nil, errors.Join(ErrMissingFXRate, err)
@@ -125,5 +110,5 @@ func (s *QuoteService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (*
 	calc := entities.NewPriceEngine(*phase, *domain, *fx, pe)
 
 	// Get/Return the quote
-	return calc.GetQuoteSimplified(*q.ToEntity())
+	return calc.GetQuote(*q.ToEntity())
 }

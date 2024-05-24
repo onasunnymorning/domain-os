@@ -51,6 +51,16 @@ func (pe *PriceEngine) addPhaseFees() error {
 				return err
 			}
 		}
+		// If we couldn't find the fees in the target currency, try the phase's base currency
+		if len(fees) == 0 {
+			fees = pe.Phase.GetFees(pe.Phase.Policy.BaseCurrency)
+			for _, fee := range fees {
+				err := pe.Quote.AddFeeAndUpdatePrice(&fee, false)
+				if err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -150,14 +160,16 @@ func (pe *PriceEngine) addPhasePrice() error {
 	return nil
 }
 
-// GetQuoteSimplified calculates the price for a transaction and returns a Quote entity.
-func (pe *PriceEngine) GetQuoteSimplified(qr QuoteRequest) (*Quote, error) {
+// GetQuote calculates the price for a transaction and returns a Quote entity.
+func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
 	// Check if the phase name is valid in case it was provided
 	if qr.PhaseName != pe.Phase.Name.String() && qr.PhaseName != "" {
 		return nil, ErrInvalidPhaseName
 	}
+	// Set the quote request in the price engine struct
 	pe.QuoteRequest = qr
 
+	// Create a new quote from the quote request and save it in the price engine
 	var err error
 	pe.Quote, err = NewQuoteFromQuoteRequest(qr)
 	if err != nil {

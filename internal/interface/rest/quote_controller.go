@@ -26,7 +26,7 @@ func NewQuoteController(e *gin.Engine, quoteService interfaces.QuoteService) *Qu
 // @Summary returns a quote for a transaction
 // @Description Takes a QuoteRequest and returns a Quote for the transaction including a breakdown of costs
 // @ID get-quote
-// @Tags quote
+// @Tags Quotes
 // @Accept  json
 // @Produce  json
 // @Param quoteRequest body queries.QuoteRequest true "QuoteRequest"
