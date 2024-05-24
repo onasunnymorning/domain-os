@@ -3,6 +3,7 @@ package entities
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -69,10 +70,10 @@ func (pe *PriceEngine) addPhaseFees() error {
 func (pe *PriceEngine) addGrandFatheringFees() error {
 	refundable := true // Renew fees are refundable
 	// Only apply grand fathering fees if the domain is grandfathered and the transaction is renew
-	if pe.Domain.IsGrandFathered() && pe.QuoteRequest.TransactionType == "renew" {
+	if pe.Domain.IsGrandFathered() && pe.QuoteRequest.TransactionType == TransactionTypeRenewal {
 		err := pe.Quote.AddFeeAndUpdatePrice(
 			&Fee{
-				Name:       "GrandFathering",
+				Name:       "grandfathered renewal fee",
 				Amount:     uint64(pe.Domain.GrandFathering.GFAmount),
 				Currency:   pe.Domain.GrandFathering.GFCurrency,
 				Refundable: &refundable,
@@ -87,45 +88,49 @@ func (pe *PriceEngine) addGrandFatheringFees() error {
 
 // addPremiumFees sets the premium fees on the quote.
 func (pe *PriceEngine) addPremiumFees() error {
-	refundable := true // Premium fees are refundable
+	refundable := true // Premium fees are refundable within the grace period
 	if len(pe.PremiumEntries) > 0 {
-		premiumfees := []*Fee{}
+		var premiumfee *Fee
 		for _, pl := range pe.PremiumEntries {
 			// Try and find the entry for the domain in the target currency
 			if pl.Label == Label(pe.Domain.Name.Label()) && pl.Currency == pe.QuoteRequest.Currency {
 				money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType)
-				premiumfees = append(premiumfees, &Fee{
-					Name:       "premium fee",
+				premiumfee = &Fee{
+					Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
 					Amount:     uint64(money.Amount()),
 					Currency:   money.Currency().Code,
 					Refundable: &refundable,
-				})
+				}
+				// Set the class
+				pe.Quote.Class = pl.Class
 			}
 		}
-		// If we have no entries, look for matches using the phase's base currency
-		for _, pl := range pe.PremiumEntries {
-			if pl.Label == Label(pe.Domain.Name.Label()) && pl.Currency == pe.Phase.Policy.BaseCurrency {
-				money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType)
-				money, _ = pe.FXRate.Convert(money)
-				premiumfees = append(premiumfees, &Fee{
-					Name:       "premium fee",
-					Amount:     uint64(money.Amount()),
-					Currency:   money.Currency().Code,
-					Refundable: &refundable,
-				})
+		// If we have no exact matches using the target currency, look for matches using the phase's base currency
+		if premiumfee == nil {
+			for _, pl := range pe.PremiumEntries {
+				if pl.Label == Label(pe.Domain.Name.Label()) && pl.Currency == pe.Phase.Policy.BaseCurrency {
+					money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType)
+					premiumfee = &Fee{
+						Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
+						Amount:     uint64(money.Amount()),
+						Currency:   money.Currency().Code,
+						Refundable: &refundable,
+					}
+				}
+				// Set the class
+				pe.Quote.Class = pl.Class
 			}
 		}
 		// If we still have no entries, we have an issue because there is a premium price, but neither in the target or base currency
-		if len(premiumfees) == 0 {
+		if premiumfee == nil {
 			return errors.New("expected premium pricing but none found")
 		}
-		// Add the fees to the quote
-		for _, fee := range premiumfees {
-			err := pe.Quote.AddFeeAndUpdatePrice(fee, true)
-			if err != nil {
-				return err
-			}
+		// Add the fee to the quote
+		err := pe.Quote.AddFeeAndUpdatePrice(premiumfee, true)
+		if err != nil {
+			return err
 		}
+
 	}
 	return nil
 }
@@ -167,6 +172,7 @@ func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
 		return nil, ErrInvalidPhaseName
 	}
 	// Set the quote request in the price engine struct
+	qr.Currency = strings.ToUpper(qr.Currency)
 	pe.QuoteRequest = qr
 
 	// Create a new quote from the quote request and save it in the price engine
@@ -185,7 +191,7 @@ func (pe *PriceEngine) GetQuote(qr QuoteRequest) (*Quote, error) {
 	}
 
 	// If the domain is grandfathered, apply the grand fathering fees and return
-	if pe.Domain.IsGrandFathered() && qr.TransactionType == "renew" {
+	if pe.Domain.IsGrandFathered() && qr.TransactionType == TransactionTypeRenewal {
 		err = pe.addGrandFatheringFees()
 		if err != nil {
 			return nil, err
