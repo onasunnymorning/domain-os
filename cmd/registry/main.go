@@ -159,6 +159,9 @@ func main() {
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
 
+	// Quotes
+	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
+
 	// Gin router
 	r := gin.Default()
 
@@ -190,6 +193,7 @@ func main() {
 	rest.NewAccreditationController(r, accreditationService)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 	rest.NewFXController(r, fxService)
+	rest.NewQuoteController(r, quoteService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

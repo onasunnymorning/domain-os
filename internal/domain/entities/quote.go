@@ -21,9 +21,10 @@ type Quote struct {
 }
 
 // NewQuote creates a new Quote.
-func NewQuote() *Quote {
+func NewQuote(currency string) *Quote {
 	return &Quote{
 		TimeStamp: time.Now().UTC(),
+		Price:     money.New(0, currency),
 	}
 }
 
@@ -32,12 +33,11 @@ func NewQuoteFromQuoteRequest(qr QuoteRequest) (*Quote, error) {
 	if err := qr.Validate(); err != nil {
 		return nil, err
 	}
-	q := NewQuote()
+	q := NewQuote(qr.Currency)
 	q.DomainName = DomainName(qr.DomainName)
 	q.TransactionType = qr.TransactionType
 	q.Years = qr.Years
 	q.Class = "standard"
-	q.Price = money.New(0, qr.Currency)
 	q.Clid = ClIDType(qr.ClID)
 	return q, nil
 }
