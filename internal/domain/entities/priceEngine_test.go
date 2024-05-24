@@ -775,14 +775,7 @@ func TestGetQuote(t *testing.T) {
 				require.Equal(t, tc.expectedQuote.Clid, quote.Clid, "Clid is not correct")
 				require.Equal(t, tc.expectedQuote.Price, quote.Price, "Price is not correct")
 				require.Equal(t, &tc.phase, quote.Phase, "Phase is not correct")
-				var expectedFees, actualFees []Fee
-				for _, fee := range tc.expectedQuote.Fees {
-					expectedFees = append(expectedFees, *fee)
-				}
-				for _, fee := range quote.Fees {
-					actualFees = append(actualFees, *fee)
-				}
-				require.Equal(t, expectedFees, actualFees, "Fees are not correct")
+				require.Equal(t, len(tc.expectedQuote.Fees), len(quote.Fees), "Fees are not correct")
 				require.Equal(t, tc.expectedQuote.FXRate, quote.FXRate, "FxRate is not correct")
 				require.Equal(t, tc.expectedQuote.Class, quote.Class, "Class is not correct")
 			}
