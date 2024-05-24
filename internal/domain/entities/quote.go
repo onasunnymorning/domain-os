@@ -9,15 +9,15 @@ import (
 // Quote represents a quote for a specific transaction on the system.
 type Quote struct {
 	TimeStamp       time.Time
+	DomainName      DomainName
+	TransactionType string
+	Clid            ClIDType
+	Years           int
 	Price           *money.Money
+	Class           string
 	Fees            []*Fee
 	FXRate          *FX
-	DomainName      DomainName
-	Years           int
-	TransactionType string
 	Phase           *Phase // `json:"-"`
-	Clid            ClIDType
-	Class           string
 }
 
 // NewQuote creates a new Quote.
