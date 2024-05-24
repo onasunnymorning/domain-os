@@ -53,7 +53,11 @@ func (q *Quote) AddFeeAndUpdatePrice(fee *Fee, yearlyFee bool) error {
 			feeMoney = feeMoney.Multiply(int64(q.Years))
 		}
 		// Add the fee in matching currency to the total price
-		q.Price, _ = q.Price.Add(feeMoney)
+		var err error
+		q.Price, err = q.Price.Add(feeMoney)
+		if err != nil {
+			return err
+		}
 		// If it is a yearly fee, add the fee to the fees slice as many times as the number of years
 		if yearlyFee {
 			for i := 1; i < q.Years; i++ {

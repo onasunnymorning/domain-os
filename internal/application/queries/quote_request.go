@@ -3,6 +3,7 @@ package queries
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/Rhymond/go-money"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -26,7 +27,7 @@ func (qr *QuoteRequest) Validate() error {
 	if !slices.Contains(entities.ValidTransactionTypes, qr.TransactionType) {
 		return errors.Join(entities.ErrInvalidQuoteRequest, entities.ErrInvalidTransactionType)
 	}
-	cur := money.GetCurrency(qr.Currency)
+	cur := money.GetCurrency(strings.ToUpper(qr.Currency))
 	if cur == nil {
 		return errors.Join(entities.ErrInvalidQuoteRequest, entities.ErrUnknownCurrency)
 	}

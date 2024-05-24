@@ -3,6 +3,7 @@ package entities
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/Rhymond/go-money"
 )
@@ -30,7 +31,7 @@ func (qr *QuoteRequest) Validate() error {
 	if !slices.Contains(ValidTransactionTypes, qr.TransactionType) {
 		return errors.Join(ErrInvalidQuoteRequest, ErrInvalidTransactionType)
 	}
-	cur := money.GetCurrency(qr.Currency)
+	cur := money.GetCurrency(strings.ToUpper(qr.Currency))
 	if cur == nil {
 		return errors.Join(ErrInvalidQuoteRequest, ErrUnknownCurrency)
 	}

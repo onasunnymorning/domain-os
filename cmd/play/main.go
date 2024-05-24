@@ -80,7 +80,7 @@ func main() {
 	// }
 
 	// Get a Quote Simplified
-	q, err := pe.GetQuoteSimplified(qr)
+	q, err := pe.GetQuote(qr)
 	if err != nil {
 		log.Fatalf("error getting quote: %v", err)
 	}
