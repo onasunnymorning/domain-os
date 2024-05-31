@@ -51,7 +51,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push
+      - name: Build and push EPP Client API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: geapex/epp-client-api:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/domain-os:buildcache
+          cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
+      - name: Build and push AdminAPI
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -101,7 +110,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push
+      - name: Retag Admin API
         uses: docker/build-push-action@v5
         with:
           context: .
