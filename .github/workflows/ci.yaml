@@ -58,8 +58,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: geapex/epp-client-api:${{ github.sha }}
-          cache-from: type=registry,ref=geapex/domain-os:buildcache
-          cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
+          cache-from: type=registry,ref=geapex/epp-client-api:buildcache
+          cache-to: type=registry,ref=geapex/epp-client-api:buildcache,mode=max
       - name: Build and push AdminAPI
         uses: docker/build-push-action@v5
         with:
@@ -119,3 +119,12 @@ jobs:
           tags: geapex/domain-os:latest
           cache-from: type=registry,ref=geapex/domain-os:buildcache
           cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
+      - name: Retag EPP Client API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: geapex/epp-client-api:latest
+          cache-from: type=registry,ref=geapex/epp-client-api:buildcache
+          cache-to: type=registry,ref=geapex/epp-client-api:buildcache,mode=max
