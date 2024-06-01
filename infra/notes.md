@@ -1,8 +1,17 @@
-## Create cluster
+## Create cluster and delete on AWS
 
 eksctl create cluster --config-file=eks/non-prod-cluster.yaml
 eksctl get cluster --profile=gprins
 eksctl delete cluster non-prod-cluster --profile=gprins --disable-nodegroup-eviction
+
+## Create and delete cluster on GCP
+gcloud container clusters create zeus --machine-type n1-standard-2 --num-nodes 1
+gcloud container clusters list
+
+gcloud container clusters delete zeus
+gcloud config configurations delete zeus
+gcloud projects delete zeus-python-app
+
 
 ## deploy helm charts
 cd infra
