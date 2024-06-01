@@ -41,7 +41,7 @@ func AutoMigrate(db *gorm.DB) error {
 func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	port, _ := strconv.Atoi(dbPort)
 	// Connect to the server
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=require", dbHost, port, dbUser, dbPass)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=prefer", dbHost, port, dbUser, dbPass)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ type Config struct {
 }
 
 func NewConnection(cfg Config) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=prefer", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName)
 	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
