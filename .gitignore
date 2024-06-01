@@ -17,6 +17,7 @@
 # ENV
 .env
 .env.backup
+values.yaml
 
 # MAC
 .DS_Store
