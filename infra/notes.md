@@ -16,8 +16,16 @@ gcloud projects delete zeus-python-app
 ## deploy helm charts
 cd infra
 helm -n dev install  admin-api ./dos-admin-api --values ./dos-admin-api/values.yaml
+helm -n dev install epp ./epp-client-api
+
+## delete helm charts
+helm -n dev uninstall admin-api
+helm -n dev uninstall epp
+
 
 ## making changes to DNS
+Note that AWS will require a CNAME and GCP will require an A record.
+
 ```AWS_PROFILE=gprins aws route53 change-resource-record-sets \
   --hosted-zone-id Z095704739PYOAA4CKXS9 \
   --change-batch '{"Changes":[{"Action":"UPSERT","ResourceRecordSet":{"Name":"text.aws.apexdomains.net.","Type":"TXT","TTL":300,"ResourceRecords":[{"Value":"\"hello brave new world\""}]}}]}'
