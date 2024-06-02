@@ -5,12 +5,49 @@ eksctl get cluster --profile=gprins
 eksctl delete cluster non-prod-cluster --profile=gprins --disable-nodegroup-eviction
 
 ## Create and delete cluster on GCP
+### using gcloud cli
+cd infra
 gcloud container clusters create zeus --machine-type n1-standard-2 --num-nodes 1
 gcloud container clusters list
 
 gcloud container clusters delete zeus
 gcloud config configurations delete zeus
 gcloud projects delete zeus-python-app
+### using terraform
+https://learnk8s.io/terraform-gke
+
+`cd terraform/gcp`
+`terraform init`
+`terraform plan`
+`terraform apply`
+`terraform destroy`
+
+Configure kubectl
+
+`export KUBECONFIG="${PWD}/kubeconfig-prod"`
+
+Test deployment
+
+`kubectl apply -f deployment.yaml`
+
+Test the test deployment :)
+
+`kubectl port-forward $(kubectl get pod -l name=hello-kubernetes --no-headers | awk '{print $1}') 8080:8080`
+http://localhost:8080/
+
+Or create an service and ingress
+
+`kubectl apply -f service-loadbalancer.yaml`
+`kubectl apply -f ingress.yaml`
+
+Remove the Loadballancer service and replace with container-Naive 
+
+`kubectl delete svc/hello-kubernetes`
+`kubectl apply -f service-neg.yaml`
+
+
+
+
 
 
 ## deploy helm charts

@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-kubernetes
+spec:
+  selector:
+    matchLabels:
+      name: hello-kubernetes
+  template:
+    metadata:
+      labels:
+        name: hello-kubernetes
+    spec:
+      containers:
+      - name: app
+        image: paulbouwer/hello-kubernetes:1.10.1
+        ports:
+          - containerPort: 8080
+        env:
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: KUBERNETES_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
