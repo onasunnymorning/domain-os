@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <login>
+      <clID>{{.Username}}</clID>
+      <pw>{{.Password}}</pw>
+      <options>
+        <version>{{.Version}}</version>
+        <lang>{{.Lang}}</lang>
+      </options>
+      {{- if or .Namespaces .ExtensionNamespaces}}
+      <svcs>
+        {{- range $s := .Namespaces}}
+        <objURI>{{$s}}</objURI>
+        {{- end}}
+        {{- if .ExtensionNamespaces}}
+        <svcExtension>
+          {{- range $s := .ExtensionNamespaces}}
+          <extURI>{{$s}}</extURI>
+          {{- end}}
+        </svcExtension>
+        {{- end}}
+      </svcs>
+      {{- end}}
+    </login>
+    {{- if .ClTrID}}
+    <clTRID>{{.ClTrID}}</clTRID>
+    {{- end}}
+    </command>
+</epp>
