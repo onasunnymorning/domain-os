@@ -41,7 +41,7 @@ func AutoMigrate(db *gorm.DB) error {
 func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	port, _ := strconv.Atoi(dbPort)
 	// Connect to the server
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=prefer", dbHost, port, dbUser, dbPass)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable", dbHost, port, dbUser, dbPass)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return err
@@ -74,6 +74,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 		if strings.Contains(errMsg, fmt.Sprintf("database \"%s\" does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
+				log.Println(err)
 				return nil, fmt.Errorf("failed to create database: %w", err)
 			}
 			// Retry the connection after creating the database
