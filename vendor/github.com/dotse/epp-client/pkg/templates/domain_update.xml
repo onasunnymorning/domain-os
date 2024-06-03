@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <update>
+      <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+        <domain:name>{{.Name}}</domain:name>
+        {{- if .Add}}
+        <domain:add>
+          {{- if or .Add.Hosts .Add.HostAttributes}}
+          <domain:ns>
+            {{- if .Add.Hosts}}
+            {{- range $h := .Add.Hosts}}
+            <domain:hostObj>{{$h}}</domain:hostObj>
+            {{- end}}
+            {{- end}}
+            {{- if .Add.HostAttributes}}
+            {{- range $h := .Add.HostAttributes}}
+            <domain:hostAttr>
+              <domain:hostName>{{$h}}</domain:hostName>
+            </domain:hostAttr>
+            {{- end}}
+            {{- end}}
+          </domain:ns>
+          {{- end}}
+          {{- if .Add.Statuses}}
+          {{- range $s := .Add.Statuses}}
+          <domain:status s="{{$s.Status}}" lang="{{$s.Language}}">{{$s.Message}}</domain:status>
+          {{- end}}
+          {{- end}}
+        </domain:add>
+        {{- end}}
+        {{- if .Remove}}
+        <domain:rem>
+          {{- if or .Remove.Hosts .Remove.HostAttributes}}
+          <domain:ns>
+            {{- if .Remove.Hosts}}
+            {{- range $h := .Remove.Hosts}}
+            <domain:hostObj>{{$h}}</domain:hostObj>
+            {{- end}}
+            {{- end}}
+            {{- if .Remove.HostAttributes}}
+            {{- range $h := .Remove.HostAttributes}}
+            <domain:hostAttr>
+              <domain:hostName>{{$h}}</domain:hostName>
+            </domain:hostAttr>
+            {{- end}}
+            {{- end}}
+          </domain:ns>
+          {{- end}}
+          {{- if .Remove.Statuses}}
+          {{- range $s := .Remove.Statuses}}
+          <domain:status s="{{$s.Status}}" lang="{{$s.Language}}">{{$s.Message}}</domain:status>
+          {{- end}}
+          {{- end}}
+        </domain:rem>
+        {{- end}}
+        {{- if .Change}}
+        <domain:chg>
+          {{- if .Change.Registrant}}
+          <domain:registrant>{{.Change.Registrant}}</domain:registrant>
+          {{- end}}
+          {{- if .Change.Password}}
+          <domain:authInfo>
+            <domain:pw>{{.Change.Password}}</domain:pw>
+          </domain:authInfo>
+          {{- end}}
+        </domain:chg>
+        {{- end}}
+      </domain:update>
+    </update>
+    {{- if or .DNSSecAdd (or .DNSSecRemove (or .DNSSecRemoveAll (or .RegistryLock .ClientDelete)))}}
+    <extension>
+      {{- if or .DNSSecAdd (or .DNSSecRemove .DNSSecRemoveAll)}}
+      <secDNS:update xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xsi:schemaLocation="urn:ietf:params:xml:ns:secDNS-1.1 secDNS-1.1.xsd">
+        {{- if .DNSSecAdd}}
+        <secDNS:add>
+          {{- range $d := .DNSSecAdd}}
+          <secDNS:dsData>
+            <secDNS:keyTag>{{$d.KeyTag}}</secDNS:keyTag>
+            <secDNS:alg>{{$d.Algorithm}}</secDNS:alg>
+            <secDNS:digestType>{{$d.DigestType}}</secDNS:digestType>
+            <secDNS:digest>{{$d.Digest}}</secDNS:digest>
+          </secDNS:dsData>
+          {{- end}}
+        </secDNS:add>
+        {{- end}}
+        {{- if or .DNSSecRemove .DNSSecRemoveAll}}
+        <secDNS:rem>
+          {{- if .DNSSecRemoveAll}}
+          <secDNS:all>1</secDNS:all>
+          {{- end}}
+          {{- if .DNSSecRemove}}
+          {{- range $d := .DNSSecRemove}}
+          <secDNS:dsData>
+            <secDNS:keyTag>{{$d.KeyTag}}</secDNS:keyTag>
+            <secDNS:alg>{{$d.Algorithm}}</secDNS:alg>
+            <secDNS:digestType>{{$d.DigestType}}</secDNS:digestType>
+            <secDNS:digest>{{$d.Digest}}</secDNS:digest>
+          </secDNS:dsData>
+          {{- end}}
+          {{- end}}
+        </secDNS:rem>
+        {{- end}}
+      </secDNS:update>
+      {{- end}}
+      {{- if .RegistryLock}}
+      <rl:lock xmlns:rl="urn:se:iis:xml:epp:registryLock-1.0" xsi:schemaLocation="urn:se:iis:xml:epp:registryLock-1.0 registryLock-1.0.xsd">
+        <rl:unlock>{{.RegistryLock}}</rl:unlock>
+      </rl:lock>
+      {{- end}}
+      {{- if .ClientDelete}}
+      <iis:update xmlns:iis="urn:se:iis:xml:epp:iis-1.2" xsi:schemaLocation="urn:se:iis:xml:epp:iis-1.2 iis-1.2.xsd">
+        <iis:clientDelete atExpDate="{{.ClientDeleteAtExpDate}}">{{BoolToInt .ClientDelete}}</iis:clientDelete>
+      </iis:update>
+      {{- end}}
+    </extension>
+    {{- end}}
+    {{- if .ClTrID}}
+    <clTRID>{{.ClTrID}}</clTRID>
+    {{- end}}
+  </command>
+</epp>
