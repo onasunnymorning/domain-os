@@ -18,6 +18,16 @@
 .env
 .env.backup
 
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate*
+values.yaml
+
+# Chachefile
+gke_gcloud_auth_plugin_cache
+
+
 # MAC
 .DS_Store
 
