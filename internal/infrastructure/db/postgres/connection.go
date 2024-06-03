@@ -67,13 +67,14 @@ type Config struct {
 }
 
 func NewConnection(cfg Config) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=prefer", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName)
 	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, fmt.Sprintf("database \"%s\" does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
+				log.Println(err)
 				return nil, fmt.Errorf("failed to create database: %w", err)
 			}
 			// Retry the connection after creating the database

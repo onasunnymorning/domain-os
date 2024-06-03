@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  ENV: "{{ .Values.environment.env }}"
+  GIN_MODE: "{{ .Values.environment.ginMode }}"
+  OPENEXCHANGERATES_APP_ID: "{{ .Values.environment.openExchangeRatesAppId }}"
+  DB_HOST: "{{ .Values.environment.dbHost }}"
+  DB_PORT: "{{ .Values.environment.dbPort }}"
+  DB_NAME: "{{ .Values.environment.dbName }}"
+  API_PORT: "{{ .Values.api.port }}"
+  API_HOST: "{{ .Values.api.host }}"
+  API_VERSION: "{{ .Values.api.version }}"
