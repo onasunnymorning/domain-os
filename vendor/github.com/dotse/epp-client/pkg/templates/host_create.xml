@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <create>
+      <host:create xmlns:host="urn:ietf:params:xml:ns:host-1.0">
+        <host:name>{{.Name}}</host:name>
+        {{- if .Addresses}}
+        {{- range $a := .Addresses}}
+        <host:addr{{if $a.Version}} ip="{{$a.Version}}"{{end}}>{{$a.IP}}</host:addr>
+        {{- end}}
+        {{- end}}
+      </host:create>
+    </create>
+    {{- if .ClTrID}}
+    <clTRID>{{.ClTrID}}</clTRID>
+    {{- end}}
+  </command>
+</epp>

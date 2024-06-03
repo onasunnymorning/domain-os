@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <create>
+      <contact:create xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
+        <contact:id>{{.ID}}</contact:id>
+        {{- if .PostalInfo}}
+        {{- range $p := .PostalInfo}}
+        <contact:postalInfo type="{{$p.Location}}">
+          <contact:name>{{$p.Name}}</contact:name>
+          {{- if $p.Organization}}
+          <contact:org>{{$p.Organization}}</contact:org>
+          {{- end}}
+          {{- if $p.Address}}
+          <contact:addr>
+            {{- if $p.Address.Street}}
+            {{- range $s := $p.Address.Street}}
+            <contact:street>{{$s}}</contact:street>
+            {{- end}}
+            {{- end}}
+            <contact:city>{{$p.Address.City}}</contact:city>
+            {{- if $p.Address.StateOrProvince}}
+            <contact:sp>{{$p.Address.StateOrProvince}}</contact:sp>
+            {{- end}}
+            {{- if $p.Address.PostalCode}}
+            <contact:pc>{{$p.Address.PostalCode}}</contact:pc>
+            {{- end}}
+            <contact:cc>{{$p.Address.CountryCode}}</contact:cc>
+          </contact:addr>
+          {{- end}}
+        </contact:postalInfo>
+        {{- end}}
+        {{- end}}
+        {{- if .Voice}}
+        <contact:voice {{if .Voice.X}}x="{{.Voice.X}}"{{end}}>{{.Voice.Number}}</contact:voice>
+        {{- end}}
+        {{- if .Fax}}
+        <contact:fax {{if .Fax.X}}x="{{.Fax.X}}"{{end}}>{{.Fax.Number}}</contact:fax>
+        {{- end}}
+        <contact:email>{{.Email}}</contact:email>
+        {{- if .Disclose}}
+        <contact:disclose flag="{{.Disclose.Disclose}}">
+          {{- if .Disclose.InternationalName}}
+          <contact:name type="int"/>
+          {{- end}}
+          {{- if .Disclose.LocalName}}
+          <contact:name type="loc"/>
+          {{- end}}
+          {{- if .Disclose.InternationalOrg}}
+          <contact:org type="int"/>
+          {{- end}}
+          {{- if .Disclose.LocalOrg -}}
+          <contact:org type="loc"/>
+          {{- end}}
+          {{- if .Disclose.InternationalAddr}}
+          <contact:addr type="int"/>
+          {{- end}}
+          {{- if .Disclose.LocalAddr}}
+          <contact:addr type="loc"/>
+          {{- end}}
+          {{- if .Disclose.Voice}}
+          <contact:voice/>
+          {{- end}}
+          {{- if .Disclose.Fax}}
+          <contact:fax/>
+          {{- end}}
+          {{- if .Disclose.Email}}
+          <contact:email/>
+          {{- end}}
+        </contact:disclose>
+        {{- end}}
+      </contact:create>
+    </create>
+    {{- if or .OrganisationNumber .ValueAddedTaxNumber}}
+    <extension>
+      <iis:create xmlns:iis="urn:se:iis:xml:epp:iis-1.2">
+        {{- if .OrganisationNumber}}
+        <iis:orgno>{{.OrganisationNumber}}</iis:orgno>
+        {{- end}}
+        {{- if .ValueAddedTaxNumber}}
+        <iis:vatno>{{.ValueAddedTaxNumber}}</iis:vatno>
+        {{- end}}
+      </iis:create>
+    </extension>
+    {{- end}}
+    {{- if .ClTrID}}
+    <clTRID>{{.ClTrID}}</clTRID>
+    {{- end}}
+  </command>
+</epp>

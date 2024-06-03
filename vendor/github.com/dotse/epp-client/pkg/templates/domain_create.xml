@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <command>
+    <create>
+      <domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>{{.Name}}</domain:name>
+        {{- if .Period}}
+        <domain:period {{if .Period.Unit}}unit="{{.Period.Unit}}"{{end}}>{{.Period.Time}}</domain:period>
+        {{- end}}
+        {{- if or .Hosts .HostAttributes}}
+        <domain:ns>
+          {{- if .Hosts}}
+          {{- range $h := .Hosts}}
+          <domain:hostObj>{{$h}}</domain:hostObj>
+          {{- end}}
+          {{- end}}
+          {{- if .HostAttributes}}
+          {{- range $h := .HostAttributes}}
+          <domain:hostAttr>
+            <domain:hostName>{{$h}}</domain:hostName>
+          </domain:hostAttr>
+          {{- end}}
+          {{- end}}
+        </domain:ns>
+        {{- end}}
+        {{- if .Password}}
+        <domain:authInfo>
+          <domain:pw>{{.Password}}</domain:pw>
+        </domain:authInfo>
+        {{- end}}
+        <domain:registrant>{{.Registrant}}</domain:registrant>
+      </domain:create>
+    </create>
+    {{- if or .DsData .RegistryLock}}
+    <extension>
+      {{- if .DsData}}
+      <secDNS:create xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xsi:schemaLocation="urn:ietf:params:xml:ns:secDNS-1.1 secDNS-1.1.xsd">
+        {{- range $d := .DsData}}
+        <secDNS:dsData>
+          <secDNS:keyTag>{{$d.KeyTag}}</secDNS:keyTag>
+          <secDNS:alg>{{$d.Algorithm}}</secDNS:alg>
+          <secDNS:digestType>{{$d.DigestType}}</secDNS:digestType>
+          <secDNS:digest>{{$d.Digest}}</secDNS:digest>
+        </secDNS:dsData>
+        {{- end}}
+      </secDNS:create>
+      {{- end}}
+      {{- if .RegistryLock}}
+      <rl:lock xmlns:rl="urn:se:iis:xml:epp:registryLock-1.0" xsi:schemaLocation="urn:se:iis:xml:epp:registryLock-1.0 registryLock-1.0.xsd">
+        <rl:unlock>{{.RegistryLock}}</rl:unlock>
+      </rl:lock>
+      {{- end}}
+    </extension>
+    {{- end}}
+    {{- if .ClTrID}}
+    <clTRID>{{.ClTrID}}</clTRID>
+    {{- end}}
+  </command>
+</epp>
