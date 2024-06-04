@@ -70,11 +70,12 @@ func main() {
 
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
-			User:   os.Getenv("DB_USER"),
-			Pass:   os.Getenv("DB_PASS"),
-			Host:   os.Getenv("DB_HOST"),
-			Port:   os.Getenv("DB_PORT"),
-			DBName: os.Getenv("DB_NAME"),
+			User:    os.Getenv("DB_USER"),
+			Pass:    os.Getenv("DB_PASS"),
+			Host:    os.Getenv("DB_HOST"),
+			Port:    os.Getenv("DB_PORT"),
+			DBName:  os.Getenv("DB_NAME"),
+			SSLmode: "require",
 		},
 	)
 	if err != nil {
