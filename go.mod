@@ -7,10 +7,12 @@ require (
 	github.com/THREATINT/go-net v1.2.37
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/apex/gateway v1.1.2
+	github.com/beevik/etree v1.1.0
 	github.com/biter777/countries v1.7.2
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
+	github.com/dotse/epp-lib v0.1.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lib/pq v1.10.9
@@ -19,6 +21,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.31.1
 	github.com/schollz/progressbar/v3 v3.14.2
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
@@ -35,12 +38,10 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/aws/aws-lambda-go v1.17.0 // indirect
-	github.com/beevik/etree v1.1.0 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dotse/epp-lib v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
