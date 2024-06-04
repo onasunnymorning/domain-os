@@ -96,8 +96,8 @@ func generateCertificate() tls.Certificate {
 		Subject: pkix.Name{
 			CommonName:   "epp.example.test",
 			Organization: []string{"Simple Server Test"},
-			Country:      []string{"SE"},
-			Locality:     []string{"Stockholm"},
+			Country:      []string{"AR"},
+			Locality:     []string{"Buenos Aires"},
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().AddDate(0, 0, 1),
