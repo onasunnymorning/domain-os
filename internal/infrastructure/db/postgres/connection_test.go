@@ -18,17 +18,19 @@ const (
 	dbPortString = "5432"
 	dbPort       = 5432
 	dbName       = "dos_unittests"
+	sslmode      = "require"
 )
 
 func setupTestDB() *gorm.DB {
-	gormDB, err := gorm.Open(postgres.Open("postgres://" + dbUser + ":" + dbPass + "@" + dbHost + ":" + dbPortString + "/" + dbName))
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPortString, dbName, sslmode)
+	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
 		// If the database does not exist, create it and retry
 		if errMsg == fmt.Sprintf("failed to connect to `host=%s user=%s database=%s`: server error (FATAL: database \"%s\" does not exist (SQLSTATE 3D000))", dbHost, dbUser, dbName, dbName) {
 			log.Println("Database does not exist. Creating...")
 			createTestDB()
-			gormDB, err := gorm.Open(postgres.Open("postgres://" + dbUser + ":" + dbPass + "@" + dbHost + ":" + dbPortString + "/" + dbName))
+			gormDB, err := gorm.Open(postgres.Open(dsn))
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -44,7 +46,7 @@ func setupTestDB() *gorm.DB {
 }
 
 func createTestDB() {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable", dbHost, dbPort, dbUser, dbPass)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=require", dbHost, dbPort, dbUser, dbPass)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal(err)
