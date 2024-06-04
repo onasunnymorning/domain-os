@@ -49,11 +49,7 @@ func main() {
 	commandMux := &epp.CommandMux{}
 
 	commandMux.BindGreeting(sendGreeting)
-	commandMux.Bind(
-		epp.NewXMLPathBuilder().
-			AddOrphan("//hello", epp.NamespaceIETFEPP10.String()).String(),
-		sendGreeting,
-	)
+	commandMux.Bind(epp.NewXMLPathBuilder().AddOrphan("//hello", epp.NamespaceIETFEPP10.String()).String(), sendGreeting)
 	// commandMux.BindCommand("info", epp.NamespaceIETFContact10.String(),
 	// 	funcTharHandlesContactInfoCommand,
 	// )
@@ -66,6 +62,7 @@ func main() {
 			ClientAuth:   tls.RequireAnyClientCert,
 			MinVersion:   tls.VersionTLS12,
 		},
+		ConnContext:    logConnection,
 		Timeout:        time.Hour,
 		IdleTimeout:    350 * time.Second,
 		WriteTimeout:   2 * time.Minute,
@@ -123,4 +120,15 @@ func sendGreeting(ctx context.Context, rw epp.Writer, _ *etree.Document) {
 // getGreetingXML returns the XML for a greeting.
 func getGreetingXML() string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?><epp xmlns="urn:ietf:params:xml:ns:epp-1.0"><response><result code="1000"><msg>Welcome Stranger</msg></result><trID><clTRID>ABC-12345</clTRID><svTRID>APEX-123</svTRID></trID></response></epp>`
+}
+
+// logConnection implements the
+// ConnContext func(ctx context.Context, conn *tls.Conn) (context.Context, error)
+// interface and is a placeholder for connection management.
+// We simply log to the console that a connection has been established.
+func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error) {
+	// add the connection ID to the context
+	ctx = context.WithValue(ctx, "cid", "12345")
+	fmt.Printf("Connection with id %s established\n", ctx.Value("cid"))
+	return ctx, nil
 }
