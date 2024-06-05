@@ -11,6 +11,7 @@ import (
 func main() {
 	// FLAGS
 	filename := flag.String("f", "", "(path to) the XML escrow filename")
+	mapregistrars := flag.Bool("m", false, "Map registrar IDs to target system")
 	flag.Parse()
 
 	if *filename == "" {
@@ -24,7 +25,7 @@ func main() {
 
 	escrowController := escrow.NewEscrowAnalysisController(escrowService)
 
-	err = escrowController.Analyze()
+	err = escrowController.Analyze(*mapregistrars)
 	if err != nil {
 		log.Fatal(err)
 	}

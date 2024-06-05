@@ -29,7 +29,7 @@ var (
 	ErrMaxAddressesPerHostExceeded = fmt.Errorf("maximum number of %d addresses per host exceeded", MAX_ADDRESSES_PER_HOST)
 	ErrHostStatusIncompatible      = fmt.Errorf("host status is incompatible")
 	ErrOKStatusMustBeSet           = fmt.Errorf("ok status must be set when no prohibitions are set")
-	ErrUnknownHostStatus           = fmt.Errorf("unknown host status")
+	ErrInvalidHostStatus           = fmt.Errorf("invalid host status")
 	ErrHostUpdateProhibited        = fmt.Errorf("host update is prohibited")
 	ErrInvalidHostRoID             = fmt.Errorf("invalid Host.RoID.ObjectIdentifier(), expecting '%s'", HOST_ROID_ID)
 )
@@ -221,7 +221,7 @@ func (h *Host) SetStatus(s string) error {
 	case HostStatusServerUpdateProhibited:
 		h.Status.ServerUpdateProhibited = true
 	default:
-		return ErrUnknownHostStatus
+		return ErrInvalidHostStatus
 	}
 	h.UnsetOKIfNeeded()
 	return h.ValidateStatus()
@@ -255,7 +255,7 @@ func (h *Host) UnsetStatus(s string) error {
 	case HostStatusServerUpdateProhibited:
 		h.Status.ServerUpdateProhibited = false
 	default:
-		return ErrUnknownHostStatus
+		return ErrInvalidHostStatus
 	}
 	h.SetOKIfNeeded()
 	return h.ValidateStatus()

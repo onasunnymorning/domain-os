@@ -19,7 +19,7 @@ func NewEscrowAnalysisController(escrowAnalysisService *services.XMLEscrowServic
 }
 
 // Analyze calls the escrow analysis service to analyze the deposit and header tags and prints the results
-func (c *EscrowAnalysisController) Analyze() error {
+func (c *EscrowAnalysisController) Analyze(mapregistrars bool) error {
 	log.Println("Analyzing escrow file")
 
 	if err := c.svc.AnalyzeDepostTag(); err != nil {
@@ -60,8 +60,10 @@ func (c *EscrowAnalysisController) Analyze() error {
 		return err
 	}
 
-	if err := c.svc.MapRegistrars(); err != nil {
-		return err
+	if mapregistrars {
+		if err := c.svc.MapRegistrars(); err != nil {
+			return err
+		}
 	}
 
 	log.Println("Analysis complete")
