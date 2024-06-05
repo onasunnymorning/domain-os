@@ -50,6 +50,7 @@ func main() {
 
 	commandMux.BindGreeting(sendGreeting)
 	commandMux.Bind(epp.NewXMLPathBuilder().AddOrphan("//hello", epp.NamespaceIETFEPP10.String()).String(), sendGreeting)
+	commandMux.BindCommand("check", epp.NamespaceIETFDomain10.String(), respondToDomainCheckCommand)
 	// commandMux.BindCommand("info", epp.NamespaceIETFContact10.String(),
 	// 	funcTharHandlesContactInfoCommand,
 	// )
@@ -131,4 +132,14 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	ctx = context.WithValue(ctx, "cid", "12345")
 	fmt.Printf("Connection with id %s established\n", ctx.Value("cid"))
 	return ctx, nil
+}
+
+// respondToDomainCheckCommand is a placeholder function that responds to a domain check command.
+func respondToDomainCheckCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
+	rw.Write([]byte(dummyDomainCheckResponse()))
+}
+
+// dummyDomainCheckResponse returns a dummy domain check response.
+func dummyDomainCheckResponse() string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?><epp xmlns="urn:ietf:params:xml:ns:epp-1.0"><response><result code="1000"><msg>Welcome Stranger</msg></result><resData><domain:chkData xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:cd><domain:name avail="1">geoff.smoketestcnic</domain:name></domain:cd></domain:chkData></resData> <trID><clTRID>ABC-12345</clTRID><svTRID>APEX-123</svTRID></trID></response></epp>`
 }
