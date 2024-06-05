@@ -431,7 +431,7 @@ func TestSetHostStatus(t *testing.T) {
 			name: " set invalid status",
 			hs:   HostStatus{OK: true},
 			s:    "invalid",
-			err:  ErrUnknownHostStatus,
+			err:  ErrInvalidHostStatus,
 			ok:   true,
 		},
 		{
@@ -545,7 +545,7 @@ func TestUnsetHostStatus(t *testing.T) {
 			name: " unset invalid status",
 			hs:   HostStatus{OK: true},
 			s:    "invalid",
-			err:  ErrUnknownHostStatus,
+			err:  ErrInvalidHostStatus,
 		},
 		{
 			name: " unset Prohibition when set",
