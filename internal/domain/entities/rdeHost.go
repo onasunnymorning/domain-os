@@ -1,6 +1,10 @@
 package entities
 
-import "time"
+import (
+	"reflect"
+	"strings"
+	"time"
+)
 
 var (
 	RdeHostCSVHeader = []string{"Name", "RoID", "ClID", "CrRr", "CrDate", "UpRr", "UpDate"}
@@ -69,13 +73,6 @@ func (h *RDEHost) ToEntity() (*Host, error) {
 		host.UpdatedAt = date
 	}
 
-	// set the statusses
-	for _, status := range h.Status {
-		err := host.SetStatus(status.S)
-		if err != nil {
-			return nil, err
-		}
-	}
 	// Add the addresses
 	for _, addr := range h.Addr {
 		_, err := host.AddAddress(addr.ID)
@@ -83,6 +80,18 @@ func (h *RDEHost) ToEntity() (*Host, error) {
 			return nil, err
 		}
 	}
+	// set the statusses
+	// for _, status := range h.Status {
+	// 	err := host.SetStatus(status.S)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+	hs, err := GetHostStatusFromRDEHostStatus(h.Status) // We use this instead of SetStatus because we can't guarantee the order of the statuses, which may break in case a prohibition is set first
+	if err != nil {
+		return nil, err
+	}
+	host.Status = hs
 
 	// Validate the host and return it
 	if err := host.Validate(); err != nil {
@@ -99,4 +108,38 @@ type RDEHostStatus struct {
 type RDEHostAddr struct {
 	IP string `xml:"ip,attr"`
 	ID string `xml:",chardata"`
+}
+
+// GetHostStatusFromRDEHostStatus returns a HostStatus from a []RDEHostStatus slice
+func GetHostStatusFromRDEHostStatus(statuses []RDEHostStatus) (HostStatus, error) {
+	var hs HostStatus
+	for _, status := range statuses {
+		// pointer to struct - addressable
+		ps := reflect.ValueOf(&hs)
+		// struct
+		s := ps.Elem()
+		if s.Kind() == reflect.Struct {
+			// exported field
+			var f reflect.Value
+			if strings.ToLower(status.S) == "ok" {
+				f = s.FieldByName(strings.ToUpper(string(status.S))) // uppercase OK completely
+			} else {
+				f = s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:]) // uppercase the first character to match the struct field
+			}
+			if f.IsValid() {
+				// A Value can be changed only if it is
+				// addressable and was not obtained by
+				// the use of unexported struct fields.
+				if f.CanSet() {
+					// change value of N
+					if f.Kind() == reflect.Bool {
+						f.SetBool(true)
+					}
+				}
+			} else {
+				return hs, ErrInvalidContactStatus
+			}
+		}
+	}
+	return hs, nil
 }

@@ -11,7 +11,7 @@ import (
 func main() {
 	// FLAGS
 	filename := flag.String("f", "", "(path to) the XML escrow filename")
-	mapregistrars := flag.Bool("mapregistrars", false, "Map registrar IDs to target system")
+	mapregistrars := flag.Bool("m", false, "Map registrar IDs to target system")
 	flag.Parse()
 
 	if *filename == "" {
