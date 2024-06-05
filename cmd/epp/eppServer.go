@@ -46,6 +46,7 @@ func (l *LogrusLogger) Debugf(format string, args ...interface{}) {
 
 func main() {
 	logger := NewLogrusLogger()
+
 	commandMux := &epp.CommandMux{}
 
 	commandMux.BindGreeting(sendGreeting)
@@ -136,11 +137,48 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 
 // respondToDomainCheckCommand is a placeholder function that responds to a domain check command.
 func respondToDomainCheckCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
-	// Get a list of domain names to check
-	domainNames := doc.FindElements("//domain:name")
-	for _, domainName := range domainNames {
-		fmt.Printf("Checking domain: %s\n", domainName.Text())
-	}
+	// SETUP
+	// Domain service
+	// gormDB, err := postgres.NewConnection(
+	// 	postgres.Config{
+	// 		User:    os.Getenv("DB_USER"),
+	// 		Pass:    os.Getenv("DB_PASS"),
+	// 		Host:    "localhost",
+	// 		Port:    os.Getenv("DB_PORT"),
+	// 		DBName:  os.Getenv("DB_NAME"),
+	// 		SSLmode: "require",
+	// 	},
+	// )
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	// idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// roidService := services.NewRoidService(idGenerator)
+	// hostRepo := postgres.NewGormHostRepository(gormDB)
+	// nndnRepo := postgres.NewGormNNDNRepository(gormDB)
+	// tldRepo := postgres.NewGormTLDRepo(gormDB)
+	// phaseRepo := postgres.NewGormPhaseRepository(gormDB)
+	// premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
+	// fxRepo := postgres.NewFXRepository(gormDB)
+	// domainRepo := postgres.NewDomainRepository(gormDB)
+	// ds := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
+	// // Get a list of domain names to check
+	// domainNames := doc.FindElements("//domain:name")
+	// results := make([]*queries.DomainCheckResult, len(domainNames))
+	// for i, domainName := range domainNames {
+	// 	fmt.Printf("Checking domain: %s\n", domainName.Text())
+	// 	result, err := ds.CheckDomain(ctx, &queries.DomainCheckQuery{
+	// 		DomainName: entities.DomainName(domainName.Text()),
+	// 	})
+	// 	if err != nil {
+	// 		log.Fatalf("Error checking domain: %s\n", err)
+	// 	}
+	// 	results[i] = result
+	// 	fmt.Println(results)
+	// }
 	rw.Write([]byte(dummyDomainCheckResponse()))
 }
 
