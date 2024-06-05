@@ -136,6 +136,11 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 
 // respondToDomainCheckCommand is a placeholder function that responds to a domain check command.
 func respondToDomainCheckCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
+	// Get a list of domain names to check
+	domainNames := doc.FindElements("//domain:name")
+	for _, domainName := range domainNames {
+		fmt.Printf("Checking domain: %s\n", domainName.Text())
+	}
 	rw.Write([]byte(dummyDomainCheckResponse()))
 }
 
