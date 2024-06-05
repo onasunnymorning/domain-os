@@ -142,7 +142,7 @@ func TestRDEHost_ToEntity(t *testing.T) {
 			err:      ErrHostStatusIncompatible,
 		},
 		{
-			name: "invalid status ",
+			name: "invalid status",
 			// Create a sample RDEHost
 			rdeHost: &RDEHost{
 				Name:   "example.com",
@@ -156,7 +156,7 @@ func TestRDEHost_ToEntity(t *testing.T) {
 				Addr:   []RDEHostAddr{{IP: "v4", ID: "192.168.0.1"}, {IP: "v4", ID: "192.168.0.2"}},
 			},
 			expected: nil,
-			err:      ErrUnknownHostStatus,
+			err:      ErrInvalidHostStatus,
 		},
 		{
 			name: "invalid IP ",

@@ -92,6 +92,7 @@ func (h *RDEHost) ToEntity() (*Host, error) {
 		return nil, err
 	}
 	host.Status = hs
+	host.SetOKIfNeeded()
 
 	// Validate the host and return it
 	if err := host.Validate(); err != nil {
@@ -137,7 +138,7 @@ func GetHostStatusFromRDEHostStatus(statuses []RDEHostStatus) (HostStatus, error
 					}
 				}
 			} else {
-				return hs, ErrInvalidContactStatus
+				return hs, ErrInvalidHostStatus
 			}
 		}
 	}
