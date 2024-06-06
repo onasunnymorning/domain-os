@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -91,6 +93,47 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
+	// Event Producer
+	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "domain-os-kafka-1"}) // TODO: FIXMe: bootstrap servers should come from env
+
+	if err != nil {
+		fmt.Printf("Failed to create producer: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Created Producer %v\n", p)
+
+	// Listen to all the events on the default events channel
+	go func() {
+		for e := range p.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				// The message delivery report, indicating success or
+				// permanent failure after retries have been exhausted.
+				// Application level retries won't help since the client
+				// is already configured to do that.
+				m := ev
+				if m.TopicPartition.Error != nil {
+					fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+				} else {
+					fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
+						*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
+				}
+			case kafka.Error:
+				// Generic client instance-level errors, such as
+				// broker connection failures, authentication issues, etc.
+				//
+				// These errors should generally be considered informational
+				// as the underlying client will automatically try to
+				// recover from any errors encountered, the application
+				// does not need to take action on them.
+				fmt.Printf("Error: %v\n", ev)
+			default:
+				fmt.Printf("Ignored event: %s\n", ev)
+			}
+		}
+	}()
+
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
@@ -177,7 +220,7 @@ func main() {
 		r.Use(nrgin.Middleware(newRelicApp))
 	}
 
-	rest.NewPingController(r)
+	rest.NewPingController(r, p)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
