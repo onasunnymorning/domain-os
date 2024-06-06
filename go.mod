@@ -10,6 +10,7 @@ require (
 	github.com/beevik/etree v1.1.0
 	github.com/biter777/countries v1.7.2
 	github.com/bwmarrin/snowflake v0.3.0
+	github.com/confluentinc/confluent-kafka-go v1.9.2
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
 	github.com/dotse/epp-lib v0.1.1
