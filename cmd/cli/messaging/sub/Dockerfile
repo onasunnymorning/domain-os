@@ -33,7 +33,7 @@ COPY ./cmd/cli/messaging/sub ./cmd/cli/messaging/sub
 # Just build the consumer binary
 FROM build as build-consumer
 RUN go build -tags dynamic -ldflags="-s -w" -o consumerApp /cmd/cli/messaging/sub/consumer.go
-RUN upx --brute /consumerApp
+# RUN upx --brute /consumerApp
 
 
 # Create Consumer release image
@@ -45,4 +45,4 @@ COPY --from=build /usr/lib/librdkafka* /usr/lib/
 # Copy our static executable
 COPY --from=build-consumer /consumerApp /consumerApp
 
-CMD [ "/consumerApp", "domain-os-kafka-1", "mygroup", "ping" ]
+CMD [ "/consumerApp", "domain-os-kafka-1", "mygroup", "DOS-AdminAPI-Events" ]
