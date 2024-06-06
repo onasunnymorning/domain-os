@@ -490,64 +490,63 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					return nil, errors.Join(ErrDecodingXML, err)
 				}
 
-				// Only process linked hosts
-				if host.IsLinked() {
-
-					// Validate using a CreateHostCommand
-					cmd := commands.CreateHostCommand{}
-					err = cmd.FromRdeHost(&host)
-					if err != nil {
-						errCount++
-						svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
-					}
-
-					// Add the command to our slice of create commands, if required AND the host is linked, otherwise no need to import it
-					if returnHostCommands && cmd.Status.Linked {
-						hostCmds = append(hostCmds, cmd)
-					}
-
-					writer.Write(host.ToCSV())
-					// Set Status in statusFile
-					hStatuses := []string{host.Name}
-					for _, status := range host.Status {
-						statusCounter++
-						hStatuses = append(hStatuses, status.S)
-					}
-					for i, s := range hStatuses {
-						if i == 0 {
-							continue
-						}
-						statusWriter.Write([]string{host.Name, s})
-					}
-					// Set addresses in addrFile
-					for _, addr := range host.Addr {
-						addrCounter++
-						addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
-					}
-
-					// Update counters in Registrar Map
-					objCount := svc.RegsistrarMapping[host.ClID]
-					objCount.HostCount++
-					svc.RegsistrarMapping[host.ClID] = objCount
-					count++
-				} else {
+				// Flag unlinked hosts
+				if !host.IsLinked() {
 					unlinkedCount++
 				}
+
+				// Validate using a CreateHostCommand
+				cmd := commands.CreateHostCommand{}
+				err = cmd.FromRdeHost(&host)
+				if err != nil {
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
+				}
+
+				// Add the command to our slice of create commands
+				if returnHostCommands {
+					hostCmds = append(hostCmds, cmd)
+				}
+
+				writer.Write(host.ToCSV())
+				// Set Status in statusFile
+				hStatuses := []string{host.Name}
+				for _, status := range host.Status {
+					statusCounter++
+					hStatuses = append(hStatuses, status.S)
+				}
+				for i, s := range hStatuses {
+					if i == 0 {
+						continue
+					}
+					statusWriter.Write([]string{host.Name, s})
+				}
+				// Set addresses in addrFile
+				for _, addr := range host.Addr {
+					addrCounter++
+					addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
+				}
+
+				// Update counters in Registrar Map
+				objCount := svc.RegsistrarMapping[host.ClID]
+				objCount.HostCount++
+				svc.RegsistrarMapping[host.ClID] = objCount
+				count++
 
 				pbar.Add(1)
 			}
 		}
 	}
 	log.Println("Done!")
-	if unlinkedCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d unlinked hosts were found in the escrow file and will not be imported\n", unlinkedCount)
+	if unlinkedCount > svc.Header.HostCount()/10 {
+		log.Printf("🔥 WARNING 🔥 %d more than 1/10th hosts are unlinked, but can still be imported\n", unlinkedCount)
 	}
 	addrWriter.Flush()
 	checkLineCount(addrFileName, addrCounter)
 	statusWriter.Flush()
 	checkLineCount(statusFileName, statusCounter)
 	writer.Flush()
-	checkLineCount(outFileName, svc.Header.HostCount()-unlinkedCount)
+	checkLineCount(outFileName, svc.Header.HostCount())
 	if errCount > 0 {
 		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
 	}
@@ -1420,5 +1419,59 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 	}
 
 	log.Printf("✅ Created all domains successfully\n")
+	return nil
+}
+
+// LinkHostsToDomains Links the hosts to the domains in the repository through the Admin API. It requires the domain and host objects to be created first
+func (svc *XMLEscrowService) LinkHostsToDomains() error {
+	// Read the CSV file that contains the mapping [domainname, hostname]
+	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-domainNameservers.csv")
+	if err != nil {
+		return err
+	}
+
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	// Setup up the API client
+	URL := "http://localhost:8080/domains/"
+
+	// Loop over the records and link the hosts to the domains
+	log.Printf("Linking %d hosts to domains... \n", len(records))
+	pbar := progressbar.Default(int64(len(records)))
+	for _, record := range records {
+		// Get the domain and host names
+		domainName := record[0]
+		hostName := record[1]
+
+		// Send the request
+		requestURL := URL + domainName + "/hostname/" + hostName
+		req, err := http.NewRequest("POST", requestURL, nil)
+		if err != nil {
+			return err
+		}
+
+		// Check if we got a 204 response
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		pbar.Add(1)
+
+		if resp.StatusCode == 204 {
+			svc.Import.DomainHostLinks.Present++
+			continue
+		} else {
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error linking host %s to domain %s: %s", hostName, domainName, resp.Status))
+			svc.Import.DomainHostLinks.Missing++
+		}
+
+	}
+
 	return nil
 }

@@ -28,6 +28,8 @@ func NewHostController(e *gin.Engine, hostService interfaces.HostService) *HostC
 	e.DELETE("/hosts/:roid", c.DeleteHostByRoID)
 	e.POST("/hosts", c.CreateHost)
 
+	e.GET("/hostname/:name/:clid", c.GetHostByNameAndClid)
+
 	// ADDRESSES ROUTES
 	e.POST("/hosts/:roid/addresses/:ip", c.AddAddressToHost)
 	e.DELETE("/hosts/:roid/addresses/:ip", c.RemoveAddressFromHost)
@@ -225,4 +227,32 @@ func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
 	// Return the response
 	ctx.JSON(200, updatedHost)
 
+}
+
+// GetHostByNameAndClid godoc
+// @Summary Get a host by its name and clid
+// @Description Get a host by its name and clid
+// @Tags Hosts
+// @Produce json
+// @Param name path string true "Name"
+// @Param clid path string true "Clid"
+// @Success 200 {object} entities.Host
+// @Failure 404
+// @Failure 500
+// @Router /hostname/{name}/{clid} [get]
+func (ctrl *HostController) GetHostByNameAndClid(ctx *gin.Context) {
+	name := ctx.Param("name")
+	clid := ctx.Param("clid")
+
+	host, err := ctrl.hostService.GetHostByNameAndClID(ctx, name, clid)
+	if err != nil {
+		if errors.Is(err, entities.ErrHostNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, host)
 }
