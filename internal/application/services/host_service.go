@@ -189,3 +189,8 @@ func (s *HostService) RemoveHostAddress(ctx context.Context, roidString, ip stri
 
 	return host, nil
 }
+
+// GetHostByNameAndClID gets a host by its name and clid
+func (s *HostService) GetHostByNameAndClID(ctx context.Context, name string, clid string) (*entities.Host, error) {
+	return s.hostRepository.GetHostByNameAndClID(ctx, name, clid)
+}
