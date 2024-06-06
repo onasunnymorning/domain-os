@@ -30,12 +30,18 @@ func (ctrl *PingController) Ping(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"message": "Kafka producer not found"})
 		return
 	}
-
+	topic, exists := ctx.Get("kafkaTopic")
+	if !exists {
+		ctx.JSON(501, gin.H{"message": "Kafka topic not found"})
+		return
+	}
+	// Assert the type of the producer and topic
 	kafkaProducer := producer.(*kafka.Producer)
+	kafkatopic := topic.(string)
 
 	err := kafkaProducer.Produce(
 		&kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &ctrl.eventTopic, Partition: kafka.PartitionAny},
+			TopicPartition: kafka.TopicPartition{Topic: &kafkatopic, Partition: kafka.PartitionAny},
 			Value:          []byte("ping"),
 		},
 		nil,

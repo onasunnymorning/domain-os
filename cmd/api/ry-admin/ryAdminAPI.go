@@ -64,10 +64,10 @@ func InitEventProducer(bootstrapServers string) (*kafka.Producer, error) {
 }
 
 // KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
-func KafkaMiddleware(producer *kafka.Producer) gin.HandlerFunc {
+func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Attach the Kafka producer to the context
 		c.Set("kafkaProducer", producer)
+		c.Set("kafkaTopic", topic)
 		c.Next()
 	}
 }
@@ -108,16 +108,16 @@ func main() {
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
 	// Create an event producer, shut down if it fails as its an integral part of the application
-	p, err := InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
+	eventProducer, err := InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
 	if err != nil {
 		log.Fatalf("Failed to create producer: %s\n", err)
 	}
-	defer p.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
-	defer p.Close()          // Close the producer
+	defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
+	defer eventProducer.Close()          // Close the producer
 
 	// Listen to all the events on the default events channel for errors during message delivery. Since sending is asynchronous, we start this channel to receive the delivery reports in a non-blocking way.
 	go func() {
-		for e := range p.Events() {
+		for e := range eventProducer.Events() {
 			switch ev := e.(type) {
 			case *kafka.Message:
 				// The message delivery report, indicating success or
@@ -206,10 +206,11 @@ func main() {
 	// Create Gin Engine/Router
 	r := gin.Default()
 	// Attach the KafkaMiddleware
-	r.Use(KafkaMiddleware(p))
+	eventTopic := "DOS-AdminAPI-Events" // TODO: How to parametrize this?
+	r.Use(KafkaMiddleware(eventProducer, eventTopic))
 
 	// Set up the routes and controllers
-	rest.NewPingController(r, p)
+	rest.NewPingController(r, eventProducer)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
