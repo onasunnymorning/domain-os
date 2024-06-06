@@ -7,16 +7,11 @@ import (
 
 // PingController is a controller for the ping endpoint
 type PingController struct {
-	eventProducer *kafka.Producer
-	eventTopic    string
 }
 
 // NewPingController creates a new ping controller
-func NewPingController(e *gin.Engine, p *kafka.Producer) *PingController {
-	controller := &PingController{
-		eventProducer: p,
-		eventTopic:    "ping",
-	}
+func NewPingController(e *gin.Engine) *PingController {
+	controller := &PingController{}
 
 	e.GET("/ping", controller.Ping)
 

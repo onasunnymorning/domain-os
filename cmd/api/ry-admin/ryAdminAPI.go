@@ -210,7 +210,7 @@ func main() {
 	r.Use(KafkaMiddleware(eventProducer, eventTopic))
 
 	// Set up the routes and controllers
-	rest.NewPingController(r, eventProducer)
+	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService)
 	rest.NewNNDNController(r, nndnService)
