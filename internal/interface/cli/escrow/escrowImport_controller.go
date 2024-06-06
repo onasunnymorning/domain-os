@@ -70,7 +70,12 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 		return err
 	}
 
-	// TODO: FIXME: ADD hosts to domains
+	// Link the Hosts to the Domains
+	err = c.svc.LinkHostsToDomains()
+	if err != nil {
+		c.svc.SaveImportResult()
+		return err
+	}
 
 	// QA the import was successful
 	// TODO: FIXME: Implement this
