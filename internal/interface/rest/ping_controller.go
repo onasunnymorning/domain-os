@@ -25,7 +25,15 @@ func NewPingController(e *gin.Engine, p *kafka.Producer) *PingController {
 
 // Ping is the handler for the ping endpoint
 func (ctrl *PingController) Ping(ctx *gin.Context) {
-	err := ctrl.eventProducer.Produce(
+	producer, exists := ctx.Get("kafkaProducer")
+	if !exists {
+		ctx.JSON(500, gin.H{"message": "Kafka producer not found"})
+		return
+	}
+
+	kafkaProducer := producer.(*kafka.Producer)
+
+	err := kafkaProducer.Produce(
 		&kafka.Message{
 			TopicPartition: kafka.TopicPartition{Topic: &ctrl.eventTopic, Partition: kafka.PartitionAny},
 			Value:          []byte("ping"),

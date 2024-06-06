@@ -22,7 +22,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
 
 	// NeW Relic APM
-	nrgin "github.com/newrelic/go-agent/v3/integrations/nrgin"
+
 	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
@@ -34,7 +34,7 @@ func inLambda() bool {
 	return false
 }
 
-// setSwaggerInfo sets the swagger info dynamically based on the environment variables
+// setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, host, etc.
 func setSwaggerInfo() {
 	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
 	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
@@ -56,6 +56,20 @@ func initNewRelicAPM() (*newrelic.Application, error) {
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
 
+}
+
+// InitEventProducer creates a new event producer
+func InitEventProducer(bootstrapServers string) (*kafka.Producer, error) {
+	return kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
+}
+
+// KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
+func KafkaMiddleware(producer *kafka.Producer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Attach the Kafka producer to the context
+		c.Set("kafkaProducer", producer)
+		c.Next()
+	}
 }
 
 // @title APEX Domain OS ADMIN API
@@ -93,17 +107,15 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
-	// Event Producer
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "domain-os-kafka-1"}) // TODO: FIXMe: bootstrap servers should come from env
-
+	// Create an event producer, shut down if it fails as its an integral part of the application
+	p, err := InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
 	if err != nil {
-		fmt.Printf("Failed to create producer: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create producer: %s\n", err)
 	}
+	defer p.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
+	defer p.Close()          // Close the producer
 
-	fmt.Printf("Created Producer %v\n", p)
-
-	// Listen to all the events on the default events channel
+	// Listen to all the events on the default events channel for errors during message delivery. Since sending is asynchronous, we start this channel to receive the delivery reports in a non-blocking way.
 	go func() {
 		for e := range p.Events() {
 			switch ev := e.(type) {
@@ -134,92 +146,69 @@ func main() {
 		}
 	}()
 
+	// SET UP SERVICES
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
-
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo)
-
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
-
 	// Fees
 	feeRepo := postgres.NewFeeRepository(gormDB)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)
-
 	// Prices
 	priceRepo := postgres.NewGormPriceRepository(gormDB)
 	priceService := services.NewPriceService(phaseRepo, priceRepo)
-
 	// Premium Lists
 	premiumListRepo := postgres.NewGORMPremiumListRepository(gormDB)
 	premiumListService := services.NewPremiumListService(premiumListRepo)
 	// Premium Labels
 	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
 	premiumLabelService := services.NewPremiumLabelService(premiumLabelRepo)
-
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	nndnService := services.NewNNDNService(nndnRepo)
-
 	// FX
 	fxRepo := postgres.NewFXRepository(gormDB)
 	fxService := services.NewFXService(fxRepo)
-
 	// Sync
 	ianaRepo := iana.NewIANARRepository()
 	icannRepo := icann.NewICANNRepo()
 	spec5Repo := postgres.NewSpec5Repository(gormDB)
 	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
 	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)
-
 	// Spec5
 	spec5Service := services.NewSpec5Service(spec5Repo)
-
 	// IANA Registrars
 	ianaRegistrarService := services.NewIANARegistrarService(iregistrarRepo)
-
 	// Registrars
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	registrarService := services.NewRegistrarService(registrarRepo)
-
 	// Accreditations
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo)
-
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
 	contactService := services.NewContactService(contactRepo, *roidService)
-
 	// Hosts
 	hostRepo := postgres.NewGormHostRepository(gormDB)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, *roidService)
-
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
-
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
 
-	// Gin router
+	// Create Gin Engine/Router
 	r := gin.Default()
+	// Attach the KafkaMiddleware
+	r.Use(KafkaMiddleware(p))
 
-	// Add New Relic APM middleware if we are in DEV environment
-	log.Println("ENV: ", os.Getenv("ENV"))
-	if os.Getenv("ENV") == "DEV" {
-		log.Println("Running in DEV environment, initializing New Relic APM")
-		newRelicApp, err := initNewRelicAPM()
-		if err != nil {
-			log.Fatal("Error initializing New Relic APM")
-		}
-		r.Use(nrgin.Middleware(newRelicApp))
-	}
-
+	// Set up the routes and controllers
 	rest.NewPingController(r, p)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService)
@@ -249,6 +238,7 @@ func main() {
 		// Start the server using the AWS Lambda proxy
 		log.Fatal(gateway.ListenAndServe(":8080", r))
 	} else {
+		// Start the server using the standard HTTP server
 		r.Run(":" + os.Getenv("API_PORT"))
 	}
 
