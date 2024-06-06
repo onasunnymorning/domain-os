@@ -30,7 +30,10 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.GET("/domains", controller.ListDomains)
 	// Add and remove hosts
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
+	e.POST("/domains/:name/hostname/:hostName", controller.AddHostToDomainByHostName)
 	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
+	e.DELETE("/domains/:name/hostname/:hostName", controller.RemoveHostFromDomainByHostName)
+
 	// Set domain to dropcatch (will be blocked when deleted)
 	e.POST("/domains/:name/dropcatch", controller.SetDropCatch)
 	e.DELETE("/domains/:name/dropcatch", controller.UnSetDropCatch)
@@ -250,6 +253,37 @@ func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
 	ctx.JSON(204, nil)
 }
 
+// AddHostToDomainByHostName godoc
+// @Summary Add a host to a domain by host name
+// @Description Add a host to a domain by host name
+// @Tags Domains
+// @Produce json
+// @Param domainName path string true "Domain Name"
+// @Param hostName path string true "Host Name"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/hostname/{hostName} [post]
+func (ctrl *DomainController) AddHostToDomainByHostName(ctx *gin.Context) {
+	// Use the service to add the host to the domain
+	err := ctrl.domainService.AddHostToDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrInBailiwickHostsMustHaveAddress) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	// Return result
+	ctx.JSON(204, nil)
+}
+
 // RemoveHostFromDomain godoc
 // @Summary Remove a host from a domain
 // @Description Remove a host from a domain
@@ -274,6 +308,33 @@ func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 		return
 	}
 
+	// Return result
+	ctx.JSON(204, nil)
+}
+
+// RemoveHostFromDomainByHostName godoc
+// @Summary Remove a host from a domain by host name
+// @Description Remove a host from a domain by host name
+// @Tags Domains
+// @Produce json
+// @Param domainName path string true "Domain Name"
+// @Param hostName path string true "Host Name"
+// @Success 204
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/hostname/{hostName} [delete]
+func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
+	// Use the service to remove the host from the domain
+	err := ctrl.domainService.RemoveHostFromDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 	// Return result
 	ctx.JSON(204, nil)
 }

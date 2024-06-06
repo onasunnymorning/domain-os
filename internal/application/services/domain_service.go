@@ -238,6 +238,44 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	return nil
 }
 
+// AddHostToDomainByHostName adds a host to a domain by host name
+func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, domainName, true)
+	if err != nil {
+		return err
+	}
+
+	// Get the host by host name and clid
+	host, err := s.hostRepository.GetHostByNameAndClID(ctx, strings.ToLower(hostName), dom.ClID.String())
+	if err != nil {
+		return err
+	}
+
+	// Add the host to the domain
+	i, err := dom.AddHost(host)
+	if err != nil {
+		if errors.Is(err, entities.ErrDuplicateHost) {
+			return nil // No error if the host is already associated, idempotent
+		}
+		return err
+	}
+
+	// Update the Domain which will save the association as well
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+
+	// Update the host to set the linked flag
+	_, err = s.hostRepository.UpdateHost(ctx, dom.Hosts[i])
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RemoveHostFromDomain removes a host from a domain
 func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
 	// Get the domain
@@ -265,6 +303,69 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 	}
 
 	host, err := s.hostRepository.GetHostByRoid(ctx, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Remove the host from the domain
+	err = dom.RemoveHost(host)
+	if err != nil {
+		return err
+	}
+
+	// Remove tha association
+	err = s.domainRepository.RemoveHostFromDomain(ctx, domRoidInt, hostRoidInt)
+	if err != nil {
+		return err
+	}
+
+	// Save the domain, this will update the association
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+	// Check if the host is associated with any other domains
+	count, err := s.hostRepository.GetHostAssociationCount(ctx, hostRoidInt)
+	if err != nil {
+		// Our operation is successful, but we can't determine if the host is associated with any other domains
+		log.Printf("Failed to get host association count for host %s: %v", host.RoID.String(), err)
+	}
+	if count == 0 {
+		// If not, unset the linked flag
+		err := host.UnsetStatus(entities.HostStatusLinked)
+		if err != nil {
+			// Our operation is successful, but we can't unset the linked flag
+			log.Printf("Failed to unset linked flag on host %s: %v", host.RoID.String(), err)
+		}
+		// Update the host
+		_, err = s.hostRepository.UpdateHost(ctx, host)
+		if err != nil {
+			// Our operation is successful, but we can't update the host
+			log.Printf("Failed to update host %s: %v", host.RoID.String(), err)
+		}
+	}
+	return nil
+}
+
+// RemoveHostFromDomainByHostName removes a host from a domain
+func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, domainName, true)
+	if err != nil {
+		return err
+	}
+
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+
+	// Get the host
+	host, err := s.hostRepository.GetHostByNameAndClID(ctx, strings.ToLower(hostName), dom.ClID.String())
+	if err != nil {
+		return err
+	}
+	hostRoidInt, err := host.RoID.Int64()
 	if err != nil {
 		return err
 	}
