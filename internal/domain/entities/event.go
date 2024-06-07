@@ -34,20 +34,6 @@ type Event struct {
 	Timestamp  time.Time
 }
 
-// ToJSONBytes converts the event to a JSON byte array
-func (e *Event) ToJSONBytes() []byte {
-	jsonBytes, err := json.Marshal(e)
-	if err != nil {
-		return nil
-	}
-	return jsonBytes
-}
-
-// ToJSONString converts the event to a JSON string
-func (e *Event) ToJSONString() string {
-	return string(e.ToJSONBytes())
-}
-
 // EventDetails struct describes the details of an event
 type EventDetails struct {
 	Result  string
@@ -70,12 +56,26 @@ func NewEvent(app, actor, action, oType, oID, endPoint string) *Event {
 	}
 }
 
-// IsError returns true if the event is an error
+// ToJSONBytes converts the event to a JSON byte array
+func (e *Event) ToJSONBytes() []byte {
+	jsonBytes, err := json.Marshal(e)
+	if err != nil {
+		return nil
+	}
+	return jsonBytes
+}
+
+// ToJSONString converts the event to a JSON string
+func (e *Event) ToJSONString() string {
+	return string(e.ToJSONBytes())
+}
+
+// IsError returns true if the event is resulted in an error
 func (e *Event) IsError() bool {
 	return e.Details.Result == EventResultFailure
 }
 
-// GetError returns the error message
+// GetError returns the error message if available
 func (e *Event) GetError() string {
 	return e.Details.Error
 }
