@@ -11,6 +11,7 @@ const (
 	ObjectTypeTLD = "TLD"
 
 	EventTypeAccreditation = "Accreditation"
+	EventTypeUnknown       = "Unknown"
 
 	EventResultSuccess = "Success"
 	EventResultFailure = "Failure"
@@ -28,8 +29,8 @@ type Event struct {
 	Timestamp  time.Time
 }
 
-// ToBytes converts the event to a byte array
-func (e *Event) ToBytes() []byte {
+// ToJSONBytes converts the event to a JSON byte array
+func (e *Event) ToJSONBytes() []byte {
 	jsonBytes, err := json.Marshal(e)
 	if err != nil {
 		return nil
@@ -39,11 +40,7 @@ func (e *Event) ToBytes() []byte {
 
 // ToJSONString converts the event to a JSON string
 func (e *Event) ToJSONString() string {
-	jsonBytes, err := json.Marshal(e)
-	if err != nil {
-		return ""
-	}
-	return string(jsonBytes)
+	return string(e.ToJSONBytes())
 }
 
 // EventDetails struct describes the details of an event
@@ -51,6 +48,7 @@ type EventDetails struct {
 	Result string
 	Before interface{}
 	After  interface{}
+	Error  string
 }
 
 // NewEvent creates a new event
@@ -64,4 +62,14 @@ func NewEvent(app, actor, action, oType, oID, endPoint string) *Event {
 		EndPoint:   endPoint,
 		Timestamp:  time.Now().UTC(),
 	}
+}
+
+// IsError returns true if the event is an error
+func (e *Event) IsError() bool {
+	return e.Details.Result == EventResultFailure
+}
+
+// GetError returns the error message
+func (e *Event) GetError() string {
+	return e.Details.Error
 }

@@ -44,19 +44,22 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
+	e := newEventFromContext(ctx)
 
 	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
 	if err != nil {
+		e.Details.Result = entities.EventResultFailure
+		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
+			logMessage(ctx, e)
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
+		logMessage(ctx, e)
 		return
 	}
-
 	ctx.Status(201)
-	e := entities.NewEvent(ctx.GetString("App"), "admin-userid-1", entities.EventTypeAccreditation, entities.ObjectTypeTLD, tldName, ctx.FullPath())
 	e.Details.Result = entities.EventResultSuccess
 	e.Details.After = fmt.Sprintf("Registrar %s accredited for TLD %s", rarClID, tldName)
 	logMessage(ctx, e)
@@ -76,18 +79,26 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
+	e := newEventFromContext(ctx)
 
 	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
 	if err != nil {
+		e.Details.Result = entities.EventResultFailure
+		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
+			logMessage(ctx, e)
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
+		logMessage(ctx, e)
 		return
 	}
 
 	ctx.Status(204)
+	e.Details.Result = entities.EventResultSuccess
+	e.Details.After = fmt.Sprintf("Registrar %s deaccredited for TLD %s", rarClID, tldName)
+	logMessage(ctx, e)
 }
 
 // ListRegistarAccreditations godoc
