@@ -2,7 +2,6 @@ package rest
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -73,24 +72,33 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		if err.Error() == "EOF" {
 			ctx.JSON(400, gin.H{"error": "missing request body"})
-			return
+		} else {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	e := newEventFromContext(ctx)
+	e.Details.Request = req
 	contact, err := ctrl.contactService.CreateContact(ctx, &req)
 	if err != nil {
+		e.Details.Result = entities.EventResultFailure
+		e.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logMessage(ctx, e)
 		return
 	}
 
 	ctx.JSON(http.StatusCreated, contact)
+	e.Details.Result = entities.EventResultSuccess
+	e.Details.After = contact
+	e.ObjectID = contact.RoID.String()
+	logMessage(ctx, e)
 }
 
 // UpdateContact godoc
@@ -118,7 +126,9 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	fmt.Printf("\n\nContact Command: %+v\n\n", c)
+	e := newEventFromContext(ctx)
+	e.Details.Before = c
+	e.Details.Request = req
 
 	// Make the changes
 	c.Email = req.Email
@@ -132,8 +142,6 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	c.Status = req.Status
 	c.Disclose = req.Disclose
 
-	fmt.Printf("\n\nContact: %+v\n\n", c)
-
 	c.SetOKStatusIfNeeded()
 	c.UnSetOKStatusIfNeeded()
 
@@ -146,11 +154,17 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 
 	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
+		e.Details.Result = entities.EventResultFailure
+		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logMessage(ctx, e)
 		return
 	}
 
 	ctx.JSON(http.StatusOK, contact)
+	e.Details.Result = entities.EventResultSuccess
+	e.Details.After = contact
+	logMessage(ctx, e)
 }
 
 // DeleteContactByID godoc
@@ -165,18 +179,26 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 // @Router /contacts/{id} [delete]
 func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	id := ctx.Param("id")
+	e := newEventFromContext(ctx)
 
 	err := ctrl.contactService.DeleteContactByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, entities.ErrContactNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
+			e.Details.Result = entities.EventResultSuccess
+			ctx.JSON(http.StatusNoContent, nil)
+		} else {
+			e.Details.Result = entities.EventResultFailure
+			e.Details.Error = err.Error()
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logMessage(ctx, e)
 		return
 	}
 
 	ctx.JSON(http.StatusNoContent, nil)
+	e.Details.Before = id
+	e.Details.Result = entities.EventResultSuccess
+	logMessage(ctx, e)
 }
 
 // ListContacts godoc

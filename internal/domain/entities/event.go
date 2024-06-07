@@ -8,10 +8,15 @@ import (
 const (
 	AppAdminAPI = "AdminAPI"
 
-	ObjectTypeTLD = "TLD"
+	ObjectTypeTLD     = "TLD"
+	ObjectTypeContact = "Contact"
 
-	EventTypeAccreditation = "Accreditation"
-	EventTypeUnknown       = "Unknown"
+	EventTypeAccreditation   = "Accreditation"
+	EventTypeDeAccreditation = "DeAccreditation"
+	EventTypeCreateContact   = "CreateContact"
+	EventTypeUpdateContact   = "UpdateContact"
+	EventTypeDeleteContact   = "DeleteContact"
+	EventTypeUnknown         = "Unknown"
 
 	EventResultSuccess = "Success"
 	EventResultFailure = "Failure"
@@ -45,10 +50,11 @@ func (e *Event) ToJSONString() string {
 
 // EventDetails struct describes the details of an event
 type EventDetails struct {
-	Result string
-	Before interface{}
-	After  interface{}
-	Error  string
+	Result  string
+	Request interface{}
+	Before  interface{}
+	After   interface{}
+	Error   string
 }
 
 // NewEvent creates a new event

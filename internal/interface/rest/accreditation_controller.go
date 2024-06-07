@@ -2,7 +2,6 @@ package rest
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -52,16 +51,15 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
-			logMessage(ctx, e)
-			return
+		} else {
+			ctx.JSON(500, gin.H{"error": err.Error()})
 		}
-		ctx.JSON(500, gin.H{"error": err.Error()})
 		logMessage(ctx, e)
 		return
 	}
 	ctx.Status(201)
 	e.Details.Result = entities.EventResultSuccess
-	e.Details.After = fmt.Sprintf("Registrar %s accredited for TLD %s", rarClID, tldName)
+	e.Details.After = rarClID
 	logMessage(ctx, e)
 }
 
@@ -97,7 +95,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 
 	ctx.Status(204)
 	e.Details.Result = entities.EventResultSuccess
-	e.Details.After = fmt.Sprintf("Registrar %s deaccredited for TLD %s", rarClID, tldName)
+	e.Details.Before = rarClID
 	logMessage(ctx, e)
 }
 

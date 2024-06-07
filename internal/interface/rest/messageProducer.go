@@ -47,10 +47,28 @@ func newEventFromContext(ctx *gin.Context) *entities.Event {
 // getEventTypeFromContext gets the event type from the context
 func getEventTypeFromContext(ctx *gin.Context) string {
 	url := ctx.FullPath()
+	method := ctx.Request.Method
 
 	switch strings.Split(url, "/")[1] {
 	case "accreditations":
-		return entities.EventTypeAccreditation
+		if method == "POST" {
+			return entities.EventTypeAccreditation
+		}
+		if method == "DELETE" {
+			return entities.EventTypeDeAccreditation
+		}
+		return entities.EventTypeUnknown
+	case "contacts":
+		if method == "POST" {
+			return entities.EventTypeCreateContact
+		}
+		if method == "PUT" {
+			return entities.EventTypeUpdateContact
+		}
+		if method == "DELETE" {
+			return entities.EventTypeDeleteContact
+		}
+		return entities.EventTypeUnknown
 	}
 
 	return entities.EventTypeUnknown
@@ -63,6 +81,8 @@ func getObjectTypeFromContext(ctx *gin.Context) string {
 	switch strings.Split(url, "/")[1] {
 	case "accreditations":
 		return entities.ObjectTypeTLD
+	case "contacts":
+		return entities.ObjectTypeContact
 	}
 
 	return ""
@@ -75,6 +95,8 @@ func getObjectIDFromContext(ctx *gin.Context) string {
 	switch strings.Split(url, "/")[1] {
 	case "accreditations":
 		return ctx.Param("tldName")
+	case "contacts":
+		return ctx.Param("id")
 	}
 
 	return ""
