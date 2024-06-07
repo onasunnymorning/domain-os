@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -55,6 +56,10 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	}
 
 	ctx.Status(201)
+	e := entities.NewEvent(ctx.GetString("App"), "admin-userid-1", entities.EventTypeAccreditation, entities.ObjectTypeTLD, tldName, ctx.FullPath())
+	e.Details.Result = entities.EventResultSuccess
+	e.Details.After = fmt.Sprintf("Registrar %s accredited for TLD %s", rarClID, tldName)
+	logMessage(ctx, e)
 }
 
 // Deaccredit godoc

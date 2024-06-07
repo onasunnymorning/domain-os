@@ -6,6 +6,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
@@ -24,6 +25,10 @@ import (
 	// NeW Relic APM
 
 	"github.com/newrelic/go-agent/v3/newrelic"
+)
+
+const (
+	AppName = entities.AppAdminAPI
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -68,6 +73,7 @@ func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("kafkaProducer", producer)
 		c.Set("kafkaTopic", topic)
+		c.Set("App", AppName)
 		c.Next()
 	}
 }
