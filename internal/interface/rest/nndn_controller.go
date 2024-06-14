@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -19,10 +20,14 @@ func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService) *NNDNC
 		nndnService: nndnService,
 	}
 
-	e.GET("/nndns/:name", controller.GetNNDNByName)
-	e.GET("/nndns", controller.ListNNDNs)
-	e.POST("/nndns", controller.CreateNNDN)
-	e.DELETE("/nndns/:name", controller.DeleteNNDNByName)
+	nndnRouter := e.Group("/nndns")
+	nndnRouter.Use(PublishEvent())
+	{
+		nndnRouter.GET("/:name", controller.GetNNDNByName)
+		nndnRouter.GET("/", controller.ListNNDNs)
+		nndnRouter.POST("/", controller.CreateNNDN)
+		nndnRouter.DELETE("/:name", controller.DeleteNNDNByName)
+	}
 
 	return controller
 }
@@ -109,8 +114,17 @@ func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
 	ctx.JSON(204, nil)
+	e, ok := ctx.Get("event")
+
+	if !ok {
+		log.Println("Event not found in context")
+	}
+	event := e.(*entities.Event)
+	event.Details.Result = entities.EventResultSuccess
+	event.Action = entities.EventTypeDelete
+	event.ObjectType = entities.ObjectTypeNNDN
+	ctx.Set("event", event)
 }
 
 // CreateNNDN godoc
