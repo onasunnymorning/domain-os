@@ -2,14 +2,22 @@ package entities
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
 const (
 	AppAdminAPI = "AdminAPI"
 
-	ObjectTypeTLD     = "TLD"
-	ObjectTypeContact = "Contact"
+	ObjectTypeTLD     = "tld"
+	ObjectTypeContact = "contact"
+	ObjectTypeNNDN    = "nndn"
+	ObjectTypeUnknown = "unknown"
+
+	EventTypeInfo   = "info"
+	EventTypeCreate = "create"
+	EventTypeUpdate = "update"
+	EventTypeDelete = "delete"
 
 	EventTypeAccreditation   = "Accreditation"
 	EventTypeDeAccreditation = "DeAccreditation"
@@ -22,25 +30,37 @@ const (
 	EventResultFailure = "Failure"
 )
 
+var (
+	ValidEventResults = []EventResult{EventResultSuccess, EventResultFailure}
+)
+
+// EventResult struct defines the result of an event. This can be either Success or Failure
+type EventResult string
+
+// Validate checks if the event result is valid
+func (e EventResult) Validate() bool {
+	return slices.Contains(ValidEventResults, e)
+}
+
 // Event struct defines a generic event throughout the system
 type Event struct {
-	App        string
-	Actor      string
-	Action     string
-	ObjectType string
-	ObjectID   string
-	EndPoint   string
+	App        string // SOURCE? The application that generated the event
+	Actor      string // USER? The user responsible for the event
+	Action     string // METHOD? The action that was performed
+	ObjectType string // The type of the object that was affected
+	ObjectID   string // ROID? The ID of the object that was affected
+	EndPoint   string // URL ? The endpoint that was called
 	Details    EventDetails
 	Timestamp  time.Time
 }
 
 // EventDetails struct describes the details of an event
 type EventDetails struct {
-	Result  string
-	Request interface{}
+	Result  EventResult
+	Command interface{}
 	Before  interface{}
 	After   interface{}
-	Error   string
+	Error   error
 }
 
 // NewEvent creates a new event
@@ -76,6 +96,6 @@ func (e *Event) IsError() bool {
 }
 
 // GetError returns the error message if available
-func (e *Event) GetError() string {
+func (e *Event) GetError() error {
 	return e.Details.Error
 }

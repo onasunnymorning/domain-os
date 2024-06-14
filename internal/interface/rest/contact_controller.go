@@ -79,11 +79,11 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	}
 
 	e := newEventFromContext(ctx)
-	e.Details.Request = req
+	e.Details.Command = req
 	contact, err := ctrl.contactService.CreateContact(ctx, &req)
 	if err != nil {
 		e.Details.Result = entities.EventResultFailure
-		e.Details.Error = err.Error()
+		e.Details.Error = err
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -128,7 +128,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	}
 	e := newEventFromContext(ctx)
 	e.Details.Before = c
-	e.Details.Request = req
+	e.Details.Command = req
 
 	// Make the changes
 	c.Email = req.Email
@@ -155,7 +155,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
 		e.Details.Result = entities.EventResultFailure
-		e.Details.Error = err.Error()
+		e.Details.Error = err
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		logMessage(ctx, e)
 		return
@@ -188,7 +188,7 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 			ctx.JSON(http.StatusNoContent, nil)
 		} else {
 			e.Details.Result = entities.EventResultFailure
-			e.Details.Error = err.Error()
+			e.Details.Error = err
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		logMessage(ctx, e)
