@@ -21,7 +21,6 @@ func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService) *NNDNC
 	}
 
 	nndnRouter := e.Group("/nndns")
-	// nndnRouter.Use(PublishEvent())
 	{
 		nndnRouter.GET("/:name", controller.GetNNDNByName)
 		nndnRouter.GET("/", controller.ListNNDNs)

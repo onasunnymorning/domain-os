@@ -78,14 +78,8 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 		return
 	}
 
-	// Get the event from the context
-	e, ok := ctx.Get("event")
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "event not found in context"})
-		return
-	}
-	// Cast the event to the correct type
-	event := e.(*entities.Event)
+	// Get the Event from the context
+	event := GetEventFromContext(ctx)
 	// Set the event details.command
 	event.Details.Command = req
 
@@ -127,15 +121,21 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 		return
 	}
 
+	// Get the Event from the context
+	e := GetEventFromContext(ctx)
+	// Set the event details.command
+	e.Details.Command = req
+
 	// Look up the contact
 	c, err := ctrl.contactService.GetContactByID(ctx, ctx.Param("id"))
 	if err != nil {
+		e.Details.Error = err
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	e := newEventFromContext(ctx)
+
+	// Set the event details.before
 	e.Details.Before = c
-	e.Details.Command = req
 
 	// Make the changes
 	c.Email = req.Email
@@ -155,23 +155,21 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	// Validate the changes
 	_, err = c.IsValid()
 	if err != nil {
+		e.Details.Error = err
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
-		e.Details.Result = entities.EventResultFailure
 		e.Details.Error = err
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		logMessage(ctx, e)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, contact)
-	e.Details.Result = entities.EventResultSuccess
 	e.Details.After = contact
-	logMessage(ctx, e)
+
+	ctx.JSON(http.StatusOK, contact)
 }
 
 // DeleteContactByID godoc
