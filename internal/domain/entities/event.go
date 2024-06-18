@@ -9,10 +9,12 @@ import (
 const (
 	AppAdminAPI = "AdminAPI"
 
-	ObjectTypeTLD     = "tld"
-	ObjectTypeContact = "contact"
-	ObjectTypeNNDN    = "nndn"
-	ObjectTypeUnknown = "unknown"
+	ObjectTypeTLD           = "tld"
+	ObjectTypeContact       = "contact"
+	ObjectTypeNNDN          = "nndn"
+	ObjectTypeAccreditation = "accreditation"
+	ObjectTypeHost          = "host"
+	ObjectTypeUnknown       = "unknown"
 
 	ObjectIDUnknown = "unknown"
 

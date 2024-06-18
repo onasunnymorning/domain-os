@@ -56,8 +56,6 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 		return
 	}
 
-	e.Details.After = rarClID
-
 	ctx.Status(201)
 }
 
@@ -87,8 +85,6 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	e.Details.Before = rarClID
 
 	ctx.Status(204)
 }
