@@ -46,8 +46,8 @@ func (e EventResult) Validate() bool {
 
 // Event struct defines a generic event throughout the system
 type Event struct {
-	App        string // SOURCE? The application that generated the event
-	Actor      string // USER? The user responsible for the event
+	Source     string // The application that generated the event
+	User       string // The user responsible for the event
 	Action     string // METHOD? The action that was performed
 	ObjectType string // The type of the object that was affected
 	ObjectID   string // ROID? The ID of the object that was affected
@@ -66,10 +66,10 @@ type EventDetails struct {
 }
 
 // NewEvent creates a new event
-func NewEvent(app, actor, action, oType, oID, endPoint string) *Event {
+func NewEvent(source, user, action, oType, oID, endPoint string) *Event {
 	return &Event{
-		App:        app,
-		Actor:      actor,
+		Source:     source,
+		User:       user,
 		Action:     action,
 		ObjectType: oType,
 		ObjectID:   oID,
