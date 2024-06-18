@@ -64,6 +64,7 @@ func GetEventFromContext(ctx *gin.Context) *entities.Event {
 	e, ok := ctx.Get("event")
 	if !ok {
 		log.Println("Event not found in context")
+		return nil
 	}
 	return e.(*entities.Event)
 }
