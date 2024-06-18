@@ -14,6 +14,8 @@ const (
 	ObjectTypeNNDN    = "nndn"
 	ObjectTypeUnknown = "unknown"
 
+	ObjectIDUnknown = "unknown"
+
 	EventTypeInfo   = "info"
 	EventTypeCreate = "create"
 	EventTypeUpdate = "update"

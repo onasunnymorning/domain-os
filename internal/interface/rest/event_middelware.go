@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 func PublishEvent() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Create event and add to context
-		e := entities.NewEvent("AdminAPI", "admin", GetActionFromContext(c), GetObjectTypeFromContext(c), c.Param("id"), c.Request.URL.RequestURI())
+		e := entities.NewEvent("AdminAPI", "admin", GetActionFromContext(c), GetObjectTypeFromContext(c), GetObjectIDFromContext(c), c.Request.URL.RequestURI())
 		c.Set("event", e)
 
 		// before request
@@ -61,4 +62,19 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 	}
 
 	return entities.ObjectTypeUnknown
+}
+
+// GetObjectIDFromContext returns the object ID based on the URL
+func GetObjectIDFromContext(ctx *gin.Context) string {
+	objecttype := GetObjectTypeFromContext(ctx)
+
+	switch objecttype {
+	case entities.ObjectTypeContact:
+		fmt.Println(ctx.Param("id"))
+		return ctx.Param("id")
+	case entities.ObjectTypeNNDN:
+		return ctx.Param("name")
+	}
+
+	return entities.ObjectIDUnknown
 }
