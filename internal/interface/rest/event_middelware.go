@@ -100,13 +100,12 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 		return entities.ObjectTypeUnknown
 	}
 
-	if slice[1] == "nndns" {
+	switch strings.ToLower(slice[1]) {
+	case "nndns":
 		return entities.ObjectTypeNNDN
-	}
-	if slice[1] == "contacts" {
+	case "contacts":
 		return entities.ObjectTypeContact
-	}
-	if slice[1] == "tlds" {
+	case "tlds":
 		return entities.ObjectTypeTLD
 	}
 
