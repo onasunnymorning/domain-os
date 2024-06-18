@@ -43,7 +43,7 @@ func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
 		}
 
 		// Omit info commands for admin API
-		if e.Action == entities.EventTypeInfo && e.App == entities.AppAdminAPI {
+		if e.Action == entities.EventTypeInfo && e.Source == entities.AppAdminAPI {
 			return
 		}
 

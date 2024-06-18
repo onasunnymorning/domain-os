@@ -113,8 +113,8 @@ func TestPublishEvent(t *testing.T) {
 	e, ok := event.(*entities.Event)
 	require.True(t, ok)
 
-	require.Equal(t, expectedEvent.App, e.App)
-	require.Equal(t, expectedEvent.Actor, e.Actor)
+	require.Equal(t, expectedEvent.Source, e.Source)
+	require.Equal(t, expectedEvent.User, e.User)
 	require.Equal(t, expectedEvent.Action, e.Action)
 	require.Equal(t, expectedEvent.ObjectType, e.ObjectType)
 	require.Equal(t, expectedEvent.ObjectID, e.ObjectID)

@@ -12,11 +12,11 @@ func TestNewEvent(t *testing.T) {
 
 	event := NewEvent(app, actor, action, objectType, objectID, endPoint)
 
-	if event.App != app {
-		t.Errorf("expected app %s, got %s", app, event.App)
+	if event.Source != app {
+		t.Errorf("expected app %s, got %s", app, event.Source)
 	}
-	if event.Actor != actor {
-		t.Errorf("expected actor %s, got %s", actor, event.Actor)
+	if event.User != actor {
+		t.Errorf("expected actor %s, got %s", actor, event.User)
 	}
 	if event.Action != action {
 		t.Errorf("expected action %s, got %s", action, event.Action)
