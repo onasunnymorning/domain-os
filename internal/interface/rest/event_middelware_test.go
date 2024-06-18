@@ -120,3 +120,23 @@ func TestPublishEvent(t *testing.T) {
 	require.Equal(t, expectedEvent.ObjectID, e.ObjectID)
 	require.Equal(t, expectedEvent.EndPoint, e.EndPoint)
 }
+func TestGetObjectIDFromContext(t *testing.T) {
+	tcases := []struct {
+		Name        string
+		URL         string
+		ObjectType  string
+		ExpectedID  string
+	}{
+		{"empty", "", entities.ObjectTypeUnknown, entities.ObjectIDUnknown},
+		{"contacts", "/contacts/id", entities.ObjectTypeContact, "id"},
+		{"nndns", "/nndns/name", entities.ObjectTypeNNDN, "name"},
+		{"unknown", "/unknown", entities.ObjectTypeUnknown, entities.ObjectIDUnknown},
+	}
+	for _, tc := range tcases {
+		t.Run(tc.Name, func(t *testing.T) {
+			c := CreateTestContext(tc.URL)
+			objectID := GetObjectIDFromContext(c)
+			require.Equal(t, tc.ExpectedID, objectID)
+		})
+	}
+}
