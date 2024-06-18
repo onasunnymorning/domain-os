@@ -106,7 +106,15 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 	case "contacts":
 		return entities.ObjectTypeContact
 	case "tlds":
-		return entities.ObjectTypeTLD
+		// TLD CRUD functions
+		if len(slice) == 2 {
+			return entities.ObjectTypeTLD
+		}
+		// Phase CRUD functions
+		if len(slice) == 4 && slice[3] == "phases" {
+			return entities.ObjectTypePhase
+		}
+
 	case "accreditations":
 		return entities.ObjectTypeAccreditation
 	case "hosts":
@@ -128,6 +136,8 @@ func GetObjectIDFromContext(ctx *gin.Context) string {
 		return ctx.Param("name")
 	case entities.ObjectTypeTLD:
 		return ctx.Param("tldName")
+	case entities.ObjectTypePhase:
+		return ctx.Param("phaseName")
 	case entities.ObjectTypeAccreditation:
 		return ctx.Param("tldName")
 	case entities.ObjectTypeHost:

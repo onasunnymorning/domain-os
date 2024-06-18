@@ -10,6 +10,8 @@ const (
 	AppAdminAPI = "AdminAPI"
 
 	ObjectTypeTLD           = "tld"
+	ObjectTypePhase         = "phase"
+	ObjectTypeFee           = "fee"
 	ObjectTypeContact       = "contact"
 	ObjectTypeNNDN          = "nndn"
 	ObjectTypeAccreditation = "accreditation"
