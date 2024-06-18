@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/kafkaproducer"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
@@ -63,11 +63,6 @@ func initNewRelicAPM() (*newrelic.Application, error) {
 
 }
 
-// InitEventProducer creates a new event producer
-func InitEventProducer(bootstrapServers string) (*kafka.Producer, error) {
-	return kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
-}
-
 // KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
 func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -114,43 +109,12 @@ func main() {
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
 	// Create an event producer, shut down if it fails as its an integral part of the application
-	eventProducer, err := InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
+	eventProducer, err := kafkaproducer.InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
 	if err != nil {
 		log.Fatalf("Failed to create producer: %s\n", err)
 	}
 	defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
 	defer eventProducer.Close()          // Close the producer
-
-	// Listen to all the events on the default events channel for errors during message delivery. Since sending is asynchronous, we start this channel to receive the delivery reports in a non-blocking way.
-	go func() {
-		for e := range eventProducer.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				// The message delivery report, indicating success or
-				// permanent failure after retries have been exhausted.
-				// Application level retries won't help since the client
-				// is already configured to do that.
-				m := ev
-				if m.TopicPartition.Error != nil {
-					fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
-				} else {
-					fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
-						*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
-				}
-			case kafka.Error:
-				// Generic client instance-level errors, such as
-				// broker connection failures, authentication issues, etc.
-				//
-				// These errors should generally be considered informational
-				// as the underlying client will automatically try to
-				// recover from any errors encountered, the application
-				// does not need to take action on them.
-				fmt.Printf("Error: %v\n", ev)
-			default:
-				fmt.Printf("Ignored event: %s\n", ev)
-			}
-		}
-	}()
 
 	// SET UP SERVICES
 	// Registry Operators
@@ -242,7 +206,7 @@ func main() {
 	if inLambda() {
 		log.Println("Running in AWS Lambda")
 		// Start the server using the AWS Lambda proxy
-		log.Fatal(gateway.ListenAndServe(":8080", r))
+		log.Fatal(gateway.ListenAndServe(os.Getenv("API_PORT"), r))
 	} else {
 		// Start the server using the standard HTTP server
 		r.Run(":" + os.Getenv("API_PORT"))
