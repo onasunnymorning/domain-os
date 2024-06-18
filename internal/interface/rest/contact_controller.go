@@ -78,27 +78,34 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 		return
 	}
 
-	e := newEventFromContext(ctx)
-	e.Details.Command = req
+	// Get the event from the context
+	e, ok := ctx.Get("event")
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "event not found in context"})
+		return
+	}
+	// Cast the event to the correct type
+	event := e.(*entities.Event)
+	// Set the event details.command
+	event.Details.Command = req
+
+	// Create the contact
 	contact, err := ctrl.contactService.CreateContact(ctx, &req)
 	if err != nil {
-		e.Details.Result = entities.EventResultFailure
-		e.Details.Error = err
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		} else {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
-		logMessage(ctx, e)
 		return
 	}
+	// Set the event details.after and objectID
+	event.Details.After = contact
+	event.ObjectID = contact.RoID.String()
 
 	ctx.JSON(http.StatusCreated, contact)
-	e.Details.Result = entities.EventResultSuccess
-	e.Details.After = contact
-	e.ObjectID = contact.RoID.String()
-	logMessage(ctx, e)
 }
 
 // UpdateContact godoc
