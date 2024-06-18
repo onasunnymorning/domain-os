@@ -52,6 +52,10 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+
+	event := GetEventFromContext(ctx)
+	event.Details.Command = cmd
+
 	// Set the TLD and phase in the command
 	cmd.TLDName = ctx.Param("tldName")
 	cmd.PhaseName = ctx.Param("phaseName")
@@ -59,6 +63,7 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 	// Call the service to create the fee
 	fee, err := ctrl.feeService.CreateFee(ctx, &cmd)
 	if err != nil {
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrInvalidFee) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -66,6 +71,8 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+
+	event.Details.After = fee
 
 	// Return the response
 	ctx.JSON(201, fee)
@@ -108,9 +115,12 @@ func (ctrl *FeeController) ListFees(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName}/fees/{feeName}/{currency} [delete]
 func (ctrl *FeeController) DeleteFee(ctx *gin.Context) {
+	event := GetEventFromContext(ctx)
+	event.Details.Command = ctx.Param("feeName") + ctx.Param("currency")
 	// Call the service to delete the fee
 	err := ctrl.feeService.DeleteFee(ctx, ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("feeName"), ctx.Param("currency"))
 	if err != nil {
+		event.Details.Error = err
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
