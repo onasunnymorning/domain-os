@@ -36,23 +36,36 @@ func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
 		if e.EndPoint == "/ping" {
 			return
 		}
+		// If there is no producer (e.g. in tests), just log the event
 		if p == nil {
 			log.Println(e)
-		} else {
-			p.Produce(
-				&kafka.Message{
-					TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-					Value:          e.ToJSONBytes(),
-				},
-				nil,
-			)
+			return
 		}
+
+		// Send the event to Kafka
+		p.Produce(
+			&kafka.Message{
+				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+				Value:          e.ToJSONBytes(),
+			},
+			nil,
+		)
+
 	}
 }
 
 // NewEventFromContext returns a new event based on the context
 func NewEventFromContext(ctx *gin.Context) *entities.Event {
 	return entities.NewEvent(ctx.GetString("app"), ctx.GetString("userid"), GetActionFromContext(ctx), GetObjectTypeFromContext(ctx), GetObjectIDFromContext(ctx), ctx.Request.URL.RequestURI())
+}
+
+// GetEventFromContext returns the event from the context
+func GetEventFromContext(ctx *gin.Context) *entities.Event {
+	e, ok := ctx.Get("event")
+	if !ok {
+		log.Println("Event not found in context")
+	}
+	return e.(*entities.Event)
 }
 
 // GetActionFromContext returns the action based on the HTTP method
