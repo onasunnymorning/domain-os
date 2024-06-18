@@ -212,8 +212,9 @@ func main() {
 	// Create Gin Engine/Router
 	r := gin.Default()
 	// Attach the KafkaMiddleware
-	eventTopic := "DOS-AdminAPI-Events" // TODO: How to parametrize this?
-	r.Use(KafkaMiddleware(eventProducer, eventTopic))
+	// eventTopic := "DOS-AdminAPI-Events" // TODO: How to parametrize this?
+	// r.Use(KafkaMiddleware(eventProducer, eventTopic))
+	r.Use(rest.PublishEvent(eventProducer, "DOS-AdminAPI-Events"))
 
 	// Set up the routes and controllers
 	rest.NewPingController(r)

@@ -104,7 +104,7 @@ func TestPublishEvent(t *testing.T) {
 	c := CreateTestContext("/contacts/clid01")
 	expectedEvent := entities.NewEvent("AdminAPI", "admin", entities.EventTypeCreate, entities.ObjectTypeContact, "clid01", "/contacts/clid01")
 
-	handler := PublishEvent()
+	handler := PublishEvent(nil, "")
 	handler(c)
 
 	event, _ := c.Get("event")
@@ -122,10 +122,10 @@ func TestPublishEvent(t *testing.T) {
 }
 func TestGetObjectIDFromContext(t *testing.T) {
 	tcases := []struct {
-		Name        string
-		URL         string
-		ObjectType  string
-		ExpectedID  string
+		Name       string
+		URL        string
+		ObjectType string
+		ExpectedID string
 	}{
 		{"empty", "", entities.ObjectTypeUnknown, entities.ObjectIDUnknown},
 		{"contacts", "/contacts/id", entities.ObjectTypeContact, "id"},
