@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -29,8 +30,20 @@ func CreateTestContext(path string) *gin.Context {
 	req, _ := http.NewRequest(http.MethodPost, path, nil)
 	c.Request = req
 
-	// Set the id param
-	c.Set("id", strings.Split(path, "/")[:len(strings.Split(path, "/"))-1])
+	// Set the id/name param
+	identifier := pathSlice[len(pathSlice)-1]
+	c.Params = []gin.Param{
+		{
+			Key:   "id",
+			Value: identifier,
+		},
+		{
+			Key:   "name",
+			Value: identifier,
+		},
+	}
+	c.Request.URL, _ = url.Parse(path)
+	// c.Set("id", strings.Split(path, "/")[:len(strings.Split(path, "/"))-1])
 
 	// Use unsafe to set the unexported fullPath field
 	fullPathField := reflect.ValueOf(c).Elem().FieldByName("fullPath")
