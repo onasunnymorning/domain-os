@@ -32,6 +32,10 @@ func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
 		} else {
 			e.Details.Result = entities.EventResultFailure
 		}
+		// If we are pinging, don't log the event
+		if e.EndPoint == "/ping" {
+			return
+		}
 		if p == nil {
 			log.Println(e)
 		} else {
