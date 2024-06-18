@@ -184,26 +184,22 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 // @Router /contacts/{id} [delete]
 func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	id := ctx.Param("id")
-	e := newEventFromContext(ctx)
+	e := GetEventFromContext(ctx)
 
 	err := ctrl.contactService.DeleteContactByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, entities.ErrContactNotFound) {
-			e.Details.Result = entities.EventResultSuccess
 			ctx.JSON(http.StatusNoContent, nil)
 		} else {
-			e.Details.Result = entities.EventResultFailure
 			e.Details.Error = err
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
-		logMessage(ctx, e)
 		return
 	}
 
-	ctx.JSON(http.StatusNoContent, nil)
 	e.Details.Before = id
-	e.Details.Result = entities.EventResultSuccess
-	logMessage(ctx, e)
+
+	ctx.JSON(http.StatusNoContent, nil)
 }
 
 // ListContacts godoc
