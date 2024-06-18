@@ -43,24 +43,22 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
-	e := newEventFromContext(ctx)
+	e := GetEventFromContext(ctx)
 
 	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
 	if err != nil {
-		e.Details.Result = entities.EventResultFailure
 		e.Details.Error = err
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 		} else {
 			ctx.JSON(500, gin.H{"error": err.Error()})
 		}
-		logMessage(ctx, e)
 		return
 	}
-	ctx.Status(201)
-	e.Details.Result = entities.EventResultSuccess
+
 	e.Details.After = rarClID
-	logMessage(ctx, e)
+
+	ctx.Status(201)
 }
 
 // Deaccredit godoc
@@ -77,26 +75,22 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
-	e := newEventFromContext(ctx)
+	e := GetEventFromContext(ctx)
 
 	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
 	if err != nil {
-		e.Details.Result = entities.EventResultFailure
 		e.Details.Error = err
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
-			logMessage(ctx, e)
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
-		logMessage(ctx, e)
 		return
 	}
 
-	ctx.Status(204)
-	e.Details.Result = entities.EventResultSuccess
 	e.Details.Before = rarClID
-	logMessage(ctx, e)
+
+	ctx.Status(204)
 }
 
 // ListRegistarAccreditations godoc
