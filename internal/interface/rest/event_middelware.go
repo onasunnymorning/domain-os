@@ -42,6 +42,11 @@ func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
 			return
 		}
 
+		// Omit info commands for admin API
+		if e.Action == entities.EventTypeInfo && e.App == entities.AppAdminAPI {
+			return
+		}
+
 		// Send the event to Kafka
 		p.Produce(
 			&kafka.Message{
@@ -101,6 +106,9 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 	if slice[1] == "contacts" {
 		return entities.ObjectTypeContact
 	}
+	if slice[1] == "tlds" {
+		return entities.ObjectTypeTLD
+	}
 
 	return entities.ObjectTypeUnknown
 }
@@ -115,6 +123,8 @@ func GetObjectIDFromContext(ctx *gin.Context) string {
 		return ctx.Param("id")
 	case entities.ObjectTypeNNDN:
 		return ctx.Param("name")
+	case entities.ObjectTypeTLD:
+		return ctx.Param("tldName")
 	}
 
 	return entities.ObjectIDUnknown
