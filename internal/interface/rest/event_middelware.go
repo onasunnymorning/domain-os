@@ -107,6 +107,10 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 		return entities.ObjectTypeContact
 	case "tlds":
 		return entities.ObjectTypeTLD
+	case "accreditations":
+		return entities.ObjectTypeAccreditation
+	case "hosts":
+		return entities.ObjectTypeHost
 	}
 
 	return entities.ObjectTypeUnknown
@@ -124,6 +128,10 @@ func GetObjectIDFromContext(ctx *gin.Context) string {
 		return ctx.Param("name")
 	case entities.ObjectTypeTLD:
 		return ctx.Param("tldName")
+	case entities.ObjectTypeAccreditation:
+		return ctx.Param("tldName")
+	case entities.ObjectTypeHost:
+		return ctx.Param("roid")
 	}
 
 	return entities.ObjectIDUnknown
