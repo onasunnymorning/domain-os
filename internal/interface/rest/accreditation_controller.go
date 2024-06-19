@@ -43,14 +43,16 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
+	e := GetEventFromContext(ctx)
 
 	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
 	if err != nil {
+		e.Details.Error = err
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
+		} else {
+			ctx.JSON(500, gin.H{"error": err.Error()})
 		}
-		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -71,9 +73,11 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
+	e := GetEventFromContext(ctx)
 
 	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
 	if err != nil {
+		e.Details.Error = err
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return

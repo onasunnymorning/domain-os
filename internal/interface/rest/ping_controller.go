@@ -1,6 +1,8 @@
 package rest
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+)
 
 // PingController is a controller for the ping endpoint
 type PingController struct {

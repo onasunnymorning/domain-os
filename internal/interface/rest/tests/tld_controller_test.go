@@ -3,11 +3,12 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+
 	"github.com/gin-gonic/gin"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-	"net/http"
-	"net/http/httptest"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -28,6 +29,7 @@ var _ = ginkgo.Describe("TLDController", func() {
 		// Initialize your router
 		gin.SetMode(gin.TestMode)
 		router = gin.New()
+		router.Use(rest.PublishEvent(nil, ""))
 		db, err := getTestDB()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
