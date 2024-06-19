@@ -66,7 +66,7 @@ type EventDetails struct {
 	Command interface{}
 	Before  interface{}
 	After   interface{}
-	Error   error
+	Error   string
 }
 
 // NewEvent creates a new event
@@ -102,6 +102,6 @@ func (e *Event) IsError() bool {
 }
 
 // GetError returns the error message if available
-func (e *Event) GetError() error {
+func (e *Event) GetError() string {
 	return e.Details.Error
 }

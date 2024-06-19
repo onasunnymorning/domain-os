@@ -86,7 +86,7 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	// Create the contact
 	contact, err := ctrl.contactService.CreateContact(ctx, &req)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -129,7 +129,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	// Look up the contact
 	c, err := ctrl.contactService.GetContactByID(ctx, ctx.Param("id"))
 	if err != nil {
-		e.Details.Error = err
+		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -155,14 +155,14 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	// Validate the changes
 	_, err = c.IsValid()
 	if err != nil {
-		e.Details.Error = err
+		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	contact, err := ctrl.contactService.UpdateContact(ctx, c)
 	if err != nil {
-		e.Details.Error = err
+		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -191,7 +191,7 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 		if errors.Is(err, entities.ErrContactNotFound) {
 			ctx.JSON(http.StatusNoContent, nil)
 		} else {
-			e.Details.Error = err
+			e.Details.Error = err.Error()
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
