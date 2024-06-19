@@ -63,7 +63,7 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 	// Call the service to create the fee
 	fee, err := ctrl.feeService.CreateFee(ctx, &cmd)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidFee) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -120,7 +120,7 @@ func (ctrl *FeeController) DeleteFee(ctx *gin.Context) {
 	// Call the service to delete the fee
 	err := ctrl.feeService.DeleteFee(ctx, ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("feeName"), ctx.Param("currency"))
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

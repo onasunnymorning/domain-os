@@ -77,7 +77,7 @@ func (ctrl *HostController) DeleteHostByRoID(ctx *gin.Context) {
 
 	err := ctrl.hostService.DeleteHostByRoID(ctx, roidString)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidRoid) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -116,7 +116,7 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 
 	host, err := ctrl.hostService.CreateHost(ctx, &req)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidHost) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -192,7 +192,7 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 	// Try and add the address
 	updatedHost, err := ctrl.hostService.AddHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -232,7 +232,7 @@ func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
 	// Try and remove the address
 	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
