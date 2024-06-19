@@ -72,10 +72,12 @@ func (ctrl *HostController) GetHostByRoID(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid} [delete]
 func (ctrl *HostController) DeleteHostByRoID(ctx *gin.Context) {
+	event := GetEventFromContext(ctx)
 	roidString := ctx.Param("roid")
 
 	err := ctrl.hostService.DeleteHostByRoID(ctx, roidString)
 	if err != nil {
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrInvalidRoid) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -109,8 +111,12 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		return
 	}
 
+	event := GetEventFromContext(ctx)
+	event.Details.Command = req
+
 	host, err := ctrl.hostService.CreateHost(ctx, &req)
 	if err != nil {
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrInvalidHost) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -118,6 +124,9 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	event.Details.After = host
+	event.ObjectID = host.RoID.String()
 
 	ctx.JSON(http.StatusCreated, host)
 }
@@ -179,9 +188,11 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [post]
 func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
+	event := GetEventFromContext(ctx)
 	// Try and add the address
 	updatedHost, err := ctrl.hostService.AddHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -193,6 +204,9 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+
+	event.Details.Command = ctx.Param("ip")
+	event.Details.After = updatedHost
 
 	// Return the response
 	ctx.JSON(200, updatedHost)
@@ -213,9 +227,12 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [delete]
 func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
+	event := GetEventFromContext(ctx)
+
 	// Try and remove the address
 	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
+		event.Details.Error = err
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -223,6 +240,9 @@ func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+
+	event.Details.Command = ctx.Param("ip")
+	event.Details.After = updatedHost
 
 	// Return the response
 	ctx.JSON(200, updatedHost)
