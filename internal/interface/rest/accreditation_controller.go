@@ -47,7 +47,7 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 
 	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
 	if err != nil {
-		e.Details.Error = err
+		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 		} else {
@@ -77,7 +77,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 
 	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
 	if err != nil {
-		e.Details.Error = err
+		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return

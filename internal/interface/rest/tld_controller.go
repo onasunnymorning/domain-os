@@ -118,7 +118,7 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 
 	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -159,14 +159,14 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 
 	cmd, err := req.ToCreateTLDCommand()
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	result, err := ctrl.tldService.CreateTLD(ctx, cmd)
 	if err != nil {
-		event.Details.Error = err
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrinvalIdDomainNameLength) || errors.Is(err, entities.ErrInvalidLabelLength) || errors.Is(err, entities.ErrInvalidLabelDash) || errors.Is(err, entities.ErrInvalidLabelDoubleDash) || errors.Is(err, entities.ErrInvalidLabelIDN) || errors.Is(err, entities.ErrLabelContainsInvalidCharacter) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
