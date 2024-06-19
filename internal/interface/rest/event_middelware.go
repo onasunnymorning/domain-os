@@ -111,7 +111,7 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 			return entities.ObjectTypeTLD
 		}
 		// Phase CRUD functions
-		if len(slice) == 4 && slice[3] == "phases" {
+		if len(slice) >= 4 && slice[3] == "phases" {
 			return entities.ObjectTypePhase
 		}
 
