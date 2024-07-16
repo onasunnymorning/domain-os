@@ -60,7 +60,7 @@ func TestRDEHost_ToEntity(t *testing.T) {
 			name: "invalid Name",
 			// Create a sample RDEHost
 			rdeHost: &RDEHost{
-				Name:   "invalid.domain---name.com",
+				Name:   "invalid.-domainname.com",
 				RoID:   "12345_DOM-APEX",
 				ClID:   "client1",
 				CrRr:   "admin",
@@ -71,7 +71,7 @@ func TestRDEHost_ToEntity(t *testing.T) {
 				Addr:   []RDEHostAddr{{IP: "v4", ID: "192.168.0.1"}, {IP: "v4", ID: "192.168.0.2"}},
 			},
 			expected: nil,
-			err:      ErrInvalidLabelDoubleDash,
+			err:      ErrInvalidLabelDash,
 		},
 		{
 			name: "invalid Ip",

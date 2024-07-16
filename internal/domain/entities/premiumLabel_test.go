@@ -30,7 +30,7 @@ func TestNewPremiumLabel(t *testing.T) {
 }
 
 func TestNewPremiumLabel_InvalidLabel(t *testing.T) {
-	labelString := "inva--lid"
+	labelString := "-invalid"
 	registrationAmount := uint64(100)
 	renewalAmount := uint64(50)
 	transferAmount := uint64(20)

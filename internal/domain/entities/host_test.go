@@ -579,15 +579,15 @@ func TestHost_Validate(t *testing.T) {
 		err  error
 	}{
 		{
-			name: "invalid label doubledash",
+			name: "invalid label dash",
 			host: &Host{
-				Name:   DomainName("exa--mple.com"),
+				Name:   DomainName("-example.com"),
 				RoID:   "12345_HOST-APEX",
 				ClID:   "67890",
 				CrRr:   "67890",
 				Status: HostStatus{OK: true},
 			},
-			err: ErrInvalidLabelDoubleDash,
+			err: ErrInvalidLabelDash,
 		},
 		{
 			name: "invalid roid",

@@ -1014,9 +1014,9 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		if rar.GurID == 9997 {
 			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
 		} else if rar.GurID == 9998 {
-			URL = BASE_URL + "/registrars/9998" + "-" + svc.Header.TLD
+			URL = BASE_URL + "/registrars/9998" + "-" + strings.ToUpper(svc.Header.TLD)
 		} else if rar.GurID == 9999 || rar.GurID == 119 {
-			URL = BASE_URL + "/registrars/9999" + "-" + svc.Header.TLD
+			URL = BASE_URL + "/registrars/9999" + "-" + strings.ToUpper(svc.Header.TLD)
 		} else {
 			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
 		}
