@@ -37,8 +37,8 @@ func (t Label) Validate() error {
 	if strings.HasPrefix(t.String(), "-") || strings.HasSuffix(t.String(), "-") {
 		return ErrInvalidLabelDash
 	}
-	// It contains two consecutive hyphens and is not an IDN label
-	if !(strings.HasPrefix(t.String(), "xn--")) && strings.Contains(t.String(), "--") {
+	// It contains two consecutive hyphens in position 3 and 4 and is not an IDN label
+	if len(t) > 3 && !(strings.HasPrefix(t.String(), "xn--")) && t[2:4] == "--" {
 		return ErrInvalidLabelDoubleDash
 	}
 	// It is an IDN label and is not valid

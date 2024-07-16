@@ -1,8 +1,9 @@
 package entities
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestQuoteRequest_Validate(t *testing.T) {
@@ -25,13 +26,13 @@ func TestQuoteRequest_Validate(t *testing.T) {
 		{
 			name: "invalid DomainName",
 			request: QuoteRequest{
-				DomainName:      "exa--mple.com",
+				DomainName:      "-example.com",
 				TransactionType: TransactionTypeRegistration,
 				Currency:        "USD",
 				Years:           1,
 				ClID:            "testRegistrar1",
 			},
-			expected: ErrInvalidLabelDoubleDash,
+			expected: ErrInvalidLabelDash,
 		},
 		{
 			name: "invalid TransactionType",
@@ -82,9 +83,7 @@ func TestQuoteRequest_Validate(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.request.Validate()
-			if !errors.Is(err, tc.expected) {
-				t.Errorf("expected error %v, got %v", tc.expected, err)
-			}
+			require.ErrorIs(t, err, tc.expected)
 		})
 	}
 }

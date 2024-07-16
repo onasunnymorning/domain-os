@@ -561,7 +561,7 @@ func TestGetQuote(t *testing.T) {
 			fx: FX{},
 			pl: []*PremiumLabel{},
 			quoteRequest: QuoteRequest{
-				DomainName:      "exam--ple.com",
+				DomainName:      "-example.com",
 				Years:           1,
 				ClID:            "123456789",
 				TransactionType: TransactionTypeRegistration,

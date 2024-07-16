@@ -4,7 +4,9 @@ import "time"
 
 // DomainRGPStatus value object
 type DomainRGPStatus struct {
-	AddPeriodEnd           time.Time `json:"AddPeriodEnd"`
+	AddPeriodEnd time.Time `json:"AddPeriodEnd"`
+	// Is it nescessary to have a different field for Renew/AutoRenew
+	// Isn't it enough to have one and the period differs based on the TLDPhasePolicy RenewalGP and AutoRenewalGP?
 	RenewPeriodEnd         time.Time `json:"RenewPeriodEnd"`
 	AutoRenewPeriodEnd     time.Time `json:"AutoRenewPeriodEnd"`
 	TransferLockPeriodEnd  time.Time `json:"TransferLockPeriodEnd"`
