@@ -40,7 +40,7 @@ func TestNewQuoteFromQuoteRequest(t *testing.T) {
 
 func TestNewQuoteFromQuoteRequest_ValidationFail(t *testing.T) {
 	qr := QuoteRequest{
-		DomainName:      "exa--mple.com",
+		DomainName:      "-example.com",
 		TransactionType: "registration",
 		Years:           1,
 		Currency:        "USD",

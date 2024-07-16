@@ -234,12 +234,12 @@ func TestDomain_Validate(t *testing.T) {
 			name: "invalid name",
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
-				Name:     "de.domain--testtld",
+				Name:     "de.-domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
 			},
-			want: ErrInvalidLabelDoubleDash,
+			want: ErrInvalidLabelDash,
 		},
 		{
 			name: "invalid clid",
