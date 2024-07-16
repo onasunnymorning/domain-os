@@ -27,13 +27,13 @@ func TestQuoteRequest_Validate(t *testing.T) {
 		{
 			name: "invalid DomainName",
 			request: QuoteRequest{
-				DomainName:      "exa--mple.com",
+				DomainName:      "-example.com",
 				TransactionType: entities.TransactionTypeRegistration,
 				Currency:        "USD",
 				Years:           1,
 				ClID:            "testRegistrar1",
 			},
-			expected: entities.ErrInvalidLabelDoubleDash,
+			expected: entities.ErrInvalidLabelDash,
 		},
 		{
 			name: "invalid TransactionType",
