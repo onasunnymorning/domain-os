@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+data:
+  KAFKA_HOST: "kafka.default.svc.cluster.local:9092"
+  KAFKA_PORT: "9092"
+  KAFKA_TOPIC: "dos-events"
+  KAFKA_GROUP: "event-consumer"
+  KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+  KAFKA_SASL_MECHANISM: PLAIN
+  KAFKA_SASL_USERNAME: "user1"
+  KAFKA_SASL_PASSWORD: "$(kubectl get secret kafka-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)"

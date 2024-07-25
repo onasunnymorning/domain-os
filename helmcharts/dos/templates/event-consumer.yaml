@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-consumer
+  template:
+    metadata:
+      labels:
+        app: event-consumer
+    spec:
+      containers:
+        - name: event-consumer
+          image: {{ .Values.eventConsumer.image }}:{{ .Values.eventConsumer.branch }}

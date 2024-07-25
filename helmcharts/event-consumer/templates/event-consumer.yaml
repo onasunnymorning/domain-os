@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-consumer
+  template:
+    metadata:
+      labels:
+        app: event-consumer
+    spec:
+      containers:
+        - name: event-consumer
+          image: {{ .Values.eventConsumer.image }}:{{ .Values.eventConsumer.branch }}
+          imagePullPolicy: Always
+          env:
+            - name: KAFKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_HOST
+            - name: KAFKA_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_PORT
+            - name: KAFKA_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_TOPIC
+            - name: KAFKA_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_GROUP
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_SECURITY_PROTOCOL
+            - name: KAFKA_SASL_MECHANISM
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_SASL_MECHANISM
+            - name: KAFKA_SASL_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_SASL_USERNAME
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_SASL_PASSWORD
+
+      volumes:
+        - name: kafka-client-config
+          configMap:
+            name: kafka-client-config

@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-api
+spec:
+  ports:
+    - name: api
+      port: {{ .Values.adminApi.environment.API_PORT }}
+      targetPort: {{ .Values.adminApi.environment.API_PORT }}
+  selector:
+    app: admin-api
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-api
+  template:
+    metadata:
+      labels:
+        app: admin-api
+    spec:
+      containers:
+        - name: admin-api
+          image: {{ .Values.adminApi.image }}:{{ .Values.adminApi.branch }}
+          env:
+            - name: ENV
+              value: {{ .Values.adminApi.environment.ENV | quote }}
+            - name: GIN_MODE
+              value: {{ .Values.adminApi.environment.GIN_MODE | quote }}
+            - name: OPENEXCHANGERATES_APP_ID
+              value: {{ .Values.adminApi.environment.OPENEXCHANGERATES_APP_ID | quote }}
+            - name: DB_HOST
+              value: {{ .Values.adminApi.environment.DB_HOST | quote }}
+            - name: DB_PORT
+              value: {{ .Values.adminApi.environment.DB_PORT | quote }}
+            - name: DB_USER
+              value: {{ .Values.adminApi.environment.DB_USER | quote }}
+            - name: DB_PASS
+              value: {{ .Values.adminApi.environment.DB_PASS | quote }}
+            - name: DB_NAME
+              value: {{ .Values.adminApi.environment.DB_NAME | quote }}
+            - name: API_PORT
+              value: {{ .Values.adminApi.environment.API_PORT | quote }}
+            - name: API_HOST
+              value: {{ .Values.adminApi.environment.API_HOST | quote }}
+            - name: API_VERSION
+              value: {{ .Values.adminApi.environment.API_VERSION | quote }}
+          ports:
+            - containerPort: {{ .Values.adminApi.environment.API_PORT }}
