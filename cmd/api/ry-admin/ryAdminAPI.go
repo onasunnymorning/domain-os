@@ -109,7 +109,7 @@ func main() {
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
 	// Create an event producer, shut down if it fails as its an integral part of the application
-	eventProducer, err := kafkaproducer.InitEventProducer("domain-os-kafka-1") // TODO: Move to env var
+	eventProducer, err := kafkaproducer.InitEventProducer(os.Getenv("KAFKA_HOST")) // TODO: Move to env var
 	if err != nil {
 		log.Fatalf("Failed to create producer: %s\n", err)
 	}
