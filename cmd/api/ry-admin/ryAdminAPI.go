@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/kafkaproducer"
@@ -76,23 +77,33 @@ func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
+	cfg := config.LoadConfig()
 	// Load environment variables when not running in Docker
 	if !runningInDocker() {
 		log.Println("Running outside of Docker")
 	} else {
 		log.Println("Running in Docker")
 	}
+	if cfg.UseNewRelic {
+		log.Println("Initializing New Relic APM - remove ENV var to disable")
+		app, err := initNewRelicAPM()
+		if err != nil {
+			log.Fatalf("Failed to initialize New Relic APM: %s", err)
+		}
+		defer app.Shutdown(0)
+	}
 
 	setSwaggerInfo()
 
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: "require",
+			User:        os.Getenv("DB_USER"),
+			Pass:        os.Getenv("DB_PASS"),
+			Host:        os.Getenv("DB_HOST"),
+			Port:        os.Getenv("DB_PORT"),
+			DBName:      os.Getenv("DB_NAME"),
+			SSLmode:     "require",
+			AutoMigrate: cfg.AutoMigrate,
 		},
 	)
 	if err != nil {
@@ -109,9 +120,10 @@ func main() {
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
 	// Create an event producer, shut down if it fails as its an integral part of the application
-	eventProducer, err := kafkaproducer.InitEventProducer(os.Getenv("KAFKA_HOST")) // TODO: Move to env var
+
+	eventProducer, err := kafkaproducer.InitEventProducer()
 	if err != nil {
-		log.Fatalf("Failed to create producer: %s\n", err)
+		log.Fatalf("Failed to initiate producer: %s\n", err)
 	}
 	defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
 	defer eventProducer.Close()          // Close the producer
@@ -176,7 +188,7 @@ func main() {
 	// Create Gin Engine/Router
 	r := gin.Default()
 	// Attach the KafkaMiddleware to the router
-	r.Use(rest.PublishEvent(eventProducer, "DOS-AdminAPI-Events"))
+	r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
 
 	// Set up the routes and controllers
 	rest.NewPingController(r)
