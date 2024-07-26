@@ -4,7 +4,6 @@ metadata:
   name: kafka-config
 data:
   KAFKA_HOST: {{ .Values.kafka.host | quote }}
-  KAFKA_PORT: {{ .Values.kafka.port | quote }}
   KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
   KAFKA_GROUP: {{ .Values.kafka.group | quote }}
   KAFKA_SECURITY_PROTOCOL: {{ .Values.kafka.securityProtocol | quote }}

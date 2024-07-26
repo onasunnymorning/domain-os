@@ -71,7 +71,6 @@ services:
     image: "geapex/consumer:${BRANCH}"
     environment:
       - KAFKA_HOST=${KAFKA_HOST}
-      - KAFKA_PORT=${KAFKA_PORT}
       - KAFKA_TOPIC=${KAFKA_TOPIC}
       - KAFKA_GROUP=${KAFKA_GROUP}
     restart: always

@@ -25,13 +25,13 @@ func main() {
 	}
 
 	// echo all the envars
-	fmt.Printf("KAFKA_HOST: %s\n", bootstrapServers)
-	fmt.Printf("KAFKA_GROUP: %s\n", group)
-	fmt.Printf("KAFKA_TOPIC: %s\n", topics[0])
-	fmt.Printf("KAFKA_SECURITY_PROTOCOL: %s\n", securityProtocol)
-	fmt.Printf("KAFKA_SASL_MECHANISM: %s\n", saslMechanism)
-	fmt.Printf("KAFKA_SASL_USERNAME: %s\n", saslUsername)
-	fmt.Printf("KAFKA_SASL_PASSWORD: %s\n", saslPassword)
+	// fmt.Printf("KAFKA_HOST: %s\n", bootstrapServers)
+	// fmt.Printf("KAFKA_GROUP: %s\n", group)
+	// fmt.Printf("KAFKA_TOPIC: %s\n", topics[0])
+	// fmt.Printf("KAFKA_SECURITY_PROTOCOL: %s\n", securityProtocol)
+	// fmt.Printf("KAFKA_SASL_MECHANISM: %s\n", saslMechanism)
+	// fmt.Printf("KAFKA_SASL_USERNAME: %s\n", saslUsername)
+	// fmt.Printf("KAFKA_SASL_PASSWORD: %s\n", saslPassword)
 
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":        bootstrapServers,
