@@ -13,7 +13,6 @@ func main() {
 	bootstrapServers := os.Getenv("KAFKA_HOST")
 	group := os.Getenv("KAFKA_GROUP")
 	topics := []string{os.Getenv("KAFKA_TOPIC")}
-
 	securityProtocol := os.Getenv("KAFKA_SECURITY_PROTOCOL")
 	saslMechanism := os.Getenv("KAFKA_SASL_MECHANISM")
 	saslUsername := os.Getenv("KAFKA_SASL_USERNAME")

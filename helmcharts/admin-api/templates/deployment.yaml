@@ -15,7 +15,7 @@ spec:
       containers:
         - name: admin-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.image.imagePullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -23,3 +23,5 @@ spec:
           envFrom:
           - configMapRef:
               name: {{ .Release.Name }}-config
+          - secretRef:
+              name: kafka-secrets
