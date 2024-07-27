@@ -15,10 +15,10 @@ func InitEventProducer() (*kafka.Producer, error) {
 	// Create Kafka producer configuration
 	config := &kafka.ConfigMap{
 		"bootstrap.servers": os.Getenv("KAFKA_HOST"),
-		"security.protocol": os.Getenv("KAFKA_SASL_MECHANISM"),
-		"sasl.mechanism":    os.Getenv("KAFKA_SASL_USERNAME"),
-		"sasl.username":     os.Getenv("KAFKA_SASL_PASSWORD"),
-		"sasl.password":     os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+		"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+		"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
+		"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
+		"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
 	}
 
 	eventProducer, err := kafka.NewProducer(config)

@@ -45,7 +45,7 @@ To create a pod that you can use as a Kafka client run the following commands:
         kafka-console-producer.sh \
             --producer.config /tmp/client.properties \
             --broker-list kafka-controller-0.kafka-controller-headless.default.svc.cluster.local:9092,kafka-controller-1.kafka-controller-headless.default.svc.cluster.local:9092,kafka-controller-2.kafka-controller-headless.default.svc.cluster.local:9092 \
-            --topic test
+            --topic dos-events
 
     CONSUMER:
         kafka-console-consumer.sh \

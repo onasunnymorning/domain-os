@@ -85,7 +85,7 @@ func main() {
 		log.Println("Running in Docker")
 	}
 	if cfg.UseNewRelic {
-		log.Println("Initializing New Relic APM - remove ENV var to disable")
+		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'AUTO_MIGRATE' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
 			log.Fatalf("Failed to initialize New Relic APM: %s", err)
@@ -119,8 +119,7 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
-	// Create an event producer, shut down if it fails as its an integral part of the application
-
+	// Create an event producer, fail if it fails as its an integral part of the application
 	eventProducer, err := kafkaproducer.InitEventProducer()
 	if err != nil {
 		log.Fatalf("Failed to initiate producer: %s\n", err)
