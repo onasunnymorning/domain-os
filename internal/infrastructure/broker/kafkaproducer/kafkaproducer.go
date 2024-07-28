@@ -21,6 +21,8 @@ func InitEventProducer() (*kafka.Producer, error) {
 		"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
 	}
 
+	fmt.Println("Kafka producer config: ", config)
+
 	eventProducer, err := kafka.NewProducer(config)
 	if err != nil {
 		return nil, err
