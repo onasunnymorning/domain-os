@@ -27,12 +27,13 @@ const (
 func getTestDB() (*gorm.DB, error) {
 	return postgres.NewConnection(
 		postgres.Config{
-			User:    dbUser,
-			Pass:    dbPass,
-			Host:    dbHost,
-			Port:    dbPort,
-			DBName:  dbName,
-			SSLmode: "require",
+			User:        dbUser,
+			Pass:        dbPass,
+			Host:        dbHost,
+			Port:        dbPort,
+			DBName:      dbName,
+			SSLmode:     "require",
+			AutoMigrate: true,
 		},
 	)
 }
