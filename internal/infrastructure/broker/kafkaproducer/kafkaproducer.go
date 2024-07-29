@@ -2,16 +2,30 @@ package kafkaproducer
 
 import (
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 // InitEventProducer creates a new event producer
-func InitEventProducer(bootstrapServers string) (*kafka.Producer, error) {
+func InitEventProducer() (*kafka.Producer, error) {
+	log.Println("Initializing Kafka producer")
 
-	eventProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
+	// Create Kafka producer configuration
+	config := &kafka.ConfigMap{
+		"bootstrap.servers": os.Getenv("KAFKA_HOST"),
+		"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+		"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
+		"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
+		"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
+	}
+
+	fmt.Println("Kafka producer config: ", config)
+
+	eventProducer, err := kafka.NewProducer(config)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create producer: %v", err)
+		return nil, err
 	}
 
 	// Listen to all the events on the default events channel for errors during message delivery. Since sending is asynchronous, we start this channel to receive the delivery reports in a non-blocking way.

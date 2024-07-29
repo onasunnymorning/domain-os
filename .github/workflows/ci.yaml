@@ -51,6 +51,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push Event Consumer
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./cmd/cli/messaging/sub/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: geapex/event-consumer:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/event-consumer:buildcache
+          cache-to: type=registry,ref=geapex/event-consumer:buildcache,mode=max 
       - name: Build and push EPP Client API
         uses: docker/build-push-action@v5
         with:
@@ -96,6 +106,30 @@ jobs:
           BRANCH: ${{ github.sha }}
           ENV: CI
           GIN_MODE: debug
+          KAFKA_HOST: ${{ secrets.KAFKA_HOST }}
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+          KAFKA_SASL_MECHANISM: ${{ secrets.KAFKA_SASL_MECHANISM }}
+          KAFKA_SECURITY_PROTOCOL: ${{ secrets.KAFKA_SECURITY_PROTOCOL }}
+          KAFKA_TOPIC: ${{ secrets.KAFKA_TOPIC }}
+          KAFKA_GROUP: ${{ secrets.KAFKA_GROUP }}
+
+      - name: Docker Scout
+        id: docker-scout
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: docker/scout-action@v1
+        with:
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          command: compare
+          image: geapex/epp-client-api:${{ github.sha }}
+          to: geapex/epp-client-api:latest
+          # image: ${{ steps.meta.outputs.tags }}
+          # to: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMPARE_TAG }}
+          ignore-unchanged: true
+          only-severities: critical,high
+          write-comment: true
+          github-token: ${{ secrets.PAT_TOKEN_DOCKER_SCOUT }} # to be able to write the commen
 
 
   retag:

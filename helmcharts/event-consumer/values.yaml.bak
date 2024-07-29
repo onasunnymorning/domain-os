@@ -1,0 +1,14 @@
+eventConsumer:
+  image: "geapex/consumer"
+  branch: "main"
+  imagePullPolicy: "Always"
+
+kafka:
+  host: "kafka.default.svc.cluster.local:9092"
+  port: "9092"
+  topic: "dos-events"
+  group: "event-consumer"
+  securityProtocol: "SASL_PLAINTEXT"
+  saslMechanism: "PLAIN"
+  saslUsername: "user1"
+  saslPassword: "8L5s6kPdaN"

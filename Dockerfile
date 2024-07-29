@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.22.3-alpine3.18 as build
+FROM golang:1.22.5-alpine3.20 AS build
 
 WORKDIR /
 
@@ -43,7 +43,7 @@ COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
 
 
 # Just build API
-FROM build as build-admin-api
+FROM build AS build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/api/ry-admin
 RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
@@ -54,7 +54,7 @@ RUN go build -tags dynamic -ldflags="-s -w" -o ryAdminAPI /cmd/api/ry-admin/ryAd
 
 
 # Create API release image
-FROM alpine:3.19 as admin-api
+FROM alpine:3.20 AS admin-api
 
 # Copy librdkafka from the build image
 COPY --from=build-admin-api /usr/lib/librdkafka* /usr/lib/

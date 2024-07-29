@@ -40,7 +40,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      - ENV=${ENV}
+      - AUTO_MIGRATE=true
       - GIN_MODE=${GIN_MODE}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
       - DB_HOST=${DB_HOST}
@@ -49,6 +49,12 @@ services:
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
       - API_PORT=${API_PORT}
+      - KAFKA_HOST=${KAFKA_HOST}
+      - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
+      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
+      - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
     ports:
       - ${API_PORT}:${API_PORT}
     networks:

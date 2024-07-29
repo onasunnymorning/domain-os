@@ -69,6 +69,14 @@ services:
 # Event Consumer
   event-consumer:
     image: "geapex/consumer:${BRANCH}"
+    environment:
+      - KAFKA_HOST=${KAFKA_HOST}
+      - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
+      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
+      - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
+      - KAFKA_GROUP=${KAFKA_GROUP}
     restart: always
     depends_on:
       db:
@@ -106,6 +114,12 @@ services:
       - API_PORT=${API_PORT}
       - API_HOST=${API_HOST}
       - API_VERSION=${API_VERSION}
+      - KAFKA_HOST=${KAFKA_HOST}
+      - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
+      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
+      - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
     ports:
       - ${API_PORT}:${API_PORT}
     networks:

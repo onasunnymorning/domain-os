@@ -57,12 +57,13 @@ func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 }
 
 type Config struct {
-	User    string
-	Pass    string
-	Host    string
-	Port    string
-	DBName  string
-	SSLmode string
+	User        string
+	Pass        string
+	Host        string
+	Port        string
+	DBName      string
+	SSLmode     string
+	AutoMigrate bool
 }
 
 func NewConnection(cfg Config) (*gorm.DB, error) {
@@ -87,8 +88,13 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 		}
 	}
 
-	if err = AutoMigrate(gormDB); err != nil {
-		return gormDB, fmt.Errorf("failed to migrate database: %w", err)
+	if cfg.AutoMigrate {
+		log.Println("Auto migrating database")
+		if err = AutoMigrate(gormDB); err != nil {
+			return gormDB, fmt.Errorf("failed to migrate database: %w", err)
+		}
+	} else {
+		log.Println("Skipping auto migration")
 	}
 
 	return gormDB, nil

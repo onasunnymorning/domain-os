@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  API_HOST: localhost
+  API_PORT: '8080'
+  API_VERSION: 0.5.1
+  DB_HOST: ep-wispy-math-a6av0xcc.us-west-2.aws.neon.tech
+  DB_NAME: dos
+  DB_PASS: N19pGOQUjhRK
+  DB_PORT: '5432'
+  DB_USER: dos_owner 
+  NEWRELIC_LICENCE_KEY: 07597dba536368f708cf36d68937d4bfFFFFNRAL
+  NEWRELIC_USER_KEY: NRAK-MHBNC34JQUIMYTV9NZWJATFMWUS
+  OPENEXCHANGERATES_APP_ID: ce06ff991e0548f0963fbd95dcd3b5af
+  POSTMAN_API_KEY: PMAK-65e88b5dca51c50001544b5d-c38ed849da9d3a0bef60e2cd05780cd698
+  POSTMAN_COLLECTION_ID: 29101830-241a6a90-ee31-4660-aa4e-1ac1d5a4d035
+  POSTMAN_ENVIRONMENT_ID: 29101830-558eaa36-036a-4638-91d8-e0544c0977f4
+  KAFKA_TOPIC: dos-events
+  KAFKA_HOST: kafka.default.svc.cluster.local:9092
