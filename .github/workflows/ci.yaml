@@ -119,6 +119,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         uses: docker/scout-action@v1
         with:
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
           command: compare
           image: geapex/epp-client-api:${{ github.sha }}
           to: geapex/epp-client-api:latest
