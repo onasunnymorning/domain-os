@@ -96,6 +96,14 @@ jobs:
           BRANCH: ${{ github.sha }}
           ENV: CI
           GIN_MODE: debug
+          KAFKA_HOST: ${{ secrets.KAFKA_HOST }}
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+          KAFKA_SASL_MECHANISM: ${{ secrets.KAFKA_SASL_MECHANISM }}
+          KAFKA_SECURITY_PROTOCOL: ${{ secrets.KAFKA_SECURITY_PROTOCOL }}
+          KAFKA_TOPIC: ${{ secrets.KAFKA_TOPIC }}
+          KAFKA_GROUP: ${{ secrets.KAFKA_GROUP }}
+
 
   retag:
     name: Retag images
