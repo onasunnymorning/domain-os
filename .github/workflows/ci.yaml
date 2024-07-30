@@ -104,7 +104,6 @@ jobs:
           API_PORT: 8080
           API_HOST: domain-os-admin-api-1
           BRANCH: ${{ github.sha }}
-          ENV: CI
           GIN_MODE: debug
           KAFKA_HOST: ${{ secrets.KAFKA_HOST }}
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
