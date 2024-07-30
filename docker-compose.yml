@@ -103,7 +103,6 @@ services:
       kafka:
         condition: service_healthy
     environment:
-      - ENV=${ENV}
       - GIN_MODE=${GIN_MODE}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
       - DB_HOST=${DB_HOST}

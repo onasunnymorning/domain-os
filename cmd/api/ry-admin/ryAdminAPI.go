@@ -208,6 +208,7 @@ func main() {
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 	rest.NewFXController(r, fxService)
 	rest.NewQuoteController(r, quoteService)
+	rest.NewDNSController(r, tldService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
