@@ -1,20 +1,18 @@
 package rest
 
 import (
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 // DNSController is the controller for the DNS REST API
 type DNSController struct {
 	tldService *services.TLDService
+	dnsService *services.DNSService
 }
 
 // NewDNSController creates a new DNSController
-func NewDNSController(e *gin.Engine, ts *services.TLDService) *DNSController {
+func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.DNSService) *DNSController {
 	ctrl := &DNSController{
 		tldService: ts,
 	}
@@ -41,11 +39,20 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 		return
 	}
 
-	// send a dummy response for now
-	response := response.NSRecordResponse{
-		TLD:       tldName,
-		NSRecords: []response.NSRecord{},
-		Timestamp: time.Now().UTC(),
+	// Create the response object
+	// response := response.NSRecordResponse{
+	// 	TLD:       tldName,
+	// 	NSRecords: []response.NSRecord{},
+	// 	Timestamp: time.Now().UTC(),
+	// }
+
+	// Get the NS records for the TLD from the service
+	rrs, err := c.dnsService.GetNSRecordsPerTLD(tldName)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": "Error getting NS records"})
+		return
 	}
-	ctx.JSON(200, response)
+
+	ctx.JSON(200, rrs)
 }
