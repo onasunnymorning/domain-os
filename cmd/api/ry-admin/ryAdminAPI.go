@@ -183,6 +183,8 @@ func main() {
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
+	// DNS
+	dnsService := services.NewDNSService()
 
 	// Create Gin Engine/Router
 	r := gin.Default()
@@ -208,7 +210,7 @@ func main() {
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 	rest.NewFXController(r, fxService)
 	rest.NewQuoteController(r, quoteService)
-	rest.NewDNSController(r, tldService)
+	rest.NewDNSController(r, tldService, dnsService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
