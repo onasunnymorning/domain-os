@@ -11,11 +11,8 @@ type AdminApiConfig struct {
 }
 
 func LoadConfig() *AdminApiConfig {
-	autoMigrate := os.Getenv("AUTO_MIGRATE") == "true"
-	useNewRelic := os.Getenv("USE_NEW_RELIC") == "true"
-
 	return &AdminApiConfig{
-		UseNewRelic: useNewRelic,
-		AutoMigrate: autoMigrate,
+		UseNewRelic: os.Getenv("USE_NEW_RELIC") == "true",
+		AutoMigrate: os.Getenv("AUTO_MIGRATE") == "true",
 	}
 }
