@@ -47,7 +47,7 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 	// }
 
 	// Get the NS records for the TLD from the service
-	rrs, err := c.dnsService.GetNSRecordsPerTLD(tldName)
+	rrs, err := c.dnsService.GetNSRecordsPerTLD(ctx, tldName)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": "Error getting NS records"})

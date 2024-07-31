@@ -184,7 +184,8 @@ func main() {
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
 	// DNS
-	dnsService := services.NewDNSService()
+	dnsRepo := postgres.NewDNSRepository(gormDB)
+	dnsService := services.NewDNSService(dnsRepo)
 
 	// Create Gin Engine/Router
 	r := gin.Default()
