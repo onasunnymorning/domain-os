@@ -8,5 +8,6 @@ import (
 
 // DNSRepository is the interface for the DNS repository
 type DNSRepository interface {
-	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
+	GetGlueForActiveDomains(ctx context.Context, tld string) ([]dns.RR, error)
 }

@@ -239,6 +239,8 @@ func (d *Domain) AddHost(host *Host) (int, error) {
 		if len(host.Addresses) == 0 {
 			return 0, ErrInBailiwickHostsMustHaveAddress
 		}
+		// Set the host as being used in-bailiwick
+		host.InBailiwick = true
 	}
 	// Set the hosts linked status to true
 	err := host.SetStatus(HostStatusLinked)
