@@ -23,7 +23,7 @@ func TestToDnsNS(t *testing.T) {
 
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, err := ToDnsNS(tt.domain, tt.ns)
+			actual, err := ToDnsRR(tt.domain, tt.ns)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}

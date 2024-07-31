@@ -1135,6 +1135,46 @@ func TestDomain_AddHost(t *testing.T) {
 	}
 
 }
+func TestDomain_AddHost_set_in_bailiwick(t *testing.T) {
+	ip, _ := netip.ParseAddr("195.238.2.21")
+	testcases := []struct {
+		name            string
+		domain          *Domain
+		host            *Host
+		wantErr         error
+		wantInBailiwick bool
+	}{
+		{
+			name: "in-bailiwick without address",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "inti.raymi",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{Inactive: false},
+			},
+			host: &Host{
+				Name:      "ns2.inti.raymi",
+				ClID:      "GoMamma",
+				Addresses: []netip.Addr{ip},
+				Status: HostStatus{
+					OK: true,
+				},
+			},
+			wantErr:         nil,
+			wantInBailiwick: true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.domain.AddHost(tc.host)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.Equal(t, tc.wantInBailiwick, tc.domain.Hosts[0].InBailiwick)
+		})
+	}
+}
+
 func TestDomain_RemoveHost(t *testing.T) {
 	d := &Domain{
 		Hosts: []*Host{
