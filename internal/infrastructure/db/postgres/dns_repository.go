@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/miekg/dns"
-	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"gorm.io/gorm"
 )
 
@@ -52,7 +51,7 @@ func (r *DNSRepository) GetActiveDomainsWithHosts(ctx context.Context, tld strin
 	// Convert to DNS NS
 	response := make([]dns.RR, len(queryResults))
 	for i, result := range queryResults {
-		ns, err := mappers.ToDnsRR(result.Domain, result.Host)
+		ns, err := dns.NewRR(fmt.Sprintf("%s. 3600 IN NS %s", result.Domain, result.Host))
 		if err != nil {
 			return nil, err
 		}
