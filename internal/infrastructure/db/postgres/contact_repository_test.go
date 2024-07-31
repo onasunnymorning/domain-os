@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -168,7 +167,6 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().NoError(err)
 
 	createdContact1, err := repo.CreateContact(context.Background(), contact1)
-	fmt.Printf("\n\nCreatedContact1: %v\n\n", createdContact1)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact1)
 

@@ -15,9 +15,9 @@ func TestDomain_TableName(t *testing.T) {
 
 func getValidDBDomain() *Domain {
 	t := time.Now().AddDate(1, 0, 0)
-	rarClid := "domaintestRar"
+	rarClid := "domtestRar"
 	return &Domain{
-		RoID:         123456,
+		RoID:         12345678,
 		Name:         "example.domaintesttld",
 		OriginalName: "example.domaintesttld",
 		UName:        "example.domaintesttld",

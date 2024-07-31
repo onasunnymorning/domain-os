@@ -185,12 +185,12 @@ func (s *HostSuite) TestListHosts() {
 	// List them all
 	hosts, err := repo.ListHosts(context.Background(), 25, "")
 	s.Require().NoError(err)
-	s.Require().Equal(len(hosts), 3)
+	s.Require().GreaterOrEqual(len(hosts), 3) // tests run in parallel so we can't be sure of the exact number
 
 	// Limit to 2
 	hosts, err = repo.ListHosts(context.Background(), 2, "")
 	s.Require().NoError(err)
-	s.Require().Equal(len(hosts), 2)
+	s.Require().Equal(2, len(hosts))
 
 	// Wrong roid object type
 	hosts, err = repo.ListHosts(context.Background(), 2, "1234_CONT-APEX")
