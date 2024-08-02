@@ -4,10 +4,9 @@ import "net/netip"
 
 // HostAddress is the GORM model for the host_address table
 type HostAddress struct {
-	ID       int64 `gorm:"primaryKey"`
+	HostRoID int64  `gorm:"primaryKey"`
+	Address  string `gorm:"primaryKey"`
 	Version  int
-	Address  string
-	HostRoID int64
 }
 
 // TableName returns the table name for the HostAddress model
