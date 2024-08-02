@@ -1,6 +1,8 @@
 package services
 
 import (
+	"strings"
+
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"golang.org/x/net/context"
@@ -20,7 +22,7 @@ func NewDNSService(dr repositories.DNSRepository) *DNSService {
 
 // GetNSRecordsPerTLD gets NS records for a TLD
 func (s *DNSService) GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error) {
-	response, err := s.DNSrepo.GetActiveDomainsWithHosts(ctx, tld)
+	response, err := s.DNSrepo.GetActiveDomainsWithHosts(ctx, strings.ToLower(tld))
 	if err != nil {
 		return nil, err
 	}
