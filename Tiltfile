@@ -39,5 +39,5 @@ k8s_yaml(yaml)
 
 ## INSTALL API
 # Build the API container
-docker_build('geapex/domain-os', '.')
+docker_build('geapex/domain-os', '.', dockerfile='./Dockerfile_Tilt')
 k8s_yaml(helm('helmcharts/admin-api', name='api'))
