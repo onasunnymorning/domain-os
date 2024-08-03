@@ -20,11 +20,11 @@ var (
 // TLDService implements the TLDService interface
 type TLDService struct {
 	tldRepository repositories.TLDRepository
-	dnsRecRepo    repositories.DNSRecordRepository
+	dnsRecRepo    repositories.TLDDNSRecordRepository
 }
 
 // NewTLDService returns a new TLDService
-func NewTLDService(tldRepo repositories.TLDRepository, dnsRecRepo repositories.DNSRecordRepository) *TLDService {
+func NewTLDService(tldRepo repositories.TLDRepository, dnsRecRepo repositories.TLDDNSRecordRepository) *TLDService {
 	return &TLDService{
 		tldRepository: tldRepo,
 		dnsRecRepo:    dnsRecRepo,

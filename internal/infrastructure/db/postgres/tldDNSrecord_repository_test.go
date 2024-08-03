@@ -41,7 +41,7 @@ func (s *DNSRecordSuite) TearDownSuite() {
 
 func (s *DNSRecordSuite) TestCreateDNSRecord() {
 	// Create a DNS record
-	record := &DNSRecord{
+	record := &TLDDNSRecord{
 		Zone: "waves",
 		Name: "windy",
 		Type: "A",
@@ -65,7 +65,7 @@ func (s *DNSRecordSuite) TestCreateDNSRecord() {
 
 func (s *DNSRecordSuite) TestGetDNSRecordsByZone() {
 	// Create some DNS records
-	records := []*DNSRecord{
+	records := []*TLDDNSRecord{
 		{
 			Zone: "waves",
 			Name: "windy",

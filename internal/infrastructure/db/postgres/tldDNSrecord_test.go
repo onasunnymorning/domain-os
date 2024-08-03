@@ -13,13 +13,13 @@ import (
 func TestToRR(t *testing.T) {
 	tests := []struct {
 		name        string
-		record      DNSRecord
+		record      TLDDNSRecord
 		expected    dns.RR
 		expectedErr error
 	}{
 		{
 			name: "A record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "A",
 				TTL:  3600,
@@ -42,7 +42,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "A record with nil IP address",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "A",
 				TTL:  3600,
@@ -57,7 +57,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "AAAA record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "AAAA",
 				TTL:  3600,
@@ -80,7 +80,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "AAAA record with nil IP address",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "AAAA",
 				TTL:  3600,
@@ -95,7 +95,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "TXT record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "TXT",
 				TTL:  3600,
@@ -118,7 +118,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "TXT record without data",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "TXT",
 				TTL:  3600,
@@ -133,7 +133,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "MX record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "MX",
 				TTL:       3600,
@@ -156,7 +156,7 @@ func TestToRR(t *testing.T) {
 		// TODO Add more test cases for other DNS record types - unhappy paths
 		{
 			name: "CNAME record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "www.example.com.",
 				Type:      "CNAME",
 				TTL:       3600,
@@ -176,7 +176,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "NS record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "NS",
 				TTL:       3600,
@@ -196,7 +196,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "PTR record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "1.2.0.192.in-addr.arpa.",
 				Type:      "PTR",
 				TTL:       3600,
@@ -216,7 +216,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "SRV record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "1.2.0.192.in-addr.arpa.",
 				Type:      "SRV",
 				TTL:       3600,
@@ -242,7 +242,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "SOA record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "SOA",
 				TTL:       3600,
@@ -268,7 +268,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "DS record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "DS",
 				TTL:       3600,
@@ -291,7 +291,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "DNSKEY record",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "DNSKEY",
 				TTL:       3600,
@@ -314,7 +314,7 @@ func TestToRR(t *testing.T) {
 		},
 		{
 			name: "unsupported record type",
-			record: DNSRecord{
+			record: TLDDNSRecord{
 				Name: "1.2.0.192.in-addr.arpa.",
 				Type: "UNSUPPORTED",
 			},
@@ -342,7 +342,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 	tests := []struct {
 		name     string
 		rr       dns.RR
-		expected DNSRecord
+		expected TLDDNSRecord
 	}{
 		{
 			name: "A record",
@@ -355,7 +355,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				A: net.ParseIP("192.0.2.1"),
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "A",
 				TTL:  3600,
@@ -378,7 +378,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				AAAA: net.ParseIP("2001:db8::1"),
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "AAAA",
 				TTL:  3600,
@@ -401,7 +401,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				Txt: []string{"Hello world"},
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name: "www.example.com.",
 				Type: "TXT",
 				TTL:  3600,
@@ -425,7 +425,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				Preference: 10,
 				Mx:         "mail.example.com.",
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "MX",
 				TTL:       3600,
@@ -446,7 +446,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				Target: "example.com.",
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name:      "www.example.com.",
 				Type:      "CNAME",
 				TTL:       3600,
@@ -466,7 +466,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				Ns: "ns1.example.com.",
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name:      "example.com.",
 				Type:      "NS",
 				TTL:       3600,
@@ -486,7 +486,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				},
 				Ptr: "example.com.",
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name:      "1.2.0.192.in-addr.arpa.",
 				Type:      "PTR",
 				TTL:       3600,
@@ -509,7 +509,7 @@ func TestConvertRRToDNSRecord(t *testing.T) {
 				Port:     5060,
 				Target:   "sipserver.example.com.",
 			},
-			expected: DNSRecord{
+			expected: TLDDNSRecord{
 				Name:      "_sip._tcp.example.com.",
 				Type:      "SRV",
 				TTL:       3600,

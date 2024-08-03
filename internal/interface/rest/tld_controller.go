@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -13,18 +14,22 @@ import (
 
 type TLDController struct {
 	tldService interfaces.TLDService
+	domService interfaces.DomainService
 }
 
-func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDController {
+func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss interfaces.DomainService) *TLDController {
 	controller := &TLDController{
 		tldService: tldService,
+		domService: dnss,
 	}
 
 	e.GET("/tlds/:tldName", controller.GetTLDByName)
 	e.GET("/tlds", controller.ListTLDs)
 	e.POST("/tlds", controller.CreateTLD)
 	e.DELETE("/tlds/:tldName", controller.DeleteTLDByName)
-	e.GET("/tlds/:tldName/header", controller.GetTLDHeader)
+	e.GET("/tlds/:tldName/dns/resource-records", controller.GetTLDHeader)
+	e.GET("/tlds/:tldName/dns/domain-delegations", controller.GetNSRecordsPerTLD)
+	e.GET("/tlds/:tldName/dns/glue-records", controller.GetGlueRecordsPerTLD)
 
 	return controller
 }
@@ -209,4 +214,84 @@ func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, tldHeader)
+}
+
+// GetNSRecordsPerTLD godoc
+// @Summary Get NS records for a TLD
+// @Description Get NS records for a TLD in JSON format (default) or text format
+// @Tags DNS
+// @Produce json
+// @Param tld path string true "TLD"
+// @Param format query string false "Output format"
+// @Success 200 {array} dns.RR
+// @Failure 404
+// @Failure 500
+// @Router /dns/{tldName}/ns [get]
+func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
+	// Check if the TLD exists
+	tldName := ctx.Param("tldName")
+	_, err := c.tldService.GetTLDByName(ctx, tldName, false)
+	if err != nil {
+		ctx.JSON(404, gin.H{"error": "TLD not found"})
+		return
+	}
+
+	rrs, err := c.domService.GetNSRecordsPerTLD(ctx, tldName)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": "Error getting NS records"})
+		return
+	}
+
+	if format := ctx.Query("format"); format == "text" {
+		var stringResponse string
+		for _, rr := range rrs {
+			stringResponse += rr.String() + "\n"
+		}
+
+		ctx.String(200, "%s", stringResponse)
+		return
+	}
+
+	ctx.JSON(200, rrs)
+}
+
+// GetGlueRecordsPerTLD godoc
+// @Summary Get Glue records for a TLD
+// @Description Get Glue records for a TLD
+// @Tags DNS
+// @Produce json
+// @Param tld path string true "TLD"
+// @Param format query string false "Output format"
+// @Success 200 {array} dns.RR
+// @Failure 404
+// @Failure 500
+// @Router /dns/{tldName}/glue [get]
+func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
+	// Check if the TLD exists
+	tldName := ctx.Param("tldName")
+	_, err := c.tldService.GetTLDByName(ctx, tldName, false)
+	if err != nil {
+		ctx.JSON(404, gin.H{"error": "TLD not found"})
+		return
+	}
+
+	rrs, err := c.domService.GetGlueRecordsPerTLD(ctx, tldName)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Error getting Glue records: %s", err.Error())})
+		return
+	}
+
+	if format := ctx.Query("format"); format == "text" {
+		var stringResponse string
+		for _, rr := range rrs {
+			stringResponse += rr.String() + "\n"
+		}
+
+		ctx.String(200, "%s", stringResponse)
+		return
+	}
+
+	ctx.JSON(200, rrs)
 }
