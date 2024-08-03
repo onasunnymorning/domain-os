@@ -3,6 +3,7 @@ package interfaces
 import (
 	"context"
 
+	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -32,4 +33,8 @@ type DomainService interface {
 	MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error)
 	// RestoreDomain restores a domain as a registrar
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
+
+	// These are DNS services
+	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+	GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
 }

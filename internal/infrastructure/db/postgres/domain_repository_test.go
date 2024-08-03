@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -57,12 +58,30 @@ func (s *DomainSuite) SetupSuite() {
 		s.Require().NoError(err)
 		s.Require().NotNil(host)
 
+		// set as in-bailiwick for testing GLUE records in real life the domain layer will take care of this
+		host.InBailiwick = true
+
 		createdHost, err := hostRepo.CreateHost(context.Background(), host)
 		s.Require().NoError(err)
 		s.Require().NotNil(createdHost)
 
 		s.hosts = append(s.hosts, createdHost)
 	}
+
+	// Add IPs to the hosts
+	hostAddressRepo := NewGormHostAddressRepository(s.db)
+	for i, host := range s.hosts {
+		// create a netip.Addr
+		a, err := netip.ParseAddr(fmt.Sprintf("192.168.1.%d", i))
+		s.Require().NoError(err)
+
+		// add one ip to each host
+		ho_roid_int, err := host.RoID.Int64()
+		s.Require().NoError(err)
+		_, err = hostAddressRepo.CreateHostAddress(context.Background(), ho_roid_int, &a)
+		s.Require().NoError(err)
+	}
+
 }
 
 func (s *DomainSuite) TearDownSuite() {
@@ -125,6 +144,8 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	domain.BillingID = "myTestContact007"
 	// Add some hosts
 	domain.Hosts = s.hosts
+	// Set active
+	domain.Status.Inactive = false
 
 	// Create the domain
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
@@ -141,6 +162,70 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().NotNil(retrievedDomain)
 	s.Require().Equal(domain.Name, retrievedDomain.Name)
 	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
+
+	// Retrieve the NS records that result from the domain having hosts
+	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), s.tld)
+	s.Require().NoError(err)
+	s.Require().Equal(len(domain.Hosts), len(rr))
+
+	// try and delete the domain with hosts associated, should fail
+	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	s.Require().Error(err)
+}
+
+func (s *DomainSuite) TestDomainRepository_GetGlue() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// add IPs to the hosts
+	for i, host := range s.hosts {
+		// create a net.IP
+		a, err := netip.ParseAddr(fmt.Sprintf("192.168.1.%d", i))
+		s.Require().NoError(err)
+
+		// append it to the host
+		host.Addresses = append(host.Addresses, a)
+	}
+
+	// Create a domain
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	domain.RegistrantID = "myTestContact007"
+	domain.AdminID = "myTestContact007"
+	domain.TechID = "myTestContact007"
+	domain.BillingID = "myTestContact007"
+	// Add some hosts
+	domain.Hosts = s.hosts
+	// Set active
+	domain.Status.Inactive = false
+
+	// Create the domain
+	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdDomain)
+	s.Require().Equal(domain.Name, createdDomain.Name)
+	s.Require().Equal(domain.ClID, createdDomain.ClID)
+	s.Require().Equal(domain.AuthInfo, createdDomain.AuthInfo)
+	s.Require().NotNil(createdDomain.RoID)
+
+	// Retrieve the domain and check if the hosts are there
+	retrievedDomain, err := repo.GetDomainByName(context.Background(), createdDomain.Name.String(), true)
+	s.Require().NoError(err)
+	s.Require().NotNil(retrievedDomain)
+	s.Require().Equal(domain.Name, retrievedDomain.Name)
+	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
+
+	// Retrieve the NS records that result from the domain having hosts
+	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), s.tld)
+	s.Require().NoError(err)
+	s.Require().Equal(len(domain.Hosts), len(rr))
+
+	// Retrieve the GLUE records that result from the domain having hosts
+	glue, err := repo.GetActiveDomainGlue(context.Background(), s.tld)
+	s.Require().NoError(err)
+	s.Require().Equal(len(domain.Hosts), len(glue))
 
 	// try and delete the domain with hosts associated, should fail
 	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
@@ -160,6 +245,7 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
+	domain.Status.Inactive = false // in real life the domain layer will take care of this
 
 	// Create the domain
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
@@ -184,6 +270,7 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	s.Require().NotNil(retrievedDomain)
 	s.Require().Equal(domain.Name, retrievedDomain.Name)
 	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
+	s.Require().Equal(domain.Status.Inactive, retrievedDomain.Status.Inactive)
 
 	// Remove the hosts
 	for _, host := range s.hosts {

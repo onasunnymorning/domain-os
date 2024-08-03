@@ -133,7 +133,8 @@ func main() {
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
-	tldService := services.NewTLDService(tldRepo)
+	dnsRecRepo := postgres.NewGormDNSRecordRepository(gormDB)
+	tldService := services.NewTLDService(tldRepo, dnsRecRepo)
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
@@ -183,9 +184,6 @@ func main() {
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
-	// DNS
-	dnsRepo := postgres.NewDNSRepository(gormDB)
-	dnsService := services.NewDNSService(dnsRepo)
 
 	// Create Gin Engine/Router
 	r := gin.Default()
@@ -195,7 +193,7 @@ func main() {
 	// Set up the routes and controllers
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
-	rest.NewTLDController(r, tldService)
+	rest.NewTLDController(r, tldService, domainService)
 	rest.NewNNDNController(r, nndnService)
 	rest.NewSyncController(r, syncService)
 	rest.NewSpec5Controller(r, spec5Service)
@@ -211,7 +209,7 @@ func main() {
 	rest.NewPremiumController(r, premiumListService, premiumLabelService)
 	rest.NewFXController(r, fxService)
 	rest.NewQuoteController(r, quoteService)
-	rest.NewDNSController(r, tldService, dnsService)
+	rest.NewDNSController(r, tldService, domainService)
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
