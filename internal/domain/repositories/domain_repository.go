@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 
+	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -15,4 +16,6 @@ type DomainRepository interface {
 	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
+	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
+	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 }
