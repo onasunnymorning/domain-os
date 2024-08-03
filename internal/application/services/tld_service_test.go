@@ -14,12 +14,12 @@ type MockDNSRecordRepository struct {
 }
 
 // GetByZone returns a list of DNSRecords by zone
-func (repo *MockDNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*postgres.DNSRecord, error) {
+func (repo *MockDNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*postgres.TLDDNSRecord, error) {
 	return nil, nil
 }
 
 // Create creates a DNSRecord
-func (repo *MockDNSRecordRepository) Create(ctx context.Context, record *postgres.DNSRecord) (*postgres.DNSRecord, error) {
+func (repo *MockDNSRecordRepository) Create(ctx context.Context, record *postgres.TLDDNSRecord) (*postgres.TLDDNSRecord, error) {
 	return nil, nil
 }
 

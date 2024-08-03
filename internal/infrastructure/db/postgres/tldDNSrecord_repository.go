@@ -17,7 +17,7 @@ func NewGormDNSRecordRepository(db *gorm.DB) *DNSRecordRepository {
 }
 
 // Create creates a new DNS record in the database
-func (r *DNSRecordRepository) Create(ctx context.Context, record *DNSRecord) (*DNSRecord, error) {
+func (r *DNSRecordRepository) Create(ctx context.Context, record *TLDDNSRecord) (*TLDDNSRecord, error) {
 	err := r.db.WithContext(ctx).Create(record).Error
 	if err != nil {
 		return nil, err
@@ -26,8 +26,8 @@ func (r *DNSRecordRepository) Create(ctx context.Context, record *DNSRecord) (*D
 }
 
 // GetByZone returns all DNS records for a given zone
-func (r *DNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*DNSRecord, error) {
-	var records []*DNSRecord
+func (r *DNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*TLDDNSRecord, error) {
+	var records []*TLDDNSRecord
 	err := r.db.WithContext(ctx).Where("zone = ?", zone).Find(&records).Error
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func (r *DNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*DN
 
 // Delete deletes a DNS record from the database
 func (r *DNSRecordRepository) Delete(ctx context.Context, id int) error {
-	err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&DNSRecord{}).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&TLDDNSRecord{}).Error
 	if err != nil {
 		return err
 	}

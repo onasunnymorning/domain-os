@@ -193,7 +193,7 @@ func main() {
 	// Set up the routes and controllers
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
-	rest.NewTLDController(r, tldService)
+	rest.NewTLDController(r, tldService, domainService)
 	rest.NewNNDNController(r, nndnService)
 	rest.NewSyncController(r, syncService)
 	rest.NewSpec5Controller(r, spec5Service)

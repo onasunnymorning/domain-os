@@ -21,6 +21,7 @@ var _ = ginkgo.Describe("TLDController", func() {
 	var (
 		router        *gin.Engine
 		tldService    interfaces.TLDService
+		domService    interfaces.DomainService
 		tldController *rest.TLDController
 		tempTLDName   string
 	)
@@ -36,7 +37,7 @@ var _ = ginkgo.Describe("TLDController", func() {
 		tldRepo := postgres.NewGormTLDRepo(db)
 		dnsRecRepo := postgres.NewGormDNSRecordRepository(db)
 		tldService = services.NewTLDService(tldRepo, dnsRecRepo)
-		tldController = rest.NewTLDController(router, tldService)
+		tldController = rest.NewTLDController(router, tldService, domService)
 		_ = tldController
 	})
 

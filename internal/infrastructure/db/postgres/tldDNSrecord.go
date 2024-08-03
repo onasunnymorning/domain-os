@@ -9,8 +9,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DNSRecord represents a DNS record in the database
-type DNSRecord struct {
+// TLDDNSRecord represents a DNS record in the database
+type TLDDNSRecord struct {
 	ID        int       `json:"id"`
 	Zone      string    `json:"zone" gorm:"index"`
 	Name      string    `json:"name"`
@@ -23,6 +23,11 @@ type DNSRecord struct {
 	Target    *string   `json:"target,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TableName returns the table name for the DNSRecord model
+func (TLDDNSRecord) TableName() string {
+	return "tld_dns_records"
 }
 
 // ARecordData represents the data for an A record use it to marshal/unmarshal the data field in DNSRecord
@@ -97,7 +102,7 @@ type DNSKEYRecordData struct {
 }
 
 // Convert DNSRecord to dns.RR
-func (record *DNSRecord) ToRR() (dns.RR, error) {
+func (record *TLDDNSRecord) ToRR() (dns.RR, error) {
 	header := dns.RR_Header{
 		Name:   dns.Fqdn(record.Name),
 		Rrtype: dns.StringToType[record.Type],
@@ -251,10 +256,10 @@ func (record *DNSRecord) ToRR() (dns.RR, error) {
 }
 
 // ConvertRRToDNSRecord converts a dns.RR to a DNSRecord
-func ConvertRRToDNSRecord(rr dns.RR) (*DNSRecord, error) {
+func ConvertRRToDNSRecord(rr dns.RR) (*TLDDNSRecord, error) {
 	header := rr.Header()
 
-	record := &DNSRecord{
+	record := &TLDDNSRecord{
 		Name:      dns.Fqdn(header.Name),
 		Type:      dns.TypeToString[header.Rrtype],
 		TTL:       header.Ttl,

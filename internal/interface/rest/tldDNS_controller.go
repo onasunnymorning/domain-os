@@ -7,15 +7,15 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 )
 
-// DNSController is the controller for the DNS REST API
-type DNSController struct {
+// TLDDNSController is the controller for the DNS REST API
+type TLDDNSController struct {
 	tldService *services.TLDService
 	domService *services.DomainService
 }
 
 // NewDNSController creates a new DNSController
-func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.DomainService) *DNSController {
-	ctrl := &DNSController{
+func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.DomainService) *TLDDNSController {
+	ctrl := &TLDDNSController{
 		tldService: ts,
 		domService: dnss,
 	}
@@ -35,7 +35,7 @@ func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.Dom
 // @Failure 404
 // @Failure 500
 // @Router /dns/{tld}/ns [get]
-func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
+func (c *TLDDNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 	// Check if the TLD exists
 	tldName := ctx.Param("tld")
 	_, err := c.tldService.GetTLDByName(ctx, tldName, false)
@@ -75,7 +75,7 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 // @Failure 404
 // @Failure 500
 // @Router /dns/{tld}/glue [get]
-func (c *DNSController) GetGlueRecordsPerTLD(ctx *gin.Context) {
+func (c *TLDDNSController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 	// Check if the TLD exists
 	tldName := ctx.Param("tld")
 	_, err := c.tldService.GetTLDByName(ctx, tldName, false)

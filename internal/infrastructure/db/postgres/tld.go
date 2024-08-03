@@ -19,7 +19,7 @@ type TLD struct {
 	Registrars []Registrar `gorm:"many2many:accreditations;"`
 
 	// FK relationships with domains
-	DNSRecord []*DNSRecord `gorm:"foreignKey:Zone"`
+	DNSRecord []*TLDDNSRecord `gorm:"foreignKey:Zone"`
 }
 
 // ToDBTLD converts a TLD struct to a DBTLD struct
