@@ -133,7 +133,8 @@ func main() {
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
-	tldService := services.NewTLDService(tldRepo)
+	dnsRecRepo := postgres.NewGormDNSRecordRepository(gormDB)
+	tldService := services.NewTLDService(tldRepo, dnsRecRepo)
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)

@@ -34,7 +34,8 @@ var _ = ginkgo.Describe("TLDController", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		tldRepo := postgres.NewGormTLDRepo(db)
-		tldService = services.NewTLDService(tldRepo)
+		dnsRecRepo := postgres.NewGormDNSRecordRepository(db)
+		tldService = services.NewTLDService(tldRepo, dnsRecRepo)
 		tldController = rest.NewTLDController(router, tldService)
 		_ = tldController
 	})
