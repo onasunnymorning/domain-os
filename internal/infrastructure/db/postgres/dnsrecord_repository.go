@@ -24,3 +24,22 @@ func (r *DNSRecordRepository) Create(ctx context.Context, record *DNSRecord) (*D
 	}
 	return record, nil
 }
+
+// GetByZone returns all DNS records for a given zone
+func (r *DNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*DNSRecord, error) {
+	var records []*DNSRecord
+	err := r.db.WithContext(ctx).Where("zone = ?", zone).Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+// Delete deletes a DNS record from the database
+func (r *DNSRecordRepository) Delete(ctx context.Context, id int) error {
+	err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&DNSRecord{}).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
