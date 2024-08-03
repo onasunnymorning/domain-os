@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -125,4 +127,83 @@ func (dr *DomainRepository) AddHostToDomain(ctx context.Context, domRoID int64, 
 // RemoveHostFromDomain removes a domain_hosts association from the database
 func (dr *DomainRepository) RemoveHostFromDomain(ctx context.Context, domRoID int64, hostRoid int64) error {
 	return dr.db.WithContext(ctx).Model(&Domain{RoID: domRoID}).Association("Hosts").Delete(&Host{RoID: hostRoid})
+}
+
+// GetHostsForDomain retrieves the hosts associated with an active domain
+type ActiveDomainQueryResult struct {
+	Domain string
+	Host   string
+}
+
+// GetActiveDomainsWithHosts gets the domains that are flagged as active and their associated hosts
+// This data is used to build the NS records for a given TLD
+func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error) {
+	var queryResults []ActiveDomainQueryResult
+	err := dr.db.Raw(`
+		SELECT dom.name AS domain, ho.name AS host
+		FROM public.domains dom
+		LEFT JOIN domain_hosts dh ON dh.domain_ro_id = dom.ro_id
+		LEFT JOIN hosts ho ON dh.host_ro_id = ho.ro_id
+		WHERE dom.tld_name = ?
+		AND dom.inactive = false
+	`, tld).Scan(&queryResults).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to DNS NS
+	response := make([]dns.RR, len(queryResults))
+	for i, result := range queryResults {
+		ns, err := dns.NewRR(fmt.Sprintf("%s. 3600 IN NS %s", result.Domain, result.Host))
+		if err != nil {
+			return nil, err
+		}
+		response[i] = ns
+	}
+
+	return response, nil
+}
+
+// GlueQueryResult is a struct to hold the results of a query for glue records
+// This is used to build the A or AAAA records (GLUE) for a given TLD
+// These records are needed for in-bailiwick NS records
+type GlueQueryResult struct {
+	Host    string
+	Address string
+	Version int
+}
+
+// GetActiveDomainGlue gets the glue records for a given TLD
+func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error) {
+	var queryResults []GlueQueryResult
+	err := dr.db.Raw(`
+		SELECT ho.name AS host, address, version
+		FROM public.domains dom
+		LEFT JOIN domain_hosts dh ON dh.domain_ro_id = dom.ro_id
+		LEFT JOIN hosts ho ON dh.host_ro_id = ho.ro_id
+		LEFT JOIN host_addresses ha ON ho.ro_id = ha.host_ro_id 
+		WHERE dom.tld_name = ?
+		AND dom.inactive = false
+		AND ho.in_bailiwick = true
+	`, tld).Scan(&queryResults).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to DNS A or AAAA
+	response := make([]dns.RR, len(queryResults))
+	for i, result := range queryResults {
+		t := "A"
+		if result.Version == 6 {
+			t = "AAAA"
+		}
+		rr, err := dns.NewRR(fmt.Sprintf("%s. 3600 IN %s %s", result.Host, t, result.Address))
+		if err != nil {
+			return nil, err
+		}
+		response[i] = rr
+
+	}
+
+	return response, nil
 }

@@ -10,14 +10,14 @@ import (
 // DNSController is the controller for the DNS REST API
 type DNSController struct {
 	tldService *services.TLDService
-	dnsService *services.DNSService
+	domService *services.DomainService
 }
 
 // NewDNSController creates a new DNSController
-func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.DNSService) *DNSController {
+func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.DomainService) *DNSController {
 	ctrl := &DNSController{
 		tldService: ts,
-		dnsService: dnss,
+		domService: dnss,
 	}
 	e.GET("/dns/:tld/ns", ctrl.GetNSRecordsPerTLD)
 	e.GET("/dns/:tld/glue", ctrl.GetGlueRecordsPerTLD)
@@ -43,7 +43,7 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 		return
 	}
 
-	rrs, err := c.dnsService.GetNSRecordsPerTLD(ctx, tldName)
+	rrs, err := c.domService.GetNSRecordsPerTLD(ctx, tldName)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": "Error getting NS records"})
@@ -72,7 +72,7 @@ func (c *DNSController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 		return
 	}
 
-	rrs, err := c.dnsService.GetGlueRecordsPerTLD(ctx, tldName)
+	rrs, err := c.domService.GetGlueRecordsPerTLD(ctx, tldName)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Error getting Glue records: %s", err.Error())})
