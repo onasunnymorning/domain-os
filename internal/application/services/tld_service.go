@@ -120,6 +120,18 @@ func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.T
 				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not an AAAA record: %s" + rr.String())
 			}
 			tldHeader.Glue = append(tldHeader.Glue, rr)
+		case "DS":
+			ds, ok := rr.(*dns.DS)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a DS record: %s" + rr.String())
+			}
+			tldHeader.Ds = append(tldHeader.Ds, *ds)
+		case "DNSKEY":
+			dnskey, ok := rr.(*dns.DNSKEY)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a DNSKEY record: %s" + rr.String())
+			}
+			tldHeader.DNSKey = append(tldHeader.DNSKey, *dnskey)
 		}
 	}
 

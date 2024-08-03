@@ -69,6 +69,33 @@ type CNAMERecordData struct {
 	Target string `json:"target"`
 }
 
+// SOARecordData represents the data for a SOA record use it to marshal/unmarshal the data field in DNSRecord
+type SOARecordData struct {
+	Ns      string `json:"ns"`
+	Mbox    string `json:"mbox"`
+	Serial  uint32 `json:"serial"`
+	Refresh uint32 `json:"refresh"`
+	Retry   uint32 `json:"retry"`
+	Expire  uint32 `json:"expire"`
+	Minttl  uint32 `json:"minttl"`
+}
+
+// DSRecordData represents the data for a DS record use it to marshal/unmarshal the data field in DNSRecord
+type DSRecordData struct {
+	KeyTag     uint16 `json:"keyTag"`
+	Algorithm  uint8  `json:"algorithm"`
+	DigestType uint8  `json:"digestType"`
+	Digest     string `json:"digest"`
+}
+
+// DNSKEYRecordData represents the data for a DNSKEY record use it to marshal/unmarshal the data field in DNSRecord
+type DNSKEYRecordData struct {
+	Flags     uint16 `json:"flags"`
+	Protocol  uint8  `json:"protocol"`
+	Algorithm uint8  `json:"algorithm"`
+	PublicKey string `json:"publicKey"`
+}
+
 // Convert DNSRecord to dns.RR
 func (record *DNSRecord) ToRR() (dns.RR, error) {
 	header := dns.RR_Header{
@@ -162,6 +189,61 @@ func (record *DNSRecord) ToRR() (dns.RR, error) {
 			Hdr: header,
 			Ptr: dns.Fqdn(*record.Target),
 		}, nil
+	case "SOA":
+		// Unmarshal the SOA record data
+		var soaData SOARecordData
+		if err := json.Unmarshal([]byte(record.Data), &soaData); err != nil {
+			return nil, err
+		}
+
+		// Create the SOA record
+		soa := &dns.SOA{
+			Hdr:     header,
+			Ns:      dns.Fqdn(soaData.Ns),
+			Mbox:    dns.Fqdn(soaData.Mbox),
+			Serial:  soaData.Serial,
+			Refresh: soaData.Refresh,
+			Retry:   soaData.Retry,
+			Expire:  soaData.Expire,
+			Minttl:  soaData.Minttl,
+		}
+
+		return soa, nil
+	case "DS":
+		// Unmarshal the DS record data
+		var dsData DSRecordData
+		if err := json.Unmarshal([]byte(record.Data), &dsData); err != nil {
+			return nil, err
+		}
+
+		// Create the DS record
+		ds := &dns.DS{
+			Hdr:        header,
+			KeyTag:     dsData.KeyTag,
+			Algorithm:  dsData.Algorithm,
+			DigestType: dsData.DigestType,
+			Digest:     dsData.Digest,
+		}
+
+		return ds, nil
+	case "DNSKEY":
+		// Unmarshal the DNSKEY record data
+		var dnskeyData DNSKEYRecordData
+		if err := json.Unmarshal([]byte(record.Data), &dnskeyData); err != nil {
+			return nil, err
+		}
+
+		// Create the DNSKEY record
+		dnskey := &dns.DNSKEY{
+			Hdr:       header,
+			Flags:     dnskeyData.Flags,
+			Protocol:  dnskeyData.Protocol,
+			Algorithm: dnskeyData.Algorithm,
+			PublicKey: dnskeyData.PublicKey,
+		}
+
+		return dnskey, nil
+
 	// Add more cases for other DNS record types as needed
 	default:
 		return nil, fmt.Errorf("unsupported record type: %s", record.Type)
