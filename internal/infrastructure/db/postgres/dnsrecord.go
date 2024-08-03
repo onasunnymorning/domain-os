@@ -1,18 +1,18 @@
-package main
+package postgres
 
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
 	"github.com/miekg/dns"
 )
 
+// DNSRecord represents a DNS record in the database
 type DNSRecord struct {
 	ID        int       `json:"id"`
-	Zone      string    `json:"zone"`
+	Zone      string    `json:"zone" gorm:"index"`
 	Name      string    `json:"name"`
 	Type      string    `json:"type"`
 	TTL       uint32    `json:"ttl"`
@@ -25,31 +25,38 @@ type DNSRecord struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ARecordData represents the data for an A record use it to marshal/unmarshal the data field in DNSRecord
 type ARecordData struct {
 	Address string `json:"address"`
 }
 
+// AAAARecordData represents the data for an AAAA record use it to marshal/unmarshal the data field in DNSRecord
 type AAAARecordData struct {
 	Address string `json:"address"`
 }
 
+// TXTRecordData represents the data for a TXT record use it to marshal/unmarshal the data field in DNSRecord
 type TXTRecordData struct {
 	Text string `json:"text"`
 }
 
+// MXRecordData represents the data for an MX record use it to marshal/unmarshal the data field in DNSRecord
 type MXRecordData struct {
 	Preference uint16 `json:"preference"`
 	Exchange   string `json:"exchange"`
 }
 
+// NSRecordData represents the data for an NS record use it to marshal/unmarshal the data field in DNSRecord
 type NSRecordData struct {
 	Ns string `json:"ns"`
 }
 
+// PTRRecordData represents the data for a PTR record use it to marshal/unmarshal the data field in DNSRecord
 type PTRRecordData struct {
 	Ptr string `json:"ptr"`
 }
 
+// SRVRecordData represents the data for an SRV record use it to marshal/unmarshal the data field in DNSRecord
 type SRVRecordData struct {
 	Priority uint16 `json:"priority"`
 	Weight   uint16 `json:"weight"`
@@ -57,6 +64,7 @@ type SRVRecordData struct {
 	Target   string `json:"target"`
 }
 
+// CNAMERecordData represents the data for a CNAME record use it to marshal/unmarshal the data field in DNSRecord
 type CNAMERecordData struct {
 	Target string `json:"target"`
 }
@@ -101,6 +109,10 @@ func (record *DNSRecord) ToRR() (dns.RR, error) {
 		var txtData TXTRecordData
 		if err := json.Unmarshal([]byte(record.Data), &txtData); err != nil {
 			return nil, err
+		}
+		// return an error if the text is empty
+		if txtData.Text == "" {
+			return nil, fmt.Errorf("TXT record requires Text")
 		}
 		return &dns.TXT{
 			Hdr: header,
@@ -218,24 +230,4 @@ func ConvertRRToDNSRecord(rr dns.RR) (*DNSRecord, error) {
 	}
 
 	return record, nil
-}
-
-func main() {
-	// Example A record
-	rr := &dns.A{
-		Hdr: dns.RR_Header{
-			Name:   "www.example.com.",
-			Rrtype: dns.TypeA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
-		},
-		A: net.ParseIP("192.0.2.1"),
-	}
-
-	record, err := ConvertRRToDNSRecord(rr)
-	if err != nil {
-		log.Fatalf("Error converting to DNSRecord: %v", err)
-	}
-
-	fmt.Printf("%+v\n", record)
 }
