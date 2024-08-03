@@ -6,6 +6,7 @@ import (
 
 	"log"
 
+	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -789,4 +790,22 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 	}
 
 	return nil
+}
+
+// GetNSRecordsPerTLD gets NS records for a TLD
+func (s *DomainService) GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error) {
+	response, err := s.domainRepository.GetActiveDomainsWithHosts(ctx, strings.ToLower(tld))
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+// GetGlueRecordsPerTLD gets Glue records for a TLD
+func (s *DomainService) GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error) {
+	response, err := s.domainRepository.GetActiveDomainGlue(ctx, tld)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
 }
