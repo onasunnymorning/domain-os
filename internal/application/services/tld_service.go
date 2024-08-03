@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -18,12 +20,14 @@ var (
 // TLDService implements the TLDService interface
 type TLDService struct {
 	tldRepository repositories.TLDRepository
+	dnsRecRepo    repositories.DNSRecordRepository
 }
 
 // NewTLDService returns a new TLDService
-func NewTLDService(tldRepo repositories.TLDRepository) *TLDService {
+func NewTLDService(tldRepo repositories.TLDRepository, dnsRecRepo repositories.DNSRecordRepository) *TLDService {
 	return &TLDService{
 		tldRepository: tldRepo,
+		dnsRecRepo:    dnsRecRepo,
 	}
 }
 
@@ -71,4 +75,53 @@ func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
 		return ErrCannotDeleteTLDWithActivePhases
 	}
 	return svc.tldRepository.DeleteByName(ctx, name)
+}
+
+// GetTLDHeader gets a TLD header
+func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.TLDHeader, error) {
+	// Collect the DNSRecords for the TLD
+	rec, err := s.dnsRecRepo.GetByZone(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	// Create our return object
+	var tldHeader entities.TLDHeader
+
+	// Convert them to dns.RR records
+	for _, r := range rec {
+		// Convert the DNSRecord to a dns.RR
+		rr, err := r.ToRR()
+		if err != nil {
+			return nil, err
+		}
+		// Append the RR to the appropriate slice or set soa
+		switch r.Type {
+		case "SOA":
+			s, ok := rr.(*dns.SOA)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a SOA record: %s" + rr.String())
+			}
+			tldHeader.Soa = *s
+		case "NS":
+			ns, ok := rr.(*dns.NS)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a NS record: %s" + rr.String())
+			}
+			tldHeader.Ns = append(tldHeader.Ns, *ns)
+		case "A":
+			_, ok := rr.(*dns.A)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not an A record: %s" + rr.String())
+			}
+			tldHeader.Glue = append(tldHeader.Glue, rr)
+		case "AAAA":
+			_, ok := rr.(*dns.AAAA)
+			if !ok {
+				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not an AAAA record: %s" + rr.String())
+			}
+			tldHeader.Glue = append(tldHeader.Glue, rr)
+		}
+	}
+
+	return &tldHeader, nil
 }

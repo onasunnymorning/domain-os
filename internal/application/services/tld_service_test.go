@@ -5,8 +5,28 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"golang.org/x/net/context"
 )
+
+type MockDNSRecordRepository struct {
+	Header *entities.TLDHeader
+}
+
+// GetByZone returns a list of DNSRecords by zone
+func (repo *MockDNSRecordRepository) GetByZone(ctx context.Context, zone string) ([]*postgres.DNSRecord, error) {
+	return nil, nil
+}
+
+// Create creates a DNSRecord
+func (repo *MockDNSRecordRepository) Create(ctx context.Context, record *postgres.DNSRecord) (*postgres.DNSRecord, error) {
+	return nil, nil
+}
+
+// Delete deletes a DNSRecord
+func (repo *MockDNSRecordRepository) Delete(ctx context.Context, id int) error {
+	return nil
+}
 
 // MockTLDRepository is a mock implementation of the TLDRepository interface
 type MockTLDRepository struct {
@@ -47,7 +67,8 @@ func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) er
 
 func TestTLDService_CreateTLD(t *testing.T) {
 	tldRepo := MockTLDRepository{}
-	service := NewTLDService(&tldRepo)
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	tld, err := entities.NewTLD("com")
 	if err != nil {
@@ -75,7 +96,8 @@ func getCreateTLDCommand(tld *entities.TLD) *commands.CreateTLDCommand {
 
 func TestTLDService_GetTLDByName(t *testing.T) {
 	tldRepo := MockTLDRepository{}
-	service := NewTLDService(&tldRepo)
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
 	tld, err := entities.NewTLD("apex")
@@ -118,7 +140,8 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 
 func TestTLDService_ListTLDs(t *testing.T) {
 	tldRepo := MockTLDRepository{}
-	service := NewTLDService(&tldRepo)
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
 	tld, err := entities.NewTLD("apex")
@@ -152,7 +175,8 @@ func TestTLDService_ListTLDs(t *testing.T) {
 
 func TestTLDService_DeleteTLDByName(t *testing.T) {
 	tldRepo := MockTLDRepository{}
-	service := NewTLDService(&tldRepo)
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
 	tld, err := entities.NewTLD("apex")

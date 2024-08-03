@@ -24,6 +24,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService) *TLDContr
 	e.GET("/tlds", controller.ListTLDs)
 	e.POST("/tlds", controller.CreateTLD)
 	e.DELETE("/tlds/:tldName", controller.DeleteTLDByName)
+	e.GET("/tlds/:tldName/header", controller.GetTLDHeader)
 
 	return controller
 }
@@ -179,4 +180,27 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	event.Details.After = result
 
 	ctx.JSON(201, result)
+}
+
+// GetTLDHeader godoc
+// @Summary Get a TLD header
+// @Description Get a TLD header
+// @Tags TLDs
+// @Produce json
+// @Param tldName path string true "TLD Name"
+// @Success 200 {object} entities.TLDHeader
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/header [get]
+func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
+	name := ctx.Param("tldName")
+
+	tldHeader, err := ctrl.tldService.GetTLDHeader(ctx, name)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, tldHeader)
 }
