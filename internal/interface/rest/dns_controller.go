@@ -19,8 +19,8 @@ func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.Dom
 		tldService: ts,
 		domService: dnss,
 	}
-	e.GET("/dns/:tld/ns", ctrl.GetNSRecordsPerTLD)
-	e.GET("/dns/:tld/glue", ctrl.GetGlueRecordsPerTLD)
+	e.GET("/dns/:tld/domains/delegations", ctrl.GetNSRecordsPerTLD)
+	e.GET("/dns/:tld/domains/glue", ctrl.GetGlueRecordsPerTLD)
 	return ctrl
 }
 
