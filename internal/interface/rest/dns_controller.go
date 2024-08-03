@@ -26,10 +26,11 @@ func NewDNSController(e *gin.Engine, ts *services.TLDService, dnss *services.Dom
 
 // GetNSRecordsPerTLD godoc
 // @Summary Get NS records for a TLD
-// @Description Get NS records for a TLD
+// @Description Get NS records for a TLD in JSON format (default) or text format
 // @Tags DNS
 // @Produce json
 // @Param tld path string true "TLD"
+// @Param format query string false "Output format"
 // @Success 200 {array} dns.RR
 // @Failure 404
 // @Failure 500
@@ -50,6 +51,16 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 		return
 	}
 
+	if format := ctx.Query("format"); format == "text" {
+		var stringResponse string
+		for _, rr := range rrs {
+			stringResponse += rr.String() + "\n"
+		}
+
+		ctx.String(200, "%s", stringResponse)
+		return
+	}
+
 	ctx.JSON(200, rrs)
 }
 
@@ -59,6 +70,7 @@ func (c *DNSController) GetNSRecordsPerTLD(ctx *gin.Context) {
 // @Tags DNS
 // @Produce json
 // @Param tld path string true "TLD"
+// @Param format query string false "Output format"
 // @Success 200 {array} dns.RR
 // @Failure 404
 // @Failure 500
@@ -76,6 +88,16 @@ func (c *DNSController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Error getting Glue records: %s", err.Error())})
+		return
+	}
+
+	if format := ctx.Query("format"); format == "text" {
+		var stringResponse string
+		for _, rr := range rrs {
+			stringResponse += rr.String() + "\n"
+		}
+
+		ctx.String(200, "%s", stringResponse)
 		return
 	}
 
