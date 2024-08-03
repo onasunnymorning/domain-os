@@ -188,7 +188,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 // @Tags TLDs
 // @Produce json
 // @Param tldName path string true "TLD Name"
-// @Param format query string false "Format"
+// @Param format query string false "Output Format"
 // @Success 200 {object} entities.TLDHeader
 // @Failure 400
 // @Failure 404
@@ -204,7 +204,7 @@ func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 	}
 
 	if format := ctx.Query("format"); format == "text" {
-		ctx.JSON(200, tldHeader.String())
+		ctx.String(200, "%s", tldHeader.String())
 		return
 	}
 
