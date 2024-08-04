@@ -23,5 +23,7 @@ spec:
           envFrom:
           - configMapRef:
               name: {{ .Release.Name }}-config
+          - configMapRef:
+              name: kafka-config
           - secretRef:
               name: kafka-secrets
