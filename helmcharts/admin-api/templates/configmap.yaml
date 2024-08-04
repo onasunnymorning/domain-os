@@ -19,3 +19,4 @@ data:
   POSTMAN_ENVIRONMENT_ID: 29101830-558eaa36-036a-4638-91d8-e0544c0977f4
   KAFKA_TOPIC: dos-events
   KAFKA_HOST: kafka.default.svc.cluster.local:9092
+  
