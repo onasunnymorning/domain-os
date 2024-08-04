@@ -198,7 +198,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /tlds/{tldName}/header [get]
+// @Router /tlds/{tldName}/dns/resource-records [get]
 func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
@@ -219,14 +219,14 @@ func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 // GetNSRecordsPerTLD godoc
 // @Summary Get NS records for a TLD
 // @Description Get NS records for a TLD in JSON format (default) or text format
-// @Tags DNS
+// @Tags TLDs
 // @Produce json
 // @Param tld path string true "TLD"
 // @Param format query string false "Output format"
 // @Success 200 {array} dns.RR
 // @Failure 404
 // @Failure 500
-// @Router /dns/{tldName}/ns [get]
+// @Router /tlds/{tldName}/dns/domain-delegations [get]
 func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 	// Check if the TLD exists
 	tldName := ctx.Param("tldName")
@@ -259,14 +259,14 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 // GetGlueRecordsPerTLD godoc
 // @Summary Get Glue records for a TLD
 // @Description Get Glue records for a TLD
-// @Tags DNS
+// @Tags TLDs
 // @Produce json
 // @Param tld path string true "TLD"
 // @Param format query string false "Output format"
 // @Success 200 {array} dns.RR
 // @Failure 404
 // @Failure 500
-// @Router /dns/{tldName}/glue [get]
+// @Router /tlds/{tldName}/dns/glue-records [get]
 func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 	// Check if the TLD exists
 	tldName := ctx.Param("tldName")
