@@ -3,7 +3,7 @@
 Domain (Registry for now) Operating System (DOS)
 
  # Why?
- The registry backend business operates in a high-volume low-margin setup, therefore a highly automated, robust, adaptable system that is cost efficient to operate. 
+ The registry backend business operates in a high-volume low-margin setup, therefore a highly automated, robust, adaptable system that is cost efficient to operate is required. 
  It should be flexible in terms of policy, infrastructure and quick to evolve. 
 
  # How? 
