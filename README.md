@@ -14,3 +14,37 @@ Domain (Registry for now) Operating System (DOS)
 
   # What?
   A registry system with core functionality that you can easily integrate into your existing service stack or build on top of
+
+# Running the app
+## Components
+* persistent storage - db (currently Postgres) to run alongside the app for a quick demo or test deployment
+* messaging and event streaming (currently Kafka) to allow de-coupling of services.
+* API first (currently Gin) to ensure consisten business logic through any endpoint
+* EPP server that can use the API over the network or directly import the business logic as a package
+* HTTP EPP client to quickly interface with EPP for visibility and quick feedback
+* DNS component that produces a bind compatible zonefile. This can be evolved to be a standalone component that uses events to stay up to date.
+* WHOIS/RDAP for compliance, focus here is data protection and DOS/Excessive crawling mitigation
+* ICANN reporting that offers complete transparency
+* ESCROW import/export functionality for RDE and importing data
+* Migration toolkit
+
+## Deployment
+The app is containerized and geared towards a kubernetes runtime.
+* githun CI pipeline running unit and integration tests + push new images (CD pending)
+* Helm for templating deployments
+* Docker compose or Tilt for a quick feedback look when developing
+* Postman integration tests
+
+### Setting up a development environment
+Make sure you have the following installed:
+* git
+* docker
+* kubectl
+* helm
+* tilt (optional if you plan to use docker compose)
+
+Check out the code
+
+Set your ENVARS
+
+Compose/Tilt up
