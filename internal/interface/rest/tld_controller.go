@@ -25,6 +25,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss inte
 
 	e.GET("/tlds/:tldName", controller.GetTLDByName)
 	e.GET("/tlds", controller.ListTLDs)
+	e.GET("/tlds/count", controller.GetTLDCount)
 	e.POST("/tlds", controller.CreateTLD)
 	e.DELETE("/tlds/:tldName", controller.DeleteTLDByName)
 	e.GET("/tlds/:tldName/dns/resource-records", controller.GetTLDHeader)
@@ -294,4 +295,25 @@ func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, rrs)
+}
+
+// GetTLDCount godoc
+// @Summary Get TLD count
+// @Description Get TLD count
+// @Tags TLDs
+// @Produce json
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /tlds/count [get]
+func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
+	count, err := ctrl.tldService.CountTLDs(ctx)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		ObjectType: "TLD",
+		Count:      count,
+	})
 }

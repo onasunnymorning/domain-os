@@ -12,4 +12,5 @@ type TLDRepository interface {
 	List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error)
 	// Update(tld *entities.TLD) error
 	DeleteByName(ctx context.Context, name string) error
+	Count(ctx context.Context) (int, error)
 }
