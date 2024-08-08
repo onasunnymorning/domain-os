@@ -65,6 +65,11 @@ func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) er
 	return nil
 }
 
+// Count returns the number of TLDs
+func (repo *MockTLDRepository) Count(ctx context.Context) (int, error) {
+	return len(repo.Tlds), nil
+}
+
 func TestTLDService_CreateTLD(t *testing.T) {
 	tldRepo := MockTLDRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
@@ -226,5 +231,40 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 	if len(tlds) != 0 {
 		t.Errorf("Expected 0 tlds, got %d", len(tlds))
+	}
+}
+
+func TestTLDService_CountTLDs(t *testing.T) {
+	tldRepo := MockTLDRepository{}
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
+
+	// Create 2 TLDs
+	tld, err := entities.NewTLD("apex")
+	if err != nil {
+		t.Error(err)
+	}
+	cmd := getCreateTLDCommand(tld)
+	_, err = service.CreateTLD(context.Background(), cmd)
+	if err != nil {
+		t.Error(err)
+	}
+	tld, err = entities.NewTLD("com.apex")
+	if err != nil {
+		t.Error(err)
+	}
+	cmd = getCreateTLDCommand(tld)
+	_, err = service.CreateTLD(context.Background(), cmd)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Count all TLDs
+	count, err := service.CountTLDs(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+	if count != 2 {
+		t.Errorf("Expected 2 tlds, got %d", count)
 	}
 }
