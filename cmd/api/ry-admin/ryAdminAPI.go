@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
@@ -17,6 +18,7 @@ import (
 	"os"
 
 	"github.com/apex/gateway"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
@@ -187,6 +189,16 @@ func main() {
 
 	// Create Gin Engine/Router
 	r := gin.Default()
+	// Configure CORS middleware
+	config := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"}, // Add your frontend URL here
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+	r.Use(cors.New(config))
 	// Attach the KafkaMiddleware to the router
 	r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
 
