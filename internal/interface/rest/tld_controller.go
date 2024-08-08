@@ -3,6 +3,7 @@ package rest
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -315,5 +316,6 @@ func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
 	ctx.JSON(200, response.CountResult{
 		ObjectType: "TLD",
 		Count:      count,
+		Timestamp:  time.Now().UTC(),
 	})
 }
