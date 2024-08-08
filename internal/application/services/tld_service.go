@@ -139,6 +139,6 @@ func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.T
 }
 
 // CountTLDs returns the number of TLDs
-func (svc *TLDService) CountTLDs(ctx context.Context) (int, error) {
+func (svc *TLDService) CountTLDs(ctx context.Context) (int64, error) {
 	return svc.tldRepository.Count(ctx)
 }

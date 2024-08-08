@@ -107,6 +107,6 @@ func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
 }
 
 // Count returns the number of registrars
-func (s *RegistrarService) Count(ctx context.Context) (int, error) {
+func (s *RegistrarService) Count(ctx context.Context) (int64, error) {
 	return s.registrarRepository.Count(ctx)
 }

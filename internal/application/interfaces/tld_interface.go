@@ -12,5 +12,5 @@ type TLDService interface {
 	ListTLDs(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error)
 	DeleteTLDByName(ctx context.Context, name string) error
 	GetTLDHeader(ctx context.Context, name string) (*entities.TLDHeader, error)
-	CountTLDs(ctx context.Context) (int, error)
+	CountTLDs(ctx context.Context) (int64, error)
 }

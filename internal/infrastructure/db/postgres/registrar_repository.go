@@ -121,11 +121,11 @@ func (r *GormRegistrarRepository) List(ctx context.Context, pagesize int, cursor
 }
 
 // Count returns the total number of registrars in the repository
-func (r *GormRegistrarRepository) Count(ctx context.Context) (int, error) {
+func (r *GormRegistrarRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&Registrar{}).Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
-	return int(count), nil
+	return count, nil
 }

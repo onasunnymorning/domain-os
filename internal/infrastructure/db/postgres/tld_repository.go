@@ -110,11 +110,11 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 
 // Count returns the total number of TLDs in the database
 // TODO: add a filter to count only TLDs that match a certain criteria
-func (repo *GormTLDRepository) Count(ctx context.Context) (int, error) {
+func (repo *GormTLDRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := repo.db.WithContext(ctx).Model(&TLD{}).Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
-	return int(count), nil
+	return count, nil
 }
