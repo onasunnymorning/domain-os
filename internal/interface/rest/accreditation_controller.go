@@ -39,7 +39,7 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 // @Success 201
 // @Failure 400
 // @Failure 500
-// @Router /accredit/{tldName}/{rarClID} [post]
+// @Router /accreditations/{tldName}/{rarClID} [post]
 func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
@@ -69,7 +69,7 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 // @Success 204
 // @Failure 400
 // @Failure 500
-// @Router /deaccredit/{tldName}/{rarClID} [delete]
+// @Router /accreditations/{tldName}/{rarClID} [delete]
 func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
