@@ -3,10 +3,11 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-config
 data:
+  AUTO_MIGRATE: 'true'
   API_HOST: localhost
   API_PORT: '8080'
   API_VERSION: 0.5.1
-  DB_HOST: ep-wispy-math-a6av0xcc.us-west-2.aws.neon.tech
+  DB_HOST: ep-super-mode-a6ogczi2.us-west-2.aws.neon.tech
   DB_NAME: dos
   DB_PASS: N19pGOQUjhRK
   DB_PORT: '5432'
