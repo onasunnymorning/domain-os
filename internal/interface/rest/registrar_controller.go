@@ -2,6 +2,7 @@ package rest
 
 import (
 	"strconv"
+	"time"
 
 	"errors"
 
@@ -32,6 +33,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars/:clid", controller.GetByClID)
 	e.GET("/registrars/gurid/:gurid", controller.GetByGurID)
 	e.GET("/registrars", controller.List)
+	e.GET("/registrars/count", controller.GetRegistrarCount)
 	e.POST("/registrars", controller.Create)
 	e.PUT("/registrars/:clid", controller.UpdateRegistrar)
 	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
@@ -293,4 +295,26 @@ func (ctrl *RegistrarController) UpdateRegistrar(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, result)
+}
+
+// GetRegistrarCount godoc
+// @Summary Get the number of registrars
+// @Description Get the number of registrars
+// @Tags Registrars
+// @Produce json
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /registrars/count [get]
+func (ctrl *RegistrarController) GetRegistrarCount(ctx *gin.Context) {
+	count, err := ctrl.rarService.Count(ctx)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		ObjectType: "Registrar",
+		Count:      count,
+		Timestamp:  time.Now().UTC(),
+	})
 }
