@@ -207,3 +207,10 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 
 	return response, nil
 }
+
+// Count returns the number of domains in the database
+func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
+	var count int64
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Count(&count).Error
+	return count, err
+}

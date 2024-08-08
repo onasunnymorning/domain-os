@@ -5,6 +5,6 @@ import "time"
 // CountResult represents the response for a count operation
 type CountResult struct {
 	ObjectType string    `json:"objectType"`
-	Count      int       `json:"count"`
+	Count      int64     `json:"count"`
 	Timestamp  time.Time `json:"timestamp"`
 }

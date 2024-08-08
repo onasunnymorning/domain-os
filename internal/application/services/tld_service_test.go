@@ -66,8 +66,8 @@ func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) er
 }
 
 // Count returns the number of TLDs
-func (repo *MockTLDRepository) Count(ctx context.Context) (int, error) {
-	return len(repo.Tlds), nil
+func (repo *MockTLDRepository) Count(ctx context.Context) (int64, error) {
+	return int64(len(repo.Tlds)), nil
 }
 
 func TestTLDService_CreateTLD(t *testing.T) {

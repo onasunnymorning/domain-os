@@ -209,7 +209,7 @@ func (s *RegistrarSuite) TestCountRegistrars() {
 
 	count, err := repo.Count(context.Background())
 	require.NoError(s.T(), err)
-	require.GreaterOrEqual(s.T(), count, 1) // Other tests might create a regsitrar as part of their setup
+	require.GreaterOrEqual(s.T(), count, int64(1)) // Other tests might create a regsitrar as part of their setup
 
 	registrar2, _ := entities.NewRegistrar("my-registrar-id2", "GoBro Inc.",
 		"contact@gobro.com", 12346, getValidRegistrarPostalInfoArr())
@@ -219,7 +219,7 @@ func (s *RegistrarSuite) TestCountRegistrars() {
 
 	count, err = repo.Count(context.Background())
 	require.NoError(s.T(), err)
-	require.GreaterOrEqual(s.T(), count, 2)
+	require.GreaterOrEqual(s.T(), count, int64(2))
 
 	// Delete one registrar
 	err = repo.Delete(context.Background(), createdRegistrar.ClID.String())
@@ -227,7 +227,7 @@ func (s *RegistrarSuite) TestCountRegistrars() {
 
 	count, err = repo.Count(context.Background())
 	require.NoError(s.T(), err)
-	require.GreaterOrEqual(s.T(), count, 1)
+	require.GreaterOrEqual(s.T(), count, int64(1))
 
 	// Delete the other registrar
 	err = repo.Delete(context.Background(), createdRegistrar2.ClID.String())
@@ -235,6 +235,6 @@ func (s *RegistrarSuite) TestCountRegistrars() {
 
 	count, err = repo.Count(context.Background())
 	require.NoError(s.T(), err)
-	require.GreaterOrEqual(s.T(), count, 0)
+	require.GreaterOrEqual(s.T(), count, int64(0))
 
 }
