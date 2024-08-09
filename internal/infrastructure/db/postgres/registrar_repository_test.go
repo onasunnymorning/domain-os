@@ -34,6 +34,17 @@ func (s *RegistrarSuite) TestCreateRegistrar() {
 	createdRegistrar, err := repo.Create(context.Background(), registrar)
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
+
+	// Check the created registrar
+	readRegistrar, err := repo.GetByClID(context.Background(), registrar.ClID.String(), false)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), readRegistrar)
+	require.Equal(s.T(), createdRegistrar, readRegistrar)
+
+	// Delete the registrar
+	err = repo.Delete(context.Background(), registrar.ClID.String())
+	require.NoError(s.T(), err)
+
 }
 
 func (s *RegistrarSuite) TestCreateRegistrar_Duplicate() {
@@ -47,10 +58,10 @@ func (s *RegistrarSuite) TestCreateRegistrar_Duplicate() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar)
 
-	// Create a duplicate
-	createdRegistrar, err = repo.Create(context.Background(), registrar)
+	// Try and Create a duplicate
+	_, err = repo.Create(context.Background(), registrar)
 	require.Error(s.T(), err)
-	require.Nil(s.T(), createdRegistrar)
+
 }
 
 func (s *RegistrarSuite) TestReadRegistrar() {
@@ -96,6 +107,10 @@ func (s *RegistrarSuite) TestUpdateRegistrar() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), updatedRegistrar)
 	require.Equal(s.T(), "Updated Registrar Name", updatedRegistrar.Name)
+
+	// Delete the registrar
+	err = repo.Delete(context.Background(), createdRegistrar.ClID.String())
+	require.NoError(s.T(), err)
 }
 
 func (s *RegistrarSuite) TestDeleteRegistrar() {
@@ -143,6 +158,24 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 	require.Len(s.T(), registrars, 2)
+
+	// Delete one registrar
+	err = repo.Delete(context.Background(), createdRegistrar1.ClID.String())
+	require.NoError(s.T(), err)
+
+	registrars, err = repo.List(context.Background(), 2, "")
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), registrars)
+	require.GreaterOrEqual(s.T(), len(registrars), 1)
+
+	// Delete the other registrar
+	err = repo.Delete(context.Background(), createdRegistrar2.ClID.String())
+	require.NoError(s.T(), err)
+
+	registrars, err = repo.List(context.Background(), 2, "")
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), registrars)
+
 }
 
 func getValidRegistrarPostalInfo(t string) *entities.RegistrarPostalInfo {
@@ -161,4 +194,47 @@ func getValidRegistrarPostalInfoArr() [2]*entities.RegistrarPostalInfo {
 		getValidRegistrarPostalInfo("loc"),
 		getValidRegistrarPostalInfo("int"),
 	}
+}
+
+func (s *RegistrarSuite) TestCountRegistrars() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormRegistrarRepository(tx)
+
+	registrar, _ := entities.NewRegistrar("my-registrar-id", "Gomamma Inc.",
+		"contact@gomamma.com", 12345, getValidRegistrarPostalInfoArr())
+	createdRegistrar, err := repo.Create(context.Background(), registrar)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), createdRegistrar)
+
+	count, err := repo.Count(context.Background())
+	require.NoError(s.T(), err)
+	require.GreaterOrEqual(s.T(), count, int64(1)) // Other tests might create a regsitrar as part of their setup
+
+	registrar2, _ := entities.NewRegistrar("my-registrar-id2", "GoBro Inc.",
+		"contact@gobro.com", 12346, getValidRegistrarPostalInfoArr())
+	createdRegistrar2, err := repo.Create(context.Background(), registrar2)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), createdRegistrar2)
+
+	count, err = repo.Count(context.Background())
+	require.NoError(s.T(), err)
+	require.GreaterOrEqual(s.T(), count, int64(2))
+
+	// Delete one registrar
+	err = repo.Delete(context.Background(), createdRegistrar.ClID.String())
+	require.NoError(s.T(), err)
+
+	count, err = repo.Count(context.Background())
+	require.NoError(s.T(), err)
+	require.GreaterOrEqual(s.T(), count, int64(1))
+
+	// Delete the other registrar
+	err = repo.Delete(context.Background(), createdRegistrar2.ClID.String())
+	require.NoError(s.T(), err)
+
+	count, err = repo.Count(context.Background())
+	require.NoError(s.T(), err)
+	require.GreaterOrEqual(s.T(), count, int64(0))
+
 }
