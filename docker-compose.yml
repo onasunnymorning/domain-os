@@ -156,6 +156,21 @@ services:
     networks:
       - dos
 
+# Frontend Admin Container
+  admin-frontend:
+    image: "admin-dash:fist"
+    restart: always
+    ports:
+      - 3000:3000
+    environment:
+      - AUTH_TRUST_HOST="true"
+      - AUTH_SECRET=80b9fe9f59f563481762556f5d4b2957
+      - API_HOST=http://domain-os-admin-api-1
+      - API_PORT=8080
+    networks:
+      - dos
+    
+
 networks:
   dos:
     driver: bridge
