@@ -3,6 +3,7 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -28,6 +29,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.PUT("/domains/:name", controller.UpdateDomain)
 	e.DELETE("/domains/:name", controller.DeleteDomainByName)
 	e.GET("/domains", controller.ListDomains)
+	e.GET("/domains/count", controller.CountDomains)
 	// Add and remove hosts
 	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
 	e.POST("/domains/:name/hostname/:hostName", controller.AddHostToDomainByHostName)
@@ -571,4 +573,26 @@ func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
 
 	ctx.JSON(204, nil)
 
+}
+
+// CountDomains godoc
+// @Summary Count domains
+// @Description Count domains
+// @Tags Domains
+// @Produce json
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /domains/count [get]
+func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
+	count, err := ctrl.domainService.Count(ctx)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
 }

@@ -8,17 +8,33 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
+// InitKafkaConfig creates a new Kafka configuration map
+func InitKafkaConfig() (*kafka.ConfigMap, error) {
+	log.Println("Initializing Kafka configuration")
+
+	// Create Kafka configuration
+	config := &kafka.ConfigMap{
+		"bootstrap.servers": os.Getenv("KAFKA_BOOTSTRAP_SERVER") + ":9092",
+	}
+
+	return config, nil
+}
+
 // InitEventProducer creates a new event producer
 func InitEventProducer() (*kafka.Producer, error) {
 	log.Println("Initializing Kafka producer")
 
 	// Create Kafka producer configuration
-	config := &kafka.ConfigMap{
-		"bootstrap.servers": os.Getenv("KAFKA_HOST"),
-		"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
-		"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
-		"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
-		"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
+	// config := &kafka.ConfigMap{
+	// 	"bootstrap.servers": os.Getenv("KAFKA_BOOTSTRAP_SERVERS"),
+	// 	"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+	// 	"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
+	// 	"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
+	// 	"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
+	// }
+	config, err := InitKafkaConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	fmt.Println("Kafka producer config: ", config)

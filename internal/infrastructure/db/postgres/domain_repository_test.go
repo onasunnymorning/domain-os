@@ -147,7 +147,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	// Set active
 	domain.Status.Inactive = false
 
-	// Create the domain
+	// Create the domain in the db
 	createdDomain, err := repo.CreateDomain(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
@@ -167,6 +167,11 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), s.tld)
 	s.Require().NoError(err)
 	s.Require().Equal(len(domain.Hosts), len(rr))
+
+	// Count the domains
+	count, err := repo.Count(context.Background())
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
 
 	// try and delete the domain with hosts associated, should fail
 	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())

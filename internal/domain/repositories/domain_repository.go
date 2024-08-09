@@ -18,4 +18,5 @@ type DomainRepository interface {
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
+	Count(ctx context.Context) (int64, error)
 }

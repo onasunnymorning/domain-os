@@ -111,3 +111,17 @@ func (s *TLDSuite) TestGetTLD() {
 	readTLD, err = repo.GetByName(context.Background(), "notfound", false)
 	require.Error(s.T(), err)
 }
+
+func (s *TLDSuite) TestCountTLD() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormTLDRepo(tx)
+
+	tld, _ := entities.NewTLD("com")
+	err := repo.Create(context.Background(), tld)
+	require.NoError(s.T(), err)
+
+	count, err := repo.Count(context.Background())
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(1), count)
+}

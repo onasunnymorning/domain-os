@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-config
 data:
-  AUTO_MIGRATE: 'true'
+  AUTO_MIGRATE: 'false'
   API_HOST: localhost
   API_PORT: '8080'
   API_VERSION: 0.5.1

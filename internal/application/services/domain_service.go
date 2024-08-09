@@ -809,3 +809,8 @@ func (s *DomainService) GetGlueRecordsPerTLD(ctx context.Context, tld string) ([
 	}
 	return response, nil
 }
+
+// Count returns the number of domains
+func (s *DomainService) Count(ctx context.Context) (int64, error) {
+	return s.domainRepository.Count(ctx)
+}

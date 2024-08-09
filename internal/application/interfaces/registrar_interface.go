@@ -15,4 +15,5 @@ type RegistrarService interface {
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error)
+	Count(ctx context.Context) (int64, error)
 }
