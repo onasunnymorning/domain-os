@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,11 +17,24 @@ import (
 	"github.com/biter777/countries"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/schollz/progressbar/v3"
 )
 
 // This script is intended to import the ICANN 2013 Registrar List into the database.
 // Use this when initializing the database for the first time.
-// The file can be downloaded from the ICANN website at: https://www.icann.org/en/accredited-registrars
+// The file can be downloaded from the ICANN website at: https://www.icann.org/en/accredited	-registrars
+
+const (
+	API_HOST = "localhost"
+	API_POST = "8080"
+
+	EXISTS_ERRMSG = "ERROR: duplicate key value violates unique constraint \"registrars_pkey\" (SQLSTATE 23505)"
+)
+
+var (
+	URL = "http://" + API_HOST + ":" + API_POST + "/registrars"
+)
 
 // CSVRegistrar represents a registrar in the CSV file from ICANN
 // Header: "Registrar Name","IANA Number","Country/Territory","Public Contact","Link"
@@ -81,7 +95,7 @@ func (r CSVRegistrar) ContactPhone() string {
 	}
 
 	// join the phoneSlice to get the phone number
-	cleaned := cleanPhone([]byte(strings.Join(phoneSlice, " ")))
+	cleaned := cleanPhoneNumber([]byte(strings.Join(phoneSlice, " ")))
 	// replace the first space with a '.'
 	cleaned = strings.Replace(cleaned, " ", ".", 1)
 	// remove all remaining spaces
@@ -98,8 +112,8 @@ func (r CSVRegistrar) ContactPhone() string {
 
 }
 
-// cleanPhone removes all characters from the phone number string that are not numbers
-func cleanPhone(s []byte) string {
+// cleanPhoneNumber removes all characters from the phone number string that are not numbers
+func cleanPhoneNumber(s []byte) string {
 	j := 0
 	for _, b := range s {
 		if ('0' <= b && b <= '9') || b == ' ' {
@@ -110,7 +124,7 @@ func cleanPhone(s []byte) string {
 	return string(s[:j])
 }
 
-// ContactEmail returns the URL of the contact person (the last part of the contact string)
+// ContactEmail returns the email of the contact person (the last part of the contact string)
 func (r CSVRegistrar) ContactEmail() string {
 	return strings.Split(r.Contact, " ")[len(strings.Split(r.Contact, " "))-1]
 }
@@ -171,11 +185,24 @@ func (r CSVRegistrar) Address() (*entities.Address, error) {
 func main() {
 	// FLAGS
 	filename := flag.String("f", "", "(path to) filename")
+	sync := flag.Bool("s", false, "sync IANA registrars")
 	flag.Parse()
 
 	if *filename == "" {
-		log.Fatal("Please provide a filename")
+		log.Fatal("[ERR] please provide a filename")
 	}
+
+	// If requested sync the IANARegistrars on the backend first
+	if *sync {
+		log.Println("[INFO] syncing IANA registrars")
+		SyncIANARegistrars()
+	}
+	// Retrieve all IANAResgistrars from the API so we can SET THE CORRECT STATUS
+	ianaRegistrars, err := GetIANARegistrars()
+	if err != nil {
+		log.Fatalf("[ERR] error getting IANA registrars: %v", err)
+	}
+	log.Printf("[INFO] got %d IANA registrars\n", len(ianaRegistrars))
 
 	// Open the file
 	file, err := os.Open(*filename)
@@ -183,6 +210,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer file.Close()
+	log.Printf("[INFO] preparing data in file %s\n", *filename)
 
 	reader := csv.NewReader(file)
 	reader.LazyQuotes = true // To avoid `parse error on line 1, column 4: bare " in non-quoted-field` error
@@ -202,7 +230,7 @@ func main() {
 		// convert the IANAID to an int
 		ianaID, err := strconv.Atoi(line[1])
 		if err != nil {
-			log.Fatalf("Error converting IANAID to int: %v", err)
+			log.Fatalf("[ERR] error converting IANAID to int: %v", err)
 		}
 
 		registrars[i-1] = CSVRegistrar{
@@ -213,6 +241,7 @@ func main() {
 			Link:    line[4],
 		}
 	}
+	log.Printf("[INFO] %d registrars found\n", len(registrars))
 
 	// Covert to a slice of CreateRegistrarCommands
 	createCommands := make([]commands.CreateRegistrarCommand, len(registrars))
@@ -220,47 +249,59 @@ func main() {
 	for i, r := range registrars {
 		addr, err := r.Address()
 		if err != nil {
-			log.Fatalf("Error getting address: %v", err)
+			log.Fatalf("[ERR] error getting address for registrar %s : %v", r.Name, err)
 		}
 
 		clidName, err := r.CreateSlug()
 		if err != nil {
-			log.Printf("Error creating slug for registrar %s: %v", r.Name, err)
+			log.Printf("[ERR] error creating slug for registrar %s: %v", r.Name, err)
 		}
 		rarCmd := commands.CreateRegistrarCommand{
-			ClID:  clidName,
-			Name:  r.Name,
-			Email: r.ContactEmail(),
-			Voice: r.ContactPhone(),
-			GurID: r.IANAID,
-			URL:   r.Link,
-			PostalInfo: [2]*entities.RegistrarPostalInfo{
-				{
-					Type:    entities.PostalInfoEnumTypeINT,
-					Address: addr,
-				},
-			},
+			ClID:       clidName,
+			Name:       r.Name,
+			Email:      r.ContactEmail(),
+			Voice:      r.ContactPhone(),
+			GurID:      r.IANAID,
+			URL:        r.Link,
+			PostalInfo: [2]*entities.RegistrarPostalInfo{},
+		}
+
+		// if the Address is ASCII add an int postalinfo, else add a loc postalinfo
+		if isacii, _ := addr.IsASCII(); isacii {
+			rarCmd.PostalInfo[0] = &entities.RegistrarPostalInfo{
+				Type:    entities.PostalInfoEnumTypeINT,
+				Address: addr,
+			}
+		} else {
+			rarCmd.PostalInfo[0] = &entities.RegistrarPostalInfo{
+				Type:    entities.PostalInfoEnumTypeLOC,
+				Address: addr,
+			}
 		}
 
 		// Check for duplicate ClIDs
 		if seen[rarCmd.ClID] {
-			log.Fatalf("Duplicate Registrar.ClID: %s", rarCmd.ClID)
+			log.Fatalf("[ERR] duplicate Registrar.ClID: %s", rarCmd.ClID)
 		}
 		seen[rarCmd.ClID] = true
 
+		// Add the command to the slice
 		createCommands[i] = rarCmd
 	}
 
 	// Create the registrars
+	bar := progressbar.Default(int64(len(createCommands)), "Creating Registrars")
 	for _, cmd := range createCommands {
 		postBody, err := json.Marshal(cmd)
 		if err != nil {
-			log.Fatalf("Error marshaling command: %v", err)
+			log.Fatalf("[ERR] error marshaling command: %v", err)
 		}
 
-		resp, err := http.Post("http://localhost:8080/registrars", "application/json", bytes.NewBuffer(postBody))
+		resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
 		if err != nil {
-			log.Fatalf("Error posting registrar %s: %v", cmd.Name, err)
+			log.Println(cmd)
+			log.Println(URL)
+			log.Fatalf("[ERR] error send create command to API %s: %v", cmd.Name, err)
 		}
 		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
@@ -268,10 +309,219 @@ func main() {
 			log.Fatalln(err)
 		}
 
+		// Mashall into a Registrar
+		var registrar entities.Registrar
+		err = json.Unmarshal(body, &registrar)
+		if err != nil {
+			log.Fatalf("[ERR] error unmarshaling response for %s: %v", cmd.Name, err)
+		}
+
+		bar.Add(1)
 		if resp.StatusCode != http.StatusCreated {
-			log.Fatalf("Error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
+			// unmarshall the body
+			var apiErr APIError
+			err = json.Unmarshal(body, &apiErr)
+			if err != nil {
+				log.Fatalf("[ERR]error unmarshaling error response for %s: %v", cmd.Name, err)
+			}
+			if apiErr.Error == EXISTS_ERRMSG {
+				// log.Printf("[WARN] Registrar %s already exists, continueing\n", cmd.Name)
+				continue
+			}
+			log.Fatalf("[ERR] error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
 		}
 
 		// log.Printf("Registrar %s created as %s\n", cmd.Name, cmd.ClID)
 	}
+
+	// Update the status of the newly creaed registrars to match the IANARegistrars' Status
+	bar = progressbar.Default(int64(len(createCommands)), "Setting Registrar Status")
+	for _, r := range createCommands {
+		status, err := getIANARegistrarStatus(r.GurID)
+		if err != nil {
+			log.Fatalf("[ERR] error getting IANA registrar status for %s: %v", r.Name, err)
+		}
+		// Map Accredited => ok
+		if status == "Accredited" {
+			status = "ok"
+		}
+
+		// Update that registrar's status
+		URL := "http://" + API_HOST + ":" + API_POST + "/registrars/" + r.ClID + "/status/" + status
+		req, err := http.NewRequest(http.MethodPut, URL, nil)
+		if err != nil {
+			log.Fatalf("[ERR] error creating PUT request to update registrar status: %v", err)
+		}
+		// Create a new HTTP client
+		client := &http.Client{}
+		// Send the PUT request
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Fatalf("[ERR] error updating registrar status via API(%s): %v", URL, err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Fatalf("[ERR] error updating registrar status: %v - %v", resp.Status, URL)
+		}
+
+		bar.Add(1)
+
+	}
+}
+
+// APIError represents an error returned by the API
+type APIError struct {
+	Error string `json:"error"`
+}
+
+// SyncIANARegistrars triggers the API backend to refresh the ICANN registrars
+func SyncIANARegistrars() {
+	URL := "http://" + API_HOST + ":" + API_POST + "/sync/iana-registrars"
+	req, err := http.NewRequest(http.MethodPut, URL, nil)
+	if err != nil {
+		log.Fatalf("[ERR] error creating PUT request to sync IANA registrars: %v", err)
+	}
+	// Create a new HTTP client
+	client := &http.Client{}
+
+	// Send the PUT request
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	if err != nil {
+		log.Fatalf("[ERR] error syncing IANA regsitrars via API(%s): %v", URL, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("[ERR] error syncing IANA registrars: %v - %v", resp.Status, string(body))
+	}
+	log.Println("[INFO] IANA registrars updated")
+}
+
+// GetIANARegsitrars queries the API for all IANA registrars
+func GetIANARegistrars() ([]entities.Registrar, error) {
+	var returnVal []entities.Registrar
+	// First get a count of the objects we are pulling
+	count, err := getCount()
+	if err != nil {
+		return returnVal, fmt.Errorf("could not get count of IANA registrars: %v", err)
+	}
+	log.Printf("[INFO] getting %d IANA registrars\n", count)
+	// Set the URL
+	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars?pagesize=1000"
+	// Get the first batch
+	result, err := getBatch(URL)
+	if err != nil {
+		return returnVal, fmt.Errorf("error getting IANA registrars via API(%s): %v", URL, err)
+	}
+	// Check if result.Data is a pointer to a slice
+	registrars, ok := result.Data.(*[]entities.Registrar)
+	if !ok {
+		return returnVal, fmt.Errorf("unexpected type for result.Data: %T", result.Data)
+	}
+	// Append the first batch to the returnVal
+	returnVal = append(returnVal, *registrars...)
+	// Get the rest of the batches
+	for result.Meta.NextLink != "" {
+		result, err = getBatch(result.Meta.NextLink)
+		if err != nil {
+			return returnVal, fmt.Errorf("error getting IANA registrars via API(%s): %v", result.Meta.NextLink, err)
+		}
+		// Check if result.Data is a pointer to a slice
+		registrars, ok := result.Data.(*[]entities.Registrar)
+		if !ok {
+			return returnVal, fmt.Errorf("unexpected type for result.Data: %T", result.Data)
+		}
+		// Append the first batch to the returnVal
+		returnVal = append(returnVal, *registrars...)
+	}
+
+	return returnVal, nil
+}
+
+// getCount returns the count of the IANARegistrar objects we are pulling
+func getCount() (int64, error) {
+	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars/count"
+	var countResult response.CountResult
+	// Make the request
+	resp, err := http.Get(URL)
+	if err != nil {
+		return int64(0), errors.Join(fmt.Errorf("could not build count url(%s)", URL), err)
+	}
+	// Check the response status
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println(URL)
+		return int64(0), errors.Join(fmt.Errorf("could not get count of IANA registrars: %v", resp.Status), err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return int64(0), errors.Join(fmt.Errorf("could not read response body"), err)
+	}
+	err = json.Unmarshal(body, &countResult)
+	if err != nil {
+		fmt.Println(string(body))
+		return int64(0), errors.Join(fmt.Errorf("could not unmarshal response body"), err)
+	}
+	return countResult.Count, nil
+}
+
+// getBatch returns a batch of IANARegistrars
+func getBatch(url string) (*response.ListItemResult, error) {
+	registrars := []entities.Registrar{}
+	listResult := response.ListItemResult{}
+	listResult.Data = &registrars
+
+	// Make the request
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("error getting IANA regsitrars via API(%s)", URL), err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error getting IANA registrars: %v - %v", resp.Status, string(body))
+	}
+	// Unmarshal the result
+	err = json.Unmarshal(body, &listResult)
+	if err != nil {
+		return nil, errors.Join(errors.New("error unmarshaling response from API"), err)
+	}
+
+	return &listResult, nil
+
+}
+
+// getIANARegsitrarStatus returns the status of the IANARegistrar with the given IANAID
+func getIANARegistrarStatus(ianaID int) (string, error) {
+	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars/" + strconv.Itoa(ianaID)
+	var irar entities.IANARegistrar
+	// Make the request
+	resp, err := http.Get(URL)
+	if err != nil {
+		return "", errors.Join(fmt.Errorf("error getting IANA registrar via API(%s)", URL), err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("error getting IANA registrar: %v - %v", resp.Status, string(body))
+	}
+	// Unmarshal the result
+	err = json.Unmarshal(body, &irar)
+	if err != nil {
+		return "", errors.Join(errors.New("error unmarshaling response from API"), err)
+	}
+
+	return string(irar.Status), nil
 }

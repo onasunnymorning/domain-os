@@ -6,5 +6,6 @@ import "time"
 type CountResult struct {
 	ObjectType string    `json:"objectType"`
 	Count      int64     `json:"count"`
+	Total      int64     `json:"total"`
 	Timestamp  time.Time `json:"timestamp"`
 }
