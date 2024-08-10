@@ -9,9 +9,12 @@ import (
 )
 
 const (
+	// Terminated means the registrar once had an ICANN accreditation but it has been terminated. This only affects the registrar's ability to register new domains in Generic TLDs. The registrar can still manage existing domains until we transfer them out (usually upon ICANN request)
 	RegistrarStatusTerminated RegistrarStatus = "terminated"
-	RegistrarStatusOK         RegistrarStatus = "ok"
-	RegistrarStatusReadonly   RegistrarStatus = "readonly"
+	// OK means the registrar has an active ICANN accreditation (ok is mapped to 'accredited' in this list https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml )
+	RegistrarStatusOK RegistrarStatus = "ok"
+	// Readonly means the registrar has an active ICANN accreditation but is in a readonly state. Interpreted as: the registrar can't register new domains, but can manage existing ones
+	RegistrarStatusReadonly RegistrarStatus = "readonly"
 )
 
 var (
@@ -23,14 +26,26 @@ var (
 	ErrRegistrarPostalInfoTypeExists                    = errors.New("postalinfo of this type already exists")
 	ErrRegistrarStatusPreventsAccreditation             = errors.New("registrar status prevents accreditation")
 	ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs = errors.New("only ICANN accredited registrars can accredit for gTLDs")
+
+	VALID_RAR_STATUSES = []RegistrarStatus{RegistrarStatusOK, RegistrarStatusReadonly, RegistrarStatusTerminated}
 )
 
-// RegistrarStatus is a type for registrar status
+// RegistrarStatus is a type for registrar status as defined in RFC 9022(https://datatracker.ietf.org/doc/html/rfc9022#name-registrar-object:~:text=5.4.1.1.-,%3CrdeRegistrar%3Aregistrar%3E%20Element,-The%20%3Cregistrar%3E%20element)
 type RegistrarStatus string
 
 // String returns the string value of the RegistrarStatus
 func (r *RegistrarStatus) String() string {
 	return string(*r)
+}
+
+// IsValid checks if the RegistrarStatus is valid
+func (r *RegistrarStatus) IsValid() bool {
+	for _, status := range VALID_RAR_STATUSES {
+		if strings.EqualFold(string(*r), string(status)) { // use strings package to compare case-insensitive
+			return true
+		}
+	}
+	return false
 }
 
 // Registrar object represents the sponsoring client for other objects and is typically referred to as the sponsoring registrar.
@@ -198,5 +213,14 @@ func (r *Registrar) DeAccreditFor(tld *TLD) error {
 		return nil // Idempotent
 	}
 	r.TLDs = append(r.TLDs[:index], r.TLDs[index+1:]...)
+	return nil
+}
+
+// SetStatus sets the status of the registrar and returns an error if the status is invalid
+func (r *Registrar) SetStatus(s RegistrarStatus) error {
+	if !s.IsValid() {
+		return ErrInvalidRegistrarStatus
+	}
+	r.Status = RegistrarStatus(strings.ToLower(string(s))) // When setting always use lowercase
 	return nil
 }

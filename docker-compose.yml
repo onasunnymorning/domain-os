@@ -123,6 +123,7 @@ services:
 
 # Core API container
   admin-api:
+    build: .
     image: "geapex/domain-os:${BRANCH}"
     restart: always
     healthcheck:
@@ -135,6 +136,12 @@ services:
         condition: service_healthy
       msg-broker:
         condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./cmd
     environment:
       - GIN_MODE=${GIN_MODE}
       - AUTO_MIGRATE=${AUTO_MIGRATE}
@@ -158,10 +165,13 @@ services:
 
 # Frontend Admin Container
   admin-frontend:
-    image: "admin-dash:fist"
+    image: "admin-dash:delete"
     restart: always
     ports:
       - 3000:3000
+    depends_on:
+      admin-api:
+        condition: service_healthy
     environment:
       - AUTH_TRUST_HOST="true"
       - AUTH_SECRET=80b9fe9f59f563481762556f5d4b2957

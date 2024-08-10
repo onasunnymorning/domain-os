@@ -36,6 +36,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars/count", controller.GetRegistrarCount)
 	e.POST("/registrars", controller.Create)
 	e.PUT("/registrars/:clid", controller.UpdateRegistrar)
+	e.PUT("/registrars/:clid/status/:status", controller.SetRegistrarStatus)
 	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
 	e.DELETE("/registrars/:clid", controller.DeleteRegistrarByClID)
 
@@ -295,6 +296,31 @@ func (ctrl *RegistrarController) UpdateRegistrar(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, result)
+}
+
+// SetRegistrarStatus godoc
+// @Summary Set the status of a Registrar
+// @Description Set the status of a Registrar. Allowed values are: 'terminated', 'accredited', 'readonly' see https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+// @Description Status will always be set in lowecase, if you provide an uppercase status, it will be converted to lowercase but won't thow an error.
+// @Tags Registrars
+// @Produce json
+// @Param clid path string true "Registrar Client ID"
+// @Param status path string true "Registrar Status"
+// @Success 200
+// @Failure 400
+// @Failure 500
+// @Router /registrars/{clid}/status/{status} [put]
+func (ctrl *RegistrarController) SetRegistrarStatus(ctx *gin.Context) {
+	clid := ctx.Param("clid")
+	status := entities.RegistrarStatus(ctx.Param("status"))
+
+	err := ctrl.rarService.SetStatus(ctx, clid, status)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, nil)
 }
 
 // GetRegistrarCount godoc

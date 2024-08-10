@@ -110,3 +110,26 @@ func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
 func (s *RegistrarService) Count(ctx context.Context) (int64, error) {
 	return s.registrarRepository.Count(ctx)
 }
+
+// SetStatus sets the status of a registrar
+func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error {
+	// get the registrar
+	registrar, err := s.registrarRepository.GetByClID(ctx, clid, false)
+	if err != nil {
+		return err
+	}
+
+	// set the status using domain logic
+	err = registrar.SetStatus(status)
+	if err != nil {
+		return err
+	}
+
+	// save the registrar
+	_, err = s.registrarRepository.Update(ctx, registrar)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

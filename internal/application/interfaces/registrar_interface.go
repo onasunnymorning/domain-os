@@ -16,4 +16,5 @@ type RegistrarService interface {
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error)
 	Count(ctx context.Context) (int64, error)
+	SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error
 }
