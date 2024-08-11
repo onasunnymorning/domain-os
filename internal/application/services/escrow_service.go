@@ -770,7 +770,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 				err = cmd.FromRdeDomain(&dom)
 				if err != nil {
 					errCount++
-					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating domain command for %s: %s", dom.Name, err))
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("error creating domain command for %s: %s", dom.Name, err))
 				}
 
 				if returnCommands {
@@ -1013,10 +1013,12 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		// Handle special cases of reserved GurIDs
 		if rar.GurID == 9997 {
 			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
+		} else if rar.GurID == 9995 {
+			URL = BASE_URL + "/registrars/9995-ICANN-RST"
 		} else if rar.GurID == 9998 {
-			URL = BASE_URL + "/registrars/9998" + "-" + strings.ToUpper(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9998" + "." + strings.ToLower(svc.Header.TLD)
 		} else if rar.GurID == 9999 || rar.GurID == 119 {
-			URL = BASE_URL + "/registrars/9999" + "-" + strings.ToUpper(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9999" + "." + strings.ToLower(svc.Header.TLD)
 		} else {
 			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
 		}
