@@ -20,3 +20,10 @@ type CreateRegistrarCommand struct {
 type CreateRegistrarCommandResult struct {
 	Result entities.Registrar
 }
+
+// FromIANARegistrar creates a CreateRegistrarCommand from an IANARegistrar entity
+func FromIANARegistrar(registrar entities.IANARegistrar) CreateRegistrarCommand {
+	return CreateRegistrarCommand{
+		Name: registrar.Name,
+	}
+}

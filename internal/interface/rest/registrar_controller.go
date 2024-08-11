@@ -316,6 +316,10 @@ func (ctrl *RegistrarController) SetRegistrarStatus(ctx *gin.Context) {
 
 	err := ctrl.rarService.SetStatus(ctx, clid, status)
 	if err != nil {
+		if errors.Is(err, entities.ErrRegistrarNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

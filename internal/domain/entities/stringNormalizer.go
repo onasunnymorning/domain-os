@@ -7,12 +7,19 @@ import (
 // Removes newlines(\n), tabs(\t), and carriage returns(\r) from a string and replaces them with spaces
 // Removes multiple spaces and replaces them with one space
 // Trims leading and trailing spaces
+// Removes trailing dots
 func NormalizeString(s string) string {
 	s = RemoveNewlines(s)
 	s = RemoveTabs(s)
 	s = RemoveCarriageReturns(s)
 	s = ReplaceMultipleSpaces(s)
+	s = RemoveTrailingDot(s)
 	return strings.TrimSpace(s)
+}
+
+// RemoveTrailingDot removes a trailing dot from a string
+func RemoveTrailingDot(s string) string {
+	return strings.TrimSuffix(s, ".")
 }
 
 // Remove \n (newlines) from a string and replace with a space

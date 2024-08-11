@@ -180,6 +180,16 @@ func (r *RDERegistrar) ToEntity() (*Registrar, error) {
 	}
 	if r.URL != "" {
 		rar.URL = URL(r.URL)
+		if err := rar.URL.Validate(); err != nil {
+			// If it's a valid domain, we prepend it with http://
+			d := DomainName(r.URL)
+			// If we know it's invalid we can raise the error here
+			if err := d.Validate(); err != nil {
+				return nil, err
+			}
+			// If it's a valid domain, we prepend it with http:// and see if it passes validation downstream
+			rar.URL = URL("http://" + r.URL)
+		}
 	}
 	if r.CrDate != "" {
 		date, err := time.Parse(time.RFC3339, r.CrDate)
