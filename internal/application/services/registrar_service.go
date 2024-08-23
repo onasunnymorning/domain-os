@@ -23,6 +23,100 @@ func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *
 
 // Create creates a new registrar
 func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
+	newRar, err := rarFromCmd(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
+	if err != nil {
+		return nil, err
+	}
+
+	var result commands.CreateRegistrarCommandResult
+	result.Result = *createdRegistrar
+
+	return &result, nil
+}
+
+// Bulk Create new registrars
+func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.CreateRegistrarCommand) error {
+	rars, err := bulkRarFromCmd(cmds)
+	if err != nil {
+		return err
+	}
+
+	return s.registrarRepository.BulkCreate(ctx, rars)
+}
+
+// GetByClID returns a registrar by its ClID
+func (s *RegistrarService) GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByClID(ctx, clid, preloadTLDs)
+}
+
+// GetByGurID returns a registrar by its GurID
+func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
+	return s.registrarRepository.GetByGurID(ctx, gurID)
+}
+
+// List returns a list of registrars
+func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
+	return s.registrarRepository.List(ctx, pagesize, pagecursor)
+}
+
+// Update updates a registrar
+func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
+	return s.registrarRepository.Update(ctx, rar)
+}
+
+// Delete deletes a registrar by its ClID
+func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
+	return s.registrarRepository.Delete(ctx, clid)
+}
+
+// Count returns the number of registrars
+func (s *RegistrarService) Count(ctx context.Context) (int64, error) {
+	return s.registrarRepository.Count(ctx)
+}
+
+// SetStatus sets the status of a registrar
+func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error {
+	// get the registrar
+	registrar, err := s.registrarRepository.GetByClID(ctx, clid, false)
+	if err != nil {
+		return err
+	}
+
+	// set the status using domain logic
+	err = registrar.SetStatus(status)
+	if err != nil {
+		return err
+	}
+
+	// save the registrar
+	_, err = s.registrarRepository.Update(ctx, registrar)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// bulkRarFromCmd creates a slice of registrars from a slice of Create Registrar Commands
+func bulkRarFromCmd(cmds []*commands.CreateRegistrarCommand) ([]*entities.Registrar, error) {
+	var rars []*entities.Registrar
+	for _, cmd := range cmds {
+		newRar, err := rarFromCmd(cmd)
+		if err != nil {
+			return nil, err
+		}
+		rars = append(rars, newRar)
+	}
+	return rars, nil
+}
+
+// registrarFromCommand creates a registrar from a Create Registrar Command
+func rarFromCmd(cmd *commands.CreateRegistrarCommand) (*entities.Registrar, error) {
 	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID, cmd.PostalInfo)
 	if err != nil {
 		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
@@ -70,43 +164,5 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 	}
 
-	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
-	if err != nil {
-		return nil, err
-	}
-
-	var result commands.CreateRegistrarCommandResult
-	result.Result = *createdRegistrar
-
-	return &result, nil
-}
-
-// GetByClID returns a registrar by its ClID
-func (s *RegistrarService) GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error) {
-	return s.registrarRepository.GetByClID(ctx, clid, preloadTLDs)
-}
-
-// GetByGurID returns a registrar by its GurID
-func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
-	return s.registrarRepository.GetByGurID(ctx, gurID)
-}
-
-// List returns a list of registrars
-func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
-	return s.registrarRepository.List(ctx, pagesize, pagecursor)
-}
-
-// Update updates a registrar
-func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
-	return s.registrarRepository.Update(ctx, rar)
-}
-
-// Delete deletes a registrar by its ClID
-func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
-	return s.registrarRepository.Delete(ctx, clid)
-}
-
-// Count returns the number of registrars
-func (s *RegistrarService) Count(ctx context.Context) (int64, error) {
-	return s.registrarRepository.Count(ctx)
+	return newRar, nil
 }

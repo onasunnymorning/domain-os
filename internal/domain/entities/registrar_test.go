@@ -426,3 +426,69 @@ func TestRegistrar_AddPostalInfo(t *testing.T) {
 		})
 	}
 }
+
+func TestRegistrarStatus_IsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		s    RegistrarStatus
+		want bool
+	}{
+		{
+			name: "ok",
+			s:    RegistrarStatusOK,
+			want: true,
+		},
+		{
+			name: "readonly",
+			s:    RegistrarStatusReadonly,
+			want: true,
+		},
+		{
+			name: "terminated",
+			s:    RegistrarStatusTerminated,
+			want: true,
+		},
+		{
+			name: "invalid",
+			s:    RegistrarStatus("invalid"),
+			want: false,
+		},
+		{
+			name: "case insensitive",
+			s:    RegistrarStatus("tErMiNaTeD"),
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, test.s.IsValid())
+		})
+	}
+}
+
+func TestRegistrarStatus_SetStatus(t *testing.T) {
+	r := &Registrar{
+		Status: RegistrarStatusOK,
+	}
+
+	// Test case 1: Set status to readonly
+	err := r.SetStatus(RegistrarStatusReadonly)
+	require.NoError(t, err)
+	require.Equal(t, RegistrarStatusReadonly, r.Status)
+
+	// Test case 2: Set status to terminated
+	err = r.SetStatus(RegistrarStatusTerminated)
+	require.NoError(t, err)
+	require.Equal(t, RegistrarStatusTerminated, r.Status)
+
+	// Test case 3: Set status to invalid
+	err = r.SetStatus(RegistrarStatus("invalid"))
+	require.EqualError(t, err, ErrInvalidRegistrarStatus.Error())
+	require.Equal(t, RegistrarStatusTerminated, r.Status)
+
+	// Test case 4: Set status to readonly wiht strange casing
+	err = r.SetStatus(RegistrarStatus("rEaDoNlY"))
+	require.NoError(t, err)
+	require.Equal(t, RegistrarStatusReadonly, r.Status)
+}

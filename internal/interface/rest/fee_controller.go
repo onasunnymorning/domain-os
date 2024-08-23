@@ -53,7 +53,9 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 		return
 	}
 
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "CREATE", "Fee", ctx.Param("tldName")+"-"+ctx.Param("phaseName"), ctx.Request.URL.RequestURI())
 	event.Details.Command = cmd
 
 	// Set the TLD and phase in the command
@@ -115,7 +117,9 @@ func (ctrl *FeeController) ListFees(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName}/fees/{feeName}/{currency} [delete]
 func (ctrl *FeeController) DeleteFee(ctx *gin.Context) {
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "DELETE", "Fee", ctx.Param("feeName")+"-"+ctx.Param("currency"), ctx.Request.URL.RequestURI())
 	event.Details.Command = ctx.Param("feeName") + ctx.Param("currency")
 	// Call the service to delete the fee
 	err := ctrl.feeService.DeleteFee(ctx, ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("feeName"), ctx.Param("currency"))

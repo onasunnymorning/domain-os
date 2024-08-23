@@ -12,8 +12,10 @@ type RegistrarService interface {
 	GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error)
 	GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error)
 	Create(ctx context.Context, rar *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error)
+	BulkCreate(ctx context.Context, rars []*commands.CreateRegistrarCommand) error
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error)
 	Count(ctx context.Context) (int64, error)
+	SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error
 }

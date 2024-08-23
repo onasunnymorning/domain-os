@@ -3,6 +3,7 @@ package rest
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -25,6 +26,7 @@ func NewIANARegistrarController(e *gin.Engine, ianaRegistrarService interfaces.I
 	}
 
 	e.GET("/ianaregistrars", controller.List)
+	e.GET("/ianaregistrars/count", controller.Count)
 	e.GET("/ianaregistrars/:gurID", controller.GetByGurID)
 
 	return controller
@@ -75,11 +77,11 @@ func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
 	}
 
 	// Set the meta and data if there are results only
+	// TODO: FIXME: If we are using a search string, will the nextlink include the search?
 	if len(ianaRegistrars) > 0 {
 		response.Data = ianaRegistrars
 		response.SetMeta(ctx, fmt.Sprintf("%d", ianaRegistrars[len(ianaRegistrars)-1].GurID), len(ianaRegistrars), pageSize)
 	}
-
 	ctx.JSON(200, response)
 }
 
@@ -111,4 +113,27 @@ func (ctrl *IANARegistrarController) GetByGurID(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, ianaRegistrar)
+}
+
+// Count godoc
+// @Summary Count IANARegistrars
+// @Description Count IANARegistrars from our internal repository.
+// @Tags IANARegistrars
+// @Produce json
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /ianaregistrars/count [get]
+func (ctrl *IANARegistrarController) Count(ctx *gin.Context) {
+	// Get the count of IANARegistrars
+	count, err := ctrl.IanaRegistrarService.Count(ctx)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		ObjectType: "IANARegistrar",
+		Count:      int64(count),
+		Timestamp:  time.Now().UTC(),
+	})
 }

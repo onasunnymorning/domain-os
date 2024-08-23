@@ -14,7 +14,11 @@ func InitKafkaConfig() (*kafka.ConfigMap, error) {
 
 	// Create Kafka configuration
 	config := &kafka.ConfigMap{
-		"bootstrap.servers": os.Getenv("KAFKA_BOOTSTRAP_SERVER") + ":9092",
+		"bootstrap.servers": os.Getenv("KAFKA_BOOTSTRAP_SERVER") + ":" + os.Getenv("KAFKA_BOOTSTRAP_PORT"),
+		"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+		"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
+		"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
+		"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
 	}
 
 	return config, nil
@@ -23,15 +27,6 @@ func InitKafkaConfig() (*kafka.ConfigMap, error) {
 // InitEventProducer creates a new event producer
 func InitEventProducer() (*kafka.Producer, error) {
 	log.Println("Initializing Kafka producer")
-
-	// Create Kafka producer configuration
-	// config := &kafka.ConfigMap{
-	// 	"bootstrap.servers": os.Getenv("KAFKA_BOOTSTRAP_SERVERS"),
-	// 	"security.protocol": os.Getenv("KAFKA_SECURITY_PROTOCOL"),
-	// 	"sasl.mechanism":    os.Getenv("KAFKA_SASL_MECHANISM"),
-	// 	"sasl.username":     os.Getenv("KAFKA_SASL_USERNAME"),
-	// 	"sasl.password":     os.Getenv("KAFKA_SASL_PASSWORD"),
-	// }
 	config, err := InitKafkaConfig()
 	if err != nil {
 		return nil, err

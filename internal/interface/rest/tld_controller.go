@@ -122,7 +122,9 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
 	// Get the Event from the context
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "DELETE", "TLD", name, ctx.Request.URL.RequestURI())
 
 	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
@@ -161,7 +163,9 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	}
 
 	// Get the Event from the context
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "CREATE", "TLD", req.Name, ctx.Request.URL.RequestURI())
 	// Set the event details.command
 	event.Details.Command = req
 

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Release.Name }}
+          image: {{ .Values.db.image }}:{{ .Values.db.tag }}
+          ports: 
+            - containerPort: {{ .Values.service.port }}
+              name: postgres
+          imagePullPolicy: {{ .Values.db.imagePullPolicy }}
+          command:
+          - docker-entrypoint.sh
+          - -c
+          - ssl=on
+          - -c
+          - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+          - -c
+          - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+          envFrom:
+          - configMapRef:
+              name: {{ .Release.Name }}-config
+          - secretRef:
+              name: {{ .Release.Name }}-secrets

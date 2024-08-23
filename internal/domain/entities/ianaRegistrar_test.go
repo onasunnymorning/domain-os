@@ -1,0 +1,23 @@
+package entities
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestCreateClID(t *testing.T) {
+	registrar := IANARegistrar{
+		GurID:     123,
+		Name:      "Example Registrar, Inc.",
+		Status:    IANARegistrarStatusAccredited,
+		RdapURL:   "https://example-registrar.com/rdap",
+		CreatedAt: time.Now(),
+	}
+
+	expectedClID := ClIDType("123-example-regi")
+	clID, err := registrar.CreateClID()
+	require.NoError(t, err)
+	require.Equal(t, expectedClID, clID)
+}

@@ -120,6 +120,35 @@ func TestReplaceMultipleSpaces(t *testing.T) {
 	}
 }
 
+func testremoveTrailingDot(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "Hello World.",
+			expected: "Hello World",
+		},
+		{
+			input:    "This is a string.",
+			expected: "This is a string",
+		},
+		{
+			input:    "No trailing dot here",
+			expected: "No trailing dot here",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := RemoveTrailingDot(tc.input)
+			if actual != tc.expected {
+				t.Errorf("RemoveTrailingDot(%q) = %q; expected %q", tc.input, actual, tc.expected)
+			}
+		})
+	}
+}
+
 func TestStandardizeString(t *testing.T) {
 	testCases := []struct {
 		input    string
@@ -172,6 +201,14 @@ func TestStandardizeString(t *testing.T) {
 		{
 			input:    " No  spaces  here   ",
 			expected: "No spaces here",
+		},
+		{
+			input:    "Hello World.",
+			expected: "Hello World",
+		},
+		{
+			input:    "Arthurwychan@gmail.com.",
+			expected: "Arthurwychan@gmail.com",
 		},
 	}
 

@@ -93,3 +93,13 @@ func (r *IANARegistrarRepository) GetByGurID(ctx context.Context, gurID int) (*e
 	}
 	return ToIanaRegistrar(&dbRegistrar), nil
 }
+
+// Count returns the number of IANARegistrars in the database
+func (r *IANARegistrarRepository) Count(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&IANARegistrar{}).Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}

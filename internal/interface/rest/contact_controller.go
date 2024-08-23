@@ -79,7 +79,9 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	}
 
 	// Get the Event from the context
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "CREATE", "Contact", "", ctx.Request.URL.RequestURI())
 	// Set the event details.command
 	event.Details.Command = req
 
@@ -122,7 +124,9 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	}
 
 	// Get the Event from the context
-	e := GetEventFromContext(ctx)
+	// e := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	e := entities.NewEvent("domain-os", "admin", "UPDATE", "Contact", ctx.Param("id"), ctx.Request.URL.RequestURI())
 	// Set the event details.command
 	e.Details.Command = req
 
@@ -184,7 +188,9 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 // @Router /contacts/{id} [delete]
 func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	id := ctx.Param("id")
-	e := GetEventFromContext(ctx)
+	// e := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	e := entities.NewEvent("domain-os", "admin", "DELETE", "Contact", id, ctx.Request.URL.RequestURI())
 
 	err := ctrl.contactService.DeleteContactByID(ctx, id)
 	if err != nil {

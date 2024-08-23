@@ -11,4 +11,5 @@ type IANARegistrarRepository interface {
 	UpdateAll(ctx context.Context, registrars []*entities.IANARegistrar) error
 	List(ctx context.Context, pageSize int, pageCursor, nameSearchString, status string) ([]*entities.IANARegistrar, error)
 	GetByGurID(ctx context.Context, gurID int) (*entities.IANARegistrar, error)
+	Count(ctx context.Context) (int, error)
 }

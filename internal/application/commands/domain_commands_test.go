@@ -9,6 +9,21 @@ import (
 )
 
 func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
+	contacts := []entities.RDEDomainContact{
+		{
+			Type: "admin",
+			ID:   "test-admin",
+		},
+		{
+			Type: "tech",
+			ID:   "test-tech",
+		},
+		{
+			Type: "billing",
+			ID:   "test-billing",
+		},
+	}
+
 	tetcases := []struct {
 		name      string
 		rdeDomain *entities.RDEDomain
@@ -18,13 +33,15 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 		{
 			name: "valid RDEDomain with valid Roid",
 			rdeDomain: &entities.RDEDomain{
-				RoID:   "12345_DOM-APEX",
-				Name:   "example.com",
-				ClID:   "test",
-				CrDate: "2020-01-01T00:00:00Z",
-				ExDate: "2021-01-01T00:00:00Z",
-				CrRr:   "test",
-				UpRr:   "test",
+				RoID:       "12345_DOM-APEX",
+				Name:       "example.com",
+				ClID:       "test",
+				CrDate:     "2020-01-01T00:00:00Z",
+				ExDate:     "2021-01-01T00:00:00Z",
+				CrRr:       "test",
+				UpRr:       "test",
+				Registrant: "test-registrant",
+				Contact:    contacts,
 			},
 			cmd: &CreateDomainCommand{
 				RoID:       "12345_DOM-APEX",
@@ -38,19 +55,25 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
+				RegistrantID: "test-registrant",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
 			},
 			wantErr: nil,
 		},
 		{
 			name: "valid RDEDomain with INvalid Roid",
 			rdeDomain: &entities.RDEDomain{
-				RoID:   "12345",
-				Name:   "example.com",
-				ClID:   "test",
-				CrDate: "2020-01-01T00:00:00Z",
-				ExDate: "2021-01-01T00:00:00Z",
-				CrRr:   "test",
-				UpRr:   "test",
+				RoID:       "12345",
+				Name:       "example.com",
+				ClID:       "test",
+				CrDate:     "2020-01-01T00:00:00Z",
+				ExDate:     "2021-01-01T00:00:00Z",
+				CrRr:       "test",
+				UpRr:       "test",
+				Registrant: "test-registrant",
+				Contact:    contacts,
 			},
 			cmd: &CreateDomainCommand{
 				Name:       "example.com",
@@ -63,17 +86,36 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
+				RegistrantID: "test-registrant",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
 			},
 			wantErr: nil,
 		},
 		{
 			name: "invalid ClID",
 			rdeDomain: &entities.RDEDomain{
-				RoID: "12345",
-				Name: "example.com",
-				ClID: "r",
-				CrRr: "test",
-				UpRr: "test",
+				RoID:       "12345",
+				Name:       "example.com",
+				ClID:       "r",
+				CrRr:       "test",
+				UpRr:       "test",
+				Contact:    contacts,
+				Registrant: "test-registrant",
+			},
+			cmd:     nil,
+			wantErr: entities.ErrInvalidClIDType,
+		},
+		{
+			name: "missing registrant",
+			rdeDomain: &entities.RDEDomain{
+				RoID:    "12345",
+				Name:    "example.com",
+				ClID:    "r",
+				CrRr:    "test",
+				UpRr:    "test",
+				Contact: contacts,
 			},
 			cmd:     nil,
 			wantErr: entities.ErrInvalidClIDType,

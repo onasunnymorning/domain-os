@@ -28,3 +28,8 @@ func (s *IANARegistrarService) List(ctx context.Context, pageSize int, pageCurso
 func (s *IANARegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities.IANARegistrar, error) {
 	return s.ianaRepository.GetByGurID(ctx, gurID)
 }
+
+// Count returns the number of IANARegistrars
+func (s *IANARegistrarService) Count(ctx context.Context) (int, error) {
+	return s.ianaRepository.Count(ctx)
+}

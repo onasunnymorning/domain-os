@@ -7,10 +7,11 @@ var (
 )
 
 type RDEHeader struct {
-	TLD       string     `xml:"tld"`
-	Registrar int        `xml:"registrar"`
-	PPSP      int        `xml:"ppsp"`
-	Count     []RDECount `xml:"count"`
+	TLD string `xml:"tld"`
+	// RFC9022 states it's either tld, registrar or ppsp https://datatracker.ietf.org/doc/html/rfc9022#section-5.9.1
+	// Registrar int        `xml:"registrar"`
+	// PPSP      int        `xml:"ppsp"`
+	Count []RDECount `xml:"count"`
 }
 
 type RDECount struct {

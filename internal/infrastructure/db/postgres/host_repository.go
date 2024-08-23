@@ -19,7 +19,7 @@ func NewGormHostRepository(db *gorm.DB) *HostRepository {
 	return &HostRepository{db: db}
 }
 
-// CreateHost creates a new host
+// CreateHost creates a new host and does NOT create the addresses
 func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*entities.Host, error) {
 	// If we don't remove the addresses here, they will be present in the response, which could lead the user to believe they were created, while in fact we Omit them
 	host.Addresses = nil
