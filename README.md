@@ -17,9 +17,9 @@ Domain (Registry for now) Operating System (DOS)
 
 # Running the app
 ## Components
-* persistent storage - db (currently Postgres) to run alongside the app for a quick demo or test deployment
-* messaging and event streaming (currently Kafka) to allow de-coupling of services.
-* API first (currently Gin) to ensure consisten business logic through any endpoint
+* persistent storage - db (Postgres) to run alongside the app for a quick demo or test deployment
+* messaging and event streaming (Kafka) to allow de-coupling of services.
+* API first (Gin) to ensure consisten business logic through any endpoint
 * EPP server that can use the API over the network or directly import the business logic as a package
 * HTTP EPP client to quickly interface with EPP for visibility and quick feedback
 * DNS component that produces a bind compatible zonefile. This can be evolved to be a standalone component that uses events to stay up to date.

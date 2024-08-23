@@ -121,13 +121,19 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
-	// Create an event producer, fail if it fails as its an integral part of the application
-	eventProducer, err := kafkaproducer.InitEventProducer()
-	if err != nil {
-		log.Fatalf("Failed to initiate producer: %s\n", err)
+	var eventProducer *kafka.Producer
+	if cfg.EnableKafka {
+		// Create an event producer, fail if it fails as its an integral part of the application
+		eventProducer, err = kafkaproducer.InitEventProducer()
+		if err != nil {
+			log.Fatalf("Failed to initiate producer: %s\n", err)
+		}
+		defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
+		defer eventProducer.Close()          // Close the producer
+		log.Println("Kafka enabled")
+	} else {
+		log.Println("Kafka disabled")
 	}
-	defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
-	defer eventProducer.Close()          // Close the producer
 
 	// SET UP SERVICES
 	// Registry Operators
@@ -199,9 +205,10 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
-	// Attach the KafkaMiddleware to the router
-	r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
-
+	if cfg.EnableKafka {
+		// Attach the KafkaMiddleware to the router
+		r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
+	}
 	// Set up the routes and controllers
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)

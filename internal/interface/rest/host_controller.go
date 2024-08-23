@@ -72,7 +72,9 @@ func (ctrl *HostController) GetHostByRoID(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid} [delete]
 func (ctrl *HostController) DeleteHostByRoID(ctx *gin.Context) {
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host", ctx.Param("roid"), ctx.Request.URL.RequestURI())
 	roidString := ctx.Param("roid")
 
 	err := ctrl.hostService.DeleteHostByRoID(ctx, roidString)
@@ -111,7 +113,9 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		return
 	}
 
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "CREATE", "Host", "", ctx.Request.URL.RequestURI())
 	event.Details.Command = req
 
 	host, err := ctrl.hostService.CreateHost(ctx, &req)
@@ -188,7 +192,9 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [post]
 func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "CREATE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
 	// Try and add the address
 	updatedHost, err := ctrl.hostService.AddHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
@@ -227,7 +233,9 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [delete]
 func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
-	event := GetEventFromContext(ctx)
+	// event := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
 
 	// Try and remove the address
 	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))

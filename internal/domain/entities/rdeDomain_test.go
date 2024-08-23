@@ -521,3 +521,80 @@ func TestRDEDomain_ToCSV(t *testing.T) {
 		})
 	}
 }
+func TestGetDomainStatusFromRDEDomainStatus(t *testing.T) {
+	tc := []struct {
+		name     string
+		statuses []RDEDomainStatus
+		want     DomainStatus
+	}{
+		{
+			name: "all statuses",
+			statuses: []RDEDomainStatus{
+				{S: "clientDeleteProhibited"},
+				{S: "clientHold"},
+				{S: "clientRenewProhibited"},
+				{S: "clientTransferProhibited"},
+				{S: "clientUpdateProhibited"},
+				{S: "inactive"},
+				{S: "ok"},
+				{S: "pendingCreate"},
+				{S: "pendingDelete"},
+				{S: "pendingRenew"},
+				{S: "pendingTransfer"},
+				{S: "pendingUpdate"},
+				{S: "serverDeleteProhibited"},
+				{S: "serverHold"},
+				{S: "serverRenewProhibited"},
+				{S: "serverTransferProhibited"},
+				{S: "serverUpdateProhibited"},
+			},
+			want: DomainStatus{
+				ClientDeleteProhibited:   true,
+				ClientHold:               true,
+				ClientRenewProhibited:    true,
+				ClientTransferProhibited: true,
+				ClientUpdateProhibited:   true,
+				Inactive:                 true,
+				OK:                       true,
+				PendingCreate:            true,
+				PendingDelete:            true,
+				PendingRenew:             true,
+				PendingTransfer:          true,
+				PendingUpdate:            true,
+				ServerDeleteProhibited:   true,
+				ServerHold:               true,
+				ServerRenewProhibited:    true,
+				ServerTransferProhibited: true,
+				ServerUpdateProhibited:   true,
+			},
+		},
+		{
+			name: "just inactive",
+			statuses: []RDEDomainStatus{
+				{S: "inactive"},
+			},
+			want: DomainStatus{
+				Inactive: true,
+				OK:       false,
+			},
+		},
+		{
+			name: "just ok",
+			statuses: []RDEDomainStatus{
+				{S: "ok"},
+			},
+			want: DomainStatus{
+				OK: true,
+			},
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetDomainStatusFromRDEDomainStatus(tt.statuses)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+
+}

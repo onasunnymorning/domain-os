@@ -82,6 +82,11 @@ func (s *IANARarSuite) TestList() {
 	require.Nil(s.T(), err)
 	require.Equal(s.T(), 2, len(list))
 
+	// count
+	count, err := repo.Count(context.Background())
+	require.Nil(s.T(), err)
+	require.Equal(s.T(), 2, count)
+
 	list, err = repo.List(context.Background(), 25, "1234", "bro", "")
 	require.Nil(s.T(), err)
 	require.Equal(s.T(), 1, len(list))

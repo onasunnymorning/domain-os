@@ -79,6 +79,15 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	return soredDbRar, nil
 }
 
+// Bulk Create Creates multiple registrars in the repository
+func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) error {
+	dbRars := make([]*Registrar, len(rars))
+	for i, rar := range rars {
+		dbRars[i] = ToDBRegistrar(rar)
+	}
+	return r.db.WithContext(ctx).Omit("TLDs").Create(dbRars).Error // We omit TLDs as we manage these through the Accreditation repository
+}
+
 // Update Updates a registrar in the repository
 func (r *GormRegistrarRepository) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
 	// map

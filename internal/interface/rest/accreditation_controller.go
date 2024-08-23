@@ -43,7 +43,9 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
-	e := GetEventFromContext(ctx)
+	// e := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	e := entities.NewEvent("domain-os", "admin", "CREATE", "Accreditation", tldName+"-"+rarClID, ctx.Request.URL.RequestURI())
 
 	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
 	if err != nil {
@@ -73,7 +75,9 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 	rarClID := ctx.Param("rarClID")
-	e := GetEventFromContext(ctx)
+	// e := GetEventFromContext(ctx)
+	// Temporarily disable this to overcome infra issues with message broker
+	e := entities.NewEvent("domain-os", "admin", "DELETE", "Accreditation", tldName+"-"+rarClID, ctx.Request.URL.RequestURI())
 
 	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
 	if err != nil {

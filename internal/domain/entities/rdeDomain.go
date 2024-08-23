@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/xml"
+	"reflect"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
 	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
 	if err != nil {
-		return nil, err // Untestable, just catching the error incase our AuthInfoType is validation changes
+		return nil, err // Untestable, just catching the error incase we edit two lines above
 	}
 	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, string(aInfo))
 	if err != nil {
@@ -128,15 +129,17 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 		}
 	}
 	// Set the status
-	for _, status := range d.Status {
-		if status.S == DomainStatusOK || status.S == DomainStatusInactive {
-			// These are set automatically, so we can skip them
-			continue
-		}
-		err := domain.SetStatus(status.S)
-		if err != nil {
-			return nil, err
-		}
+	ds, err := GetDomainStatusFromRDEDomainStatus(d.Status)
+	if err != nil {
+		return nil, err
+	}
+	domain.Status = ds
+	// NOTE: If you experience deltas importing escrows, might want to investigate the following line
+	domain.SetUnsetInactiveStatus() // this is needed because we just overwrote the status with what we got from the RDE, But Inactive which might not meet ou
+
+	err = domain.Status.Validate()
+	if err != nil {
+		return nil, err
 	}
 
 	// TODO: FIXME: Add the nameservers
@@ -199,4 +202,66 @@ type ReRr struct {
 type AcRr struct {
 	RegID  string `xml:",chardata"`
 	Client string `xml:"client,attr,omitempty"`
+}
+
+// GetDomainStatusFromRDEDomainStatus returns a DomainStatus type from a []RDEDomainStatus slice
+// Use this instead of the SetStatus function because we can't guarantee the order of the statuses
+func GetDomainStatusFromRDEDomainStatus(statuses []RDEDomainStatus) (DomainStatus, error) {
+	var ds DomainStatus
+	for _, status := range statuses {
+		// pointer to struct - addressable
+		ps := reflect.ValueOf(&ds)
+		// struct
+		s := ps.Elem()
+		if s.Kind() == reflect.Struct {
+			// exported field
+			var f reflect.Value
+			switch status.S {
+			case DomainStatusClientDeleteProhibited:
+				f = s.FieldByName("ClientDeleteProhibited")
+			case DomainStatusClientHold:
+				f = s.FieldByName("ClientHold")
+			case DomainStatusClientRenewProhibited:
+				f = s.FieldByName("ClientRenewProhibited")
+			case DomainStatusClientTransferProhibited:
+				f = s.FieldByName("ClientTransferProhibited")
+			case DomainStatusClientUpdateProhibited:
+				f = s.FieldByName("ClientUpdateProhibited")
+			case DomainStatusInactive:
+				f = s.FieldByName("Inactive")
+			case DomainStatusOK:
+				f = s.FieldByName("OK")
+			case DomainStatusPendingCreate:
+				f = s.FieldByName("PendingCreate")
+			case DomainStatusPendingDelete:
+				f = s.FieldByName("PendingDelete")
+			case DomainStatusPendingRenew:
+				f = s.FieldByName("PendingRenew")
+			case DomainStatusPendingTransfer:
+				f = s.FieldByName("PendingTransfer")
+			case DomainStatusPendingUpdate:
+				f = s.FieldByName("PendingUpdate")
+			case DomainStatusServerDeleteProhibited:
+				f = s.FieldByName("ServerDeleteProhibited")
+			case DomainStatusServerHold:
+				f = s.FieldByName("ServerHold")
+			case DomainStatusServerRenewProhibited:
+				f = s.FieldByName("ServerRenewProhibited")
+			case DomainStatusServerTransferProhibited:
+				f = s.FieldByName("ServerTransferProhibited")
+			case DomainStatusServerUpdateProhibited:
+				f = s.FieldByName("ServerUpdateProhibited")
+			default:
+				return ds, ErrInvalidDomainStatus
+			}
+			if f.IsValid() && f.CanSet() {
+				// change value of N
+				if f.Kind() == reflect.Bool {
+					f.SetBool(true)
+				}
+			}
+		}
+
+	}
+	return ds, nil
 }
