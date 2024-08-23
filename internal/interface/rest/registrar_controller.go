@@ -35,6 +35,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 	e.GET("/registrars", controller.List)
 	e.GET("/registrars/count", controller.GetRegistrarCount)
 	e.POST("/registrars", controller.Create)
+	e.POST("/registrars-bulk", controller.BulkCreate)
 	e.PUT("/registrars/:clid", controller.UpdateRegistrar)
 	e.PUT("/registrars/:clid/status/:status", controller.SetRegistrarStatus)
 	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
@@ -181,6 +182,42 @@ func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 	ctx.JSON(201, result)
 }
 
+// BulkCreate godoc
+// @Summary Bulk create Registrars
+// @Description Bulk create Registrars can create up to 1000 registrars at a time
+// @Tags Registrars
+// @Accept json
+// @Produce json
+// @Param registrars body []commands.CreateRegistrarCommand true "Registrars"
+// @Success 201
+// @Failure 400
+// @Failure 500
+// @Router /registrars/bulk [post]
+func (ctrl *RegistrarController) BulkCreate(ctx *gin.Context) {
+	var cmd []*commands.CreateRegistrarCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := ctrl.rarService.BulkCreate(ctx, cmd)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRegistrar) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+
+	}
+
+	ctx.JSON(201, nil)
+}
+
 // DeleteRegistrarByClID godoc
 // @Summary Delete a Registrar by ClID
 // @Description Delete a Registrar by ClID
@@ -324,7 +361,7 @@ func (ctrl *RegistrarController) SetRegistrarStatus(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(200, nil)
+	ctx.JSON(204, nil)
 }
 
 // GetRegistrarCount godoc

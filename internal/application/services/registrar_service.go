@@ -23,51 +23,9 @@ func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *
 
 // Create creates a new registrar
 func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
-	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID, cmd.PostalInfo)
+	newRar, err := rarFromCmd(cmd)
 	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-	}
-
-	// Add the optional fields
-	if cmd.Voice != "" {
-		v, err := entities.NewE164Type(cmd.Voice)
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-		}
-		newRar.Voice = *v
-	}
-	if cmd.Fax != "" {
-		f, err := entities.NewE164Type(cmd.Fax)
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-		}
-		newRar.Fax = *f
-	}
-	if cmd.URL != "" {
-		url, err := entities.NewURL(cmd.URL)
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-		}
-		newRar.URL = *url
-	}
-	if cmd.RdapBaseURL != "" {
-		rdapBaseURL, err := entities.NewURL(cmd.RdapBaseURL)
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-		}
-		newRar.RdapBaseURL = *rdapBaseURL
-	}
-	if cmd.WhoisInfo != nil {
-		wi, err := entities.NewWhoisInfo(cmd.WhoisInfo.Name.String(), cmd.WhoisInfo.URL.String())
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
-		}
-		newRar.WhoisInfo = *wi
-	}
-
-	// Check if the registrar is valid
-	if err := newRar.Validate(); err != nil {
-		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		return nil, err
 	}
 
 	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
@@ -79,6 +37,16 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 	result.Result = *createdRegistrar
 
 	return &result, nil
+}
+
+// Bulk Create new registrars
+func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.CreateRegistrarCommand) error {
+	rars, err := bulkRarFromCmd(cmds)
+	if err != nil {
+		return err
+	}
+
+	return s.registrarRepository.BulkCreate(ctx, rars)
 }
 
 // GetByClID returns a registrar by its ClID
@@ -132,4 +100,69 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 	}
 
 	return nil
+}
+
+// bulkRarFromCmd creates a slice of registrars from a slice of Create Registrar Commands
+func bulkRarFromCmd(cmds []*commands.CreateRegistrarCommand) ([]*entities.Registrar, error) {
+	var rars []*entities.Registrar
+	for _, cmd := range cmds {
+		newRar, err := rarFromCmd(cmd)
+		if err != nil {
+			return nil, err
+		}
+		rars = append(rars, newRar)
+	}
+	return rars, nil
+}
+
+// registrarFromCommand creates a registrar from a Create Registrar Command
+func rarFromCmd(cmd *commands.CreateRegistrarCommand) (*entities.Registrar, error) {
+	newRar, err := entities.NewRegistrar(cmd.ClID, cmd.Name, cmd.Email, cmd.GurID, cmd.PostalInfo)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+	}
+
+	// Add the optional fields
+	if cmd.Voice != "" {
+		v, err := entities.NewE164Type(cmd.Voice)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		}
+		newRar.Voice = *v
+	}
+	if cmd.Fax != "" {
+		f, err := entities.NewE164Type(cmd.Fax)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		}
+		newRar.Fax = *f
+	}
+	if cmd.URL != "" {
+		url, err := entities.NewURL(cmd.URL)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		}
+		newRar.URL = *url
+	}
+	if cmd.RdapBaseURL != "" {
+		rdapBaseURL, err := entities.NewURL(cmd.RdapBaseURL)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		}
+		newRar.RdapBaseURL = *rdapBaseURL
+	}
+	if cmd.WhoisInfo != nil {
+		wi, err := entities.NewWhoisInfo(cmd.WhoisInfo.Name.String(), cmd.WhoisInfo.URL.String())
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+		}
+		newRar.WhoisInfo = *wi
+	}
+
+	// Check if the registrar is valid
+	if err := newRar.Validate(); err != nil {
+		return nil, errors.Join(entities.ErrInvalidRegistrar, err)
+	}
+
+	return newRar, nil
 }

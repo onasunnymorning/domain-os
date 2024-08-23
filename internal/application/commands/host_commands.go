@@ -40,6 +40,10 @@ func (cmd *CreateHostCommand) FromRdeHost(rdeHost *entities.RDEHost) error {
 	cmd.UpRr = host.UpRr
 	cmd.Status = host.Status
 
+	for _, a := range host.Addresses {
+		cmd.Addresses = append(cmd.Addresses, a.String())
+	}
+
 	return nil
 
 }

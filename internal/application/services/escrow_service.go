@@ -13,10 +13,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/schollz/progressbar/v3"
+)
+
+const (
+	CONCURRENT_CLIENTS = 10
+	BASE_URL           = "http://192.168.64.6:8080"
 )
 
 var (
@@ -305,8 +313,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 	postalInfoWriter := csv.NewWriter(postalInfoFile)
 	postalInfoCounter := 0
 
-	log.Printf("Looking up %d contacts... \n", svc.Header.ContactCount())
-	pbar := progressbar.Default(int64(svc.Header.ContactCount()))
+	pbar := progressbar.Default(int64(svc.Header.ContactCount()), "Reading Contacts from XML")
 
 	for {
 		// Stop when we have found all contacts
@@ -462,8 +469,7 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 	addrCounter := 0
 	statusCounter := 0
 
-	log.Printf("Looking up %d hosts... \n", svc.Header.HostCount())
-	pbar := progressbar.Default(int64(svc.Header.HostCount()))
+	pbar := progressbar.Default(int64(svc.Header.HostCount()), "Reading Hosts from XML")
 
 	for {
 		if count == svc.Header.HostCount() {
@@ -557,28 +563,28 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 // This will output the following files:
 //
 // - {inputFilename}-nndns.csv
-func (svc *XMLEscrowService) ExtractNNDNS() error {
+func (svc *XMLEscrowService) ExtractNNDNS(returnNNDNCreateCommands bool) ([]commands.CreateNNDNCommand, error) {
 
 	count := 0
 	errCount := 0
+	nndnCmds := []commands.CreateNNDNCommand{}
 
 	d, err := svc.getXMLDecoder()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Prepare the CSV file to receive the nndns
 	outFileName := svc.GetDepositFileNameWoExtension() + "-nndns.csv"
 	outFile, err := os.Create(outFileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer outFile.Close()
 
 	writer := csv.NewWriter(outFile)
 
-	log.Printf("Looking up %d nndns... \n", svc.Header.NNDNCount())
-	pbar := progressbar.Default(int64(svc.Header.NNDNCount()))
+	pbar := progressbar.Default(int64(svc.Header.NNDNCount()), "Reading NNDNs from XML")
 
 	for {
 		if count == svc.Header.NNDNCount() {
@@ -590,7 +596,7 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 			if tokenErr == io.EOF {
 				break
 			}
-			return errors.Join(ErrDecodingToken, tokenErr)
+			return nil, errors.Join(ErrDecodingToken, tokenErr)
 		}
 		// Only process start elements of type nndn
 		switch se := t.(type) {
@@ -602,7 +608,7 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 				}
 				var rdeNNDN entities.RDENNDN
 				if err := d.DecodeElement(&rdeNNDN, &se); err != nil {
-					return errors.Join(ErrDecodingXML, err)
+					return nil, errors.Join(ErrDecodingXML, err)
 				}
 
 				// Validate using a CreateNNDNCommand
@@ -611,6 +617,11 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 				if err != nil {
 					errCount++
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating NNDN command for %s: %s", rdeNNDN.AName, err))
+				}
+
+				if returnNNDNCreateCommands {
+					// Add the command to our slice of create commands
+					nndnCmds = append(nndnCmds, cmd)
 				}
 
 				// Write to CSV
@@ -626,7 +637,7 @@ func (svc *XMLEscrowService) ExtractNNDNS() error {
 	if errCount > 0 {
 		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing NNDNs. See analysis file for details\n", errCount)
 	}
-	return nil
+	return nndnCmds, nil
 }
 
 // getXMLDecoder opens the XML file and returns an XML decoder
@@ -654,11 +665,12 @@ func checkLineCount(filename string, expected int) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var tip = ""
 	if lineCount != expected {
-		log.Printf("🔥 WARNING 🔥 Expecting %d objects, found %d objects in %s \n", expected, lineCount, filename)
 		if lineCount > expected {
-			log.Println(`This might indicate there are newline(\n) characters in the data.`)
+			tip = `This might indicate there are newline(\n) characters in the data.`
 		}
+		log.Printf("🔥 WARNING 🔥 Expecting %d objects, found %d objects in %s %s\n", expected, lineCount, filename, tip)
 	} else {
 		log.Printf("✅ All %d objects were extracted to %s \n", expected, filename)
 	}
@@ -737,8 +749,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 	}
 	contactIDWriter := csv.NewWriter(contactIDFile)
 
-	log.Printf("Looking up %d domains... \n", svc.Header.DomainCount())
-	pbar := progressbar.Default(int64(svc.Header.DomainCount()))
+	pbar := progressbar.Default(int64(svc.Header.DomainCount()), "Reading Domains from XML")
 
 	for {
 		if count == svc.Header.DomainCount() {
@@ -999,7 +1010,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 	defer writer.Flush()
 
 	// BASE_URL := "http://domain-os-admin-api-1:8080"
-	BASE_URL := "http://localhost:8080"
+	BASE_URL := "http://192.168.64.6:8080"
 	bearer := "Bearer " + os.Getenv("EPP_API_TOKEN")
 
 	var found = 0
@@ -1017,7 +1028,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 			URL = BASE_URL + "/registrars/9995-ICANN-RST"
 		} else if rar.GurID == 9998 {
 			URL = BASE_URL + "/registrars/9998" + "." + strings.ToLower(svc.Header.TLD)
-		} else if rar.GurID == 9999 || rar.GurID == 119 {
+		} else if rar.GurID == 9999 || rar.GurID == 119 || rar.GurID == 0 { // TODO: FIXME: 0 => 9999 mapping is okay for gTLDs since we can't have domains under these, but a bit dangerous, should be handled better
 			URL = BASE_URL + "/registrars/9999" + "." + strings.ToLower(svc.Header.TLD)
 		} else {
 			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
@@ -1117,9 +1128,9 @@ func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string
 
 	if len(svc.Analysis.Errors) != 0 {
 		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d errors", len(svc.Analysis.Errors))
-		for _, e := range svc.Analysis.Errors {
-			log.Println(e)
-		}
+		// for _, e := range svc.Analysis.Errors {
+		// 	log.Println(e)
+		// }
 
 		log.Println("Cannot proceed with import due to errors in the analysis file. Please fix the errors and try again.")
 		return ErrAnalysisContainsErrors
@@ -1127,9 +1138,9 @@ func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string
 
 	if len(svc.Analysis.Warnings) != 0 {
 		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
-		for _, w := range svc.Analysis.Warnings {
-			log.Println(w)
-		}
+		// for _, w := range svc.Analysis.Warnings {
+		// 	log.Println(w)
+		// }
 		log.Println("Proceeding with import despite warnings in the analysis file.")
 	}
 
@@ -1140,292 +1151,399 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// GetContactCount
+
 // CreateContacts Creates the contacts in the repository through the Admin API
 func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand) error {
-	// Setup up the API client
-	URL := "http://localhost:8080/contacts"
-	// TODO: Add authentication
+	// Create a re-usable client optimized for tcp connections
+	client := getHTTPClient()
 
-	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
-	log.Printf("Creating %d contacts... \n", len(cmds))
-	pbar := progressbar.Default(int64(len(cmds)))
-	for _, cmd := range cmds {
+	// Create channels for sending commands
+	cmdChan := make(chan commands.CreateContactCommand, len(cmds))
+	wg := sync.WaitGroup{}
 
-		// First map the registrar ID to the registrar ClID
-		registrar, ok := svc.RegsistrarMapping[cmd.ClID]
-		if !ok {
-			svc.Import.Contacts.Failed++
-			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
-			continue
-		}
-		cmd.ClID = registrar.RegistrarClID.String()
-		// Do the same for CrRR and UpRR
-		if cmd.CrRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
-			if !ok {
-				svc.Import.Contacts.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
-				continue
+	// Loop over the commands and create the contacts in parrallel
+	pbar := progressbar.Default(int64(len(cmds)), "Creating Contacts")
+
+	// Start workers
+	for i := 0; i < CONCURRENT_CLIENTS; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cmd := range cmdChan {
+				svc.createContact(*client, cmd)
+				pbar.Add(1)
 			}
-			cmd.CrRr = registrar.RegistrarClID.String()
-		}
-		if cmd.UpRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
-			if !ok {
-				svc.Import.Contacts.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
-				continue
-			}
-			cmd.UpRr = registrar.RegistrarClID.String()
-		}
-
-		// UnMarshal the command into a JSON object
-		jsonCmd, err := json.Marshal(cmd)
-		if err != nil {
-			return err
-		}
-		// Send the request
-		req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
-		if err != nil {
-			return err
-		}
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		pbar.Add(1)
-		// Success
-		if resp.StatusCode == 201 {
-			svc.Import.Contacts.Created++
-			continue
-		}
-		var response ErrorResponse
-		defer resp.Body.Close()
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		if err != nil {
-			return err
-		}
-
-		// Exists or Failed
-		if resp.StatusCode == 400 {
-			// if the contact already exists, we can skip it, we need to check the body for that
-			// Exists, skip
-			if strings.Contains(response.Error, "contact already exists") {
-				svc.Import.Contacts.Existing++
-				continue
-			}
-		}
-		svc.Import.Contacts.Failed++
-		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating contact with id %s: %s", cmd.ID, response.Error))
-
+		}()
 	}
+
+	// Send commands to the workers
+	for _, cmd := range cmds {
+		cmdChan <- cmd
+	}
+	close(cmdChan)
+
+	// Wait for all workers to finish
+	wg.Wait()
 
 	if svc.Import.Contacts.Failed > 0 {
 		log.Printf("🔥 WARNING 🔥 %d contacts failed to be created\n", svc.Import.Contacts.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
-		return ErrImportFailed
+		return nil
 	}
 
 	log.Printf("✅ Created all contacts successfully\n")
+	// Do some housekeeping
+	client.CloseIdleConnections()
+	return nil
+}
+
+// createContact handles the actual creation of a contact through an API request. If a contact already exists, that is not an error.
+func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.CreateContactCommand) error {
+
+	URL := "http://192.168.64.6:8080/contacts"
+
+	// First map the registrar ID to the registrar ClID
+	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
+	if !ok {
+		svc.Import.Contacts.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
+		return nil
+	}
+	cmd.ClID = registrar.RegistrarClID.String()
+	// Do the same for CrRR and UpRR
+	if cmd.CrRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
+		if !ok {
+			svc.Import.Contacts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
+			return nil
+		}
+		cmd.CrRr = registrar.RegistrarClID.String()
+	}
+	if cmd.UpRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
+		if !ok {
+			svc.Import.Contacts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
+			return nil
+		}
+		cmd.UpRr = registrar.RegistrarClID.String()
+	}
+
+	// UnMarshal the command into a JSON object
+	jsonCmd, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	// Send the request
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Success
+	if resp.StatusCode == 201 {
+		svc.Import.Contacts.Created++
+		return nil
+	}
+	var response ErrorResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return err
+	}
+
+	// Exists or Failed
+	if resp.StatusCode == 400 {
+		// if the contact already exists, we can skip it, we need to check the body for that
+		// Exists, skip
+		if strings.Contains(response.Error, "contact already exists") {
+			svc.Import.Contacts.Existing++
+			return nil
+		}
+	}
+	svc.Import.Contacts.Failed++
+	svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating contact with id %s: %s", cmd.ID, response.Error))
+
 	return nil
 }
 
 // CreateHosts Creates the hosts in the repository through the Admin API
 func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) error {
-	// Setup up the API client
-	URL := "http://localhost:8080/hosts"
-	// TODO: Add authentication
+	// Create a re-usable client optimized for tcp connections
+	client := getHTTPClient()
 
-	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
-	log.Printf("Creating %d hosts... \n", len(cmds))
-	pbar := progressbar.Default(int64(len(cmds)))
-	for _, cmd := range cmds {
+	// Create channels for sending commands
+	cmdChan := make(chan commands.CreateHostCommand, len(cmds))
+	wg := sync.WaitGroup{}
 
-		// First map the registrar ID to the registrar ClID
-		registrar, ok := svc.RegsistrarMapping[cmd.ClID.String()]
-		if !ok {
-			svc.Import.Hosts.Failed++
-			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
-			continue
-		}
-		cmd.ClID = registrar.RegistrarClID
-		// Do the same for CrRR and UpRR
-		if cmd.CrRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.CrRr.String()]
-			if !ok {
-				svc.Import.Hosts.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
-				continue
+	// Loop over the commands and create the hosts in parrallel
+	pbar := progressbar.Default(int64(len(cmds)), "Creating Hosts")
+
+	// Start workers
+	for i := 0; i < CONCURRENT_CLIENTS; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cmd := range cmdChan {
+				svc.createHost(*client, cmd)
+				pbar.Add(1)
 			}
-			cmd.CrRr = registrar.RegistrarClID
-		}
-		if cmd.UpRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.UpRr.String()]
-			if !ok {
-				svc.Import.Hosts.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
-				continue
-			}
-			cmd.UpRr = registrar.RegistrarClID
-		}
-
-		// UnMarshal the command into a JSON object
-		jsonCmd, err := json.Marshal(cmd)
-		if err != nil {
-			return err
-		}
-		// Send the request
-		req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
-		if err != nil {
-			return err
-		}
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		pbar.Add(1)
-		// Success
-		if resp.StatusCode == 201 {
-			svc.Import.Hosts.Created++
-			continue
-		}
-
-		var response ErrorResponse
-		defer resp.Body.Close()
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		if err != nil {
-			return err
-		}
-
-		// Exists or Failed
-		if resp.StatusCode == 400 {
-			// if the contact already exists, we can skip it, we need to check the body for that
-			// Exists, skip
-			if strings.Contains(response.Error, "host already exists") {
-				svc.Import.Hosts.Existing++
-				continue
-			}
-		}
-
-		svc.Import.Hosts.Failed++
-		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating host with name %s: %s", cmd.Name, response.Error))
-
+		}()
 	}
+
+	// Send commands to the workers
+	for _, cmd := range cmds {
+		cmdChan <- cmd
+	}
+	close(cmdChan)
+
+	// Wait for all workers to finish
+	wg.Wait()
 
 	if svc.Import.Hosts.Failed > 0 {
 		log.Printf("🔥 WARNING 🔥 %d hosts failed to be created\n", svc.Import.Hosts.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
-		return ErrImportFailed
+		return nil
 	}
 
 	log.Printf("✅ Created all hosts successfully\n")
 	return nil
 }
 
+// createHost handles the actual creation of a host through an API request. If a host already exists, that is not an error.
+func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateHostCommand) error {
+
+	URL := "http://192.168.64.6:8080/hosts"
+
+	// First map the registrar ID to the registrar ClID
+	registrar, ok := svc.RegsistrarMapping[cmd.ClID.String()]
+	if !ok {
+		svc.Import.Hosts.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as ClID on host %s ", cmd.ClID, cmd.Name))
+		return nil
+	}
+	cmd.ClID = registrar.RegistrarClID
+	// Do the same for CrRR and UpRR
+	if cmd.CrRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.CrRr.String()]
+		if !ok {
+			svc.Import.Hosts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as CrRr on host %s", cmd.CrRr, cmd.Name))
+			return nil
+		}
+		cmd.CrRr = registrar.RegistrarClID
+	}
+	if cmd.UpRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.UpRr.String()]
+		if !ok {
+			svc.Import.Hosts.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as UpRr on host %s", cmd.UpRr, cmd.Name))
+			return nil
+		}
+		cmd.UpRr = registrar.RegistrarClID
+	}
+
+	// UnMarshal the command into a JSON object
+	jsonCmd, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	// Send the request
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	// Success
+	if resp.StatusCode == 201 {
+		var host entities.Host
+		svc.Import.Hosts.Created++
+		err := json.Unmarshal(body, &host)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	var response ErrorResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return err
+	}
+
+	// Exists or Failed
+	if resp.StatusCode == 400 {
+		// if the contact already exists, we can skip it, we need to check the body for that
+		// Exists, skip
+		if strings.Contains(response.Error, "host already exists") {
+			svc.Import.Hosts.Existing++
+			return nil
+		}
+	}
+
+	svc.Import.Hosts.Failed++
+	svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating host with name %s: %s", cmd.Name, response.Error))
+
+	return nil
+}
+
 // CreateDomains Creates the contacts in the repository through the Admin API
 func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) error {
-	// Setup up the API client
-	URL := "http://localhost:8080/domains"
-	// TODO: Add authentication
+	// Create a re-usable client
+	client := getHTTPClient()
 
-	// Loop over the commands and create the contacts. If a contact already exists, that is not an error.
-	log.Printf("Creating %d domains... \n", len(cmds))
-	pbar := progressbar.Default(int64(len(cmds)))
-	for _, cmd := range cmds {
+	// Create channels for sending commands
+	cmdChan := make(chan commands.CreateDomainCommand, len(cmds))
+	wg := sync.WaitGroup{}
 
-		// First map the registrar ID to the registrar ClID
-		registrar, ok := svc.RegsistrarMapping[cmd.ClID]
-		if !ok {
-			svc.Import.Domains.Failed++
-			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
-			continue
-		}
-		cmd.ClID = registrar.RegistrarClID.String()
-		// Do the same for CrRR and UpRR
-		if cmd.CrRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
-			if !ok {
-				svc.Import.Domains.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
-				continue
+	// Loop over the commands and create the hosts in parrallel
+	pbar := progressbar.Default(int64(len(cmds)), "Creating Domains")
+
+	// Start workers
+	for i := 0; i < CONCURRENT_CLIENTS; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cmd := range cmdChan {
+				svc.createDomain(*client, cmd)
+				pbar.Add(1)
 			}
-			cmd.CrRr = registrar.RegistrarClID.String()
-		}
-		if cmd.UpRr != "" {
-			registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
-			if !ok {
-				svc.Import.Domains.Failed++
-				svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
-				continue
-			}
-			cmd.UpRr = registrar.RegistrarClID.String()
-		}
-
-		// UnMarshal the command into a JSON object
-		jsonCmd, err := json.Marshal(cmd)
-		if err != nil {
-			return err
-		}
-		// Send the request
-		req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
-		if err != nil {
-			return err
-		}
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		pbar.Add(1)
-		// Success
-		if resp.StatusCode == 201 {
-			svc.Import.Domains.Created++
-			continue
-		}
-		// unmarshall the response
-		var response ErrorResponse
-		defer resp.Body.Close()
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		if err != nil {
-			return err
-		}
-
-		// Exists or Failed
-		if resp.StatusCode == 400 {
-			// if the contact already exists, we can skip it, we need to check the body for that
-
-			// Exists, skip
-			if strings.Contains(response.Error, "domain already exists") {
-				svc.Import.Domains.Existing++
-				continue
-			}
-		}
-		svc.Import.Domains.Failed++
-		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating domain with name %s: %s", cmd.Name, response.Error))
-		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Create Domain Command: %v", cmd))
-
+		}()
 	}
+
+	// Send commands to the workers
+	for _, cmd := range cmds {
+		cmdChan <- cmd
+	}
+	close(cmdChan)
+
+	// Wait for all workers to finish
+	wg.Wait()
 
 	if svc.Import.Domains.Failed > 0 {
 		log.Printf("🔥 WARNING 🔥 %d domains failed to be created\n", svc.Import.Domains.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
-		return ErrImportFailed
+		return nil
 	}
 
 	log.Printf("✅ Created all domains successfully\n")
 	return nil
 }
 
+// createDomain handles the actual creation of a domain through an API request. If a domain already exists, that is not an error.
+func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.CreateDomainCommand) error {
+
+	URL := "http://192.168.64.6:8080/domains"
+
+	// First map the registrar ID to the registrar ClID
+	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
+	if !ok {
+		svc.Import.Domains.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
+		return nil
+	}
+	cmd.ClID = registrar.RegistrarClID.String()
+	// Do the same for CrRR and UpRR
+	if cmd.CrRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
+		if !ok {
+			svc.Import.Domains.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
+			return nil
+		}
+		cmd.CrRr = registrar.RegistrarClID.String()
+	}
+	if cmd.UpRr != "" {
+		registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
+		if !ok {
+			svc.Import.Domains.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
+			return nil
+		}
+		cmd.UpRr = registrar.RegistrarClID.String()
+	}
+
+	// UnMarshal the command into a JSON object
+	jsonCmd, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	// Send the request
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	// Fully read the body and close it - This is important for TCP connection reuse
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Success
+	if resp.StatusCode == 201 {
+		svc.Import.Domains.Created++
+		return nil
+	}
+	// unmarshall the response
+	var response ErrorResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return err
+	}
+
+	// Exists or Failed
+	if resp.StatusCode == 400 {
+		// if the contact already exists, we can skip it, we need to check the body for that
+
+		// Exists, skip
+		if strings.Contains(response.Error, "domain already exists") {
+			svc.Import.Domains.Existing++
+			return nil
+		}
+	}
+	svc.Import.Domains.Failed++
+	svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating domain with name %s: %s", cmd.Name, response.Error))
+	svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Create Domain Command: %v", cmd))
+
+	return nil
+}
+
 // LinkHostsToDomains Links the hosts to the domains in the repository through the Admin API. It requires the domain and host objects to be created first
 func (svc *XMLEscrowService) LinkHostsToDomains() error {
+	client := getHTTPClient()
+
 	// Read the CSV file that contains the mapping [domainname, hostname]
 	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-domainNameservers.csv")
 	if err != nil {
@@ -1438,42 +1556,386 @@ func (svc *XMLEscrowService) LinkHostsToDomains() error {
 		return err
 	}
 
-	// Setup up the API client
-	URL := "http://localhost:8080/domains/"
+	// Create a channel for sending our requests
+	cmdChan := make(chan [2]string, len(records))
+	wg := sync.WaitGroup{}
 
-	// Loop over the records and link the hosts to the domains
-	log.Printf("Linking %d hosts to domains... \n", len(records))
-	pbar := progressbar.Default(int64(len(records)))
+	pbar := progressbar.Default(int64(len(records)), "Linking Hosts to Domains")
+	// Start workers
+	for i := 0; i < CONCURRENT_CLIENTS; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for record := range cmdChan {
+				svc.linkHostToDomain(*client, record[0], strings.Trim(record[1], "."))
+				pbar.Add(1)
+			}
+		}()
+	}
+
+	// Send commands to the workers
 	for _, record := range records {
-		// Get the domain and host names
-		domainName := record[0]
-		hostName := record[1]
+		cmdChan <- [2]string{record[0], record[1]}
+	}
+	close(cmdChan)
 
-		// Send the request
-		requestURL := URL + domainName + "/hostname/" + hostName
-		req, err := http.NewRequest("POST", requestURL, nil)
-		if err != nil {
-			return err
+	// Wait for all workers to finish
+	wg.Wait()
+
+	if svc.Import.DomainHostLinks.Missing > 0 {
+		log.Printf("🔥 WARNING 🔥 %d domain-host links failed to be created\n", svc.Import.DomainHostLinks.Missing)
+		for _, e := range svc.Import.Errors {
+			log.Println(e)
 		}
-
-		// Check if we got a 204 response
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-
-		pbar.Add(1)
-
-		if resp.StatusCode == 204 {
-			svc.Import.DomainHostLinks.Present++
-			continue
-		} else {
-			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error linking host %s to domain %s: %s", hostName, domainName, resp.Status))
-			svc.Import.DomainHostLinks.Missing++
-		}
-
+	} else {
+		log.Printf("✅ Linked all hosts to domains successfully\n")
 	}
 
 	return nil
+}
+
+// linkHostToDomain links a host to a domain through the API. If the link already exists, that is not an error
+func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, hostName string) error {
+
+	// Create the request
+	requestURL := BASE_URL + "/domains/" + domainName + "/hostname/" + hostName + "?force=true" // use force to override the domain's possible update prohibition
+	req, err := http.NewRequest("POST", requestURL, nil)
+	if err != nil {
+		return err
+	}
+
+	// Send it
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	// Defer close and ready the body. This is important for TCP connection reuse
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == 204 {
+		svc.Import.DomainHostLinks.Present++
+		return nil
+	} else {
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error linking host %s to domain %s: %s - %s", hostName, domainName, resp.Status, string(body)))
+		svc.Import.DomainHostLinks.Missing++
+	}
+
+	return nil
+
+}
+
+// CreateNNDNs Creates the NNDNs in the repository through the Admin API
+func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand) error {
+	// Create a re-usable client
+	client := getHTTPClient()
+
+	// Create channels for sending commands
+	cmdChan := make(chan commands.CreateNNDNCommand, len(cmds))
+	wg := sync.WaitGroup{}
+
+	// Loop over the commands and create the hosts in parrallel
+	pbar := progressbar.Default(int64(len(cmds)), "Creating NNDNs")
+
+	// Start workers
+	for i := 0; i < CONCURRENT_CLIENTS; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cmd := range cmdChan {
+				svc.createNNDN(*client, cmd)
+				pbar.Add(1)
+			}
+		}()
+	}
+
+	// Send commands to the workers
+	for _, cmd := range cmds {
+		cmdChan <- cmd
+	}
+	close(cmdChan)
+
+	// Wait for all workers to finish
+	wg.Wait()
+
+	if svc.Import.NNDNs.Failed > 0 {
+		log.Printf("🔥 WARNING 🔥 %d NNDNs failed to be created\n", svc.Import.NNDNs.Failed)
+		for _, e := range svc.Import.Errors {
+			log.Println(e)
+		}
+		return nil
+	}
+
+	log.Printf("✅ Created all NNDNs successfully\n")
+	return nil
+}
+
+// creaetNNDN creaetes an NNDN through the API endpoint. If it already exists, that is not an error
+func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateNNDNCommand) error {
+	URL := BASE_URL + "/nndns"
+
+	// UnMarshal the command into a JSON object
+	jsonCmd, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+
+	// Send the request
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	// Fully read the body and close it - This is important for TCP connection reuse
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Success
+	if resp.StatusCode == 201 {
+		svc.Import.NNDNs.Created++
+		return nil
+	}
+
+	// unmarshall the response
+	var response ErrorResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return err
+	}
+
+	// Exists or Failed
+	if resp.StatusCode == 400 {
+		// if the contact already exists, we can skip it, we need to check the body for that
+
+		// Exists, skip
+		if strings.Contains(response.Error, "nndn already exists") {
+			svc.Import.NNDNs.Existing++
+			return nil
+		} else {
+			svc.Import.NNDNs.Failed++
+			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating NNDN with name %s: %s", cmd.Name, response.Error))
+		}
+	}
+
+	return nil
+}
+
+// GetTLDFromAPI fetches the TLD from the API
+func (svc *XMLEscrowService) GetTLDFromAPI(tldName string) (*entities.TLD, error) {
+	URL := BASE_URL + "/tlds/" + tldName
+	// Create a re-usable client
+	client := getHTTPClient()
+
+	// Create our TLD object
+	tld := entities.TLD{}
+
+	// Send the request
+	req, err := http.NewRequest("GET", URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fully read the body and close it - This is important for TCP connection reuse
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Success
+	if resp.StatusCode == 200 {
+		err = json.Unmarshal(body, &tld)
+		if err != nil {
+			return nil, err
+		}
+		return &tld, nil
+	}
+
+	return nil, fmt.Errorf("error fetching TLD: %s", resp.Status)
+
+}
+
+// GetContactCountFromAPI fetches the object count from the API
+func (svc *XMLEscrowService) GetContactCountFromAPI() (int64, error) {
+	URL := BASE_URL + "/contacts/count"
+	// Create a re-usable client
+	client := getHTTPClient()
+
+	var result *response.CountResult
+
+	// Send the request
+	req, err := http.NewRequest("GET", URL, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+
+	// Fully read the body and close it - This is important for TCP connection reuse
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	// Success
+	if resp.StatusCode == 200 {
+		err := json.Unmarshal(body, result)
+		if err != nil {
+			return 0, err
+		}
+
+		return result.Count, nil
+	}
+
+	return 0, fmt.Errorf("error fetching contact count: %s", resp.Status)
+}
+
+// getHTTPClient creates a re-usable http client optimized for tcp connections
+func getHTTPClient() *http.Client {
+	// Create a re-usable client optimized for tcp connections
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConnsPerHost: 10,
+		MaxConnsPerHost:     1000,
+	}
+	return &http.Client{
+		Transport: transport,
+	}
+}
+
+// DuplicateHostCommands goes over the createHostCommands and checks if the clid of the domains the host is used on. If the host is used on domain(s) with different clid, the createHostCommand is duplicated with the other clid as a sponsor.
+// This way we deal with deposits that have one host object owned by one clid but is used on different domains with different clids.
+func (svc *XMLEscrowService) DuplicateHostCommands(cmds []commands.CreateHostCommand) ([]commands.CreateHostCommand, error) {
+	// Load in the host-domain mapping from the -domainNameservers.csv file
+	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-domainNameservers.csv")
+	if err != nil {
+		return nil, err
+	}
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a map of hostnames to domains
+	hostDomainMap := make(map[string][]string)
+	for _, record := range records {
+		host := strings.Trim(record[1], ".")
+		domain := strings.Trim(record[0], ".")
+		hostDomainMap[host] = append(hostDomainMap[host], domain)
+	}
+	// we're only interested in the hosts that are linked to multiple domains and the domains they are linked to
+	// Actually that worked but left a small residue of hosts that are linked to only one domain, yet are not sponsored by the domain's clid
+	// multiHostMap := make(map[string][]string)
+	// interestingDomains := make(map[string]bool)
+	// for k, v := range hostDomainMap {
+	// 	if len(v) > 1 {
+	// 		multiHostMap[k] = v
+	// 		for _, domain := range v {
+	// 			interestingDomains[domain] = true
+	// 		}
+	// 	}
+	// }
+	// fmt.Printf("Found %d hosts used on multiple domains\n", len(multiHostMap))
+	// hostDomainMap = nil
+
+	// Now read in the domains from the -domains.csv file
+	f, err = os.Open(svc.GetDepositFileNameWoExtension() + "-domains.csv")
+	if err != nil {
+		return nil, err
+	}
+	r = csv.NewReader(f)
+	records, err = r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	// Create a map of domain names to clids for easy access
+	domainClidMap := make(map[string]string)
+	for _, record := range records {
+		domain := strings.Trim(record[0], ".")
+		clid := record[6]
+		domainClidMap[domain] = clid
+	}
+	records = nil
+
+	// Now loop over the hosts that appear on multiple domains and check if all the domains have the same clid as the host.
+	// If clids don't match we need to create a host command with the other clid as the sponsor (and keeping all other data the same)
+	// We only need to do this once per clid mismatch, so we can break out of the loop after the first mismatch created a new host command
+	newCmds := []commands.CreateHostCommand{}
+	for _, cmd := range cmds {
+		if _, ok := hostDomainMap[cmd.Name]; !ok {
+			// if the command is not about a host that we're interested in, continue
+			continue
+		}
+		// Get the clid of the host
+		hostClid := cmd.ClID
+
+		// Get the clid of the domains the host is used on
+		// create a list of clids for these domains
+		domainClids := []string{}
+		domains := hostDomainMap[cmd.Name]
+		for _, domain := range domains {
+			domainClids = append(domainClids, domainClidMap[domain])
+		}
+
+		// remove the duplicates from this list
+		domainClids = removeDuplicates(domainClids)
+		if len(domainClids) == 1 && domainClids[0] == hostClid.String() {
+			// if all clids are the same, we can skip this host
+			continue
+		}
+
+		// if we get here, we need to create a new host command for each clid that is different from the host clid
+		for _, clid := range domainClids {
+			if clid == hostClid.String() {
+				continue
+			}
+			newCmd := cmd
+			newCmd.ClID = entities.ClIDType(clid)
+			if newCmd.CrRr != "" && newCmd.CrRr != hostClid {
+				newCmd.CrRr = entities.ClIDType(clid)
+			}
+			if newCmd.UpRr != "" && newCmd.UpRr != hostClid {
+				newCmd.UpRr = entities.ClIDType(clid)
+			}
+			newCmds = append(newCmds, newCmd)
+		}
+
+	}
+	// Append the new commands to the old ones and return them
+	cmds = append(cmds, newCmds...)
+	return cmds, nil
+}
+
+// function to remove duplicate values
+func removeDuplicates(s []string) []string {
+	bucket := make(map[string]bool)
+	var result []string
+	for _, str := range s {
+		if _, ok := bucket[str]; !ok {
+			bucket[str] = true
+			result = append(result, str)
+		}
+	}
+	return result
 }

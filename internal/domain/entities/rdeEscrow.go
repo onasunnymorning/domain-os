@@ -65,4 +65,9 @@ type EscrowImport struct {
 		Present int `json:"present"`
 		Missing int `json:"missing"`
 	} `json:"domainHostLinks"`
+	NNDNs struct {
+		Created  int `json:"created"`
+		Existing int `json:"existing"`
+		Failed   int `json:"failed"`
+	} `json:"nndns"`
 }

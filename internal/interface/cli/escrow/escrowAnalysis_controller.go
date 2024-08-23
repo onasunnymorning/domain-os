@@ -52,7 +52,7 @@ func (c *EscrowAnalysisController) Analyze(mapregistrars bool) error {
 		return err
 	}
 
-	if err := c.svc.ExtractNNDNS(); err != nil {
+	if _, err := c.svc.ExtractNNDNS(false); err != nil {
 		return err
 	}
 

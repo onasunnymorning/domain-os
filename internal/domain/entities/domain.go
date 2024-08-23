@@ -23,7 +23,7 @@ var (
 	ErrOriginalNameEqualToDomain       = errors.New("OriginalName field should not be equal to the domain name, it should point to the a-label of which this domain is a variant")
 	ErrNoUNameProvidedForIDNDomain     = errors.New("UName field must be provided for IDN domains")
 	ErrUNameDoesNotMatchDomain         = errors.New("UName must be the unicode version of the the domain name (a-label)")
-	ErrMaxHostsPerDomainExceeded       = errors.New("domain can contain 10 hosts at most")
+	ErrMaxHostsPerDomainExceeded       = fmt.Errorf("domain can contain %d hosts at most", MaxHostsPerDomain)
 	ErrDuplicateHost                   = errors.New("a host with this name is already associated with domain")
 	ErrHostSponsorMismatch             = errors.New("host is not owned by the same registrar as the domain")
 	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
@@ -218,18 +218,20 @@ func (d *Domain) CanBeRestored() bool {
 	return time.Now().UTC().Before(d.RGPStatus.RedemptionPeriodEnd) && d.Status.PendingDelete
 }
 
-// AddHost Adds a host to the domain and updates the Domain.Status.Inactive flag if needed.
-func (d *Domain) AddHost(host *Host) (int, error) {
-	if !d.CanBeUpdated() {
+// AddHost Adds a host to the domain and updates the Domain.Status.Inactive and Host.Satus.Linked flags if needed.
+// Unless force=true it will return an error if the Domain has an update prohibition (ClientUpdateProhibited or ServerUpdateProhibited).
+func (d *Domain) AddHost(host *Host, ignoreUpdateProhibitions bool) (int, error) {
+	if !d.CanBeUpdated() && !ignoreUpdateProhibitions {
 		return 0, ErrDomainUpdateNotAllowed
 	}
-	// Hard maximum of 10 hosts per domain TODO: Make configurable
-	if len(d.Hosts) >= MaxHostsPerDomain {
-		return 0, ErrMaxHostsPerDomainExceeded
-	}
+	// Check this first before looking for the maximum number that way we avoid a useless error saying we hit the maximum while the host is already associated
 	_, hasHostAssociation := d.containsHost(host)
 	if hasHostAssociation {
 		return 0, ErrDuplicateHost
+	}
+	// Limit the number of hosts per domain
+	if len(d.Hosts) >= MaxHostsPerDomain {
+		return 0, ErrMaxHostsPerDomainExceeded
 	}
 	if d.ClID != host.ClID {
 		return 0, ErrHostSponsorMismatch

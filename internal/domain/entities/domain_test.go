@@ -1121,7 +1121,7 @@ func TestDomain_AddHost(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			i, err := tc.domain.AddHost(tc.host)
+			i, err := tc.domain.AddHost(tc.host, false)
 			require.ErrorIs(t, err, tc.wantErr)
 			if err == nil {
 				require.Equal(t, tc.wantHostCount-1, i)
@@ -1168,7 +1168,7 @@ func TestDomain_AddHost_set_in_bailiwick(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.domain.AddHost(tc.host)
+			_, err := tc.domain.AddHost(tc.host, false)
 			require.ErrorIs(t, err, tc.wantErr)
 			require.Equal(t, tc.wantInBailiwick, tc.domain.Hosts[0].InBailiwick)
 		})

@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/netip"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -66,12 +68,26 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 		return nil, err
 	}
 
-	for _, a := range host.Addresses {
-		roidInt64, _ := dbHost.RoID.Int64()
-		_, err := s.addressRepository.CreateHostAddress(ctx, roidInt64, &a)
+	roidInt64, err := dbHost.RoID.Int64() // use the RoID that was just created
+	if err != nil {
+		return nil, fmt.Errorf("error converting system generated RoID of created host (%s) to int64", dbHost.RoID)
+	}
+
+	for _, a := range cmd.Addresses {
+		addr, err := netip.ParseAddr(a)
 		if err != nil {
 			return nil, errors.Join(entities.ErrInvalidHost, err)
 		}
+		_, err = s.addressRepository.CreateHostAddress(ctx, roidInt64, &addr)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidHost, err)
+		}
+	}
+
+	// Read the host with Addresses from the DB to make sure all is saved correctly
+	dbHost, err = s.hostRepository.GetHostByRoid(ctx, roidInt64)
+	if err != nil {
+		return nil, err
 	}
 
 	return dbHost, nil

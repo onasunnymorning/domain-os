@@ -27,14 +27,15 @@ import (
 // The file can be downloaded from the ICANN website at: https://www.icann.org/en/accredited	-registrars
 
 const (
-	API_HOST      = "localhost"
-	API_POST      = "8080"
+	CHUNKSIZE     = 1000
+	API_HOST      = "192.168.64.6"
+	API_PORT      = "8080"
 	ERR_DUPL_PK   = "ERROR: duplicate key value violates unique constraint \"registrars_pkey\" (SQLSTATE 23505)"
 	ERR_DUPL_NAME = "ERROR: duplicate key value violates unique constraint \"registrars_name_key\" (SQLSTATE 23505)"
 )
 
 var (
-	URL              = "http://" + API_HOST + ":" + API_POST + "/registrars"
+	URL              = "http://" + API_HOST + ":" + API_PORT + "/registrars"
 	DUPLICATE_ERRORS = []string{
 		ERR_DUPL_PK,
 		ERR_DUPL_NAME,
@@ -78,6 +79,11 @@ func main() {
 	}
 	countCmds := len(cmds)
 	log.Printf("[INFO] %d create commands created\n", countCmds)
+
+	// err = bulkCreateRegistrarsThroughAPI(countCmds, CHUNKSIZE, cmds)
+	// if err != nil {
+	// 	log.Fatalf("[ERR] error creating registrars: %v", err)
+	// }
 
 	err = createRegistrars(cmds)
 	if err != nil {
@@ -278,7 +284,7 @@ type APIError struct {
 
 // SyncIANARegistrars triggers the API backend to refresh the ICANN registrars
 func SyncIANARegistrars() {
-	URL := "http://" + API_HOST + ":" + API_POST + "/sync/iana-registrars"
+	URL := "http://" + API_HOST + ":" + API_PORT + "/sync/iana-registrars"
 	req, err := http.NewRequest(http.MethodPut, URL, nil)
 	if err != nil {
 		log.Fatalf("[ERR] error creating PUT request to sync IANA registrars: %v", err)
@@ -316,7 +322,7 @@ func GetIANARegistrars() ([]entities.IANARegistrar, error) {
 	}
 	log.Printf("[INFO] getting %d IANA registrars\n", count)
 	// Set the URL
-	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars?pagesize=1000"
+	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars?pagesize=1000"
 	// Get the first batch
 	result, err := getBatch(URL)
 	if err != nil {
@@ -349,7 +355,7 @@ func GetIANARegistrars() ([]entities.IANARegistrar, error) {
 
 // getCount returns the count of the IANARegistrar objects we are pulling
 func getCount() (int64, error) {
-	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars/count"
+	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars/count"
 	var countResult response.CountResult
 	// Make the request
 	resp, err := http.Get(URL)
@@ -404,7 +410,7 @@ func getBatch(url string) (*response.ListItemResult, error) {
 
 // getIANARegsitrarStatus returns the status of the IANARegistrar with the given IANAID
 func getIANARegistrarStatus(ianaID int) (string, error) {
-	URL := "http://" + API_HOST + ":" + API_POST + "/ianaregistrars/" + strconv.Itoa(ianaID)
+	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars/" + strconv.Itoa(ianaID)
 	var irar entities.IANARegistrar
 	// Make the request
 	resp, err := http.Get(URL)
@@ -495,7 +501,8 @@ func convertCSVRegistrarsToCommands(registrars []CSVRegistrar) ([]commands.Creat
 
 	// Covert to a slice of CreateRegistrarCommands
 	createCommands := make([]commands.CreateRegistrarCommand, len(registrars))
-	seen := make(map[string]bool)
+	seenClid := make(map[string]bool)
+	seenName := make(map[string]bool)
 	for i, r := range registrars {
 		addr, err := r.Address()
 		if err != nil {
@@ -530,10 +537,16 @@ func convertCSVRegistrarsToCommands(registrars []CSVRegistrar) ([]commands.Creat
 		}
 
 		// Check for duplicate ClIDs
-		if seen[rarCmd.ClID] {
+		if seenClid[rarCmd.ClID] {
 			return nil, fmt.Errorf("duplicate Registrar.ClID: %s", rarCmd.ClID)
 		}
-		seen[rarCmd.ClID] = true
+		seenClid[rarCmd.ClID] = true
+
+		// Check duplicate Name
+		if seenName[rarCmd.Name] {
+			rarCmd.Name = rarCmd.Name + "-2"
+		}
+		seenName[rarCmd.ClID] = true
 
 		// Add the command to the slice
 		createCommands[i] = rarCmd
@@ -581,7 +594,7 @@ func updateRegistrarStatuses(createCommands []commands.CreateRegistrarCommand) e
 		}
 
 		// Update that registrar's status
-		URL := "http://" + API_HOST + ":" + API_POST + "/registrars/" + r.ClID + "/status/" + status
+		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars/" + r.ClID + "/status/" + status
 		req, err := http.NewRequest(http.MethodPut, URL, nil)
 		if err != nil {
 			log.Fatalf("[ERR] error creating PUT request to update registrar status: %v", err)
@@ -651,6 +664,7 @@ func getCreateCommandsForTerminatedRegistrars(irars []entities.IANARegistrar) ([
 // getCreateCommands takes a slice of CSVRegistrars and a slice of IANARegistrars and returns a slice of CreateRegistrarCommands
 func getCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.IANARegistrar) ([]commands.CreateRegistrarCommand, error) {
 	skipped := []string{}
+	seen := make(map[string]bool)
 	var createCommands []commands.CreateRegistrarCommand
 
 	// Create a dummy postalinfo
@@ -689,6 +703,11 @@ func getCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 		if err != nil {
 			return nil, fmt.Errorf("error creating ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err)
 		}
+
+		if seen[irar.Name] {
+			irar.Name = irar.Name + "-2"
+		}
+		seen[irar.Name] = true
 
 		// Create the command with dummy information
 		cmd := commands.CreateRegistrarCommand{
@@ -751,7 +770,7 @@ func updateStatus(irars []entities.IANARegistrar) error {
 		if status == entities.IANARegistrarStatusReserved {
 			continue
 		}
-		// Map Accredited => ok for the API
+		// Map 'Accredited' status in IANA/ICANN source to 'ok' for the API and RDE RFC
 		if status == entities.IANARegistrarStatusAccredited {
 			status = "ok"
 		}
@@ -760,7 +779,7 @@ func updateStatus(irars []entities.IANARegistrar) error {
 			return fmt.Errorf("error creating ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err)
 		}
 
-		URL := "http://" + API_HOST + ":" + API_POST + "/registrars/" + clid.String() + "/status/" + string(status)
+		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars/" + clid.String() + "/status/" + string(status)
 		req, err := http.NewRequest(http.MethodPut, URL, nil)
 		if err != nil {
 			return fmt.Errorf("error creating PUT request to update registrar status: %v", err)
@@ -773,15 +792,14 @@ func updateStatus(irars []entities.IANARegistrar) error {
 			return fmt.Errorf("error updating registrar status via API(%s): %v", URL, err)
 		}
 
-		if resp.StatusCode != http.StatusOK {
+		bar.Add(1)
+		if resp.StatusCode != http.StatusNoContent {
 			if resp.StatusCode == http.StatusNotFound {
-				log.Printf("[WARN] Registrar %s with GurID %d not found, skipping\n", irar.Name, irar.GurID)
+				log.Printf("[INFO] Registrar %s with GurID %d not found, skipping\n", irar.Name, irar.GurID)
 				continue
 			}
 			return fmt.Errorf("error updating registrar status: %v - %v", resp.Status, URL)
 		}
-
-		bar.Add(1)
 
 	}
 	return nil
@@ -836,5 +854,42 @@ func createRegistrar(cmd commands.CreateRegistrarCommand) error {
 		}
 		return fmt.Errorf("error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
 	}
+	return nil
+}
+
+// bulkCreateRegistrarsAPI creates registrars in BULK throug one API command
+func bulkCreateRegistrarsThroughAPI(total, chunkSize int, cmds []commands.CreateRegistrarCommand) error {
+	for i := 0; i < total; i += chunkSize {
+		// Determine the end of the current chunk
+		end := i + chunkSize
+		if end > total {
+			end = total
+		}
+
+		// Slice the commands to create a chunk
+		chunk := cmds[i:end]
+
+		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars-bulk"
+		postBody, err := json.Marshal(chunk)
+		if err != nil {
+			return fmt.Errorf("error marshaling command: %v", err)
+		}
+
+		resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
+		if err != nil {
+			return fmt.Errorf("error sending create command to API: %v", err)
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response body: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("error creating registrars in bulk through API: %s", string(body))
+		}
+	}
+
 	return nil
 }
