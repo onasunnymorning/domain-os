@@ -190,7 +190,7 @@ func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor st
 }
 
 // AddHostToDomain adds a host to a domain
-func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string) error {
+func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string, ignoreUpdateProhibitions bool) error {
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
@@ -216,7 +216,7 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	}
 
 	// Add the host to the domain
-	i, err := dom.AddHost(host)
+	i, err := dom.AddHost(host, ignoreUpdateProhibitions)
 	if err != nil {
 		if errors.Is(err, entities.ErrDuplicateHost) {
 			return nil // No error if the host is already associated, idempotent
@@ -240,7 +240,7 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 }
 
 // AddHostToDomainByHostName adds a host to a domain by host name
-func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string) error {
+func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, ignoreUpdateProhibitions bool) error {
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, domainName, true)
 	if err != nil {
@@ -254,7 +254,7 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 	}
 
 	// Add the host to the domain
-	i, err := dom.AddHost(host)
+	i, err := dom.AddHost(host, ignoreUpdateProhibitions)
 	if err != nil {
 		if errors.Is(err, entities.ErrDuplicateHost) {
 			return nil // No error if the host is already associated, idempotent
@@ -652,7 +652,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 			return nil, err
 		}
 		// Add the host to the domain
-		_, err = dom.AddHost(host)
+		_, err = dom.AddHost(host, false)
 		if err != nil {
 			return nil, err
 		}

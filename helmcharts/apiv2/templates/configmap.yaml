@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  AUTO_MIGRATE: {{ .Values.env.AUTO_MIGRATE | quote }}
+  ENV: {{ .Values.env.ENV | quote }}
+  GIN_MODE: {{ .Values.env.GIN_MODE | quote }}
+  DB_HOST: {{ .Values.env.DB_HOST | quote }}
+  DB_PORT: {{ .Values.env.DB_PORT | quote }}
+  DB_NAME: {{ .Values.env.DB_NAME | quote }}
+  API_PORT: {{ .Values.env.API_PORT | quote }}
+  API_HOST: {{ .Values.env.API_HOST | quote }}
+  API_VERSION: {{ .Values.env.API_VERSION | quote }}
+
+  USE_NEW_RELIC: {{ .Values.newrelic.ENABLED | quote }}
+
+  KAFKA_ENABLED: {{ .Values.kafka.ENABLED | quote }}
+  KAFKA_BOOTSTRAP_SERVER: {{ .Values.kafka.BOOTSTRAP_SERVER | quote }}
+  KAFKA_PORT: {{ .Values.kafka.PORT | quote }}
+  KAFKA_TOPIC: {{ .Values.kafka.TOPIC | quote }}
+  KAFKA_SECURITY_PROTOCOL: {{ .Values.kafka.SECURITY_PROTOCOL | quote }}
+  KAFKA_SASL_MECHANISM: {{ .Values.kafka.SASL_MECHANISM | quote }}
+  KAFKA_SASL_USERNAME: {{ .Values.kafka.SASL_USERNAME | quote }}
+  KAFKA_SASL_PASSWORD: {{ .Values.kafka.SASL_PASSWORD | quote }}

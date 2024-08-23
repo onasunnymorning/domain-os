@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db
+  labels:
+    app: db
+spec:
+  securityContext:
+    runAsUser: 999  # Run as postgres user
+    fsGroup: 999    # Group ownership of mounted volumes
+  containers:
+  - name: db
+    image: postgres:16.1
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "password"
+    - name: POSTGRES_USER
+      value: "postgres"
+    - name: POSTGRES_DB
+      value: dos
+    - name: POSTGRES_HOST_AUTH_METHOD
+      value: "scram-sha-256"
+    - name: POSTGRES_INITDB_ARGS
+      value: "--auth-host=scram-sha-256"
+    command:
+    - postgres
+    - -c
+    - ssl=on
+    - -c
+    - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+    - -c
+    - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+    livenessProbe:
+      exec:
+        command:
+        - /bin/sh
+        - -c
+        - pg_isready -U postgres
+      initialDelaySeconds: 30
+      periodSeconds: 3
+      failureThreshold: 5
+  restartPolicy: Always

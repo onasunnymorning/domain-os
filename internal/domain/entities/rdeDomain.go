@@ -42,7 +42,7 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
 	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
 	if err != nil {
-		return nil, err // Untestable, just catching the error incase our AuthInfoType is validation changes
+		return nil, err // Untestable, just catching the error incase we edit two lines above
 	}
 	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, string(aInfo))
 	if err != nil {

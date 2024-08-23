@@ -15,6 +15,9 @@ const (
 	RegistrarStatusOK RegistrarStatus = "ok"
 	// Readonly means the registrar has an active ICANN accreditation but is in a readonly state. Interpreted as: the registrar can't register new domains, but can manage existing ones
 	RegistrarStatusReadonly RegistrarStatus = "readonly"
+
+	RegistrarPostalInfoTypeINT = "int"
+	RegistrarPostalInfoTypeLOC = "loc"
 )
 
 var (

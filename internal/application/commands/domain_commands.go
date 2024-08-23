@@ -1,9 +1,14 @@
 package commands
 
 import (
+	"errors"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+)
+
+var (
+	ErrRegistrantIDNotSet = errors.New("RegistrantID must be set")
 )
 
 // RegisterDomainCommand is a command to register a domain
@@ -82,10 +87,25 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	cmd.Name = dom.Name.String()
 	cmd.OriginalName = dom.OriginalName.String()
 	cmd.UName = dom.UName.String()
+	if dom.RegistrantID == "" {
+		return ErrRegistrantIDNotSet
+	}
 	cmd.RegistrantID = dom.RegistrantID.String()
 	cmd.AdminID = dom.AdminID.String()
+	if dom.AdminID == "" {
+		// If we don't have an admin contact, use the registrant contact
+		cmd.AdminID = dom.RegistrantID.String()
+	}
 	cmd.TechID = dom.TechID.String()
+	if dom.TechID == "" {
+		// If we don't have a tech contact, use the registrant contact
+		cmd.TechID = dom.RegistrantID.String()
+	}
 	cmd.BillingID = dom.BillingID.String()
+	if dom.BillingID == "" {
+		// If we don't have a billing contact, use the registrant contact
+		cmd.BillingID = dom.RegistrantID.String()
+	}
 	cmd.ClID = dom.ClID.String()
 	cmd.CrRr = dom.CrRr.String()
 	cmd.UpRr = dom.UpRr.String()

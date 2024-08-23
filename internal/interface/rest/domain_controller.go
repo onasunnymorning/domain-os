@@ -231,14 +231,19 @@ func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
 // @Produce json
 // @Param name path string true "Domain Name"
 // @Param roid path string true "Host RoID"
+// @Param force query bool false "Force the addition of the host"
 // @Success 204
 // @Failure 400
 // @Failure 404
 // @Failure 500
 // @Router /domains/{name}/hosts/{roid} [post]
 func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
+	var force bool
+	if ctx.Query("force") == "true" {
+		force = true
+	}
 	// Use the service to add the host to the domain
-	err := ctrl.domainService.AddHostToDomain(ctx, ctx.Param("name"), ctx.Param("roid"))
+	err := ctrl.domainService.AddHostToDomain(ctx, ctx.Param("name"), ctx.Param("roid"), force)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -257,19 +262,24 @@ func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
 
 // AddHostToDomainByHostName godoc
 // @Summary Add a host to a domain by host name
-// @Description Add a host to a domain by host name
+// @Description Add a host to a domain by host name. Use this when you don't know the RoID of the host. The domain must not have an update prohibition. Use the force parameter to override this, but use it with care. For example when importing Escrows, you might create the domain object including its prohibitions, and link it to a host. In this case you would use the force parameter to add the host to the domain.
 // @Tags Domains
 // @Produce json
 // @Param domainName path string true "Domain Name"
 // @Param hostName path string true "Host Name"
+// @Param force query bool false "Force the addition of the host"
 // @Success 204
 // @Failure 400
 // @Failure 404
 // @Failure 500
 // @Router /domains/{name}/hostname/{hostName} [post]
 func (ctrl *DomainController) AddHostToDomainByHostName(ctx *gin.Context) {
+	var force bool
+	if ctx.Query("force") == "true" {
+		force = true
+	}
 	// Use the service to add the host to the domain
-	err := ctrl.domainService.AddHostToDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"))
+	err := ctrl.domainService.AddHostToDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"), force)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
