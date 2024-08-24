@@ -31,7 +31,7 @@ type RenewDomainCommand struct {
 	Name  string       `json:"Name" binding:"required"`
 	ClID  string       `json:"ClID" binding:"required"`
 	Years int          `json:"Years"` // if not provided, it will be 1
-	Fee   FeeExtension `json:"Fee"`   // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+	Fee   FeeExtension `json:"Fee"`   // Optional, if provided must match the calculated fee, if not provided, the renew is allowed and any cost
 }
 
 // FeeExtension is a struct that can optionally be included in commands to provide information about the price

@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -68,7 +69,11 @@ func fromNNDN(n *entities.NNDN) *NNDN {
 func (r *GormNNDNRepository) CreateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	gormNNDN := fromNNDN(nndn)
 	result := r.db.WithContext(ctx).Create(gormNNDN)
-	if result.Error != nil {
+	if err := result.Error; err != nil {
+		var perr *pgconn.PgError
+		if errors.As(err, &perr) && perr.Code == "23505" {
+			return nil, entities.ErrDuplicateNNDN
+		}
 		return nil, result.Error
 	}
 	return gormNNDN.toNNDN(), nil

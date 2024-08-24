@@ -59,6 +59,7 @@ type Registrar struct {
 	NickName    string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
 	GurID       int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
 	Status      RegistrarStatus // The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
+	Autorenew   bool            // A flag that indicates whether the registrar has opted-in to automatically renew domains that are eligible for auto-renewal.
 	PostalInfo  [2]*RegistrarPostalInfo
 	Voice       E164Type
 	Fax         E164Type

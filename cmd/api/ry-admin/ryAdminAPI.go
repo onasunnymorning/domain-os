@@ -87,7 +87,7 @@ func main() {
 		log.Println("Running in Docker")
 	}
 	if cfg.UseNewRelic {
-		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'AUTO_MIGRATE' to disable")
+		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'USE_NEW_RELIC' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
 			log.Fatalf("Failed to initialize New Relic APM: %s", err)

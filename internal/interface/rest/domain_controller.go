@@ -442,7 +442,7 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param domain body commands.RenewDomainCommand true "Domain"
-// @Success 201 {object} entities.Domain
+// @Success 200 {object} entities.Domain
 // @Failure 400
 // @Failure 500
 // @Router /domains/{name}/renew [post]

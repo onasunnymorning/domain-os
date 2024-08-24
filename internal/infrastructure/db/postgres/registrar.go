@@ -14,6 +14,7 @@ type Registrar struct {
 	GurID       int
 	Email       string
 	Status      string `gorm:"not null"`
+	Autorenew   bool
 	Street1Int  string
 	Street2Int  string
 	Street3Int  string
@@ -68,6 +69,7 @@ func ToDBRegistrar(r *entities.Registrar) *Registrar {
 		GurID:       r.GurID,
 		Email:       r.Email,
 		Status:      r.Status.String(),
+		Autorenew:   r.Autorenew,
 		Voice:       r.Voice.String(),
 		Fax:         r.Fax.String(),
 		URL:         r.URL.String(),
@@ -111,14 +113,15 @@ func ToDBRegistrar(r *entities.Registrar) *Registrar {
 
 func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 	registrar := &entities.Registrar{
-		ClID:     entities.ClIDType(dbr.ClID),
-		Name:     dbr.Name,
-		NickName: dbr.NickName,
-		GurID:    dbr.GurID,
-		Status:   entities.RegistrarStatus(dbr.Status),
-		Voice:    entities.E164Type(dbr.Voice),
-		Fax:      entities.E164Type(dbr.Fax),
-		Email:    dbr.Email,
+		ClID:      entities.ClIDType(dbr.ClID),
+		Name:      dbr.Name,
+		NickName:  dbr.NickName,
+		GurID:     dbr.GurID,
+		Status:    entities.RegistrarStatus(dbr.Status),
+		Autorenew: dbr.Autorenew,
+		Voice:     entities.E164Type(dbr.Voice),
+		Fax:       entities.E164Type(dbr.Fax),
+		Email:     dbr.Email,
 		WhoisInfo: entities.WhoisInfo{
 			Name: entities.DomainName(dbr.Whois43),
 			URL:  entities.URL(dbr.Whois80),
