@@ -644,6 +644,14 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
+	// Depending on the TLD Phase Policy we may need to need to create set pendingCreate
+	if *phase.Policy.RequiresValidation {
+		err := dom.SetStatus(entities.DomainStatusPendingCreate)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Add the hosts if there are any
 	for _, h := range cmd.HostNames {
 		// Lookup the host
