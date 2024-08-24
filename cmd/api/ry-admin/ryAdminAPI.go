@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 
@@ -80,6 +81,12 @@ func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
 // @license.name APEX all rights reserved
 func main() {
 	cfg := config.LoadConfig()
+	log.Println("Starting Admin API with following config:")
+	jBytes, err := json.Marshal(cfg)
+	if err != nil {
+		log.Fatalf("Failed to marshal config: %s", err)
+	}
+	log.Println(string(jBytes))
 	// Load environment variables when not running in Docker
 	if !runningInDocker() {
 		log.Println("Running outside of Docker")
