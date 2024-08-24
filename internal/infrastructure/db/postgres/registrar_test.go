@@ -17,6 +17,7 @@ func getValidRegistrar() *entities.Registrar {
 		GurID:       119,
 		Email:       "g@me.com",
 		Status:      entities.RegistrarStatus(entities.RegistrarStatusOK),
+		Autorenew:   true,
 		Voice:       entities.E164Type("+1.12345678"),
 		Fax:         entities.E164Type("+1.987654321"),
 		URL:         entities.URL("http://myregistrar.com"),

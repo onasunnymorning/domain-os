@@ -82,3 +82,27 @@ func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string, pageS
 	}
 	return phases, nil
 }
+
+// ListActiveGAPhases lists all active phases for all TLDs
+func (r *PhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error) {
+	var gormPhases []*Phase
+	var pageCursorInt64 int64
+	var err error
+	// pageCursor for phases is of type int64, so convert it to int64
+	if pageCursor != "" {
+		pageCursorInt64, err = strconv.ParseInt(pageCursor, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = r.db.WithContext(ctx).Where("type = ?", "GA").Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
+	if err != nil {
+		return nil, err
+	}
+	phases := make([]*entities.Phase, len(gormPhases))
+	for i, phase := range gormPhases {
+		phases[i] = phase.ToEntity()
+	}
+	return phases, nil
+}

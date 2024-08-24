@@ -24,7 +24,6 @@ import (
 
 const (
 	CONCURRENT_CLIENTS = 10
-	BASE_URL           = "http://192.168.64.6:8080"
 )
 
 var (
@@ -35,6 +34,8 @@ var (
 	ErrAnalysisContainsErrors             = errors.New("analysis shows errors")
 	ErrAnalysisFileDoesNotMatchEscrowFile = errors.New("analysis file does not match escrow file")
 	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
+
+	BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -1009,8 +1010,6 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 	writer := csv.NewWriter(outFile)
 	defer writer.Flush()
 
-	// BASE_URL := "http://domain-os-admin-api-1:8080"
-	BASE_URL := "http://192.168.64.6:8080"
 	bearer := "Bearer " + os.Getenv("EPP_API_TOKEN")
 
 	var found = 0
@@ -1203,7 +1202,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 // createContact handles the actual creation of a contact through an API request. If a contact already exists, that is not an error.
 func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.CreateContactCommand) error {
 
-	URL := "http://192.168.64.6:8080/contacts"
+	URL := BASE_URL + "/contacts"
 
 	// First map the registrar ID to the registrar ClID
 	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
@@ -1327,7 +1326,7 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) erro
 // createHost handles the actual creation of a host through an API request. If a host already exists, that is not an error.
 func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateHostCommand) error {
 
-	URL := "http://192.168.64.6:8080/hosts"
+	URL := BASE_URL + "/hosts"
 
 	// First map the registrar ID to the registrar ClID
 	registrar, ok := svc.RegsistrarMapping[cmd.ClID.String()]
@@ -1458,7 +1457,7 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 // createDomain handles the actual creation of a domain through an API request. If a domain already exists, that is not an error.
 func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.CreateDomainCommand) error {
 
-	URL := "http://192.168.64.6:8080/domains"
+	URL := BASE_URL + "/domains"
 
 	// First map the registrar ID to the registrar ClID
 	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
@@ -1501,6 +1500,8 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 
 	resp, err := client.Do(req)
 	if err != nil {
+		svc.Import.Domains.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error sending Domain create request for %s: %s", cmd.Name, err.Error()))
 		return err
 	}
 
@@ -1684,14 +1685,16 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 		return err
 	}
 
-	// Send the request
+	// Create the request
 	req, err := http.NewRequest("POST", URL, bytes.NewReader(jsonCmd))
 	if err != nil {
 		return err
 	}
-
+	// Send it
 	resp, err := client.Do(req)
 	if err != nil {
+		svc.Import.NNDNs.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error sending NNDN create request for %s: %s", cmd.Name, err.Error()))
 		return err
 	}
 
@@ -1699,6 +1702,8 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		svc.Import.NNDNs.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error reading response when creating NNDN with name %s", cmd.Name))
 		return err
 	}
 
@@ -1712,6 +1717,8 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 	var response ErrorResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
+		svc.Import.NNDNs.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error unmarshalling NNDN response for %s: %s", cmd.Name, response.Error))
 		return err
 	}
 
@@ -1720,13 +1727,14 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 		// if the contact already exists, we can skip it, we need to check the body for that
 
 		// Exists, skip
-		if strings.Contains(response.Error, "nndn already exists") {
+		if strings.Contains(response.Error, "duplicate NNDN") {
 			svc.Import.NNDNs.Existing++
 			return nil
-		} else {
-			svc.Import.NNDNs.Failed++
-			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating NNDN with name %s: %s", cmd.Name, response.Error))
 		}
+
+		svc.Import.NNDNs.Failed++
+		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("Error creating NNDN with name %s: %s", cmd.Name, response.Error))
+
 	}
 
 	return nil
@@ -1802,7 +1810,9 @@ func (svc *XMLEscrowService) GetContactCountFromAPI() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-
+		if result == nil {
+			return 0, fmt.Errorf("error fetching contact count: response body is nil")
+		}
 		return result.Count, nil
 	}
 

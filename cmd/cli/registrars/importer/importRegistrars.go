@@ -28,14 +28,12 @@ import (
 
 const (
 	CHUNKSIZE     = 1000
-	API_HOST      = "192.168.64.6"
-	API_PORT      = "8080"
 	ERR_DUPL_PK   = "ERROR: duplicate key value violates unique constraint \"registrars_pkey\" (SQLSTATE 23505)"
 	ERR_DUPL_NAME = "ERROR: duplicate key value violates unique constraint \"registrars_name_key\" (SQLSTATE 23505)"
 )
 
 var (
-	URL              = "http://" + API_HOST + ":" + API_PORT + "/registrars"
+	BASE_URL         = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
 	DUPLICATE_ERRORS = []string{
 		ERR_DUPL_PK,
 		ERR_DUPL_NAME,
@@ -284,7 +282,7 @@ type APIError struct {
 
 // SyncIANARegistrars triggers the API backend to refresh the ICANN registrars
 func SyncIANARegistrars() {
-	URL := "http://" + API_HOST + ":" + API_PORT + "/sync/iana-registrars"
+	URL := BASE_URL + "/sync/iana-registrars"
 	req, err := http.NewRequest(http.MethodPut, URL, nil)
 	if err != nil {
 		log.Fatalf("[ERR] error creating PUT request to sync IANA registrars: %v", err)
@@ -322,7 +320,7 @@ func GetIANARegistrars() ([]entities.IANARegistrar, error) {
 	}
 	log.Printf("[INFO] getting %d IANA registrars\n", count)
 	// Set the URL
-	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars?pagesize=1000"
+	URL := BASE_URL + "/ianaregistrars?pagesize=1000"
 	// Get the first batch
 	result, err := getBatch(URL)
 	if err != nil {
@@ -355,7 +353,7 @@ func GetIANARegistrars() ([]entities.IANARegistrar, error) {
 
 // getCount returns the count of the IANARegistrar objects we are pulling
 func getCount() (int64, error) {
-	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars/count"
+	URL := BASE_URL + "/ianaregistrars/count"
 	var countResult response.CountResult
 	// Make the request
 	resp, err := http.Get(URL)
@@ -388,7 +386,7 @@ func getBatch(url string) (*response.ListItemResult, error) {
 	// Make the request
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("error getting IANA regsitrars via API(%s)", URL), err)
+		return nil, errors.Join(fmt.Errorf("error getting IANA regsitrars via API(%s)", BASE_URL), err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -410,7 +408,7 @@ func getBatch(url string) (*response.ListItemResult, error) {
 
 // getIANARegsitrarStatus returns the status of the IANARegistrar with the given IANAID
 func getIANARegistrarStatus(ianaID int) (string, error) {
-	URL := "http://" + API_HOST + ":" + API_PORT + "/ianaregistrars/" + strconv.Itoa(ianaID)
+	URL := BASE_URL + "/ianaregistrars/" + strconv.Itoa(ianaID)
 	var irar entities.IANARegistrar
 	// Make the request
 	resp, err := http.Get(URL)
@@ -594,7 +592,7 @@ func updateRegistrarStatuses(createCommands []commands.CreateRegistrarCommand) e
 		}
 
 		// Update that registrar's status
-		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars/" + r.ClID + "/status/" + status
+		URL := BASE_URL + "/registrars/" + r.ClID + "/status/" + status
 		req, err := http.NewRequest(http.MethodPut, URL, nil)
 		if err != nil {
 			log.Fatalf("[ERR] error creating PUT request to update registrar status: %v", err)
@@ -779,7 +777,7 @@ func updateStatus(irars []entities.IANARegistrar) error {
 			return fmt.Errorf("error creating ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err)
 		}
 
-		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars/" + clid.String() + "/status/" + string(status)
+		URL := BASE_URL + "/registrars/" + clid.String() + "/status/" + string(status)
 		req, err := http.NewRequest(http.MethodPut, URL, nil)
 		if err != nil {
 			return fmt.Errorf("error creating PUT request to update registrar status: %v", err)
@@ -812,6 +810,7 @@ func createRegistrar(cmd commands.CreateRegistrarCommand) error {
 		return fmt.Errorf("error marshaling command: %v", err)
 	}
 
+	URL := BASE_URL + "/registrars"
 	resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
 		log.Println(cmd)
@@ -869,7 +868,7 @@ func bulkCreateRegistrarsThroughAPI(total, chunkSize int, cmds []commands.Create
 		// Slice the commands to create a chunk
 		chunk := cmds[i:end]
 
-		URL := "http://" + API_HOST + ":" + API_PORT + "/registrars-bulk"
+		URL := BASE_URL + "/registrars-bulk"
 		postBody, err := json.Marshal(chunk)
 		if err != nil {
 			return fmt.Errorf("error marshaling command: %v", err)
