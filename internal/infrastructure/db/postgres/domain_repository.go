@@ -146,6 +146,7 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld s
 		LEFT JOIN hosts ho ON dh.host_ro_id = ho.ro_id
 		WHERE dom.tld_name = ?
 		AND dom.inactive = false
+		AND dom.pending_delete = false
 	`, tld).Scan(&queryResults).Error
 	if err != nil {
 		return nil, err
