@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"strconv"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/kafkaproducer"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
@@ -68,14 +68,14 @@ func initNewRelicAPM() (*newrelic.Application, error) {
 }
 
 // KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
-func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("kafkaProducer", producer)
-		c.Set("kafkaTopic", topic)
-		c.Set("App", AppName)
-		c.Next()
-	}
-}
+// func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		c.Set("kafkaProducer", producer)
+// 		c.Set("kafkaTopic", topic)
+// 		c.Set("App", AppName)
+// 		c.Next()
+// 	}
+// }
 
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
@@ -89,11 +89,15 @@ func main() {
 	log.Println(string(jBytes))
 	// Load environment variables when not running in Docker
 	if !runningInDocker() {
-		log.Println("Running outside of Docker")
+		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+			log.Println("Running in Kubernetes")
+		} else {
+			log.Println("Could not determine runtime environment")
+		}
 	} else {
-		log.Println("Running in Docker")
+		log.Println("Running in Docker runtime")
 	}
-	if cfg.UseNewRelic {
+	if cfg.NewRelicEnabled {
 		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'USE_NEW_RELIC' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
@@ -111,7 +115,7 @@ func main() {
 			Host:        os.Getenv("DB_HOST"),
 			Port:        os.Getenv("DB_PORT"),
 			DBName:      os.Getenv("DB_NAME"),
-			SSLmode:     "require",
+			SSLmode:     os.Getenv("DB_SSLMODE"),
 			AutoMigrate: cfg.AutoMigrate,
 		},
 	)
@@ -128,21 +132,39 @@ func main() {
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 
-	var eventProducer *kafka.Producer
-	if cfg.EnableKafka {
-		// Create an event producer, fail if it fails as its an integral part of the application
-		eventProducer, err = kafkaproducer.InitEventProducer()
+	// SET UP SERVICES
+
+	// Events
+	if cfg.EventStreamEnabled {
+		log.Println("Setting up Event Stream")
+		portStr := os.Getenv("RMQ_PORT")
+		port, err := strconv.Atoi(portStr)
 		if err != nil {
-			log.Fatalf("Failed to initiate producer: %s\n", err)
+			log.Fatalf("Failed to convert RMQ_PORT to int: %s", err)
 		}
-		defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
-		defer eventProducer.Close()          // Close the producer
-		log.Println("Kafka enabled")
-	} else {
-		log.Println("Kafka disabled")
+
+		eventRepo, err := rabbitmq.NewEventRepository(&rabbitmq.RabbitConfig{
+			Host:     os.Getenv("RMQ_HOST"),
+			Port:     port,
+			Username: os.Getenv("RMQ_USER"),
+			Password: os.Getenv("RMQ_PASS"),
+			Topic:    os.Getenv("EVENT_STREAM_TOPIC"),
+		})
+		if err != nil {
+			log.Fatalf("Failed to create Event Repository: %s", err)
+		}
+		eventSvc := services.NewEventService(eventRepo)
+		err = eventSvc.SendStream(&entities.Event{
+			Source:    AppName,
+			User:      "system",
+			Action:    "startup",
+			Timestamp: time.Now().UTC(),
+		})
+		if err != nil {
+			log.Fatalf("Failed to send event: %s", err)
+		}
 	}
 
-	// SET UP SERVICES
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
@@ -212,11 +234,7 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
-	if cfg.EnableKafka {
-		// Attach the KafkaMiddleware to the router
-		r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
-	}
-	// Set up the routes and controllers
+
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService, domainService)
