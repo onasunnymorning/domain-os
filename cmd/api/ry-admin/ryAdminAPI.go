@@ -88,7 +88,7 @@ func main() {
 		log.Println("Running in Docker runtime")
 	}
 	if cfg.NewRelicEnabled {
-		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'USE_NEW_RELIC' to disable")
+		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
 			log.Fatalf("Failed to initialize New Relic APM: %s", err)

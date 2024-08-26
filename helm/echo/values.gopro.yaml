@@ -1,0 +1,11 @@
+name: streamclient
+image: geapex/streamclient
+tag: latest
+imagePullPolicy: Always
+
+rabbitmq:
+  host: rmq.default.svc.cluster.local
+  port: "5552"
+  user: default_user_sVqh9P5CfyxJPBnwSJ3
+  pass: UqNcLe97u10IG6j7eeYtMSWZVgJx11oQ
+  topic: dos-event-stream

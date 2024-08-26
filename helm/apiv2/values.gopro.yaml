@@ -1,0 +1,47 @@
+api:
+  image: geapex/domain-os
+  tag: 165-autorenew
+  imagePullPolicy: Always
+
+replicaCount: 1
+
+service:
+  type: LoadBalancer
+  port: 8080
+
+db:
+  DB_HOST: 192.168.1.198
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASS: postgres
+  DB_NAME: dos_gopro
+  AUTO_MIGRATE: true
+
+gin:
+  GIN_MODE: test
+
+app:
+  API_PORT: "8080"
+  API_HOST: "192.168.1.24"
+  API_VERSION: "0.5.1"
+
+fx:
+  OPENEXCHANGERATES_APP_ID: ce06ff991e0548f0963fbd95dcd3b5af
+
+newrelic:
+  enabled: false
+  LICENCE_KEY: "07597dba536368f708cf36d68937d4bfFFFFNRAL"
+  USER_KEY: "NRAK-MHBNC34JQUIMYTV9NZWJATFMWUS"
+
+rabbitmq:
+  enabled: true
+  user: default_user_sVqh9P5CfyxJPBnwSJ3
+  pass: UqNcLe97u10IG6j7eeYtMSWZVgJx11oQ
+  host: rmq
+  topic: "dos-event-stream"
+  port: "5552"
+
+healthcheck:
+  interval: 3s
+  retries: 5
+  startPeriod: 10s
