@@ -162,9 +162,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	}
 
 	// Get the Event from the context
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "CREATE", "TLD", req.Name, ctx.Request.URL.RequestURI())
+	event := GetEventFromContext(ctx)
 	// Set the event details.command
 	event.Details.Command = req
 
@@ -188,6 +186,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 
 	// Set the event details.after
 	event.Details.After = result
+	ctx.Set("event", event)
 
 	ctx.JSON(201, result)
 }
