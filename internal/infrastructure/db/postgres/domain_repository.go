@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/miekg/dns"
@@ -214,4 +215,20 @@ func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := dr.db.WithContext(ctx).Model(&Domain{}).Count(&count).Error
 	return count, err
+}
+
+// ListExpiringDomains returns a list of domains that are expiring within the given number of days. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
+func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, days int) ([]*entities.Domain, error) {
+	var dbDomains []*Domain
+	err := dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where("expiry_date <= ?", time.Now().AddDate(0, 0, days)).Find(&dbDomains).Error
+	if err != nil {
+		return nil, err
+	}
+
+	domains := make([]*entities.Domain, len(dbDomains))
+	for i, d := range dbDomains {
+		domains[i] = ToDomain(d)
+	}
+
+	return domains, nil
 }
