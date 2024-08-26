@@ -114,7 +114,10 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 		if len(slice) >= 4 && slice[3] == "phases" {
 			return entities.ObjectTypePhase
 		}
-
+	case "phases":
+		return entities.ObjectTypePhase
+	case "domains":
+		return entities.ObjectTypeDomain
 	case "accreditations":
 		return entities.ObjectTypeAccreditation
 	case "hosts":

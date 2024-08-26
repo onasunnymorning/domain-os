@@ -35,7 +35,7 @@ func NewEventRepository(rc *RabbitConfig) (*EventRepository, error) {
 		return nil, err
 	}
 
-	// Declare the stream (this is idempotent so we can do it from the client and server)
+	// INIT: Declare the stream (this is idempotent so we can do it from the client and server)
 	err = env.DeclareStream(rc.Topic,
 		&stream.StreamOptions{
 			MaxLengthBytes: stream.ByteCapacity{}.GB(2),
@@ -45,7 +45,7 @@ func NewEventRepository(rc *RabbitConfig) (*EventRepository, error) {
 		return nil, err
 	}
 
-	//
+	// Create the producer
 	sp, err := env.NewProducer(rc.Topic, stream.NewProducerOptions())
 	if err != nil {
 		return nil, err

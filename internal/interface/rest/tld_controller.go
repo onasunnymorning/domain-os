@@ -122,9 +122,8 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
 	// Get the Event from the context
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "DELETE", "TLD", name, ctx.Request.URL.RequestURI())
+	event := GetEventFromContext(ctx)
+	ctx.Set("event", event)
 
 	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
