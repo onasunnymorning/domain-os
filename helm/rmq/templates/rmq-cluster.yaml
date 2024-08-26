@@ -1,0 +1,20 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .Values.name }}
+
+spec:
+  rabbitmq:
+  # Enable the stream plugin
+    additionalPlugins:
+    - rabbitmq_stream
+    - rabbitmq_stream_management
+  override:
+    service:
+      spec:
+        type: LoadBalancer
+        ports:
+        # Add the default stream ports to the service so they can be accessed
+          - name: streams
+            port: 5552
+            targetPort: 5552
