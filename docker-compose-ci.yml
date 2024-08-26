@@ -24,9 +24,47 @@ services:
       - 5432:5432
       - 55432:55432
     networks:
-      - regos
+      - dos
     volumes: 
       - db:/var/lib/postgresql/data 
+
+# RabbitMQ Broker container
+  msg-broker:
+    image: rabbitmq:3.13
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmqctl node_health_check"]
+      interval: 15s
+      retries: 3
+    ports:
+      - 5552:5552
+      - 5672:5672
+      - 15672:15672
+    networks:
+      - dos
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RMQ_PASS}
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream
+      - RABBITMQ_ENABLED_PLUGINS_FILE=/etc/rabbitmq/enabled_plugins
+    volumes:
+      - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+
+# Event Stream Echo service
+  msg-stream-echo:
+    image: "geapex/streamclient"
+    restart: always
+    depends_on:
+      msg-broker:
+        condition: service_healthy
+    environment:
+      - RMQ_PASS=${RMQ_PASS}
+      - RMQ_USER=${RMQ_USER}
+      - RMQ_HOST=msg-broker
+      - RMQ_PORT=${RMQ_PORT}
+      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
+    networks:
+      - dos
 # Core API container
   admin-api:
     image: "geapex/domain-os:${BRANCH}"
@@ -40,8 +78,11 @@ services:
       db:
         condition: service_healthy
     environment:
-      - AUTO_MIGRATE=true
       - GIN_MODE=${GIN_MODE}
+      - AUTO_MIGRATE=${AUTO_MIGRATE}
+      - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
+      - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
+      - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
@@ -49,16 +90,19 @@ services:
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
       - API_PORT=${API_PORT}
-      - KAFKA_HOST=${KAFKA_HOST}
-      - KAFKA_TOPIC=${KAFKA_TOPIC}
-      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
-      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
-      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
-      - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
+      - API_HOST=${API_HOST}
+      - API_VERSION=${API_VERSION}
+      - RMQ_HOST=${RMQ_HOST}
+      - RMQ_PORT=${RMQ_PORT}
+      - RMQ_USER=${RMQ_USER}
+      - RMQ_PASS=${RMQ_PASS}
+      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
+      - EVENT_STREAM_ENABLED=${EVENT_STREAM_ENABLED}
+
     ports:
       - ${API_PORT}:${API_PORT}
     networks:
-      - regos
+      - dos
 # TEST container from wich we will be running integration tests based on a postman collection
   test:
     image: postman/newman
@@ -74,10 +118,10 @@ services:
       db:
         condition: service_healthy
     networks:
-      - regos  
+      - dos  
 
 networks:
-  regos:
+  dos:
     driver: bridge
 
 volumes:
