@@ -11,6 +11,7 @@ const (
 
 	ObjectTypeTLD           = "tld"
 	ObjectTypePhase         = "phase"
+	ObjectTypeDomain        = "domain"
 	ObjectTypeFee           = "fee"
 	ObjectTypeContact       = "contact"
 	ObjectTypeNNDN          = "nndn"

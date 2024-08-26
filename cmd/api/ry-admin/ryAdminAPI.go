@@ -60,22 +60,12 @@ func runningInDocker() bool {
 // initNewRelicAPM initializes New Relic APM
 func initNewRelicAPM() (*newrelic.Application, error) {
 	return newrelic.NewApplication(
-		newrelic.ConfigAppName("domain-os"),
-		newrelic.ConfigLicense("07597dba536368f708cf36d68937d4bfFFFFNRAL"),
+		newrelic.ConfigAppName(AppName),
+		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
 
 }
-
-// KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
-// func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		c.Set("kafkaProducer", producer)
-// 		c.Set("kafkaTopic", topic)
-// 		c.Set("App", AppName)
-// 		c.Next()
-// 	}
-// }
 
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
@@ -135,6 +125,7 @@ func main() {
 	// SET UP SERVICES
 
 	// Events
+	var eventSvc *services.EventService
 	if cfg.EventStreamEnabled {
 		log.Println("Setting up Event Stream")
 		portStr := os.Getenv("RMQ_PORT")
@@ -153,11 +144,14 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create Event Repository: %s", err)
 		}
-		eventSvc := services.NewEventService(eventRepo)
+		eventSvc = services.NewEventService(eventRepo)
 		err = eventSvc.SendStream(&entities.Event{
-			Source:    AppName,
-			User:      "system",
-			Action:    "startup",
+			Source: AppName,
+			User:   "system",
+			Action: "startup",
+			Details: entities.EventDetails{
+				Result: entities.EventResultSuccess,
+			},
 			Timestamp: time.Now().UTC(),
 		})
 		if err != nil {
@@ -234,6 +228,11 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
+
+	// Attach the Stream Middleware
+	if cfg.EventStreamEnabled && eventSvc != nil {
+		r.Use(rest.StreamMiddleWare(eventSvc))
+	}
 
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
