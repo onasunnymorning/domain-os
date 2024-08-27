@@ -822,3 +822,8 @@ func (s *DomainService) GetGlueRecordsPerTLD(ctx context.Context, tld string) ([
 func (s *DomainService) Count(ctx context.Context) (int64, error) {
 	return s.domainRepository.Count(ctx)
 }
+
+// ListExpiringDomains returns a list of expiring domains
+func (s *DomainService) ListExpiringDomains(ctx context.Context, days, pageSize int, cursor string) ([]*entities.Domain, error) {
+	return s.domainRepository.ListExpiringDomains(ctx, days, pageSize, cursor)
+}
