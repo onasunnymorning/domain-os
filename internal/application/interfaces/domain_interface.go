@@ -22,6 +22,7 @@ type DomainService interface {
 	RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
 	Count(ctx context.Context) (int64, error)
+	ListExpiringDomains(ctx context.Context, days, pageSize int, cursor string) ([]*entities.Domain, error)
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available and supports the fee extension

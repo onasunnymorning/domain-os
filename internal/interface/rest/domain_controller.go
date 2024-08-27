@@ -2,7 +2,9 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -605,4 +607,59 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+// ListExpiringDomains godoc
+// @Summary List expiring domains
+// @Description List expiring domains, if no days are provided it will default to 1 day.
+// @Tags Domains
+// @Produce json
+// @Param days query int false "Days"
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} response.ListItemResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/expiring [get]
+func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the days from the query string and default to 1 day
+	dayStr := ctx.DefaultQuery("days", "1")
+	// convert to int
+	days, err := strconv.Atoi(dayStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting daystring to dayint: %s", err.Error())})
+		return
+	}
+
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the list of domains
+	domains, err := ctrl.domainService.ListExpiringDomains(ctx, days, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set the response MetaData
+	response.Data = domains
+	if len(domains) > 0 {
+		response.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+	}
+
+	// Return the Response
+	ctx.JSON(200, response)
 }
