@@ -48,6 +48,9 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.DELETE("/domains/:name/markdelete", controller.MarkDomainForDeletion)
 	e.POST("/domains/:name/restore", controller.RestoreDomain)
 
+	// Lifecycle endpoints
+	e.GET("/domains/expiring", controller.ListExpiringDomains)
+
 	return controller
 }
 
@@ -99,8 +102,14 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		return
 	}
 
+	// Get the Event from the context
+	event := GetEventFromContext(ctx)
+	// Set the event details.command
+	event.Details.Command = req
+
 	domain, err := ctrl.domainService.CreateDomain(ctx, &req)
 	if err != nil {
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -108,6 +117,10 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Set the event details.after
+	event.Details.After = domain
+	ctx.Set("event", event)
 
 	ctx.JSON(201, domain)
 }
@@ -624,7 +637,7 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	var err error
 	// Prepare the response
-	response := response.ListItemResult{}
+	resp := response.ListItemResult{}
 	// Get the days from the query string and default to 1 day
 	dayStr := ctx.DefaultQuery("days", "1")
 	// convert to int
@@ -654,12 +667,22 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 		return
 	}
 
+	// Move the domains into a domain expiry item
+	expiryItems := make([]response.DomainExpiryItem, len(domains))
+	for i, d := range domains {
+		expiryItems[i] = response.DomainExpiryItem{
+			RoID:       d.RoID.String(),
+			Name:       d.Name.String(),
+			ExpiryDate: d.ExpiryDate,
+		}
+	}
+
 	// Set the response MetaData
-	response.Data = domains
+	resp.Data = expiryItems
 	if len(domains) > 0 {
-		response.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
 	}
 
 	// Return the Response
-	ctx.JSON(200, response)
+	ctx.JSON(200, resp)
 }

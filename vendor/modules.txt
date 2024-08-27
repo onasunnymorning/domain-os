@@ -329,6 +329,9 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
+# github.com/rabbitmq/amqp091-go v1.10.0
+## explicit; go 1.20
+github.com/rabbitmq/amqp091-go
 # github.com/rabbitmq/rabbitmq-stream-go-client v1.4.8
 ## explicit; go 1.18
 github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp

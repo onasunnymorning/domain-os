@@ -30,7 +30,6 @@ var _ = ginkgo.Describe("TLDController", func() {
 		// Initialize your router
 		gin.SetMode(gin.TestMode)
 		router = gin.New()
-		router.Use(rest.PublishEvent(nil, ""))
 		db, err := getTestDB()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
