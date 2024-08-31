@@ -246,3 +246,10 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, days, pages
 
 	return domains, nil
 }
+
+// CountExiringDomains returns the number of domains that are expiring within the given number of days
+func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, days int) (int64, error) {
+	var count int64
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where("expiry_date <= ?", time.Now().AddDate(0, 0, days)).Count(&count).Error
+	return count, err
+}

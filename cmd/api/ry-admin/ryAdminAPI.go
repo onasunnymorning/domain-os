@@ -212,7 +212,7 @@ func main() {
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, *roidService)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
 
