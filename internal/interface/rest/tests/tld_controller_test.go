@@ -30,6 +30,11 @@ var _ = ginkgo.Describe("TLDController", func() {
 		// Initialize your router
 		gin.SetMode(gin.TestMode)
 		router = gin.New()
+		// add a mock middleware for streaming events
+		mockEventRepo := &MockEventRepo{}
+		eventService := services.NewEventService(mockEventRepo)
+		router.Use(rest.StreamMiddleWare(eventService))
+
 		db, err := getTestDB()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -89,3 +94,12 @@ var _ = ginkgo.Describe("TLDController", func() {
 		})
 	})
 })
+
+// MockEventRepo is a mock implementation of the EventRepository interface
+type MockEventRepo struct {
+}
+
+// SendStream sends an event
+func (m *MockEventRepo) SendStream(e *entities.Event) error {
+	return nil
+}
