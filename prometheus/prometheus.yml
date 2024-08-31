@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+- job_name: "prometheus"
+  scrape_interval: 5s
+  static_configs:
+  - targets: ["localhost:9090"]
+
+- job_name: "rabbitmq-server"
+  static_configs:
+  - targets:
+    - "msg-broker:15692"
+
+- job_name: "rabbitmq-server-detailed"
+  metrics_path: "/metrics/detailed"
+  params:
+    family: ["queue_coarse_metrics"]
+  static_configs:
+  - targets:
+    - "msg-broker:15692"

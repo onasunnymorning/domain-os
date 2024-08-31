@@ -41,6 +41,7 @@ services:
       - 5552:5552
       - 5672:5672
       - 15672:15672
+      - 15692:15692
     networks:
       - dos
     environment:
@@ -50,6 +51,44 @@ services:
       - RABBITMQ_ENABLED_PLUGINS_FILE=/etc/rabbitmq/enabled_plugins
     volumes:
       - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+
+# Prometheus container
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - 9090:9090
+    networks:
+      - dos
+    restart: unless-stopped
+    depends_on:
+      msg-broker:
+        condition: service_healthy
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prom_data:/prometheus
+
+# Grafana container
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    networks:
+      - dos
+    depends_on:
+      msg-broker:
+        condition: service_healthy
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
 
 # Event Stream Echo service
   msg-stream-echo:
@@ -140,4 +179,6 @@ networks:
 
 volumes:
   db:
+    driver: local
+  prom_data:
     driver: local
