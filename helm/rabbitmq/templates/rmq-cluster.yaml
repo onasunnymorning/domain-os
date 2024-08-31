@@ -9,6 +9,7 @@ spec:
     additionalPlugins:
     - rabbitmq_stream
     - rabbitmq_stream_management
+    - rabbitmq_prometheus
   override:
     service:
       spec:
