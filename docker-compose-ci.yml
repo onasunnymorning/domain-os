@@ -77,6 +77,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      msg-broker:
+        condition: service_healthy
     environment:
       - GIN_MODE=${GIN_MODE}
       - AUTO_MIGRATE=${AUTO_MIGRATE}
