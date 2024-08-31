@@ -11,6 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -45,11 +46,13 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.GET("/domains/:name/check", controller.CheckDomain)
 	e.POST("/domains/:name/register", controller.RegisterDomain)
 	e.POST("/domains/:name/renew", controller.RenewDomain)
+	e.POST("/domains/:name/autorenew", controller.AutoRenewDomain)
 	e.DELETE("/domains/:name/markdelete", controller.MarkDomainForDeletion)
 	e.POST("/domains/:name/restore", controller.RestoreDomain)
 
 	// Lifecycle endpoints
 	e.GET("/domains/expiring", controller.ListExpiringDomains)
+	e.GET("/domains/expiring/count", controller.CountExpiringDomains)
 
 	return controller
 }
@@ -490,6 +493,43 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 	ctx.JSON(200, domain)
 }
 
+// AutoRenewDomain godoc
+// @Summary Auto renew a domain
+// @Description Auto renew a domain for the specified number of years (defaults to ?years=1)
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Param years query int false "Years"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/autorenew [post]
+func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
+	yearsStr := ctx.DefaultQuery("years", "1")
+	years, err := strconv.Atoi(yearsStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting years string to years int: %s", err.Error())})
+		return
+	}
+
+	domain, err := ctrl.domainService.AutoRenewDomain(ctx, ctx.Param("name"), years)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, services.ErrAutoRenewNotEnabledRar) || errors.Is(err, services.ErrAutoRenewNotEnabledTLD) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, domain)
+}
+
 // MarkDomainForDeletion godoc
 // @Summary Mark a domain for deletion
 // @Description Mark a domain for deletion. Is modelled after the EPP delete command.
@@ -685,4 +725,37 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 
 	// Return the Response
 	ctx.JSON(200, resp)
+}
+
+// CountExpiringDomains godoc
+// @Summary Count expiring domains
+// @Description Count expiring domains
+// @Tags Domains
+// @Produce json
+// @Param days query int false "Days"
+// @Success 200 {object} response.CountResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/expiring/count [get]
+func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
+	// Get the days from the query string and default to 1 day
+	dayStr := ctx.DefaultQuery("days", "1")
+	// convert to int
+	days, err := strconv.Atoi(dayStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting daystring to dayint: %s", err.Error())})
+		return
+	}
+
+	count, err := ctrl.domainService.CountExpiringDomains(ctx, days)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
 }

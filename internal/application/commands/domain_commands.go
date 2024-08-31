@@ -55,6 +55,7 @@ type CreateDomainCommand struct {
 	UpRr           string                        `json:"UpRr"`
 	ExpiryDate     time.Time                     `json:"ExpiryDate" binding:"required"`
 	DropCatch      bool                          `json:"DropCatch"`
+	RenewedYears   int                           `json:"RenewedYears"`
 	AuthInfo       string                        `json:"AuthInfo"  binding:"required"`
 	CreatedAt      time.Time                     `json:"CreatedAt"`
 	UpdatedAt      time.Time                     `json:"UpdatedAt"`

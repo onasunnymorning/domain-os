@@ -142,6 +142,9 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 		return nil, err
 	}
 
+	// Set the RenewedYears based on the ExpiryDate and CreatedAt
+	domain.RenewedYears = domain.ExpiryDate.Year() - domain.CreatedAt.Year()
+
 	// TODO: FIXME: Add the nameservers
 
 	err = domain.Validate()
