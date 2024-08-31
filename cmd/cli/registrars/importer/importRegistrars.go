@@ -566,6 +566,7 @@ func createRegistrars(createCommands []commands.CreateRegistrarCommand) error {
 				err := createRegistrar(cmd)
 				if err == nil {
 					// If this resolved it, continue
+					bar.Add(1)
 					continue
 				}
 			}
@@ -766,6 +767,7 @@ func updateStatus(irars []entities.IANARegistrar) error {
 		status := irar.Status
 		// Skip if we're dealing with a reserved registrar
 		if status == entities.IANARegistrarStatusReserved {
+			bar.Add(1)
 			continue
 		}
 		// Map 'Accredited' status in IANA/ICANN source to 'ok' for the API and RDE RFC
