@@ -116,6 +116,7 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	cmd.UpdatedAt = dom.UpdatedAt
 	cmd.Status = dom.Status
 	cmd.RGPStatus = dom.RGPStatus
+	cmd.RenewedYears = dom.RenewedYears
 
 	return nil
 }

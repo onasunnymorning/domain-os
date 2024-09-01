@@ -360,9 +360,17 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 	d.UpRr = d.ClID
 
 	// Set the RGP statuses
+
+	// If the domain is still in AddGracePeriod (Domain.RGPStatus.AddPeriodEnd is in the future), the domain does not go through an EOL process and should be deleted immediately
+	// We rely on downstream logic to purge the domain, we just set the time parameters here.
+	if time.Now().UTC().Before(d.RGPStatus.AddPeriodEnd) {
+		d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC()
+		d.RGPStatus.PendingDeletePeriodEnd = time.Now().UTC()
+		return nil
+	}
+	// If the domain is no longer in AddGracePeriod, we set the RGP statuses as per the phase policy
 	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
 	d.RGPStatus.PendingDeletePeriodEnd = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
-
 	return nil
 }
 
