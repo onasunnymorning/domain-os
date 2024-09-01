@@ -879,11 +879,11 @@ func (s *DomainService) Count(ctx context.Context) (int64, error) {
 }
 
 // ListExpiringDomains returns a list of expiring domains
-func (s *DomainService) ListExpiringDomains(ctx context.Context, days, pageSize int, cursor string) ([]*entities.Domain, error) {
-	return s.domainRepository.ListExpiringDomains(ctx, days, pageSize, cursor)
+func (s *DomainService) ListExpiringDomains(ctx context.Context, days, pageSize int, clid, cursor string) ([]*entities.Domain, error) {
+	return s.domainRepository.ListExpiringDomains(ctx, days, pageSize, clid, cursor)
 }
 
 // CountExpiringDomains returns the number of expiring domains
-func (s *DomainService) CountExpiringDomains(ctx context.Context, days int) (int64, error) {
-	return s.domainRepository.CountExpiringDomains(ctx, days)
+func (s *DomainService) CountExpiringDomains(ctx context.Context, days int, clid string) (int64, error) {
+	return s.domainRepository.CountExpiringDomains(ctx, days, clid)
 }

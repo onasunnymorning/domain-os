@@ -21,7 +21,7 @@ type Domain struct {
 	UpRr                          *string
 	TLDName                       string `gorm:"not null;foreignKey"`
 	TLD                           TLD
-	ExpiryDate                    time.Time `gorm:"not null"`
+	ExpiryDate                    time.Time `gorm:"not null;index"`
 	DropCatch                     bool
 	RenewedYears                  int
 	AuthInfo                      string `gorm:"not null"`

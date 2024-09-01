@@ -1541,7 +1541,7 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			if err == nil {
 				assert.True(t, d.Status.PendingDelete)
 				assert.False(t, d.Status.OK)
-				assert.NotNil(t, d.RGPStatus.PendingDeletePeriodEnd)
+				assert.NotNil(t, d.RGPStatus.PurgeDate)
 				assert.NotNil(t, d.RGPStatus.RedemptionPeriodEnd)
 			}
 		})
@@ -1583,11 +1583,11 @@ func TestDomain_MarkForDeletionAddGrace(t *testing.T) {
 			require.NoError(t, err)
 			if err == nil && tc.InGraceDelete {
 				assert.True(t, time.Now().After(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the past")
-				assert.True(t, time.Now().After(d.RGPStatus.PendingDeletePeriodEnd), "expected pending delete period to be in the past")
+				assert.True(t, time.Now().After(d.RGPStatus.PurgeDate), "expected pending delete period to be in the past")
 				assert.True(t, d.Status.PendingDelete)
 			} else if err == nil {
 				assert.True(t, time.Now().Before(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the future")
-				assert.True(t, time.Now().Before(d.RGPStatus.PendingDeletePeriodEnd), "expected pending delete period to be in the future")
+				assert.True(t, time.Now().Before(d.RGPStatus.PurgeDate), "expected pending delete period to be in the future")
 				assert.True(t, d.Status.PendingDelete)
 			}
 		})
