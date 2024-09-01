@@ -13,6 +13,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// This is aimed to run continuously to check for domains that are about to expire and send them to the expiry queue
+
 const (
 	ExpiryQueueTopic = "expiry-domains-queue"
 	BASE_URL         = "http://localhost:8080"
