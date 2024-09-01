@@ -590,31 +590,31 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	}
 
 	// List domains that are expiring in 2 days
-	domains, err := repo.ListExpiringDomains(context.Background(), 2, 25, "")
+	domains, err := repo.ListExpiringDomains(context.Background(), 2, 25, "domaintestRar", "")
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// List domains that are expiring in 3 days
-	domains, err = repo.ListExpiringDomains(context.Background(), 3, 25, "")
+	domains, err = repo.ListExpiringDomains(context.Background(), 3, 25, "domaintestRar", "")
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// Test the count endpoint while we are here
-	count, err := repo.CountExpiringDomains(context.Background(), 3)
+	count, err := repo.CountExpiringDomains(context.Background(), 3, "domaintestRar")
 	s.Require().NoError(err)
 	s.Require().Equal(int64(3), count)
 
 	// Now add a cursor and list the last domain
-	domains, err = repo.ListExpiringDomains(context.Background(), 3, 25, expecteddomains[1].RoID.String())
+	domains, err = repo.ListExpiringDomains(context.Background(), 3, 25, "domaintestRar", expecteddomains[1].RoID.String())
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Cause an error due to invalid roid
-	_, err = repo.ListExpiringDomains(context.Background(), 3, 25, "1234_CONT-APEX")
+	_, err = repo.ListExpiringDomains(context.Background(), 3, 25, "domaintestRar", "1234_CONT-APEX")
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 
 	// Cause an error due to invalid roid int64
-	_, err = repo.ListExpiringDomains(context.Background(), 3, 25, "ABCD_DOM-APEX")
+	_, err = repo.ListExpiringDomains(context.Background(), 3, 25, "domaintestRar", "ABCD_DOM-APEX")
 	s.Require().Error(err)
 
 }

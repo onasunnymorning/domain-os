@@ -664,10 +664,11 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 
 // ListExpiringDomains godoc
 // @Summary List expiring domains
-// @Description List expiring domains, if no days are provided it will default to 1 day.
+// @Description List expiring domains, if no days are provided it will default to 0 days.
 // @Tags Domains
 // @Produce json
-// @Param days query int false "Days"
+// @Param days query int false "Days (default=0)"
+// @Param clid query string false "Registrar ClID (optional)"
 // @Param pageSize query int false "Page Size"
 // @Param cursor query string false "Cursor"
 // @Success 200 {array} response.ListItemResult
@@ -678,8 +679,8 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	resp := response.ListItemResult{}
-	// Get the days from the query string and default to 1 day
-	dayStr := ctx.DefaultQuery("days", "1")
+	// Get the days from the query string and default to 0 days
+	dayStr := ctx.DefaultQuery("days", "0")
 	// convert to int
 	days, err := strconv.Atoi(dayStr)
 	if err != nil {
@@ -701,7 +702,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	}
 
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListExpiringDomains(ctx, days, pageSize, pageCursor)
+	domains, err := ctrl.domainService.ListExpiringDomains(ctx, days, pageSize, ctx.Query("clid"), pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -732,14 +733,15 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 // @Description Count expiring domains
 // @Tags Domains
 // @Produce json
-// @Param days query int false "Days"
+// @Param days query int false "Days (default=0)"
+// @Param clid query string false "Registrar ClID (optional)"
 // @Success 200 {object} response.CountResult
 // @Failure 400
 // @Failure 500
 // @Router /domains/expiring/count [get]
 func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
-	// Get the days from the query string and default to 1 day
-	dayStr := ctx.DefaultQuery("days", "1")
+	// Get the days from the query string and default to 0 days
+	dayStr := ctx.DefaultQuery("days", "0")
 	// convert to int
 	days, err := strconv.Atoi(dayStr)
 	if err != nil {
@@ -747,7 +749,7 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 		return
 	}
 
-	count, err := ctrl.domainService.CountExpiringDomains(ctx, days)
+	count, err := ctrl.domainService.CountExpiringDomains(ctx, days, ctx.Query("clid"))
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
