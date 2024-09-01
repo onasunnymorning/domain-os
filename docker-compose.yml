@@ -57,7 +57,7 @@ services:
     image: prom/prometheus
     container_name: prometheus
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--config.file=/etc/prometheus/prometheus.yaml"
     ports:
       - 9090:9090
     networks:
