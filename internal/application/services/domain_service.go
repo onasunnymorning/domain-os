@@ -125,6 +125,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 		d.RGPStatus = cmd.RGPStatus
 	}
 	d.GrandFathering = cmd.GrandFathering
+	d.RenewedYears = cmd.RenewedYears
 
 	// Check if the domain is valid
 	if err := d.Validate(); err != nil {
