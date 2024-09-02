@@ -15,18 +15,19 @@ import (
 
 // This is aimed to run continuously to check for domains that are about to expire and send them to the expiry queue
 
-const (
-	ExpiryQueueTopic = "expiry-domains-queue"
-	BASE_URL         = "http://localhost:8080"
-)
+const ()
 
 var (
-	RMQ_HOST  = "localhost"
-	RMQ_PORT  = "5672"
-	RMQ_USER  = os.Getenv("RMQ_USER")
-	RMQ_PASS  = os.Getenv("RMQ_PASS")
-	BATCHSIZE = 25
+	RMQ_HOST        = "localhost"
+	RMQ_PORT        = "5672"
+	RMQ_USER        = os.Getenv("RMQ_USER")
+	RMQ_PASS        = os.Getenv("RMQ_PASS")
+	ExpiryQueueName = os.Getenv("EXPIRY_QUEUE_NAME")
+	BATCHSIZE       = 25
 
+	API_HOST       = os.Getenv("API_HOST")
+	API_PORT       = os.Getenv("API_PORT")
+	BASE_URL       = fmt.Sprintf("http://%s:%s", API_HOST, API_PORT)
 	LIST_ENDPOINT  = BASE_URL + "/domains/expiring?days=1"
 	COUNT_ENDPOINT = BASE_URL + "/domains/expiring/count?days=1"
 )
@@ -43,12 +44,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	resp, body, err := doRequest(&client, req)
 	if err != nil {
 		panic(err)
 	}
@@ -70,12 +66,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	resp, err = client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err = io.ReadAll(resp.Body)
+	resp, body, err = doRequest(&client, req)
 	if err != nil {
 		panic(err)
 	}
@@ -104,12 +95,12 @@ func main() {
 	}
 	defer ch.Close()
 	q, err := ch.QueueDeclare(
-		ExpiryQueueTopic, // name
-		false,            // durable
-		false,            // delete when unused
-		false,            // exclusive
-		false,            // no-wait
-		nil,              // arguments
+		ExpiryQueueName, // name
+		false,           // durable
+		false,           // delete when unused
+		false,           // exclusive
+		false,           // no-wait
+		nil,             // arguments
 	)
 	if err != nil {
 		panic(err)
@@ -157,4 +148,17 @@ type MetaData struct {
 type ListItemResult struct {
 	Data []DomainExpiryItem `json:"data"`
 	Meta MetaData           `json:"meta"`
+}
+
+func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp, nil, err
+	}
+	return resp, body, nil
 }
