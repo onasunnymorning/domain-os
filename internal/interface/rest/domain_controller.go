@@ -731,7 +731,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 // @Description Count expiring domains
 // @Tags Domains
 // @Produce json
-// @Param days query int false "Days (default=0)"
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
 // @Param clid query string false "Registrar ClID (optional)"
 // @Success 200 {object} response.CountResult
 // @Failure 400
