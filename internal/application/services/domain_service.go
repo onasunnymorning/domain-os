@@ -884,6 +884,6 @@ func (s *DomainService) ListExpiringDomains(ctx context.Context, q *queries.Expi
 }
 
 // CountExpiringDomains returns the number of expiring domains
-func (s *DomainService) CountExpiringDomains(ctx context.Context, days int, clid string) (int64, error) {
-	return s.domainRepository.CountExpiringDomains(ctx, days, clid)
+func (s *DomainService) CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error) {
+	return s.domainRepository.CountExpiringDomains(ctx, q.Before, q.ClID.String())
 }

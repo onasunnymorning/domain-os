@@ -21,5 +21,5 @@ type DomainRepository interface {
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, cursor string) ([]*entities.Domain, error)
-	CountExpiringDomains(ctx context.Context, days int, clid string) (int64, error)
+	CountExpiringDomains(ctx context.Context, before time.Time, clid string) (int64, error)
 }

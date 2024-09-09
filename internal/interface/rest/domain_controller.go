@@ -738,16 +738,14 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/expiring/count [get]
 func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
-	// Get the days from the query string and default to 0 days
-	dayStr := ctx.DefaultQuery("days", "0")
-	// convert to int
-	days, err := strconv.Atoi(dayStr)
+
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
 	if err != nil {
-		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting daystring to dayint: %s", err.Error())})
+		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	count, err := ctrl.domainService.CountExpiringDomains(ctx, days, ctx.Query("clid"))
+	count, err := ctrl.domainService.CountExpiringDomains(ctx, q)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
