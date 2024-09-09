@@ -16,8 +16,8 @@ var (
 	REGISTRAR_URI = "urn:ietf:params:xml:ns:rdeRegistrar-1.0"
 )
 
-// RegsitrarMapping maps the ID of the registrar in the RDE Escrow file to the RdeRegistrarInfo
-type RegsitrarMapping map[string]RdeRegistrarInfo
+// RegistrarMapping maps the ID of the registrar in the RDE Escrow file to the RdeRegistrarInfo
+type RegistrarMapping map[string]RdeRegistrarInfo
 
 // RegistrarInfo holds counters for the objects associated with a registrar as found in an RDE Escrow file when analyzing that file
 type RdeRegistrarInfo struct {
@@ -30,8 +30,8 @@ type RdeRegistrarInfo struct {
 }
 
 // NewRegistrarMapping creates a new, empty RegistrarMapping
-func NewRegistrarMapping() RegsitrarMapping {
-	return make(RegsitrarMapping)
+func NewRegistrarMapping() RegistrarMapping {
+	return make(RegistrarMapping)
 }
 
 // EscrowAnalysis holds errors and warnings as well as files generated and counters

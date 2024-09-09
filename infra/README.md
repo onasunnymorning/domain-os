@@ -1,37 +1,44 @@
-# Setting up the infrastructure
-
-You will need a kubernetes cluster to deploy to
-
-## Create a kubernetes cluster
-Run the following command in a screen (it takes a while)
-`eksctl create cluster` (optionally add a config file)
-
-Wait for this to finish and copy the kubeconfig (.kube/config) to your local machine
+# deploy a simple one node k3s cluster with the cluster pulumi stack
 ```
-scp raspi.local:~/.kube/config ~/.kube/eks.yaml
-export KUBECONFIG=~/.kube/eks.yaml
-export AWS_PROFILE=personal # or whatever your profile is
+cd cluster
+pulumi up
 ```
 
+# config the host using ansible
+```
+cd ../ansible
+ansible-playbook -u ubuntu -i inventory.ini -u root -k playbook.yml
+``` 
 
-## Deploy the common service
-### Deploy Kafka
-First create a namespace for kafka
-`kubectl create namespace kafka`
+# install the Rabbit MQ operator
+`kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml`
+```
+namespace/rabbitmq-system created
+customresourcedefinition.apiextensions.k8s.io/rabbitmqclusters.rabbitmq.com created
+serviceaccount/rabbitmq-cluster-operator created
+role.rbac.authorization.k8s.io/rabbitmq-cluster-leader-election-role created
+clusterrole.rbac.authorization.k8s.io/rabbitmq-cluster-operator-role created
+clusterrole.rbac.authorization.k8s.io/rabbitmq-cluster-service-binding-role created
+rolebinding.rbac.authorization.k8s.io/rabbitmq-cluster-leader-election-rolebinding created
+clusterrolebinding.rbac.authorization.k8s.io/rabbitmq-cluster-operator-rolebinding created
+deployment.apps/rabbitmq-cluster-operator created
+```
 
-Then deploy the kafka cluster using bitnami helm chart
-`helm install kafka bitnami/kafka -n kafka`
+# install the Rabbit MQ cluster
+`cd ../../helm`
+`helm install rabbitmq --namespace rabbitmq-system ./rabbitmq`
 
-Wait for this to finish and the pods to become 'Running'
+# install the Prometheus operator and a full monitoring stack
+https://www.rabbitmq.com/kubernetes/operator/operator-monitoring#config-perm
 
-`kubectel get po -n kafka`
+
+kubectl apply --filename https://raw.githubusercontent.com/rabbitmq/cluster-operator/main/observability/prometheus/monitors/rabbitmq-servicemonitor.yml
+
+kubectl apply --filename https://raw.githubusercontent.com/rabbitmq/cluster-operator/main/observability/prometheus/monitors/rabbitmq-cluster-operator-podmonitor.yml
 
 
-### Deploy DB
-First create a namespace for the db
-`kubectl create namespace db`
+finally add this role to the prometheus operator to be able to discover the new rabbitmq monitors
 
-Then deploy the db using bitnami postgres helm chart
-`helm install db bitnami/postgresql -n db`
-
-Wait for this to finish
+ kubectl apply -f infra/prometheus/prometheus-roles.yaml
+clusterrole.rbac.authorization.k8s.io/prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/prometheus created

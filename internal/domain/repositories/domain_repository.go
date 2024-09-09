@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -19,6 +20,6 @@ type DomainRepository interface {
 	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context) (int64, error)
-	ListExpiringDomains(ctx context.Context, days, pageSize int, clid, cursor string) ([]*entities.Domain, error)
+	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, days int, clid string) (int64, error)
 }

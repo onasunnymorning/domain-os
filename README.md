@@ -18,8 +18,8 @@ Domain (Registry for now) Operating System (DOS)
 # Running the app
 ## Components
 * persistent storage - db (Postgres) to run alongside the app for a quick demo or test deployment
-* messaging and event streaming (Kafka) to allow de-coupling of services.
-* API first (Gin) to ensure consisten business logic through any endpoint
+* messaging and event streaming (Rabbit MQ) to allow de-coupling of services.
+* API first (Gin) to ensure consistent business logic through any endpoint
 * EPP server that can use the API over the network or directly import the business logic as a package
 * HTTP EPP client to quickly interface with EPP for visibility and quick feedback
 * DNS component that produces a bind compatible zonefile. This can be evolved to be a standalone component that uses events to stay up to date.
@@ -30,7 +30,7 @@ Domain (Registry for now) Operating System (DOS)
 
 ## Deployment
 The app is containerized and geared towards a kubernetes runtime.
-* githun CI pipeline running unit and integration tests + push new images (CD pending)
+* github CI pipeline running unit and integration tests + push new images (CD pending)
 * Helm for templating deployments
 * Docker compose or Tilt for a quick feedback look when developing
 * Postman integration tests
@@ -48,3 +48,23 @@ Check out the code
 Set your ENVARS
 
 Compose/Tilt up
+
+
+# Deploying the app
+## Requirements
+```
+$ cat .eksctl/minimal-cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: poc-cluster
+  region: us-west-2
+
+nodeGroups:
+  - name: ng-1
+    instanceType: m5.large
+    desiredCapacity: 1
+$ eksctl create cluster -f .eksctl/minimal-cluster.yaml
+
+```

@@ -20,3 +20,5 @@ data:
 
   RMQ_HOST: {{ .Values.rabbitmq.host | quote }}
   RMQ_PORT: {{ .Values.rabbitmq.port | quote }}
+
+  PROMETHEUS_ENABLED: {{ .Values.prometheus.enabled | quote }}

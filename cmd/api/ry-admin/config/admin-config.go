@@ -11,6 +11,7 @@ type AdminApiConfig struct {
 	EventStreamEnabled bool
 	EventStreamTopic   string
 	GinMode            string
+	PrometheusEnabled  bool
 }
 
 func LoadConfig() *AdminApiConfig {
@@ -20,5 +21,6 @@ func LoadConfig() *AdminApiConfig {
 		EventStreamEnabled: os.Getenv("EVENT_STREAM_ENABLED") == "true",
 		EventStreamTopic:   os.Getenv("EVENT_STREAM_TOPIC"),
 		GinMode:            os.Getenv("GIN_MODE"),
+		PrometheusEnabled:  os.Getenv("PROMETHEUS_ENABLED") == "true",
 	}
 }
