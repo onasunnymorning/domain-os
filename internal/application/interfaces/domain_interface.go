@@ -23,7 +23,7 @@ type DomainService interface {
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
 	Count(ctx context.Context) (int64, error)
 	ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
-	CountExpiringDomains(ctx context.Context, days int, clid string) (int64, error)
+	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available and supports the fee extension

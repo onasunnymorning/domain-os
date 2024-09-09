@@ -600,9 +600,13 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().Equal(3, len(domains))
 
 	// Test the count endpoint while we are here
-	count, err := repo.CountExpiringDomains(context.Background(), 3, "domaintestRar")
+	count, err := repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar")
 	s.Require().NoError(err)
 	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "idontexist")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
 
 	// Now add a cursor and list the last domain
 	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", expecteddomains[1].RoID.String())
