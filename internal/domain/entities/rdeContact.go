@@ -192,6 +192,7 @@ func (p *RDEContactPostalInfo) ToEntity() (*ContactPostalInfo, error) {
 	return cpi, nil
 }
 
+// RDEContactStatus is a struct that facilitates the parsing of the Status elements in the RDE XML
 type RDEContactStatus struct {
 	S string `xml:"s,attr"`
 }

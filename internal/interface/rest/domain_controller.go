@@ -667,8 +667,8 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 // @Description List expiring domains, if no days are provided it will default to 0 days.
 // @Tags Domains
 // @Produce json
-// @Param days query int false "Days (default=0)"
-// @Param clid query string false "Registrar ClID (optional)"
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
+// @Param clid query string false "Registrar ClID (default=empty=all registrars)"
 // @Param pageSize query int false "Page Size"
 // @Param cursor query string false "Cursor"
 // @Success 200 {array} response.ListItemResult
@@ -679,12 +679,10 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	resp := response.ListItemResult{}
-	// Get the days from the query string and default to 0 days
-	dayStr := ctx.DefaultQuery("days", "0")
-	// convert to int
-	days, err := strconv.Atoi(dayStr)
+
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
 	if err != nil {
-		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting daystring to dayint: %s", err.Error())})
+		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -702,7 +700,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	}
 
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListExpiringDomains(ctx, days, pageSize, ctx.Query("clid"), pageCursor)
+	domains, err := ctrl.domainService.ListExpiringDomains(ctx, q, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

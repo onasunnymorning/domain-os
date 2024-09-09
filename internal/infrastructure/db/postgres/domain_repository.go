@@ -217,8 +217,8 @@ func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-// ListExpiringDomains returns a list of domains that are expiring within the given number of days. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
-func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, days, pagesize int, clid, cursor string) ([]*entities.Domain, error) {
+// ListExpiringDomains returns a list of domains that are expiring before the given time. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
+func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, cursor string) ([]*entities.Domain, error) {
 
 	var roidInt int64
 	var err error
@@ -234,7 +234,7 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, days, pages
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid}).Where("expiry_date <= ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", time.Now().AddDate(0, 0, days), false, false, false).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid}).Where("expiry_date < ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/apex/gateway"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
 	swaggerFiles "github.com/swaggo/files"           // swagger embed files
@@ -43,7 +44,7 @@ func inLambda() bool {
 	return false
 }
 
-// setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, host, etc.
+// setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
 func setSwaggerInfo() {
 	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
 	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
@@ -67,9 +68,16 @@ func initNewRelicAPM() (*newrelic.Application, error) {
 
 }
 
+// initPrometheusMetrics initializes Prometheus metrics middleware
+func initPrometheusMetrics(r *gin.Engine) {
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r) // Attach it to the Gin router
+}
+
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
+	// Load the APP configuration and log it
 	cfg := config.LoadConfig()
 	log.Println("Starting Admin API with following config:")
 	jBytes, err := json.Marshal(cfg)
@@ -77,7 +85,8 @@ func main() {
 		log.Fatalf("Failed to marshal config: %s", err)
 	}
 	log.Println(string(jBytes))
-	// Load environment variables when not running in Docker
+
+	// Try and determine the runtime environment
 	if !runningInDocker() {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
 			log.Println("Running in Kubernetes")
@@ -87,6 +96,8 @@ func main() {
 	} else {
 		log.Println("Running in Docker runtime")
 	}
+
+	// Initialize New Relic APM if enabled
 	if cfg.NewRelicEnabled {
 		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
 		app, err := initNewRelicAPM()
@@ -96,8 +107,10 @@ func main() {
 		defer app.Shutdown(0)
 	}
 
+	// Initialize variables for the Swagger API documentation
 	setSwaggerInfo()
 
+	// Set up the GORM DB connection
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
 			User:        os.Getenv("DB_USER"),
@@ -113,18 +126,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// Roid
-	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
-	if err != nil {
-		panic(err)
-	}
-	roidService := services.NewRoidService(idGenerator)
-	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
-	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
-
-	// SET UP SERVICES
-
-	// Events
+	// Set up Eventservice if enabled
 	var eventSvc *services.EventService
 	if cfg.EventStreamEnabled {
 		log.Println("Setting up Event Stream")
@@ -159,6 +161,15 @@ func main() {
 		}
 	}
 
+	// SET UP SERVICES
+	// Roid
+	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
+	if err != nil {
+		panic(err)
+	}
+	roidService := services.NewRoidService(idGenerator)
+	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
+	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
@@ -232,6 +243,11 @@ func main() {
 	// Attach the Stream Middleware
 	if cfg.EventStreamEnabled && eventSvc != nil {
 		r.Use(rest.StreamMiddleWare(eventSvc))
+	}
+
+	// Attach the Prometheus Middleware
+	if cfg.PrometheusEnabled {
+		initPrometheusMetrics(r)
 	}
 
 	rest.NewPingController(r)

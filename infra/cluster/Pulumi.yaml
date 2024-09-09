@@ -1,0 +1,7 @@
+name: cluster
+runtime: go
+description: One node VM to be used as a demos cluster
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: vm-aws-go

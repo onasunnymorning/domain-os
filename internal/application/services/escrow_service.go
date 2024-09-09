@@ -40,14 +40,14 @@ var (
 
 // XMLEscrowService implements XMLEscrowService interface
 type XMLEscrowService struct {
-	Deposit           entities.RDEDeposit             `json:"deposit"`
-	Header            entities.RDEHeader              `json:"header"`
-	Registrars        []entities.RDERegistrar         `json:"registrars"`
-	IDNs              []entities.RDEIdnTableReference `json:"idns"`
-	RegsistrarMapping entities.RegsitrarMapping       `json:"registrarMapping"`
-	Analysis          entities.EscrowAnalysis         `json:"analysis"`
-	Import            entities.EscrowImport           `json:"import"`
-	uniqueContactIDs  map[string]bool                 `json:"-"`
+	Deposit          entities.RDEDeposit             `json:"deposit"`
+	Header           entities.RDEHeader              `json:"header"`
+	Registrars       []entities.RDERegistrar         `json:"registrars"`
+	IDNs             []entities.RDEIdnTableReference `json:"idns"`
+	RegistrarMapping entities.RegistrarMapping       `json:"registrarMapping"`
+	Analysis         entities.EscrowAnalysis         `json:"analysis"`
+	Import           entities.EscrowImport           `json:"import"`
+	uniqueContactIDs map[string]bool                 `json:"-"`
 }
 
 // NewXMLEscrowService creates a new instance of EscrowService
@@ -67,7 +67,7 @@ func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 	log.Printf("Escow file %s is %d MB\n", XMLFilename, d.Deposit.FileSize/1024/1024)
 
 	// Initialize the registrar mapping
-	d.RegsistrarMapping = entities.NewRegistrarMapping()
+	d.RegistrarMapping = entities.NewRegistrarMapping()
 
 	// Initialize the unique contact IDs map
 	d.uniqueContactIDs = make(map[string]bool)
@@ -216,7 +216,7 @@ func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) er
 				svc.Registrars = append(svc.Registrars, registrar)
 				// Create an empty RdeRegistrarInfo counter for each registrar in our Mapping.
 				// We will populate these counters when going through the deposit and find objects that belong to this registrar
-				svc.RegsistrarMapping[registrar.ID] = entities.RdeRegistrarInfo{
+				svc.RegistrarMapping[registrar.ID] = entities.RdeRegistrarInfo{
 					Name:  registrar.Name,
 					GurID: registrar.GurID,
 				}
@@ -385,9 +385,9 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 					}
 
 					// Update counters in Registrar Map
-					objCount := svc.RegsistrarMapping[rdeContact.ClID]
+					objCount := svc.RegistrarMapping[rdeContact.ClID]
 					objCount.ContactCount++
-					svc.RegsistrarMapping[rdeContact.ClID] = objCount
+					svc.RegistrarMapping[rdeContact.ClID] = objCount
 					count++
 				} else {
 					unlinkedCount++
@@ -535,9 +535,9 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 				}
 
 				// Update counters in Registrar Map
-				objCount := svc.RegsistrarMapping[host.ClID]
+				objCount := svc.RegistrarMapping[host.ClID]
 				objCount.HostCount++
-				svc.RegsistrarMapping[host.ClID] = objCount
+				svc.RegistrarMapping[host.ClID] = objCount
 				count++
 
 				pbar.Add(1)
@@ -839,9 +839,9 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 				}
 
 				// Update counters in Registrar Map
-				objCount := svc.RegsistrarMapping[dom.ClID]
+				objCount := svc.RegistrarMapping[dom.ClID]
 				objCount.DomainCount++
-				svc.RegsistrarMapping[dom.ClID] = objCount
+				svc.RegistrarMapping[dom.ClID] = objCount
 				count++
 
 				pbar.Add(1)
@@ -1047,12 +1047,12 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		// not found
 		if resp.StatusCode == 404 {
 			// If the regsitrar is in the deposit but not found, we can skip it if it has no domains
-			if svc.RegsistrarMapping[rar.ID].DomainCount == 0 {
-				if svc.RegsistrarMapping[rar.ID].HostCount == 0 && svc.RegsistrarMapping[rar.ID].ContactCount == 0 {
+			if svc.RegistrarMapping[rar.ID].DomainCount == 0 {
+				if svc.RegistrarMapping[rar.ID].HostCount == 0 && svc.RegistrarMapping[rar.ID].ContactCount == 0 {
 					log.Printf("Registrar %s with GurID %d not found, but has no objects, skipping ...", rar.Name, rar.GurID)
 					continue
 				}
-				svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, svc.RegsistrarMapping[rar.ID].HostCount, svc.RegsistrarMapping[rar.ID].ContactCount))
+				svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, svc.RegistrarMapping[rar.ID].HostCount, svc.RegistrarMapping[rar.ID].ContactCount))
 			}
 			missing++
 			missingGurIDs = append(missingGurIDs, rar.GurID)
@@ -1069,11 +1069,11 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 				log.Printf("error decoding registrar: %s", err)
 			}
 			// update mapping
-			rarMap := svc.RegsistrarMapping[rar.ID]
+			rarMap := svc.RegistrarMapping[rar.ID]
 			rarMap.Name = rar.Name
 			rarMap.GurID = rar.GurID
 			rarMap.RegistrarClID = responseRar.ClID
-			svc.RegsistrarMapping[rar.ID] = rarMap
+			svc.RegistrarMapping[rar.ID] = rarMap
 			found++
 			continue
 		}
@@ -1085,7 +1085,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	}
 	// write mapping to file
-	for k, v := range svc.RegsistrarMapping {
+	for k, v := range svc.RegistrarMapping {
 		writer.Write([]string{k, v.Name, strconv.Itoa(v.GurID), v.RegistrarClID.String(), strconv.Itoa(v.DomainCount), strconv.Itoa(v.HostCount), strconv.Itoa(v.ContactCount)})
 	}
 
@@ -1205,7 +1205,7 @@ func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.Crea
 	URL := BASE_URL + "/contacts"
 
 	// First map the registrar ID to the registrar ClID
-	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
+	registrar, ok := svc.RegistrarMapping[cmd.ClID]
 	if !ok {
 		svc.Import.Contacts.Failed++
 		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
@@ -1214,7 +1214,7 @@ func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.Crea
 	cmd.ClID = registrar.RegistrarClID.String()
 	// Do the same for CrRR and UpRR
 	if cmd.CrRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
+		registrar, ok := svc.RegistrarMapping[cmd.CrRr]
 		if !ok {
 			svc.Import.Contacts.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
@@ -1223,7 +1223,7 @@ func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.Crea
 		cmd.CrRr = registrar.RegistrarClID.String()
 	}
 	if cmd.UpRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
+		registrar, ok := svc.RegistrarMapping[cmd.UpRr]
 		if !ok {
 			svc.Import.Contacts.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
@@ -1329,7 +1329,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 	URL := BASE_URL + "/hosts"
 
 	// First map the registrar ID to the registrar ClID
-	registrar, ok := svc.RegsistrarMapping[cmd.ClID.String()]
+	registrar, ok := svc.RegistrarMapping[cmd.ClID.String()]
 	if !ok {
 		svc.Import.Hosts.Failed++
 		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as ClID on host %s ", cmd.ClID, cmd.Name))
@@ -1338,7 +1338,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 	cmd.ClID = registrar.RegistrarClID
 	// Do the same for CrRR and UpRR
 	if cmd.CrRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.CrRr.String()]
+		registrar, ok := svc.RegistrarMapping[cmd.CrRr.String()]
 		if !ok {
 			svc.Import.Hosts.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as CrRr on host %s", cmd.CrRr, cmd.Name))
@@ -1347,7 +1347,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 		cmd.CrRr = registrar.RegistrarClID
 	}
 	if cmd.UpRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.UpRr.String()]
+		registrar, ok := svc.RegistrarMapping[cmd.UpRr.String()]
 		if !ok {
 			svc.Import.Hosts.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar %s not found in mapping. Used as UpRr on host %s", cmd.UpRr, cmd.Name))
@@ -1460,7 +1460,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 	URL := BASE_URL + "/domains"
 
 	// First map the registrar ID to the registrar ClID
-	registrar, ok := svc.RegsistrarMapping[cmd.ClID]
+	registrar, ok := svc.RegistrarMapping[cmd.ClID]
 	if !ok {
 		svc.Import.Domains.Failed++
 		svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.ClID))
@@ -1469,7 +1469,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 	cmd.ClID = registrar.RegistrarClID.String()
 	// Do the same for CrRR and UpRR
 	if cmd.CrRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.CrRr]
+		registrar, ok := svc.RegistrarMapping[cmd.CrRr]
 		if !ok {
 			svc.Import.Domains.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.CrRr))
@@ -1478,7 +1478,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 		cmd.CrRr = registrar.RegistrarClID.String()
 	}
 	if cmd.UpRr != "" {
-		registrar, ok := svc.RegsistrarMapping[cmd.UpRr]
+		registrar, ok := svc.RegistrarMapping[cmd.UpRr]
 		if !ok {
 			svc.Import.Domains.Failed++
 			svc.Import.Errors = append(svc.Import.Errors, fmt.Sprintf("registrar with ID %s not found in mapping", cmd.UpRr))
