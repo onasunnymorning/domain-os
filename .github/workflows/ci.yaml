@@ -55,12 +55,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./cmd/cli/messaging/sub/Dockerfile
+          file: ./cmd/cli/messaging/streamclient/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: geapex/event-consumer:${{ github.sha }}
-          cache-from: type=registry,ref=geapex/event-consumer:buildcache
-          cache-to: type=registry,ref=geapex/event-consumer:buildcache,mode=max 
+          tags: geapex/streamclient:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/streamclient:buildcache
+          cache-to: type=registry,ref=geapex/streamclient:buildcache,mode=max 
       - name: Build and push EPP Client API
         uses: docker/build-push-action@v5
         with:
