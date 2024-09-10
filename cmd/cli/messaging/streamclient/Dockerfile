@@ -9,13 +9,13 @@ COPY go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY ./cmd/cli/messaging/receive ./cmd/cli/messaging/receive
+COPY ./cmd/cli/messaging/streamclient ./cmd/cli/messaging/streamclient
 
 
 # Build the CONSUMER
 FROM build AS build-receiver
 WORKDIR /
-RUN go build -tags dynamic -ldflags="-s -w" -o streamClient /cmd/cli/messaging/receive
+RUN go build -tags dynamic -ldflags="-s -w" -o streamClient /cmd/cli/messaging/streamclient
 
 
 # Create CONSUMER release image
