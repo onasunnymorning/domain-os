@@ -65,6 +65,7 @@ services:
       - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
     networks:
       - dos
+      
 # Core API container
   admin-api:
     image: "geapex/domain-os:${BRANCH}"
