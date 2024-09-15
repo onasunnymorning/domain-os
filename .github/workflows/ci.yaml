@@ -108,7 +108,7 @@ jobs:
           AUTO_MIGRATE: true
           NEW_RELIC_ENABLED: false
           PROMETHEUS_ENABLED: false
-          RMQ_HOST: msg-broker-1
+          RMQ_HOST: msg-broker
           RMQ_PORT: 5672
           RMQ_USER: guest
           RMQ_PASS: guest
