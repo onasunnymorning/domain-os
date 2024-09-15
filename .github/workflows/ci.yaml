@@ -108,10 +108,10 @@ jobs:
           AUTO_MIGRATE: true
           NEW_RELIC_ENABLED: false
           PROMETHEUS_ENABLED: false
-          RMQ_HOST: msg-broker
-          RMQ_PORT: 5672
-          RMQ_USER: guest
-          RMQ_PASS: guest
+          RMQ_HOST: domain-os-msg-broker-1
+          RMQ_PORT: ${{ secrets.RMQ_PORT }}
+          RMQ_USER: ${{ secrets.RMQ_USER }}
+          RMQ_PASS: ${{ secrets.RMQ_PASS }}
 
       - name: Docker Scout
         id: docker-scout
