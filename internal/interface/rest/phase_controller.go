@@ -23,13 +23,15 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *Ph
 
 	e.POST("/tlds/:tldName/phases", ctrl.CreatePhase)
 	e.GET("/tlds/:tldName/phases", ctrl.ListPhases)
-	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhases)
+	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhasesPerTLD)
 	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
 	e.PUT("/tlds/:tldName/phases/:phaseName/policy", ctrl.UpdatePhasePolicy)
 	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
 	e.PUT("/tlds/:tldName/phases/:phaseName/end", ctrl.EndPhase)
 	e.POST("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
 	e.DELETE("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.UnSetPremiumList)
+
+	e.GET("/phases/active/ga", ctrl.ListActiveGAPhases)
 
 	return ctrl
 }
@@ -212,7 +214,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 	ctx.JSON(200, response)
 }
 
-// ListActivePhases godoc
+// ListActivePhasesPerTLD godoc
 // @Summary List all active phases for a TLD
 // @Description List all active phases for a TLD. Same as ListPhases but only returns active phases (GA and Launch). Phases are returned in order of creation and this endpoint offers pagination. The cursor is the last phase name in the previous page. The pagesize is the number of phases to return. The first page should be requested without a cursor.
 // @Tags Phases
@@ -221,7 +223,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 // @Success 200 {array} response.ListItemResult
 // @Failure 500
 // @Router /tlds/{tldName}/phases/active [get]
-func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
+func (ctrl *PhaseController) ListActivePhasesPerTLD(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -239,6 +241,46 @@ func (ctrl *PhaseController) ListActivePhases(ctx *gin.Context) {
 	}
 
 	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx, ctx.Param("tldName"), pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set the Data and metadata if there are results only
+	response.Data = phases
+	if len(phases) > 0 {
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+	}
+
+	ctx.JSON(200, response)
+}
+
+// ListActiveGAPhases godoc
+// @Summary List all active GA phases for all TLDs
+// @Description returns a list of current GA phase for all TLDs on the system
+// @Tags Phases
+// @Produce json
+// @Success 200 {array} response.ListItemResult
+// @Failure 500
+// @Router /phases/active/ga [get]
+func (ctrl *PhaseController) ListActiveGAPhases(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	response := response.ListItemResult{}
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	phases, err := ctrl.phaseService.ListActiveGAPhases(ctx, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

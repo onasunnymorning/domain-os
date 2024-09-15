@@ -1,14 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
+	"strconv"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/kafkaproducer"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
@@ -20,6 +21,7 @@ import (
 	"github.com/apex/gateway"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
 	swaggerFiles "github.com/swaggo/files"           // swagger embed files
@@ -42,7 +44,7 @@ func inLambda() bool {
 	return false
 }
 
-// setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, host, etc.
+// setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
 func setSwaggerInfo() {
 	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
 	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
@@ -59,35 +61,45 @@ func runningInDocker() bool {
 // initNewRelicAPM initializes New Relic APM
 func initNewRelicAPM() (*newrelic.Application, error) {
 	return newrelic.NewApplication(
-		newrelic.ConfigAppName("domain-os"),
-		newrelic.ConfigLicense("07597dba536368f708cf36d68937d4bfFFFFNRAL"),
+		newrelic.ConfigAppName(AppName),
+		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
 
 }
 
-// KafkaMiddleware attaches the Kafka producer to the context so it becomes available to the controllers
-func KafkaMiddleware(producer *kafka.Producer, topic string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("kafkaProducer", producer)
-		c.Set("kafkaTopic", topic)
-		c.Set("App", AppName)
-		c.Next()
-	}
+// initPrometheusMetrics initializes Prometheus metrics middleware
+func initPrometheusMetrics(r *gin.Engine) {
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r) // Attach it to the Gin router
 }
 
 // @title APEX Domain OS ADMIN API
 // @license.name APEX all rights reserved
 func main() {
+	// Load the APP configuration and log it
 	cfg := config.LoadConfig()
-	// Load environment variables when not running in Docker
-	if !runningInDocker() {
-		log.Println("Running outside of Docker")
-	} else {
-		log.Println("Running in Docker")
+	log.Println("Starting Admin API with following config:")
+	jBytes, err := json.Marshal(cfg)
+	if err != nil {
+		log.Fatalf("Failed to marshal config: %s", err)
 	}
-	if cfg.UseNewRelic {
-		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'AUTO_MIGRATE' to disable")
+	log.Println(string(jBytes))
+
+	// Try and determine the runtime environment
+	if !runningInDocker() {
+		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+			log.Println("Running in Kubernetes")
+		} else {
+			log.Println("Could not determine runtime environment")
+		}
+	} else {
+		log.Println("Running in Docker runtime")
+	}
+
+	// Initialize New Relic APM if enabled
+	if cfg.NewRelicEnabled {
+		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
 			log.Fatalf("Failed to initialize New Relic APM: %s", err)
@@ -95,8 +107,10 @@ func main() {
 		defer app.Shutdown(0)
 	}
 
+	// Initialize variables for the Swagger API documentation
 	setSwaggerInfo()
 
+	// Set up the GORM DB connection
 	gormDB, err := postgres.NewConnection(
 		postgres.Config{
 			User:        os.Getenv("DB_USER"),
@@ -104,7 +118,7 @@ func main() {
 			Host:        os.Getenv("DB_HOST"),
 			Port:        os.Getenv("DB_PORT"),
 			DBName:      os.Getenv("DB_NAME"),
-			SSLmode:     "require",
+			SSLmode:     os.Getenv("DB_SSLMODE"),
 			AutoMigrate: cfg.AutoMigrate,
 		},
 	)
@@ -112,6 +126,42 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	// Set up Eventservice if enabled
+	var eventSvc *services.EventService
+	if cfg.EventStreamEnabled {
+		log.Println("Setting up Event Stream")
+		portStr := os.Getenv("RMQ_PORT")
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			log.Fatalf("Failed to convert RMQ_PORT to int: %s", err)
+		}
+
+		eventRepo, err := rabbitmq.NewEventRepository(&rabbitmq.RabbitConfig{
+			Host:     os.Getenv("RMQ_HOST"),
+			Port:     port,
+			Username: os.Getenv("RMQ_USER"),
+			Password: os.Getenv("RMQ_PASS"),
+			Topic:    os.Getenv("EVENT_STREAM_TOPIC"),
+		})
+		if err != nil {
+			log.Fatalf("Failed to create Event Repository: %s", err)
+		}
+		eventSvc = services.NewEventService(eventRepo)
+		err = eventSvc.SendStream(&entities.Event{
+			Source: AppName,
+			User:   "system",
+			Action: "startup",
+			Details: entities.EventDetails{
+				Result: entities.EventResultSuccess,
+			},
+			Timestamp: time.Now().UTC(),
+		})
+		if err != nil {
+			log.Fatalf("Failed to send event: %s", err)
+		}
+	}
+
+	// SET UP SERVICES
 	// Roid
 	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
@@ -120,22 +170,6 @@ func main() {
 	roidService := services.NewRoidService(idGenerator)
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
-
-	var eventProducer *kafka.Producer
-	if cfg.EnableKafka {
-		// Create an event producer, fail if it fails as its an integral part of the application
-		eventProducer, err = kafkaproducer.InitEventProducer()
-		if err != nil {
-			log.Fatalf("Failed to initiate producer: %s\n", err)
-		}
-		defer eventProducer.Flush(15 * 1000) // Flush the producer messages for gracefull shutdown
-		defer eventProducer.Close()          // Close the producer
-		log.Println("Kafka enabled")
-	} else {
-		log.Println("Kafka disabled")
-	}
-
-	// SET UP SERVICES
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
@@ -189,7 +223,7 @@ func main() {
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, *roidService)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
 
@@ -205,11 +239,17 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
-	if cfg.EnableKafka {
-		// Attach the KafkaMiddleware to the router
-		r.Use(rest.PublishEvent(eventProducer, os.Getenv("KAFKA_TOPIC")))
+
+	// Attach the Stream Middleware
+	if cfg.EventStreamEnabled && eventSvc != nil {
+		r.Use(rest.StreamMiddleWare(eventSvc))
 	}
-	// Set up the routes and controllers
+
+	// Attach the Prometheus Middleware
+	if cfg.PrometheusEnabled {
+		initPrometheusMetrics(r)
+	}
+
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService)
 	rest.NewTLDController(r, tldService, domainService)

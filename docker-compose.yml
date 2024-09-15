@@ -29,97 +29,83 @@ services:
     volumes: 
       - db:/var/lib/postgresql/data 
 
-# Kafka broker container
+# RabbitMQ Broker container
   msg-broker:
-    image: 'bitnami/kafka:latest'
-    networks:
-      - dos
+    image: rabbitmq:3.13
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "echo 'test-message' | kafka-console-producer.sh --broker-list localhost:9092 --topic health-check-topic && kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic health-check-topic --from-beginning --max-messages 1 | grep 'test-message'"]
+      test: ["CMD-SHELL", "rabbitmqctl node_health_check"]
       interval: 15s
-      timeout: 10s
       retries: 3
     ports:
-      - '9092:9092'
+      - 5552:5552
+      - 5672:5672
+      - 15672:15672
+      - 15692:15692
+    networks:
+      - dos
     environment:
-      - KAFKA_CFG_NODE_ID=0
-      - KAFKA_CFG_PROCESS_ROLES=controller,broker
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@msg-broker:9093
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - RABBITMQ_DEFAULT_USER=${RMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RMQ_PASS}
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream
+      - RABBITMQ_ENABLED_PLUGINS_FILE=/etc/rabbitmq/enabled_plugins
+    volumes:
+      - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
 
-  msg-client:
-    image: 'bitnami/kafka:latest'
+# Prometheus container
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+    ports:
+      - 9090:9090
+    networks:
+      - dos
+    restart: unless-stopped
+    depends_on:
+      msg-broker:
+        condition: service_healthy
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prom_data:/prometheus
+
+# Grafana container
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    networks:
+      - dos
     depends_on:
       msg-broker:
         condition: service_healthy
     environment:
-      - KAFKA_BOOTSTRAP_SERVER=domain-os-msg-broker-1:9092
-      - KAFKA_TOPIC=dos-events
-    # kafka-console-consumer.sh --consumer.config /opt/bitnami/kafka/config/consumer.properties --bootstrap-server 127.0.0.1:9092 --topic test --from-beginning
-    command: kafka-console-consumer.sh --bootstrap-server domain-os-msg-broker-1:9092 --topic dos-events --from-beginning
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+# Event Stream Echo service
+  msg-stream-echo:
+    image: "geapex/streamclient"
+    restart: always
+    depends_on:
+      msg-broker:
+        condition: service_healthy
+    environment:
+      - RMQ_PASS=${RMQ_PASS}
+      - RMQ_USER=${RMQ_USER}
+      - RMQ_HOST=msg-broker
+      - RMQ_PORT=${RMQ_PORT}
+      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
     networks:
       - dos
 
-# # Zookeeper conatainer
-#   zookeeper:
-#     image: confluentinc/cp-zookeeper:latest
-#     restart: always
-    
-#     environment:
-#       ZOOKEEPER_CLIENT_PORT: 2181
-#       ZOOKEEPER_TICK_TIME: 2000
-#     ports:
-#       - 2181:2181
-#     networks:
-#       - regos
-
-# # Kafka container
-#   kafka:
-#     image: confluentinc/cp-kafka:latest
-#     restart: always
-#     healthcheck:
-#       test: ["CMD-SHELL", "kafka-topics --list --bootstrap-server localhost:9092"]
-#       interval: 3s
-#       retries: 5
-#       start_period: 30s
-#     depends_on:
-#       - zookeeper
-#     ports:
-#       - 9092:9092
-#       - 29092:29092
-#     environment:
-#       KAFKA_BROKER_ID: 1
-#       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-#       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-#       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-#       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-#       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-#     networks:
-#       - regos
-
-# Event Consumer
-  # event-consumer:
-  #   image: "geapex/consumer:main"
-  #   environment:
-  #     - KAFKA_HOST=${KAFKA_HOST}
-  #     - KAFKA_TOPIC=${KAFKA_TOPIC}
-  #     - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
-  #     - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
-  #     - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
-  #     - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
-  #     - KAFKA_GROUP=${KAFKA_GROUP}
-  #   restart: always
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #     admin-api:
-  #       condition: service_healthy
-  #   networks:
-  #     - regos
 
 # Core API container
   admin-api:
@@ -145,7 +131,9 @@ services:
     environment:
       - GIN_MODE=${GIN_MODE}
       - AUTO_MIGRATE=${AUTO_MIGRATE}
-      - USE_NEW_RELIC=${USE_NEW_RELIC}
+      - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
+      - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
+      - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
@@ -155,13 +143,13 @@ services:
       - API_PORT=${API_PORT}
       - API_HOST=${API_HOST}
       - API_VERSION=${API_VERSION}
-      - KAFKA_BOOTSTRAP_SERVER=${KAFKA_BOOTSTRAP_SERVER}
-      - KAFKA_TOPIC=${KAFKA_TOPIC}
-      - KAFKA_SECURITY_PROTOCOL=${KAFKA_SECURITY_PROTOCOL}
-      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM}
-      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME}
-      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
-      - KAFKA_ENABLED=${KAFKA_ENABLED}
+      - RMQ_HOST=${RMQ_HOST}
+      - RMQ_PORT=${RMQ_PORT}
+      - RMQ_USER=${RMQ_USER}
+      - RMQ_PASS=${RMQ_PASS}
+      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
+      - EVENT_STREAM_ENABLED=${EVENT_STREAM_ENABLED}
+      - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED}
 
     ports:
       - ${API_PORT}:${API_PORT}
@@ -169,21 +157,21 @@ services:
       - dos
 
 # Frontend Admin Container
-  admin-frontend:
-    image: "admin-dash:delete"
-    restart: always
-    ports:
-      - 3000:3000
-    depends_on:
-      admin-api:
-        condition: service_healthy
-    environment:
-      - AUTH_TRUST_HOST="true"
-      - AUTH_SECRET=80b9fe9f59f563481762556f5d4b2957
-      - API_HOST=http://domain-os-admin-api-1
-      - API_PORT=8080
-    networks:
-      - dos
+  # admin-frontend:
+  #   image: "admin-dash:delete"
+  #   restart: always
+  #   ports:
+  #     - 3000:3000
+  #   depends_on:
+  #     admin-api:
+  #       condition: service_healthy
+  #   environment:
+  #     - AUTH_TRUST_HOST="true"
+  #     - AUTH_SECRET=80b9fe9f59f563481762556f5d4b2957
+  #     - API_HOST=http://domain-os-admin-api-1
+  #     - API_PORT=8080
+  #   networks:
+  #     - dos
     
 
 networks:
@@ -192,4 +180,6 @@ networks:
 
 volumes:
   db:
+    driver: local
+  prom_data:
     driver: local

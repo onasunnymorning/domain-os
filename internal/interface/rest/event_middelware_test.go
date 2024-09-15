@@ -100,26 +100,26 @@ func TestGetObjectTypeFromContext(t *testing.T) {
 	}
 }
 
-func TestPublishEvent(t *testing.T) {
-	c := CreateTestContext("/contacts/clid01")
-	expectedEvent := entities.NewEvent("AdminAPI", "admin", entities.EventTypeCreate, entities.ObjectTypeContact, "clid01", "/contacts/clid01")
+// func TestPublishEvent(t *testing.T) {
+// 	c := CreateTestContext("/contacts/clid01")
+// 	expectedEvent := entities.NewEvent("AdminAPI", "admin", entities.EventTypeCreate, entities.ObjectTypeContact, "clid01", "/contacts/clid01")
 
-	handler := PublishEvent(nil, "")
-	handler(c)
+// 	handler := PublishEvent(nil, "")
+// 	handler(c)
 
-	event, _ := c.Get("event")
-	require.NotNil(t, event)
+// 	event, _ := c.Get("event")
+// 	require.NotNil(t, event)
 
-	e, ok := event.(*entities.Event)
-	require.True(t, ok)
+// 	e, ok := event.(*entities.Event)
+// 	require.True(t, ok)
 
-	require.Equal(t, expectedEvent.Source, e.Source)
-	require.Equal(t, expectedEvent.User, e.User)
-	require.Equal(t, expectedEvent.Action, e.Action)
-	require.Equal(t, expectedEvent.ObjectType, e.ObjectType)
-	require.Equal(t, expectedEvent.ObjectID, e.ObjectID)
-	require.Equal(t, expectedEvent.EndPoint, e.EndPoint)
-}
+//		require.Equal(t, expectedEvent.Source, e.Source)
+//		require.Equal(t, expectedEvent.User, e.User)
+//		require.Equal(t, expectedEvent.Action, e.Action)
+//		require.Equal(t, expectedEvent.ObjectType, e.ObjectType)
+//		require.Equal(t, expectedEvent.ObjectID, e.ObjectID)
+//		require.Equal(t, expectedEvent.EndPoint, e.EndPoint)
+//	}
 func TestGetObjectIDFromContext(t *testing.T) {
 	tcases := []struct {
 		Name       string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/miekg/dns"
@@ -213,5 +214,42 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := dr.db.WithContext(ctx).Model(&Domain{}).Count(&count).Error
+	return count, err
+}
+
+// ListExpiringDomains returns a list of domains that are expiring before the given time. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
+func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, cursor string) ([]*entities.Domain, error) {
+
+	var roidInt int64
+	var err error
+	if cursor != "" {
+		roid := entities.RoidType(cursor)
+		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
+			return nil, entities.ErrInvalidRoid
+		}
+		roidInt, err = roid.Int64()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var dbDomains []*Domain
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid}).Where("expiry_date < ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	domains := make([]*entities.Domain, len(dbDomains))
+	for i, d := range dbDomains {
+		domains[i] = ToDomain(d)
+	}
+
+	return domains, nil
+}
+
+// CountExiringDomains returns the number of domains that are expiring within the given number of days
+func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid string) (int64, error) {
+	var count int64
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid}).Where("expiry_date <= ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Count(&count).Error
 	return count, err
 }

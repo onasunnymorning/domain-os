@@ -1541,13 +1541,60 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			if err == nil {
 				assert.True(t, d.Status.PendingDelete)
 				assert.False(t, d.Status.OK)
-				assert.NotNil(t, d.RGPStatus.PendingDeletePeriodEnd)
+				assert.NotNil(t, d.RGPStatus.PurgeDate)
 				assert.NotNil(t, d.RGPStatus.RedemptionPeriodEnd)
 			}
 		})
 	}
 
 }
+
+func TestDomain_MarkForDeletionAddGrace(t *testing.T) {
+	phase := &Phase{
+		Policy: PhasePolicy{
+			RedemptionGP:    30,
+			PendingDeleteGP: 5,
+		},
+	}
+	testcases := []struct {
+		name          string
+		InGraceDelete bool
+		AddGraceEnd   time.Time
+	}{
+		{
+			name:          "AddPeriod ending in 1 day",
+			InGraceDelete: true,
+			AddGraceEnd:   time.Now().UTC().AddDate(0, 0, 1),
+		},
+		{
+			name:          "AddPeriod ended 1 day ago",
+			InGraceDelete: false,
+			AddGraceEnd:   time.Now().UTC().AddDate(0, 0, -1),
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{}
+			d.RGPStatus.AddPeriodEnd = tc.AddGraceEnd
+
+			err := d.MarkForDeletion(phase)
+			time.Sleep(1 * time.Millisecond) // make sure some time has passed
+			require.NoError(t, err)
+			if err == nil && tc.InGraceDelete {
+				assert.True(t, time.Now().After(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the past")
+				assert.True(t, time.Now().After(d.RGPStatus.PurgeDate), "expected pending delete period to be in the past")
+				assert.True(t, d.Status.PendingDelete)
+			} else if err == nil {
+				assert.True(t, time.Now().Before(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the future")
+				assert.True(t, time.Now().Before(d.RGPStatus.PurgeDate), "expected pending delete period to be in the future")
+				assert.True(t, d.Status.PendingDelete)
+			}
+		})
+	}
+
+}
+
 func TestIsGrandFathered(t *testing.T) {
 	// Create a domain object with GrandFathering status
 	d := &Domain{

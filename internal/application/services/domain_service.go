@@ -23,6 +23,10 @@ var (
 	ErrPhaseRequired = errors.New("phase is required to check domain availability")
 	// ErrLabelNotValidInPhase is returned when a label is not valid in a phase
 	ErrLabelNotValidInPhase = errors.New("label is not valid in this phase")
+	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the registrar
+	ErrAutoRenewNotEnabledRar = errors.New("auto renew is not enabled for this registrar")
+	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the TLD
+	ErrAutoRenewNotEnabledTLD = errors.New("auto renew is not enabled for this TLD")
 )
 
 // DomainService immplements the DomainService interface
@@ -35,6 +39,7 @@ type DomainService struct {
 	phaseRepo        repositories.PhaseRepository
 	premiumLabelRepo repositories.PremiumLabelRepository
 	fxRepo           repositories.FXRepository
+	rarRepo          repositories.RegistrarRepository
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -47,6 +52,7 @@ func NewDomainService(
 	phr repositories.PhaseRepository,
 	plr repositories.PremiumLabelRepository,
 	fxr repositories.FXRepository,
+	rRepo repositories.RegistrarRepository,
 ) *DomainService {
 	return &DomainService{
 		domainRepository: dRepo,
@@ -57,6 +63,7 @@ func NewDomainService(
 		phaseRepo:        phr,
 		premiumLabelRepo: plr,
 		fxRepo:           fxr,
+		rarRepo:          rRepo,
 	}
 }
 
@@ -118,6 +125,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 		d.RGPStatus = cmd.RGPStatus
 	}
 	d.GrandFathering = cmd.GrandFathering
+	d.RenewedYears = cmd.RenewedYears
 
 	// Check if the domain is valid
 	if err := d.Validate(); err != nil {
@@ -718,6 +726,53 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	return updatedDomain, nil
 }
 
+// AutoRenewDomain renews the domain for the current registrar
+func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, years int) (*entities.Domain, error) {
+	// Get the domain wihtout the hosts
+	dom, err := svc.GetDomainByName(ctx, name, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the TLD including the phases
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Always use the current Ga phase policy for renewals (phase extention does not apply to renews)
+	phase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return nil, err
+	}
+	if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+		return nil, ErrAutoRenewNotEnabledTLD
+	}
+
+	// Get the Registrar and check if the registrar has opted in for auto renew
+	rar, err := svc.rarRepo.GetByClID(ctx, dom.ClID.String(), false)
+	if err != nil {
+		return nil, err
+	}
+	if !rar.Autorenew {
+		return nil, ErrAutoRenewNotEnabledRar
+	}
+
+	// Renew the domain using our entity
+	err = dom.Renew(years, true, phase)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the domain
+	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
+
 // MarkForDelete marks a domain for deletion
 func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error) {
 	// Get the domain
@@ -821,4 +876,14 @@ func (s *DomainService) GetGlueRecordsPerTLD(ctx context.Context, tld string) ([
 // Count returns the number of domains
 func (s *DomainService) Count(ctx context.Context) (int64, error) {
 	return s.domainRepository.Count(ctx)
+}
+
+// ListExpiringDomains returns a list of expiring domains
+func (s *DomainService) ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error) {
+	return s.domainRepository.ListExpiringDomains(ctx, q.Before, pageSize, q.ClID.String(), cursor)
+}
+
+// CountExpiringDomains returns the number of expiring domains
+func (s *DomainService) CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error) {
+	return s.domainRepository.CountExpiringDomains(ctx, q.Before, q.ClID.String())
 }

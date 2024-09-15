@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-service-monitor
+  labels:
+    release: prometheus # Adjust if needed, based on your Prometheus Operator setup
+spec:
+  selector:
+    matchLabels:
+      app: api # This matches the label of the service you want to scrape
+  endpoints:
+  - port: http # Replace with the port name of your service that exposes metrics
+    path: /metrics # Replace with the actual path where metrics are exposed
+    interval: 30s # How often to scrape
+  namespaceSelector:
+    matchNames:
+    - default # Replace with the namespace where your service is running

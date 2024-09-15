@@ -23,6 +23,7 @@
 .terraform.lock.hcl
 terraform.tfstate*
 values.yaml
+values.*.yaml
 
 # Chachefile
 gke_gcloud_auth_plugin_cache

@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ .Release.Name }}-config
-data:
-  KAFKA_HOST: {{ .Values.kafka.host | quote }}
-  KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
-  KAFKA_GROUP: {{ .Values.kafka.group | quote }}
-  

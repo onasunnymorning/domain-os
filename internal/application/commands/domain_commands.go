@@ -31,7 +31,7 @@ type RenewDomainCommand struct {
 	Name  string       `json:"Name" binding:"required"`
 	ClID  string       `json:"ClID" binding:"required"`
 	Years int          `json:"Years"` // if not provided, it will be 1
-	Fee   FeeExtension `json:"Fee"`   // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+	Fee   FeeExtension `json:"Fee"`   // Optional, if provided must match the calculated fee, if not provided, the renew is allowed and any cost
 }
 
 // FeeExtension is a struct that can optionally be included in commands to provide information about the price
@@ -55,6 +55,7 @@ type CreateDomainCommand struct {
 	UpRr           string                        `json:"UpRr"`
 	ExpiryDate     time.Time                     `json:"ExpiryDate" binding:"required"`
 	DropCatch      bool                          `json:"DropCatch"`
+	RenewedYears   int                           `json:"RenewedYears"`
 	AuthInfo       string                        `json:"AuthInfo"  binding:"required"`
 	CreatedAt      time.Time                     `json:"CreatedAt"`
 	UpdatedAt      time.Time                     `json:"UpdatedAt"`
@@ -115,6 +116,7 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	cmd.UpdatedAt = dom.UpdatedAt
 	cmd.Status = dom.Status
 	cmd.RGPStatus = dom.RGPStatus
+	cmd.RenewedYears = dom.RenewedYears
 
 	return nil
 }

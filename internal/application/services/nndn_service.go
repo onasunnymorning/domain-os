@@ -38,6 +38,9 @@ func (svc *NNDNService) CreateNNDN(ctx context.Context, cmd *commands.CreateNNDN
 
 	_, err = svc.nndnRepository.CreateNNDN(ctx, newNNDN)
 	if err != nil {
+		if errors.Is(err, entities.ErrDuplicateNNDN) {
+			return nil, errors.Join(entities.ErrInvalidNNDN, err)
+		}
 		return nil, err
 	}
 

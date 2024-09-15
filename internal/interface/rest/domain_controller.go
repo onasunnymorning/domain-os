@@ -2,13 +2,16 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -43,8 +46,13 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *Do
 	e.GET("/domains/:name/check", controller.CheckDomain)
 	e.POST("/domains/:name/register", controller.RegisterDomain)
 	e.POST("/domains/:name/renew", controller.RenewDomain)
+	e.POST("/domains/:name/autorenew", controller.AutoRenewDomain)
 	e.DELETE("/domains/:name/markdelete", controller.MarkDomainForDeletion)
 	e.POST("/domains/:name/restore", controller.RestoreDomain)
+
+	// Lifecycle endpoints
+	e.GET("/domains/expiring", controller.ListExpiringDomains)
+	e.GET("/domains/expiring/count", controller.CountExpiringDomains)
 
 	return controller
 }
@@ -97,8 +105,14 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		return
 	}
 
+	// Get the Event from the context
+	event := GetEventFromContext(ctx)
+	// Set the event details.command
+	event.Details.Command = req
+
 	domain, err := ctrl.domainService.CreateDomain(ctx, &req)
 	if err != nil {
+		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -106,6 +120,10 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Set the event details.after
+	event.Details.After = domain
+	ctx.Set("event", event)
 
 	ctx.JSON(201, domain)
 }
@@ -442,7 +460,7 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param domain body commands.RenewDomainCommand true "Domain"
-// @Success 201 {object} entities.Domain
+// @Success 200 {object} entities.Domain
 // @Failure 400
 // @Failure 500
 // @Router /domains/{name}/renew [post]
@@ -465,6 +483,43 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 	domain, err := ctrl.domainService.RenewDomain(ctx, &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRenewal) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, domain)
+}
+
+// AutoRenewDomain godoc
+// @Summary Auto renew a domain
+// @Description Auto renew a domain for the specified number of years (defaults to ?years=1)
+// @Tags Domains
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Param years query int false "Years"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/autorenew [post]
+func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
+	yearsStr := ctx.DefaultQuery("years", "1")
+	years, err := strconv.Atoi(yearsStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": fmt.Sprintf("error converting years string to years int: %s", err.Error())})
+		return
+	}
+
+	domain, err := ctrl.domainService.AutoRenewDomain(ctx, ctx.Param("name"), years)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, services.ErrAutoRenewNotEnabledRar) || errors.Is(err, services.ErrAutoRenewNotEnabledTLD) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -595,6 +650,102 @@ func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
 // @Router /domains/count [get]
 func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 	count, err := ctrl.domainService.Count(ctx)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// ListExpiringDomains godoc
+// @Summary List expiring domains
+// @Description List expiring domains, if no days are provided it will default to 0 days.
+// @Tags Domains
+// @Produce json
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
+// @Param clid query string false "Registrar ClID (default=empty=all registrars)"
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} response.ListItemResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/expiring [get]
+func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	resp := response.ListItemResult{}
+
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the list of domains
+	domains, err := ctrl.domainService.ListExpiringDomains(ctx, q, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Move the domains into a domain expiry item
+	expiryItems := make([]response.DomainExpiryItem, len(domains))
+	for i, d := range domains {
+		expiryItems[i] = response.DomainExpiryItem{
+			RoID:       d.RoID.String(),
+			Name:       d.Name.String(),
+			ExpiryDate: d.ExpiryDate,
+		}
+	}
+
+	// Set the response MetaData
+	resp.Data = expiryItems
+	if len(domains) > 0 {
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+	}
+
+	// Return the Response
+	ctx.JSON(200, resp)
+}
+
+// CountExpiringDomains godoc
+// @Summary Count expiring domains
+// @Description Count expiring domains
+// @Tags Domains
+// @Produce json
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
+// @Param clid query string false "Registrar ClID (optional)"
+// @Success 200 {object} response.CountResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/expiring/count [get]
+func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
+
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	count, err := ctrl.domainService.CountExpiringDomains(ctx, q)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

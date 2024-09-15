@@ -5,59 +5,58 @@ import (
 	"log"
 	"strings"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
-func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO FIXME: parametrize
-		c.Set("userid", "admin")
-		c.Set("app", entities.AppAdminAPI)
+// func PublishEvent(p *kafka.Producer, topic string) gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		// TODO FIXME: parametrize
+// 		c.Set("userid", "admin")
+// 		c.Set("app", entities.AppAdminAPI)
 
-		// Create event and add to context
-		e := NewEventFromContext(c)
-		c.Set("event", e)
+// 		// Create event and add to context
+// 		e := NewEventFromContext(c)
+// 		c.Set("event", e)
 
-		// before request
+// 		// before request
 
-		c.Next()
+// 		c.Next()
 
-		// after request
+// 		// after request
 
-		// Set the Event.Details.Result based on the response status
-		if c.Writer.Status() < 300 && c.Writer.Status() >= 200 {
-			e.Details.Result = entities.EventResultSuccess
-		} else {
-			e.Details.Result = entities.EventResultFailure
-		}
-		// If we are pinging, don't log the event
-		if e.EndPoint == "/ping" {
-			return
-		}
-		// If there is no producer (e.g. in tests), just log the event
-		if p == nil {
-			log.Println(e)
-			return
-		}
+// 		// Set the Event.Details.Result based on the response status
+// 		if c.Writer.Status() < 300 && c.Writer.Status() >= 200 {
+// 			e.Details.Result = entities.EventResultSuccess
+// 		} else {
+// 			e.Details.Result = entities.EventResultFailure
+// 		}
+// 		// If we are pinging, don't log the event
+// 		if e.EndPoint == "/ping" {
+// 			return
+// 		}
+// 		// If there is no producer (e.g. in tests), just log the event
+// 		if p == nil {
+// 			log.Println(e)
+// 			return
+// 		}
 
-		// Omit info commands for admin API
-		if e.Action == entities.EventTypeInfo && e.Source == entities.AppAdminAPI {
-			return
-		}
+// 		// Omit info commands for admin API
+// 		if e.Action == entities.EventTypeInfo && e.Source == entities.AppAdminAPI {
+// 			return
+// 		}
 
-		// Send the event to Kafka
-		p.Produce(
-			&kafka.Message{
-				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          e.ToJSONBytes(),
-			},
-			nil,
-		)
+// 		// Send the event to Kafka
+// 		p.Produce(
+// 			&kafka.Message{
+// 				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+// 				Value:          e.ToJSONBytes(),
+// 			},
+// 			nil,
+// 		)
 
-	}
-}
+// 	}
+// }
 
 // NewEventFromContext returns a new event based on the context
 func NewEventFromContext(ctx *gin.Context) *entities.Event {
@@ -114,7 +113,10 @@ func GetObjectTypeFromContext(ctx *gin.Context) string {
 		if len(slice) >= 4 && slice[3] == "phases" {
 			return entities.ObjectTypePhase
 		}
-
+	case "phases":
+		return entities.ObjectTypePhase
+	case "domains":
+		return entities.ObjectTypeDomain
 	case "accreditations":
 		return entities.ObjectTypeAccreditation
 	case "hosts":

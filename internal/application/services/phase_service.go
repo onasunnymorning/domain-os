@@ -106,6 +106,11 @@ func (svc *PhaseService) ListActivePhasesByTLD(ctx context.Context, tld string, 
 	return activePhases, nil
 }
 
+// ListActiveGAPhases retrieves all active General Availability phases
+func (svc *PhaseService) ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error) {
+	return svc.phaseRepo.ListActiveGAPhases(ctx, pageSize, pageCursor)
+}
+
 // EndPhase Sets or updates the enddate on a phase
 func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCommand) (*entities.Phase, error) {
 	// Get the TLD

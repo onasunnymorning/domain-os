@@ -54,21 +54,23 @@ func (r *RegistrarStatus) IsValid() bool {
 // Registrar object represents the sponsoring client for other objects and is typically referred to as the sponsoring registrar.
 // Ref: https://www.rfc-editor.org/rfc/rfc9022.html#name-registrar-object
 type Registrar struct {
-	ClID        ClIDType        `json:"ClID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
-	Name        string          // A human-readable name for the registrar. Must match the Legal entity name. For ICANN Accredite registrars, must match the entity registered with ICANN for the corresponding GurID.
-	NickName    string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
-	GurID       int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
-	Status      RegistrarStatus // The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
-	PostalInfo  [2]*RegistrarPostalInfo
-	Voice       E164Type
-	Fax         E164Type
-	Email       string
-	URL         URL
-	WhoisInfo   WhoisInfo
-	RdapBaseURL URL
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	TLDs        []*TLD
+	ClID                      ClIDType        `json:"ClID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
+	Name                      string          // A human-readable name for the registrar. Must match the Legal entity name. For ICANN Accredite registrars, must match the entity registered with ICANN for the corresponding GurID.
+	NickName                  string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
+	GurID                     int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+	Status                    RegistrarStatus // The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
+	Autorenew                 bool            // A flag that indicates whether the registrar has opted-in to automatically renew domains that are eligible for auto-renewal.
+	AutorenewDaysBeforeExpiry int             // The number of days before the expiry date of a domain that the registrar has opted-in to automatically renew the domain. Default is 0 (on the day of expiry)
+	PostalInfo                [2]*RegistrarPostalInfo
+	Voice                     E164Type
+	Fax                       E164Type
+	Email                     string
+	URL                       URL
+	WhoisInfo                 WhoisInfo
+	RdapBaseURL               URL
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	TLDs                      []*TLD
 }
 
 // NewRegistrar creates a new instance of Registrar
