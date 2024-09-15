@@ -112,6 +112,7 @@ jobs:
           RMQ_PORT: ${{ secrets.RMQ_PORT }}
           RMQ_USER: ${{ secrets.RMQ_USER }}
           RMQ_PASS: ${{ secrets.RMQ_PASS }}
+          EVENT_STREAM_TOPIC: ${{ secrets.EVENT_STREAM_TOPIC }}
 
       - name: Docker Scout
         id: docker-scout
