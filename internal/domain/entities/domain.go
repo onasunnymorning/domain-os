@@ -198,7 +198,7 @@ func (d *Domain) CanBeDeleted() bool {
 	return !d.Status.ClientDeleteProhibited && !d.Status.ServerDeleteProhibited && !d.Status.PendingDelete
 }
 
-// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain has any panding status, it can't be renewed
+// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain has any pending status, it can't be renewed
 func (d *Domain) CanBeRenewed() bool {
 	return !d.Status.ClientRenewProhibited && !d.Status.ServerRenewProhibited && !d.Status.HasPendings()
 }
@@ -347,7 +347,9 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	return nil
 }
 
-// MarkForDeletion ititiates the end-of-life lifecycle for a domain. It sets the domain status to PendingDelete and sets the appropriate RGP statuses.
+// MarkForDeletion ititiates the end-of-life lifecycle for a domain. It sets the domain status to PendingDelete and sets the appropriate RGP statuses depending on the phase policy.
+// If the domain is still in AddGracePeriod, the domain does not go through an EOL process and RGP Statuses are set to it can be deleted immediately.
+// This funciton depends on downstream logic to purge the domain from the repository, we just set the time parameters here.
 func (d *Domain) MarkForDeletion(phase *Phase) error {
 	if !d.CanBeDeleted() {
 		return ErrDomainDeleteNotAllowed
@@ -360,9 +362,17 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 	d.UpRr = d.ClID
 
 	// Set the RGP statuses
-	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
-	d.RGPStatus.PendingDeletePeriodEnd = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
 
+	// If the domain is still in AddGracePeriod (Domain.RGPStatus.AddPeriodEnd is in the future), the domain does not go through an EOL process and may be deleted immediately
+	// We rely on downstream logic to purge the domain, we just set the time parameters here.
+	if time.Now().UTC().Before(d.RGPStatus.AddPeriodEnd) {
+		d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC()
+		d.RGPStatus.PurgeDate = time.Now().UTC()
+		return nil
+	}
+	// If the domain is no longer in AddGracePeriod, we set the RGP statuses as per the phase policy EOL settings
+	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
 	return nil
 }
 

@@ -26,8 +26,6 @@ var _ = Describe("ContactController", func() {
 		gin.SetMode(gin.TestMode)
 		router := gin.New()
 
-		router.Use(rest.PublishEvent(nil, ""))
-
 		// Initialize your database connection
 		db, err := getTestDB()
 		Expect(err).NotTo(HaveOccurred())

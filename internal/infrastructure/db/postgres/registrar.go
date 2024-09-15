@@ -8,34 +8,36 @@ import (
 
 // Registrar is the GORM representation of a Registrar
 type Registrar struct {
-	ClID        string `gorm:"primary_key"`
-	Name        string `gorm:"unique;not null"`
-	NickName    string `gorm:"unique;not null"`
-	GurID       int
-	Email       string
-	Status      string `gorm:"not null"`
-	Street1Int  string
-	Street2Int  string
-	Street3Int  string
-	CityInt     string
-	SPInt       string `gorm:"column:sp_int"`
-	PCInt       string `gorm:"column:pc_int"`
-	CCInt       string `gorm:"column:cc_int"`
-	Street1Loc  string
-	Street2Loc  string
-	Street3Loc  string
-	CityLoc     string
-	SPLoc       string `gorm:"column:sp_loc"`
-	PCLoc       string `gorm:"column:pc_loc"`
-	CCLoc       string `gorm:"column:cc_loc"`
-	Voice       string
-	Fax         string
-	URL         string
-	Whois43     string
-	Whois80     string
-	RdapBaseUrl string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ClID                      string `gorm:"primary_key"`
+	Name                      string `gorm:"unique;not null"`
+	NickName                  string `gorm:"unique;not null"`
+	GurID                     int
+	Email                     string
+	Status                    string `gorm:"not null"`
+	Autorenew                 bool
+	AutorenewDaysBeforeExpiry int
+	Street1Int                string
+	Street2Int                string
+	Street3Int                string
+	CityInt                   string
+	SPInt                     string `gorm:"column:sp_int"`
+	PCInt                     string `gorm:"column:pc_int"`
+	CCInt                     string `gorm:"column:cc_int"`
+	Street1Loc                string
+	Street2Loc                string
+	Street3Loc                string
+	CityLoc                   string
+	SPLoc                     string `gorm:"column:sp_loc"`
+	PCLoc                     string `gorm:"column:pc_loc"`
+	CCLoc                     string `gorm:"column:cc_loc"`
+	Voice                     string
+	Fax                       string
+	URL                       string
+	Whois43                   string
+	Whois80                   string
+	RdapBaseUrl               string
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 
 	// FK relationships with contacts
 	Contacts        []*Contact `gorm:"foreignKey:ClID"`
@@ -62,20 +64,22 @@ func (Registrar) TableName() string {
 
 func ToDBRegistrar(r *entities.Registrar) *Registrar {
 	rar := &Registrar{
-		ClID:        r.ClID.String(),
-		Name:        r.Name,
-		NickName:    r.NickName,
-		GurID:       r.GurID,
-		Email:       r.Email,
-		Status:      r.Status.String(),
-		Voice:       r.Voice.String(),
-		Fax:         r.Fax.String(),
-		URL:         r.URL.String(),
-		Whois43:     r.WhoisInfo.Name.String(),
-		Whois80:     r.WhoisInfo.URL.String(),
-		RdapBaseUrl: r.RdapBaseURL.String(),
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		ClID:                      r.ClID.String(),
+		Name:                      r.Name,
+		NickName:                  r.NickName,
+		GurID:                     r.GurID,
+		Email:                     r.Email,
+		Status:                    r.Status.String(),
+		Autorenew:                 r.Autorenew,
+		AutorenewDaysBeforeExpiry: r.AutorenewDaysBeforeExpiry,
+		Voice:                     r.Voice.String(),
+		Fax:                       r.Fax.String(),
+		URL:                       r.URL.String(),
+		Whois43:                   r.WhoisInfo.Name.String(),
+		Whois80:                   r.WhoisInfo.URL.String(),
+		RdapBaseUrl:               r.RdapBaseURL.String(),
+		CreatedAt:                 r.CreatedAt,
+		UpdatedAt:                 r.UpdatedAt,
 	}
 
 	if r.PostalInfo[0] != nil {
@@ -111,14 +115,16 @@ func ToDBRegistrar(r *entities.Registrar) *Registrar {
 
 func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 	registrar := &entities.Registrar{
-		ClID:     entities.ClIDType(dbr.ClID),
-		Name:     dbr.Name,
-		NickName: dbr.NickName,
-		GurID:    dbr.GurID,
-		Status:   entities.RegistrarStatus(dbr.Status),
-		Voice:    entities.E164Type(dbr.Voice),
-		Fax:      entities.E164Type(dbr.Fax),
-		Email:    dbr.Email,
+		ClID:                      entities.ClIDType(dbr.ClID),
+		Name:                      dbr.Name,
+		NickName:                  dbr.NickName,
+		GurID:                     dbr.GurID,
+		Status:                    entities.RegistrarStatus(dbr.Status),
+		Autorenew:                 dbr.Autorenew,
+		AutorenewDaysBeforeExpiry: dbr.AutorenewDaysBeforeExpiry,
+		Voice:                     entities.E164Type(dbr.Voice),
+		Fax:                       entities.E164Type(dbr.Fax),
+		Email:                     dbr.Email,
 		WhoisInfo: entities.WhoisInfo{
 			Name: entities.DomainName(dbr.Whois43),
 			URL:  entities.URL(dbr.Whois80),

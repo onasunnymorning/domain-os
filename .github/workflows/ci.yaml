@@ -55,12 +55,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./cmd/cli/messaging/sub/Dockerfile
+          file: ./cmd/cli/messaging/streamclient/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: geapex/event-consumer:${{ github.sha }}
-          cache-from: type=registry,ref=geapex/event-consumer:buildcache
-          cache-to: type=registry,ref=geapex/event-consumer:buildcache,mode=max 
+          tags: geapex/streamclient:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/streamclient:buildcache
+          cache-to: type=registry,ref=geapex/streamclient:buildcache,mode=max 
       - name: Build and push EPP Client API
         uses: docker/build-push-action@v5
         with:
@@ -105,13 +105,15 @@ jobs:
           API_HOST: domain-os-admin-api-1
           BRANCH: ${{ github.sha }}
           GIN_MODE: debug
-          KAFKA_HOST: ${{ secrets.KAFKA_HOST }}
-          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
-          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
-          KAFKA_SASL_MECHANISM: ${{ secrets.KAFKA_SASL_MECHANISM }}
-          KAFKA_SECURITY_PROTOCOL: ${{ secrets.KAFKA_SECURITY_PROTOCOL }}
-          KAFKA_TOPIC: ${{ secrets.KAFKA_TOPIC }}
-          KAFKA_GROUP: ${{ secrets.KAFKA_GROUP }}
+          AUTO_MIGRATE: true
+          NEW_RELIC_ENABLED: false
+          PROMETHEUS_ENABLED: false
+          RMQ_HOST: domain-os-msg-broker-1
+          RMQ_PORT: ${{ secrets.RMQ_PORT }}
+          RMQ_USER: ${{ secrets.RMQ_USER }}
+          RMQ_PASS: ${{ secrets.RMQ_PASS }}
+          EVENT_STREAM_TOPIC: ${{ secrets.EVENT_STREAM_TOPIC }}
+          EVENT_STREAM_ENABLED: true
 
       - name: Docker Scout
         id: docker-scout

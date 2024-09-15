@@ -17,8 +17,9 @@ const (
 )
 
 var (
-	ErrNNDNNotFound = errors.New("NNDN not found")
-	ErrInvalidNNDN  = errors.New("invalid NNDN")
+	ErrNNDNNotFound  = errors.New("NNDN not found")
+	ErrInvalidNNDN   = errors.New("invalid NNDN")
+	ErrDuplicateNNDN = errors.New("duplicate NNDN")
 )
 
 // NNDN represents a non-standard domain Name object in a domain Name registry.

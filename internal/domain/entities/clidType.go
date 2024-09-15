@@ -13,14 +13,15 @@ var (
 	ErrInvalidClIDType = errors.New("invalid clIDType")
 )
 
+// ClIDType represents the client identifier as used throughout the EPP protocol.
 // <simpleType name="clIDType">
-//        <restriction base="token">
-//          <minLength value="3"/>
-//          <maxLength value="16"/>
-//        </restriction>
+//
+//	<restriction base="token">
+//	  <minLength value="3"/>
+//	  <maxLength value="16"/>
+//	</restriction>
+//
 // </simpleType>
-
-// ClIDType is a type for client identifier
 type ClIDType string
 
 // NewClIDType creates a new instance of ClIDType. It checks if it is a valid clIDType and if only ASCII characters are used

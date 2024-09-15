@@ -6,15 +6,21 @@ import (
 
 // AdminApiConfig contains the configuration for the admin api
 type AdminApiConfig struct {
-	UseNewRelic bool
-	AutoMigrate bool
-	EnableKafka bool
+	NewRelicEnabled    bool
+	AutoMigrate        bool
+	EventStreamEnabled bool
+	EventStreamTopic   string
+	GinMode            string
+	PrometheusEnabled  bool
 }
 
 func LoadConfig() *AdminApiConfig {
 	return &AdminApiConfig{
-		UseNewRelic: os.Getenv("USE_NEW_RELIC") == "true",
-		AutoMigrate: os.Getenv("AUTO_MIGRATE") == "true",
-		EnableKafka: os.Getenv("ENABLE_KAFKA") == "true",
+		NewRelicEnabled:    os.Getenv("NEW_RELIC_ENABLED") == "true",
+		AutoMigrate:        os.Getenv("AUTO_MIGRATE") == "true",
+		EventStreamEnabled: os.Getenv("EVENT_STREAM_ENABLED") == "true",
+		EventStreamTopic:   os.Getenv("EVENT_STREAM_TOPIC"),
+		GinMode:            os.Getenv("GIN_MODE"),
+		PrometheusEnabled:  os.Getenv("PROMETHEUS_ENABLED") == "true",
 	}
 }

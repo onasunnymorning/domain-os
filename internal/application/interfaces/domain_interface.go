@@ -22,6 +22,8 @@ type DomainService interface {
 	RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
 	Count(ctx context.Context) (int64, error)
+	ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
+	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available and supports the fee extension
@@ -30,6 +32,8 @@ type DomainService interface {
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
 	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error)
+	// AutoRenewDomain renews the domain for the current registrar
+	AutoRenewDomain(ctx context.Context, domainName string, years int) (*entities.Domain, error)
 	// MarkDomainForDelete marks a domain for deletion as a registrar
 	MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error)
 	// RestoreDomain restores a domain as a registrar
