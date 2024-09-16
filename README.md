@@ -38,7 +38,7 @@ Domain (Registry for now) Operating System (DOS)
 * Migration toolkit
 
 ## Deployment
-The app is containerized and geared towards a kubernetes runtime.
+The app is containerized and suggests a kubernetes deployment for production and docker-compose or Tilt for development.
 * github CI pipeline running unit and integration tests + push new images (CD pending)
 * Helm for templating deployments
 * Docker compose or Tilt for a quick feedback look when developing
@@ -55,6 +55,8 @@ Make sure you have the following installed:
 Check out the code
 
 Set your ENVARS
+This repository contains an `example.env` file that you can use to set your environment variables. 
+
 
 Compose/Tilt up
 
