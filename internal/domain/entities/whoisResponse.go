@@ -7,22 +7,22 @@ import (
 
 // WhoisResponse represents the WHOIS response
 type WhoisResponse struct {
-	DomainName                 string    `json:"domain_name"`
-	RegistryDomainID           string    `json:"registry_domain_id"`
-	RegistrarWhoisServer       string    `json:"registrar_whois_server"`
-	RegistrarURL               string    `json:"registrar_url"`
-	UpdatedDate                time.Time `json:"updated_date"`
-	CreationDate               time.Time `json:"creation_date"`
-	RegistryExpiryDate         time.Time `json:"registry_expiry_date"`
+	DomainName                 string    `json:"domainName"`
+	RegistryDomainID           string    `json:"registryDomainID"`
+	RegistrarWhoisServer       string    `json:"registrarWhoisServer"`
+	RegistrarURL               string    `json:"registrarURL"`
+	UpdatedDate                time.Time `json:"updatedDate"`
+	CreationDate               time.Time `json:"creationDate"`
+	RegistryExpiryDate         time.Time `json:"registryExpiryDate"`
 	Registrar                  string    `json:"registrar"`
-	RegistrarIANAID            string    `json:"registrar_iana_id"`
-	RegistrarAbuseContactEmail string    `json:"registrar_abuse_contact_email"`
-	RegistrarAbuseContactPhone string    `json:"registrar_abuse_contact_phone"`
-	DomainStatus               []string  `json:"domain_status"`
-	NameServers                []string  `json:"name_servers"`
+	RegistrarIANAID            string    `json:"registrarIANAID"`
+	RegistrarAbuseContactEmail string    `json:"registrarAbuseContactEmail"`
+	RegistrarAbuseContactPhone string    `json:"registrarAbuseContactPhone"`
+	DomainStatus               []string  `json:"domainStatus"`
+	NameServers                []string  `json:"nameServers"`
 	DNSSEC                     string    `json:"dnssec"`
-	ICANNComplaintURL          string    `json:"icann_complaint_url"`
-	LastWhoisUpdate            time.Time `json:"last_whois_update"`
+	ICANNComplaintURL          string    `json:"icannComplaintURL"`
+	LastWhoisUpdate            time.Time `json:"lastWhoisUpdate"`
 }
 
 // String returns the string representation of the WhoisResponse

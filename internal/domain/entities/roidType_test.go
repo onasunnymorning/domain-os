@@ -12,7 +12,7 @@ func TestNewRoidType(t *testing.T) {
 
 	t.Run("RoidTypeContact", func(t *testing.T) {
 		objectIdentifier := RoidTypeContact
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, CONTACT_ROID_ID, SYSTEM_ROID_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, CONTACT_ROID_ID, EPP_REPOSITORY_ID)
 
 		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
 
@@ -22,7 +22,7 @@ func TestNewRoidType(t *testing.T) {
 
 	t.Run("RoidTypeHost", func(t *testing.T) {
 		objectIdentifier := RoidTypeHost
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, HOST_ROID_ID, SYSTEM_ROID_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, HOST_ROID_ID, EPP_REPOSITORY_ID)
 
 		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
 
@@ -32,7 +32,7 @@ func TestNewRoidType(t *testing.T) {
 
 	t.Run("RoidTypeDomain", func(t *testing.T) {
 		objectIdentifier := RoidTypeDomain
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, DOMAIN_ROID_ID, SYSTEM_ROID_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, DOMAIN_ROID_ID, EPP_REPOSITORY_ID)
 
 		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
 
