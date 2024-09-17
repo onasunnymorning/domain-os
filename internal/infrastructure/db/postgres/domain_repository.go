@@ -54,7 +54,7 @@ func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64, preload
 	return ToDomain(d), err
 }
 
-// GetDomainByName retrieves a domain from the database by its name
+// GetDomainByName retrieves a domain from the database by its name it returns ErrDomainNotFound if the domain does not exist
 func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
 	var err error
 	d := &Domain{}
