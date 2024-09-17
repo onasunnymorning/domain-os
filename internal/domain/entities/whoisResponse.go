@@ -52,8 +52,8 @@ func (w WhoisResponse) String() string {
 }
 
 // NewWhoisResponse creates a new instance of WhoisResponse
-func NewWhoisResponse(dom *Domain, rar *Registrar) (WhoisResponse, error) {
-	w := WhoisResponse{
+func NewWhoisResponse(dom *Domain, rar *Registrar) (*WhoisResponse, error) {
+	w := &WhoisResponse{
 		DomainName:                 dom.Name.String(),
 		RegistryDomainID:           dom.RoID.String(),
 		RegistrarWhoisServer:       rar.WhoisInfo.Name.String(),
