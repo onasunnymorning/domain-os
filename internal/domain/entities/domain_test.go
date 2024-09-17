@@ -1617,3 +1617,47 @@ func TestIsGrandFathered(t *testing.T) {
 	}
 
 }
+func TestDomain_GetHostsAsStringSlice(t *testing.T) {
+	testcases := []struct {
+		name  string
+		hosts []*Host
+		want  []string
+	}{
+		{
+			name:  "no hosts",
+			hosts: nil,
+			want:  make([]string, 0),
+		},
+		{
+			name: "one host",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+			},
+			want: []string{"ns1.example.com"},
+		},
+		{
+			name: "multiple hosts",
+			hosts: []*Host{
+				{
+					Name: "ns1.example.com",
+				},
+				{
+					Name: "ns2.example.com",
+				},
+			},
+			want: []string{"ns1.example.com", "ns2.example.com"},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Hosts: tc.hosts,
+			}
+			got := d.GetHostsAsStringSlice()
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
