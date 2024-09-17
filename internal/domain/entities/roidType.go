@@ -21,7 +21,7 @@ import (
 const (
 	ROID_REGEX = `^(\w|_){1,80}-\w{1,8}$`
 
-	SYSTEM_ROID_ID = "APEX" // TODO: make this an ENVAR
+	EPP_REPOSITORY_ID = "APEX" // aka EPP REPOSITORY ID (IANA) TODO: make this an ENVAR and/or make available at tld level - ref: https://www.iana.org/assignments/epp-repository-ids/epp-repository-ids.xhtml
 
 	CONTACT_ROID_ID = "CONT"
 	HOST_ROID_ID    = "HOST"
@@ -44,11 +44,11 @@ type RoidType string
 func NewRoidType(uniqueID int64, objectIdentifier string) (RoidType, error) {
 	switch objectIdentifier {
 	case RoidTypeContact:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, CONTACT_ROID_ID, SYSTEM_ROID_ID)), nil
+		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, CONTACT_ROID_ID, EPP_REPOSITORY_ID)), nil
 	case RoidTypeHost:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, HOST_ROID_ID, SYSTEM_ROID_ID)), nil
+		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, HOST_ROID_ID, EPP_REPOSITORY_ID)), nil
 	case RoidTypeDomain:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, DOMAIN_ROID_ID, SYSTEM_ROID_ID)), nil
+		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, DOMAIN_ROID_ID, EPP_REPOSITORY_ID)), nil
 	default:
 		return RoidType(""), ErrInvalidObjectIdentifier
 	}
