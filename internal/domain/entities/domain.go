@@ -87,6 +87,15 @@ func (d *Domain) HasHosts() bool {
 	return len(d.Hosts) > 0
 }
 
+// GetHostsAsStringSlice returns a slice of strings containing the host names associated with the domain. This is useful for building WHOIS responses
+func (d *Domain) GetHostsAsStringSlice() []string {
+	hosts := make([]string, 0)
+	for _, h := range d.Hosts {
+		hosts = append(hosts, h.Name.String())
+	}
+	return hosts
+}
+
 // UnSetOKStatusIfNeeded unsets the Domain.Status.OK flag if a prohibition or pending action is present on the DomainStatus
 func (d *Domain) UnSetOKStatusIfNeeded() {
 	if d.Status.HasPendings() || d.Status.HasProhibitions() {

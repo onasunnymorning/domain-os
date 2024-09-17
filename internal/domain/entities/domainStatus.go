@@ -257,3 +257,63 @@ func (ds *DomainStatus) HasHold() bool {
 func (ds *DomainStatus) UpdateProhibited() bool {
 	return ds.ClientUpdateProhibited || ds.ServerUpdateProhibited
 }
+
+// StringSlice returns a slice of strings representing the DomainStatus. This is useful for building WHOIS responses
+func (ds *DomainStatus) StringSlice() []string {
+	var status []string
+	if ds.OK {
+		status = append(status, DomainStatusOK)
+	}
+	if ds.Inactive {
+		status = append(status, DomainStatusInactive)
+	}
+	if ds.ClientTransferProhibited {
+		status = append(status, DomainStatusClientTransferProhibited)
+	}
+	if ds.ClientUpdateProhibited {
+		status = append(status, DomainStatusClientUpdateProhibited)
+	}
+	if ds.ClientDeleteProhibited {
+		status = append(status, DomainStatusClientDeleteProhibited)
+	}
+	if ds.ClientRenewProhibited {
+		status = append(status, DomainStatusClientRenewProhibited)
+	}
+	if ds.ClientHold {
+		status = append(status, DomainStatusClientHold)
+	}
+	if ds.ServerTransferProhibited {
+		status = append(status, DomainStatusServerTransferProhibited)
+	}
+	if ds.ServerUpdateProhibited {
+		status = append(status, DomainStatusServerUpdateProhibited)
+	}
+	if ds.ServerDeleteProhibited {
+		status = append(status, DomainStatusServerDeleteProhibited)
+	}
+	if ds.ServerRenewProhibited {
+		status = append(status, DomainStatusServerRenewProhibited)
+	}
+	if ds.ServerHold {
+		status = append(status, DomainStatusServerHold)
+	}
+	if ds.PendingCreate {
+		status = append(status, DomainStatusPendingCreate)
+	}
+	if ds.PendingRenew {
+		status = append(status, DomainStatusPendingRenew)
+	}
+	if ds.PendingTransfer {
+		status = append(status, DomainStatusPendingTransfer)
+	}
+	if ds.PendingUpdate {
+		status = append(status, DomainStatusPendingUpdate)
+	}
+	if ds.PendingRestore {
+		status = append(status, DomainStatusPendingRestore)
+	}
+	if ds.PendingDelete {
+		status = append(status, DomainStatusPendingDelete)
+	}
+	return status
+}
