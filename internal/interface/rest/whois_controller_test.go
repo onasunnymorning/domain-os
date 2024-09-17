@@ -31,8 +31,10 @@ func TestGetWhois_Success(t *testing.T) {
 	// Create a mock whois service
 	mockWhoisService := new(MockWhoisService)
 	expectedWhois := &entities.WhoisResponse{
-		DomainName: "example.com",
-		Registrar:  "Mock Registrar",
+		DomainName:           "example.com",
+		RegistryDomainID:     "1234567890_DOM-APEX",
+		RegistrarWhoisServer: "whois.example.com",
+		Registrar:            "Mock Registrar",
 		// Other fields...
 	}
 

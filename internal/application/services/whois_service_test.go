@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
@@ -24,11 +25,33 @@ func TestGetDomainWhois(t *testing.T) {
 	// Define test data
 	domainName := "example.com"
 	mockDomain := &entities.Domain{
-		Name: entities.DomainName(domainName),
-		ClID: entities.ClIDType("testClID"),
+		RoID:       entities.RoidType("1234567890_DOM-APEX"),
+		Name:       entities.DomainName(domainName),
+		ClID:       entities.ClIDType("testClID"),
+		CreatedAt:  time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:  time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
+		ExpiryDate: time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC),
+		Status: entities.DomainStatus{
+			OK: true,
+		},
+		Hosts: []*entities.Host{
+			{
+				Name: "ns1.example.com",
+			},
+			{
+				Name: "ns2.example.com",
+			},
+		},
 	}
 	mockRegistrar := &entities.Registrar{
 		Name: "Test Registrar",
+		WhoisInfo: entities.WhoisInfo{
+			Name: "whois.example.com",
+		},
+		URL:   "http://example.com",
+		GurID: 2222,
+		Email: "me@registrar.com",
+		Voice: "+1.5555555555",
 	}
 
 	// Set up expectations for the mock domain repository
@@ -44,8 +67,23 @@ func TestGetDomainWhois(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Assert that the result matches expected values
+
 	assert.Equal(t, domainName, result.DomainName)
-	assert.Equal(t, "Test Registrar", result.Registrar)
+	assert.Equal(t, mockDomain.RoID.String(), result.RegistryDomainID)
+	assert.Equal(t, mockRegistrar.WhoisInfo.Name.String(), result.RegistrarWhoisServer)
+	assert.Equal(t, mockRegistrar.URL.String(), result.RegistrarURL)
+	assert.Equal(t, mockDomain.UpdatedAt, result.UpdatedDate)
+	assert.Equal(t, mockDomain.CreatedAt, result.CreationDate)
+	assert.Equal(t, mockDomain.ExpiryDate, result.RegistryExpiryDate)
+	assert.Equal(t, mockRegistrar.Name, result.Registrar)
+	assert.Equal(t, "2222", result.RegistrarIANAID)
+	assert.Equal(t, "me@registrar.com", result.RegistrarAbuseContactEmail)
+	assert.Equal(t, "+1.5555555555", result.RegistrarAbuseContactPhone)
+	assert.Equal(t, []string{"ok"}, result.DomainStatus)
+	assert.Equal(t, []string{"ns1.example.com", "ns2.example.com"}, result.NameServers)
+	assert.Equal(t, "unsigned", result.DNSSEC)
+	assert.Equal(t, "URL of the ICANN Whois Inaccuracy Complaint Form: https://www.icann.org/wicf/", result.ICANNComplaintURL)
+	assert.Equal(t, time.Now().Format(time.RFC3339), result.LastWhoisUpdate.Format(time.RFC3339))
 
 	// Verify that the expectations were met
 	mockDomRepo.AssertExpectations(t)
