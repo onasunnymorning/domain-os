@@ -91,9 +91,9 @@ func getWHOISResponse(query string, svc *services.WhoisService) string {
 		}
 		return resp.String()
 	case queries.WhoisQueryTypeIP:
-		return fmt.Sprintf("WHOIS IP query for: %s\n", query)
+		return fmt.Sprintf("Only Domain objects are supported for now - received WHOIS query for IP: %s\n", query)
 	case queries.WhoisQueryTypeRegistrar:
-		return fmt.Sprintf("WHOIS registrar query for: %s\n", query)
+		return fmt.Sprintf("Only Domain objects are supported for now - received WHOIS query for Registrar               s: %s\n", query)
 	default:
 		return fmt.Sprintf("Unknown WHOIS query type for: %s\n", query)
 	}
