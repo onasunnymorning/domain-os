@@ -32,9 +32,9 @@ func (w WhoisResponse) String() string {
 	resp += "Registry Domain ID: " + w.RegistryDomainID + "\n"
 	resp += "Registrar WHOIS Server: " + w.RegistrarWhoisServer + "\n"
 	resp += "Registrar URL: " + w.RegistrarURL + "\n"
-	resp += "Updated Date: " + w.UpdatedDate.String() + "\n"
-	resp += "Creation Date: " + w.CreationDate.String() + "\n"
-	resp += "Registry Expiry Date: " + w.RegistryExpiryDate.String() + "\n"
+	resp += "Updated Date: " + w.UpdatedDate.Format(time.RFC3339) + "\n"
+	resp += "Creation Date: " + w.CreationDate.Format(time.RFC3339) + "\n"
+	resp += "Registry Expiry Date: " + w.RegistryExpiryDate.Format(time.RFC3339) + "\n"
 	resp += "Registrar: " + w.Registrar + "\n"
 	resp += "Registrar IANA ID: " + w.RegistrarIANAID + "\n"
 	resp += "Registrar Abuse Contact Email: " + w.RegistrarAbuseContactEmail + "\n"
@@ -43,11 +43,11 @@ func (w WhoisResponse) String() string {
 		resp += "Domain Status: " + d + "\n"
 	}
 	for _, d := range w.NameServers {
-		resp += "DNSSEC Data: " + d + "\n"
+		resp += "Name Server: " + d + "\n"
 	}
 	resp += "DNSSEC: " + w.DNSSEC + "\n"
 	resp += "ICANN Complaint URL: " + w.ICANNComplaintURL + "\n"
-	resp += ">>> Last update of whois database:" + w.LastWhoisUpdate.String() + " <<<\n"
+	resp += ">>> Last update of whois database:" + w.LastWhoisUpdate.Format(time.RFC3339) + " <<<\n"
 	return resp
 }
 

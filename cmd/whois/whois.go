@@ -2,23 +2,46 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+
+	"gorm.io/gorm"
+)
+
+const (
+	// WHOIS_PORT is the default port for WHOIS servers.
+	WHOIS_PORT = 43
 )
 
 func main() {
+	// Set up the database connection.
+	db, err := setupDB()
+	if err != nil {
+		log.Fatalf("Error setting up database: %v", err)
+	}
+	domRepo := postgres.NewDomainRepository(db)
+	rarRepo := postgres.NewGormRegistrarRepository(db)
+
+	// Set up the Whois Service
+	WhoisSvc := services.NewWhoisService(domRepo, rarRepo)
+
 	// Listen on port 43 for incoming WHOIS requests.
-	listener, err := net.Listen("tcp", ":43")
+	listener, err := net.Listen("tcp", ":"+fmt.Sprint(WHOIS_PORT))
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Println("WHOIS server running on port 43")
+	fmt.Printf("WHOIS server running on port %d\n", WHOIS_PORT)
 
 	for {
 		// Accept incoming connections.
@@ -29,11 +52,11 @@ func main() {
 		}
 
 		// Handle each connection in a new goroutine to allow concurrent clients.
-		go handleConnection(conn)
+		go handleConnection(conn, WhoisSvc)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, svc *services.WhoisService) {
 	defer conn.Close()
 
 	// Read the query from the connection.
@@ -48,20 +71,25 @@ func handleConnection(conn net.Conn) {
 	query = strings.TrimSpace(query)
 
 	// Determine the type of query and respond accordingly.
-	response := getWHOISResponse(query)
+	response := getWHOISResponse(query, svc)
 
 	// Write the response back to the client.
 	conn.Write([]byte(response))
 }
 
-func getWHOISResponse(query string) string {
+// getWHOISResponse determines the type of WHOIS query and returns a response.
+func getWHOISResponse(query string, svc *services.WhoisService) string {
 	t, err := queries.ClassifyWhoisQuery(query)
 	if err != nil {
 		return err.Error()
 	}
 	switch t {
 	case queries.WhoisQueryTypeDomainName:
-		return fmt.Sprintf("WHOIS domain query for: %s\n", query)
+		resp, err := svc.GetDomainWhois(context.Background(), query)
+		if err != nil {
+			return fmt.Sprintf("Error getting WHOIS information for domain: %v\n", err)
+		}
+		return resp.String()
 	case queries.WhoisQueryTypeIP:
 		return fmt.Sprintf("WHOIS IP query for: %s\n", query)
 	case queries.WhoisQueryTypeRegistrar:
@@ -69,34 +97,17 @@ func getWHOISResponse(query string) string {
 	default:
 		return fmt.Sprintf("Unknown WHOIS query type for: %s\n", query)
 	}
-	// For demonstration purposes, we'll just handle a few hardcoded domains and IPs.
-	// 	switch strings.ToLower(query) {
-	// 	case "example.com":
-	// 		return `Domain Name: EXAMPLE.COM
-	// Registrar: RESERVED DOMAINS REGISTRY
-	// Creation Date: 1995-08-14T04:00:00Z
-	// Registry Expiry Date: 2024-08-13T04:00:00Z
-	// Name Server: A.IANA-SERVERS.NET
-	// Name Server: B.IANA-SERVERS.NET
-	// Domain Status: clientDeleteProhibited
-	// >>> Last update of WHOIS database: 2023-08-01T00:00:00Z <<<
-	// `
-	// 	case "192.0.2.1":
-	// 		return `NetRange: 192.0.2.0 - 192.0.2.255
-	// CIDR: 192.0.2.0/24
-	// NetName: EXAMPLE-NET
-	// NetHandle: NET-192-0-2-0-1
-	// Organization: Example Organization
-	// Updated: 2023-01-01
-	// `
-	// 	case "2001:db8::1":
-	// 		return `NetRange: 2001:db8::/32
-	// CIDR: 2001:db8::/32
-	// NetName: EXAMPLE-V6
-	// Organization: Example IPv6 Org
-	// Updated: 2023-01-01
-	// `
-	// 	default:
-	// 		return fmt.Sprintf("No WHOIS data found for: %s\n", query)
-	// 	}
+}
+
+func setupDB() (*gorm.DB, error) {
+	return postgres.NewConnection(
+		postgres.Config{
+			User:    os.Getenv("DB_USER"),
+			Pass:    os.Getenv("DB_PASS"),
+			Host:    os.Getenv("DB_HOST"),
+			Port:    os.Getenv("DB_PORT"),
+			DBName:  os.Getenv("DB_NAME"),
+			SSLmode: os.Getenv("DB_SSLMODE"),
+		},
+	)
 }
