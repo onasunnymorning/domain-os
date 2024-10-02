@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -22,6 +24,9 @@ const (
 )
 
 func main() {
+	// Set up a context to handle signals for graceful shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 	// Set up the database connection.
 	db, err := setupDB()
 	if err != nil {
@@ -52,11 +57,15 @@ func main() {
 		}
 
 		// Handle each connection in a new goroutine to allow concurrent clients.
-		go handleConnection(conn, WhoisSvc)
+		go handleConnection(ctx, conn, WhoisSvc)
 	}
+
+	<-ctx.Done()
+	fmt.Println("Shutting down gracefully...")
+	stop()
 }
 
-func handleConnection(conn net.Conn, svc *services.WhoisService) {
+func handleConnection(ctx context.Context, conn net.Conn, svc *services.WhoisService) {
 	defer conn.Close()
 
 	// Read the query from the connection.
@@ -71,21 +80,21 @@ func handleConnection(conn net.Conn, svc *services.WhoisService) {
 	query = strings.TrimSpace(query)
 
 	// Determine the type of query and respond accordingly.
-	response := getWHOISResponse(query, svc)
+	response := getWHOISResponse(ctx, query, svc)
 
 	// Write the response back to the client.
 	conn.Write([]byte(response))
 }
 
 // getWHOISResponse determines the type of WHOIS query and returns a response.
-func getWHOISResponse(query string, svc *services.WhoisService) string {
+func getWHOISResponse(ctx context.Context, query string, svc *services.WhoisService) string {
 	t, err := queries.ClassifyWhoisQuery(query)
 	if err != nil {
 		return err.Error()
 	}
 	switch t {
 	case queries.WhoisQueryTypeDomainName:
-		resp, err := svc.GetDomainWhois(context.Background(), query)
+		resp, err := svc.GetDomainWhois(ctx, query)
 		if err != nil {
 			return fmt.Sprintf("Error getting WHOIS information for domain: %v\n", err)
 		}
