@@ -52,7 +52,7 @@ services:
 
 # Event Stream Echo service
   msg-stream-echo:
-    image: "geapex/streamclient:${BRANCH}"
+    image: "geapex/streamclient"
     restart: always
     depends_on:
       msg-broker:
