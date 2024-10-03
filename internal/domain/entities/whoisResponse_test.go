@@ -12,9 +12,9 @@ func TestWhoisResponse_String(t *testing.T) {
 		RegistryDomainID:           "123456789",
 		RegistrarWhoisServer:       "whois.example.com",
 		RegistrarURL:               "http://example.com",
-		UpdatedDate:                time.Now(),
-		CreationDate:               time.Now().AddDate(-1, 0, 0),
-		RegistryExpiryDate:         time.Now().AddDate(1, 0, 0),
+		UpdatedDate:                time.Now().UTC(),
+		CreationDate:               time.Now().AddDate(-1, 0, 0).UTC(),
+		RegistryExpiryDate:         time.Now().AddDate(1, 0, 0).UTC(),
 		Registrar:                  "Example Registrar",
 		RegistrarIANAID:            "1234",
 		RegistrarAbuseContactEmail: "abuse@example.com",
@@ -23,27 +23,27 @@ func TestWhoisResponse_String(t *testing.T) {
 		NameServers:                []string{"ns1.example.com", "ns2.example.com"},
 		DNSSEC:                     "unsigned",
 		ICANNComplaintURL:          "http://example.com/complaint",
-		LastWhoisUpdate:            time.Now(),
+		LastWhoisUpdate:            time.Now().UTC(),
 	}
 
 	expected := "Domain Name: example.com\n" +
 		"Registry Domain ID: 123456789\n" +
 		"Registrar WHOIS Server: whois.example.com\n" +
 		"Registrar URL: http://example.com\n" +
-		"Updated Date: " + w.UpdatedDate.String() + "\n" +
-		"Creation Date: " + w.CreationDate.String() + "\n" +
-		"Registry Expiry Date: " + w.RegistryExpiryDate.String() + "\n" +
+		"Updated Date: " + w.UpdatedDate.Format(time.RFC3339) + "\n" +
+		"Creation Date: " + w.CreationDate.Format(time.RFC3339) + "\n" +
+		"Registry Expiry Date: " + w.RegistryExpiryDate.Format(time.RFC3339) + "\n" +
 		"Registrar: Example Registrar\n" +
 		"Registrar IANA ID: 1234\n" +
 		"Registrar Abuse Contact Email: abuse@example.com\n" +
 		"Registrar Abuse Contact Phone: +1.1234567890\n" +
 		"Domain Status: active\n" +
 		"Domain Status: ok\n" +
-		"DNSSEC Data: ns1.example.com\n" +
-		"DNSSEC Data: ns2.example.com\n" +
+		"Name Server: ns1.example.com\n" +
+		"Name Server: ns2.example.com\n" +
 		"DNSSEC: unsigned\n" +
 		"ICANN Complaint URL: http://example.com/complaint\n" +
-		">>> Last update of whois database:" + w.LastWhoisUpdate.String() + " <<<\n"
+		">>> Last update of whois database:" + w.LastWhoisUpdate.Format(time.RFC3339) + " <<<\n"
 
 	if w.String() != expected {
 		t.Errorf("Expected:\n%s\nGot:\n%s", expected, w.String())
