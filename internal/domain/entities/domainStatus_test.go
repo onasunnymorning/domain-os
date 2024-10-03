@@ -337,3 +337,102 @@ func TestDomainStatus_HasHold(t *testing.T) {
 		require.Equal(t, tc.want, d.Status.HasHold())
 	}
 }
+func TestDomainStatus_StringSlice(t *testing.T) {
+	testcases := []struct {
+		name string
+		ds   DomainStatus
+		want []string
+	}{
+		{
+			name: "all false",
+			ds:   DomainStatus{},
+			want: []string{},
+		},
+		{
+			name: "OK status",
+			ds: DomainStatus{
+				OK: true,
+			},
+			want: []string{DomainStatusOK},
+		},
+		{
+			name: "Inactive status",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			want: []string{DomainStatusInactive},
+		},
+		{
+			name: "ClientTransferProhibited status",
+			ds: DomainStatus{
+				ClientTransferProhibited: true,
+			},
+			want: []string{DomainStatusClientTransferProhibited},
+		},
+		{
+			name: "ServerHold status",
+			ds: DomainStatus{
+				ServerHold: true,
+			},
+			want: []string{DomainStatusServerHold},
+		},
+		{
+			name: "Multiple statuses",
+			ds: DomainStatus{
+				OK:                       true,
+				ClientTransferProhibited: true,
+				PendingDelete:            true,
+			},
+			want: []string{DomainStatusOK, DomainStatusClientTransferProhibited, DomainStatusPendingDelete},
+		},
+		{
+			name: "All statuses",
+			ds: DomainStatus{
+				OK:                       true,
+				Inactive:                 true,
+				ClientTransferProhibited: true,
+				ServerTransferProhibited: true,
+				ClientDeleteProhibited:   true,
+				ServerDeleteProhibited:   true,
+				ClientUpdateProhibited:   true,
+				ServerUpdateProhibited:   true,
+				ClientRenewProhibited:    true,
+				ServerRenewProhibited:    true,
+				PendingCreate:            true,
+				PendingDelete:            true,
+				PendingTransfer:          true,
+				PendingUpdate:            true,
+				PendingRenew:             true,
+				PendingRestore:           true,
+				ClientHold:               true,
+				ServerHold:               true,
+			},
+			want: []string{
+				DomainStatusOK,
+				DomainStatusInactive,
+				DomainStatusClientTransferProhibited,
+				DomainStatusServerTransferProhibited,
+				DomainStatusClientDeleteProhibited,
+				DomainStatusServerDeleteProhibited,
+				DomainStatusClientUpdateProhibited,
+				DomainStatusServerUpdateProhibited,
+				DomainStatusClientRenewProhibited,
+				DomainStatusServerRenewProhibited,
+				DomainStatusPendingCreate,
+				DomainStatusPendingDelete,
+				DomainStatusPendingTransfer,
+				DomainStatusPendingUpdate,
+				DomainStatusPendingRenew,
+				DomainStatusPendingRestore,
+				DomainStatusClientHold,
+				DomainStatusServerHold,
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.ElementsMatch(t, tc.want, tc.ds.StringSlice())
+		})
+	}
+}
