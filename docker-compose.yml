@@ -127,7 +127,7 @@ services:
         - action: rebuild
           path: ./internal
         - action: rebuild
-          path: ./cmd
+          path: ./cmd/api
     environment:
       - GIN_MODE=${GIN_MODE}
       - AUTO_MIGRATE=${AUTO_MIGRATE}
@@ -153,6 +153,31 @@ services:
 
     ports:
       - ${API_PORT}:${API_PORT}
+    networks:
+      - dos
+
+# Whois container
+  whois:
+    image: "geapex/whois:${BRANCH}"
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./cmd/whois
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+
+    ports: 
+      - 43:43
     networks:
       - dos
 
