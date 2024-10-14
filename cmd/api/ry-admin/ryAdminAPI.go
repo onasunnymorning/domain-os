@@ -48,6 +48,7 @@ func inLambda() bool {
 func setSwaggerInfo() {
 	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
 	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	// docs.SwaggerInfo.Title = os.Getenv("API_NAME")
 }
 
 // runningInDocker returns true if the code is running in a Docker container. We determine this by looking for the /.dockerenv file
@@ -74,8 +75,8 @@ func initPrometheusMetrics(r *gin.Engine) {
 	p.Use(r) // Attach it to the Gin router
 }
 
-// @title APEX Domain OS ADMIN API
-// @license.name APEX all rights reserved
+// @title Domain OS Admin API
+// @license.name Geoffrey De Prins All rights reserved
 func main() {
 	// Load the APP configuration and log it
 	cfg := config.LoadConfig()

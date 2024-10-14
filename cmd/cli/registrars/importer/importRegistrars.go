@@ -33,7 +33,8 @@ const (
 )
 
 var (
-	BASE_URL         = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	// BASE_URL         = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	BASE_URL         = "http://a8606a802d82c48f693ae7facb8fc439-809021971.us-west-2.elb.amazonaws.com:8080"
 	DUPLICATE_ERRORS = []string{
 		ERR_DUPL_PK,
 		ERR_DUPL_NAME,
