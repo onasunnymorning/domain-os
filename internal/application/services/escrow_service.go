@@ -35,7 +35,8 @@ var (
 	ErrAnalysisFileDoesNotMatchEscrowFile = errors.New("analysis file does not match escrow file")
 	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
 
-	BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	// BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	BASE_URL = "http://a8606a802d82c48f693ae7facb8fc439-809021971.us-west-2.elb.amazonaws.com:8080"
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -53,7 +54,10 @@ type XMLEscrowService struct {
 // NewXMLEscrowService creates a new instance of EscrowService
 func NewXMLEscrowService(XMLFilename string) (*XMLEscrowService, error) {
 	// Fail fast if we can't open the file
-	f, _ := os.Open(XMLFilename)
+	f, err := os.Open(XMLFilename)
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
