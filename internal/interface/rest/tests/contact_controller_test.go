@@ -20,6 +20,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// MockGinHandler checks for the constant JWT token in the Authorization header
+func MockGinHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Token is valid; proceed to the next handler
+		c.Next()
+	}
+}
+
 var _ = Describe("ContactController", func() {
 	Describe("Managing contacts", func() {
 		// Initialize your router
@@ -46,7 +54,7 @@ var _ = Describe("ContactController", func() {
 		contactService := services.NewContactService(contactRepo, *roidService)
 
 		// Initialize and register your controller with the router
-		contactController := rest.NewContactController(router, contactService)
+		contactController := rest.NewContactController(router, contactService, MockGinHandler())
 		Expect(contactController).NotTo(BeNil())
 
 		registrarClid := "myRegistrar1234"
