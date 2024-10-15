@@ -16,17 +16,19 @@ type ContactController struct {
 	contactService interfaces.ContactService
 }
 
-func NewContactController(e *gin.Engine, contactService interfaces.ContactService) *ContactController {
+func NewContactController(e *gin.Engine, contactService interfaces.ContactService, handler gin.HandlerFunc) *ContactController {
 	controller := &ContactController{
 		contactService: contactService,
 	}
 
-	e.GET("/contacts", controller.ListContacts)
-	e.GET("/contacts/:id", controller.GetContactByID)
-	e.POST("/contacts", controller.CreateContact)
-	e.PUT("/contacts/:id", controller.UpdateContact)
-	e.DELETE("/contacts/:id", controller.DeleteContactByID)
-
+	contactGroup := e.Group("/contacts", handler)
+	{
+		contactGroup.GET("", controller.ListContacts)
+		contactGroup.GET(":id", controller.GetContactByID)
+		contactGroup.POST("", controller.CreateContact)
+		contactGroup.PUT(":id", controller.UpdateContact)
+		contactGroup.DELETE(":id", controller.DeleteContactByID)
+	}
 	return controller
 }
 

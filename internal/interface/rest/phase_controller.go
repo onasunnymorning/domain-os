@@ -16,23 +16,24 @@ type PhaseController struct {
 }
 
 // NewPhaseController returns a new instance of PhaseController
-func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService) *PhaseController {
+func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService, handler gin.HandlerFunc) *PhaseController {
 	ctrl := &PhaseController{
 		phaseService: phaseService,
 	}
 
-	e.POST("/tlds/:tldName/phases", ctrl.CreatePhase)
-	e.GET("/tlds/:tldName/phases", ctrl.ListPhases)
-	e.GET("/tlds/:tldName/phases/active", ctrl.ListActivePhasesPerTLD)
-	e.GET("/tlds/:tldName/phases/:phaseName", ctrl.GetPhase)
-	e.PUT("/tlds/:tldName/phases/:phaseName/policy", ctrl.UpdatePhasePolicy)
-	e.DELETE("/tlds/:tldName/phases/:phaseName", ctrl.DeletePhase)
-	e.PUT("/tlds/:tldName/phases/:phaseName/end", ctrl.EndPhase)
-	e.POST("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
-	e.DELETE("/tlds/:tldName/phases/:phaseName/premium-list/:premiumListName", ctrl.UnSetPremiumList)
-
-	e.GET("/phases/active/ga", ctrl.ListActiveGAPhases)
-
+	phaseGroup := e.Group("/tlds/:tldName/phases", handler)
+	{
+		phaseGroup.POST("", ctrl.CreatePhase)
+		phaseGroup.GET("", ctrl.ListPhases)
+		phaseGroup.GET("active", ctrl.ListActivePhasesPerTLD)
+		phaseGroup.GET(":phaseName", ctrl.GetPhase)
+		phaseGroup.PUT(":phaseName/policy", ctrl.UpdatePhasePolicy)
+		phaseGroup.DELETE(":phaseName", ctrl.DeletePhase)
+		phaseGroup.PUT(":phaseName/end", ctrl.EndPhase)
+		phaseGroup.POST(":phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
+		phaseGroup.DELETE(":phaseName/premium-list/:premiumListName", ctrl.UnSetPremiumList)
+	}
+	e.GET("/phases/active/ga", handler, ctrl.ListActiveGAPhases)
 	return ctrl
 }
 

@@ -16,16 +16,18 @@ type AccreditationController struct {
 }
 
 // NewAccreditationController returns a new AccreditationController
-func NewAccreditationController(e *gin.Engine, accService interfaces.AccreditationService) *AccreditationController {
+func NewAccreditationController(e *gin.Engine, accService interfaces.AccreditationService, handler gin.HandlerFunc) *AccreditationController {
 	controller := &AccreditationController{
 		accService: accService,
 	}
 
-	e.POST("/accreditations/:tldName/:rarClID", controller.Accredit)
-	e.DELETE("/accreditations/:tldName/:rarClID", controller.Deaccredit)
-	e.GET("/accreditations/registrar/:rarClID", controller.ListRegistarAccreditations)
-	e.GET("/accreditations/tld/:tldName", controller.ListTLDRegistrars)
-
+	accrediationGroup := e.Group("/accreditations", handler)
+	{
+		accrediationGroup.POST(":tldName/:rarClID", controller.Accredit)
+		accrediationGroup.DELETE(":tldName/:rarClID", controller.Deaccredit)
+		accrediationGroup.GET("registrar/:rarClID", controller.ListRegistarAccreditations)
+		accrediationGroup.GET("tld/:tldName", controller.ListTLDRegistrars)
+	}
 	return controller
 }
 

@@ -16,15 +16,20 @@ type SyncResult struct {
 }
 
 // NewSyncController creates a new SyncController and registers the endpoints
-func NewSyncController(e *gin.Engine, syncService interfaces.SyncService) *SyncController {
+func NewSyncController(e *gin.Engine, syncService interfaces.SyncService, handler gin.HandlerFunc) *SyncController {
 	controller := &SyncController{
 		syncService: syncService,
 	}
 
-	e.PUT("/sync/icann-spec5", controller.SyncSpec5)
-	e.PUT("/sync/iana-registrars", controller.SyncRegistrars)
-	e.PUT("/sync/fx/:currency", controller.SyncFX)
+	syncGroup := e.Group("/sync", handler)
 
+	{
+
+		syncGroup.PUT("icann-spec5", controller.SyncSpec5)
+		syncGroup.PUT("iana-registrars", controller.SyncRegistrars)
+		syncGroup.PUT("fx/:currency", controller.SyncFX)
+
+	}
 	return controller
 }
 

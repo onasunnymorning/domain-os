@@ -12,12 +12,16 @@ type Spec5Controller struct {
 }
 
 // NewSpec5Controller creates a new Spec5Controller and registers the endpoints
-func NewSpec5Controller(e *gin.Engine, spec5Service interfaces.Spec5Service) *Spec5Controller {
+func NewSpec5Controller(e *gin.Engine, spec5Service interfaces.Spec5Service, handler gin.HandlerFunc) *Spec5Controller {
 	controller := &Spec5Controller{
 		Spec5Service: spec5Service,
 	}
 
-	e.GET("/spec5labels", controller.List)
+	spec5Routes := e.Group("/spec5labels", handler)
+
+	{
+		spec5Routes.GET("", controller.List)
+	}
 
 	return controller
 }
