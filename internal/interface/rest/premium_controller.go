@@ -18,20 +18,21 @@ type PremiumController struct {
 }
 
 // NewPremiumController returns a new instance of PremiumController
-func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListService, labelService interfaces.PremiumLabelService) *PremiumController {
+func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListService, labelService interfaces.PremiumLabelService, handler gin.HandlerFunc) *PremiumController {
 	ctrl := &PremiumController{listService: listService, labelService: labelService}
 
-	e.POST("/premium/lists", ctrl.CreateList)
-	e.GET("/premium/lists/:name", ctrl.GetListByName)
-	e.DELETE("/premium/lists/:name", ctrl.DeleteListByName)
-	e.GET("/premium/lists", ctrl.ListPremiumLists)
+	premiumGroup := e.Group("/premium", handler)
 
-	e.GET("/premium/labels", ctrl.ListPremiumLabels)
-
-	e.POST("/premium/lists/:name/labels", ctrl.CreateLabel)
-	e.GET("/premium/lists/:name/labels/:label/:currency", ctrl.GetLabelByLabelListAndCurrency)
-	e.DELETE("/premium/lists/:name/labels/:label/:currency", ctrl.DeleteLabelByLabelListAndCurrency)
-
+	{
+		premiumGroup.POST("lists", ctrl.CreateList)
+		premiumGroup.GET("lists/:name", ctrl.GetListByName)
+		premiumGroup.DELETE("lists/:name", ctrl.DeleteListByName)
+		premiumGroup.GET("lists", ctrl.ListPremiumLists)
+		premiumGroup.GET("labels", ctrl.ListPremiumLabels)
+		premiumGroup.POST("lists/:name/labels", ctrl.CreateLabel)
+		premiumGroup.GET("lists/:name/labels/:label/:currency", ctrl.GetLabelByLabelListAndCurrency)
+		premiumGroup.DELETE("lists/:name/labels/:label/:currency", ctrl.DeleteLabelByLabelListAndCurrency)
+	}
 	return ctrl
 }
 

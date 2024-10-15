@@ -18,21 +18,24 @@ type TLDController struct {
 	domService interfaces.DomainService
 }
 
-func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss interfaces.DomainService) *TLDController {
+func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss interfaces.DomainService, handler gin.HandlerFunc) *TLDController {
 	controller := &TLDController{
 		tldService: tldService,
 		domService: dnss,
 	}
 
-	e.GET("/tlds/:tldName", controller.GetTLDByName)
-	e.GET("/tlds", controller.ListTLDs)
-	e.GET("/tlds/count", controller.GetTLDCount)
-	e.POST("/tlds", controller.CreateTLD)
-	e.DELETE("/tlds/:tldName", controller.DeleteTLDByName)
-	e.GET("/tlds/:tldName/dns/resource-records", controller.GetTLDHeader)
-	e.GET("/tlds/:tldName/dns/domain-delegations", controller.GetNSRecordsPerTLD)
-	e.GET("/tlds/:tldName/dns/glue-records", controller.GetGlueRecordsPerTLD)
+	tldRoutes := e.Group("/tlds", handler)
 
+	{
+		tldRoutes.GET(":tldName", controller.GetTLDByName)
+		tldRoutes.GET("", controller.ListTLDs)
+		tldRoutes.GET("count", controller.GetTLDCount)
+		tldRoutes.POST("", controller.CreateTLD)
+		tldRoutes.DELETE(":tldName", controller.DeleteTLDByName)
+		tldRoutes.GET(":tldName/dns/resource-records", controller.GetTLDHeader)
+		tldRoutes.GET(":tldName/dns/domain-delegations", controller.GetNSRecordsPerTLD)
+		tldRoutes.GET(":tldName/dns/glue-records", controller.GetGlueRecordsPerTLD)
+	}
 	return controller
 }
 

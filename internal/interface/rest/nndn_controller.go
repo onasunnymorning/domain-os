@@ -15,17 +15,17 @@ type NNDNController struct {
 	nndnService interfaces.NNDNService
 }
 
-func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService) *NNDNController {
+func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService, handler gin.HandlerFunc) *NNDNController {
 	controller := &NNDNController{
 		nndnService: nndnService,
 	}
 
-	nndnRouter := e.Group("/nndns")
+	nndnRouter := e.Group("/nndns", handler)
 	{
-		nndnRouter.GET("/:name", controller.GetNNDNByName)
-		nndnRouter.GET("/", controller.ListNNDNs)
-		nndnRouter.POST("/", controller.CreateNNDN)
-		nndnRouter.DELETE("/:name", controller.DeleteNNDNByName)
+		nndnRouter.GET(":name", controller.GetNNDNByName)
+		nndnRouter.GET("", controller.ListNNDNs)
+		nndnRouter.POST("", controller.CreateNNDN)
+		nndnRouter.DELETE(":name", controller.DeleteNNDNByName)
 	}
 
 	return controller

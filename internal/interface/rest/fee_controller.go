@@ -15,14 +15,17 @@ type FeeController struct {
 }
 
 // NewFeeController returns a new instance of FeeController
-func NewFeeController(e *gin.Engine, feeService interfaces.FeeService) *FeeController {
+func NewFeeController(e *gin.Engine, feeService interfaces.FeeService, handler gin.HandlerFunc) *FeeController {
 	controller := &FeeController{
 		feeService: feeService,
 	}
-	// Add the routes
-	e.POST("/tlds/:tldName/phases/:phaseName/fees", controller.CreateFee)
-	e.GET("/tlds/:tldName/phases/:phaseName/fees", controller.ListFees)
-	e.DELETE("/tlds/:tldName/phases/:phaseName/fees/:feeName/:currency", controller.DeleteFee)
+
+	feeGroup := e.Group("/tlds/:tldName/phases/:phaseName/fees", handler)
+	{
+		feeGroup.POST("", controller.CreateFee)
+		feeGroup.GET("", controller.ListFees)
+		feeGroup.DELETE(":feeName/:currency", controller.DeleteFee)
+	}
 
 	return controller
 }

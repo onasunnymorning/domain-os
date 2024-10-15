@@ -6,6 +6,7 @@ import (
 
 // AdminApiConfig contains the configuration for the admin api
 type AdminApiConfig struct {
+	Version            string
 	NewRelicEnabled    bool
 	AutoMigrate        bool
 	EventStreamEnabled bool
@@ -13,6 +14,8 @@ type AdminApiConfig struct {
 	GinMode            string
 	PrometheusEnabled  bool
 	ApiName            string
+	ApiHost            string
+	ApiPort            string
 }
 
 func LoadConfig() *AdminApiConfig {
@@ -24,5 +27,8 @@ func LoadConfig() *AdminApiConfig {
 		GinMode:            os.Getenv("GIN_MODE"),
 		PrometheusEnabled:  os.Getenv("PROMETHEUS_ENABLED") == "true",
 		ApiName:            os.Getenv("API_NAME"),
+		Version:            os.Getenv("API_VERSION"),
+		ApiHost:            os.Getenv("API_HOST"),
+		ApiPort:            os.Getenv("API_PORT"),
 	}
 }

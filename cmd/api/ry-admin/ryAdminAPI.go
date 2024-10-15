@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
@@ -28,12 +30,12 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"       // gin-swagger middleware
 
 	// NeW Relic APM
-
 	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 const (
-	AppName = entities.AppAdminAPI
+	APP_NAME  = entities.AppAdminAPI
+	JWT_TOKEN = "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -45,10 +47,10 @@ func inLambda() bool {
 }
 
 // setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
-func setSwaggerInfo() {
-	docs.SwaggerInfo.Version = os.Getenv("API_VERSION")
-	docs.SwaggerInfo.Host = os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
-	// docs.SwaggerInfo.Title = os.Getenv("API_NAME")
+func setSwaggerInfo(cfg *config.AdminApiConfig) {
+	docs.SwaggerInfo.Version = cfg.Version
+	docs.SwaggerInfo.Host = cfg.ApiHost + ":" + cfg.ApiPort
+	docs.SwaggerInfo.Title = cfg.ApiName
 }
 
 // runningInDocker returns true if the code is running in a Docker container. We determine this by looking for the /.dockerenv file
@@ -62,7 +64,7 @@ func runningInDocker() bool {
 // initNewRelicAPM initializes New Relic APM
 func initNewRelicAPM() (*newrelic.Application, error) {
 	return newrelic.NewApplication(
-		newrelic.ConfigAppName(AppName),
+		newrelic.ConfigAppName(APP_NAME),
 		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
@@ -73,6 +75,31 @@ func initNewRelicAPM() (*newrelic.Application, error) {
 func initPrometheusMetrics(r *gin.Engine) {
 	p := ginprometheus.NewPrometheus("gin")
 	p.Use(r) // Attach it to the Gin router
+}
+
+// TokenAuthMiddleware checks for the constant JWT token in the Authorization header
+func TokenAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+
+		// Check if the Authorization header is present and properly formatted
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header missing or malformed"})
+			return
+		}
+
+		// Extract the token from the header
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Compare the token with the constant JWT token
+		if token != JWT_TOKEN {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// Token is valid; proceed to the next handler
+		c.Next()
+	}
 }
 
 // @title Domain OS Admin API
@@ -109,7 +136,7 @@ func main() {
 	}
 
 	// Initialize variables for the Swagger API documentation
-	setSwaggerInfo()
+	setSwaggerInfo(cfg)
 
 	// Set up the GORM DB connection
 	gormDB, err := postgres.NewConnection(
@@ -149,7 +176,7 @@ func main() {
 		}
 		eventSvc = services.NewEventService(eventRepo)
 		err = eventSvc.SendStream(&entities.Event{
-			Source: AppName,
+			Source: APP_NAME,
 			User:   "system",
 			Action: "startup",
 			Details: entities.EventDetails{
@@ -254,24 +281,24 @@ func main() {
 	}
 
 	rest.NewPingController(r)
-	rest.NewRegistryOperatorController(r, registryOperatorService)
-	rest.NewTLDController(r, tldService, domainService)
-	rest.NewNNDNController(r, nndnService)
-	rest.NewSyncController(r, syncService)
-	rest.NewSpec5Controller(r, spec5Service)
-	rest.NewIANARegistrarController(r, ianaRegistrarService)
-	rest.NewRegistrarController(r, registrarService, ianaRegistrarService)
-	rest.NewContactController(r, contactService)
-	rest.NewHostController(r, hostService)
-	rest.NewDomainController(r, domainService)
-	rest.NewPhaseController(r, phaseService)
-	rest.NewFeeController(r, feeService)
-	rest.NewPriceController(r, priceService)
-	rest.NewAccreditationController(r, accreditationService)
-	rest.NewPremiumController(r, premiumListService, premiumLabelService)
-	rest.NewFXController(r, fxService)
-	rest.NewQuoteController(r, quoteService)
-	rest.NewWhoisController(r, whoisService)
+	rest.NewRegistryOperatorController(r, registryOperatorService, TokenAuthMiddleware())
+	rest.NewTLDController(r, tldService, domainService, TokenAuthMiddleware())
+	rest.NewNNDNController(r, nndnService, TokenAuthMiddleware())
+	rest.NewSyncController(r, syncService, TokenAuthMiddleware())
+	rest.NewSpec5Controller(r, spec5Service, TokenAuthMiddleware())
+	rest.NewIANARegistrarController(r, ianaRegistrarService, TokenAuthMiddleware())
+	rest.NewRegistrarController(r, registrarService, ianaRegistrarService, TokenAuthMiddleware())
+	rest.NewContactController(r, contactService, TokenAuthMiddleware())
+	rest.NewHostController(r, hostService, TokenAuthMiddleware())
+	rest.NewDomainController(r, domainService, TokenAuthMiddleware())
+	rest.NewPhaseController(r, phaseService, TokenAuthMiddleware())
+	rest.NewFeeController(r, feeService, TokenAuthMiddleware())
+	rest.NewPriceController(r, priceService, TokenAuthMiddleware())
+	rest.NewAccreditationController(r, accreditationService, TokenAuthMiddleware())
+	rest.NewPremiumController(r, premiumListService, premiumLabelService, TokenAuthMiddleware())
+	rest.NewFXController(r, fxService, TokenAuthMiddleware())
+	rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
+	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

@@ -20,15 +20,17 @@ type IANARegistrarController struct {
 }
 
 // NewIANARegistrarController creates a new IANARegistrarController and registers the endpoints
-func NewIANARegistrarController(e *gin.Engine, ianaRegistrarService interfaces.IANARegistrarService) *IANARegistrarController {
+func NewIANARegistrarController(e *gin.Engine, ianaRegistrarService interfaces.IANARegistrarService, handler gin.HandlerFunc) *IANARegistrarController {
 	controller := &IANARegistrarController{
 		IanaRegistrarService: ianaRegistrarService,
 	}
 
-	e.GET("/ianaregistrars", controller.List)
-	e.GET("/ianaregistrars/count", controller.Count)
-	e.GET("/ianaregistrars/:gurID", controller.GetByGurID)
-
+	ianaRarGroup := e.Group("/ianaregistrars", handler)
+	{
+		ianaRarGroup.GET("", controller.List)
+		ianaRarGroup.GET("count", controller.Count)
+		ianaRarGroup.GET(":gurID", controller.GetByGurID)
+	}
 	return controller
 }
 

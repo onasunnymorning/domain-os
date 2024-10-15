@@ -21,38 +21,43 @@ type DomainController struct {
 	domainService interfaces.DomainService
 }
 
-func NewDomainController(e *gin.Engine, domService interfaces.DomainService) *DomainController {
+func NewDomainController(e *gin.Engine, domService interfaces.DomainService, handler gin.HandlerFunc) *DomainController {
 	controller := &DomainController{
 		domainService: domService,
 	}
 
-	// Admin endpoints
-	e.POST("/domains", controller.CreateDomain) // use this when importing or creating a domain as an admin with full control
-	e.GET("/domains/:name", controller.GetDomainByName)
-	e.PUT("/domains/:name", controller.UpdateDomain)
-	e.DELETE("/domains/:name", controller.DeleteDomainByName)
-	e.GET("/domains", controller.ListDomains)
-	e.GET("/domains/count", controller.CountDomains)
-	// Add and remove hosts
-	e.POST("/domains/:name/hosts/:roid", controller.AddHostToDomain)
-	e.POST("/domains/:name/hostname/:hostName", controller.AddHostToDomainByHostName)
-	e.DELETE("/domains/:name/hosts/:roid", controller.RemoveHostFromDomain)
-	e.DELETE("/domains/:name/hostname/:hostName", controller.RemoveHostFromDomainByHostName)
+	domainGroup := e.Group("/domains", handler)
 
-	// Set domain to dropcatch (will be blocked when deleted)
-	e.POST("/domains/:name/dropcatch", controller.SetDropCatch)
-	e.DELETE("/domains/:name/dropcatch", controller.UnSetDropCatch)
-	// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
-	e.GET("/domains/:name/check", controller.CheckDomain)
-	e.POST("/domains/:name/register", controller.RegisterDomain)
-	e.POST("/domains/:name/renew", controller.RenewDomain)
-	e.POST("/domains/:name/autorenew", controller.AutoRenewDomain)
-	e.DELETE("/domains/:name/markdelete", controller.MarkDomainForDeletion)
-	e.POST("/domains/:name/restore", controller.RestoreDomain)
+	{
 
-	// Lifecycle endpoints
-	e.GET("/domains/expiring", controller.ListExpiringDomains)
-	e.GET("/domains/expiring/count", controller.CountExpiringDomains)
+		// Admin endpoints
+		domainGroup.POST("", controller.CreateDomain) // use this when importing or creating a domain as an admin with full control
+		domainGroup.GET(":name", controller.GetDomainByName)
+		domainGroup.PUT(":name", controller.UpdateDomain)
+		domainGroup.DELETE(":name", controller.DeleteDomainByName)
+		domainGroup.GET("", controller.ListDomains)
+		domainGroup.GET("count", controller.CountDomains)
+		// Add and remove hosts
+		domainGroup.POST(":name/hosts/:roid", controller.AddHostToDomain)
+		domainGroup.POST(":name/hostname/:hostName", controller.AddHostToDomainByHostName)
+		domainGroup.DELETE(":name/hosts/:roid", controller.RemoveHostFromDomain)
+		domainGroup.DELETE(":name/hostname/:hostName", controller.RemoveHostFromDomainByHostName)
+
+		// Set domain to dropcatch (will be blocked when deleted)
+		domainGroup.POST(":name/dropcatch", controller.SetDropCatch)
+		domainGroup.DELETE(":name/dropcatch", controller.UnSetDropCatch)
+		// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
+		domainGroup.GET(":name/check", controller.CheckDomain)
+		domainGroup.POST(":name/register", controller.RegisterDomain)
+		domainGroup.POST(":name/renew", controller.RenewDomain)
+		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
+		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
+		domainGroup.POST(":name/restore", controller.RestoreDomain)
+
+		// Lifecycle endpoints
+		domainGroup.GET("expiring", controller.ListExpiringDomains)
+		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
+	}
 
 	return controller
 }
