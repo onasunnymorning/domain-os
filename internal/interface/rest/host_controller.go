@@ -17,22 +17,23 @@ type HostController struct {
 }
 
 // NewHostController creates a new instance of HostController
-func NewHostController(e *gin.Engine, hostService interfaces.HostService) *HostController {
+func NewHostController(e *gin.Engine, hostService interfaces.HostService, handler gin.HandlerFunc) *HostController {
 	c := &HostController{
 		hostService: hostService,
 	}
 
-	// HOST ROUTES
-	e.GET("/hosts/:roid", c.GetHostByRoID)
-	e.GET("/hosts", c.ListHosts)
-	e.DELETE("/hosts/:roid", c.DeleteHostByRoID)
-	e.POST("/hosts", c.CreateHost)
+	hostGroup := e.Group("/hosts", handler)
 
-	e.GET("/hostname/:name/:clid", c.GetHostByNameAndClid)
+	{
+		hostGroup.GET(":roid", c.GetHostByRoID)
+		hostGroup.GET("", c.ListHosts)
+		hostGroup.DELETE(":roid", c.DeleteHostByRoID)
+		hostGroup.POST("", c.CreateHost)
+		hostGroup.POST(":roid/addresses/:ip", c.AddAddressToHost)
+		hostGroup.DELETE(":roid/addresses/:ip", c.RemoveAddressFromHost)
+	}
 
-	// ADDRESSES ROUTES
-	e.POST("/hosts/:roid/addresses/:ip", c.AddAddressToHost)
-	e.DELETE("/hosts/:roid/addresses/:ip", c.RemoveAddressFromHost)
+	e.GET("/hostname/:name/:clid", handler, c.GetHostByNameAndClid)
 
 	return c
 }

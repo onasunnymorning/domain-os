@@ -13,14 +13,16 @@ type FXController struct {
 }
 
 // NewFXController returns a new FXController
-func NewFXController(e *gin.Engine, fxService interfaces.FXService) *FXController {
+func NewFXController(e *gin.Engine, fxService interfaces.FXService, handler gin.HandlerFunc) *FXController {
 	ctrl := &FXController{
 		fxService: fxService,
 	}
 
-	e.GET("/fx/:baseCurrency", ctrl.ListByBaseCurrency)
-	e.GET("/fx/:baseCurrency/:targetCurrency", ctrl.GetByBaseAndTargetCurrency)
-
+	fxGroup := e.Group("/fx", handler)
+	{
+		fxGroup.GET(":baseCurrency", ctrl.ListByBaseCurrency)
+		fxGroup.GET(":baseCurrency/:targetCurrency", ctrl.GetByBaseAndTargetCurrency)
+	}
 	return ctrl
 }
 

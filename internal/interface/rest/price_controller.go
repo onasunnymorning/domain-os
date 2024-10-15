@@ -15,15 +15,17 @@ type PriceController struct {
 }
 
 // NewPriceController returns a new instance of PriceController
-func NewPriceController(e *gin.Engine, priceService interfaces.PriceService) *PriceController {
+func NewPriceController(e *gin.Engine, priceService interfaces.PriceService, handler gin.HandlerFunc) *PriceController {
 	controller := &PriceController{
 		priceService: priceService,
 	}
-	// Add the routes
-	e.POST("/tlds/:tldName/phases/:phaseName/prices", controller.CreatePrice)
-	e.GET("/tlds/:tldName/phases/:phaseName/prices", controller.ListPrices)
-	e.DELETE("/tlds/:tldName/phases/:phaseName/prices/:currency", controller.DeletePrice)
 
+	priceGroup := e.Group("/tlds/:tldName/phases/:phaseName/prices", handler)
+	{
+		priceGroup.POST("", controller.CreatePrice)
+		priceGroup.GET("", controller.ListPrices)
+		priceGroup.DELETE(":currency", controller.DeletePrice)
+	}
 	return controller
 }
 

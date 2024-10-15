@@ -16,18 +16,20 @@ type RegistryOperatorController struct {
 }
 
 // NewRegistryOperatorController creates a new RegistryOperatorController
-func NewRegistryOperatorController(e *gin.Engine, ryService interfaces.RegistryOperatorService) *RegistryOperatorController {
+func NewRegistryOperatorController(e *gin.Engine, ryService interfaces.RegistryOperatorService, handler gin.HandlerFunc) *RegistryOperatorController {
 	ctrl := &RegistryOperatorController{
 		ryService: ryService,
 	}
 
-	// Add routes
-	e.POST("/registry-operators", ctrl.Create)
-	e.GET("/registry-operators", ctrl.List)
-	e.GET("/registry-operators/:ryid", ctrl.GetByRyID)
-	e.PUT("/registry-operators/:ryid", ctrl.Update)
-	e.DELETE("/registry-operators/:ryid", ctrl.DeleteByRyID)
+	ryOpGroup := e.Group("/registry-operators", handler)
 
+	{
+		ryOpGroup.POST("", ctrl.Create)
+		ryOpGroup.GET("", ctrl.List)
+		ryOpGroup.GET(":ryid", ctrl.GetByRyID)
+		ryOpGroup.PUT(":ryid", ctrl.Update)
+		ryOpGroup.DELETE(":ryid", ctrl.DeleteByRyID)
+	}
 	return ctrl
 }
 
