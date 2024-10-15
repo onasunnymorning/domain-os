@@ -12,12 +12,12 @@ type QuoteController struct {
 }
 
 // NewQuoteController returns a new QuoteController
-func NewQuoteController(e *gin.Engine, quoteService interfaces.QuoteService) *QuoteController {
+func NewQuoteController(e *gin.Engine, quoteService interfaces.QuoteService, handler gin.HandlerFunc) *QuoteController {
 	ctrl := &QuoteController{
 		QuoteService: quoteService,
 	}
 
-	e.POST("/quotes", ctrl.GetQuote)
+	e.POST("/quotes", handler, ctrl.GetQuote)
 
 	return ctrl
 }

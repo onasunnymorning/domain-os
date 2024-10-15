@@ -24,22 +24,26 @@ type RegistrarController struct {
 }
 
 // NewRegistrarController creates a new RegistrarController
-func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarService, ianaRegistrarService interfaces.IANARegistrarService) *RegistrarController {
+func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarService, ianaRegistrarService interfaces.IANARegistrarService, handler gin.HandlerFunc) *RegistrarController {
 	controller := &RegistrarController{
 		ianaRegistrarService: ianaRegistrarService,
 		rarService:           rarService,
 	}
 
-	e.GET("/registrars/:clid", controller.GetByClID)
-	e.GET("/registrars/gurid/:gurid", controller.GetByGurID)
-	e.GET("/registrars", controller.List)
-	e.GET("/registrars/count", controller.GetRegistrarCount)
-	e.POST("/registrars", controller.Create)
-	e.POST("/registrars-bulk", controller.BulkCreate)
-	e.PUT("/registrars/:clid", controller.UpdateRegistrar)
-	e.PUT("/registrars/:clid/status/:status", controller.SetRegistrarStatus)
-	e.POST("/registrars/:gurid", controller.CreateRegistrarByGurID)
-	e.DELETE("/registrars/:clid", controller.DeleteRegistrarByClID)
+	rarGroup := e.Group("/registrars", handler)
+	{
+		rarGroup.GET(":clid", controller.GetByClID)
+		rarGroup.GET("gurid/:gurid", controller.GetByGurID)
+		rarGroup.GET("", controller.List)
+		rarGroup.GET("count", controller.GetRegistrarCount)
+		rarGroup.POST("", controller.Create)
+		rarGroup.PUT(":clid", controller.UpdateRegistrar)
+		rarGroup.PUT(":clid/status/:status", controller.SetRegistrarStatus)
+		rarGroup.POST(":gurid", controller.CreateRegistrarByGurID)
+		rarGroup.DELETE(":clid", controller.DeleteRegistrarByClID)
+	}
+
+	e.POST("/registrars-bulk", handler, controller.BulkCreate)
 
 	return controller
 }

@@ -14,12 +14,12 @@ type WhoisController struct {
 }
 
 // NewWhoisController creates a new instance of WhoisController
-func NewWhoisController(e *gin.Engine, whoisService interfaces.WhoisService) *WhoisController {
+func NewWhoisController(e *gin.Engine, whoisService interfaces.WhoisService, handler gin.HandlerFunc) *WhoisController {
 	ctrl := &WhoisController{
 		whoisService: whoisService,
 	}
 
-	e.GET("/whois/:domainName", ctrl.GetWhois)
+	e.GET("/whois/:domainName", handler, ctrl.GetWhois)
 
 	return ctrl
 }

@@ -15,6 +15,7 @@ require (
 	github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
 	github.com/dotse/epp-lib v0.1.1
 	github.com/gin-contrib/cors v1.7.2
+	github.com/gin-gonic/autotls v1.1.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lib/pq v1.10.9
