@@ -36,7 +36,7 @@ var _ = Describe("RegistrarController", func() {
 		ianaRepo := postgres.NewIANARegistrarRepository(db)
 		ianaRegistrarService := services.NewIANARegistrarService(ianaRepo)
 
-		registrarController := rest.NewRegistrarController(router, registrarService, ianaRegistrarService)
+		registrarController := rest.NewRegistrarController(router, registrarService, ianaRegistrarService, MockGinHandler())
 		Expect(registrarController).NotTo(BeNil())
 
 		var createdID string

@@ -23,6 +23,14 @@ func (m *MockWhoisService) GetDomainWhois(ctx context.Context, domainName string
 	return args.Get(0).(*entities.WhoisResponse), args.Error(1)
 }
 
+// MockGinHandler checks for the constant JWT token in the Authorization header
+func MockGinHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Token is valid; proceed to the next handler
+		c.Next()
+	}
+}
+
 func TestGetWhois_Success(t *testing.T) {
 	// Create a gin engine
 	gin.SetMode(gin.TestMode)
@@ -42,7 +50,7 @@ func TestGetWhois_Success(t *testing.T) {
 	mockWhoisService.On("GetDomainWhois", mock.Anything, "example.com").Return(expectedWhois, nil)
 
 	// Create the WhoisController
-	NewWhoisController(router, mockWhoisService)
+	NewWhoisController(router, mockWhoisService, MockGinHandler())
 
 	// Create a request to the endpoint
 	req, _ := http.NewRequest(http.MethodGet, "/whois/example.com", nil)
@@ -70,7 +78,7 @@ func TestGetWhois_NotFound(t *testing.T) {
 	mockWhoisService.On("GetDomainWhois", mock.Anything, "notfound.com").Return((*entities.WhoisResponse)(nil), entities.ErrDomainNotFound)
 
 	// Create the WhoisController
-	NewWhoisController(router, mockWhoisService)
+	NewWhoisController(router, mockWhoisService, MockGinHandler())
 
 	// Create a request to the endpoint
 	req, _ := http.NewRequest(http.MethodGet, "/whois/notfound.com", nil)
@@ -97,7 +105,7 @@ func TestGetWhois_InternalServerError(t *testing.T) {
 	mockWhoisService.On("GetDomainWhois", mock.Anything, "example.com").Return((*entities.WhoisResponse)(nil), errors.New("internal error"))
 
 	// Create the WhoisController
-	NewWhoisController(router, mockWhoisService)
+	NewWhoisController(router, mockWhoisService, MockGinHandler())
 
 	// Create a request to the endpoint
 	req, _ := http.NewRequest(http.MethodGet, "/whois/example.com", nil)
