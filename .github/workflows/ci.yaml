@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Integration Tests
-        run: docker compose -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
+        run: docker compose --profile essential -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
         env:
           OPENEXCHANGERATES_APP_ID: ${{ secrets.OPENEXCHANGERATES_APP_ID }}
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
@@ -103,6 +103,8 @@ jobs:
           DB_NAME: integrationtests
           API_PORT: 8080
           API_HOST: domain-os-admin-api-1
+          API_NAME: ${{ secrets.API_NAME }}
+          API_VERSION: ${{ secrets.API_VERSION }}
           BRANCH: ${{ github.sha }}
           GIN_MODE: debug
           AUTO_MIGRATE: true
