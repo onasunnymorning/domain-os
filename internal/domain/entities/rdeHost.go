@@ -80,13 +80,7 @@ func (h *RDEHost) ToEntity() (*Host, error) {
 			return nil, err
 		}
 	}
-	// set the statusses
-	// for _, status := range h.Status {
-	// 	err := host.SetStatus(status.S)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
+
 	hs, err := GetHostStatusFromRDEHostStatus(h.Status) // We use this instead of SetStatus because we can't guarantee the order of the statuses, which may break in case a prohibition is set first
 	if err != nil {
 		return nil, err

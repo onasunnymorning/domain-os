@@ -669,7 +669,7 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 
 // ListExpiringDomains godoc
 // @Summary List expiring domains
-// @Description List expiring domains, if no days are provided it will default to 0 days.
+// @Description List expiring domains, if no days are provided it will default to 0 days, if no clid is provided it will default to all registrars
 // @Tags Domains
 // @Produce json
 // @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"

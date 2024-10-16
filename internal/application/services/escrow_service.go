@@ -35,8 +35,8 @@ var (
 	ErrAnalysisFileDoesNotMatchEscrowFile = errors.New("analysis file does not match escrow file")
 	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
 
-	// BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
-	BASE_URL = "http://a8606a802d82c48f693ae7facb8fc439-809021971.us-west-2.elb.amazonaws.com:8080"
+	BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	BEARER   = "Bearer " + os.Getenv("API_TOKEN")
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -514,11 +514,6 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
 				}
 
-				// Add the command to our slice of create commands
-				if returnHostCommands {
-					hostCmds = append(hostCmds, cmd)
-				}
-
 				writer.Write(host.ToCSV())
 				// Set Status in statusFile
 				hStatuses := []string{host.Name}
@@ -536,6 +531,14 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 				for _, addr := range host.Addr {
 					addrCounter++
 					addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
+				}
+
+				// Add the command to our slice of create commands
+				if returnHostCommands {
+					// Unset the linked status in case the deposit claims its linked but there is no domain linked to it.
+					// Once we linke the hosts and domains the status will be updated
+					cmd.Status.Linked = false
+					hostCmds = append(hostCmds, cmd)
 				}
 
 				// Update counters in Registrar Map
@@ -1014,7 +1017,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 	writer := csv.NewWriter(outFile)
 	defer writer.Flush()
 
-	bearer := "Bearer " + os.Getenv("EPP_API_TOKEN")
+	bearer := "Bearer " + os.Getenv("API_TOKEN")
 
 	var found = 0
 	var missing = 0
@@ -1246,6 +1249,7 @@ func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.Crea
 	if err != nil {
 		return err
 	}
+	req.Header.Add("Authorization", BEARER)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1370,7 +1374,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 	if err != nil {
 		return err
 	}
-
+	req.Header.Add("Authorization", BEARER)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1501,7 +1505,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 	if err != nil {
 		return err
 	}
-
+	req.Header.Add("Authorization", BEARER)
 	resp, err := client.Do(req)
 	if err != nil {
 		svc.Import.Domains.Failed++
@@ -1608,7 +1612,7 @@ func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, ho
 	if err != nil {
 		return err
 	}
-
+	req.Header.Add("Authorization", BEARER)
 	// Send it
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1694,6 +1698,7 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 	if err != nil {
 		return err
 	}
+	req.Header.Add("Authorization", BEARER)
 	// Send it
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1758,6 +1763,7 @@ func (svc *XMLEscrowService) GetTLDFromAPI(tldName string) (*entities.TLD, error
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Add("Authorization", BEARER)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
