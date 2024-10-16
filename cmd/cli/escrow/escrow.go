@@ -47,7 +47,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name:     "map-registrars",
-						Aliases:  []string{"map"},
+						Aliases:  []string{"map", "m"},
 						Usage:    "try to map registrar IDs to the target system",
 						Value:    false,
 						Required: false,

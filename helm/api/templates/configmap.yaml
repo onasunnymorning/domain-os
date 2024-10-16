@@ -17,6 +17,7 @@ data:
   API_PORT: {{ .Values.app.API_PORT | quote }}
   API_HOST: {{ .Values.app.API_HOST | quote }}
   API_VERSION: {{ .Values.app.API_VERSION | quote }}
+  API_NAME: {{ .Values.app.API_NAME | quote }}
 
   RMQ_HOST: {{ .Values.rabbitmq.host | quote }}
   RMQ_PORT: {{ .Values.rabbitmq.port | quote }}

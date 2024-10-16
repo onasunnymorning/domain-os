@@ -135,7 +135,8 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 	}
 	domain.Status = ds
 	// NOTE: If you experience deltas importing escrows, might want to investigate the following line
-	domain.SetUnsetInactiveStatus() // this is needed because we just overwrote the status with what we got from the RDE, But Inactive which might not meet ou
+	// TODO: add the nameservers prior to this
+	domain.SetUnsetInactiveStatus() // this will always set the status to inactive as the domain does not contain any hosts. Once we link the hosts, the status will get updated.
 
 	err = domain.Status.Validate()
 	if err != nil {
@@ -144,8 +145,6 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 
 	// Set the RenewedYears based on the ExpiryDate and CreatedAt
 	domain.RenewedYears = domain.ExpiryDate.Year() - domain.CreatedAt.Year() - 1 // the first year is a registration
-
-	// TODO: FIXME: Add the nameservers
 
 	err = domain.Validate()
 	if err != nil {

@@ -116,6 +116,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 
 	// Link the Hosts to the Domains
 	if c.svc.Header.DomainCount() == 0 || c.svc.Header.HostCount() == 0 {
+		// TODO: Set all domains to inactive
 		log.Println("No Hosts to link to Domains")
 	} else {
 		err = c.svc.LinkHostsToDomains()
