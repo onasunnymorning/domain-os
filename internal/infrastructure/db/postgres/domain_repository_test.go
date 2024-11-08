@@ -575,6 +575,7 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
+		domain.TLDName = "domaintesttld"
 		domain.RegistrantID = "myTestContact007"
 		domain.AdminID = "myTestContact007"
 		domain.TechID = "myTestContact007"
@@ -600,11 +601,19 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().Equal(3, len(domains))
 
 	// Test the count endpoint while we are here
-	count, err := repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar")
+	count, err := repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "")
 	s.Require().NoError(err)
 	s.Require().Equal(int64(3), count)
 
-	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "idontexist")
+	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "idontexist")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
+	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "idontexist", "")
 	s.Require().NoError(err)
 	s.Require().Equal(int64(0), count)
 

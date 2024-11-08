@@ -15,10 +15,11 @@ var (
 type ExpiringDomainsQuery struct {
 	Before time.Time
 	ClID   entities.ClIDType
+	TLD    entities.DomainName
 }
 
 // NewExpiringDomainsQuery creates a new instance of ExpiringDomainsQuery. It will return an error if the ClID or date are invalid. It expects date to be in dd-mm-yyyy format. Both date and clid can be empty strings ("").
-func NewExpiringDomainsQuery(clid, date string) (*ExpiringDomainsQuery, error) {
+func NewExpiringDomainsQuery(clid, date, tld string) (*ExpiringDomainsQuery, error) {
 	validatedDate, err := parseTimeDefault(date)
 	if err != nil {
 		return nil, errors.Join(ErrInvalidTimeFormat, err)
@@ -27,9 +28,14 @@ func NewExpiringDomainsQuery(clid, date string) (*ExpiringDomainsQuery, error) {
 	if err != nil {
 		return nil, err
 	}
+	validatedTLD, err := parseTld(tld)
+	if err != nil {
+		return nil, err
+	}
 	return &ExpiringDomainsQuery{
 		Before: validatedDate,
 		ClID:   validatedClID,
+		TLD:    *validatedTLD,
 	}, nil
 }
 
@@ -55,4 +61,13 @@ func parseClID(clid string) (entities.ClIDType, error) {
 		return ClID, nil
 	}
 	return entities.NewClIDType(clid)
+}
+
+// parseTld validates the TLD and returns it as a DomainName. It will return an empty DomainName if the TLD is empty.
+func parseTld(tld string) (*entities.DomainName, error) {
+	if tld == "" {
+		var TLD entities.DomainName
+		return &TLD, nil
+	}
+	return entities.NewDomainName(tld)
 }

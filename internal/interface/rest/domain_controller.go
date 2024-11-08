@@ -685,7 +685,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	// Prepare the response
 	resp := response.ListItemResult{}
 
-	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"), ctx.Query("tld"))
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -744,7 +744,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 // @Router /domains/expiring/count [get]
 func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 
-	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"))
+	q, err := queries.NewExpiringDomainsQuery(ctx.Query("clid"), ctx.Query("before"), ctx.Query("tld"))
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
