@@ -22,7 +22,7 @@ type DomainRepository interface {
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, cursor string) ([]*entities.Domain, error)
-	CountExpiringDomains(ctx context.Context, before time.Time, clid string) (int64, error)
+	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -97,7 +97,7 @@ func (m *MockDomainRepository) ListExpiringDomains(ctx context.Context, before t
 }
 
 // CountExpiringDomains counts the number of expiring domains
-func (m *MockDomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid string) (int64, error) {
+func (m *MockDomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	args := m.Called(ctx, before, clid)
 	return args.Get(0).(int64), args.Error(1)
 }
