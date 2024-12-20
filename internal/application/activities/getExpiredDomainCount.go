@@ -1,4 +1,4 @@
-package actions
+package activities
 
 import (
 	"encoding/json"
