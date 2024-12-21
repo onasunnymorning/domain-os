@@ -12,5 +12,5 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("Total domains to renew: ", domCount)
+	fmt.Printf("Total domains expiring before %v: %d\n", domCount.Timestamp, domCount.Count)
 }
