@@ -123,5 +123,5 @@ func (s *TLDSuite) TestCountTLD() {
 
 	count, err := repo.Count(context.Background())
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), int64(1), count)
+	require.Equal(s.T(), int64(6), count)
 }
