@@ -631,3 +631,74 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().Error(err)
 
 }
+
+func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
+	// Create a couple of domains with different expiry dates
+	tx := s.db.Begin()
+	defer tx.Rollback()
+
+	repo := NewDomainRepository(tx)
+
+	// Create 3 domains
+	expecteddomains := make([]*entities.Domain, 3)
+	for i := 0; i < 3; i++ {
+		// Create a domain
+		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
+		name := fmt.Sprintf("geoff-%d.domaintesttld", i)
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		s.Require().NoError(err)
+		domain.ClID = "domaintestRar"
+		domain.TLDName = "domaintesttld"
+		domain.RegistrantID = "myTestContact007"
+		domain.AdminID = "myTestContact007"
+		domain.TechID = "myTestContact007"
+		domain.BillingID = "myTestContact007"
+		// Set the expiry date to be in 1, 2, 3 days
+		domain.RGPStatus.PurgeDate = time.Now().AddDate(0, 0, i+1).UTC()
+		// Set the domain to be pending delete
+		domain.Status.PendingDelete = true
+
+		createdDomain, err := repo.CreateDomain(context.Background(), domain)
+		s.Require().NoError(err)
+		s.Require().NotNil(createdDomain)
+
+		expecteddomains[i] = createdDomain
+	}
+
+	// List domains that are pending delete (0 as of now)
+	domains, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(0, len(domains))
+
+	// List domains that are pending delete
+	domains, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), 25, "domaintestRar", "", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// Test the count endpoint while we are here
+	count, err := repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
+	count, err = repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), "domaintestRar", "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), "idontexist", "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
+	// Now add a cursor and list the last domain
+	domains, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), 25, "domaintestRar", expecteddomains[1].RoID.String(), "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(domains))
+
+	// Cause an error due to invalid roid
+	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "1234_CONT-APEX", "domaintesttld")
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+
+	// Cause an error due to invalid roid int64
+	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "ABCD_DOM-APEX", "domaintesttld")
+	s.Require().Error(err)
+
+}
