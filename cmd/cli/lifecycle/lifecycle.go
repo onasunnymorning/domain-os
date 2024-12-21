@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -100,7 +101,24 @@ func expire(c *cli.Context) error {
 	// Process the batch of expired domains
 	log.Println("Processing expired domains...")
 	for _, domain := range domains {
-		log.Println("Processing domain", domain.Name)
+		// Try and auto-renew the domain
+		err := activities.AutoRenewDomain(domain.Name)
+		if err != nil {
+			// If the domain is not eligible for auto-renew, it should be marked for deletion
+			if strings.Contains(err.Error(), "auto renew is not enabled") {
+				log.Println("Domain", domain.Name, "is not eligible for auto-renew, marking for deletion")
+				err := activities.MarkDomainForDeletion(domain.Name)
+				if err != nil {
+					log.Printf("Failed to mark domain %s for deletion: %s\n", domain.Name, err)
+					continue
+				}
+				log.Println("Domain", domain.Name, "marked for deletion")
+				continue
+			}
+			// If another error occurred, log it and continue
+			log.Println("Failed to auto-renew domain", domain.Name, ":", err)
+		}
+		log.Println("Domain", domain.Name, "auto-renewed")
 	}
 
 	return nil
