@@ -43,6 +43,13 @@ func (s *DomainSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.tld = tld.Name.String()
 
+	// Create a 5 more TLDs
+	for i := 0; i < 5; i++ {
+		tld, _ := entities.NewTLD(fmt.Sprintf("domaintesttld%d", i))
+		err = tldRepo.Create(context.Background(), tld)
+		s.Require().NoError(err)
+	}
+
 	// Create a contact
 	contact, err := entities.NewContact("myTestContact007", "1234567899_CONT-APEX", "my@email.me", "st0NGp@ZZ", string(rar.ClID))
 	s.Require().NoError(err)
@@ -571,11 +578,11 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	for i := 0; i < 3; i++ {
 		// Create a domain
 		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
-		name := fmt.Sprintf("geoff-%d.domaintesttld", i)
+		name := fmt.Sprintf("geoff-%d.domaintesttld%d", i, i)
 		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
-		domain.TLDName = "domaintesttld"
+		domain.TLDName = entities.DomainName(fmt.Sprintf("domaintesttld%d", i))
 		domain.RegistrantID = "myTestContact007"
 		domain.AdminID = "myTestContact007"
 		domain.TechID = "myTestContact007"
@@ -591,14 +598,24 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	}
 
 	// List domains that are expiring in 2 days
-	domains, err := repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 2), 25, "domaintestRar", "")
+	domains, err := repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 2), 25, "domaintestRar", "", "")
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// List domains that are expiring in 3 days
-	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "")
+	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "", "")
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
+
+	// List the domains for a specific registrar
+	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// List the domains for a specific registrar and tld
+	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "domaintesttld1", "")
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(domains))
 
 	// Test the count endpoint while we are here
 	count, err := repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "")
@@ -609,7 +626,7 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().NoError(err)
 	s.Require().Equal(int64(0), count)
 
-	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "domaintesttld")
+	count, err = repo.CountExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), "domaintestRar", "")
 	s.Require().NoError(err)
 	s.Require().Equal(int64(3), count)
 
@@ -618,16 +635,16 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().Equal(int64(0), count)
 
 	// Now add a cursor and list the last domain
-	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", expecteddomains[1].RoID.String())
+	domains, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "", expecteddomains[1].RoID.String())
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Cause an error due to invalid roid
-	_, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "1234_CONT-APEX")
+	_, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "", "1234_CONT-APEX")
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 
 	// Cause an error due to invalid roid int64
-	_, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "ABCD_DOM-APEX")
+	_, err = repo.ListExpiringDomains(context.Background(), time.Now().AddDate(0, 0, 3), 25, "domaintestRar", "", "ABCD_DOM-APEX")
 	s.Require().Error(err)
 
 }
