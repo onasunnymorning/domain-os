@@ -24,6 +24,8 @@ type DomainService interface {
 	Count(ctx context.Context) (int64, error)
 	ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
+	ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
+	CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error)
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available and supports the fee extension
