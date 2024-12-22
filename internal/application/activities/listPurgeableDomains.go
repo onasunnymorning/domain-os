@@ -2,6 +2,7 @@ package activities
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,17 +11,15 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-// GetExpiredDomainCount takes a ExpiringDomainsQuery and returns the number of domains that have expired and are past the grace period (ExpiryDate is in the past or before the supplied date). It gets these through the admin API.
-func GetExpiredDomainCount(queries.ExpiringDomainsQuery) (*response.CountResult, error) {
-	// COUNT_ENDPOINT := fmt.Sprintf("http://%s:%s/domains/expiring/count", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
-	COUNT_ENDPOINT := "http://api.dos.dev.geoff.it:8080/domains/expiring/count"
+// ListPurgeableDomains takes an PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and are past the grace period (PurgeDate is in the past or before the supplied date). It gets these through the admin API.
+func ListPurgeableDomains(query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
+	LIST_ENDPOINT := "http://api.dos.dev.geoff.it:8080/domains/expiring"
 	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
-
 	// Set up an API client
 	client := http.Client{}
 
-	// check the total amount of domains to renew
-	req, err := http.NewRequest("GET", COUNT_ENDPOINT, nil)
+	// Retrieve the list of domains
+	req, err := http.NewRequest("GET", LIST_ENDPOINT, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -42,11 +41,11 @@ func GetExpiredDomainCount(queries.ExpiringDomainsQuery) (*response.CountResult,
 	}
 
 	// Parse the result
-	countResponse := &response.CountResult{}
-	err = json.Unmarshal(body, &countResponse)
+	listResponse := &ListItemResult{}
+	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
 
-	return countResponse, nil
+	return listResponse.Data, nil
 }
