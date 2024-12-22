@@ -669,11 +669,12 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 
 // ListExpiringDomains godoc
 // @Summary List expiring domains
-// @Description List expiring domains, if no days are provided it will default to 0 days, if no clid is provided it will default to all registrars
+// @Description Lists domains that expire before now (if no date is provided) or before the provided time in RFC3339 format. You can optionally filter by registrar ClID and TLD.
 // @Tags Domains
 // @Produce json
-// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
-// @Param clid query string false "Registrar ClID (default=empty=all registrars)"
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (optional, default=current UTC time)"
+// @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Param pageSize query int false "Page Size"
 // @Param cursor query string false "Cursor"
 // @Success 200 {array} response.ListItemResult
@@ -733,11 +734,12 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 
 // CountExpiringDomains godoc
 // @Summary Count expiring domains
-// @Description Count expiring domains
+// @Description Counts domains that expire before the provided time in RFC3339 format. If no time is provided it will default to the current UTC time.
 // @Tags Domains
 // @Produce json
-// @Param before query int false "List domains that expire before the provided time in RFC3339 format (default=current UTC time)"
+// @Param before query int false "List domains that expire before the provided time in RFC3339 format (optional, default=current UTC time)"
 // @Param clid query string false "Registrar ClID (optional)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Success 200 {object} response.CountResult
 // @Failure 400
 // @Failure 500
@@ -761,4 +763,101 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+// CountPurgeableDomains godoc
+// @Summary Count purgeable domains
+// @Description Counts domains that are purgeable. This means they are pending delete and the applicable grace period has expired. You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
+// @Param clid query string false "Registrar ClID (optional)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /domains/purgeable/count [get]
+func (ctrl *DomainController) CountPurgeableDomains(ctx *gin.Context) {
+
+	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), ctx.Query("after"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	count, err := ctrl.domainService.CountPurgeableDomains(ctx, q)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// ListPurgeableDomains godoc
+// @Summary List purgeable domains
+// @Description Lists domains that are purgeable. This means they are pending delete and the applicable grace period has expired. You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
+// @Param clid query string false "Registrar ClID (optional)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} response.ListItemResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/purgeable [get]
+func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	resp := response.ListItemResult{}
+
+	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), ctx.Query("after"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the list of domains
+	domains, err := ctrl.domainService.ListPurgeableDomains(ctx, q, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Move the domains into a domain expiry item
+	expiryItems := make([]response.DomainExpiryItem, len(domains))
+	for i, d := range domains {
+		expiryItems[i] = response.DomainExpiryItem{
+			RoID:       d.RoID.String(),
+			Name:       d.Name.String(),
+			ExpiryDate: d.ExpiryDate,
+		}
+	}
+
+	// Set the response MetaData
+	resp.Data = expiryItems
+	if len(domains) > 0 {
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+	}
+
+	// Return the Response
+	ctx.JSON(200, resp)
 }
