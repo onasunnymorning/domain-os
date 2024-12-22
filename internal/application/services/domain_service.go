@@ -890,10 +890,10 @@ func (s *DomainService) CountExpiringDomains(ctx context.Context, q *queries.Exp
 
 // ListPurgeableDomains returns a list of purgeable domains. This means the domain has PendingDelete and the grace period has expired (RGPStatus.Purgedate is in the past)
 func (s *DomainService) ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error) {
-	return s.domainRepository.ListPurgeableDomains(ctx, q.Before, pageSize, q.ClID.String(), q.TLD.String(), cursor)
+	return s.domainRepository.ListPurgeableDomains(ctx, q.After, pageSize, q.ClID.String(), q.TLD.String(), cursor)
 }
 
 // CountPurgeableDomains returns the number of purgeable domains
 func (s *DomainService) CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error) {
-	return s.domainRepository.CountPurgeableDomains(ctx, q.Before, q.ClID.String(), q.TLD.String())
+	return s.domainRepository.CountPurgeableDomains(ctx, q.After, q.ClID.String(), q.TLD.String())
 }

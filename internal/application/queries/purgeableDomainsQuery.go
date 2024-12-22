@@ -9,9 +9,9 @@ import (
 
 // ExpiringDomainsQuery represents a query to get a list of expiring domains.
 type PurgeableDomainsQuery struct {
-	Before time.Time
-	ClID   entities.ClIDType
-	TLD    entities.DomainName
+	After time.Time
+	ClID  entities.ClIDType
+	TLD   entities.DomainName
 }
 
 // NewExpiringDomainsQuery creates a new instance of ExpiringDomainsQuery. It will return an error if the ClID or date are invalid. It expects date to be in dd-mm-yyyy format. Both date and clid can be empty strings ("").
@@ -29,8 +29,8 @@ func NewPurgeableDomainsQuery(clid, date, tld string) (*PurgeableDomainsQuery, e
 		return nil, err
 	}
 	return &PurgeableDomainsQuery{
-		Before: validatedDate,
-		ClID:   validatedClID,
-		TLD:    *validatedTLD,
+		After: validatedDate,
+		ClID:  validatedClID,
+		TLD:   *validatedTLD,
 	}, nil
 }
