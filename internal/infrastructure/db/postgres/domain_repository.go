@@ -255,7 +255,7 @@ func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, before tim
 }
 
 // ListPurgeableDomains returns a list of domains that are pending deletion and have passed the grace period
-func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before time.Time, pagesize int, clid, cursor, tld string) ([]*entities.Domain, error) {
+func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, after time.Time, pagesize int, clid, cursor, tld string) ([]*entities.Domain, error) {
 
 	var roidInt int64
 	var err error
@@ -271,7 +271,7 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid}).Where("purge_date < ? AND purge_date > '0001-01-01' AND pending_delete = true", before).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true", after).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -285,8 +285,8 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 }
 
 // CountPurgeableDomains returns the number of domains that are pending deletion and have passed the grace period
-func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
+func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date < ? AND purge_date > '0001-01-01' AND pending_delete = true", before).Count(&count).Error
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true", after).Count(&count).Error
 	return count, err
 }
