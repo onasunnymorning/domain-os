@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// PurgeDomain purges (deletes) a domain from the system.
 func PurgeDomain(domainName string) error {
 	ENDPOINT := fmt.Sprintf("http://api.dos.dev.geoff.it:8080/domains/%s", domainName)
 	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
