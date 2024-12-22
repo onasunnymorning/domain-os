@@ -73,7 +73,7 @@ func main() {
 func expire(c *cli.Context) error {
 	// Query the API for the amount of expired domains
 	log.Println("Querying expired domain count...")
-	countResult, err := activities.GetExpiredDomainCount()
+	countResult, err := activities.GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -125,6 +125,45 @@ func expire(c *cli.Context) error {
 }
 
 func purge(c *cli.Context) error {
-	log.Println("Purge command not implemented yet")
+
+	// Query the API for the amount of purgeable domains
+	log.Println("Querying purgeable domain count...")
+	countResult, err := activities.GetPurgeableDomainCount(queries.PurgeableDomainsQuery{})
+	if err != nil {
+		return err
+	}
+	log.Println("Found", countResult.Count, "purgeable domains")
+
+	// If there are no purgeable domains, exit
+	if countResult.Count == 0 {
+		log.Println("No purgeable domains to process, nothing to do")
+		os.Exit(0)
+	}
+
+	// Query the API for a batch of 25 purgeable domains
+	q, err := queries.NewPurgeableDomainsQuery("", "", "")
+	if err != nil {
+		return err
+	}
+	log.Println("Querying purgeable domains...")
+
+	domains, err := activities.ListPurgeableDomains(*q)
+	if err != nil {
+		return err
+	}
+	log.Println("Found", len(domains), "purgeable domains")
+
+	// Process the batch of purgeable domains
+	log.Println("Processing purgeable domains...")
+	for _, domain := range domains {
+		// Premanently delete the domain
+		err := activities.PurgeDomain(domain.Name)
+		if err != nil {
+			log.Printf("Failed to delete domain %s: %s\n", domain.Name, err)
+			continue
+		}
+		log.Println("Domain", domain.Name, "Purged")
+	}
+
 	return nil
 }

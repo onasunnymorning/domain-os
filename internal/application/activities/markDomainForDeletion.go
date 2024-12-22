@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// MarkDomainForDeletion takes a domain name and sends a DELETE request to the admin API to mark the domain for deletion. This starts the end-of-life process for the domain. It does NOT delete the domain immediately.
 func MarkDomainForDeletion(domainName string) error {
 	ENDPOINT := fmt.Sprintf("http://api.dos.dev.geoff.it:8080/domains/%s/markdelete", domainName)
 	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
@@ -13,7 +14,7 @@ func MarkDomainForDeletion(domainName string) error {
 	// Set up an API client
 	client := http.Client{}
 
-	// check the total amount of domains to renew
+	// Request the domain be marked for deletion
 	req, err := http.NewRequest("DELETE", ENDPOINT, nil)
 	if err != nil {
 		panic(err)

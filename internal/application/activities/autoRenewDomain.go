@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// AutoRenewDomain takes a domain name and sends a POST request to the admin API to auto-renew the domain.
 func AutoRenewDomain(domainName string) error {
 	ENDPOINT := fmt.Sprintf("http://api.dos.dev.geoff.it:8080/domains/%s/autorenew", domainName)
 	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"

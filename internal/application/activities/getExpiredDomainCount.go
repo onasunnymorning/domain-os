@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-func GetExpiredDomainCount() (*response.CountResult, error) {
+// GetExpiredDomainCount takes a ExpiringDomainsQuery and returns the number of domains that have expired and are past the grace period (ExpiryDate is in the past or before the supplied date). It gets these through the admin API.
+func GetExpiredDomainCount(queries.ExpiringDomainsQuery) (*response.CountResult, error) {
 	// COUNT_ENDPOINT := fmt.Sprintf("http://%s:%s/domains/expiring/count", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	COUNT_ENDPOINT := "http://api.dos.dev.geoff.it:8080/domains/expiring/count"
 	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
