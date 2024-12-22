@@ -46,6 +46,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		// Set domain to dropcatch (will be blocked when deleted)
 		domainGroup.POST(":name/dropcatch", controller.SetDropCatch)
 		domainGroup.DELETE(":name/dropcatch", controller.UnSetDropCatch)
+
 		// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
 		domainGroup.GET(":name/check", controller.CheckDomain)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
@@ -57,6 +58,8 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		// Lifecycle endpoints
 		domainGroup.GET("expiring", controller.ListExpiringDomains)
 		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
+		domainGroup.GET("purgeable", controller.ListPurgeableDomains)
+		domainGroup.GET("purgeable/count", controller.CountPurgeableDomains)
 	}
 
 	return controller
@@ -90,7 +93,7 @@ func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 
 // CreateDomain godoc
 // @Summary Create a domain
-// @Description Create a domain
+// @Description Create a domain. Use this to create/import domains as an admin with full control. If you are looking to register a domain as a registrar, use the /register endpoint.
 // @Tags Domains
 // @Accept json
 // @Produce json
