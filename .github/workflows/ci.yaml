@@ -117,22 +117,24 @@ jobs:
           EVENT_STREAM_TOPIC: ${{ secrets.EVENT_STREAM_TOPIC }}
           EVENT_STREAM_ENABLED: true
 
-      - name: Docker Scout
-        id: docker-scout
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: docker/scout-action@v1
-        with:
-          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
-          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
-          command: compare
-          image: geapex/epp-client-api:${{ github.sha }}
-          to: geapex/epp-client-api:latest
-          # image: ${{ steps.meta.outputs.tags }}
-          # to: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMPARE_TAG }}
-          ignore-unchanged: true
-          only-severities: critical,high
-          write-comment: true
-          github-token: ${{ secrets.PAT_TOKEN_DOCKER_SCOUT }} # to be able to write the commen
+      # Ran into some issues with this in the pipeline, 
+      # disabled and logged here https://github.com/onasunnymorning/domain-os/issues/185
+      # - name: Docker Scout
+      #   id: docker-scout
+      #   if: ${{ github.event_name == 'pull_request' }}
+      #   uses: docker/scout-action@v1
+      #   with:
+      #     dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      #     command: compare
+      #     image: geapex/epp-client-api:${{ github.sha }}
+      #     to: geapex/epp-client-api:latest
+      #     # image: ${{ steps.meta.outputs.tags }}
+      #     # to: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMPARE_TAG }}
+      #     ignore-unchanged: true
+      #     only-severities: critical,high
+      #     write-comment: true
+      #     github-token: ${{ secrets.PAT_TOKEN_DOCKER_SCOUT }} # to be able to write the commen
 
 
   retag:

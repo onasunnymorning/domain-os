@@ -218,7 +218,7 @@ func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
 }
 
 // ListExpiringDomains returns a list of domains that are expiring before the given time. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
-func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, cursor string) ([]*entities.Domain, error) {
+func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, tld, cursor string) ([]*entities.Domain, error) {
 
 	var roidInt int64
 	var err error
@@ -234,7 +234,7 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid}).Where("expiry_date < ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date < ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -251,5 +251,42 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	var count int64
 	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND pending_delete = ? AND pending_renew = ? AND pending_restore = ?", before, false, false, false).Count(&count).Error
+	return count, err
+}
+
+// ListPurgeableDomains returns a list of domains that are pending deletion and have passed the grace period
+func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, after time.Time, pagesize int, clid, cursor, tld string) ([]*entities.Domain, error) {
+
+	var roidInt int64
+	var err error
+	if cursor != "" {
+		roid := entities.RoidType(cursor)
+		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
+			return nil, entities.ErrInvalidRoid
+		}
+		roidInt, err = roid.Int64()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var dbDomains []*Domain
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true", after).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	domains := make([]*entities.Domain, len(dbDomains))
+	for i, d := range dbDomains {
+		domains[i] = ToDomain(d)
+	}
+
+	return domains, nil
+}
+
+// CountPurgeableDomains returns the number of domains that are pending deletion and have passed the grace period
+func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error) {
+	var count int64
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true", after).Count(&count).Error
 	return count, err
 }

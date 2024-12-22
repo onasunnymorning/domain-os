@@ -21,8 +21,10 @@ type DomainRepository interface {
 	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context) (int64, error)
-	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, cursor string) ([]*entities.Domain, error)
+	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
+	ListPurgeableDomains(ctx context.Context, after time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
+	CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -91,13 +93,25 @@ func (m *MockDomainRepository) Count(ctx context.Context) (int64, error) {
 }
 
 // ListExpiringDomains lists expiring domains
-func (m *MockDomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, cursor string) ([]*entities.Domain, error) {
+func (m *MockDomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error) {
 	args := m.Called(ctx, before, pageSize, clid, cursor)
 	return args.Get(0).([]*entities.Domain), args.Error(1)
 }
 
 // CountExpiringDomains counts the number of expiring domains
 func (m *MockDomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
+	args := m.Called(ctx, before, clid)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+// ListPurgeableDomains lists purgeable domains
+func (m *MockDomainRepository) ListPurgeableDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error) {
+	args := m.Called(ctx, before, pageSize, clid, cursor)
+	return args.Get(0).([]*entities.Domain), args.Error(1)
+}
+
+// CountPurgeableDomains counts the number of purgeable domains
+func (m *MockDomainRepository) CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	args := m.Called(ctx, before, clid)
 	return args.Get(0).(int64), args.Error(1)
 }
