@@ -11,6 +11,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/schedules"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/urfave/cli/v2"
 )
 
@@ -52,6 +54,12 @@ func main() {
 				Aliases: []string{"exp", "ex"},
 				Usage:   "process expired domains",
 				Action:  expire,
+			},
+			{
+				Name:      "createExpirySchedule",
+				Usage:     "triggers CreateExpiryScheduleHourly",
+				UsageText: "Creates a temporal schedule to run the expiryLoop workflow hourly",
+				Action:    createExpirySchedule,
 			},
 		},
 	}
@@ -164,6 +172,27 @@ func purge(c *cli.Context) error {
 		}
 		log.Println("Domain", domain.Name, "Purged")
 	}
+
+	return nil
+}
+
+func createExpirySchedule(c *cli.Context) error {
+	// Create a temporal client config
+	cfg := temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+	}
+
+	// Create the schedule
+	scheduleID, err := schedules.CreateExpiryScheduleHourly(cfg)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
 
 	return nil
 }
