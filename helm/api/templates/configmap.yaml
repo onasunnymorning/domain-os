@@ -22,4 +22,8 @@ data:
   RMQ_HOST: {{ .Values.rabbitmq.host | quote }}
   RMQ_PORT: {{ .Values.rabbitmq.port | quote }}
 
+  TMPIO_HOST_PORT: {{ .Values.temporal.TMPIO_HOST_PORT | quote }}
+  TMPIO_NAME_SPACE: {{ .Values.temporal.TMPIO_NAME_SPACE | quote }}
+  TMPIO_QUEUE: {{ .Values.temporal.TMPIO_QUEUE | quote }}
+
   PROMETHEUS_ENABLED: {{ .Values.prometheus.enabled | quote }}
