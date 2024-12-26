@@ -32,12 +32,14 @@ func main() {
 
 	// Register the ExpiryLoop workflow
 	w.RegisterWorkflow(workflows.ExpiryLoop)
+	w.RegisterWorkflow(workflows.PurgeLoop)
 
 	// Register the activities
 	w.RegisterActivity(activities.GetExpiredDomainCount)
 	w.RegisterActivity(activities.ListExpiringDomains)
 	w.RegisterActivity(activities.AutoRenewDomain)
 	w.RegisterActivity(activities.MarkDomainForDeletion)
+	w.RegisterActivity(activities.PurgeDomain)
 
 	// Start listening to the Task Queue.
 	err = w.Run(worker.InterruptCh())

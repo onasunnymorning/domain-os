@@ -58,8 +58,14 @@ func main() {
 			{
 				Name:      "createExpirySchedule",
 				Usage:     "triggers CreateExpiryScheduleHourly",
-				UsageText: "Creates a temporal schedule to run the expiryLoop workflow hourly",
+				UsageText: "Creates a temporal schedule to run the expiryLoop workflow hourly on the hour",
 				Action:    createExpirySchedule,
+			},
+			{
+				Name:      "createPurgeSchedule",
+				Usage:     "triggers CreatePurgeScheduleHourly",
+				UsageText: "Creates a temporal schedule to run the purgeLoop workflow hourly with a 30m offset",
+				Action:    createPurgeSchedule,
 			},
 		},
 	}
@@ -176,6 +182,7 @@ func purge(c *cli.Context) error {
 	return nil
 }
 
+// createExpirySchedule automates the creation of a temporal schedule as defined in schedules.CreateExpiryScheduleHourly. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
 func createExpirySchedule(c *cli.Context) error {
 	// Create a temporal client config
 	cfg := temporal.TemporalClientconfig{
@@ -188,6 +195,27 @@ func createExpirySchedule(c *cli.Context) error {
 
 	// Create the schedule
 	scheduleID, err := schedules.CreateExpiryScheduleHourly(cfg)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
+
+	return nil
+}
+
+func createPurgeSchedule(c *cli.Context) error {
+	// Create a temporal client config
+	cfg := temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+	}
+
+	// Create the schedule
+	scheduleID, err := schedules.CreatePurgeScheduleHourly(cfg)
 	if err != nil {
 		return err
 	}

@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	schedlueIDPrefix = "expiry_schedule_"
-	workflowIDPrefix = "expiry_schedule_workflow_"
+	expirySchedlueIDPrefix         = "expiry_schedule_"
+	expiryScheduleWorkflowIDPrefix = "expiry_schedule_workflow_"
 )
 
 func CreateExpiryScheduleHourly(cfg temporal.TemporalClientconfig) (string, error) {
 	ctx := context.Background()
 
-	scheduleID := schedlueIDPrefix + uuid.NewString()
-	workflowID := workflowIDPrefix + uuid.NewString()
+	scheduleID := expirySchedlueIDPrefix + uuid.NewString()
+	workflowID := expiryScheduleWorkflowIDPrefix + uuid.NewString()
 
 	// Create a Temporal client
 	temporalClient, err := temporal.GetTemporalClient(cfg)
