@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	expirySchedlueIDPrefix         = "expiry_schedule_"
-	expiryScheduleWorkflowIDPrefix = "expiry_schedule_workflow_"
+	purgeScheduleIDPrefix         = "purge_schedule_"
+	purgeScheduleWorkflowIDPrefix = "purge_schedule_workflow_"
 )
 
-func CreateExpiryScheduleHourly(cfg temporal.TemporalClientconfig) (string, error) {
+func CreatePurgeScheduleHourly(cfg temporal.TemporalClientconfig) (string, error) {
 	ctx := context.Background()
 
-	scheduleID := expirySchedlueIDPrefix + uuid.NewString()
-	workflowID := expiryScheduleWorkflowIDPrefix + uuid.NewString()
+	scheduleID := purgeScheduleIDPrefix + uuid.NewString()
+	workflowID := purgeScheduleWorkflowIDPrefix + uuid.NewString()
 
 	// Create a Temporal client
 	temporalClient, err := temporal.GetTemporalClient(cfg)
@@ -33,13 +33,14 @@ func CreateExpiryScheduleHourly(cfg temporal.TemporalClientconfig) (string, erro
 		Spec: client.ScheduleSpec{
 			Intervals: []client.ScheduleIntervalSpec{
 				{
-					Every: time.Hour,
+					Every:  time.Hour,
+					Offset: time.Minute * 30,
 				},
 			},
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        workflowID,
-			Workflow:  workflows.ExpiryLoop,
+			Workflow:  workflows.PurgeLoop,
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})
