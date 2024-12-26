@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}-domainlifecycleworker
 spec:
-  replicas: {{ .Values.dlworker.replicaCount }}
+  replicas: {{ .Values.domainlifecycleworker.replicaCount }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: {{ .Release.Name }}
-          image: {{ .Values.dlworker.image }}:{{ .Values.dlworker.tag }}
-          imagePullPolicy: {{ .Values.dlworker.imagePullPolicy }}
+          image: {{ .Values.domainlifecycleworker.image }}:{{ .Values.domainlifecycleworker.tag }}
+          imagePullPolicy: {{ .Values.domainlifecycleworker.imagePullPolicy }}
           envFrom:
           - configMapRef:
               name: {{ .Release.Name }}-config
