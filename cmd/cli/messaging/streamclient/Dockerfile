@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.22.5-alpine3.20 AS build
+FROM golang:1.23.4-alpine3.21 AS build
 
 WORKDIR /
 
@@ -19,7 +19,7 @@ RUN go build -tags dynamic -ldflags="-s -w" -o streamClient /cmd/cli/messaging/s
 
 
 # Create CONSUMER release image
-FROM alpine:3.20 AS release-consumer
+FROM alpine:3.21 AS release-consumer
 # Copy our static executable
 COPY --from=build-receiver /streamClient /streamClient
 

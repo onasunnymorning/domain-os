@@ -1,4 +1,4 @@
-FROM golang:1.22.5-alpine3.20 AS build
+FROM golang:1.23.4-alpine3.21 AS build
 
 WORKDIR /
 
@@ -18,7 +18,7 @@ FROM build AS build-whois
 RUN go build -tags dynamic -ldflags="-s -w" -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
-FROM alpine:3.20 AS admin-api
+FROM alpine:3.21 AS whois-server
 
 # Copy our executable
 COPY --from=build-whois /whoisServer /whoisServer

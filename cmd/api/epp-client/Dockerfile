@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.22.3-alpine3.18 as build
+FROM golang:1.23.4-alpine3.21 as build
 
 WORKDIR /
 
@@ -30,7 +30,7 @@ RUN go build -ldflags="-s -w" -o eppClientApi /cmd/api/epp-client/eppClientApi.g
 
 
 # Create API release image
-FROM alpine:3.19 as epp-client-api
+FROM alpine:3.21 as epp-client-api
 # Copy our static executable
 COPY --from=build-epp-client-api /eppClientApi /eppClientApi
 
