@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-domainlifecycleworker
+spec:
+  replicas: {{ .Values.domainlifecycleworker.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Release.Name }}
+          image: {{ .Values.domainlifecycleworker.image }}:{{ .Values.domainlifecycleworker.tag }}
+          imagePullPolicy: {{ .Values.domainlifecycleworker.imagePullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: {{ .Release.Name }}-config
+          - secretRef:
+              name: {{ .Release.Name }}-secrets
