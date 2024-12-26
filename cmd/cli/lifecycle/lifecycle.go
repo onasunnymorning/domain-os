@@ -3,6 +3,8 @@ package main
 // This CLI tool allows you to run domain lifecycle operations.
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -11,6 +13,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/schedules"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/urfave/cli/v2"
 )
 
@@ -52,6 +56,26 @@ func main() {
 				Aliases: []string{"exp", "ex"},
 				Usage:   "process expired domains",
 				Action:  expire,
+			},
+			{
+				Name:      "schedule",
+				Aliases:   []string{"s", "sch"},
+				Usage:     "manage temporal schedules for domain lifecycle operations",
+				UsageText: "Use this command to created/delete temporal schedules for domain lifecycle operations",
+				Subcommands: []*cli.Command{
+					{
+						Name:    "create",
+						Aliases: []string{"c", "cr"},
+						Usage:   "create temporal schedules (expiry and purge)",
+						Action:  createTemporalSchedules,
+					},
+					{
+						Name:    "delete",
+						Aliases: []string{"d", "del"},
+						Usage:   "delete temporal schedules (expiry and purge)",
+						Action:  deleteTemporalSchedules,
+					},
+				},
 			},
 		},
 	}
@@ -165,5 +189,63 @@ func purge(c *cli.Context) error {
 		log.Println("Domain", domain.Name, "Purged")
 	}
 
+	return nil
+}
+
+// createTemporalExpirySchedule automates the creation of a temporal schedule as defined in schedules.CreateExpiryScheduleHourly. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
+func createTemporalExpirySchedule(cfg *temporal.TemporalClientconfig) error {
+	// Create the schedule
+	scheduleID, err := schedules.CreateExpiryScheduleHourly(*cfg)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
+
+	return nil
+}
+
+// createTemporalPurgeSchedule automates the creation of a temporal schedule as defined in schedules.CreatePurgeScheduleHourly. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
+func createTemporalPurgeSchedule(cfg *temporal.TemporalClientconfig) error {
+	// Create the schedule
+	scheduleID, err := schedules.CreatePurgeScheduleHourly(*cfg)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
+
+	return nil
+}
+
+// createTemporalSchedules is a CLI command that creates a temporal schedule for domain lifecycle operations. It takes a single argument, either 'expiry' or 'purge', to specify the type of schedule to create.
+func createTemporalSchedules(c *cli.Context) error {
+	// Check if the first argument is a valid schedule (expiry or purge)
+	if c.Args().First() != "expiry" && c.Args().First() != "purge" {
+		log.Println("Invalid schedule type. Must be 'expiry' or 'purge'")
+		return cli.ShowCommandHelp(c, "create")
+	}
+
+	// Create a temporal client config
+	cfg := &temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+	}
+
+	switch c.Args().First() {
+	case "expiry":
+		return createTemporalExpirySchedule(cfg)
+	case "purge":
+		return createTemporalPurgeSchedule(cfg)
+	}
+
+	return errors.New("invalid schedule type")
+}
+
+func deleteTemporalSchedules(c *cli.Context) error {
+	fmt.Println("Not implemented")
 	return nil
 }

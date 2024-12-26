@@ -403,9 +403,6 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rabbitmq/amqp091-go v1.10.0
-## explicit; go 1.20
-github.com/rabbitmq/amqp091-go
 # github.com/rabbitmq/rabbitmq-stream-go-client v1.4.8
 ## explicit; go 1.18
 github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp
@@ -535,6 +532,8 @@ go.temporal.io/api/workflowservice/v1
 go.temporal.io/api/workflowservicemock/v1
 # go.temporal.io/sdk v1.31.0
 ## explicit; go 1.21
+go.temporal.io/sdk/activity
+go.temporal.io/sdk/client
 go.temporal.io/sdk/converter
 go.temporal.io/sdk/internal
 go.temporal.io/sdk/internal/common/backoff
@@ -547,6 +546,7 @@ go.temporal.io/sdk/internal/log
 go.temporal.io/sdk/internal/protocol
 go.temporal.io/sdk/log
 go.temporal.io/sdk/temporal
+go.temporal.io/sdk/worker
 go.temporal.io/sdk/workflow
 # golang.org/x/arch v0.7.0
 ## explicit; go 1.18
