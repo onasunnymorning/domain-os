@@ -32,8 +32,8 @@ func PurgeDomain(domainName string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s", body)
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
 	}
 
 	return nil

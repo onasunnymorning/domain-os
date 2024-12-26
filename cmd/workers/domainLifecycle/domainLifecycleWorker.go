@@ -30,16 +30,20 @@ func main() {
 	// Create the ExpiryLoop worker
 	w := worker.New(client, cfg.WorkerQueue, worker.Options{})
 
-	// Register the ExpiryLoop workflow
+	// Register the workflows
 	w.RegisterWorkflow(workflows.ExpiryLoop)
 	w.RegisterWorkflow(workflows.PurgeLoop)
 
-	// Register the activities
+	// Register the activities (ExpiryLoop)
 	w.RegisterActivity(activities.GetExpiredDomainCount)
 	w.RegisterActivity(activities.ListExpiringDomains)
 	w.RegisterActivity(activities.AutoRenewDomain)
 	w.RegisterActivity(activities.MarkDomainForDeletion)
+
+	// Register the activities (PurgeLoop)
 	w.RegisterActivity(activities.PurgeDomain)
+	w.RegisterActivity(activities.GetPurgeableDomainCount)
+	w.RegisterActivity(activities.ListPurgeableDomains)
 
 	// Start listening to the Task Queue.
 	err = w.Run(worker.InterruptCh())

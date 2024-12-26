@@ -54,7 +54,7 @@ RUN go build -tags dynamic -ldflags="-s -w" -o ryAdminAPI /cmd/api/ry-admin/ryAd
 
 
 # Create API release image
-FROM alpine:3.20 AS admin-api
+FROM alpine:3.21 AS admin-api
 
 # Copy librdkafka from the build image
 # COPY --from=build-admin-api /usr/lib/librdkafka* /usr/lib/
