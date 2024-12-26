@@ -13,17 +13,17 @@ import (
 
 // ListPurgeableDomains takes an PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and are past the grace period (PurgeDate is in the past or before the supplied date). It gets these through the admin API.
 func ListPurgeableDomains(query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
-	LIST_ENDPOINT := "http://api.dos.dev.geoff.it:8080/domains/purgeable"
-	BEARER := "Bearer " + "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
+	ENDPOINT := fmt.Sprintf("%s/domains/purgeable", BASEURL)
+
 	// Set up an API client
 	client := http.Client{}
 
 	// Retrieve the list of domains
-	req, err := http.NewRequest("GET", LIST_ENDPOINT, nil)
+	req, err := http.NewRequest("GET", ENDPOINT, nil)
 	if err != nil {
 		panic(err)
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
