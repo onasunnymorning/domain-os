@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"log"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -36,6 +37,8 @@ func PurgeLoop(ctx workflow.Context) error {
 	if GetPurgeableDomainCountError != nil {
 		return GetPurgeableDomainCountError
 	}
+	log.Println("Total domains to purge: ", domainCount.Count)
+
 	// If there are no domains to purge, exit
 	if domainCount.Count == 0 {
 		return nil
@@ -53,8 +56,10 @@ func PurgeLoop(ctx workflow.Context) error {
 		// Purge the domain
 		err := workflow.ExecuteActivity(ctx, activities.PurgeDomain, domain.Name).Get(ctx, nil)
 		if err != nil {
+			log.Println("Error purging domain: ", domain.Name)
 			return err
 		}
+		log.Println("Purged domain: ", domain.Name)
 	}
 
 	return nil

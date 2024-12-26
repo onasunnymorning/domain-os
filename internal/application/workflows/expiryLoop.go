@@ -1,7 +1,6 @@
 package workflows
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -41,7 +40,7 @@ func ExpiryLoop(ctx workflow.Context) error {
 	if GetExpiredDomainCountError != nil {
 		return GetExpiredDomainCountError
 	}
-	fmt.Println("Total domains to expiring: ", domainCount.Count)
+	log.Println("Total domains to expiring: ", domainCount.Count)
 	// If there are no domains to expire, sleep for 5 mins and check again
 	if domainCount.Count == 0 {
 
