@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -83,7 +82,6 @@ func GetObjectIDFromContext(ctx *gin.Context) string {
 
 	switch objecttype {
 	case entities.ObjectTypeContact:
-		fmt.Println(ctx.Param("id"))
 		return ctx.Param("id")
 	case entities.ObjectTypeNNDN:
 		return ctx.Param("name")
