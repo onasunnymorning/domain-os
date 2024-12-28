@@ -21,6 +21,11 @@ func StreamMiddleWare(es *services.EventService) gin.HandlerFunc {
 		// before request
 
 		c.Next()
+		if len(c.Errors) > 0 {
+			// If there's an unhandled error, set event details accordingly.
+			e.Details.Result = entities.EventResultFailure
+			e.Details.Error = c.Errors.ByType(gin.ErrorTypeAny).String()
+		}
 
 		// after request
 

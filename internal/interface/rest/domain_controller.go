@@ -51,6 +51,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET(":name/check", controller.CheckDomain)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
+		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
 		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
@@ -501,15 +502,59 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 	ctx.JSON(200, domain)
 }
 
-// AutoRenewDomain godoc
-// @Summary Auto renew a domain
-// @Description Auto renew a domain for the specified number of years (defaults to ?years=1)
+// CanAutoRenew godoc
+// @Summary Check if a domain can be auto-renewed
+// @Description CanAutoRenew handles the HTTP request to check if a domain can be auto-renewed.
+// @Description It expects a domain name as a URL parameter and returns a JSON response indicating
+// @Description whether the domain can be auto-renewed or not.
 // @Tags Domains
+// @Accept json
 // @Produce json
-// @Param domain path string true "Domain Name"
-// @Param years query int false "Years"
-// @Success 200 {object} entities.Domain
+// @Param name path string true "Domain Name"
+// @Success 200 {object} response.CanAutoRenewResponse
 // @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/canautorenew [get]
+func (ctrl *DomainController) CanAutoRenew(ctx *gin.Context) {
+	domainName := ctx.Param("name")
+	if domainName == "" {
+		ctx.JSON(400, gin.H{"error": "missing domain name"})
+		return
+	}
+
+	canAutoRenew, err := ctrl.domainService.CanAutoRenew(ctx, domainName)
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := response.CanAutoRenewResponse{
+		CanAutoRenew: canAutoRenew,
+		DomainName:   domainName,
+		Timestamp:    time.Now().UTC(),
+	}
+
+	ctx.JSON(200, resp)
+}
+
+// AutoRenewDomain godoc
+// @Summary Auto-renew a domain
+// @Description Auto-renews a domain for the specified number of years (defaults to 1 if the 'years' query param is not provided or invalid).
+// @Description This operation requires **both** `Registrar.AutoRenew` and `TLD.CurrentGAPhase.AllowAutoRenew` to be enabled.
+// @Description If either is not enabled, the request will fail with a 403 status code.
+// @Tags Domains
+// @Accept  json
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param years query int false "Number of years to renew, defaults to 1"
+// @Success 200 {object} entities.Domain "Domain was successfully renewed"
+// @Failure 400
+// @Failure 403
 // @Failure 404
 // @Failure 500
 // @Router /domains/{name}/autorenew [post]
@@ -528,7 +573,7 @@ func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
 			return
 		}
 		if errors.Is(err, services.ErrAutoRenewNotEnabledRar) || errors.Is(err, services.ErrAutoRenewNotEnabledTLD) {
-			ctx.JSON(400, gin.H{"error": err.Error()})
+			ctx.JSON(403, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
