@@ -140,3 +140,77 @@ func TestGetObjectIDFromContext(t *testing.T) {
 		})
 	}
 }
+func TestSetEventDetailsFromRequest(t *testing.T) {
+	tcases := []struct {
+		Name       string
+		Action     string
+		ObjectType string
+		ObjectID   string
+	}{
+		{"set contact event details", entities.EventTypeCreate, entities.ObjectTypeContact, "contactID"},
+		{"set nndn event details", entities.EventTypeUpdate, entities.ObjectTypeNNDN, "nndnName"},
+		{"set unknown event details", entities.EventTypeUnknown, entities.ObjectTypeUnknown, entities.ObjectIDUnknown},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.Name, func(t *testing.T) {
+			c := CreateTestContext("/test/path")
+			event := entities.NewEvent("app", "user", "", "", "", "/test/path")
+			c.Set("event", event)
+
+			SetEventDetailsFromRequest(c, tc.Action, tc.ObjectType, tc.ObjectID)
+
+			updatedEvent := GetEventFromContext(c)
+			require.NotNil(t, updatedEvent)
+			require.Equal(t, tc.Action, updatedEvent.Action)
+			require.Equal(t, tc.ObjectType, updatedEvent.ObjectType)
+			require.Equal(t, tc.ObjectID, updatedEvent.ObjectID)
+		})
+	}
+
+	t.Run("event not found in context", func(t *testing.T) {
+		c := CreateTestContext("/test/path")
+		SetEventDetailsFromRequest(c, entities.EventTypeCreate, entities.ObjectTypeContact, "contactID")
+		event := GetEventFromContext(c)
+		require.Nil(t, event)
+	})
+}
+func TestSetEvent(t *testing.T) {
+	t.Run("set event in context", func(t *testing.T) {
+		c := CreateTestContext("/test/path")
+		event := entities.NewEvent("app", "user", entities.EventTypeCreate, entities.ObjectTypeContact, "contactID", "/test/path")
+
+		SetEvent(c, event)
+
+		retrievedEvent := GetEvent(c)
+		require.NotNil(t, retrievedEvent)
+		require.Equal(t, event, retrievedEvent)
+	})
+}
+
+func TestGetEvent(t *testing.T) {
+	t.Run("get event from context", func(t *testing.T) {
+		c := CreateTestContext("/test/path")
+		event := entities.NewEvent("app", "user", entities.EventTypeCreate, entities.ObjectTypeContact, "contactID", "/test/path")
+		c.Set(string(eventCtxKey), event)
+
+		retrievedEvent := GetEvent(c)
+		require.NotNil(t, retrievedEvent)
+		require.Equal(t, event, retrievedEvent)
+	})
+
+	t.Run("event not found in context", func(t *testing.T) {
+		c := CreateTestContext("/test/path")
+
+		retrievedEvent := GetEvent(c)
+		require.Nil(t, retrievedEvent)
+	})
+
+	t.Run("event type assertion failure", func(t *testing.T) {
+		c := CreateTestContext("/test/path")
+		c.Set(string(eventCtxKey), "invalid event type")
+
+		retrievedEvent := GetEvent(c)
+		require.Nil(t, retrievedEvent)
+	})
+}

@@ -3,4 +3,4 @@ docker build -t geapex/domain-os:$BRANCH . && doppler run -- docker compose --pr
 doppler run -- docker compose rm --force --volumes
 # the above stopped working for some reason, so I'm using the following instead
 docker container rm domain-os-db-1
-docker volume rm domain-os_db
+# docker volume rm domain-os_db
