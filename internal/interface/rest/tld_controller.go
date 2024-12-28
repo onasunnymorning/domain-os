@@ -126,7 +126,6 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 
 	// Get the Event from the context
 	event := GetEventFromContext(ctx)
-	ctx.Set("event", event)
 
 	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
