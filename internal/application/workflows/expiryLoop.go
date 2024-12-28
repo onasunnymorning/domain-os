@@ -2,7 +2,6 @@ package workflows
 
 import (
 	"log"
-	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -43,14 +42,7 @@ func ExpiryLoop(ctx workflow.Context) error {
 	log.Println("Total domains to expiring: ", domainCount.Count)
 	// If there are no domains to expire, sleep for 5 mins and check again
 	if domainCount.Count == 0 {
-
 		return nil
-
-		// This is where we might evolve to... or not Ref: https://www.notion.so/apex-domains/Domain-lifecycle-18200bd9d73849e6abfe2e616f1a3443?pvs=4#1666c0599d538096841df47282b78990
-		// workflow.Sleep(ctx, 5*time.Minute)
-		// // Continue the loop
-		// return ExpiryLoop(ctx)
-
 	}
 
 	// Get the list of domains that are expiring
@@ -62,24 +54,28 @@ func ExpiryLoop(ctx workflow.Context) error {
 
 	// For each domain that is expiring, either renew or delete
 	for _, domain := range domains {
-		// Try and auto-renew the domain
-		autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, domain.Name).Get(ctx, nil)
-		if autoRenewErr != nil {
+		// Check if the domain is eligible for auto-renew
+		var canautorenew bool
+		canAutoRenewErr := workflow.ExecuteActivity(ctx, activities.CheckDomainCanAutoRenew, domain.Name).Get(ctx, &canautorenew)
+		if canAutoRenewErr != nil {
+			log.Println("Failed to check if domain", domain.Name, "is eligible for auto-renew:", canAutoRenewErr)
+			continue
+		}
+		if canautorenew {
+			// Try and auto-renew the domain
+			autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, domain.Name).Get(ctx, nil)
+			if autoRenewErr != nil {
+				log.Println("Failed to auto-renew domain", domain.Name, ":", autoRenewErr)
+			}
+		} else {
 			// If the domain is not eligible for auto-renew, it should be marked for deletion
-			if strings.Contains(autoRenewErr.Error(), "auto renew is not enabled") {
-				log.Println("Domain", domain.Name, "is not eligible for auto-renew, marking for deletion")
-				softDeleteErr := workflow.ExecuteActivity(ctx, activities.MarkDomainForDeletion, domain.Name).Get(ctx, nil)
-				if softDeleteErr != nil {
-					log.Printf("Failed to mark domain %s for deletion: %s\n", domain.Name, softDeleteErr)
-					continue
-				}
-				log.Println("Domain", domain.Name, "marked for deletion")
+			softDeleteErr := workflow.ExecuteActivity(ctx, activities.MarkDomainForDeletion, domain.Name).Get(ctx, nil)
+			if softDeleteErr != nil {
+				log.Printf("Failed to mark domain %s for deletion: %s\n", domain.Name, softDeleteErr)
 				continue
 			}
-			// If another error occurred, log it and continue
-			log.Println("Failed to auto-renew domain", domain.Name, ":", autoRenewErr)
+			continue
 		}
-		log.Println("Domain", domain.Name, "auto-renewed")
 	}
 
 	return nil
