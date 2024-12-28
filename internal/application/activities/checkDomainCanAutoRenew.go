@@ -17,7 +17,7 @@ func CheckDomainCanAutoRenew(domainName string) (bool, error) {
 	client := http.Client{}
 
 	// check the total amount of domains to renew
-	req, err := http.NewRequest("POST", ENDPOINT, nil)
+	req, err := http.NewRequest("GET", ENDPOINT, nil)
 	if err != nil {
 		panic(err)
 	}
