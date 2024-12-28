@@ -32,6 +32,10 @@ func AutoRenewDomain(domainName string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden {
+			// 403 (Forbidden) means that the domain is not eligible for auto-renew and should instead start its EOL process
+			return nil
+		}
 		return fmt.Errorf("%s", body)
 	}
 

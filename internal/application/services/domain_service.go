@@ -726,7 +726,73 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	return updatedDomain, nil
 }
 
-// AutoRenewDomain renews the domain for the current registrar
+// CanAutoRenew checks if a domain can be auto-renewed based on several conditions:
+// 1. Retrieves the domain by its name without including the hosts.
+// 2. Retrieves the TLD (Top-Level Domain) including its phases.
+// 3. Uses the current General Availability (GA) phase policy to determine if auto-renewal is allowed.
+// 4. Checks if the registrar has opted in for auto-renewal.
+//
+// Parameters:
+// - ctx: The context for managing request-scoped values, cancellation, and deadlines.
+// - domainName: The name of the domain to check for auto-renewal eligibility.
+//
+// Returns:
+// - bool: True if the domain can be auto-renewed, false otherwise.
+// - error: An error if any step in the process fails.
+func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (bool, error) {
+	// Get the domain wihtout the hosts
+	dom, err := svc.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return false, err
+	}
+
+	// Get the TLD including the phases
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return false, err
+	}
+
+	// Always use the current Ga phase policy for renewals (phase extention does not apply to renews)
+	phase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return false, err
+	}
+
+	// Check if the current GA (General Availability) phase policy allows auto-renewal.
+	if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+		return false, nil
+	}
+
+	// Get the Registrar and check if the registrar has opted in for auto renew
+	rar, err := svc.rarRepo.GetByClID(ctx, dom.ClID.String(), false)
+	if err != nil {
+		return false, err
+	}
+	if !rar.Autorenew {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// AutoRenewDomain renews a domain for a specified number of years automatically.
+//
+// It performs the following steps:
+// 1. Retrieves the domain by its name without including the hosts.
+// 2. Retrieves the TLD (Top-Level Domain) including the phases.
+// 3. Checks if the current GA (General Availability) phase policy allows auto-renewal.
+// 4. Retrieves the registrar and checks if the registrar has opted in for auto-renewal.
+// 5. Renews the domain using the specified number of years.
+// 6. Saves the updated domain.
+//
+// Parameters:
+// - ctx: The context for controlling cancellation and deadlines.
+// - name: The name of the domain to be renewed.
+// - years: The number of years to renew the domain for.
+//
+// Returns:
+// - A pointer to the updated domain entity.
+// - An error if any step in the process fails.
 func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, years int) (*entities.Domain, error) {
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, name, false)
