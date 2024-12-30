@@ -35,6 +35,7 @@ var (
 	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 	ErrDomainExpiryNotAllowed          = errors.New("domain has not expired yet")
+	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -401,10 +402,29 @@ func (d *Domain) Expire(phase *Phase) error {
 	if time.Now().UTC().Before(d.ExpiryDate) {
 		return errors.Join(ErrDomainExpiryNotAllowed, fmt.Errorf("domain expiry date is %s", d.ExpiryDate))
 	}
+
+	// If ServerDeleteProhibited is set, we respect it as it provides a deterministic way to prevent domains from being deleted.
+	// The calling code should raise the error if appropriate.
+	if d.Status.ServerDeleteProhibited {
+		return errors.Join(ErrDomainExpiryNotAllowed, fmt.Errorf("%s is set", DomainStatusServerDeleteProhibited))
+	}
+
+	// Unset conflicting statuses:
+	unsetStatuses := []string{
+		DomainStatusClientUpdateProhibited, // We remove update prohibitiions as they will also trigger an error when updating the domain status
+		DomainStatusServerUpdateProhibited, // see above
+		DomainStatusClientDeleteProhibited, // We remove the clientDeleteProhibited as it will trigger an error setting pendingDelete (this prohibition applies to client DELETE commands not lifecycle events)
+	}
+	for _, status := range unsetStatuses {
+		err := d.UnSetStatus(status)
+		if err != nil {
+			return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to unset status %s: %s", status, err))
+		}
+	}
 	// Set the domain status to PendingDelete
 	err := d.SetStatus(DomainStatusPendingDelete)
 	if err != nil {
-		return err
+		return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to set pendingDelete: %s", err))
 	}
 
 	// Set the redemption period end date based on the phase policy and expiration date
