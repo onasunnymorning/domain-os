@@ -69,9 +69,9 @@ func ExpiryLoop(ctx workflow.Context) error {
 			}
 		} else {
 			// If the domain is not eligible for auto-renew, it should expire
-			softDeleteErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, domain.Name).Get(ctx, nil)
-			if softDeleteErr != nil {
-				log.Printf("Failed to mark domain %s for deletion: %s\n", domain.Name, softDeleteErr)
+			expireErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, domain.Name).Get(ctx, nil)
+			if expireErr != nil {
+				log.Printf("Failed to expire domain %s : %s\n", domain.Name, expireErr)
 				continue
 			}
 			continue

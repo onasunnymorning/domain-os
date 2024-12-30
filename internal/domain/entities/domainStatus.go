@@ -58,25 +58,27 @@ var (
 // DomainStatus value object
 // https://www.rfc-editor.org/rfc/rfc5731.html#section-2.3:~:text=%5D.%0A%0A2.3.-,Status%20Values,-A%20domain%20object
 type DomainStatus struct {
-	OK                       bool `json:"OK"`
-	Inactive                 bool `json:"Inactive"`
-	ClientTransferProhibited bool `json:"ClientTransferProhibited"`
-	ClientUpdateProhibited   bool `json:"ClientUpdateProhibited"`
-	ClientDeleteProhibited   bool `json:"ClientDeleteProhibited"`
-	ClientRenewProhibited    bool `json:"ClientRenewProhibited"`
-	ClientHold               bool `json:"ClientHold"`
-	ServerTransferProhibited bool `json:"ServerTransferProhibited"`
-	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited"`
-	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited"`
+	OK                       bool `json:"OK"`                       // OK is a special status that is set automatically if no prohibitions or pending actions are set
+	Inactive                 bool `json:"Inactive"`                 // Inactive is a special status that is set automatically depending on the host associated with the Domain
+	ClientTransferProhibited bool `json:"ClientTransferProhibited"` // ClientTransferProhibited is a status that prohibits the transfer of the domain by the client
+	ClientUpdateProhibited   bool `json:"ClientUpdateProhibited"`   // ClientUpdateProhibited is a status that prohibits Update request to the domain by the client
+	ClientDeleteProhibited   bool `json:"ClientDeleteProhibited"`   // ClientDeleteProhibited is a status that prohibits Delete requests to the domain by the client
+	ClientRenewProhibited    bool `json:"ClientRenewProhibited"`    // ClientRenewProhibited is a status that prohibits the renewal of the domain by the client
+	ClientHold               bool `json:"ClientHold"`               // ClientHold is a status that removes the domain from the DNS
+	ServerTransferProhibited bool `json:"ServerTransferProhibited"` // ServerTransferProhibited is a status that prohibits the transfer of the domain by the client
+	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited"`   // ServerUpdateProhibited is a status that prohibits Update request to the domain by the client
+	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited"`   // ServerDeleteProhibited is a status that prevents Delete request to the domain by the client. Additionally it prevents Admin deletes and s
 	ServerRenewProhibited    bool `json:"ServerPenewProhibited"`
-	ServerHold               bool `json:"ServerHold"`
-	PendingCreate            bool `json:"PendingCreate"`
-	PendingRenew             bool `json:"PendingRenew"`
-	PendingTransfer          bool `json:"PendingTransfer"`
-	PendingUpdate            bool `json:"PendingUpdate"`
-	PendingRestore           bool `json:"PendingRestore"`
-	PendingDelete            bool `json:"PendingDelete"`
+	ServerHold               bool `json:"ServerHold"`      // ServerHold is a status that removes the domain from the DNS
+	PendingCreate            bool `json:"PendingCreate"`   // PendingCreate meanse a create command has been received but there is a pending action that needs to be completed before the domain is fully created
+	PendingRenew             bool `json:"PendingRenew"`    // PendingRenew means a renew command has been received but there is a pending action that needs to be completed before the domain is fully renewed
+	PendingTransfer          bool `json:"PendingTransfer"` // PendingTransfer means a transfer command has been received but there is a pending action that needs to be completed before the domain is fully transferred
+	PendingUpdate            bool `json:"PendingUpdate"`   // PendingUpdate means an update command has been received but there is a pending action that needs to be completed before the domain is fully updated
+	PendingRestore           bool `json:"PendingRestore"`  // PendingRestore means a restore command has been received but there is a pending action that needs to be completed before the domain is fully restored
+	PendingDelete            bool `json:"PendingDelete"`   // PendingDelete means the domain is in it's EOL cycle and will be deleted on the PurgeDate. It remains resotrable until RedemptionGPEnd
 }
+
+// Expire sets pendingDelete and unsets any delete prohibitions to avoid invalid Domain Status combinations. It bypasses update prohibitions if they exist
 
 // NewDomainStatus returns a DomainStatus with default settings (Inactive and OK)
 func NewDomainStatus() DomainStatus {
@@ -115,7 +117,9 @@ func (ds *DomainStatus) Validate() error {
 	return nil
 }
 
-// SetStatus sets the status of the DomainStatus object
+// SetStatus sets the status of the DomainStatus object while checking for invalid combinations Ref. https://www.rfc-editor.org/rfc/rfc5731#section-2.3
+// It returns an error if the status is invalid or the domain has update prohibitions and the status is not an update prohibition
+// It also sets the OK and Inactive status if needed
 func (d *Domain) SetStatus(s string) error {
 	// Unknown status value
 	if !slices.Contains(ValidDomainStatuses, s) {
