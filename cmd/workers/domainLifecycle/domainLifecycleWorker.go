@@ -39,7 +39,7 @@ func main() {
 	w.RegisterActivity(activities.GetExpiredDomainCount)
 	w.RegisterActivity(activities.ListExpiringDomains)
 	w.RegisterActivity(activities.AutoRenewDomain)
-	w.RegisterActivity(activities.MarkDomainForDeletion)
+	w.RegisterActivity(activities.ExpireDomain)
 
 	// Register the activities (PurgeLoop)
 	w.RegisterActivity(activities.PurgeDomain)
