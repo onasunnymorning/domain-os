@@ -1489,15 +1489,18 @@ func TestDomain_Restore(t *testing.T) {
 }
 
 func TestDomain_MarkForDeletion(t *testing.T) {
+	now := time.Now().UTC()
 	testcases := []struct {
-		name         string
-		DomainStatus DomainStatus
-		Phase        *Phase
-		wantErr      error
+		name            string
+		DomainStatus    DomainStatus
+		DomainRGPStatus DomainRGPStatus
+		Phase           *Phase
+		wantErr         error
 	}{
 		{
-			name:         "domain can be marked for deletion",
-			DomainStatus: DomainStatus{OK: true},
+			name:            "domain can be marked for deletion",
+			DomainStatus:    DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{},
 			Phase: &Phase{
 				Policy: PhasePolicy{
 					RedemptionGP:    30,
@@ -1507,8 +1510,23 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:         "domain not deletable",
-			DomainStatus: DomainStatus{PendingDelete: true},
+			name:         "domain within AddGracePeriod",
+			DomainStatus: DomainStatus{OK: true},
+			DomainRGPStatus: DomainRGPStatus{
+				AddPeriodEnd: now.AddDate(0, 0, 1),
+			},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name:            "domain not deletable",
+			DomainStatus:    DomainStatus{PendingDelete: true},
+			DomainRGPStatus: DomainRGPStatus{},
 			Phase: &Phase{
 				Policy: PhasePolicy{
 					RedemptionGP:    30,
@@ -1518,8 +1536,9 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			wantErr: ErrDomainDeleteNotAllowed,
 		},
 		{
-			name:         "status prevents updates",
-			DomainStatus: DomainStatus{ClientUpdateProhibited: true},
+			name:            "status prevents updates",
+			DomainStatus:    DomainStatus{ClientUpdateProhibited: true},
+			DomainRGPStatus: DomainRGPStatus{},
 			Phase: &Phase{
 				Policy: PhasePolicy{
 					RedemptionGP:    30,
@@ -1533,7 +1552,8 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &Domain{
-				Status: tc.DomainStatus,
+				Status:    tc.DomainStatus,
+				RGPStatus: tc.DomainRGPStatus,
 			}
 
 			err := d.MarkForDeletion(tc.Phase)
@@ -1541,54 +1561,20 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			if err == nil {
 				assert.True(t, d.Status.PendingDelete)
 				assert.False(t, d.Status.OK)
-				assert.NotNil(t, d.RGPStatus.PurgeDate)
-				assert.NotNil(t, d.RGPStatus.RedemptionPeriodEnd)
-			}
-		})
-	}
-
-}
-
-func TestDomain_MarkForDeletionAddGrace(t *testing.T) {
-	phase := &Phase{
-		Policy: PhasePolicy{
-			RedemptionGP:    30,
-			PendingDeleteGP: 5,
-		},
-	}
-	testcases := []struct {
-		name          string
-		InGraceDelete bool
-		AddGraceEnd   time.Time
-	}{
-		{
-			name:          "AddPeriod ending in 1 day",
-			InGraceDelete: true,
-			AddGraceEnd:   time.Now().UTC().AddDate(0, 0, 1),
-		},
-		{
-			name:          "AddPeriod ended 1 day ago",
-			InGraceDelete: false,
-			AddGraceEnd:   time.Now().UTC().AddDate(0, 0, -1),
-		},
-	}
-
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := &Domain{}
-			d.RGPStatus.AddPeriodEnd = tc.AddGraceEnd
-
-			err := d.MarkForDeletion(phase)
-			time.Sleep(1 * time.Millisecond) // make sure some time has passed
-			require.NoError(t, err)
-			if err == nil && tc.InGraceDelete {
-				assert.True(t, time.Now().After(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the past")
-				assert.True(t, time.Now().After(d.RGPStatus.PurgeDate), "expected pending delete period to be in the past")
-				assert.True(t, d.Status.PendingDelete)
-			} else if err == nil {
-				assert.True(t, time.Now().Before(d.RGPStatus.RedemptionPeriodEnd), "expected redemption period to be in the future")
-				assert.True(t, time.Now().Before(d.RGPStatus.PurgeDate), "expected pending delete period to be in the future")
-				assert.True(t, d.Status.PendingDelete)
+				if tc.DomainRGPStatus.AddPeriodEnd.Equal(time.Time{}) {
+					assert.Equal(t, d.RGPStatus.RedemptionPeriodEnd.Year(), now.AddDate(0, 0, 30).Year())
+					assert.Equal(t, d.RGPStatus.RedemptionPeriodEnd.Month(), now.AddDate(0, 0, 30).Month())
+					assert.Equal(t, d.RGPStatus.RedemptionPeriodEnd.Day(), now.AddDate(0, 0, 30).Day())
+					assert.Equal(t, d.RGPStatus.PurgeDate.Year(), now.AddDate(0, 0, 35).Year())
+					assert.Equal(t, d.RGPStatus.PurgeDate.Month(), now.AddDate(0, 0, 35).Month())
+					assert.Equal(t, d.RGPStatus.PurgeDate.Day(), now.AddDate(0, 0, 35).Day())
+					assert.True(t, d.RGPStatus.PurgeDate.After(d.RGPStatus.RedemptionPeriodEnd))
+				} else {
+					// sleep 1 second to make sure the time is different
+					time.Sleep(1 * time.Second)
+					assert.True(t, d.RGPStatus.RenewPeriodEnd.Before(time.Now().UTC()))
+					assert.True(t, d.RGPStatus.AutoRenewPeriodEnd.Before(time.Now().UTC()))
+				}
 			}
 		})
 	}
@@ -1658,6 +1644,58 @@ func TestDomain_GetHostsAsStringSlice(t *testing.T) {
 			}
 			got := d.GetHostsAsStringSlice()
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+func TestDomain_Expire(t *testing.T) {
+	now := time.Now().UTC()
+	phase := &Phase{
+		Policy: PhasePolicy{
+			RedemptionGP:    30,
+			PendingDeleteGP: 5,
+		},
+	}
+
+	testcases := []struct {
+		name          string
+		domain        *Domain
+		wantErr       error
+		wantStatus    DomainStatus
+		wantRGPStatus DomainRGPStatus
+	}{
+		{
+			name: "domain not expired yet",
+			domain: &Domain{
+				ExpiryDate: now.AddDate(0, 0, 1),
+			},
+			wantErr: ErrDomainExpiryNotAllowed,
+		},
+		{
+			name: "domain expired",
+			domain: &Domain{
+				ExpiryDate: now.AddDate(0, 0, -1),
+			},
+			wantErr: nil,
+			wantStatus: DomainStatus{
+				PendingDelete: true,
+			},
+			wantRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: now.AddDate(0, 0, 29),
+				PurgeDate:           now.AddDate(0, 0, 4),
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.domain.Expire(phase)
+			require.ErrorIs(t, err, tc.wantErr)
+			if err == nil {
+				assert.True(t, tc.domain.Status.PendingDelete)
+				assert.Equal(t, tc.wantRGPStatus.RedemptionPeriodEnd, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP))
+				assert.Equal(t, tc.wantRGPStatus.PurgeDate, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.PendingDeleteGP))
+				assert.True(t, tc.domain.RGPStatus.PurgeDate.After(tc.domain.RGPStatus.RedemptionPeriodEnd))
+			}
 		})
 	}
 }

@@ -6,15 +6,15 @@ import (
 	"net/http"
 )
 
-// AutoRenewDomain takes a domain name and sends a POST request to the admin API to auto-renew the domain.
-func AutoRenewDomain(domainName string) error {
-	ENDPOINT := fmt.Sprintf("%s/domains/%s/autorenew", BASEURL, domainName)
+// ExpireDomain takes a domain name and sends a DELETE request to the admin API to expire the domain for deletion. This starts the end-of-life process for the domain. It does NOT delete the domain immediately.
+func ExpireDomain(domainName string) error {
+	ENDPOINT := fmt.Sprintf("%s/domains/%s/expire", BASEURL, domainName)
 
 	// Set up an API client
 	client := http.Client{}
 
-	// check the total amount of domains to renew
-	req, err := http.NewRequest("POST", ENDPOINT, nil)
+	// Request the domain be marked for deletion
+	req, err := http.NewRequest("DELETE", ENDPOINT, nil)
 	if err != nil {
 		panic(err)
 	}

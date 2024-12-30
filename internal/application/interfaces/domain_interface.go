@@ -40,6 +40,8 @@ type DomainService interface {
 	AutoRenewDomain(ctx context.Context, domainName string, years int) (*entities.Domain, error)
 	// MarkDomainForDelete marks a domain for deletion as a registrar
 	MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error)
+	// ExpireDomain expires a domain
+	ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 	// RestoreDomain restores a domain as a registrar
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 
