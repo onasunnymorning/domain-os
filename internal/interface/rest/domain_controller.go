@@ -54,6 +54,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
 		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
+		domainGroup.DELETE(":name/expire", controller.Expire)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
 
 		// Lifecycle endpoints
@@ -609,6 +610,42 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, dom)
+}
+
+// Expire godoc
+// @Summary Expire handles the expiration of a domain by its name.
+// @Description It retrieves the domain name from the request context, calls the domainService to expire the domain,
+// @Description and returns the appropriate JSON response based on the outcome.
+// @Description If the domain is not found, it returns a 404 status code with an error message.
+// @Description If the domain is not allowed to be expired (domains can expire only on the day of their expirydate or after), it returns a 403 status code with an error message.
+// @Description If the the TLD does not have an active GA phase (Phase.Policy contains the applicable EOL policy), it returns a 403 status code with an error message.
+// @Description For other errors, it returns a 500 status code with an error message.
+// @Description On success, it returns a 200 status code with the expired domain information.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Success 200 {object} entities.Domain
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/expire [post]
+func (ctrl *DomainController) Expire(ctx *gin.Context) {
+	domain, err := ctrl.domainService.ExpireDomain(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		// Return 403 if there is no active phase or the domain has not reached the expiry date yet
+		if errors.Is(err, entities.ErrDomainExpiryNotAllowed) || errors.Is(err, entities.ErrNoActivePhase) {
+			ctx.JSON(403, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, domain)
 }
 
 // RestoreDomain godoc
