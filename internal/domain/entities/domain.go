@@ -34,6 +34,7 @@ var (
 	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
 	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
+	ErrDomainExpiryNotAllowed          = errors.New("domain has not expired yet")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -356,9 +357,11 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	return nil
 }
 
-// MarkForDeletion ititiates the end-of-life lifecycle for a domain. It sets the domain status to PendingDelete and sets the appropriate RGP statuses depending on the phase policy.
+// MarkForDeletion ititiates the end-of-life lifecycle for a domain when a delete command is received form the user. Use this to process user delete commands. It sets the domain status to PendingDelete and sets the appropriate RGP statuses depending on the phase policy.
 // If the domain is still in AddGracePeriod, the domain does not go through an EOL process and RGP Statuses are set to it can be deleted immediately.
-// This funciton depends on downstream logic to purge the domain from the repository, we just set the time parameters here.
+// This funciton depends on downstream logic to purge the domain from the repository, we just set the RGP time parameters here.
+// If there is a DeleteProhibition, this function will return an error.
+// If the domain status cannot be set to PendingDelete, this function will return an error.
 func (d *Domain) MarkForDeletion(phase *Phase) error {
 	if !d.CanBeDeleted() {
 		return ErrDomainDeleteNotAllowed
@@ -374,13 +377,39 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 
 	// If the domain is still in AddGracePeriod (Domain.RGPStatus.AddPeriodEnd is in the future), the domain does not go through an EOL process and may be deleted immediately
 	// We rely on downstream logic to purge the domain, we just set the time parameters here.
+	// Both RedemptionPeriodEnd and PurgeDate are set to the current time so there is no redemption period and the domain can be purged immediately
 	if time.Now().UTC().Before(d.RGPStatus.AddPeriodEnd) {
 		d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC()
 		d.RGPStatus.PurgeDate = time.Now().UTC()
 		return nil
 	}
 	// If the domain is no longer in AddGracePeriod, we set the RGP statuses as per the phase policy EOL settings
+	// Since this is a delete command, we set the RedemptionPeriodEnd and PurgeDate based on current time and the phase policy
 	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
+	// Set the purge date based on the redemption period end date and the phase policy
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
+	return nil
+}
+
+// Expire initiates the end-of-life lifecycle for a domain when a domain expires. It sets the domain status to PendingDelete and sets the appropriate RGP statuses depending on the phase policy.
+// Exiring a domain is only allowed after the domain has expired. It will return an error if the domain has not expired yet.
+// It does not error if the domain is already in PendingDelete status or if there is a DeleteProhibition. It does return an error if the domain status cannot be set to PendingDelete.
+// Use this function to process domain expiry events.
+// This function depends on downstream logic to purge the domain from the repository, we just set the RGP time parameters here.
+func (d *Domain) Expire(phase *Phase) error {
+	// Don't allow expiring a domain that has not expired yet.
+	if time.Now().UTC().Before(d.ExpiryDate) {
+		return errors.Join(ErrDomainExpiryNotAllowed, fmt.Errorf("domain expiry date is %s", d.ExpiryDate))
+	}
+	// Set the domain status to PendingDelete
+	err := d.SetStatus(DomainStatusPendingDelete)
+	if err != nil {
+		return err
+	}
+
+	// Set the redemption period end date based on the phase policy and expiration date
+	d.RGPStatus.RedemptionPeriodEnd = d.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP)
+	// Set the purge date based on the redemption period end date and the phase policy
 	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
 	return nil
 }

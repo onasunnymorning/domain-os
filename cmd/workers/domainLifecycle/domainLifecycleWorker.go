@@ -35,10 +35,11 @@ func main() {
 	w.RegisterWorkflow(workflows.PurgeLoop)
 
 	// Register the activities (ExpiryLoop)
+	w.RegisterActivity(activities.CheckDomainCanAutoRenew)
 	w.RegisterActivity(activities.GetExpiredDomainCount)
 	w.RegisterActivity(activities.ListExpiringDomains)
 	w.RegisterActivity(activities.AutoRenewDomain)
-	w.RegisterActivity(activities.MarkDomainForDeletion)
+	w.RegisterActivity(activities.ExpireDomain)
 
 	// Register the activities (PurgeLoop)
 	w.RegisterActivity(activities.PurgeDomain)

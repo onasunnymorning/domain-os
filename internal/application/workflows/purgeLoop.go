@@ -33,11 +33,11 @@ func PurgeLoop(ctx workflow.Context) error {
 
 	// Check if there are any domains that are purgeable
 	domainCount := &response.CountResult{}
-	GetPurgeableDomainCountError := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount).Get(ctx, domainCount)
-	if GetPurgeableDomainCountError != nil {
-		return GetPurgeableDomainCountError
+	purgeableDomainCountErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount).Get(ctx, domainCount)
+	if purgeableDomainCountErr != nil {
+		log.Println("Error getting purgeable domain count: ", purgeableDomainCountErr)
+		return purgeableDomainCountErr
 	}
-	log.Println("Total domains to purge: ", domainCount.Count)
 
 	// If there are no domains to purge, exit
 	if domainCount.Count == 0 {
@@ -46,20 +46,20 @@ func PurgeLoop(ctx workflow.Context) error {
 
 	// Get the list of domains that are purgeable
 	domains := []response.DomainExpiryItem{}
-	GetPurgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains).Get(ctx, &domains)
-	if GetPurgeableDomainsError != nil {
-		return GetPurgeableDomainsError
+	purgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains).Get(ctx, &domains)
+	if purgeableDomainsError != nil {
+		log.Println("Error getting purgeable domains: ", purgeableDomainsError)
+		return purgeableDomainsError
 	}
 
 	// Process the list of purgeable domains
 	for _, domain := range domains {
 		// Purge the domain
-		err := workflow.ExecuteActivity(ctx, activities.PurgeDomain, domain.Name).Get(ctx, nil)
-		if err != nil {
+		purgeActivityErr := workflow.ExecuteActivity(ctx, activities.PurgeDomain, domain.Name).Get(ctx, nil)
+		if purgeActivityErr != nil {
 			log.Println("Error purging domain: ", domain.Name)
-			return err
+			return purgeActivityErr
 		}
-		log.Println("Purged domain: ", domain.Name)
 	}
 
 	return nil

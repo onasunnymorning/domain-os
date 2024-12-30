@@ -839,7 +839,17 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	return updatedDomain, nil
 }
 
-// MarkForDelete marks a domain for deletion
+// MarkDomainForDeletion marks a domain for deletion by its name.
+// It retrieves the domain, its TLD, and the current GA phase, then marks the domain for deletion (this sets all of the appropriate RGP statuses)
+// and updates it in the repository.
+//
+// Parameters:
+//   - ctx: The context for the request.
+//   - domainName: The name of the domain to be marked for deletion.
+//
+// Returns:
+//   - *entities.Domain: The updated domain entity.
+//   - error: An error if any occurred during the process.
 func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error) {
 	// Get the domain
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
@@ -861,6 +871,53 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 
 	// Mark the domain for deletion
 	err = dom.MarkForDeletion(phase)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the domain
+	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
+
+// ExpireDomain expires a domain by its name. It retrieves the domain,
+// fetches the TLD and its current GA phase, and then uses the domain layer to expire the domain.
+// Finally, it updates the domain in the repository.
+//
+// Parameters:
+//
+//	ctx - The context for managing request-scoped values, deadlines, and cancelation signals.
+//	domainName - The name of the domain to be expired.
+//
+// Returns:
+//
+//	*entities.Domain - The updated domain entity after expiration.
+//	error - An error if any operation fails, otherwise nil.
+func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error) {
+	// Get the domain
+	dom, err := svc.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the TLD and phases
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the current GA phase
+	phase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return nil, err
+	}
+
+	// Expire the domain
+	err = dom.Expire(phase)
 	if err != nil {
 		return nil, err
 	}
