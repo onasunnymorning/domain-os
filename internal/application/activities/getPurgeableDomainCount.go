@@ -21,18 +21,18 @@ func GetPurgeableDomainCount(queries.PurgeableDomainsQuery) (*response.CountResu
 	// check the total amount of domains to renew
 	req, err := http.NewRequest("GET", COUNT_ENDPOINT, nil)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch domain count: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -44,7 +44,7 @@ func GetPurgeableDomainCount(queries.PurgeableDomainsQuery) (*response.CountResu
 	countResponse := &response.CountResult{}
 	err = json.Unmarshal(body, &countResponse)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse response body: %w", err)
 	}
 
 	return countResponse, nil

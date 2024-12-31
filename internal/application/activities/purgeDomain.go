@@ -16,18 +16,18 @@ func PurgeDomain(domainName string) error {
 	// Delete the domain
 	req, err := http.NewRequest("DELETE", ENDPOINT, nil)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to purge domain: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read response body: %w", err)
 	}
 	defer resp.Body.Close()
 

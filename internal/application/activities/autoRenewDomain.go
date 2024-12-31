@@ -13,26 +13,25 @@ func AutoRenewDomain(domainName string) error {
 	// Set up an API client
 	client := http.Client{}
 
-	// check the total amount of domains to renew
 	req, err := http.NewRequest("POST", ENDPOINT, nil)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s", body)
+		return fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
 	}
 
 	return nil
