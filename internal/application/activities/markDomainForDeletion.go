@@ -16,23 +16,23 @@ func MarkDomainForDeletion(domainName string) error {
 	// Request the domain be marked for deletion
 	req, err := http.NewRequest("DELETE", ENDPOINT, nil)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to mark domain for deletion: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read response body: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s", body)
+		return fmt.Errorf("failed to mark domain for deletion (%d): %s", resp.StatusCode, body)
 	}
 
 	return nil

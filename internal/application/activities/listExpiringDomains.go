@@ -22,7 +22,7 @@ func ListExpiringDomains(query queries.ExpiringDomainsQuery) ([]response.DomainE
 
 	endpointURL, err := url.Parse(ENDPOINT)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
 	}
 
 	// Add the query parameters
@@ -36,18 +36,18 @@ func ListExpiringDomains(query queries.ExpiringDomainsQuery) ([]response.DomainE
 	// get a list of domains that have expired
 	req, err := http.NewRequest("GET", endpointURL.String(), nil)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Authorization", BEARER_TOKEN)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch domain count: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	defer resp.Body.Close()
 

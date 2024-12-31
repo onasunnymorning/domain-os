@@ -1684,6 +1684,67 @@ func TestDomain_Expire(t *testing.T) {
 				PurgeDate:           now.AddDate(0, 0, 4),
 			},
 		},
+		{
+			name: "domain expired with ClientUpdateprohibited",
+			domain: &Domain{
+				Status: DomainStatus{
+					ClientUpdateProhibited: true,
+				},
+				ExpiryDate: now.AddDate(0, 0, -1),
+			},
+			wantErr: nil,
+			wantStatus: DomainStatus{
+				PendingDelete: true,
+			},
+			wantRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: now.AddDate(0, 0, 29),
+				PurgeDate:           now.AddDate(0, 0, 4),
+			},
+		},
+		{
+			name: "domain expired with ClientDeleterohibited",
+			domain: &Domain{
+				Status: DomainStatus{
+					ClientDeleteProhibited: true,
+				},
+				ExpiryDate: now.AddDate(0, 0, -1),
+			},
+			wantErr: nil,
+			wantStatus: DomainStatus{
+				PendingDelete: true,
+			},
+			wantRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: now.AddDate(0, 0, 29),
+				PurgeDate:           now.AddDate(0, 0, 4),
+			},
+		},
+		{
+			name: "domain expired with ServerUpdateprohibited",
+			domain: &Domain{
+				Status: DomainStatus{
+					ServerUpdateProhibited: true,
+				},
+				ExpiryDate: now.AddDate(0, 0, -1),
+			},
+			wantErr: nil,
+			wantStatus: DomainStatus{
+				PendingDelete: true,
+			},
+			wantRGPStatus: DomainRGPStatus{
+				RedemptionPeriodEnd: now.AddDate(0, 0, 29),
+				PurgeDate:           now.AddDate(0, 0, 4),
+			},
+		},
+		{
+			name: "domain expired with ServerDeleteprohibited",
+			domain: &Domain{
+				Status: DomainStatus{
+					ServerDeleteProhibited: true,
+				},
+				ExpiryDate: now.AddDate(0, 0, -1),
+			},
+			wantErr: ErrDomainExpiryNotAllowed,
+		},
 	}
 
 	for _, tc := range testcases {
