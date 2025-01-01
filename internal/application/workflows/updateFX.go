@@ -30,9 +30,12 @@ func UpdateFX(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, options)
 
 	// Update USD
-	updateErr := workflow.ExecuteActivity(ctx, activities.UpdateFX("usd")).Get(ctx, nil)
-	if updateErr != nil {
-		return updateErr
+	currencies := []string{"USD", "EUR", "PEN", "GBP", "RUB", "CAD", "AUD"}
+	for _, currency := range currencies {
+		updateErr := workflow.ExecuteActivity(ctx, activities.UpdateFX, currency).Get(ctx, nil)
+		if updateErr != nil {
+			return updateErr
+		}
 	}
 
 	return nil
