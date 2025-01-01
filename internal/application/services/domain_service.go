@@ -285,6 +285,43 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 	return nil
 }
 
+// RemoveAllDomainHosts purges/dissasociates all hosts from a domain. It does not delete the hosts
+func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name, true)
+	if err != nil {
+		return err
+	}
+
+	// Dissasociate all hosts
+	for _, h := range dom.Hosts {
+		err := dom.RemoveHost(h)
+		if err != nil {
+			return err
+		}
+		domRoid, err := dom.RoID.Int64()
+		if err != nil {
+			return err
+		}
+		hostRoid, err := h.RoID.Int64()
+		if err != nil {
+			return err
+		}
+		err = s.domainRepository.RemoveHostFromDomain(ctx, domRoid, hostRoid)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Save the domain
+	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RemoveHostFromDomain removes a host from a domain
 func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
 	// Get the domain

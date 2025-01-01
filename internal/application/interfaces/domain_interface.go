@@ -18,6 +18,7 @@ type DomainService interface {
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, name string, hostRoID string, force bool) error
 	AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, force bool) error
+	RemoveAllDomainHosts(ctx context.Context, name string) error
 	RemoveHostFromDomain(ctx context.Context, name string, hostRoID string) error
 	RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error

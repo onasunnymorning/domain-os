@@ -34,7 +34,6 @@ func GetPurgeableDomainCount(queries.PurgeableDomainsQuery) (*response.CountResu
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch domain count (%d): %s", resp.StatusCode, body)
