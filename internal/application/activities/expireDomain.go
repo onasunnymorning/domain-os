@@ -29,7 +29,6 @@ func ExpireDomain(domainName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
