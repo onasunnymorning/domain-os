@@ -746,6 +746,11 @@ func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (
 		return false, err
 	}
 
+	// Check if the domain status allows it to be renewed
+	if !dom.CanBeRenewed() {
+		return false, nil
+	}
+
 	// Get the TLD including the phases
 	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
 	if err != nil {
