@@ -254,6 +254,7 @@ func createTemporalSchedules(c *cli.Context) error {
 	case "purge":
 		return createTemporalPurgeSchedule(cfg)
 	case "updatefx":
+		cfg.WorkerQueue = os.Getenv("TMPIO_SYNC_QUEUE")
 		return createTemporalUpdateFXSchedule(cfg)
 	}
 

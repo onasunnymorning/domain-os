@@ -25,5 +25,6 @@ data:
   TMPIO_HOST_PORT: {{ .Values.temporal.TMPIO_HOST_PORT | quote }}
   TMPIO_NAME_SPACE: {{ .Values.temporal.TMPIO_NAME_SPACE | quote }}
   TMPIO_QUEUE: {{ .Values.temporal.TMPIO_QUEUE | quote }}
+  TMPIO_SYNC_QUEUE: {{ .Values.temporal.TMPIO_SYNC_QUEUE | quote }}
 
   PROMETHEUS_ENABLED: {{ .Values.prometheus.enabled | quote }}

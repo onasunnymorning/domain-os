@@ -77,7 +77,24 @@ jobs:
           tags: geapex/domain-os:${{ github.sha }}
           cache-from: type=registry,ref=geapex/domain-os:buildcache
           cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
-
+      - name: Build and push Domain Lifecycle Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./cmd/workers/domainLifecycle/Dockerfile
+          push: true
+          tags: geapex/domain-lifecycle-worker:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/domain-lifecycle-worker:buildcache
+          cache-to: type=registry,ref=geapex/domain-lifecycle-worker:buildcache,mode=max
+      - name: Build and push Sync Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./cmd/workers/sync/Dockerfile
+          push: true
+          tags: geapex/sync-worker:${{ github.sha }}
+          cache-from: type=registry,ref=geapex/sync-worker:buildcache
+          cache-to: type=registry,ref=geapex/sync-worker:buildcache,mode=max
 
   integrationtests:
     name: Integration tests
