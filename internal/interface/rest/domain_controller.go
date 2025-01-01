@@ -143,12 +143,30 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 // @Description Delete a domain by name
 // @Tags Domains
 // @Param name path string true "Domain Name"
+// @Param drophosts query bool false "Delete all hosts associated with the domain prior to deleting the domain"
 // @Success 204
 // @Failure 404
 // @Failure 500
 // @Router /domains/{name} [delete]
 func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 	name := ctx.Param("name")
+
+	if ctx.Query("drophosts") == "true" {
+
+		fmt.Println("drophosts == true")
+
+		err := ctrl.domainService.RemoveAllDomainHosts(ctx, name)
+		if err != nil {
+			if errors.Is(err, entities.ErrDomainNotFound) {
+				ctx.JSON(404, gin.H{"error": err.Error()})
+				return
+			}
+			ctx.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	fmt.Println("past drophosts")
 
 	err := ctrl.domainService.DeleteDomainByName(ctx, name)
 	if err != nil {
