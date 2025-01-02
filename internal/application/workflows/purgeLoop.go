@@ -1,16 +1,20 @@
 package workflows
 
 import (
-	"log"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+	"go.uber.org/zap"
 )
 
 func PurgeLoop(ctx workflow.Context) error {
+	// set up our logger
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
@@ -35,7 +39,10 @@ func PurgeLoop(ctx workflow.Context) error {
 	domainCount := &response.CountResult{}
 	purgeableDomainCountErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount).Get(ctx, domainCount)
 	if purgeableDomainCountErr != nil {
-		log.Println("Error getting purgeable domain count: ", purgeableDomainCountErr)
+		logger.Error(
+			"Error getting purgeable domain count",
+			zap.Error(purgeableDomainCountErr),
+		)
 		return purgeableDomainCountErr
 	}
 
@@ -48,7 +55,10 @@ func PurgeLoop(ctx workflow.Context) error {
 	domains := []response.DomainExpiryItem{}
 	purgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains).Get(ctx, &domains)
 	if purgeableDomainsError != nil {
-		log.Println("Error getting purgeable domains: ", purgeableDomainsError)
+		logger.Error(
+			"Error getting purgeable domains",
+			zap.Error(purgeableDomainsError),
+		)
 		return purgeableDomainsError
 	}
 
@@ -57,8 +67,12 @@ func PurgeLoop(ctx workflow.Context) error {
 		// Purge the domain
 		purgeActivityErr := workflow.ExecuteActivity(ctx, activities.PurgeDomain, domain.Name).Get(ctx, nil)
 		if purgeActivityErr != nil {
-			log.Println("Error purging domain: ", domain.Name)
-			return purgeActivityErr
+			logger.Error(
+				"Error purging domain",
+				zap.String("domain_name", domain.Name),
+				zap.Error(purgeActivityErr),
+				zap.Any("domain", domain),
+			)
 		}
 	}
 

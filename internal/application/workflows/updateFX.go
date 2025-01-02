@@ -6,9 +6,14 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+	"go.uber.org/zap"
 )
 
 func UpdateFX(ctx workflow.Context) error {
+	// set up our logger
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
@@ -34,7 +39,11 @@ func UpdateFX(ctx workflow.Context) error {
 	for _, currency := range currencies {
 		updateErr := workflow.ExecuteActivity(ctx, activities.UpdateFX, currency).Get(ctx, nil)
 		if updateErr != nil {
-			return updateErr
+			logger.Error(
+				"Error updating FX",
+				zap.String("currency", currency),
+				zap.Error(updateErr),
+			)
 		}
 	}
 
