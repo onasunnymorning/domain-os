@@ -8,10 +8,15 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	"go.uber.org/zap"
 )
 
 // ExpiryLoop ref: https://www.notion.so/apex-domains/Domain-lifecycle-18200bd9d73849e6abfe2e616f1a3443?pvs=4#2e597291f85a43699422a7ac5f122bc8
 func ExpiryLoop(ctx workflow.Context) error {
+	// Set up our logger
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
 
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
@@ -58,20 +63,36 @@ func ExpiryLoop(ctx workflow.Context) error {
 		var canautorenew bool
 		canAutoRenewErr := workflow.ExecuteActivity(ctx, activities.CheckDomainCanAutoRenew, domain.Name).Get(ctx, &canautorenew)
 		if canAutoRenewErr != nil {
-			log.Println("Failed to check if domain", domain.Name, "is eligible for auto-renew:", canAutoRenewErr)
+			logger.Error(
+				"Failed to check if domain is eligible for auto-renew",
+				zap.String("domain_name", domain.Name),
+				zap.Error(canAutoRenewErr),
+				zap.Any("domain", domain),
+			)
 			continue
 		}
 		if canautorenew {
 			// Try and auto-renew the domain
 			autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, domain.Name).Get(ctx, nil)
 			if autoRenewErr != nil {
-				log.Println("Failed to auto-renew domain", domain.Name, ":", autoRenewErr)
+				logger.Error(
+					"Failed to auto-renew domain",
+					zap.String("domain_name", domain.Name),
+					zap.Error(autoRenewErr),
+					zap.Any("domain", domain),
+				)
+				continue
 			}
 		} else {
 			// If the domain is not eligible for auto-renew, it should expire
 			expireErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, domain.Name).Get(ctx, nil)
 			if expireErr != nil {
-				log.Printf("Failed to expire domain %s : %s\n", domain.Name, expireErr)
+				logger.Error(
+					"Failed to expire domain",
+					zap.String("domain_name", domain.Name),
+					zap.Error(expireErr),
+					zap.Any("domain", domain),
+				)
 				continue
 			}
 			continue
