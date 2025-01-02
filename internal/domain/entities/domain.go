@@ -34,7 +34,7 @@ var (
 	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
 	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
-	ErrDomainExpiryNotAllowed          = errors.New("domain expired not allowed")
+	ErrDomainExpiryNotAllowed          = errors.New("domain expiry not allowed")
 	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
 )
 
