@@ -36,6 +36,7 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/zsais/go-gin-prometheus v0.1.0
 	go.temporal.io/sdk v1.31.0
+	go.uber.org/zap v1.18.1
 	golang.org/x/net v0.33.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
@@ -117,6 +118,8 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	go.temporal.io/api v1.43.0 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/arch v0.7.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240604190554-fc45aab8b7f8 // indirect
