@@ -68,14 +68,14 @@ type DomainStatus struct {
 	ServerTransferProhibited bool `json:"ServerTransferProhibited"` // ServerTransferProhibited is a status that prohibits the transfer of the domain by the client
 	ServerUpdateProhibited   bool `json:"ServerUpdateProhibited"`   // ServerUpdateProhibited is a status that prohibits Update request to the domain by the client
 	ServerDeleteProhibited   bool `json:"ServerDeleteProhibited"`   // ServerDeleteProhibited is a status that prevents Delete request to the domain by the client. Additionally it prevents Admin deletes and s
-	ServerRenewProhibited    bool `json:"ServerPenewProhibited"`
-	ServerHold               bool `json:"ServerHold"`      // ServerHold is a status that removes the domain from the DNS
-	PendingCreate            bool `json:"PendingCreate"`   // PendingCreate meanse a create command has been received but there is a pending action that needs to be completed before the domain is fully created
-	PendingRenew             bool `json:"PendingRenew"`    // PendingRenew means a renew command has been received but there is a pending action that needs to be completed before the domain is fully renewed
-	PendingTransfer          bool `json:"PendingTransfer"` // PendingTransfer means a transfer command has been received but there is a pending action that needs to be completed before the domain is fully transferred
-	PendingUpdate            bool `json:"PendingUpdate"`   // PendingUpdate means an update command has been received but there is a pending action that needs to be completed before the domain is fully updated
-	PendingRestore           bool `json:"PendingRestore"`  // PendingRestore means a restore command has been received but there is a pending action that needs to be completed before the domain is fully restored
-	PendingDelete            bool `json:"PendingDelete"`   // PendingDelete means the domain is in it's EOL cycle and will be deleted on the PurgeDate. It remains resotrable until RedemptionGPEnd
+	ServerRenewProhibited    bool `json:"ServerRenewProhibited"`    // ServerRenewProhibited is a status that prohibits the renewal of the domain
+	ServerHold               bool `json:"ServerHold"`               // ServerHold is a status that removes the domain from the DNS
+	PendingCreate            bool `json:"PendingCreate"`            // PendingCreate meanse a create command has been received but there is a pending action that needs to be completed before the domain is fully created
+	PendingRenew             bool `json:"PendingRenew"`             // PendingRenew means a renew command has been received but there is a pending action that needs to be completed before the domain is fully renewed
+	PendingTransfer          bool `json:"PendingTransfer"`          // PendingTransfer means a transfer command has been received but there is a pending action that needs to be completed before the domain is fully transferred
+	PendingUpdate            bool `json:"PendingUpdate"`            // PendingUpdate means an update command has been received but there is a pending action that needs to be completed before the domain is fully updated
+	PendingRestore           bool `json:"PendingRestore"`           // PendingRestore means a restore command has been received but there is a pending action that needs to be completed before the domain is fully restored
+	PendingDelete            bool `json:"PendingDelete"`            // PendingDelete means the domain is in it's EOL cycle and will be deleted on the PurgeDate. It remains resotrable until RedemptionGPEnd
 }
 
 // Expire sets pendingDelete and unsets any delete prohibitions to avoid invalid Domain Status combinations. It bypasses update prohibitions if they exist
