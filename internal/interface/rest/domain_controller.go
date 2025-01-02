@@ -153,8 +153,6 @@ func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 
 	if ctx.Query("drophosts") == "true" {
 
-		fmt.Println("drophosts == true")
-
 		err := ctrl.domainService.RemoveAllDomainHosts(ctx, name)
 		if err != nil {
 			if errors.Is(err, entities.ErrDomainNotFound) {
@@ -165,8 +163,6 @@ func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 			return
 		}
 	}
-
-	fmt.Println("past drophosts")
 
 	err := ctrl.domainService.DeleteDomainByName(ctx, name)
 	if err != nil {
