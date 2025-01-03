@@ -36,6 +36,10 @@ var (
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 	ErrDomainExpiryNotAllowed          = errors.New("domain expiry not allowed")
 	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
+	ErrRegistrantIDRequiredButNotSet   = errors.New("RegistrantID is required but not set")
+	ErrTechIDRequiredButNotSet         = errors.New("TechID is required but not set")
+	ErrAdminIDRequiredButNotSet        = errors.New("AdminID is required but not set")
+	ErrBillingIDRequiredButNotSet      = errors.New("BillingID is required but not set")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -317,11 +321,31 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 		dom.RenewedYears = years - 1
 	}
 
-	// Set the contacts
-	dom.RegistrantID = ClIDType(registrantID)
-	dom.AdminID = ClIDType(adminID)
-	dom.TechID = ClIDType(techID)
-	dom.BillingID = ClIDType(billingID)
+	// Set the contacts if they are not prohibited in the current phase policy
+	if phase.Policy.RegistrantContactDataPolicy != ContactDataPolicyTypeProhibited {
+		if phase.Policy.RegistrantContactDataPolicy == ContactDataPolicyTypeMandatory && registrantID == "" {
+			return nil, errors.Join(ErrInvalidDomain, ErrRegistrantIDRequiredButNotSet)
+		}
+		dom.RegistrantID = ClIDType(registrantID)
+	}
+	if phase.Policy.AdminContactDataPolicy != ContactDataPolicyTypeProhibited {
+		if phase.Policy.AdminContactDataPolicy == ContactDataPolicyTypeMandatory && adminID == "" {
+			return nil, errors.Join(ErrInvalidDomain, ErrAdminIDRequiredButNotSet)
+		}
+		dom.AdminID = ClIDType(adminID)
+	}
+	if phase.Policy.TechContactDataPolicy != ContactDataPolicyTypeProhibited {
+		if phase.Policy.TechContactDataPolicy == ContactDataPolicyTypeMandatory && techID == "" {
+			return nil, errors.Join(ErrInvalidDomain, ErrTechIDRequiredButNotSet)
+		}
+		dom.TechID = ClIDType(techID)
+	}
+	if phase.Policy.BillingContactDataPolicy != ContactDataPolicyTypeProhibited {
+		if phase.Policy.BillingContactDataPolicy == ContactDataPolicyTypeMandatory && billingID == "" {
+			return nil, errors.Join(ErrInvalidDomain, ErrBillingIDRequiredButNotSet)
+		}
+		dom.BillingID = ClIDType(billingID)
+	}
 
 	return dom, nil
 }

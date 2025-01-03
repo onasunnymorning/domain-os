@@ -3,7 +3,7 @@ package entities
 import "testing"
 
 func TestNewContactPolicy(t *testing.T) {
-	cp := NewContactPolicy()
+	cp := NewContactDataPolicy()
 
 	if cp.RegistrantContactDataPolicy != ContactDataPolicyTypeMandatory {
 		t.Errorf("expected RegistrantPolicy to be %q, got %q", ContactDataPolicyTypeMandatory, cp.RegistrantContactDataPolicy)

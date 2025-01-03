@@ -172,3 +172,213 @@ func TestUpdateDomainCommand_FromEntity(t *testing.T) {
 	require.Equal(t, dom.Status, cmd.Status)
 	require.Equal(t, dom.RGPStatus, cmd.RGPStatus)
 }
+
+func TestRegisterDomainCommand_ApplyContactDataPolicy(t *testing.T) {
+	tcases := []struct {
+		name    string
+		cmd     RegisterDomainCommand
+		policy  entities.ContactDataPolicy
+		wantErr error
+		wantIDs struct {
+			registrant string
+			admin      string
+			tech       string
+			billing    string
+		}
+	}{
+		{
+			name: "All mandatory fields set, no error expected",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-registrant",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeMandatory,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeMandatory,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeMandatory,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeMandatory,
+			},
+			wantErr: nil,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "test-registrant",
+				admin:      "test-admin",
+				tech:       "test-tech",
+				billing:    "test-billing",
+			},
+		},
+		{
+			name: "Registrant mandatory not set",
+			cmd: RegisterDomainCommand{
+				AdminID:   "test-admin",
+				TechID:    "test-tech",
+				BillingID: "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeMandatory,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeOptional,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeOptional,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeOptional,
+			},
+			wantErr: entities.ErrRegistrantIDRequiredButNotSet,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "",
+				admin:      "test-admin",
+				tech:       "test-tech",
+				billing:    "test-billing",
+			},
+		},
+		{
+			name: "Tech mandatory not set",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-reg",
+				AdminID:      "test-admin",
+				BillingID:    "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeOptional,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeOptional,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeMandatory,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeOptional,
+			},
+			wantErr: entities.ErrTechIDRequiredButNotSet,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "test-reg",
+				admin:      "test-admin",
+				billing:    "test-billing",
+			},
+		},
+		{
+			name: "Billing mandatory not set",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-reg",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeOptional,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeOptional,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeOptional,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeMandatory,
+			},
+			wantErr: entities.ErrBillingIDRequiredButNotSet,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "test-reg",
+				admin:      "test-admin",
+				tech:       "test-tech",
+			},
+		},
+		{
+			name: "Admin mandatory not set",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-reg",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeOptional,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeMandatory,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeOptional,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeOptional,
+			},
+			wantErr: entities.ErrAdminIDRequiredButNotSet,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "test-reg",
+				tech:       "test-tech",
+				billing:    "test-billing",
+			},
+		},
+		{
+			name: "All prohibited fields removed",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-registrant",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeProhibited,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeProhibited,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeProhibited,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeProhibited,
+			},
+			wantErr: nil,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "",
+				admin:      "",
+				tech:       "",
+				billing:    "",
+			},
+		},
+		{
+			name: "Mixed policy (registrant mandatory, others prohibited)",
+			cmd: RegisterDomainCommand{
+				RegistrantID: "test-registrant",
+				AdminID:      "test-admin",
+				TechID:       "test-tech",
+				BillingID:    "test-billing",
+			},
+			policy: entities.ContactDataPolicy{
+				RegistrantContactDataPolicy: entities.ContactDataPolicyTypeMandatory,
+				AdminContactDataPolicy:      entities.ContactDataPolicyTypeProhibited,
+				TechContactDataPolicy:       entities.ContactDataPolicyTypeProhibited,
+				BillingContactDataPolicy:    entities.ContactDataPolicyTypeProhibited,
+			},
+			wantErr: nil,
+			wantIDs: struct {
+				registrant string
+				admin      string
+				tech       string
+				billing    string
+			}{
+				registrant: "test-registrant",
+				admin:      "",
+				tech:       "",
+				billing:    "",
+			},
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cmd.ApplyContactDataPolicy(tc.policy)
+			require.Equal(t, tc.wantErr, err)
+
+			require.Equal(t, tc.wantIDs.registrant, tc.cmd.RegistrantID, "RegistrantID mismatch")
+			require.Equal(t, tc.wantIDs.admin, tc.cmd.AdminID, "AdminID mismatch")
+			require.Equal(t, tc.wantIDs.tech, tc.cmd.TechID, "TechID mismatch")
+			require.Equal(t, tc.wantIDs.billing, tc.cmd.BillingID, "BillingID mismatch")
+		})
+	}
+}

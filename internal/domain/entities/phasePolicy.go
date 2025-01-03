@@ -52,7 +52,7 @@ func NewPhasePolicy() PhasePolicy {
 		AllowAutoRenew:     &ar,
 		RequiresValidation: &rv,
 		BaseCurrency:       BaseCurrency,
-		ContactDataPolicy:  NewContactPolicy(),
+		ContactDataPolicy:  NewContactDataPolicy(),
 	}
 }
 
