@@ -25,6 +25,7 @@ WORKDIR /cmd/api/epp-client
 RUN swag init -g eppClientApi.go -o /docs --parseDependency
 # build binary
 WORKDIR /
+ARG GIT_SHA
 RUN go build -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api/epp-client/eppClientApi.go
 # RUN upx --brute /adminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 

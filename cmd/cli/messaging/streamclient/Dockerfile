@@ -15,6 +15,7 @@ COPY ./cmd/cli/messaging/streamclient ./cmd/cli/messaging/streamclient
 # Build the CONSUMER
 FROM build AS build-receiver
 WORKDIR /
+ARG GIT_SHA
 RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o streamClient /cmd/cli/messaging/streamclient
 
 

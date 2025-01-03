@@ -15,6 +15,7 @@ COPY ./internal ./internal
 COPY ./cmd/workers/sync/ ./cmd/workers/sync/
 
 FROM build AS build-sync
+ARG GIT_SHA
 RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o syncWorker //cmd/workers/sync/syncWorker.go
 
 # Create API release image
