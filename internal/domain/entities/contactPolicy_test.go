@@ -5,16 +5,16 @@ import "testing"
 func TestNewContactPolicy(t *testing.T) {
 	cp := NewContactPolicy()
 
-	if cp.RegistrantContactPolicy != ContactDataPolicyTypeRequired {
-		t.Errorf("expected RegistrantPolicy to be %q, got %q", ContactDataPolicyTypeRequired, cp.RegistrantContactPolicy)
+	if cp.RegistrantContactDataPolicy != ContactDataPolicyTypeRequired {
+		t.Errorf("expected RegistrantPolicy to be %q, got %q", ContactDataPolicyTypeRequired, cp.RegistrantContactDataPolicy)
 	}
-	if cp.TechContactPolicy != ContactDataPolicyTypeRequired {
-		t.Errorf("expected TechPolicy to be %q, got %q", ContactDataPolicyTypeRequired, cp.TechContactPolicy)
+	if cp.TechContactDataPolicy != ContactDataPolicyTypeRequired {
+		t.Errorf("expected TechPolicy to be %q, got %q", ContactDataPolicyTypeRequired, cp.TechContactDataPolicy)
 	}
-	if cp.AdminContactPolicy != ContactDataPolicyTypeOptional {
-		t.Errorf("expected AdminPolicy to be %q, got %q", ContactDataPolicyTypeOptional, cp.AdminContactPolicy)
+	if cp.AdminContactDataPolicy != ContactDataPolicyTypeOptional {
+		t.Errorf("expected AdminPolicy to be %q, got %q", ContactDataPolicyTypeOptional, cp.AdminContactDataPolicy)
 	}
-	if cp.BillingContactPolicy != ContactDataPolicyTypeOptional {
-		t.Errorf("expected BillingPolicy to be %q, got %q", ContactDataPolicyTypeOptional, cp.BillingContactPolicy)
+	if cp.BillingContactDataPolicy != ContactDataPolicyTypeOptional {
+		t.Errorf("expected BillingPolicy to be %q, got %q", ContactDataPolicyTypeOptional, cp.BillingContactDataPolicy)
 	}
 }
