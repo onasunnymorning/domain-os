@@ -29,7 +29,7 @@ func NewFXController(e *gin.Engine, fxService interfaces.FXService, handler gin.
 // ListByBaseCurrency godoc
 // @Summary List all exchange rates by base currency
 // @Description List all exchange rates by base currency
-// @Tags fx
+// @Tags FX
 // @Accept json
 // @Produce json
 // @Param baseCurrency path string true "Base currency"
@@ -50,7 +50,7 @@ func (ctrl *FXController) ListByBaseCurrency(ctx *gin.Context) {
 // GetByBaseAndTargetCurrency godoc
 // @Summary Get the exchange rate for a base and target currency
 // @Description Get the exchange rate for a base and target currency
-// @Tags fx
+// @Tags FX
 // @Accept json
 // @Produce json
 // @Param baseCurrency path string true "Base currency"

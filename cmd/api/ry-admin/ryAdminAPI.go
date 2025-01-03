@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,6 +17,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
+	"go.uber.org/zap"
 
 	"os"
 
@@ -48,8 +49,8 @@ func inLambda() bool {
 
 // setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
 func setSwaggerInfo(cfg *config.AdminApiConfig) {
-	docs.SwaggerInfo.Version = cfg.Version
-	docs.SwaggerInfo.Host = cfg.ApiHost + ":" + cfg.ApiPort
+	docs.SwaggerInfo.Version = fmt.Sprintf("%s-%s", cfg.Version, cfg.GitSHA)
+	docs.SwaggerInfo.Host = fmt.Sprintf("%s:%s", cfg.ApiHost, cfg.ApiPort)
 	docs.SwaggerInfo.Title = cfg.ApiName
 }
 
@@ -102,35 +103,40 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+var (
+	GitSHA string // GitSHA is the git commit hash set by the build process Ref. https://stackoverflow.com/a/1132237
+)
+
 // @title Domain OS Admin API
 // @license.name Geoffrey De Prins All rights reserved
 func main() {
-	// Load the APP configuration and log it
-	cfg := config.LoadConfig()
-	log.Println("Starting Admin API with following config:")
-	jBytes, err := json.Marshal(cfg)
+	// create a new logger
+	logger, err := zap.NewProduction()
 	if err != nil {
-		log.Fatalf("Failed to marshal config: %s", err)
+		log.Fatalf("Failed to create logger: %s", err)
 	}
-	log.Println(string(jBytes))
+
+	// Load the APP configuration and log it
+	cfg := config.LoadConfig(GitSHA)
+	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
 
 	// Try and determine the runtime environment
 	if !runningInDocker() {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
-			log.Println("Running in Kubernetes")
+			logger.Info("Detected we are Running in Kubernetes")
 		} else {
-			log.Println("Could not determine runtime environment")
+			logger.Warn("Could not determine runtime environment")
 		}
 	} else {
-		log.Println("Running in Docker runtime")
+		logger.Info("Detected we are running in Docker")
 	}
 
 	// Initialize New Relic APM if enabled
 	if cfg.NewRelicEnabled {
-		log.Println("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
+		logger.Info("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
 		app, err := initNewRelicAPM()
 		if err != nil {
-			log.Fatalf("Failed to initialize New Relic APM: %s", err)
+			logger.Error("Failed to initialize New Relic APM", zap.Error(err))
 		}
 		defer app.Shutdown(0)
 	}
@@ -151,17 +157,17 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Fatalln(err)
+		logger.Panic("Failed to connect to the database", zap.Error(err))
 	}
 
 	// Set up Eventservice if enabled
 	var eventSvc *services.EventService
 	if cfg.EventStreamEnabled {
-		log.Println("Setting up Event Stream")
+		logger.Debug("Setting up Event Stream")
 		portStr := os.Getenv("RMQ_PORT")
 		port, err := strconv.Atoi(portStr)
 		if err != nil {
-			log.Fatalf("Failed to convert RMQ_PORT to int: %s", err)
+			logger.Error("Failed to convert envar RMQ_PORT to int", zap.Error(err))
 		}
 
 		eventRepo, err := rabbitmq.NewEventRepository(&rabbitmq.RabbitConfig{
@@ -172,7 +178,7 @@ func main() {
 			Topic:    os.Getenv("EVENT_STREAM_TOPIC"),
 		})
 		if err != nil {
-			log.Fatalf("Failed to create Event Repository: %s", err)
+			logger.Error("Failed to create Event Repository", zap.Error(err))
 		}
 		eventSvc = services.NewEventService(eventRepo)
 		err = eventSvc.SendStream(&entities.Event{
@@ -185,7 +191,7 @@ func main() {
 			Timestamp: time.Now().UTC(),
 		})
 		if err != nil {
-			log.Fatalf("Failed to send event: %s", err)
+			logger.Error("Failed to send startup event", zap.Error(err))
 		}
 	}
 
@@ -193,7 +199,7 @@ func main() {
 	// Roid
 	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
-		panic(err)
+		logger.Panic("Failed to create ID Generator", zap.Error(err))
 	}
 	roidService := services.NewRoidService(idGenerator)
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
@@ -306,7 +312,7 @@ func main() {
 		ginSwagger.DocExpansion("none"))) // collapse all endpoints by default
 
 	if inLambda() {
-		log.Println("Running in AWS Lambda")
+		logger.Info("Determined we are running in AWS Lambda")
 		// Start the server using the AWS Lambda proxy
 		log.Fatal(gateway.ListenAndServe(os.Getenv("API_PORT"), r))
 	} else {

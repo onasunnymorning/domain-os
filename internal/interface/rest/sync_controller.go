@@ -90,7 +90,7 @@ func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
 // @Param currency path string true "The base currency to sync"
 // @Success 200 {object} SyncResult
 // @Failure 500
-// @Router /sync/fx/:currency [put]
+// @Router /sync/fx/{currency} [put]
 func (ctrl *SyncController) SyncFX(ctx *gin.Context) {
 	baseCurrency := ctx.Param("currency")
 	err := ctrl.syncService.RefreshFXRates(ctx, baseCurrency)

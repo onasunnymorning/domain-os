@@ -32,7 +32,7 @@ func NewPriceController(e *gin.Engine, priceService interfaces.PriceService, han
 // CreatePrice godoc
 // @Summary Create a new Price
 // @Description Create a new Price. TLD Name and Phase Name are case sensitive. Currency Code will be converted to uppercase before storing. If the price defined its Currency already exists in the phase a 400 will be returned. If the TLD or Phase do not exist a 404 will be returned. Amounts should be in the smallest unit of the currency (e.g. cents for USD).
-// @Tags Prices
+// @Tags TLDs
 // @Accept json
 // @Produce json
 // @Param fee body commands.CreatePriceCommand true "Price to create"
@@ -76,7 +76,7 @@ func (ctrl *PriceController) CreatePrice(ctx *gin.Context) {
 // ListPrices godoc
 // @Summary List all Prices for a given phase
 // @Description List all Prices for a given phase. There is no pagination on this endpoint. TLD Name and Phase Name are case sensitive.
-// @Tags Prices
+// @Tags TLDs
 // @Produce json
 // @Param tldName path string true "TLD name"
 // @Param phaseName path string true "Phase name"
@@ -99,7 +99,7 @@ func (ctrl *PriceController) ListPrices(ctx *gin.Context) {
 // DeletePrice godoc
 // @Summary Delete a Price
 // @Description Deletes a Price for a given phase. The fee is identified by its currency. TLD Name and Phase Name are case sensitive. Currency is not (we always store currency codes in uppercase and will convert the input given to uppercase ). If the Price does not exist a 204 will be returned. If either the TLD or Phase do not exist a 404 will be returned.
-// @Tags Prices
+// @Tags TLDs
 // @Produce json
 // @Param tldName path string true "TLD name"
 // @Param phaseName path string true "Phase name"
