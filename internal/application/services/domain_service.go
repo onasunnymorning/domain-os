@@ -653,6 +653,8 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err != nil {
 		return nil, err
 	}
+
+	// If the domain is not available, return now
 	if !checkResult.Available {
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
@@ -677,7 +679,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
-	// Generate a RoID
+	// Generate a RoID for our new domain
 	roid, err := svc.roidService.GenerateRoid(entities.RoidTypeDomain)
 	if err != nil {
 		return nil, err
@@ -687,14 +689,6 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err
-	}
-
-	// Depending on the TLD Phase Policy we may need to need to create set pendingCreate
-	if *phase.Policy.RequiresValidation {
-		err := dom.SetStatus(entities.DomainStatusPendingCreate)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Add the hosts if there are any

@@ -298,12 +298,36 @@ func (d *Domain) RemoveHost(host *Host) error {
 
 // RegisterDomain creates a new Domain object and sets all required (RGP) statuses
 func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID string, phase *Phase, years int) (*Domain, error) {
+	if years == 0 {
+		return nil, ErrZeroRenewalPeriod
+	}
+
 	if phase == nil {
 		return nil, ErrPhaseNotProvided
 	}
 	dom, err := NewDomain(roid, name, clid, authInfo)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set the registrant, admin, tech and billing IDs
+	dom.RegistrantID = ClIDType(registrantID)
+	dom.AdminID = ClIDType(adminID)
+	dom.TechID = ClIDType(techID)
+	dom.BillingID = ClIDType(billingID)
+
+	// Apply the contact data policy
+	err = dom.applyContactDataPolicy(phase.Policy.ContactDataPolicy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Depending on the TLD Phase Policy we may need to need to create set pendingCreate
+	if phase.Policy.RequiresValidation != nil && *phase.Policy.RequiresValidation {
+		err := dom.SetStatus(DomainStatusPendingCreate)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Set the create registrar
@@ -316,36 +340,10 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 	// Set the expiry date
 	dom.ExpiryDate = dom.CreatedAt.AddDate(years, 0, 0)
 
-	// If the registration period is more than 1 year, set the renewed years
-	if years > 1 {
-		dom.RenewedYears = years - 1
-	}
+	// set the renewed years (the first year is the registration year)
+	dom.RenewedYears = years - 1
 
-	// Set the contacts if they are not prohibited in the current phase policy
-	if phase.Policy.RegistrantContactDataPolicy != ContactDataPolicyTypeProhibited {
-		if phase.Policy.RegistrantContactDataPolicy == ContactDataPolicyTypeMandatory && registrantID == "" {
-			return nil, errors.Join(ErrInvalidDomain, ErrRegistrantIDRequiredButNotSet)
-		}
-		dom.RegistrantID = ClIDType(registrantID)
-	}
-	if phase.Policy.AdminContactDataPolicy != ContactDataPolicyTypeProhibited {
-		if phase.Policy.AdminContactDataPolicy == ContactDataPolicyTypeMandatory && adminID == "" {
-			return nil, errors.Join(ErrInvalidDomain, ErrAdminIDRequiredButNotSet)
-		}
-		dom.AdminID = ClIDType(adminID)
-	}
-	if phase.Policy.TechContactDataPolicy != ContactDataPolicyTypeProhibited {
-		if phase.Policy.TechContactDataPolicy == ContactDataPolicyTypeMandatory && techID == "" {
-			return nil, errors.Join(ErrInvalidDomain, ErrTechIDRequiredButNotSet)
-		}
-		dom.TechID = ClIDType(techID)
-	}
-	if phase.Policy.BillingContactDataPolicy != ContactDataPolicyTypeProhibited {
-		if phase.Policy.BillingContactDataPolicy == ContactDataPolicyTypeMandatory && billingID == "" {
-			return nil, errors.Join(ErrInvalidDomain, ErrBillingIDRequiredButNotSet)
-		}
-		dom.BillingID = ClIDType(billingID)
-	}
+	// Apply the PhasePolicy
 
 	return dom, nil
 }
@@ -485,4 +483,42 @@ func (d *Domain) IsGrandFathered() bool {
 		return false
 	}
 	return true
+}
+
+// applyContactDataPolicy enforces the appropriate contact data policy rules for the
+// specified registrantID, adminID, techID, and billingID fields. It ensures that
+// mandatory fields are set, returning an error if any mandatory field is empty,
+// and clears prohibited fields according to the provided policy.
+func (d *Domain) applyContactDataPolicy(
+	policy ContactDataPolicy,
+) error {
+	// -- Fail fast for mandatory fields --
+	if policy.RegistrantContactDataPolicy == ContactDataPolicyTypeMandatory && d.RegistrantID.String() == "" {
+		return ErrRegistrantIDRequiredButNotSet
+	}
+	if policy.AdminContactDataPolicy == ContactDataPolicyTypeMandatory && d.AdminID.String() == "" {
+		return ErrAdminIDRequiredButNotSet
+	}
+	if policy.TechContactDataPolicy == ContactDataPolicyTypeMandatory && d.TechID.String() == "" {
+		return ErrTechIDRequiredButNotSet
+	}
+	if policy.BillingContactDataPolicy == ContactDataPolicyTypeMandatory && d.BillingID.String() == "" {
+		return ErrBillingIDRequiredButNotSet
+	}
+
+	// -- Empty out prohibited fields --
+	if policy.RegistrantContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.RegistrantID = ""
+	}
+	if policy.AdminContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.AdminID = ""
+	}
+	if policy.TechContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.TechID = ""
+	}
+	if policy.BillingContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.BillingID = ""
+	}
+
+	return nil
 }
