@@ -1,5 +1,5 @@
 export BRANCH=$(git branch --show-current)
-docker build -t geapex/domain-os:$BRANCH . && doppler run -- docker compose --profile essential -f docker-compose.yml up # --watch
+docker build -t geapex/domain-os:$BRANCH --build-arg GIT_SHA=$BRANCH . && doppler run -- docker compose --profile essential -f docker-compose.yml up # --watch
 doppler run -- docker compose rm --force --volumes
 # the above stopped working for some reason, so I'm using the following instead
 docker container rm domain-os-db-1

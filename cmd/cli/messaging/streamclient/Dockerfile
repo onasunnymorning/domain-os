@@ -15,7 +15,7 @@ COPY ./cmd/cli/messaging/streamclient ./cmd/cli/messaging/streamclient
 # Build the CONSUMER
 FROM build AS build-receiver
 WORKDIR /
-RUN go build -tags dynamic -ldflags="-s -w" -o streamClient /cmd/cli/messaging/streamclient
+RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o streamClient /cmd/cli/messaging/streamclient
 
 
 # Create CONSUMER release image
