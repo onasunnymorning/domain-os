@@ -32,6 +32,7 @@ type PhasePolicy struct {
 	AllowAutoRenew     *bool  `json:"allowAutorenew,omitempty" example:"true"`
 	RequiresValidation *bool  `json:"requiresValidation,omitempty" example:"false"`
 	BaseCurrency       string `json:"baseCurrency,omitempty" example:"USD"`
+	ContactPolicy
 }
 
 // PhasePolicy factory. This returns a new PhasePolicy object with default values
@@ -51,6 +52,7 @@ func NewPhasePolicy() PhasePolicy {
 		AllowAutoRenew:     &ar,
 		RequiresValidation: &rv,
 		BaseCurrency:       BaseCurrency,
+		ContactPolicy:      NewContactPolicy(),
 	}
 }
 
