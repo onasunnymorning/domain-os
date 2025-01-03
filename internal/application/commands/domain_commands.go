@@ -16,14 +16,51 @@ type RegisterDomainCommand struct {
 	Name         string       `json:"Name" binding:"required"`
 	ClID         string       `json:"ClID" binding:"required"`
 	AuthInfo     string       `json:"AuthInfo"  binding:"required"`
-	RegistrantID string       `json:"RegistrantID" binding:"required"` // Contacts must exist before registering a domain
-	AdminID      string       `json:"AdminID" binding:"required"`      // Contacts must exist before registering a domain
-	TechID       string       `json:"TechID" binding:"required"`       // Contacts must exist before registering a domain
-	BillingID    string       `json:"BillingID" binding:"required"`    // Contacts must exist before registering a domain
-	Years        int          `json:"Years"`                           // if not provided, it will be 1
-	HostNames    []string     `json:"HostNames"`                       // HostNames must exist before registering a domain
-	PhaseName    string       `json:"PhaseName"`                       // Optional, if provided the domain will be registered (and validated) in this phase, if omitted the active GA phase will be used
-	Fee          FeeExtension `json:"Fee"`                             // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+	RegistrantID string       `json:"RegistrantID"` // Contacts must exist before registering a domain
+	AdminID      string       `json:"AdminID"`      // Contacts must exist before registering a domain
+	TechID       string       `json:"TechID"`       // Contacts must exist before registering a domain
+	BillingID    string       `json:"BillingID"`    // Contacts must exist before registering a domain
+	Years        int          `json:"Years"`        // if not provided, it will be 1
+	HostNames    []string     `json:"HostNames"`    // HostNames must exist before registering a domain
+	PhaseName    string       `json:"PhaseName"`    // Optional, if provided the domain will be registered (and validated) in this phase, if omitted the active GA phase will be used
+	Fee          FeeExtension `json:"Fee"`          // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+}
+
+// ApplyContactDataPolicy applies the contact data policy to the command's properties:
+// Prohibited contact IDs will be set to an empty string
+// Mandatory contact IDs must not be empty strings or an error will be returned
+// Optional contact IDs can be either empty strings or set to a valid contact ID
+// NOTE: This function will not validate if the contact with the specified ID exists, this is the responsibility of the repository layer which will enforce a FK constraint
+func (cmd *RegisterDomainCommand) ApplyContactDataPolicy(policy entities.ContactDataPolicy) error {
+	// Fail first
+	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.RegistrantID == "" {
+		return entities.ErrRegistrantIDRequiredButNotSet
+	}
+	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.AdminID == "" {
+		return entities.ErrAdminIDRequiredButNotSet
+	}
+	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.TechID == "" {
+		return entities.ErrTechIDRequiredButNotSet
+	}
+	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.BillingID == "" {
+		return entities.ErrBillingIDRequiredButNotSet
+	}
+
+	// Empty the prohibited fields
+	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		cmd.RegistrantID = ""
+	}
+	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		cmd.AdminID = ""
+	}
+	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		cmd.TechID = ""
+	}
+	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		cmd.BillingID = ""
+	}
+
+	return nil
 }
 
 // RenewDomainCommand is a command to renew a domain
@@ -46,10 +83,10 @@ type CreateDomainCommand struct {
 	Name           string                        `json:"Name" binding:"required"`
 	OriginalName   string                        `json:"OriginalName"`
 	UName          string                        `json:"UName"`
-	RegistrantID   string                        `json:"RegistrantID" binding:"required"`
-	AdminID        string                        `json:"AdminID" binding:"required"`
-	TechID         string                        `json:"TechID" binding:"required"`
-	BillingID      string                        `json:"BillingID" binding:"required"`
+	RegistrantID   string                        `json:"RegistrantID"`
+	AdminID        string                        `json:"AdminID"`
+	TechID         string                        `json:"TechID"`
+	BillingID      string                        `json:"BillingID"`
 	ClID           string                        `json:"ClID" binding:"required"`
 	CrRr           string                        `json:"CrRr"`
 	UpRr           string                        `json:"UpRr"`
@@ -125,10 +162,10 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 type UpdateDomainCommand struct {
 	OriginalName   string                        `json:"OriginalName"`
 	UName          string                        `json:"UName"`
-	RegistrantID   string                        `json:"RegistrantID" binding:"required"`
-	AdminID        string                        `json:"AdminID" binding:"required"`
-	TechID         string                        `json:"TechID" binding:"required"`
-	BillingID      string                        `json:"BillingID" binding:"required"`
+	RegistrantID   string                        `json:"RegistrantID"`
+	AdminID        string                        `json:"AdminID"`
+	TechID         string                        `json:"TechID"`
+	BillingID      string                        `json:"BillingID"`
 	ClID           string                        `json:"ClID" binding:"required"`
 	CrRr           string                        `json:"CrRr"`
 	UpRr           string                        `json:"UpRr"`
