@@ -34,7 +34,8 @@ COPY ./cmd/cli/messaging/sub ./cmd/cli/messaging/sub
 
 # Just build the consumer binary
 FROM build AS build-consumer
-RUN go build -tags dynamic -ldflags="-s -w" -o consumerApp /cmd/cli/messaging/sub/consumer.go
+ARG GIT_SHA
+RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o consumerApp /cmd/cli/messaging/sub/consumer.go
 # RUN upx --brute /consumerApp
 
 

@@ -37,7 +37,7 @@ func NewIANARegistrarController(e *gin.Engine, ianaRegistrarService interfaces.I
 // List godoc
 // @Summary List IANARegistrars
 // @Description List IANARegistrars from our internal repository. If you need to update the IANA registrar list, please use the /sync endpoint.
-// @Tags IANARegistrars
+// @Tags Registrars
 // @Param pagesize query int false "Page Size"
 // @Param cursor query string false "Cursor"
 // @Param name_like query string false "Name Like (case insensitive search on name)"
@@ -90,7 +90,7 @@ func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
 // GetByGurID godoc
 // @Summary Get IANARegistrar by GurID
 // @Description Get IANARegistrar by GurID from our internal repository.
-// @Tags IANARegistrars
+// @Tags Registrars
 // @Produce json
 // @Param gurID path int true "GurID"
 // @Success 200 {object} entities.IANARegistrar
@@ -120,7 +120,7 @@ func (ctrl *IANARegistrarController) GetByGurID(ctx *gin.Context) {
 // Count godoc
 // @Summary Count IANARegistrars
 // @Description Count IANARegistrars from our internal repository.
-// @Tags IANARegistrars
+// @Tags Registrars
 // @Produce json
 // @Success 200 {object} response.CountResult
 // @Failure 500

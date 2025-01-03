@@ -15,7 +15,8 @@ COPY ./internal ./internal
 COPY ./cmd/whois/ ./cmd/whois/
 
 FROM build AS build-whois
-RUN go build -tags dynamic -ldflags="-s -w" -o whoisServer /cmd/whois/whois.go
+ARG GIT_SHA
+RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
 FROM alpine:3.21 AS whois-server

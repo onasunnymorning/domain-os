@@ -117,7 +117,7 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 // @Failure 400
 // @Failure 404
 // @Failure 500
-// @Router /contacts/:id [put]
+// @Router /contacts/{id} [put]
 func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	var req commands.UpdateContactCommand
 	if err := ctx.ShouldBindJSON(&req); err != nil {
