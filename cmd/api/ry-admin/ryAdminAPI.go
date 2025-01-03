@@ -49,7 +49,7 @@ func inLambda() bool {
 
 // setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
 func setSwaggerInfo(cfg *config.AdminApiConfig) {
-	docs.SwaggerInfo.Version = fmt.Sprintf("%s-%s", cfg.Version, cfg.CommitID)
+	docs.SwaggerInfo.Version = fmt.Sprintf("%s-%s", cfg.Version, cfg.GitSHA)
 	docs.SwaggerInfo.Host = fmt.Sprintf("%s:%s", cfg.ApiHost, cfg.ApiPort)
 	docs.SwaggerInfo.Title = cfg.ApiName
 }
@@ -104,7 +104,7 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 }
 
 var (
-	CommitID string
+	GitSHA string
 )
 
 // @title Domain OS Admin API
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	// Load the APP configuration and log it
-	cfg := config.LoadConfig(CommitID)
+	cfg := config.LoadConfig(GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
 
 	// Try and determine the runtime environment

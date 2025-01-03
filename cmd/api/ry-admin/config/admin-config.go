@@ -7,7 +7,7 @@ import (
 // AdminApiConfig contains the configuration for the admin api
 type AdminApiConfig struct {
 	Version            string
-	CommitID           string
+	GitSHA             string
 	NewRelicEnabled    bool
 	AutoMigrate        bool
 	EventStreamEnabled bool
@@ -19,9 +19,9 @@ type AdminApiConfig struct {
 	ApiPort            string
 }
 
-func LoadConfig(commitID string) *AdminApiConfig {
+func LoadConfig(GitSHA string) *AdminApiConfig {
 	return &AdminApiConfig{
-		CommitID:           commitID,
+		GitSHA:             GitSHA,
 		NewRelicEnabled:    os.Getenv("NEW_RELIC_ENABLED") == "true",
 		AutoMigrate:        os.Getenv("AUTO_MIGRATE") == "true",
 		EventStreamEnabled: os.Getenv("EVENT_STREAM_ENABLED") == "true",
