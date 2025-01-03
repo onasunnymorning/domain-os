@@ -22,7 +22,7 @@ func TestNewPhasePolicy(t *testing.T) {
 	assert.Equal(t, &ar, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, &rv, phasePolicy.RequiresValidation)
 	assert.Equal(t, BaseCurrency, phasePolicy.BaseCurrency)
-	assert.NotNil(t, phasePolicy.ContactPolicy)
+	assert.NotNil(t, phasePolicy.ContactDataPolicy)
 }
 func TestPhasePolicy_LabelIsAllowed(t *testing.T) {
 	phasePolicy := NewPhasePolicy()
