@@ -104,7 +104,7 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 }
 
 var (
-	GitSHA string
+	GitSHA string // GitSHA is the git commit hash set by the build process Ref. https://stackoverflow.com/a/1132237
 )
 
 // @title Domain OS Admin API

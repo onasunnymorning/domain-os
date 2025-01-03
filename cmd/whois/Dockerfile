@@ -15,6 +15,7 @@ COPY ./internal ./internal
 COPY ./cmd/whois/ ./cmd/whois/
 
 FROM build AS build-whois
+ARG GIT_SHA
 RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
