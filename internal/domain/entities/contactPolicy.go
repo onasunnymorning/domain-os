@@ -1,10 +1,10 @@
 package entities
 
 type ContactDataPolicy struct {
-	RegistrantContactPolicy ContactDataPolicyType `json:"registrantContactPolicy,omitempty" example:"required"`
-	TechContactPolicy       ContactDataPolicyType `json:"techContactPolicy,omitempty" example:"required"`
-	AdminContactPolicy      ContactDataPolicyType `json:"adminContactPolicy,omitempty" example:"optional"`
-	BillingContactPolicy    ContactDataPolicyType `json:"billingContactPolicy,omitempty" example:"prohibited"`
+	RegistrantContactDataPolicy ContactDataPolicyType `json:"registrantDataContactPolicy,omitempty" example:"required"`
+	TechContactDataPolicy       ContactDataPolicyType `json:"techContactDataPolicy,omitempty" example:"required"`
+	AdminContactDataPolicy      ContactDataPolicyType `json:"adminContactDataPolicy,omitempty" example:"optional"`
+	BillingContactDataPolicy    ContactDataPolicyType `json:"billingContactDataPolicy,omitempty" example:"prohibited"`
 }
 
 // ContactDataPolicyType is a type for the contact policy of a TLD phase
@@ -20,9 +20,9 @@ const (
 // ContactPolicy factory. This returns a new ContactPolicy object with default values (Registrant and Tech are required, Admin and Billing are optional)
 func NewContactPolicy() ContactDataPolicy {
 	return ContactDataPolicy{
-		RegistrantContactPolicy: ContactDataPolicyTypeRequired,
-		TechContactPolicy:       ContactDataPolicyTypeRequired,
-		AdminContactPolicy:      ContactDataPolicyTypeOptional,
-		BillingContactPolicy:    ContactDataPolicyTypeOptional,
+		RegistrantContactDataPolicy: ContactDataPolicyTypeRequired,
+		TechContactDataPolicy:       ContactDataPolicyTypeRequired,
+		AdminContactDataPolicy:      ContactDataPolicyTypeOptional,
+		BillingContactDataPolicy:    ContactDataPolicyTypeOptional,
 	}
 }
