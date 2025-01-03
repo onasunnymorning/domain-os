@@ -107,7 +107,7 @@ func (d *Domain) UnSetOKStatusIfNeeded() {
 
 // NewDomain creates a new Domain object. It returns an error if the Domain object is invalid.
 // This function is intended to admin functionality such as importing domains from an escrow file.
-// It does not set RGP statuses. If creating a domain in the context of a registration, see RegisterDomain instead
+// It does not set RGP statuses. See RegisterDomain instead if you are looking to create a domain as part of the registration process by a client.
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
