@@ -39,7 +39,7 @@ func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListServi
 // CreateList godoc
 // @Summary Create a new Premium List
 // @Description Create a new Premium List. The name must be unique.
-// @Tags Premium Lists
+// @Tags Premiums
 // @Accept json
 // @Produce json
 // @Param list body commands.CreatePremiumListCommand true "Premium List to create"
@@ -72,7 +72,7 @@ func (ctrl *PremiumController) CreateList(ctx *gin.Context) {
 // GetListByName godoc
 // @Summary Get a Premium List by name
 // @Description Get a Premium List by name
-// @Tags Premium Lists
+// @Tags Premiums
 // @Accept json
 // @Produce json
 // @Param name path string true "Name of the Premium List"
@@ -98,7 +98,7 @@ func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 // ListPremiumLists godoc
 // @Summary List all Premium Lists
 // @Description List all Premium Lists. There is no pagination on this endpoint.
-// @Tags Premium Lists
+// @Tags Premiums
 // @Produce json
 // @Success 200 {array} entities.PremiumList
 // @Failure 500
@@ -138,7 +138,7 @@ func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 // DeleteListByName godoc
 // @Summary Delete a Premium List by name
 // @Description Delete a Premium List by name
-// @Tags Premium Lists
+// @Tags Premiums
 // @Produce json
 // @Param name path string true "Name of the Premium List"
 // @Success 204
@@ -160,7 +160,7 @@ func (ctrl *PremiumController) DeleteListByName(ctx *gin.Context) {
 // CreateLabel godoc
 // @Summary Create a new Premium Label in a Premium List
 // @Description Create a new Premium Label in a Premium List. The label+currency must be unique within the list.
-// @Tags Premium Labels
+// @Tags Premiums
 // @Accept json
 // @Produce json
 // @Param name path string true "Name of the Premium List"
@@ -194,7 +194,7 @@ func (ctrl *PremiumController) CreateLabel(ctx *gin.Context) {
 // GetLabelByLabelListAndCurrency godoc
 // @Summary Get a Premium Label by label, list, and currency
 // @Description Get a Premium Label by label, list, and currency
-// @Tags Premium Labels
+// @Tags Premiums
 // @Accept json
 // @Produce json
 // @Param name path string true "Name of the Premium List"
@@ -222,7 +222,7 @@ func (ctrl *PremiumController) GetLabelByLabelListAndCurrency(ctx *gin.Context) 
 // DeleteLabelByLabelListAndCurrency godoc
 // @Summary Delete a Premium Label by label, list, and currency
 // @Description Delete a Premium Label by label, list, and currency
-// @Tags Premium Labels
+// @Tags Premiums
 // @Produce json
 // @Param name path string true "Name of the Premium List"
 // @Param label path string true "Label of the Premium Label"
@@ -244,7 +244,7 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 // ListPremiumLabels godoc
 // @Summary List Premium Labels
 // @Description List Premium Labels.
-// @Tags Premium Labels
+// @Tags Premiums
 // @Produce json
 // @Success 200 {array} entities.PremiumLabel
 // @Failure 500
