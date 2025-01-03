@@ -17,7 +17,7 @@ const (
 	ContactDataPolicyTypeProhibited = ContactDataPolicyType("prohibited")
 )
 
-// ContactPolicy factory. This returns a new ContactPolicy object with default values (Registrant and Tech are required, Admin and Billing are optional)
+// ContactPolicy factory. This returns a new ContactPolicy object with default values (Registrant and Tech are required, Admin and Billing are optional, this aligns with the 2025 RDP for gTLDs)
 func NewContactPolicy() ContactDataPolicy {
 	return ContactDataPolicy{
 		RegistrantContactDataPolicy: ContactDataPolicyTypeMandatory,
