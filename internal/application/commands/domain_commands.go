@@ -26,41 +26,17 @@ type RegisterDomainCommand struct {
 	Fee          FeeExtension `json:"Fee"`          // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
 }
 
-// ApplyContactDataPolicy applies the contact data policy to the command's properties:
-// Prohibited contact IDs will be set to an empty string
-// Mandatory contact IDs must not be empty strings or an error will be returned
-// Optional contact IDs can be either empty strings or set to a valid contact ID
-// NOTE: This function will not validate if the contact with the specified ID exists, this is the responsibility of the repository layer which will enforce a FK constraint
+// ApplyContactDataPolicy modifies the command’s registrant, admin, tech, and billing
+// contact IDs according to the provided contact data policy. It returns an error if
+// the operation fails due to invalid or missing data.
 func (cmd *RegisterDomainCommand) ApplyContactDataPolicy(policy entities.ContactDataPolicy) error {
-	// Fail first
-	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.RegistrantID == "" {
-		return entities.ErrRegistrantIDRequiredButNotSet
-	}
-	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.AdminID == "" {
-		return entities.ErrAdminIDRequiredButNotSet
-	}
-	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.TechID == "" {
-		return entities.ErrTechIDRequiredButNotSet
-	}
-	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeMandatory && cmd.BillingID == "" {
-		return entities.ErrBillingIDRequiredButNotSet
-	}
-
-	// Empty the prohibited fields
-	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
-		cmd.RegistrantID = ""
-	}
-	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
-		cmd.AdminID = ""
-	}
-	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
-		cmd.TechID = ""
-	}
-	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
-		cmd.BillingID = ""
-	}
-
-	return nil
+	return applyContactDataPolicy(
+		policy,
+		&cmd.RegistrantID,
+		&cmd.AdminID,
+		&cmd.TechID,
+		&cmd.BillingID,
+	)
 }
 
 // RenewDomainCommand is a command to renew a domain
@@ -77,7 +53,7 @@ type FeeExtension struct {
 	Amount   float64 `json:"Amount"`
 }
 
-// CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar operations should use the RegisterDomainCommand and RenewDomainCommand ...
+// CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar transactions should use the RegisterDomainCommand and RenewDomainCommand ...
 type CreateDomainCommand struct {
 	RoID           string                        `json:"RoID"` // if not provided, it will be generated
 	Name           string                        `json:"Name" binding:"required"`
@@ -99,6 +75,19 @@ type CreateDomainCommand struct {
 	Status         entities.DomainStatus         `json:"Status"`
 	RGPStatus      entities.DomainRGPStatus      `json:"RGPStatus"`
 	GrandFathering entities.DomainGrandFathering `json:"GrandFathering"`
+}
+
+// ApplyContactDataPolicy modifies the command’s registrant, admin, tech, and billing
+// contact IDs according to the provided contact data policy. It returns an error if
+// the operation fails due to invalid or missing data.
+func (cmd *CreateDomainCommand) ApplyContactDataPolicy(policy entities.ContactDataPolicy) error {
+	return applyContactDataPolicy(
+		policy,
+		&cmd.RegistrantID,
+		&cmd.AdminID,
+		&cmd.TechID,
+		&cmd.BillingID,
+	)
 }
 
 // FromRdeDomain creates a CreateDomainCommand from an RdeDomain
@@ -179,6 +168,19 @@ type UpdateDomainCommand struct {
 	GrandFathering entities.DomainGrandFathering `json:"GrandFathering"`
 }
 
+// ApplyContactDataPolicy modifies the command’s registrant, admin, tech, and billing
+// contact IDs according to the provided contact data policy. It returns an error if
+// the operation fails due to invalid or missing data.
+func (cmd *UpdateDomainCommand) ApplyContactDataPolicy(policy entities.ContactDataPolicy) error {
+	return applyContactDataPolicy(
+		policy,
+		&cmd.RegistrantID,
+		&cmd.AdminID,
+		&cmd.TechID,
+		&cmd.BillingID,
+	)
+}
+
 // FromEntity converts a domain entity to an UpdateDomainCommand
 func (cmd *UpdateDomainCommand) FromEntity(dom *entities.Domain) {
 	cmd.OriginalName = dom.OriginalName.String()
@@ -197,4 +199,43 @@ func (cmd *UpdateDomainCommand) FromEntity(dom *entities.Domain) {
 	cmd.UpdatedAt = dom.UpdatedAt
 	cmd.Status = dom.Status
 	cmd.RGPStatus = dom.RGPStatus
+}
+
+// applyContactDataPolicy enforces the appropriate contact data policy rules for the
+// specified registrantID, adminID, techID, and billingID fields. It ensures that
+// mandatory fields are set, returning an error if any mandatory field is empty,
+// and clears prohibited fields according to the provided policy.
+func applyContactDataPolicy(
+	policy entities.ContactDataPolicy,
+	registrantID, adminID, techID, billingID *string,
+) error {
+	// -- Fail fast for mandatory fields --
+	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeMandatory && *registrantID == "" {
+		return entities.ErrRegistrantIDRequiredButNotSet
+	}
+	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeMandatory && *adminID == "" {
+		return entities.ErrAdminIDRequiredButNotSet
+	}
+	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeMandatory && *techID == "" {
+		return entities.ErrTechIDRequiredButNotSet
+	}
+	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeMandatory && *billingID == "" {
+		return entities.ErrBillingIDRequiredButNotSet
+	}
+
+	// -- Empty out prohibited fields --
+	if policy.RegistrantContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		*registrantID = ""
+	}
+	if policy.AdminContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		*adminID = ""
+	}
+	if policy.TechContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		*techID = ""
+	}
+	if policy.BillingContactDataPolicy == entities.ContactDataPolicyTypeProhibited {
+		*billingID = ""
+	}
+
+	return nil
 }
