@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhymond/go-money"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -792,3 +793,82 @@ func TestPhase_CanUpdate(t *testing.T) {
 	assert.True(t, canupdate)
 	assert.NoError(t, err)
 }
+func TestPhase_GetTransactionPriceAsMoney(t *testing.T) {
+	mockFX := FX{
+		Date:           time.Now().UTC(),
+		BaseCurrency:   "USD",
+		TargetCurrency: "EUR",
+		Rate:           0.9,
+	}
+
+	t.Run("price exists in target currency, no conversion", func(t *testing.T) {
+		phase := &Phase{
+			Prices: []Price{
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 200,
+				},
+			},
+		}
+		moneyVal, err := phase.GetTransactionPriceAsMoney("EUR", "registration", mockFX)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(200), moneyVal.Amount())
+		assert.Equal(t, "EUR", moneyVal.Currency().Code)
+	})
+
+	t.Run("price only in base currency, conversion occurs", func(t *testing.T) {
+		phase := &Phase{
+			Prices: []Price{
+				{
+					Currency:           "USD",
+					RegistrationAmount: 100,
+				},
+			},
+		}
+		moneyVal, err := phase.GetTransactionPriceAsMoney("EUR", "registration", mockFX)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(90), moneyVal.Amount())
+		assert.Equal(t, "EUR", moneyVal.Currency().Code)
+	})
+
+	t.Run("price not found in either currency", func(t *testing.T) {
+		phase := &Phase{}
+		_, err := phase.GetTransactionPriceAsMoney("EUR", "registration", mockFX)
+		assert.ErrorIs(t, err, ErrPriceNotFound)
+	})
+
+	t.Run("error retrieving price from target currency (not ErrPriceNotFound)", func(t *testing.T) {
+		// simulate a GetPrice error other than ErrPriceNotFound
+		oldGetPrice := phaseGetPrice
+		defer func() { phaseGetPrice = oldGetPrice }()
+		phaseGetPrice = func(_ *Phase, _ string) (*Price, error) {
+			return nil, errors.New("some-other-error")
+		}
+		phase := &Phase{}
+		_, err := phase.GetTransactionPriceAsMoney("EUR", "registration", mockFX)
+		assert.EqualError(t, err, ErrPriceNotFound.Error())
+	})
+
+	t.Run("GetMoney returns error", func(t *testing.T) {
+		// Simulate Price.GetMoney returning an error
+		oldGetMoney := priceGetMoney
+		defer func() { priceGetMoney = oldGetMoney }()
+		priceGetMoney = func(_ *Price, _ string) (*money.Money, error) {
+			return nil, errors.New("get-money-error")
+		}
+		phase := &Phase{
+			Prices: []Price{
+				{
+					Currency:           "EUR",
+					RegistrationAmount: 350,
+				},
+			},
+		}
+		_, err := phase.GetTransactionPriceAsMoney("PEN", "registration", mockFX)
+		assert.EqualError(t, err, ErrPriceNotFound.Error())
+	})
+}
+
+// Below are simple mock helpers to override or mock certain calls in test:
+var phaseGetPrice = (*Phase).GetPrice
+var priceGetMoney = (*Price).GetMoney

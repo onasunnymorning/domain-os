@@ -422,7 +422,7 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 
 	domain, err := ctrl.domainService.RegisterDomain(ctx, &req)
 	if err != nil {
-		if errors.Is(err, entities.ErrInvalidDomain) {
+		if errors.Is(err, entities.ErrInvalidDomain) || errors.Is(err, entities.ErrContactDataPolicyViolation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

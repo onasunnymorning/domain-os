@@ -11,12 +11,12 @@ import (
 
 // QuoteRequest represents a query to get a quote for a domain name.
 type QuoteRequest struct {
-	DomainName      string `json:"DomainName" binding:"required"`
-	TransactionType string `json:"TransactionType" binding:"required"`
-	Currency        string `json:"Currency" binding:"required"`
-	Years           int    `json:"Years" binding:"required"`
-	ClID            string `json:"ClID" binding:"required"`
-	PhaseName       string `json:"PhaseName"` // Phase name - if empty the current GA phase is assumed
+	DomainName      string `json:"DomainName" binding:"required" example:"get.busy"`
+	TransactionType string `json:"TransactionType" binding:"required" example:"registration"`
+	Currency        string `json:"Currency" binding:"required"  example:"USD"`
+	Years           int    `json:"Years" binding:"required" example:"2"`
+	ClID            string `json:"ClID" binding:"required"  example:"1290-RiskNames"`
+	PhaseName       string `json:"PhaseName" example:"sunrise"` // Phase name - if empty the current GA phase is assumed
 }
 
 // Validate validates the QuoteRequest.

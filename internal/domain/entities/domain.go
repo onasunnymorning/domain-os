@@ -36,6 +36,11 @@ var (
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 	ErrDomainExpiryNotAllowed          = errors.New("domain expiry not allowed")
 	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
+	ErrRegistrantIDRequiredButNotSet   = errors.New("RegistrantID is required but not set")
+	ErrTechIDRequiredButNotSet         = errors.New("TechID is required but not set")
+	ErrAdminIDRequiredButNotSet        = errors.New("AdminID is required but not set")
+	ErrBillingIDRequiredButNotSet      = errors.New("BillingID is required but not set")
+	ErrContactDataPolicyViolation      = errors.New("contact data policy violation")
 )
 
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
@@ -107,7 +112,7 @@ func (d *Domain) UnSetOKStatusIfNeeded() {
 
 // NewDomain creates a new Domain object. It returns an error if the Domain object is invalid.
 // This function is intended to admin functionality such as importing domains from an escrow file.
-// It does not set RGP statuses. If creating a domain in the context of a registration, see RegisterDomain instead
+// It does not set RGP statuses. See RegisterDomain instead if you are looking to create a domain as part of the registration process by a client.
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
@@ -154,7 +159,16 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	return d, nil
 }
 
-// Validate checks if the Domain object is valid
+// Validate performs a series of checks on the Domain object to ensure all fields
+// adhere to expected constraints, including:
+//  1. RoID format and its matching identifier
+//  2. Domain name properties, with special handling for IDN domains
+//  3. Client identifier (ClID) validation
+//  4. Authorization information verification
+//  5. Domain status confirmation
+//  6. Validity of optional fields for IDN vs. non-IDN domains
+//
+// Returns an error if any of these validations fail.
 func (d *Domain) Validate() error {
 	if err := d.RoID.Validate(); err != nil {
 		return err
@@ -292,14 +306,44 @@ func (d *Domain) RemoveHost(host *Host) error {
 	return nil
 }
 
-// RegisterDomain creates a new Domain object and sets all required (RGP) statuses
+// RegisterDomain creates a new Domain resource with the specified ROID, name, client ID, auth info,
+// and contact IDs. It requires a non-zero renewal period and a valid Phase.
+// Upon successful execution, the registrant, admin, tech, and billing IDs are assigned,
+// the contact data policy is applied, and the appropriate domain statuses and lock periods
+// are established based on the provided Phase settings. The initial expiry date is computed
+// by adding the given number of years to the creation timestamp, and the renewed years
+// are set to one less than the total registration period.
 func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID string, phase *Phase, years int) (*Domain, error) {
+	if years == 0 {
+		return nil, ErrZeroRenewalPeriod
+	}
+
 	if phase == nil {
 		return nil, ErrPhaseNotProvided
 	}
 	dom, err := NewDomain(roid, name, clid, authInfo)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set the registrant, admin, tech and billing IDs
+	dom.RegistrantID = ClIDType(registrantID)
+	dom.AdminID = ClIDType(adminID)
+	dom.TechID = ClIDType(techID)
+	dom.BillingID = ClIDType(billingID)
+
+	// Apply the contact data policy
+	err = dom.ApplyContactDataPolicy(phase.Policy.ContactDataPolicy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Depending on the TLD Phase Policy we may need to need to create set pendingCreate
+	if phase.Policy.RequiresValidation != nil && *phase.Policy.RequiresValidation {
+		err := dom.SetStatus(DomainStatusPendingCreate)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Set the create registrar
@@ -312,21 +356,18 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 	// Set the expiry date
 	dom.ExpiryDate = dom.CreatedAt.AddDate(years, 0, 0)
 
-	// If the registration period is more than 1 year, set the renewed years
-	if years > 1 {
-		dom.RenewedYears = years - 1
-	}
-
-	// Set the contacts
-	dom.RegistrantID = ClIDType(registrantID)
-	dom.AdminID = ClIDType(adminID)
-	dom.TechID = ClIDType(techID)
-	dom.BillingID = ClIDType(billingID)
+	// set the renewed years (the first year is the registration year)
+	dom.RenewedYears = years - 1
 
 	return dom, nil
 }
 
-// RenewDomain renews a domain and sets the new expiry date and appropriate RGP statuses. Since renew does not support the launch phase extension, the phase should always be the current GA phase.
+// Renew extends the domain's registration period by the specified number of years.
+// It checks if the domain can be renewed and validates the requested renewal period
+// against the policy limitations. If the renewal is valid, the domain's expiration
+// date is updated, and RGP statuses are set based on whether it was an auto-renewal
+// or a manual renewal. In case of invalid parameters or disallowed renewals, this
+// method returns an error.
 func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	if phase == nil {
 		return errors.Join(ErrInvalidRenewal, ErrPhaseNotProvided)
@@ -434,7 +475,10 @@ func (d *Domain) Expire(phase *Phase) error {
 	return nil
 }
 
-// Restore restores a domain if is is pendingDelete and within the redemption grace period
+// Restore transitions the domain from a pending delete status to a pending restore status.
+// It returns ErrDomainRestoreNotAllowed if the operation is not permitted or if any error
+// occurs while unsetting and setting the required statuses. The registrar responsible for
+// the restore is recorded in the UpRr field.
 func (d *Domain) Restore() error {
 	if !d.CanBeRestored() {
 		return ErrDomainRestoreNotAllowed
@@ -461,4 +505,42 @@ func (d *Domain) IsGrandFathered() bool {
 		return false
 	}
 	return true
+}
+
+// ApplyContactDataPolicy enforces the appropriate contact data policy rules for the
+// specified registrantID, adminID, techID, and billingID fields. It ensures that
+// mandatory fields are set, returning an error if any mandatory field is empty,
+// and clears prohibited fields according to the provided policy.
+func (d *Domain) ApplyContactDataPolicy(
+	policy ContactDataPolicy,
+) error {
+	// -- Fail fast for mandatory fields --
+	if policy.RegistrantContactDataPolicy == ContactDataPolicyTypeMandatory && d.RegistrantID.String() == "" {
+		return errors.Join(ErrContactDataPolicyViolation, ErrRegistrantIDRequiredButNotSet)
+	}
+	if policy.AdminContactDataPolicy == ContactDataPolicyTypeMandatory && d.AdminID.String() == "" {
+		return errors.Join(ErrContactDataPolicyViolation, ErrAdminIDRequiredButNotSet)
+	}
+	if policy.TechContactDataPolicy == ContactDataPolicyTypeMandatory && d.TechID.String() == "" {
+		return errors.Join(ErrContactDataPolicyViolation, ErrTechIDRequiredButNotSet)
+	}
+	if policy.BillingContactDataPolicy == ContactDataPolicyTypeMandatory && d.BillingID.String() == "" {
+		return errors.Join(ErrContactDataPolicyViolation, ErrBillingIDRequiredButNotSet)
+	}
+
+	// -- Empty out prohibited fields --
+	if policy.RegistrantContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.RegistrantID = ""
+	}
+	if policy.AdminContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.AdminID = ""
+	}
+	if policy.TechContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.TechID = ""
+	}
+	if policy.BillingContactDataPolicy == ContactDataPolicyTypeProhibited {
+		d.BillingID = ""
+	}
+
+	return nil
 }
