@@ -225,7 +225,10 @@ func (p *Phase) GetPrice(currency string) (*Price, error) {
 	return nil, ErrPriceNotFound
 }
 
-// GetTransactionPriceAsMoney returns a money object with the cost of a given transaction in the target currency. If needed, it will convert the price to the target currency using the FX rate.
+// GetTransactionPriceAsMoney retrieves the monetary value for a specific transaction type
+// in the specified target currency. If no price is available for the target currency,
+// it attempts to retrieve the price in the base currency and then convert it.
+// Returns a money.Money value or an error if retrieval, conversion, or lookup fails.
 func (p *Phase) GetTransactionPriceAsMoney(targetCurrency string, transactionType string, fx FX) (*money.Money, error) {
 	price, err := p.GetPrice(targetCurrency)
 	if err != nil {

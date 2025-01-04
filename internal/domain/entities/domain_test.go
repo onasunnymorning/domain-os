@@ -1299,7 +1299,7 @@ func TestRegisterDomain(t *testing.T) {
 	phase.Policy.ContactDataPolicy.TechContactDataPolicy = ContactDataPolicyTypeMandatory   // This should fire an error for empty tech contact
 	_, err = RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, "", billingID, phase, years)
 	assert.Error(t, err)
-	assert.Equal(t, ErrTechIDRequiredButNotSet, err)
+	assert.Contains(t, err.Error(), ErrTechIDRequiredButNotSet.Error())
 	dom, err = RegisterDomain(roid, name, clid, authInfo, registrantID, techID, techID, billingID, phase, years)
 	assert.NoError(t, err)
 	assert.Empty(t, dom.AdminID)
@@ -1891,7 +1891,7 @@ func TestDomain_applyContactDataPolicy(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.domain.applyContactDataPolicy(tc.policy)
+			err := tc.domain.ApplyContactDataPolicy(tc.policy)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				return

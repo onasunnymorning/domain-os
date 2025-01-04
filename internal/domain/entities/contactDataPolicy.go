@@ -1,7 +1,7 @@
 package entities
 
 type ContactDataPolicy struct {
-	RegistrantContactDataPolicy ContactDataPolicyType `json:"registrantDataContactPolicy,omitempty" example:"mandatory"`
+	RegistrantContactDataPolicy ContactDataPolicyType `json:"registrantContactDataPolicy,omitempty" example:"mandatory"`
 	TechContactDataPolicy       ContactDataPolicyType `json:"techContactDataPolicy,omitempty" example:"mandatory"`
 	AdminContactDataPolicy      ContactDataPolicyType `json:"adminContactDataPolicy,omitempty" example:"optional"`
 	BillingContactDataPolicy    ContactDataPolicyType `json:"billingContactDataPolicy,omitempty" example:"prohibited"`
