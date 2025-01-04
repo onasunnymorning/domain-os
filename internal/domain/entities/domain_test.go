@@ -1285,6 +1285,30 @@ func TestRegisterDomain(t *testing.T) {
 	_, err = RegisterDomain(roid, "example..com", clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
 	assert.Error(t, err)
 	assert.Equal(t, ErrInvalidLabelLength, err)
+
+	// Test case 4: Requires Validation in Phase
+	validationTrue := true
+	phase.Policy.RequiresValidation = &validationTrue
+	dom, err := RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, phase, years)
+	assert.NoError(t, err)
+	assert.NotNil(t, dom)
+	assert.True(t, dom.Status.PendingCreate)
+
+	// Test case 5: Violate ContactDataPolicy in Phase
+	phase.Policy.ContactDataPolicy.AdminContactDataPolicy = ContactDataPolicyTypeProhibited // This should clear the admin contact
+	phase.Policy.ContactDataPolicy.TechContactDataPolicy = ContactDataPolicyTypeMandatory   // This should fire an error for empty tech contact
+	_, err = RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, "", billingID, phase, years)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), ErrTechIDRequiredButNotSet.Error())
+	dom, err = RegisterDomain(roid, name, clid, authInfo, registrantID, techID, techID, billingID, phase, years)
+	assert.NoError(t, err)
+	assert.Empty(t, dom.AdminID)
+
+	// TEst case 6: 0 years
+	_, err = RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, billingID, phase, 0)
+	assert.Error(t, err)
+	assert.Equal(t, ErrZeroRenewalPeriod, err)
+
 }
 
 func TestDomain_Renew(t *testing.T) {
@@ -1671,6 +1695,16 @@ func TestDomain_Expire(t *testing.T) {
 			wantErr: ErrDomainExpiryNotAllowed,
 		},
 		{
+			name: "domain pendingTransfer",
+			domain: &Domain{
+				ExpiryDate: now.AddDate(0, 0, -1),
+				Status: DomainStatus{
+					PendingTransfer: true,
+				},
+			},
+			wantErr: ErrDomainExpiryFailed,
+		},
+		{
 			name: "domain expired",
 			domain: &Domain{
 				ExpiryDate: now.AddDate(0, 0, -1),
@@ -1756,6 +1790,124 @@ func TestDomain_Expire(t *testing.T) {
 				assert.Equal(t, tc.wantRGPStatus.RedemptionPeriodEnd, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP))
 				assert.Equal(t, tc.wantRGPStatus.PurgeDate, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.PendingDeleteGP))
 				assert.True(t, tc.domain.RGPStatus.PurgeDate.After(tc.domain.RGPStatus.RedemptionPeriodEnd))
+			}
+		})
+	}
+}
+func TestDomain_applyContactDataPolicy(t *testing.T) {
+	tcases := []struct {
+		name      string
+		domain    *Domain
+		policy    ContactDataPolicy
+		wantErr   error
+		wantEmpty []string
+	}{
+		{
+			name: "all mandatory fields set",
+			domain: &Domain{
+				RegistrantID: "reg123",
+				AdminID:      "adm123",
+				TechID:       "tec123",
+				BillingID:    "bil123",
+			},
+			policy: ContactDataPolicy{
+				RegistrantContactDataPolicy: ContactDataPolicyTypeMandatory,
+				AdminContactDataPolicy:      ContactDataPolicyTypeMandatory,
+				TechContactDataPolicy:       ContactDataPolicyTypeMandatory,
+				BillingContactDataPolicy:    ContactDataPolicyTypeMandatory,
+			},
+			wantErr:   nil,
+			wantEmpty: nil,
+		},
+		{
+			name: "missing mandatory registrant",
+			domain: &Domain{
+				RegistrantID: "",
+				AdminID:      "adm123",
+				TechID:       "tec123",
+				BillingID:    "bil123",
+			},
+			policy: ContactDataPolicy{
+				RegistrantContactDataPolicy: ContactDataPolicyTypeMandatory,
+			},
+			wantErr:   ErrRegistrantIDRequiredButNotSet,
+			wantEmpty: nil,
+		},
+		{
+			name: "missing mandatory admin",
+			domain: &Domain{
+				RegistrantID: "reg123",
+				AdminID:      "",
+			},
+			policy: ContactDataPolicy{
+				AdminContactDataPolicy: ContactDataPolicyTypeMandatory,
+			},
+			wantErr:   ErrAdminIDRequiredButNotSet,
+			wantEmpty: nil,
+		},
+		{
+			name: "missing mandatory billing",
+			domain: &Domain{
+				RegistrantID: "reg123",
+				BillingID:    "",
+			},
+			policy: ContactDataPolicy{
+				BillingContactDataPolicy: ContactDataPolicyTypeMandatory,
+			},
+			wantErr:   ErrBillingIDRequiredButNotSet,
+			wantEmpty: nil,
+		},
+		{
+			name: "tech  mandatory missing",
+			domain: &Domain{
+				RegistrantID: "reg123",
+				TechID:       "",
+			},
+			policy: ContactDataPolicy{
+				TechContactDataPolicy:    ContactDataPolicyTypeMandatory,
+				BillingContactDataPolicy: ContactDataPolicyTypeMandatory,
+			},
+			wantErr:   ErrTechIDRequiredButNotSet, // fails fast on tech first
+			wantEmpty: nil,
+		},
+		{
+			name: "prohibited fields must be emptied",
+			domain: &Domain{
+				RegistrantID: "reg123",
+				AdminID:      "adm123",
+				TechID:       "tec123",
+				BillingID:    "bil123",
+			},
+			policy: ContactDataPolicy{
+				RegistrantContactDataPolicy: ContactDataPolicyTypeProhibited,
+				TechContactDataPolicy:       ContactDataPolicyTypeProhibited,
+				BillingContactDataPolicy:    ContactDataPolicyTypeProhibited,
+				AdminContactDataPolicy:      ContactDataPolicyTypeProhibited,
+			},
+			wantErr:   nil,
+			wantEmpty: []string{"RegistrantID", "TechID", "BillingID", "AdminID"},
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.domain.ApplyContactDataPolicy(tc.policy)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			for _, field := range tc.wantEmpty {
+				switch field {
+				case "RegistrantID":
+					assert.Empty(t, tc.domain.RegistrantID, "RegistrantID should be empty")
+				case "AdminID":
+					assert.Empty(t, tc.domain.AdminID, "AdminID should be empty")
+				case "TechID":
+					assert.Empty(t, tc.domain.TechID, "TechID should be empty")
+				case "BillingID":
+					assert.Empty(t, tc.domain.BillingID, "BillingID should be empty")
+				}
 			}
 		})
 	}

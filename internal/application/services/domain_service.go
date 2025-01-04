@@ -67,7 +67,11 @@ func NewDomainService(
 	}
 }
 
-// CreateDomain creates a new domain from a create domain command
+// CreateDomain creates a new domain using the provided CreateDomainCommand.
+// It generates a RoID if none is provided, sets optional fields from the command,
+// validates the resulting domain entity, and persists it in the domain repository.
+// Returns the created Domain or an error if validation fails or persistence is unsuccessful.
+// It optionally validates the domain against the current GA phase polify if so stated in the command.
 func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
 	var roid entities.RoidType
 	var err error
@@ -132,6 +136,30 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 
+	// If the phase is provided, check if the domain is valid in the phase
+	if cmd.EnforcePhasePolicy {
+		// Get the phase
+		tld, err := s.tldRepo.GetByName(ctx, d.Name.ParentDomain(), true)
+		if err != nil {
+			return nil, err
+		}
+		phase, err := tld.GetCurrentGAPhase()
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if the name is valid in this phase
+		if !phase.Policy.LabelIsAllowed(d.Name.Label()) {
+			return nil, errors.Join(entities.ErrInvalidDomain, ErrLabelNotValidInPhase)
+		}
+
+		// Apply the contact data policy
+		err = d.ApplyContactDataPolicy(phase.Policy.ContactDataPolicy)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
+	}
+
 	// Save the domain
 	createdDomain, err := s.domainRepository.CreateDomain(ctx, d)
 	if err != nil {
@@ -144,7 +172,19 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 	return createdDomain, nil
 }
 
-// UpdateDomain Updates a new domain from a create domain command
+// UpdateDomain updates the details of an existing domain identified by its name.
+// It retrieves the domain from the repository, applies the changes specified in upDom,
+// optionally validates the domain against the current GA phase policy if so stated in the command,
+//
+// Parameters:
+//   - ctx: Context for the operation, enabling cancellation and deadlines.
+//   - name: The identifier (name) of the domain to be updated.
+//   - upDom: The command containing new domain data such as names and contact info.
+//   - phase: Optional phase data containing policy rules for contact data validation.
+//
+// Returns:
+//   - A pointer to the updated domain if successful.
+//   - An error if retrieval, validation, or updating fails.
 func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
 	// Look up the domain
 	dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
@@ -171,6 +211,26 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	// Validate the domain
 	if err := dom.Validate(); err != nil {
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
+
+	// If the phase is provided, check if the domain contacts are valid in the phase
+	if upDom.EnforcePhasePolicy {
+		// Get the phase
+		tld, err := s.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+		if err != nil {
+			return nil, err
+		}
+		phase, err := tld.GetCurrentGAPhase()
+		if err != nil {
+			return nil, err
+		}
+		// Since this is an update we don't check the validity of the label as it already exists and doesn't change
+
+		// Apply the contact data policy
+		err = dom.ApplyContactDataPolicy(phase.Policy.ContactDataPolicy)
+		if err != nil {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
 	}
 
 	// Save and return
@@ -635,7 +695,11 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 	return result, nil
 }
 
-// RegisterDomain registers a domain
+// RegisterDomain registers a new domain based on the provided command parameters.
+// It checks the domain's availability, optionally validates fees, determines the
+// relevant TLD and phase information, generates a unique ROID, creates the domain
+// entity, attaches any specified hosts, and persists the resulting domain in the
+// repository. It returns the created domain or an error if any step fails.
 func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error) {
 	// Check if the domain is available
 	includeFees := cmd.Fee != commands.FeeExtension{} // If the fee extension is not empty, include the fees in the check
@@ -653,6 +717,8 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err != nil {
 		return nil, err
 	}
+
+	// If the domain is not available, return now
 	if !checkResult.Available {
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
@@ -677,7 +743,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
-	// Generate a RoID
+	// Generate a RoID for our new domain
 	roid, err := svc.roidService.GenerateRoid(entities.RoidTypeDomain)
 	if err != nil {
 		return nil, err
@@ -687,14 +753,6 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err
-	}
-
-	// Depending on the TLD Phase Policy we may need to need to create set pendingCreate
-	if *phase.Policy.RequiresValidation {
-		err := dom.SetStatus(entities.DomainStatusPendingCreate)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Add the hosts if there are any

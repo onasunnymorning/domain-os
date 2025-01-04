@@ -22,6 +22,7 @@ func TestNewPhasePolicy(t *testing.T) {
 	assert.Equal(t, &ar, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, &rv, phasePolicy.RequiresValidation)
 	assert.Equal(t, BaseCurrency, phasePolicy.BaseCurrency)
+	assert.NotNil(t, phasePolicy.ContactDataPolicy)
 }
 func TestPhasePolicy_LabelIsAllowed(t *testing.T) {
 	phasePolicy := NewPhasePolicy()
@@ -63,6 +64,12 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 	// Test case: update all fields
 	ar := false
 	rv := true
+	ContactDataPolicy := ContactDataPolicy{
+		RegistrantContactDataPolicy: ContactDataPolicyTypeMandatory,
+		TechContactDataPolicy:       ContactDataPolicyTypeMandatory,
+		AdminContactDataPolicy:      ContactDataPolicyTypeOptional,
+		BillingContactDataPolicy:    ContactDataPolicyTypeOptional,
+	}
 	newPolicy := &PhasePolicy{
 		MinLabelLength:     2,
 		MaxLabelLength:     64,
@@ -77,6 +84,7 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 		AllowAutoRenew:     &ar,
 		RequiresValidation: &rv,
 		BaseCurrency:       "EUR",
+		ContactDataPolicy:  ContactDataPolicy,
 	}
 	phasePolicy.UpdatePolicy(newPolicy)
 	assert.Equal(t, newPolicy.MinLabelLength, phasePolicy.MinLabelLength)
@@ -92,6 +100,10 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 	assert.Equal(t, newPolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, newPolicy.RequiresValidation, phasePolicy.RequiresValidation)
 	assert.Equal(t, newPolicy.BaseCurrency, phasePolicy.BaseCurrency)
+	assert.Equal(t, newPolicy.ContactDataPolicy.RegistrantContactDataPolicy, phasePolicy.ContactDataPolicy.RegistrantContactDataPolicy)
+	assert.Equal(t, newPolicy.ContactDataPolicy.TechContactDataPolicy, phasePolicy.ContactDataPolicy.TechContactDataPolicy)
+	assert.Equal(t, newPolicy.ContactDataPolicy.AdminContactDataPolicy, phasePolicy.ContactDataPolicy.AdminContactDataPolicy)
+	assert.Equal(t, newPolicy.ContactDataPolicy.BillingContactDataPolicy, phasePolicy.ContactDataPolicy.BillingContactDataPolicy)
 
 	// Test case: update some fields
 	phasePolicy = NewPhasePolicy()

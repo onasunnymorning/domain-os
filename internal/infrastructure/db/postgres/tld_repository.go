@@ -20,7 +20,10 @@ func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
 	}
 }
 
-// GetByName returns a TLD by name
+// GetByName retrieves a TLD by the specified name from the repository. If preloadAll
+// is true, it preloads additional associated phase and pricing and fee details. If no record
+// is found, it returns entities.ErrTLDNotFound; otherwise, it returns any encountered
+// error.
 func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	dbtld := &TLD{}
 	var err error

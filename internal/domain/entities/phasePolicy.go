@@ -19,8 +19,8 @@ const (
 
 // PhasePolicy value object consists of all the settings of a TLD that can be changed in a phase roll
 type PhasePolicy struct {
-	MinLabelLength     int    `json:"minLabelLenght,omitempty" example:"2"`
-	MaxLabelLength     int    `json:"maxLabelLenght,omitempty" example:"63"`
+	MinLabelLength     int    `json:"minLabelLength,omitempty" example:"2"`
+	MaxLabelLength     int    `json:"maxLabelLength,omitempty" example:"63"`
 	RegistrationGP     int    `json:"registrationGP,omitempty" example:"5"`
 	RenewalGP          int    `json:"renewalGP,omitempty" example:"5"`
 	AutoRenewalGP      int    `json:"autorenewalGP,omitempty" example:"45"`
@@ -32,6 +32,7 @@ type PhasePolicy struct {
 	AllowAutoRenew     *bool  `json:"allowAutorenew,omitempty" example:"true"`
 	RequiresValidation *bool  `json:"requiresValidation,omitempty" example:"false"`
 	BaseCurrency       string `json:"baseCurrency,omitempty" example:"USD"`
+	ContactDataPolicy
 }
 
 // PhasePolicy factory. This returns a new PhasePolicy object with default values
@@ -51,6 +52,7 @@ func NewPhasePolicy() PhasePolicy {
 		AllowAutoRenew:     &ar,
 		RequiresValidation: &rv,
 		BaseCurrency:       BaseCurrency,
+		ContactDataPolicy:  NewContactDataPolicy(),
 	}
 }
 
@@ -100,4 +102,17 @@ func (p *PhasePolicy) UpdatePolicy(newPolicy *PhasePolicy) {
 	if newPolicy.BaseCurrency != "" {
 		p.BaseCurrency = newPolicy.BaseCurrency
 	}
+	if newPolicy.ContactDataPolicy.RegistrantContactDataPolicy != "" {
+		p.ContactDataPolicy.RegistrantContactDataPolicy = newPolicy.ContactDataPolicy.RegistrantContactDataPolicy
+	}
+	if newPolicy.ContactDataPolicy.TechContactDataPolicy != "" {
+		p.ContactDataPolicy.TechContactDataPolicy = newPolicy.ContactDataPolicy.TechContactDataPolicy
+	}
+	if newPolicy.ContactDataPolicy.AdminContactDataPolicy != "" {
+		p.ContactDataPolicy.AdminContactDataPolicy = newPolicy.ContactDataPolicy.AdminContactDataPolicy
+	}
+	if newPolicy.ContactDataPolicy.BillingContactDataPolicy != "" {
+		p.ContactDataPolicy.BillingContactDataPolicy = newPolicy.ContactDataPolicy.BillingContactDataPolicy
+	}
+
 }
