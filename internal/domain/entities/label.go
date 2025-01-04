@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"errors"
+
 	"golang.org/x/net/idna"
 )
 
@@ -43,7 +44,7 @@ func (t Label) Validate() error {
 	}
 	// It is an IDN label and is not valid
 	if strings.HasPrefix(t.String(), "xn--") {
-		_, err := idna.Lookup.ToUnicode(t.String())
+		_, err := idna.Registration.ToUnicode(t.String())
 		if err != nil {
 			return ErrInvalidLabelIDN
 		}
