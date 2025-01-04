@@ -12,10 +12,10 @@ type Domain struct {
 	Name                          string `gorm:"uniqueIndex;not null"`
 	OriginalName                  string
 	UName                         string
-	RegistrantID                  string
-	AdminID                       string
-	TechID                        string
-	BillingID                     string
+	RegistrantID                  *string // These are optional, prohibited or mandatory based on ContactDataPolicy
+	AdminID                       *string // These are optional, prohibited or mandatory based on ContactDataPolicy
+	TechID                        *string // These are optional, prohibited or mandatory based on ContactDataPolicy
+	BillingID                     *string // These are optional, prohibited or mandatory based on ContactDataPolicy
 	ClID                          string
 	CrRr                          *string
 	UpRr                          *string
@@ -46,10 +46,18 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	d.Name = entities.DomainName(dbDom.Name)
 	d.OriginalName = entities.DomainName(dbDom.OriginalName)
 	d.UName = entities.DomainName(dbDom.UName)
-	d.RegistrantID = entities.ClIDType(dbDom.RegistrantID)
-	d.AdminID = entities.ClIDType(dbDom.AdminID)
-	d.TechID = entities.ClIDType(dbDom.TechID)
-	d.BillingID = entities.ClIDType(dbDom.BillingID)
+	if dbDom.RegistrantID != nil {
+		d.RegistrantID = entities.ClIDType(*dbDom.RegistrantID)
+	}
+	if dbDom.AdminID != nil {
+		d.AdminID = entities.ClIDType(*dbDom.AdminID)
+	}
+	if dbDom.TechID != nil {
+		d.TechID = entities.ClIDType(*dbDom.TechID)
+	}
+	if dbDom.BillingID != nil {
+		d.BillingID = entities.ClIDType(*dbDom.BillingID)
+	}
 	d.ClID = entities.ClIDType(dbDom.ClID)
 	d.TLDName = entities.DomainName(dbDom.TLDName)
 	d.ExpiryDate = dbDom.ExpiryDate
@@ -82,10 +90,25 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.Name = d.Name.String()
 	dbDomain.OriginalName = d.OriginalName.String()
 	dbDomain.UName = d.UName.String()
-	dbDomain.RegistrantID = d.RegistrantID.String()
-	dbDomain.AdminID = d.AdminID.String()
-	dbDomain.TechID = d.TechID.String()
-	dbDomain.BillingID = d.BillingID.String()
+
+	if d.RegistrantID != entities.ClIDType("") {
+		s := d.RegistrantID.String()
+		dbDomain.RegistrantID = &s
+	}
+
+	if d.AdminID != entities.ClIDType("") {
+		s := d.AdminID.String()
+		dbDomain.AdminID = &s
+	}
+
+	if d.TechID != entities.ClIDType("") {
+		s := d.TechID.String()
+		dbDomain.TechID = &s
+	}
+	if d.BillingID != entities.ClIDType("") {
+		s := d.BillingID.String()
+		dbDomain.BillingID = &s
+	}
 	dbDomain.ClID = d.ClID.String()
 	dbDomain.TLDName = d.TLDName.String()
 	dbDomain.ExpiryDate = d.ExpiryDate

@@ -15,16 +15,17 @@ func TestDomain_TableName(t *testing.T) {
 
 func getValidDBDomain() *Domain {
 	t := time.Now().AddDate(1, 0, 0)
+	contactID := "123456"
 	rarClid := "domtestRar"
 	return &Domain{
 		RoID:         12345678,
 		Name:         "example.domaintesttld",
 		OriginalName: "example.domaintesttld",
 		UName:        "example.domaintesttld",
-		RegistrantID: "123456",
-		AdminID:      "123456",
-		TechID:       "123456",
-		BillingID:    "123456",
+		RegistrantID: &contactID,
+		AdminID:      &contactID,
+		TechID:       &contactID,
+		BillingID:    &contactID,
 		ClID:         rarClid,
 		CrRr:         &rarClid,
 		UpRr:         &rarClid,
@@ -56,10 +57,10 @@ func TestDomain_ToDomain(t *testing.T) {
 	require.Equal(t, dbDomain.Name, d.Name.String())
 	require.Equal(t, dbDomain.OriginalName, d.OriginalName.String())
 	require.Equal(t, dbDomain.UName, d.UName.String())
-	require.Equal(t, dbDomain.RegistrantID, d.RegistrantID.String())
-	require.Equal(t, dbDomain.AdminID, d.AdminID.String())
-	require.Equal(t, dbDomain.TechID, d.TechID.String())
-	require.Equal(t, dbDomain.BillingID, d.BillingID.String())
+	require.Equal(t, *dbDomain.RegistrantID, d.RegistrantID.String())
+	require.Equal(t, *dbDomain.AdminID, d.AdminID.String())
+	require.Equal(t, *dbDomain.TechID, d.TechID.String())
+	require.Equal(t, *dbDomain.BillingID, d.BillingID.String())
 	require.Equal(t, dbDomain.ClID, d.ClID.String())
 	require.Equal(t, *dbDomain.CrRr, d.CrRr.String())
 	require.Equal(t, *dbDomain.UpRr, d.UpRr.String())
