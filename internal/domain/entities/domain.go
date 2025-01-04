@@ -475,7 +475,10 @@ func (d *Domain) Expire(phase *Phase) error {
 	return nil
 }
 
-// Restore restores a domain if is is pendingDelete and within the redemption grace period
+// Restore transitions the domain from a pending delete status to a pending restore status.
+// It returns ErrDomainRestoreNotAllowed if the operation is not permitted or if any error
+// occurs while unsetting and setting the required statuses. The registrar responsible for
+// the restore is recorded in the UpRr field.
 func (d *Domain) Restore() error {
 	if !d.CanBeRestored() {
 		return ErrDomainRestoreNotAllowed
