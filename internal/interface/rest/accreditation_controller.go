@@ -23,6 +23,7 @@ func NewAccreditationController(e *gin.Engine, accService interfaces.Accreditati
 
 	accrediationGroup := e.Group("/accreditations", handler)
 	{
+		accrediationGroup.GET(":tldName/:rarClID", controller.IsAccredited)
 		accrediationGroup.POST(":tldName/:rarClID", controller.Accredit)
 		accrediationGroup.DELETE(":tldName/:rarClID", controller.Deaccredit)
 		accrediationGroup.GET("registrar/:rarClID", controller.ListRegistarAccreditations)
@@ -185,6 +186,39 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 	response.Data = rars
 	if len(rars) > 0 {
 		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize)
+	}
+
+	// Return the response
+	ctx.JSON(200, response)
+}
+
+// IsAccredited godoc
+// @Summary Check if a Registrar is accredited for a TLD
+// @Description Check if a Registrar is accredited for a TLD and return the accreditation status.
+// @Tags Accreditations
+// @Produce json
+// @Param tldName path string true "TLD Name"
+// @Param rarClID path string true "Registrar ClID"
+// @Success 200
+// @Failure 404
+// @Failure 400
+// @Failure 500
+// @Router /accreditations/{tldName}/{rarClID} [get]
+func (ctrl *AccreditationController) IsAccredited(ctx *gin.Context) {
+	tldName := ctx.Param("tldName")
+	rarClID := ctx.Param("rarClID")
+	// Prepare the response
+	response := response.NewIsAccreditedResponse(rarClID, tldName)
+	// Get the accreditation status
+	var err error
+	response.IsAccredited, err = ctrl.accService.IsRegistrarAccreditedForTLD(ctx, tldName, rarClID)
+	if err != nil {
+		if errors.Is(err, entities.ErrRegistrarNotFound) || errors.Is(err, entities.ErrTLDNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
 	}
 
 	// Return the response

@@ -96,6 +96,7 @@ func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 // CreateDomain godoc
 // @Summary Create a domain
 // @Description Create a domain. Use this to create/import domains as an admin with full control. If you are looking to register a domain as a registrar, use the /register endpoint.
+// @Description If you need this endpoint to enforce a current GA phase policy, enable thisby setting commands.CreateDomainCommand.EnforcePhasePolicy to true (defaults to false)
 // @Tags Domains
 // @Accept json
 // @Produce json
@@ -396,12 +397,15 @@ func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 // RegisterDomain godoc
 // @Summary Register a domain as a Registrar
 // @Description Register a domain as a Registrar. Is modelled after the EPP create command.
+// @Description This operation requires the Registrar to be accredited for the TLD. If the Registrar is not accredited, the request will fail with a 403 status code.
+// @Description If the domain is invalid in some way, the request will fail with a 400 status code with an error message.
 // @Tags Domains
 // @Accept json
 // @Produce json
 // @Param domain body commands.RegisterDomainCommand true "Domain"
 // @Success 201 {object} entities.Domain
 // @Failure 400
+// @Failure 403
 // @Failure 500
 // @Router /domains/{name}/register [post]
 func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
@@ -422,8 +426,14 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 
 	domain, err := ctrl.domainService.RegisterDomain(ctx, &req)
 	if err != nil {
-		if errors.Is(err, entities.ErrInvalidDomain) || errors.Is(err, entities.ErrContactDataPolicyViolation) {
+		if errors.Is(err, entities.ErrInvalidDomain) ||
+			errors.Is(err, entities.ErrContactDataPolicyViolation) {
+
 			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, services.ErrRegistrarNotAccredited) {
+			ctx.JSON(403, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
