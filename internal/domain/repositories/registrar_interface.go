@@ -17,6 +17,7 @@ type RegistrarRepository interface {
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error)
 	Count(ctx context.Context) (int64, error)
+	IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error)
 }
 
 // MockRegistrarRepository is the mock implementation of the RegistrarRepository
@@ -70,4 +71,10 @@ func (m *MockRegistrarRepository) List(ctx context.Context, pagesize int, pagecu
 func (m *MockRegistrarRepository) Count(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+// IsRegistrarAccreditedForTLD checks if a registrar is accredited for a tld
+func (m *MockRegistrarRepository) IsRegistrarAccreditedForTLD(ctx context.Context, clid, tld string) (bool, error) {
+	args := m.Called(ctx, clid, tld)
+	return args.Bool(0), args.Error(1)
 }

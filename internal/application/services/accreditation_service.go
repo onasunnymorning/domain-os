@@ -83,3 +83,8 @@ func (s *AccreditationService) ListTLDRegistrars(ctx context.Context, pageSize i
 func (s *AccreditationService) ListRegistrarTLDs(ctx context.Context, pageSize int, pageCursor, rarClID string) ([]*entities.TLD, error) {
 	return s.accRepo.ListRegistrarTLDs(ctx, pageSize, pageCursor, rarClID)
 }
+
+// IsRegistrarAccreditedForTLD checks if a registrar is accredited for a TLD. It returns an error if the registrar or TLD is not found or the accredtitiation cannot be determined
+func (s *AccreditationService) IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error) {
+	return s.rarRepo.IsRegistrarAccreditedForTLD(ctx, tldName, rarClID)
+}
