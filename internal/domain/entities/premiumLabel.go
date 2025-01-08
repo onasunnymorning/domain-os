@@ -65,6 +65,6 @@ func (pl *PremiumLabel) GetMoney(transactionType string) (*money.Money, error) {
 	case "restore":
 		return money.New(int64(pl.RestoreAmount), pl.Currency), nil
 	default:
-		return nil, ErrInvalidTransactionType
+		return nil, ErrInvalidTransactionTypeForQuote
 	}
 }

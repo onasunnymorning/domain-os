@@ -40,7 +40,7 @@ func NewPrice(cur string, reg, ren, tr, res uint64) (*Price, error) {
 }
 
 // GetMoney returns a money.Money object for the given transaction type
-func (p *Price) GetMoney(transactionType string) (*money.Money, error) {
+func (p *Price) GetMoney(transactionType TransactionType) (*money.Money, error) {
 	var amount uint64
 	switch transactionType {
 	case TransactionTypeRegistration:
@@ -52,7 +52,7 @@ func (p *Price) GetMoney(transactionType string) (*money.Money, error) {
 	case TransactionTypeRestore:
 		amount = p.RestoreAmount
 	default:
-		return nil, ErrInvalidTransactionType
+		return nil, ErrInvalidTransactionTypeForQuote
 	}
 
 	return money.New(int64(amount), p.Currency), nil

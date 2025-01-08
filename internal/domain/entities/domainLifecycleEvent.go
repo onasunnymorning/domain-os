@@ -1,17 +1,65 @@
 package entities
 
 import (
+	"errors"
+	"strconv"
+	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-// DomainLifecycleEvent struct defines a domain lifecycle event. This is a specific type of event that is used to track domain lifecycle operations as well as being used for ICANN reporting or billing purposes if applicable.
-type DomainLifecycleEvent struct {
-	ID            uuid.UUID // The unique identifier of the event
-	Timestamp     time.Time // The time that the event occured
-	CorrelationID string    // The unique identifier of the event that this event is related to
-	DomainName    string    // The domain name that the event is related to
-	TLD           string    // The TLD that the event belongs to
-	Quote         Quote     // The quote that contains all relavant pricing information. This also includes registrar, phase, domainname
+var (
+	ErrEmptyTldName         = errors.New("TldName cannot be empty")
+	ErrEmptyTransactionType = errors.New("TransactionType cannot be empty")
+	ErrEmptyClientID        = errors.New("ClientID cannot be empty")
+	ErrEmptyDomainName      = errors.New("DomainName cannot be empty")
+)
+
+// DomainLifeCycleEvent struct defines a billing event that is generated each time a domain is registered, renewed, transferred or deleted
+type DomainLifeCycleEvent struct {
+	ClientID        string
+	ResellerID      string
+	TldName         string
+	DomainName      string
+	DomainYears     int
+	TransactionType TransactionType
+	SKU             string
+	Quote           Quote
+	TraceID         string
+	TimeStamp       time.Time
+}
+
+// NewDomainLifeCycleEvent creates a new DomainLifeCycleEvent with the given parameters
+func NewDomainLifeCycleEvent(clientID, resellerID, tldName, domainName string, domainYears int, transactionType TransactionType) (*DomainLifeCycleEvent, error) {
+	if clientID == "" {
+		return nil, ErrEmptyClientID
+	}
+	if domainName == "" {
+		return nil, ErrEmptyDomainName
+	}
+	dle := &DomainLifeCycleEvent{
+		ClientID:        clientID,
+		ResellerID:      resellerID,
+		TldName:         tldName,
+		DomainName:      domainName,
+		DomainYears:     domainYears,
+		TransactionType: transactionType,
+		TimeStamp:       time.Now().UTC(),
+	}
+	err := dle.GenerateSKU()
+	if err != nil {
+		return nil, err
+	}
+	return dle, nil
+}
+
+// generateSKU generates and sets the DomainLifeCycleEvent.SKU based on the TLD, TransactionType and DomainYears (e.g. COM-REGISTRATION-1)
+func (d *DomainLifeCycleEvent) GenerateSKU() error {
+	if d.TldName == "" {
+		return ErrEmptyTldName
+	}
+	if d.TransactionType == "" {
+		return ErrEmptyTransactionType
+	}
+	d.SKU = strings.ToUpper(d.TldName) + "-" + strings.ToUpper(d.TransactionType.String()) + "-" + strings.ToUpper(strconv.Itoa(d.DomainYears))
+	return nil
 }
