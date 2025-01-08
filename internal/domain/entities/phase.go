@@ -229,7 +229,7 @@ func (p *Phase) GetPrice(currency string) (*Price, error) {
 // in the specified target currency. If no price is available for the target currency,
 // it attempts to retrieve the price in the base currency and then convert it.
 // Returns a money.Money value or an error if retrieval, conversion, or lookup fails.
-func (p *Phase) GetTransactionPriceAsMoney(targetCurrency string, transactionType string, fx FX) (*money.Money, error) {
+func (p *Phase) GetTransactionPriceAsMoney(targetCurrency string, transactionType TransactionType, fx FX) (*money.Money, error) {
 	price, err := p.GetPrice(targetCurrency)
 	if err != nil {
 		if !errors.Is(err, ErrPriceNotFound) {

@@ -95,7 +95,7 @@ func (pe *PriceEngine) addPremiumFees() error {
 		for _, pl := range pe.PremiumEntries {
 			// Try and find the entry for the domain in the target currency
 			if pl.Label == Label(pe.Domain.Name.Label()) && pl.Currency == pe.QuoteRequest.Currency {
-				money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType)
+				money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType.String())
 				premiumfee = &Fee{
 					Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
 					Amount:     uint64(money.Amount()),
@@ -110,7 +110,7 @@ func (pe *PriceEngine) addPremiumFees() error {
 		if premiumfee == nil {
 			for _, pl := range pe.PremiumEntries {
 				if pl.Label == Label(pe.Domain.Name.Label()) && pl.Currency == pe.Phase.Policy.BaseCurrency {
-					money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType)
+					money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType.String())
 					premiumfee = &Fee{
 						Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
 						Amount:     uint64(money.Amount()),

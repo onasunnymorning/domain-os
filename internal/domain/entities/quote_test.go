@@ -31,7 +31,7 @@ func TestNewQuoteFromQuoteRequest(t *testing.T) {
 	require.NoError(t, err, "Error should be nil")
 
 	require.Equal(t, DomainName("example.com"), quote.DomainName, "DomainName is not set correctly")
-	require.Equal(t, "registration", quote.TransactionType, "TransactionType is not set correctly")
+	require.Equal(t, "registration", quote.TransactionType.String(), "TransactionType is not set correctly")
 	require.Equal(t, 1, quote.Years, "Years is not set correctly")
 	require.Equal(t, "standard", quote.Class, "Class is not set correctly")
 	require.Equal(t, money.New(0, "USD"), quote.Price, "Price is not set correctly")

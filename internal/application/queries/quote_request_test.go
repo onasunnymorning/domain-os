@@ -44,7 +44,7 @@ func TestQuoteRequest_Validate(t *testing.T) {
 				Years:           1,
 				ClID:            "testRegistrar1",
 			},
-			expected: entities.ErrInvalidTransactionType,
+			expected: entities.ErrInvalidTransactionTypeForQuote,
 		},
 		{
 			name: "invalid Currency",
