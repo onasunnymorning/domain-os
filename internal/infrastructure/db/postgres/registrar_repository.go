@@ -138,3 +138,17 @@ func (r *GormRegistrarRepository) Count(ctx context.Context) (int64, error) {
 	}
 	return count, nil
 }
+
+// IsRegistrarAccreditedForTLD checks whether the specified registrar is accredited
+// for a particular top-level domain (TLD). It queries the underlying database to
+// match the provided registrar ID and TLD name, returning true if accreditation
+// is confirmed, and false otherwise. Any query error is also returned.
+func (r *GormRegistrarRepository) IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error) {
+	var rar string
+	err := r.db.WithContext(ctx).Raw("SELECT registrar_cl_id FROM accreditations WHERE registrar_cl_id = ? AND tld_name = ?", rarClID, tldName).Scan(&rar).Error
+	if err != nil {
+		return false, err
+	}
+
+	return rar == rarClID, nil
+}

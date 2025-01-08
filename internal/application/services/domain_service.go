@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"log"
@@ -27,6 +28,10 @@ var (
 	ErrAutoRenewNotEnabledRar = errors.New("auto renew is not enabled for this registrar")
 	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the TLD
 	ErrAutoRenewNotEnabledTLD = errors.New("auto renew is not enabled for this TLD")
+	// ErrRegistrarNotAccredited is returned when the registrar is not accredited for the TLD
+	ErrRegistrarNotAccredited = errors.New("registrar is not accredited for this TLD")
+	// ErrCouldNotDetermineAccreditation is returned when the accreditation could not be determined
+	ErrCouldNotDetermineAccreditation = errors.New("could not determine accreditation")
 )
 
 // DomainService immplements the DomainService interface
@@ -696,11 +701,22 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 }
 
 // RegisterDomain registers a new domain based on the provided command parameters.
-// It checks the domain's availability, optionally validates fees, determines the
+// It checks if the registrar is accredited for the TLD and the domain's availability, optionally validates fees (pending implementation), determines the
 // relevant TLD and phase information, generates a unique ROID, creates the domain
 // entity, attaches any specified hosts, and persists the resulting domain in the
 // repository. It returns the created domain or an error if any step fails.
 func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error) {
+	// Check if the registrar is accredited for the TLD
+	domName := entities.DomainName(cmd.Name)
+	isAccredited, err := svc.rarRepo.IsRegistrarAccreditedForTLD(ctx, domName.ParentDomain(), cmd.ClID)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotDetermineAccreditation, err)
+	}
+	if !isAccredited {
+		dom := entities.DomainName(cmd.Name)
+		return nil, errors.Join(ErrRegistrarNotAccredited, fmt.Errorf("Registrar.ClID: %s, TLD: %s", cmd.ClID, dom.ParentDomain()))
+	}
+
 	// Check if the domain is available
 	includeFees := cmd.Fee != commands.FeeExtension{} // If the fee extension is not empty, include the fees in the check
 	q, err := queries.NewDomainCheckQuery(cmd.Name, includeFees)
