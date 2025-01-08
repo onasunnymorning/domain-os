@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -17,6 +18,50 @@ type RegistrarSuite struct {
 
 func TestRegistrarSuite(t *testing.T) {
 	suite.Run(t, new(RegistrarSuite))
+}
+
+func (s *RegistrarSuite) TestIsRegistrarAccreditedForTLD() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	clid := "test-registrar"
+
+	ctx := context.Background()
+	repo := NewGormRegistrarRepository(tx)
+
+	// Create a test registrar
+	registrar, err := entities.NewRegistrar(clid, "Test Inc.", "test@inc.com", 9999, getValidRegistrarPostalInfoArr())
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), registrar)
+
+	created, err := repo.Create(ctx, registrar)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), created)
+	fmt.Println(created)
+
+	// Create a test TLD
+	err = tx.Exec("INSERT INTO tlds (name) VALUES (?)", "com").Error
+	require.NoError(s.T(), err)
+
+	// Manually insert some record that the IsRegistrarAccreditedForTLD method expects to find.
+	// Adjust the table/columns below to match your actual accreditation schema.
+	err = tx.Exec("INSERT INTO accreditations (registrar_cl_id, tld_name) VALUES (?, ?)",
+		clid, "com").Error
+	require.NoError(s.T(), err)
+
+	// This should return true and no error
+	accredited, err := repo.IsRegistrarAccreditedForTLD(ctx, "com", clid)
+	require.NoError(s.T(), err)
+	require.True(s.T(), accredited)
+
+	// This should return false
+	accredited, err = repo.IsRegistrarAccreditedForTLD(ctx, "net", clid)
+	require.NoError(s.T(), err)
+	require.False(s.T(), accredited)
+
+	// This should return false
+	accredited, err = repo.IsRegistrarAccreditedForTLD(ctx, "NOT NULL", clid)
+	require.NoError(s.T(), err)
+	require.False(s.T(), accredited)
 }
 
 func (s *RegistrarSuite) SetupSuite() {

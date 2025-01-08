@@ -12,4 +12,5 @@ type AccreditationService interface {
 	DeleteAccreditation(ctx context.Context, tldName, rarClID string) error
 	ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tldName string) ([]*entities.Registrar, error)
 	ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error)
+	IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error)
 }
