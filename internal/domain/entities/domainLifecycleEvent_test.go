@@ -39,7 +39,7 @@ func TestDomainLifeCycleEvent_GenerateSKU(t *testing.T) {
 				TransactionType: TransactionTypeRegistration,
 				DomainYears:     2,
 			},
-			expectedSKU:   "COM-REGISTRATION-2",
+			expectedSKU:   "COM-REGISTRATION-2Y",
 			expectedError: nil,
 		},
 	}

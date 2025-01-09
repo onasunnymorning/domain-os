@@ -12,6 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )
 
@@ -630,7 +631,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 		return result, nil
 	}
 	// If fees are requested, prepare the result
-	result.PricePoints = &queries.DomainPricePoints{}
+	result.PricePoints = &entities.DomainPricePoints{}
 
 	// If the domain exists, we can check for Grandfathering
 	if !avail && result.Reason == ErrDomainExists.Error() {
@@ -690,10 +691,11 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 
 	// If we need to convert currencies, include the FX rate
 	if needsFX {
-		result.PricePoints.FX, err = svc.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, q.Currency)
-		if err != nil {
-			return nil, err
+		fx, fxErr := svc.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, q.Currency)
+		if fxErr != nil {
+			return nil, ErrMissingFXRate
 		}
+		result.PricePoints.FX = fx
 	}
 
 	// retrun the result
@@ -791,6 +793,36 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the domain registration
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	event, err := entities.NewDomainLifeCycleEvent(
+		createdDomain.ClID.String(),
+		"",
+		createdDomain.TLDName.String(),
+		createdDomain.Name.String(),
+		cmd.Years,
+		entities.TransactionTypeRegistration,
+	)
+	if err != nil {
+		logger.Error("Error creating domain lifecycle event", zap.Error(err))
+	}
+	event.DomainRoID = createdDomain.RoID.String()
+	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
+		event.CorrelationID = correlation_id
+	}
+	if checkResult.PricePoints != nil {
+		event.PricePoints = *checkResult.PricePoints
+	}
+
+	logger.Info(fmt.Sprintf(
+		"Domain %s registered by %s for %d years", createdDomain.Name, createdDomain.ClID, cmd.Years),
+		zap.Any("lifecycle_event", event),
+		zap.Any("create_command", cmd),
+		zap.Any("create_result", createdDomain),
+	)
 
 	// return
 	return createdDomain, nil

@@ -33,16 +33,7 @@ type DomainCheckResult struct {
 	Available   bool
 	Reason      string
 	PhaseName   string
-	PricePoints *DomainPricePoints `json:",omitempty"` // don't include if nil
-}
-
-// DomainPricePoints represents the all the price points for a domain.
-type DomainPricePoints struct {
-	Price          *entities.Price
-	Fees           []entities.Fee
-	PremiumPrice   *entities.PremiumLabel
-	GrandFathering *entities.DomainGrandFathering
-	FX             *entities.FX
+	PricePoints *entities.DomainPricePoints `json:",omitempty"` // don't include if nil
 }
 
 // NewDomainCheckQueryResult creates a new instance of DomainCheckQueryResult.
