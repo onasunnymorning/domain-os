@@ -35,7 +35,7 @@ func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_Succe
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	canAutoRenew, err := CheckDomainCanAutoRenew("example.com")
+	canAutoRenew, err := CheckDomainCanAutoRenew("testCorrelationID", "example.com")
 	suite.NoError(err, "Expected no error for successful response")
 	suite.True(canAutoRenew, "Expected canAutoRenew to be true")
 }
@@ -47,7 +47,7 @@ func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_BadRe
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	canAutoRenew, err := CheckDomainCanAutoRenew("example.com")
+	canAutoRenew, err := CheckDomainCanAutoRenew("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for bad request")
 	suite.Contains(err.Error(), "unexpected status code: 400", "Error should include status code")
 	suite.False(canAutoRenew, "Expected canAutoRenew to be false for error")
@@ -60,7 +60,7 @@ func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_Parse
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	canAutoRenew, err := CheckDomainCanAutoRenew("example.com")
+	canAutoRenew, err := CheckDomainCanAutoRenew("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for invalid JSON")
 	suite.Contains(err.Error(), "failed to parse response", "Error should indicate parse failure")
 	suite.False(canAutoRenew, "Expected canAutoRenew to be false for parse error")
@@ -69,7 +69,7 @@ func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_Parse
 func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_NetworkError() {
 	suite.mockTransport.Err = fmt.Errorf("network error")
 
-	canAutoRenew, err := CheckDomainCanAutoRenew("example.com")
+	canAutoRenew, err := CheckDomainCanAutoRenew("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for network failure")
 	suite.Contains(err.Error(), "request failed", "Error should indicate request failure")
 	suite.False(canAutoRenew, "Expected canAutoRenew to be false for network error")

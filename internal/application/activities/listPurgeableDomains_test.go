@@ -53,7 +53,7 @@ func (suite *ListPurgeableDomainsTestSuite) TestListPurgeableDomains_Success() {
 	}
 
 	query := queries.PurgeableDomainsQuery{}
-	result, err := ListPurgeableDomains(query)
+	result, err := ListPurgeableDomains("testCorrelationID", query)
 	suite.NoError(err, "Expected no error for successful response")
 	suite.NotNil(result, "Expected a valid response")
 	suite.Len(result, 2, "Expected two domains in the result")
@@ -69,7 +69,7 @@ func (suite *ListPurgeableDomainsTestSuite) TestListPurgeableDomains_BadRequest(
 	}
 
 	query := queries.PurgeableDomainsQuery{}
-	result, err := ListPurgeableDomains(query)
+	result, err := ListPurgeableDomains("testCorrelationID", query)
 	suite.Error(err, "Expected an error for bad request")
 	suite.Nil(result, "Expected no result for bad request")
 	suite.Contains(err.Error(), "failed to fetch domain count", "Error should include fetch failure")
@@ -79,7 +79,7 @@ func (suite *ListPurgeableDomainsTestSuite) TestListPurgeableDomains_NetworkErro
 	suite.mockTransport.Err = fmt.Errorf("network error")
 
 	query := queries.PurgeableDomainsQuery{}
-	result, err := ListPurgeableDomains(query)
+	result, err := ListPurgeableDomains("testCorrelationID", query)
 	suite.Error(err, "Expected an error for network failure")
 	suite.Nil(result, "Expected no result for network error")
 	suite.Contains(err.Error(), "failed to fetch domain count", "Error should indicate network failure")
@@ -93,7 +93,7 @@ func (suite *ListPurgeableDomainsTestSuite) TestListPurgeableDomains_ParseError(
 	}
 
 	query := queries.PurgeableDomainsQuery{}
-	result, err := ListPurgeableDomains(query)
+	result, err := ListPurgeableDomains("testCorrelationID", query)
 	suite.Error(err, "Expected an error for invalid JSON response")
 	suite.Nil(result, "Expected no result for invalid JSON")
 	suite.Contains(err.Error(), "failed to unmarshal response", "Error should indicate parse failure")

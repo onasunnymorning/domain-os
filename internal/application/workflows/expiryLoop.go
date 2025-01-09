@@ -1,7 +1,6 @@
 package workflows
 
 import (
-	"log"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -17,6 +16,10 @@ func ExpiryLoop(ctx workflow.Context) error {
 	// Set up our logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
+
+	// Get the workflow ID
+	workflowID := getWorkflowID(ctx)
+	logger.Debug("Starting expiry loop", zap.String("workflow_id", workflowID))
 
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
@@ -40,11 +43,15 @@ func ExpiryLoop(ctx workflow.Context) error {
 
 	// See if there are any domains that are expiring
 	domainCount := &response.CountResult{}
-	GetExpiredDomainCountError := workflow.ExecuteActivity(ctx, activities.GetExpiredDomainCount).Get(ctx, domainCount)
+	GetExpiredDomainCountError := workflow.ExecuteActivity(ctx, activities.GetExpiredDomainCount, workflowID).Get(ctx, domainCount)
 	if GetExpiredDomainCountError != nil {
 		return GetExpiredDomainCountError
 	}
-	log.Println("Total domains to expiring: ", domainCount.Count)
+	logger.Info(
+		"Found expired domains",
+		zap.Int64("domain_count", domainCount.Count),
+		zap.String("workflow_id", workflowID),
+	)
 	// If there are no domains to expire, sleep for 5 mins and check again
 	if domainCount.Count == 0 {
 		return nil
@@ -52,7 +59,7 @@ func ExpiryLoop(ctx workflow.Context) error {
 
 	// Get the list of domains that are expiring
 	domains := []response.DomainExpiryItem{}
-	GetExpiredDomainsError := workflow.ExecuteActivity(ctx, activities.ListExpiringDomains).Get(ctx, &domains)
+	GetExpiredDomainsError := workflow.ExecuteActivity(ctx, activities.ListExpiringDomains, workflowID).Get(ctx, &domains)
 	if GetExpiredDomainsError != nil {
 		return GetExpiredDomainsError
 	}
@@ -61,37 +68,40 @@ func ExpiryLoop(ctx workflow.Context) error {
 	for _, domain := range domains {
 		// Check if the domain is eligible for auto-renew
 		var canautorenew bool
-		canAutoRenewErr := workflow.ExecuteActivity(ctx, activities.CheckDomainCanAutoRenew, domain.Name).Get(ctx, &canautorenew)
+		canAutoRenewErr := workflow.ExecuteActivity(ctx, activities.CheckDomainCanAutoRenew, workflowID, domain.Name).Get(ctx, &canautorenew)
 		if canAutoRenewErr != nil {
 			logger.Error(
 				"Failed to check if domain is eligible for auto-renew",
 				zap.String("domain_name", domain.Name),
 				zap.Error(canAutoRenewErr),
 				zap.Any("domain", domain),
+				zap.String("workflow_id", workflowID),
 			)
 			continue
 		}
 		if canautorenew {
 			// Try and auto-renew the domain
-			autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, domain.Name).Get(ctx, nil)
+			autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, workflowID, domain.Name).Get(ctx, nil)
 			if autoRenewErr != nil {
 				logger.Error(
 					"Failed to auto-renew domain",
 					zap.String("domain_name", domain.Name),
 					zap.Error(autoRenewErr),
 					zap.Any("domain", domain),
+					zap.String("workflow_id", workflowID),
 				)
 				continue
 			}
 		} else {
 			// If the domain is not eligible for auto-renew, it should expire
-			expireErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, domain.Name).Get(ctx, nil)
+			expireErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, workflowID, domain.Name).Get(ctx, nil)
 			if expireErr != nil {
 				logger.Error(
 					"Failed to expire domain",
 					zap.String("domain_name", domain.Name),
 					zap.Error(expireErr),
 					zap.Any("domain", domain),
+					zap.String("workflow_id", workflowID),
 				)
 				continue
 			}
