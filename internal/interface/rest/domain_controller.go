@@ -403,6 +403,7 @@ func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param domain body commands.RegisterDomainCommand true "Domain"
+// @Param correlation_id path string false "Correlation ID"
 // @Success 201 {object} entities.Domain
 // @Failure 400
 // @Failure 403

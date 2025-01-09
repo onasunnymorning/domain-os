@@ -13,6 +13,7 @@ func StreamMiddleWare(es *services.EventService) gin.HandlerFunc {
 		// TODO FIXME: parametrize
 		c.Set("userid", "admin")
 		c.Set("app", entities.AppAdminAPI)
+		c.Set("correlation_id", c.Query("correlation_id"))
 
 		// Create event and add to context
 		e := NewEventFromContext(c)
