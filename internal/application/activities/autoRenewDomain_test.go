@@ -51,7 +51,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_Success() {
 		StatusCode: http.StatusOK,
 	}
 
-	err := AutoRenewDomain("example.com")
+	err := AutoRenewDomain("test1", "example.com")
 	suite.NoError(err, "Expected no error for successful auto-renewal")
 }
 
@@ -61,7 +61,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_BadRequest() {
 		Body:       io.NopCloser(bytes.NewBufferString(`Bad Request`)),
 	}
 
-	err := AutoRenewDomain("example.com")
+	err := AutoRenewDomain("test2", "example.com")
 	suite.Error(err, "Expected an error for bad request")
 	suite.Contains(err.Error(), "unexpected status code: 400")
 }
@@ -69,7 +69,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_BadRequest() {
 func (suite *AutoRenewTestSuite) TestAutoRenewDomain_NetworkError() {
 	suite.mockTransport.Err = errors.New("request failed: network error")
 
-	err := AutoRenewDomain("example.com")
+	err := AutoRenewDomain("test3", "example.com")
 	suite.Error(err, "Expected an error for network issues")
 	suite.Contains(err.Error(), "request failed: network error")
 }
@@ -80,7 +80,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_URLError() {
 
 	suite.mockTransport.Err = errors.New("failed to create request: url error")
 
-	err := AutoRenewDomain("example.com")
+	err := AutoRenewDomain("test14", "example.com")
 	suite.Error(err, "Expected an error for network issues")
 	suite.Contains(err.Error(), "failed to create request: url error")
 }

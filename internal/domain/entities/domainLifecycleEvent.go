@@ -24,8 +24,8 @@ type DomainLifeCycleEvent struct {
 	TransactionType TransactionType // TransactionType is the type of transaction (e.g. REGISTRATION, RENEWAL, TRANSFER, DELETE)
 	SKU             string          // SKU is the Stock Keeping Unit of the transaction (e.g. COM-REGISTRATION-1)
 	Quote           Quote           // Quote is the quote of the transaction
-	TraceID         string          // TraceID is the unique identifier of the transaction
-	CorrelationID   string          // CorrelationID is a link to an upstream event if applicable
+	TraceID         string          // TraceID is the unique identifier of the transaction (e.g. Activity ID if triggered through a workflow activity or Request ID if triggered by the Admin API)
+	CorrelationID   string          // CorrelationID is a link to an upstream event if applicable (e.g. workflow ID if triggered by a workflow or clTRID if triggered by EPP)
 	TimeStamp       time.Time       // TimeStamp is the time the transaction took place
 }
 

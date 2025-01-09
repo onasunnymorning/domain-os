@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -17,24 +16,23 @@ var (
 )
 
 // ListExpiringDomains takes an ExpiringDomainsQuery and returns a list of domains that are expiring before the given date. It gets these through the admin API.
-func ListExpiringDomains(query queries.ExpiringDomainsQuery) ([]response.DomainExpiryItem, error) {
+func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuery) ([]response.DomainExpiryItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/expiring", BASEURL)
-
-	endpointURL, err := url.Parse(ENDPOINT)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
-	}
-
-	// Add the query parameters
-	q := endpointURL.Query()
-	q.Set("pagesize", fmt.Sprintf("%d", BATCHSIZE))
-	endpointURL.RawQuery = q.Encode()
 
 	// Set up an API client
 	client := http.Client{}
 
+	// Set up query parameters
+	qParams := make(map[string]string)
+	qParams["correlation_id"] = correlationID
+	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create URL: %w", err)
+	}
+
 	// get a list of domains that have expired
-	req, err := http.NewRequest("GET", endpointURL.String(), nil)
+	req, err := http.NewRequest("GET", URL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

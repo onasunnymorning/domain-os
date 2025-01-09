@@ -7,13 +7,20 @@ import (
 )
 
 // AutoRenewDomain takes a domain name and sends a POST request to the admin API to auto-renew the domain.
-func AutoRenewDomain(domainName string) error {
+func AutoRenewDomain(correlationID, domainName string) error {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/autorenew", BASEURL, domainName)
 
 	// Set up an API client
 	client := http.Client{}
 
-	req, err := http.NewRequest("POST", ENDPOINT, nil)
+	qParams := make(map[string]string)
+	qParams["correlation_id"] = correlationID
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
+	if err != nil {
+		return fmt.Errorf("failed to create URL: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", URL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

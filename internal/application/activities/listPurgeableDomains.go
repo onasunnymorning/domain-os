@@ -6,31 +6,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
 // ListPurgeableDomains takes an PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and are past the grace period (PurgeDate is in the past or before the supplied date). It gets these through the admin API.
-func ListPurgeableDomains(query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
+func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/purgeable", BASEURL)
 
-	endpointURL, err := url.Parse(ENDPOINT)
+	// set the correlation ID and pagesize
+	qParams := make(map[string]string)
+	qParams["correlationID"] = correlationID
+	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
+		return nil, fmt.Errorf("failed to add query params: %w", err)
 	}
-
-	// Add the query parameters
-	q := endpointURL.Query()
-	q.Set("pagesize", fmt.Sprintf("%d", BATCHSIZE))
-	endpointURL.RawQuery = q.Encode()
 
 	// Set up an API client
 	client := http.Client{}
 
 	// Retrieve the list of domains
-	req, err := http.NewRequest("GET", endpointURL.String(), nil)
+	req, err := http.NewRequest("GET", URL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

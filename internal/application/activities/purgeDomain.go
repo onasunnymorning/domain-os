@@ -4,28 +4,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 // PurgeDomain purges (deletes) a domain from the system.
-func PurgeDomain(domainName string) error {
+func PurgeDomain(correlationID, domainName string) error {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s", BASEURL, domainName)
 
 	// Set up an API client
 	client := http.Client{}
 
-	endpointURL, err := url.Parse(ENDPOINT)
+	// set the correlation ID and drophosts = true
+	qParams := make(map[string]string)
+	qParams["correlationID"] = correlationID
+	qParams["drophosts"] = "true"
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
-		return fmt.Errorf("failed to parse endpoint URL: %w", err)
+		return fmt.Errorf("failed to add query params: %w", err)
 	}
 
-	// Add the query parameters
-	q := endpointURL.Query()
-	q.Set("drophosts", "true")
-	endpointURL.RawQuery = q.Encode()
-
 	// Delete the domain
-	req, err := http.NewRequest("DELETE", endpointURL.String(), nil)
+	req, err := http.NewRequest("DELETE", URL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

@@ -15,6 +15,9 @@ func PurgeLoop(ctx workflow.Context) error {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
+	// Get the workflow ID
+	workflowID := getWorkflowID(ctx)
+
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
@@ -37,7 +40,7 @@ func PurgeLoop(ctx workflow.Context) error {
 
 	// Check if there are any domains that are purgeable
 	domainCount := &response.CountResult{}
-	purgeableDomainCountErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount).Get(ctx, domainCount)
+	purgeableDomainCountErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount, workflowID).Get(ctx, domainCount)
 	if purgeableDomainCountErr != nil {
 		logger.Error(
 			"Error getting purgeable domain count",
@@ -53,7 +56,7 @@ func PurgeLoop(ctx workflow.Context) error {
 
 	// Get the list of domains that are purgeable
 	domains := []response.DomainExpiryItem{}
-	purgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains).Get(ctx, &domains)
+	purgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains, workflowID).Get(ctx, &domains)
 	if purgeableDomainsError != nil {
 		logger.Error(
 			"Error getting purgeable domains",
@@ -65,7 +68,7 @@ func PurgeLoop(ctx workflow.Context) error {
 	// Process the list of purgeable domains
 	for _, domain := range domains {
 		// Purge the domain
-		purgeActivityErr := workflow.ExecuteActivity(ctx, activities.PurgeDomain, domain.Name).Get(ctx, nil)
+		purgeActivityErr := workflow.ExecuteActivity(ctx, activities.PurgeDomain, workflowID, domain.Name).Get(ctx, nil)
 		if purgeActivityErr != nil {
 			logger.Error(
 				"Error purging domain",
