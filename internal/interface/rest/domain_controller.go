@@ -469,7 +469,7 @@ func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
 	// Set the phase name and currency if it was provided
 	q.PhaseName = ctx.Query("phase")
 	q.Currency = ctx.Query("currency")
-	if q.IncludeFees && q.Currency == "" {
+	if q.GetQuote && q.Currency == "" {
 		ctx.JSON(400, gin.H{"error": "currency is required when requesting fees"})
 		return
 	}

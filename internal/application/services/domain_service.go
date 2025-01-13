@@ -46,6 +46,7 @@ type DomainService struct {
 	premiumLabelRepo repositories.PremiumLabelRepository
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
+	QuoteService     QuoteService
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -626,77 +627,24 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 	}
 
 	// So far so good, the domain doesn't exist and is not blocked
-	// Return the result now if fees are not required
-	if !q.IncludeFees {
+	// Return the result now if a quote is not requested
+	if !q.GetQuote {
 		return result, nil
 	}
-	// If fees are requested, prepare the result
-	result.PricePoints = &entities.DomainPricePoints{}
 
-	// If the domain exists, we can check for Grandfathering
-	if !avail && result.Reason == ErrDomainExists.Error() {
-		// Get the domain
-		dom, err := svc.GetDomainByName(ctx, q.DomainName.String(), false)
-		if err != nil {
-			return nil, err
-		}
-		// Check if the domain is grandfathered
-		if dom.GrandFathering.GFExpiryCondition != "" {
-			result.PricePoints.GrandFathering = &dom.GrandFathering
-		}
-	}
-
-	// Get the full phase from the repo to ensure preloading the price and fee objects
-	phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, tld.Name.String(), phase.Name.String())
+	// Get the quote
+	quote, err := svc.QuoteService.GetQuote(ctx, &queries.QuoteRequest{
+		DomainName:      q.DomainName.String(),
+		ClID:            q.ClID.String(),
+		TransactionType: entities.TransactionTypeRegistration,
+		Currency:        q.Currency,
+		Years:           1,
+		PhaseName:       phase.Name.String(),
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	var needsFX bool // Flag to check if we need to convert the price to the requested currency
-
-	// set the price for the currency.
-	result.PricePoints.Price, err = phase.GetPrice(q.Currency)
-	if errors.Is(err, entities.ErrPriceNotFound) && q.Currency != phase.Policy.BaseCurrency {
-		// If the price is not found for the requested currency, try to get the price in the base currency
-		result.PricePoints.Price, _ = phase.GetPrice(phase.Policy.BaseCurrency)
-		if result.PricePoints.Price != nil {
-			needsFX = true
-		}
-	}
-
-	// set the fees for the currency
-	result.PricePoints.Fees = phase.GetFees(q.Currency)
-	if len(result.PricePoints.Fees) == 0 && q.Currency != phase.Policy.BaseCurrency {
-		// If the fees are not found for the requested currency, try to get the fees in the base currency
-		result.PricePoints.Fees = phase.GetFees(phase.Policy.BaseCurrency)
-		if len(result.PricePoints.Fees) > 0 {
-			needsFX = true
-		}
-	}
-
-	// Get the PremiumLabels for the premiumList associated with the phase
-	if phase.PremiumListName != nil {
-		result.PricePoints.PremiumPrice, err = svc.premiumLabelRepo.GetByLabelListAndCurrency(ctx, q.DomainName.Label(), *phase.PremiumListName, q.Currency)
-		if err != nil && !errors.Is(err, entities.ErrPremiumLabelNotFound) {
-			return nil, err
-		}
-		// If the premium price is not found for the requested currency, try to get the premium price in the base currency
-		if errors.Is(err, entities.ErrPremiumLabelNotFound) && q.Currency != phase.Policy.BaseCurrency {
-			result.PricePoints.PremiumPrice, _ = svc.premiumLabelRepo.GetByLabelListAndCurrency(ctx, q.DomainName.Label(), *phase.PremiumListName, phase.Policy.BaseCurrency)
-			if result.PricePoints.PremiumPrice != nil {
-				needsFX = true
-			}
-		}
-	}
-
-	// If we need to convert currencies, include the FX rate
-	if needsFX {
-		fx, fxErr := svc.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, q.Currency)
-		if fxErr != nil {
-			return nil, ErrMissingFXRate
-		}
-		result.PricePoints.FX = fx
-	}
+	result.Quote = quote
 
 	// retrun the result
 	return result, nil
@@ -725,6 +673,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err != nil {
 		return nil, err
 	}
+	q.ClID = entities.ClIDType(cmd.ClID)
 	if cmd.PhaseName != "" {
 		q.PhaseName = cmd.PhaseName
 	}
@@ -741,7 +690,11 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
 
-	//TODO: FIXME do a fee check here - dependent on currency conversion
+	// TODO: FIXME do a fee check here
+	// We should somehow compare the Quote with the FeeExtension
+	// Because of the currency conversion, we need to check if the fee is within a certain range instead of an exact match
+	// This requiress some thought and is not implemented yet
+	// Ref: https://github.com/onasunnymorning/domain-os/issues/225
 
 	// Get the Phase through the TLD
 	domainName := entities.DomainName(cmd.Name)
@@ -813,8 +766,8 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
 		event.CorrelationID = correlation_id
 	}
-	if checkResult.PricePoints != nil {
-		event.PricePoints = *checkResult.PricePoints
+	if checkResult.Quote != nil {
+		event.Quote = *checkResult.Quote
 	}
 
 	logger.Info(fmt.Sprintf(
