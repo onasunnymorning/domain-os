@@ -16,18 +16,18 @@ var (
 
 // DomainLifeCycleEvent struct defines a billing event that is generated each time a domain is registered, renewed, transferred or deleted
 type DomainLifeCycleEvent struct {
-	ClientID        string            // ClientID is the unique identifier of the client Registrar.ClID
-	ResellerID      string            // ResellerID is the unique identifier of the reseller if applicable
-	TldName         string            // TldName is the top level domain name (e.g. COM, NET, ORG)
-	DomainName      string            // DomainName is the domain name (e.g. example.net)
-	DomainRoID      string            // DomainRoID is the unique identifier of the domain Registrar Object ID
-	DomainYears     int               // DomainYears is the number of years the transaction is for
-	TimeStamp       time.Time         // TimeStamp is the time the transaction took place
-	TransactionType TransactionType   // TransactionType is the type of transaction (e.g. REGISTRATION, RENEWAL, TRANSFER, DELETE)
-	TraceID         string            // TraceID is the unique identifier of the transaction (e.g. Activity ID if triggered through a workflow activity or Request ID if triggered by the Admin API)
-	CorrelationID   string            // CorrelationID is a link to an upstream event if applicable (e.g. workflow ID if triggered by a workflow or clTRID if triggered by EPP)
-	SKU             string            // SKU is the Stock Keeping Unit of the transaction (e.g. COM-REGISTRATION-1)
-	PricePoints     DomainPricePoints // The pricepoints for calculating the cost of the transaction retrieved at the time of the transaction
+	ClientID        string          // ClientID is the unique identifier of the client Registrar.ClID
+	ResellerID      string          // ResellerID is the unique identifier of the reseller if applicable
+	TldName         string          // TldName is the top level domain name (e.g. COM, NET, ORG)
+	DomainName      string          // DomainName is the domain name (e.g. example.net)
+	DomainRoID      string          // DomainRoID is the unique identifier of the domain Registrar Object ID
+	DomainYears     int             // DomainYears is the number of years the transaction is for
+	TimeStamp       time.Time       // TimeStamp is the time the transaction took place
+	TransactionType TransactionType // TransactionType is the type of transaction (e.g. REGISTRATION, RENEWAL, TRANSFER, DELETE)
+	TraceID         string          // TraceID is the unique identifier of the transaction (e.g. Activity ID if triggered through a workflow activity or Request ID if triggered by the Admin API)
+	CorrelationID   string          // CorrelationID is a link to an upstream event if applicable (e.g. workflow ID if triggered by a workflow or clTRID if triggered by EPP)
+	SKU             string          // SKU is the Stock Keeping Unit of the transaction (e.g. COM-REGISTRATION-1)
+	Quote           Quote           // The quote for the transaction retrieved at the time of the transaction
 }
 
 // NewDomainLifeCycleEvent creates a new DomainLifeCycleEvent with the given parameters

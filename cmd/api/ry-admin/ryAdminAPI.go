@@ -260,6 +260,9 @@ func main() {
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
 	// Quotes
 	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
+	// FIXME: How to do better dependecy injection on this without the risk of a nil pointer
+	// Possibly merge the domainservice and quoteservice
+	domainService.QuoteService = *quoteService
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
