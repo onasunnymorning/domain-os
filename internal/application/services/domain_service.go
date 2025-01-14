@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"log"
 
@@ -23,8 +24,6 @@ var (
 	ErrDomainBlocked = errors.New("domain is blocked")
 	// ErrPhaseRequired is returned when a phase is required to check domain availability
 	ErrPhaseRequired = errors.New("phase is required to check domain availability")
-	// ErrLabelNotValidInPhase is returned when a label is not valid in a phase
-	ErrLabelNotValidInPhase = errors.New("label is not valid in this phase")
 	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the registrar
 	ErrAutoRenewNotEnabledRar = errors.New("auto renew is not enabled for this registrar")
 	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the TLD
@@ -157,7 +156,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 
 		// Check if the name is valid in this phase
 		if !phase.Policy.LabelIsAllowed(d.Name.Label()) {
-			return nil, errors.Join(entities.ErrInvalidDomain, ErrLabelNotValidInPhase)
+			return nil, errors.Join(entities.ErrInvalidDomain, entities.ErrLabelNotValidInPhase)
 		}
 
 		// Apply the contact data policy
@@ -547,82 +546,115 @@ func (svc *DomainService) CheckDomainIsBlocked(ctx context.Context, domainName s
 	return true, nil
 }
 
-// CheckDomainAvailability checks if a domain is available. A domain is available if
-// * it is a valid domain name
-// * it is allowed in the current phase
-// * it does not exist
-// * it is not blocked
-func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainName string, phase *entities.Phase) (bool, error) {
-	if phase == nil {
-		return false, ErrPhaseRequired
+// CheckDomainAvailability checks if a domain is available for registration.
+// It performs the following checks:
+// 1. Validates the domain name against the RFCs.
+// 2. Checks if the domain already exists.
+// 3. Checks if the domain is blocked.
+// 4. Retrieves the phase by name if provided, otherwise gets the current GA phase.
+// 5. Checks if the domain label is valid in the current phase.
+//
+// Parameters:
+// - ctx: The context for the request.
+// - domainName: The name of the domain to check.
+// - phaseName: The name of the phase to check against.
+//
+// Returns:
+// - A DomainCheckResult containing the availability status and reason if not available.
+// - An error if any of the checks fail.
+func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainName, phaseName string) (*queries.DomainCheckResult, error) {
+	response := &queries.DomainCheckResult{
+		TimeStamp:  time.Now().UTC(),
+		Available:  false,
+		Reason:     "",
+		DomainName: domainName,
+		PhaseName:  "n/a",
 	}
+	// NewDomainName will validate the domain name against the RFCs
 	dom, err := entities.NewDomainName(domainName)
 	if err != nil {
-		return false, err
-	}
-
-	// Check if the domain label is valid in the current phase
-	if !phase.Policy.LabelIsAllowed(dom.Label()) {
-		return false, ErrLabelNotValidInPhase
+		response.Reason = err.Error()
+		return response, err
 	}
 
 	// Check if the domain exists
 	exists, err := svc.CheckDomainExists(ctx, domainName)
 	if err != nil {
-		return false, err
+		response.Reason = err.Error()
+		return response, err
 	}
 	if exists {
-		return false, ErrDomainExists
+		response.Reason = ErrDomainExists.Error()
+		return response, err
 	}
 
 	// Check if the domain is blocked
 	blocked, err := svc.CheckDomainIsBlocked(ctx, domainName)
 	if err != nil {
-		return false, err
+		response.Reason = err.Error()
+		return response, err
 	}
 	if blocked {
-		return false, ErrDomainBlocked
+		response.Reason = ErrDomainBlocked.Error()
+		return response, err
+	}
+
+	// Retrieve the phase by name if provided, otherwise get the current GA phase
+	// This will also error if the TLD does not exist
+	phase := &entities.Phase{}
+	if phaseName != "" {
+		// Check the provided phase
+		phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, dom.ParentDomain(), phaseName)
+		if err != nil {
+			response.PhaseName = phaseName
+			response.Reason = err.Error()
+			return response, err
+		}
+	} else {
+		// Check the current GA phase by retrieving the TLD with preloaded phases
+		tld, err := svc.tldRepo.GetByName(ctx, dom.ParentDomain(), true)
+		if err != nil {
+			response.Reason = err.Error()
+			return response, err
+		}
+		// Get the current GA phase from the tld
+		phase, err = tld.GetCurrentGAPhase()
+		if err != nil {
+			response.Reason = err.Error()
+			return response, err
+		}
+		response.PhaseName = phase.Name.String()
+	}
+
+	// Check if the domain label is valid in the current phase
+	if !phase.Policy.LabelIsAllowed(dom.Label()) {
+		response.Reason = entities.ErrLabelNotValidInPhase.Error()
+		return response, errors.Join(entities.ErrInvalidDomain, entities.ErrLabelNotValidInPhase)
 	}
 
 	// If all checks pass, the domain is available
-	return true, nil
+	response.Available = true
+	return response, nil
 }
 
 // CheckDomain checks the availability of a domain name
+// This was intended to mimic the EPP check command, but needs to be re-evaluated if that is the best approach
 func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error) {
 	// Make sure the currency is uppercased
 	q.Currency = strings.ToUpper(q.Currency)
-	// check if the TLD exists
-	tld, err := svc.tldRepo.GetByName(ctx, q.DomainName.ParentDomain(), true)
-	if err != nil {
-		return nil, err
-	}
 
-	// if the phase is not provided, get the current GA phase
-	var phase *entities.Phase
-	if q.PhaseName == "" {
-		phase, err = tld.GetCurrentGAPhase()
-		if err != nil {
-			return nil, err
-		}
-	} else { // if the phase is provided, get the phase by name
-		phase, err = tld.FindPhaseByName(entities.ClIDType(q.PhaseName))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	avail, err := svc.CheckDomainAvailability(ctx, q.DomainName.String(), phase)
-	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) && !errors.Is(err, ErrLabelNotValidInPhase) {
+	// Check the availability of the domain in the phase or the current GA phase
+	availability, err := svc.CheckDomainAvailability(ctx, q.DomainName.String(), q.PhaseName)
+	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) && !errors.Is(err, entities.ErrLabelNotValidInPhase) {
 		return nil, err
 	}
 	// Create the result object
-	result := queries.NewDomainCheckQueryResult(q.DomainName)
+	result := queries.NewDomainCheckQueryResult(q.DomainName.String())
 	// set the phase name
-	result.PhaseName = phase.Name.String()
+	result.PhaseName = q.PhaseName
 	// set the availability and reason
-	result.Available = avail
-	if !avail {
+	result.Available = availability.Available
+	if !availability.Available {
 		result.Reason = err.Error()
 	}
 
@@ -639,7 +671,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 		TransactionType: entities.TransactionTypeRegistration,
 		Currency:        q.Currency,
 		Years:           1,
-		PhaseName:       phase.Name.String(),
+		PhaseName:       q.PhaseName,
 	})
 	if err != nil {
 		return nil, err
@@ -680,7 +712,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if includeFees {
 		q.Currency = cmd.Fee.Currency
 	}
-	checkResult, err := svc.CheckDomain(ctx, q)
+	checkResult, err := svc.CheckDomainAvailability(ctx, cmd.Name, cmd.PhaseName)
 	if err != nil {
 		return nil, err
 	}
@@ -690,7 +722,24 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
 
-	// TODO: FIXME do a fee check here
+	// Get a quote ONLY if the feeExtension is not empty, if we get a quote we will attach it to the checkResult to access it downstream
+	if !cmd.Fee.IsZero() {
+		quote, err := svc.QuoteService.GetQuote(ctx, &queries.QuoteRequest{
+			DomainName:      cmd.Name,
+			ClID:            cmd.ClID,
+			TransactionType: entities.TransactionTypeRegistration,
+			Currency:        cmd.Fee.Currency,
+			Years:           cmd.Years,
+			PhaseName:       cmd.PhaseName,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		checkResult.Quote = quote
+	}
+
+	// TODO: do something with the quote
 	// We should somehow compare the Quote with the FeeExtension
 	// Because of the currency conversion, we need to check if the fee is within a certain range instead of an exact match
 	// This requiress some thought and is not implemented yet

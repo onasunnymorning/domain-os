@@ -29,8 +29,8 @@ type DomainService interface {
 	CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error)
 
 	// These are Registrar services
-	// CheckDomain checks if a domain is available and supports the fee extension
-	CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error)
+	// CheckDomain checks if a domain is available
+	CheckDomainAvailability(ctx context.Context, domainname, phaseName string) (*queries.DomainCheckResult, error)
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
