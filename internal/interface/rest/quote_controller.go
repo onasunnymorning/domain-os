@@ -17,7 +17,7 @@ func NewQuoteController(e *gin.Engine, quoteService interfaces.QuoteService, han
 		QuoteService: quoteService,
 	}
 
-	e.POST("/quotes", handler, ctrl.GetQuote)
+	e.POST("/domains/quote", handler, ctrl.GetQuote)
 
 	return ctrl
 }
@@ -26,13 +26,13 @@ func NewQuoteController(e *gin.Engine, quoteService interfaces.QuoteService, han
 // @Summary returns a quote for a transaction
 // @Description Takes a QuoteRequest and returns a Quote for the transaction including a breakdown of costs
 // @ID get-quote
-// @Tags Quotes
+// @Tags Domains
 // @Accept  json
 // @Produce  json
 // @Param quoteRequest body queries.QuoteRequest true "QuoteRequest"
 // @Success 200 {object} entities.Quote
 // @Failure 400
-// @Router /quotes [post]
+// @Router /domains/quote [post]
 func (ctrl *QuoteController) GetQuote(ctx *gin.Context) {
 	var qr queries.QuoteRequest
 	if err := ctx.ShouldBindJSON(&qr); err != nil {
