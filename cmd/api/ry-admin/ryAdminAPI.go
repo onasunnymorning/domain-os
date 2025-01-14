@@ -258,11 +258,14 @@ func main() {
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
+
+	// REMOVEME:
 	// Quotes
-	quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
+	// quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
 	// FIXME: How to do better dependecy injection on this without the risk of a nil pointer
 	// Possibly merge the domainservice and quoteservice
-	domainService.QuoteService = *quoteService
+	// domainService.QuoteService = *quoteService
+
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
@@ -306,7 +309,7 @@ func main() {
 	rest.NewAccreditationController(r, accreditationService, TokenAuthMiddleware())
 	rest.NewPremiumController(r, premiumListService, premiumLabelService, TokenAuthMiddleware())
 	rest.NewFXController(r, fxService, TokenAuthMiddleware())
-	rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
+	// rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
 	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
 
 	// Serve the swagger documentation

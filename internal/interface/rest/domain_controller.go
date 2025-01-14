@@ -37,6 +37,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.DELETE(":name", controller.DeleteDomainByName)
 		domainGroup.GET("", controller.ListDomains)
 		domainGroup.GET("count", controller.CountDomains)
+		domainGroup.POST("quote", controller.GetQuote)
 		// Add and remove hosts
 		domainGroup.POST(":name/hosts/:roid", controller.AddHostToDomain)
 		domainGroup.POST(":name/hostname/:hostName", controller.AddHostToDomainByHostName)
@@ -94,8 +95,8 @@ func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 }
 
 // CreateDomain godoc
-// @Summary Create a domain
-// @Description Create a domain. Use this to create/import domains as an admin with full control. If you are looking to register a domain as a registrar, use the /register endpoint.
+// @Summary Create a domain as an ADMIN with full control
+// @Description Do not use this for registrar activity or domain lifecycle activity. Use this to create/import domains as an admin with full control. For example during a migration IN. If you are looking to register a domain as a registrar, use the /register endpoint.
 // @Description If you need this endpoint to enforce a current GA phase policy, enable thisby setting commands.CreateDomainCommand.EnforcePhasePolicy to true (defaults to false)
 // @Tags Domains
 // @Accept json
@@ -962,4 +963,37 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 
 	// Return the Response
 	ctx.JSON(200, resp)
+}
+
+// GetQuote godoc
+// @Summary returns a quote for a transaction
+// @Description Takes a QuoteRequest and returns a Quote for the transaction including a breakdown of costs.
+// @Description The QuoteRequest parameters are all required, except for phaseName which defaults to "Currently Active GA Phase"
+// @Description The resulting Quote contains a final price for the transaction as well as all the relevant configured pricepoints including currency conversion if applicable
+// @ID get-quote
+// @Tags Domains
+// @Accept  json
+// @Produce  json
+// @Param quoteRequest body queries.QuoteRequest true "QuoteRequest"
+// @Success 200 {object} entities.Quote
+// @Failure 400
+// @Router /domains/quote [post]
+func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
+	var qr queries.QuoteRequest
+	if err := ctx.ShouldBindJSON(&qr); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	quote, err := ctrl.domainService.GetQuote(ctx, &qr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, quote)
 }

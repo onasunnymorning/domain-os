@@ -31,6 +31,8 @@ type DomainService interface {
 	// These are Registrar services
 	// CheckDomain checks if a domain is available
 	CheckDomainAvailability(ctx context.Context, domainname, phaseName string) (*queries.DomainCheckResult, error)
+	// GetQuote returns a quote for a domain transaction
+	GetQuote(ctx context.Context, q *queries.QuoteRequest) (*entities.Quote, error)
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
