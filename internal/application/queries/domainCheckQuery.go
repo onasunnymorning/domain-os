@@ -30,7 +30,7 @@ func NewDomainCheckQuery(domainName string, includeFees bool) (*DomainCheckQuery
 // DomainCheckResult represents the result of a domain check query.
 type DomainCheckResult struct {
 	TimeStamp  time.Time
-	DomainName entities.DomainName
+	DomainName string
 	Available  bool
 	Reason     string
 	PhaseName  string
@@ -38,7 +38,7 @@ type DomainCheckResult struct {
 }
 
 // NewDomainCheckQueryResult creates a new instance of DomainCheckQueryResult.
-func NewDomainCheckQueryResult(domainName entities.DomainName) *DomainCheckResult {
+func NewDomainCheckQueryResult(domainName string) *DomainCheckResult {
 	return &DomainCheckResult{
 		DomainName: domainName,
 		TimeStamp:  time.Now().UTC(),

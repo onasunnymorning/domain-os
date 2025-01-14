@@ -48,7 +48,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.DELETE(":name/dropcatch", controller.UnSetDropCatch)
 
 		// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
-		domainGroup.GET(":name/check", controller.CheckDomain)
+		domainGroup.GET(":name/available", controller.CheckDomainAvailability)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
 		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
@@ -444,40 +444,32 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 	ctx.JSON(201, domain)
 }
 
-// CheckDomain godoc
+// CheckDomainAvailability godoc
 // @Summary Check if a domain is available
-// @Description Check if a domain is available
+// @Description A Domain is available if:
+// @Description - The domain does not exist
+// @Description - No NNDN exists with the same name
+// @Description - The domain label is valid in the TLDs current GA phase OR the provided phase name)
+// @Description It will return a 400 error if the TLD is not found, the phase is not found, the phase is not active, or the label is not valid in the phase.
+// @Description It will return a 500 error if an unexpected error occurs.
 // @Tags Domains
 // @Produce json
 // @Param name path string true "Domain Name"
-// @Param includeFees query bool false "Include fees in the response"
+// @Param phase query string false "Phase Name"
 // @Success 200 {object} queries.DomainCheckResult
 // @Failure 400
 // @Failure 500
-// @Router /domains/{name}/check [get]
-func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
-	name := ctx.Param("name")
-	includeFees := ctx.DefaultQuery("includeFees", "false")
-
-	// Create a query object
-	q, err := queries.NewDomainCheckQuery(name, includeFees == "true")
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Set the phase name and currency if it was provided
-	q.PhaseName = ctx.Query("phase")
-	q.Currency = ctx.Query("currency")
-	if q.GetQuote && q.Currency == "" {
-		ctx.JSON(400, gin.H{"error": "currency is required when requesting fees"})
-		return
-	}
-
+// @Router /domains/{name}/available [get]
+func (ctrl *DomainController) CheckDomainAvailability(ctx *gin.Context) {
 	// Call the service to check the domain
-	result, err := ctrl.domainService.CheckDomain(ctx, q)
+	result, err := ctrl.domainService.CheckDomainAvailability(ctx, ctx.Param("name"), ctx.Query("phase"))
 	if err != nil {
-		if errors.Is(err, entities.ErrTLDNotFound) || errors.Is(err, entities.ErrPhaseNotFound) || errors.Is(err, entities.ErrNoActivePhase) {
+		// Return 400 if we encounter missing configuration to make a decision
+		if errors.Is(
+			err, entities.ErrTLDNotFound) ||
+			errors.Is(err, entities.ErrPhaseNotFound) ||
+			errors.Is(err, entities.ErrNoActivePhase) ||
+			errors.Is(err, entities.ErrLabelNotValidInPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
