@@ -32,6 +32,8 @@ var (
 	ErrRegistrarNotAccredited = errors.New("registrar is not accredited for this TLD")
 	// ErrCouldNotDetermineAccreditation is returned when the accreditation could not be determined
 	ErrCouldNotDetermineAccreditation = errors.New("could not determine accreditation")
+	// ErrMissingFXRate is returned when the FX rate is required but can't be determined
+	ErrMissingFXRate = errors.New("missing FX rate")
 )
 
 // DomainService immplements the DomainService interface
@@ -45,7 +47,6 @@ type DomainService struct {
 	premiumLabelRepo repositories.PremiumLabelRepository
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
-	QuoteService     QuoteService
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -665,7 +666,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 	}
 
 	// Get the quote
-	quote, err := svc.QuoteService.GetQuote(ctx, &queries.QuoteRequest{
+	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
 		DomainName:      q.DomainName.String(),
 		ClID:            q.ClID.String(),
 		TransactionType: entities.TransactionTypeRegistration,
@@ -724,7 +725,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 
 	// Get a quote ONLY if the feeExtension is not empty, if we get a quote we will attach it to the checkResult to access it downstream
 	if !cmd.Fee.IsZero() {
-		quote, err := svc.QuoteService.GetQuote(ctx, &queries.QuoteRequest{
+		quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
 			DomainName:      cmd.Name,
 			ClID:            cmd.ClID,
 			TransactionType: entities.TransactionTypeRegistration,
