@@ -968,15 +968,15 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 // GetQuote godoc
 // @Summary returns a quote for a transaction
 // @Description Takes a QuoteRequest and returns a Quote for the transaction including a breakdown of costs.
-// @Description The QuoteRequest parameters are all required, except for phaseName which defaults to "Currently Active GA Phase"
+// @Description The QuoteRequest parameters are all required, except for phaseName which defaults to Currently Active GA Phase
 // @Description The resulting Quote contains a final price for the transaction as well as all the relevant configured pricepoints including currency conversion if applicable
-// @ID get-quote
 // @Tags Domains
 // @Accept  json
 // @Produce  json
 // @Param quoteRequest body queries.QuoteRequest true "QuoteRequest"
 // @Success 200 {object} entities.Quote
 // @Failure 400
+// @Failure 500
 // @Router /domains/quote [post]
 func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 	var qr queries.QuoteRequest
@@ -991,7 +991,7 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 
 	quote, err := ctrl.domainService.GetQuote(ctx, &qr)
 	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
+		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
