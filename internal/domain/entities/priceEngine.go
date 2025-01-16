@@ -151,7 +151,10 @@ func (pe *PriceEngine) addPhasePrice() error {
 			}
 		}
 		// Get the price for the transaction type
-		priceMoney, _ := price.GetMoney(pe.QuoteRequest.TransactionType)
+		priceMoney, err := price.GetMoney(pe.QuoteRequest.TransactionType)
+		if err != nil {
+			return err
+		}
 		// Add the fee to the quote
 		err = pe.Quote.AddFeeAndUpdatePrice(&Fee{
 			Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),

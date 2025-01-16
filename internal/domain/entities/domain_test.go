@@ -1912,3 +1912,85 @@ func TestDomain_applyContactDataPolicy(t *testing.T) {
 		})
 	}
 }
+func TestDomain_Clone(t *testing.T) {
+	// Create a sample domain with nested structures
+	originalDomain := &Domain{
+		RoID:         "12345_DOM-APEX",
+		Name:         "example.com",
+		OriginalName: "original-example.com",
+		UName:        "unicode-example.com",
+		RegistrantID: "registrant123",
+		AdminID:      "admin123",
+		TechID:       "tech123",
+		BillingID:    "billing123",
+		ClID:         "client123",
+		CrRr:         "createRegistrar",
+		UpRr:         "updateRegistrar",
+		TLDName:      "com",
+		ExpiryDate:   time.Now().AddDate(1, 0, 0),
+		DropCatch:    true,
+		RenewedYears: 2,
+		AuthInfo:     "authInfo123",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		Status: DomainStatus{
+			OK: true,
+		},
+		RGPStatus: DomainRGPStatus{
+			AddPeriodEnd: time.Now().AddDate(0, 1, 0),
+		},
+		GrandFathering: DomainGrandFathering{
+			GFAmount:   100,
+			GFCurrency: "USD",
+		},
+		Hosts: []*Host{
+			{Name: "ns1.example.com"},
+			{Name: "ns2.example.com"},
+		},
+	}
+
+	// Clone the domain
+	clonedDomain := originalDomain.Clone()
+
+	// Ensure the cloned domain is not nil
+	require.NotNil(t, clonedDomain)
+
+	// Ensure the cloned domain is not the same instance as the original
+	require.NotSame(t, originalDomain, clonedDomain)
+
+	// Ensure all top-level fields are copied correctly
+	require.Equal(t, originalDomain.RoID, clonedDomain.RoID)
+	require.Equal(t, originalDomain.Name, clonedDomain.Name)
+	require.Equal(t, originalDomain.OriginalName, clonedDomain.OriginalName)
+	require.Equal(t, originalDomain.UName, clonedDomain.UName)
+	require.Equal(t, originalDomain.RegistrantID, clonedDomain.RegistrantID)
+	require.Equal(t, originalDomain.AdminID, clonedDomain.AdminID)
+	require.Equal(t, originalDomain.TechID, clonedDomain.TechID)
+	require.Equal(t, originalDomain.BillingID, clonedDomain.BillingID)
+	require.Equal(t, originalDomain.ClID, clonedDomain.ClID)
+	require.Equal(t, originalDomain.CrRr, clonedDomain.CrRr)
+	require.Equal(t, originalDomain.UpRr, clonedDomain.UpRr)
+	require.Equal(t, originalDomain.TLDName, clonedDomain.TLDName)
+	require.Equal(t, originalDomain.ExpiryDate, clonedDomain.ExpiryDate)
+	require.Equal(t, originalDomain.DropCatch, clonedDomain.DropCatch)
+	require.Equal(t, originalDomain.RenewedYears, clonedDomain.RenewedYears)
+	require.Equal(t, originalDomain.AuthInfo, clonedDomain.AuthInfo)
+	require.Equal(t, originalDomain.CreatedAt, clonedDomain.CreatedAt)
+	require.Equal(t, originalDomain.UpdatedAt, clonedDomain.UpdatedAt)
+	require.Equal(t, originalDomain.Status, clonedDomain.Status)
+	require.Equal(t, originalDomain.RGPStatus, clonedDomain.RGPStatus)
+	require.Equal(t, originalDomain.GrandFathering, clonedDomain.GrandFathering)
+
+	// Ensure the Hosts slice is deep-copied
+	require.NotSame(t, originalDomain.Hosts, clonedDomain.Hosts)
+	require.Equal(t, len(originalDomain.Hosts), len(clonedDomain.Hosts))
+	for i := range originalDomain.Hosts {
+		require.NotSame(t, originalDomain.Hosts[i], clonedDomain.Hosts[i])
+		require.Equal(t, originalDomain.Hosts[i].Name, clonedDomain.Hosts[i].Name)
+	}
+
+	// Test cloning a nil domain
+	var nilDomain *Domain
+	clonedNilDomain := nilDomain.Clone()
+	require.Nil(t, clonedNilDomain)
+}

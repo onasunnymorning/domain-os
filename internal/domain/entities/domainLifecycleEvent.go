@@ -24,8 +24,8 @@ type DomainLifeCycleEvent struct {
 	DomainYears     int             // DomainYears is the number of years the transaction is for
 	TimeStamp       time.Time       // TimeStamp is the time the transaction took place
 	TransactionType TransactionType // TransactionType is the type of transaction (e.g. REGISTRATION, RENEWAL, TRANSFER, DELETE)
-	TraceID         string          // TraceID is the unique identifier of the transaction (e.g. Activity ID if triggered through a workflow activity or Request ID if triggered by the Admin API)
-	CorrelationID   string          // CorrelationID is a link to an upstream event if applicable (e.g. workflow ID if triggered by a workflow or clTRID if triggered by EPP)
+	TraceID         string          // TraceID is the unique identifier allowing tracing events across services (e.g. traceID set by activity or client, event gets processed by billing application, billing appliction logs can contain trace_id)
+	CorrelationID   string          // CorrelationID is the identifier allowing to group events together in a business context (e.g. auto-renew-workflow-kdjsflkwr238fnelwkknk34ln5)
 	SKU             string          // SKU is the Stock Keeping Unit of the transaction (e.g. COM-REGISTRATION-1)
 	Quote           Quote           // The quote for the transaction retrieved at the time of the transaction
 }

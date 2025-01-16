@@ -13,7 +13,11 @@ func StreamMiddleWare(es *services.EventService) gin.HandlerFunc {
 		// TODO FIXME: parametrize
 		c.Set("userid", "admin")
 		c.Set("app", entities.AppAdminAPI)
+
+		// Set the correlation_id and trace_id from the query string if provided
+		// Ref.: https://www.notion.so/apex-domains/TraceID-vs-CorrelationID-17c6c0599d53808a8811c81128543c47?pvs=4
 		c.Set("correlation_id", c.Query("correlation_id"))
+		c.Set("trace_id", c.Query("trace_id"))
 
 		// Create event and add to context
 		e := NewEventFromContext(c)

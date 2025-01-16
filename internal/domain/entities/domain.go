@@ -411,7 +411,7 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 
 	err := d.SetStatus(DomainStatusPendingDelete)
 	if err != nil {
-		return err
+		return errors.Join(ErrDomainDeleteNotAllowed, err)
 	}
 	d.UpRr = d.ClID
 
@@ -543,4 +543,57 @@ func (d *Domain) ApplyContactDataPolicy(
 	}
 
 	return nil
+}
+
+// Clone creates a deep copy of the Domain object, including all its fields and nested structures.
+// It returns a pointer to the new Domain object. If the original Domain object is nil, it returns nil.
+//
+// The method performs the following steps:
+// 1. Copies all top-level fields of the Domain struct.
+// 2. Deep-copies the Hosts slice by calling the Clone method on each Host pointer.
+//
+// Returns:
+// - *Domain: A pointer to the newly created Domain object, or nil if the original Domain object is nil.
+func (d *Domain) Clone() *Domain {
+	if d == nil {
+		return nil
+	}
+
+	// Copy all top-level Domain fields.
+	newDomain := &Domain{
+		RoID:           d.RoID,
+		Name:           d.Name,
+		OriginalName:   d.OriginalName,
+		UName:          d.UName,
+		RegistrantID:   d.RegistrantID,
+		AdminID:        d.AdminID,
+		TechID:         d.TechID,
+		BillingID:      d.BillingID,
+		ClID:           d.ClID,
+		CrRr:           d.CrRr,
+		UpRr:           d.UpRr,
+		TLDName:        d.TLDName,
+		ExpiryDate:     d.ExpiryDate,
+		DropCatch:      d.DropCatch,
+		RenewedYears:   d.RenewedYears,
+		AuthInfo:       d.AuthInfo,
+		CreatedAt:      d.CreatedAt,
+		UpdatedAt:      d.UpdatedAt,
+		Status:         d.Status,         // Struct copied by value
+		RGPStatus:      d.RGPStatus,      // Struct copied by value
+		GrandFathering: d.GrandFathering, // Struct copied by value
+		// Hosts handled below
+	}
+
+	// Deep-copy the Hosts slice, calling Host.Clone() on each.
+	if d.Hosts != nil {
+		newDomain.Hosts = make([]*Host, len(d.Hosts))
+		for i, hostPtr := range d.Hosts {
+			if hostPtr != nil {
+				newDomain.Hosts[i] = hostPtr.Clone()
+			}
+		}
+	}
+
+	return newDomain
 }

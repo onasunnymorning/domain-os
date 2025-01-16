@@ -16,10 +16,15 @@ func (t TransactionType) String() string {
 const (
 	TransactionTypeRegistration = TransactionType("registration")
 	TransactionTypeRenewal      = TransactionType("renewal")
+	TransactionTypeAutoRenewal  = TransactionType("auto_renewal")
 	TransactionTypeTransfer     = TransactionType("transfer")
 	TransactionTypeRestore      = TransactionType("restore")
 	TransactionTypeDelete       = TransactionType("delete")
+	TransactionTypeAdminDelete  = TransactionType("admin-delete")
+	TransactionTypeAdminCreate  = TransactionType("admin-create")
 	TransactionTypeInfo         = TransactionType("info")
+	TransactionTypeExpiry       = TransactionType("expiry")
+	TransactionTypePurge        = TransactionType("purge")
 )
 
 var (
@@ -32,6 +37,11 @@ var (
 		TransactionTypeRestore,
 		TransactionTypeDelete,
 		TransactionTypeInfo,
+		TransactionTypeAutoRenewal,
+		TransactionTypeExpiry,
+		TransactionTypePurge,
+		TransactionTypeAdminDelete,
+		TransactionTypeAdminCreate,
 	}
 
 	// ValidTransactionTypesForQuote is a list of valid transaction types supported in quotes
@@ -40,6 +50,7 @@ var (
 		TransactionTypeRenewal,
 		TransactionTypeTransfer,
 		TransactionTypeRestore,
+		TransactionTypeAutoRenewal,
 	}
 
 	ErrInvalidTransactionTypeForQuote = fmt.Errorf("invalid transaction type, only %v are valid types for requesting quotes", ValidTransactionTypesForQuote)
