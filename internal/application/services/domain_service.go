@@ -47,6 +47,7 @@ type DomainService struct {
 	premiumLabelRepo repositories.PremiumLabelRepository
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
+	logger           *zap.Logger
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -61,6 +62,7 @@ func NewDomainService(
 	fxr repositories.FXRepository,
 	rRepo repositories.RegistrarRepository,
 ) *DomainService {
+	logger, _ := zap.NewProduction()
 	return &DomainService{
 		domainRepository: dRepo,
 		hostRepository:   hRepo,
@@ -71,6 +73,7 @@ func NewDomainService(
 		premiumLabelRepo: plr,
 		fxRepo:           fxr,
 		rarRepo:          rRepo,
+		logger:           logger,
 	}
 }
 
@@ -254,9 +257,121 @@ func (s *DomainService) GetDomainByName(ctx context.Context, name string, preloa
 	return s.domainRepository.GetDomainByName(ctx, name, preloadHosts)
 }
 
-// DeleteDomainByName deletes a domain by its name from the repository
+// DeleteDomainByName deletes a domain identified by its name.
+// This is a hard delete and will remove the domain from the system unless the repository does not allow it.
+// If you want to purge a domain, use the PurgeDomain method.
+// It takes a context for managing request-scoped values and cancellation,
+// and the name of the domain to be deleted.
+// It returns an error if the deletion fails.
 func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) error {
-	return s.domainRepository.DeleteDomainByName(ctx, name)
+	// We don't want to fail of a deleting a domain because it doesn't exist - idemp.
+	prevState, _ := s.GetDomainByName(ctx, name, false)
+
+	err := s.domainRepository.DeleteDomainByName(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	// log a lifecycle event
+	clid := "n/a" // in case the domain doesn't exist
+	if prevState != nil {
+		// if we have the information we use it
+		clid = prevState.ClID.String()
+	}
+	dom := entities.DomainName(name)
+	event, err := entities.NewDomainLifeCycleEvent(
+		clid,
+		"",
+		dom.ParentDomain(),
+		name,
+		0,
+		entities.TransactionTypeAdminDelete,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, event, nil, nil, prevState)
+
+	return nil
+}
+
+// PurgeDomain deletes a domain by its name if it meets certain conditions.
+// It performs the following steps:
+//
+// 1. Retrieves the domain by its name.
+//
+// 2. Checks if the domain can be deleted.
+//
+// 3. If the domain has associated hosts, it dissociates all hosts.
+//
+// 4. If the domain is flagged for DropCatching, it creates an NNDN record.
+//
+// 5. Deletes the domain from the repository.
+//
+// 6. Logs a lifecycle event for the domain.
+func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, name, false)
+	if err != nil {
+		return err
+	}
+
+	// Check if we can delete the domain
+	if !dom.CanBeDeleted() {
+		return entities.ErrDomainDeleteNotAllowed
+	}
+
+	// Check if the domain is linked to any hosts
+	if len(dom.Hosts) > 0 {
+		// Dissasociate all hosts if there are any
+		err := s.RemoveAllDomainHosts(ctx, name)
+		if err != nil {
+			return err
+		}
+	}
+
+	// If the domain is flaged for DropCatching, create an NNDN record first
+	var createdNNDN *entities.NNDN
+	if dom.DropCatch {
+		// Create an NNDN record
+		nndn, err := entities.NewNNDN(dom.Name.String())
+		if err != nil {
+			return err
+		}
+		// Set the reason
+		nndn.Reason = "Domain.DropCatch is true"
+		createdNNDN, err = s.nndnRepo.CreateNNDN(ctx, nndn)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Delete the domain
+	err = s.domainRepository.DeleteDomainByName(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypePurge,
+	)
+	if err != nil {
+		return err
+	}
+
+	event.DomainRoID = dom.RoID.String()
+
+	s.logDomainLifecycleEvent(ctx, event, nil, createdNNDN, dom)
+
+	return nil
+
 }
 
 // ListDomains returns a list of domains
@@ -701,7 +816,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 
 	// Check if the domain is available
-	includeFees := cmd.Fee != commands.FeeExtension{} // If the fee extension is not empty, include the fees in the check
+	includeFees := false // We will be removing includefees from DomainCheckQuery as this is replaced with QuoteRequest a bit down the line
 	q, err := queries.NewDomainCheckQuery(cmd.Name, includeFees)
 	if err != nil {
 		return nil, err
@@ -723,28 +838,18 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
 
-	// Get a quote ONLY if the feeExtension is not empty, if we get a quote we will attach it to the checkResult to access it downstream
-	if !cmd.Fee.IsZero() {
-		quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
-			DomainName:      cmd.Name,
-			ClID:            cmd.ClID,
-			TransactionType: entities.TransactionTypeRegistration,
-			Currency:        cmd.Fee.Currency,
-			Years:           cmd.Years,
-			PhaseName:       cmd.PhaseName,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		checkResult.Quote = quote
+	// Create a lifecycle event for logging
+	event, err := entities.NewDomainLifeCycleEvent(
+		cmd.ClID,
+		"",
+		domName.ParentDomain(),
+		domName.String(),
+		cmd.Years,
+		entities.TransactionTypeRegistration,
+	)
+	if err != nil {
+		return nil, err
 	}
-
-	// TODO: do something with the quote
-	// We should somehow compare the Quote with the FeeExtension
-	// Because of the currency conversion, we need to check if the fee is within a certain range instead of an exact match
-	// This requiress some thought and is not implemented yet
-	// Ref: https://github.com/onasunnymorning/domain-os/issues/225
 
 	// Get the Phase through the TLD
 	domainName := entities.DomainName(cmd.Name)
@@ -764,11 +869,40 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
+	// Get a quote
+	var cur string
+	// If the currency is not specified, use the base currency of the Registrar
+	if cmd.Fee.Currency == "" {
+		cur = phase.Policy.BaseCurrency
+	} else {
+		cur = cmd.Fee.Currency
+	}
+	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+		DomainName:      cmd.Name,
+		ClID:            cmd.ClID,
+		TransactionType: entities.TransactionTypeRegistration,
+		Currency:        cur,
+		Years:           cmd.Years,
+		PhaseName:       cmd.PhaseName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	event.Quote = *quote
+	checkResult.Quote = quote
+
+	// TODO: do something with the quote
+	// We should somehow compare the Quote with the FeeExtension
+	// Because of the currency conversion, we need to check if the fee is within a certain range instead of an exact match
+	// This requiress some thought and is not implemented yet
+	// Ref: https://github.com/onasunnymorning/domain-os/issues/225
+
 	// Generate a RoID for our new domain
 	roid, err := svc.roidService.GenerateRoid(entities.RoidTypeDomain)
 	if err != nil {
 		return nil, err
 	}
+	event.DomainRoID = roid.String()
 
 	// Create the domain entity
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
@@ -790,42 +924,14 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		}
 	}
 
-	// Save the domain
-	// This should save the host associtations as well => to be tested
+	// Save the domain including optional host associations
 	createdDomain, err := svc.domainRepository.CreateDomain(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
 
 	// Log the domain registration
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-
-	event, err := entities.NewDomainLifeCycleEvent(
-		createdDomain.ClID.String(),
-		"",
-		createdDomain.TLDName.String(),
-		createdDomain.Name.String(),
-		cmd.Years,
-		entities.TransactionTypeRegistration,
-	)
-	if err != nil {
-		logger.Error("Error creating domain lifecycle event", zap.Error(err))
-	}
-	event.DomainRoID = createdDomain.RoID.String()
-	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
-		event.CorrelationID = correlation_id
-	}
-	if checkResult.Quote != nil {
-		event.Quote = *checkResult.Quote
-	}
-
-	logger.Info(fmt.Sprintf(
-		"Domain %s registered by %s for %d years", createdDomain.Name, createdDomain.ClID, cmd.Years),
-		zap.Any("lifecycle_event", event),
-		zap.Any("create_command", cmd),
-		zap.Any("create_result", createdDomain),
-	)
+	svc.logDomainLifecycleEvent(ctx, event, cmd, createdDomain, nil)
 
 	// return
 	return createdDomain, nil
@@ -857,6 +963,44 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 		return nil, errors.Join(entities.ErrInvalidRenewal, err)
 	}
 
+	// Create a lifecycle event for logging
+	domName := entities.DomainName(cmd.Name)
+	event, err := entities.NewDomainLifeCycleEvent(
+		cmd.ClID,
+		"",
+		domName.ParentDomain(),
+		domName.String(),
+		cmd.Years,
+		entities.TransactionTypeRenewal,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get a quote
+	var cur string
+	// If the currency is not specified, use the base currency of the Registrar
+	if cmd.Fee.Currency == "" {
+		cur = phase.Policy.BaseCurrency
+	} else {
+		cur = cmd.Fee.Currency
+	}
+	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+		DomainName:      cmd.Name,
+		ClID:            cmd.ClID,
+		TransactionType: entities.TransactionTypeRenewal,
+		Currency:        cur,
+		Years:           cmd.Years,
+		PhaseName:       phase.Name.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	event.Quote = *quote
+
+	// save the previous state
+	prevState := dom.Clone()
+
 	// Renew the domain using our entity
 	err = dom.Renew(cmd.Years, false, phase)
 	if err != nil {
@@ -868,6 +1012,10 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	if err != nil {
 		return nil, err
 	}
+
+	event.DomainRoID = updatedDomain.RoID.String()
+	// Log the domain renewal
+	svc.logDomainLifecycleEvent(ctx, event, cmd, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -975,6 +1123,36 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 		return nil, ErrAutoRenewNotEnabledRar
 	}
 
+	// Create a lifecycle event for logging
+	event, err := entities.NewDomainLifeCycleEvent(
+		rar.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		1,
+		entities.TransactionTypeAutoRenewal,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get a quote
+	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+		DomainName:      dom.Name.String(),
+		ClID:            rar.ClID.String(),
+		TransactionType: entities.TransactionTypeAutoRenewal,
+		Currency:        phase.Policy.BaseCurrency,
+		Years:           1,
+		PhaseName:       phase.Name.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	event.Quote = *quote
+
+	// Save the previous state
+	prevState := dom.Clone()
+
 	// Renew the domain using our entity
 	err = dom.Renew(years, true, phase)
 	if err != nil {
@@ -986,6 +1164,10 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	if err != nil {
 		return nil, err
 	}
+	event.DomainRoID = updatedDomain.RoID.String()
+
+	// Log the domain auto renewal
+	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -993,6 +1175,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 // MarkDomainForDeletion marks a domain for deletion by its name.
 // It retrieves the domain, its TLD, and the current GA phase, then marks the domain for deletion (this sets all of the appropriate RGP statuses)
 // and updates it in the repository.
+// This is what you would use to process an EPP delete command. (should we rename this to EPPDeleteDomain?)
 //
 // Parameters:
 //   - ctx: The context for the request.
@@ -1020,6 +1203,22 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 		return nil, err
 	}
 
+	// Create a lifecycle event for logging
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeDelete,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the previous state
+	prevState := dom.Clone()
+
 	// Mark the domain for deletion
 	err = dom.MarkForDeletion(phase)
 	if err != nil {
@@ -1031,6 +1230,11 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	if err != nil {
 		return nil, err
 	}
+
+	event.DomainRoID = updatedDomain.RoID.String()
+
+	// Log the domain deletion
+	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1067,6 +1271,22 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 		return nil, err
 	}
 
+	// Create a lifecycle event for logging
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeExpiry,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the previous state
+	prevState := dom.Clone()
+
 	// Expire the domain
 	err = dom.Expire(phase)
 	if err != nil {
@@ -1078,6 +1298,10 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 	if err != nil {
 		return nil, err
 	}
+	event.DomainRoID = updatedDomain.RoID.String()
+
+	// Log the domain expiration
+	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1090,6 +1314,47 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 		return nil, err
 	}
 
+	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	// For a restore we always use the current GA phase
+	currentPhase, err := tld.GetCurrentGAPhase()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a lifecycle event for logging
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeRestore,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get a quote
+	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+		DomainName:      dom.Name.String(),
+		ClID:            dom.ClID.String(),
+		TransactionType: entities.TransactionTypeAutoRenewal,
+		Currency:        currentPhase.Policy.BaseCurrency,
+		Years:           1,
+		PhaseName:       currentPhase.Name.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	event.Quote = *quote
+
+	// Save the previous state
+	prevState := dom.Clone()
+
 	// Restore the domain
 	err = dom.Restore()
 	if err != nil {
@@ -1101,6 +1366,10 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 	if err != nil {
 		return nil, err
 	}
+	event.DomainRoID = updatedDomain.RoID.String()
+
+	// Log the domain restoration
+	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1241,7 +1510,7 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 		}
 	}
 
-	// Create a default FX in case we don't need FX
+	// Create a default FX
 	fx := &entities.FX{
 		BaseCurrency:   phase.Policy.BaseCurrency,
 		TargetCurrency: phase.Policy.BaseCurrency,
@@ -1260,4 +1529,37 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 
 	// Get/Return the quote
 	return calc.GetQuote(*q.ToEntity())
+}
+
+// logDomainLifecycleEvent logs a domain lifecycle event with the provided context, event, command, and result.
+// It extracts trace_id and correlation_id from the context if they exist and includes them in the event.
+//
+// Parameters:
+//
+//	ctx - The context containing trace_id and correlation_id.
+//	event - The domain lifecycle event to be logged.
+//	command - The command associated with the event.
+//	result - The result of the domain lifecycle operation.
+func (s *DomainService) logDomainLifecycleEvent(
+	ctx context.Context,
+	event *entities.DomainLifeCycleEvent,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	// Populate trace_id and correlation_id if they exist
+	if trace_id, ok := ctx.Value("trace_id").(string); ok {
+		event.TraceID = trace_id
+	}
+	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
+		event.CorrelationID = correlation_id
+	}
+	// Log the domain lifecycle event
+	s.logger.Info(
+		fmt.Sprintf(("Domain %s %s by %s for %d years"), event.DomainName, event.TransactionType, event.ClientID, event.DomainYears),
+		zap.Any("lifecycle_event", event),
+		zap.Any("command", command),
+		zap.Any("new_state", newState),
+		zap.Any("previous_state", previousState),
+	)
 }

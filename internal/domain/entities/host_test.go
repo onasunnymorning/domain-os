@@ -3,6 +3,7 @@ package entities
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -688,6 +689,61 @@ func TestHostStatus_IsNil(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.nils, tc.hs.IsNil())
+		})
+	}
+}
+func TestHost_Clone(t *testing.T) {
+	validIp, _ := netip.ParseAddr("195.238.2.21")
+	testcases := []struct {
+		name string
+		host *Host
+	}{
+		{
+			name: "nil host",
+			host: nil,
+		},
+		{
+			name: "empty host",
+			host: &Host{},
+		},
+		{
+			name: "host with data",
+			host: &Host{
+				RoID:        "12345_HOST-APEX",
+				Name:        DomainName("example.com"),
+				ClID:        "67890",
+				CrRr:        "67890",
+				UpRr:        "67890",
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+				InBailiwick: true,
+				Status:      HostStatus{OK: true},
+				Addresses:   []netip.Addr{validIp},
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			clonedHost := tc.host.Clone()
+			if tc.host == nil {
+				require.Nil(t, clonedHost)
+			} else {
+				require.NotNil(t, clonedHost)
+				require.Equal(t, tc.host.RoID, clonedHost.RoID)
+				require.Equal(t, tc.host.Name, clonedHost.Name)
+				require.Equal(t, tc.host.ClID, clonedHost.ClID)
+				require.Equal(t, tc.host.CrRr, clonedHost.CrRr)
+				require.Equal(t, tc.host.UpRr, clonedHost.UpRr)
+				require.Equal(t, tc.host.CreatedAt, clonedHost.CreatedAt)
+				require.Equal(t, tc.host.UpdatedAt, clonedHost.UpdatedAt)
+				require.Equal(t, tc.host.InBailiwick, clonedHost.InBailiwick)
+				require.Equal(t, tc.host.Status, clonedHost.Status)
+				require.Equal(t, tc.host.Addresses, clonedHost.Addresses)
+				if tc.host.Addresses != nil {
+					require.NotSame(t, tc.host.Addresses, clonedHost.Addresses)
+				}
+			}
 		})
 	}
 }

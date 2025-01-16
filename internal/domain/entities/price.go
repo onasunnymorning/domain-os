@@ -47,6 +47,8 @@ func (p *Price) GetMoney(transactionType TransactionType) (*money.Money, error) 
 		amount = p.RegistrationAmount
 	case TransactionTypeRenewal:
 		amount = p.RenewalAmount
+	case TransactionTypeAutoRenewal:
+		amount = p.RenewalAmount
 	case TransactionTypeTransfer:
 		amount = p.TransferAmount
 	case TransactionTypeRestore:
