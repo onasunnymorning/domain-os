@@ -21,8 +21,17 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisSe
 # Create API release image
 FROM alpine:3.21 AS whois-server
 
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy our executable
 COPY --from=build-whois /whoisServer /whoisServer
+
+# Ensure the binary is executable by the user
+RUN chown appuser:appgroup /whoisServer
+
+# Set the user
+USER appuser
 
 # Expose the port
 EXPOSE 43

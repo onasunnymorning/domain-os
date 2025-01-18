@@ -32,8 +32,18 @@ RUN go build -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api
 
 # Create API release image
 FROM alpine:3.21 as epp-client-api
+
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy our static executable
 COPY --from=build-epp-client-api /eppClientApi /eppClientApi
+
+# Ensure the binary is executable by the user
+RUN chown appuser:appgroup /eppClientApi
+
+# Set the user
+USER appuser
 
 EXPOSE 8700
 CMD [ "/eppClientApi" ]
