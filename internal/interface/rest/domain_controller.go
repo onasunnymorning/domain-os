@@ -991,6 +991,10 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 
 	quote, err := ctrl.domainService.GetQuote(ctx, &qr)
 	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
