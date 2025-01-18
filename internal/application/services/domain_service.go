@@ -258,8 +258,8 @@ func (s *DomainService) GetDomainByName(ctx context.Context, name string, preloa
 }
 
 // DeleteDomainByName deletes a domain identified by its name.
-// This is a hard delete and will remove the domain from the system unless the repository does not allow it.
-// If you want to purge a domain, use the PurgeDomain method.
+// This is an admin delete and will remove the domain from the system unless the repository does not allow it.
+// If you want to purge a domain as part of its normal domain lifecycle, use the PurgeDomain method.
 // It takes a context for managing request-scoped values and cancellation,
 // and the name of the domain to be deleted.
 // It returns an error if the deletion fails.
@@ -291,7 +291,8 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, event, nil, nil, prevState)
+	msg := fmt.Sprintf("Domain %s ADMIN deleted", name)
+	s.logDomainLifecycleEvent(ctx, msg, event, nil, nil, prevState)
 
 	return nil
 }
@@ -368,7 +369,8 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 
 	event.DomainRoID = dom.RoID.String()
 
-	s.logDomainLifecycleEvent(ctx, event, nil, createdNNDN, dom)
+	msg := fmt.Sprintf("Domain %s purged", name)
+	s.logDomainLifecycleEvent(ctx, msg, event, nil, createdNNDN, dom)
 
 	return nil
 
@@ -931,7 +933,8 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 
 	// Log the domain registration
-	svc.logDomainLifecycleEvent(ctx, event, cmd, createdDomain, nil)
+	msg := fmt.Sprintf("Domain %s registered by %s for %d years", cmd.Name, cmd.ClID, cmd.Years)
+	svc.logDomainLifecycleEvent(ctx, msg, event, cmd, createdDomain, nil)
 
 	// return
 	return createdDomain, nil
@@ -1015,7 +1018,8 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 
 	event.DomainRoID = updatedDomain.RoID.String()
 	// Log the domain renewal
-	svc.logDomainLifecycleEvent(ctx, event, cmd, updatedDomain, prevState)
+	msg := fmt.Sprintf("Domain %s renewed by %s for %d years", cmd.Name, cmd.ClID, cmd.Years)
+	svc.logDomainLifecycleEvent(ctx, msg, event, cmd, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1167,7 +1171,8 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	event.DomainRoID = updatedDomain.RoID.String()
 
 	// Log the domain auto renewal
-	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
+	msg := fmt.Sprintf("Domain %s auto-renewed for %d years", name, years)
+	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1234,7 +1239,8 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	event.DomainRoID = updatedDomain.RoID.String()
 
 	// Log the domain deletion
-	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
+	msg := fmt.Sprintf("Domain %s marked for deletion (starting EOL cycle)", domainName)
+	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1301,7 +1307,8 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 	event.DomainRoID = updatedDomain.RoID.String()
 
 	// Log the domain expiration
-	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
+	msg := fmt.Sprintf("Domain %s expired", domainName)
+	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1369,7 +1376,8 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 	event.DomainRoID = updatedDomain.RoID.String()
 
 	// Log the domain restoration
-	svc.logDomainLifecycleEvent(ctx, event, nil, updatedDomain, prevState)
+	msg := fmt.Sprintf("Domain %s restored by %s", domainName, dom.ClID)
+	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1542,6 +1550,7 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 //	result - The result of the domain lifecycle operation.
 func (s *DomainService) logDomainLifecycleEvent(
 	ctx context.Context,
+	msg string,
 	event *entities.DomainLifeCycleEvent,
 	command interface{},
 	newState interface{},
@@ -1556,8 +1565,9 @@ func (s *DomainService) logDomainLifecycleEvent(
 	}
 	// Log the domain lifecycle event
 	s.logger.Info(
-		fmt.Sprintf(("Domain %s %s by %s for %d years"), event.DomainName, event.TransactionType, event.ClientID, event.DomainYears),
-		zap.Any("lifecycle_event", event),
+		msg,
+		zap.String("event_type", "domain_lifecycle_event"),
+		zap.Any("domain_lifecycle_event", event),
 		zap.Any("command", command),
 		zap.Any("new_state", newState),
 		zap.Any("previous_state", previousState),
