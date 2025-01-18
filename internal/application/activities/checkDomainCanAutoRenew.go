@@ -10,12 +10,20 @@ import (
 )
 
 // CheckDomainCanAutoRenew checks if a domain can be auto-renewed based on the current GA Phase and owning Registrar settings
-func CheckDomainCanAutoRenew(domainName string) (bool, error) {
+func CheckDomainCanAutoRenew(correlationID string, domainName string) (bool, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/canautorenew", BASEURL, domainName)
 
 	client := http.Client{}
 
-	req, err := http.NewRequest("GET", ENDPOINT, nil)
+	// Set up query parameters
+	qParams := make(map[string]string)
+	qParams["correlation_id"] = correlationID
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
+	if err != nil {
+		return false, fmt.Errorf("failed to create URL: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", URL.String(), nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}

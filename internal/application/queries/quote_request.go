@@ -11,12 +11,12 @@ import (
 
 // QuoteRequest represents a query to get a quote for a domain name.
 type QuoteRequest struct {
-	DomainName      string `json:"DomainName" binding:"required" example:"get.busy"`
-	TransactionType string `json:"TransactionType" binding:"required" example:"registration"`
-	Currency        string `json:"Currency" binding:"required"  example:"USD"`
-	Years           int    `json:"Years" binding:"required" example:"2"`
-	ClID            string `json:"ClID" binding:"required"  example:"1290-RiskNames"`
-	PhaseName       string `json:"PhaseName" example:"sunrise"` // Phase name - if empty the current GA phase is assumed
+	DomainName      string                   `json:"DomainName" binding:"required" example:"get.busy"`
+	TransactionType entities.TransactionType `json:"TransactionType" binding:"required" example:"registration"`
+	Currency        string                   `json:"Currency" binding:"required"  example:"USD"`
+	Years           int                      `json:"Years" binding:"required" example:"2"`
+	ClID            string                   `json:"ClID" binding:"required"  example:"1290-RiskNames"`
+	PhaseName       string                   `json:"PhaseName" example:"sunrise"` // Phase name - if empty the current GA phase is assumed
 }
 
 // Validate validates the QuoteRequest.
@@ -24,8 +24,8 @@ func (qr *QuoteRequest) Validate() error {
 	if _, err := entities.NewDomainName(qr.DomainName); err != nil {
 		return errors.Join(entities.ErrInvalidQuoteRequest, err)
 	}
-	if !slices.Contains(entities.ValidTransactionTypes, qr.TransactionType) {
-		return errors.Join(entities.ErrInvalidQuoteRequest, entities.ErrInvalidTransactionType)
+	if !slices.Contains(entities.ValidTransactionTypesForQuote, qr.TransactionType) {
+		return errors.Join(entities.ErrInvalidQuoteRequest, entities.ErrInvalidTransactionTypeForQuote)
 	}
 	cur := money.GetCurrency(strings.ToUpper(qr.Currency))
 	if cur == nil {

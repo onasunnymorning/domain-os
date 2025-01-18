@@ -29,8 +29,10 @@ type DomainService interface {
 	CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error)
 
 	// These are Registrar services
-	// CheckDomain checks if a domain is available and supports the fee extension
-	CheckDomain(ctx context.Context, q *queries.DomainCheckQuery) (*queries.DomainCheckResult, error)
+	// CheckDomain checks if a domain is available
+	CheckDomainAvailability(ctx context.Context, domainname, phaseName string) (*queries.DomainCheckResult, error)
+	// GetQuote returns a quote for a domain transaction
+	GetQuote(ctx context.Context, q *queries.QuoteRequest) (*entities.Quote, error)
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
@@ -45,6 +47,8 @@ type DomainService interface {
 	ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 	// RestoreDomain restores a domain as a registrar
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
+	// PurgeDomain purges a domain after it has reached it's purge date
+	PurgeDomain(ctx context.Context, domainName string) error
 
 	// These are DNS services
 	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)

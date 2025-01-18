@@ -36,7 +36,7 @@ func (suite *GetExpiredDomainCountTestSuite) TestGetExpiredDomainCount_Success()
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
+	result, err := GetExpiredDomainCount("testCorrelationID", queries.ExpiringDomainsQuery{})
 	suite.NoError(err, "Expected no error for successful response")
 	suite.NotNil(result, "Expected a valid response")
 	suite.Equal(int64(42), result.Count, "Expected count to match")
@@ -49,7 +49,7 @@ func (suite *GetExpiredDomainCountTestSuite) TestGetExpiredDomainCount_BadReques
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
+	result, err := GetExpiredDomainCount("testCorrelationID", queries.ExpiringDomainsQuery{})
 	suite.Error(err, "Expected an error for bad request")
 	suite.Nil(result, "Expected no result for bad request")
 	suite.Contains(err.Error(), "failed to fetch domain count", "Error should include fetch failure")
@@ -58,7 +58,7 @@ func (suite *GetExpiredDomainCountTestSuite) TestGetExpiredDomainCount_BadReques
 func (suite *GetExpiredDomainCountTestSuite) TestGetExpiredDomainCount_NetworkError() {
 	suite.mockTransport.Err = fmt.Errorf("network error")
 
-	result, err := GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
+	result, err := GetExpiredDomainCount("testCorrelationID", queries.ExpiringDomainsQuery{})
 	suite.Error(err, "Expected an error for network failure")
 	suite.Nil(result, "Expected no result for network error")
 	suite.Contains(err.Error(), "network error", "Error should indicate network failure")
@@ -71,7 +71,7 @@ func (suite *GetExpiredDomainCountTestSuite) TestGetExpiredDomainCount_ParseErro
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
+	result, err := GetExpiredDomainCount("testCorrelationID", queries.ExpiringDomainsQuery{})
 	suite.Error(err, "Expected an error for invalid JSON response")
 	suite.Nil(result, "Expected no result for invalid JSON")
 	suite.Contains(err.Error(), "failed to parse response", "Error should indicate parse failure")

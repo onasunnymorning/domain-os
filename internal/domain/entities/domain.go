@@ -35,6 +35,7 @@ var (
 	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 	ErrDomainExpiryNotAllowed          = errors.New("domain expiry not allowed")
+	ErrDomainExpiryTooEarly            = errors.New("domain has not expired yet")
 	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
 	ErrRegistrantIDRequiredButNotSet   = errors.New("RegistrantID is required but not set")
 	ErrTechIDRequiredButNotSet         = errors.New("TechID is required but not set")
@@ -216,6 +217,11 @@ func (d *Domain) Validate() error {
 		}
 	}
 	return nil
+}
+
+// CanBePurged checks if the Domain can be purged (e.g. the PurgeDate is in the past)
+func (d *Domain) CanBePurged() bool {
+	return time.Now().UTC().After(d.RGPStatus.PurgeDate)
 }
 
 // CanBeDeleted checks if the Domain can be deleted (e.g. no delete prohibition is present in its status object: ClientDeleteProhibited or ServerDeleteProhibited). If the domain is alread in pending Delete status, it can't be deleted
@@ -411,7 +417,7 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 
 	err := d.SetStatus(DomainStatusPendingDelete)
 	if err != nil {
-		return err
+		return errors.Join(ErrDomainDeleteNotAllowed, err)
 	}
 	d.UpRr = d.ClID
 
@@ -441,7 +447,7 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 func (d *Domain) Expire(phase *Phase) error {
 	// Don't allow expiring a domain that has not expired yet.
 	if time.Now().UTC().Before(d.ExpiryDate) {
-		return errors.Join(ErrDomainExpiryNotAllowed, fmt.Errorf("domain expiry date is %s", d.ExpiryDate))
+		return errors.Join(ErrDomainExpiryTooEarly, fmt.Errorf("expiry date is %s", d.ExpiryDate))
 	}
 
 	// If ServerDeleteProhibited is set, we respect it as it provides a deterministic way to prevent domains from being deleted.
@@ -543,4 +549,57 @@ func (d *Domain) ApplyContactDataPolicy(
 	}
 
 	return nil
+}
+
+// Clone creates a deep copy of the Domain object, including all its fields and nested structures.
+// It returns a pointer to the new Domain object. If the original Domain object is nil, it returns nil.
+//
+// The method performs the following steps:
+// 1. Copies all top-level fields of the Domain struct.
+// 2. Deep-copies the Hosts slice by calling the Clone method on each Host pointer.
+//
+// Returns:
+// - *Domain: A pointer to the newly created Domain object, or nil if the original Domain object is nil.
+func (d *Domain) Clone() *Domain {
+	if d == nil {
+		return nil
+	}
+
+	// Copy all top-level Domain fields.
+	newDomain := &Domain{
+		RoID:           d.RoID,
+		Name:           d.Name,
+		OriginalName:   d.OriginalName,
+		UName:          d.UName,
+		RegistrantID:   d.RegistrantID,
+		AdminID:        d.AdminID,
+		TechID:         d.TechID,
+		BillingID:      d.BillingID,
+		ClID:           d.ClID,
+		CrRr:           d.CrRr,
+		UpRr:           d.UpRr,
+		TLDName:        d.TLDName,
+		ExpiryDate:     d.ExpiryDate,
+		DropCatch:      d.DropCatch,
+		RenewedYears:   d.RenewedYears,
+		AuthInfo:       d.AuthInfo,
+		CreatedAt:      d.CreatedAt,
+		UpdatedAt:      d.UpdatedAt,
+		Status:         d.Status,         // Struct copied by value
+		RGPStatus:      d.RGPStatus,      // Struct copied by value
+		GrandFathering: d.GrandFathering, // Struct copied by value
+		// Hosts handled below
+	}
+
+	// Deep-copy the Hosts slice, calling Host.Clone() on each.
+	if d.Hosts != nil {
+		newDomain.Hosts = make([]*Host, len(d.Hosts))
+		for i, hostPtr := range d.Hosts {
+			if hostPtr != nil {
+				newDomain.Hosts[i] = hostPtr.Clone()
+			}
+		}
+	}
+
+	return newDomain
 }

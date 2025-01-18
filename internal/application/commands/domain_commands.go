@@ -53,6 +53,12 @@ type FeeExtension struct {
 	Amount   float64 `json:"Amount"`
 }
 
+// IsZero checks if the FeeExtension instance is equal to the zero value of FeeExtension.
+// It returns true if the instance is a zero value, otherwise false.
+func (f FeeExtension) IsZero() bool {
+	return f == FeeExtension{}
+}
+
 // CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar transactions should use the RegisterDomainCommand and RenewDomainCommand ...
 type CreateDomainCommand struct {
 	RoID               string                        `json:"RoID"` // if not provided, it will be generated

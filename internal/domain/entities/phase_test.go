@@ -853,7 +853,7 @@ func TestPhase_GetTransactionPriceAsMoney(t *testing.T) {
 		// Simulate Price.GetMoney returning an error
 		oldGetMoney := priceGetMoney
 		defer func() { priceGetMoney = oldGetMoney }()
-		priceGetMoney = func(_ *Price, _ string) (*money.Money, error) {
+		priceGetMoney = func(_ *Price, _ TransactionType) (*money.Money, error) {
 			return nil, errors.New("get-money-error")
 		}
 		phase := &Phase{

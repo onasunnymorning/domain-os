@@ -11,12 +11,17 @@ import (
 )
 
 // GetExpiredDomainCount takes a ExpiringDomainsQuery and returns the number of domains that have expired and are past the grace period (ExpiryDate is in the past or before the supplied date). It gets these through the admin API.
-func GetExpiredDomainCount(query queries.ExpiringDomainsQuery) (*response.CountResult, error) {
+func GetExpiredDomainCount(correlationID string, query queries.ExpiringDomainsQuery) (*response.CountResult, error) {
 	COUNT_ENDPOINT := fmt.Sprintf("%s/domains/expiring/count", BASEURL)
 
 	client := http.Client{}
 
-	req, err := http.NewRequest("GET", COUNT_ENDPOINT, nil)
+	// Set up query parameters
+	qParams := make(map[string]string)
+	qParams["correlation_id"] = correlationID
+	URL, err := getURLAndSetQueryParams(COUNT_ENDPOINT, qParams)
+
+	req, err := http.NewRequest("GET", URL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

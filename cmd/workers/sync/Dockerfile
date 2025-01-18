@@ -20,8 +20,18 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o syncWor
 
 # Create API release image
 FROM alpine:3.21 AS domain-sync
+
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy our executable
 COPY --from=build-sync /syncWorker /syncWorker
+
+# Ensure the binary is executable by the user
+RUN chown appuser:appgroup /syncWorker
+
+# Set the user
+USER appuser
 
 # Run the executable
 CMD ["/syncWorker"]
