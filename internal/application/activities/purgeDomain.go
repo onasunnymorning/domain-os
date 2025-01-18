@@ -8,7 +8,7 @@ import (
 
 // PurgeDomain purges (deletes) a domain from the system.
 func PurgeDomain(correlationID, domainName string) error {
-	ENDPOINT := fmt.Sprintf("%s/domains/%s", BASEURL, domainName)
+	ENDPOINT := fmt.Sprintf("%s/domains/%s/purge", BASEURL, domainName)
 
 	// Set up an API client
 	client := http.Client{}
