@@ -19,12 +19,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lib/pq v1.10.9
+	github.com/likexian/gokit v0.25.15
 	github.com/likexian/whois v1.15.5
 	github.com/likexian/whois-parser v1.24.20
 	github.com/miekg/dns v1.1.61
 	github.com/newrelic/go-agent/v3 v3.33.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.33.1
+	github.com/pborman/uuid v1.2.1
 	github.com/rabbitmq/rabbitmq-stream-go-client v1.4.8
 	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/sirupsen/logrus v1.9.3
@@ -89,7 +91,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lestrrat-go/libxml2 v0.0.0-20201123224832-e6d9de61b80d // indirect
-	github.com/likexian/gokit v0.25.15 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -99,7 +100,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nexus-rpc/sdk-go v0.1.0 // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
-	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.1 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect

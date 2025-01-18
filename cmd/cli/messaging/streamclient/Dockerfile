@@ -21,7 +21,17 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o streamC
 
 # Create CONSUMER release image
 FROM alpine:3.21 AS release-consumer
+
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy our static executable
 COPY --from=build-receiver /streamClient /streamClient
+
+# Ensure the binary is executable by the user
+RUN chown appuser:appgroup /streamClient
+
+# Set the user
+USER appuser
 
 CMD [ "/streamClient" ]

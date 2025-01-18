@@ -15,11 +15,13 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/schedules"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
+	"github.com/pborman/uuid"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
 	start := time.Now()
+	correlationID := "lifecycle-cli-" + uuid.New()
 	// Keep track of memory usage
 	// Channel to signal the monitoring goroutine to stop
 	done := make(chan struct{})
@@ -42,7 +44,10 @@ func main() {
 		}
 	}()
 	app := &cli.App{
-		Name:  "lifecycle",
+		Name: "lifecycle",
+		Metadata: map[string]interface{}{
+			"correlationID": correlationID,
+		},
 		Usage: "execute domain lifecycle operations",
 		Commands: []*cli.Command{
 			{
@@ -97,7 +102,7 @@ func main() {
 func expire(c *cli.Context) error {
 	// Query the API for the amount of expired domains
 	log.Println("Querying expired domain count...")
-	countResult, err := activities.GetExpiredDomainCount(queries.ExpiringDomainsQuery{})
+	countResult, err := activities.GetExpiredDomainCount(getCorrelationIDFromContext(c), queries.ExpiringDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -116,7 +121,7 @@ func expire(c *cli.Context) error {
 		return err
 	}
 	log.Println("Querying expired domains...")
-	domains, err := activities.ListExpiringDomains(*q)
+	domains, err := activities.ListExpiringDomains(getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -126,7 +131,7 @@ func expire(c *cli.Context) error {
 	log.Println("Processing expired domains...")
 	for _, domain := range domains {
 		// Try and auto-renew the domain
-		err := activities.AutoRenewDomain(domain.Name)
+		err := activities.AutoRenewDomain(getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			// If the domain is not eligible for auto-renew, it should be marked for deletion
 			if strings.Contains(err.Error(), "auto renew is not enabled") {
@@ -152,7 +157,7 @@ func purge(c *cli.Context) error {
 
 	// Query the API for the amount of purgeable domains
 	log.Println("Querying purgeable domain count...")
-	countResult, err := activities.GetPurgeableDomainCount(queries.PurgeableDomainsQuery{})
+	countResult, err := activities.GetPurgeableDomainCount(getCorrelationIDFromContext(c), queries.PurgeableDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -171,7 +176,7 @@ func purge(c *cli.Context) error {
 	}
 	log.Println("Querying purgeable domains...")
 
-	domains, err := activities.ListPurgeableDomains(*q)
+	domains, err := activities.ListPurgeableDomains(getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -181,7 +186,7 @@ func purge(c *cli.Context) error {
 	log.Println("Processing purgeable domains...")
 	for _, domain := range domains {
 		// Premanently delete the domain
-		err := activities.PurgeDomain(domain.Name)
+		err := activities.PurgeDomain(getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			log.Printf("Failed to delete domain %s: %s\n", domain.Name, err)
 			continue
@@ -264,4 +269,11 @@ func createTemporalSchedules(c *cli.Context) error {
 func deleteTemporalSchedules(c *cli.Context) error {
 	fmt.Println("Not implemented")
 	return nil
+}
+
+func getCorrelationIDFromContext(c *cli.Context) string {
+	if c.App.Metadata["correlationID"] != nil {
+		return c.App.Metadata["correlationID"].(string)
+	}
+	return ""
 }

@@ -60,8 +60,17 @@ FROM alpine:3.21 AS admin-api
 # Copy librdkafka from the build image
 # COPY --from=build-admin-api /usr/lib/librdkafka* /usr/lib/
 
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy our static executable
 COPY --from=build-admin-api /ryAdminAPI /ryAdminAPI
+
+# Ensure the user owns the binary
+RUN chown -R appuser:appgroup /ryAdminAPI && chmod +x /ryAdminAPI
+
+# Use an unprivileged user to run the binary
+USER appuser
 
 EXPOSE 8080
 CMD [ "/ryAdminAPI" ]

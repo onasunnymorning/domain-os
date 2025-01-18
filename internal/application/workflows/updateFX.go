@@ -14,6 +14,9 @@ func UpdateFX(ctx workflow.Context) error {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
+	// Get the workflow ID
+	workflowID := getWorkflowID(ctx)
+
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
@@ -37,7 +40,7 @@ func UpdateFX(ctx workflow.Context) error {
 	// Update USD
 	currencies := []string{"USD", "EUR", "PEN", "GBP", "RUB", "CAD", "AUD"}
 	for _, currency := range currencies {
-		updateErr := workflow.ExecuteActivity(ctx, activities.UpdateFX, currency).Get(ctx, nil)
+		updateErr := workflow.ExecuteActivity(ctx, activities.UpdateFX, workflowID, currency).Get(ctx, nil)
 		if updateErr != nil {
 			logger.Error(
 				"Error updating FX",

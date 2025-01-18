@@ -3,6 +3,7 @@ package entities
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -688,6 +689,77 @@ func TestHostStatus_IsNil(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.nils, tc.hs.IsNil())
+		})
+	}
+}
+
+// Example improved test for Host.Clone
+func TestHost_Clone(t *testing.T) {
+	now := time.Now()
+	validIP := netip.MustParseAddr("195.238.2.21")
+
+	testcases := []struct {
+		name        string
+		host        *Host
+		shouldBeNil bool
+	}{
+		{
+			name:        "nil host",
+			host:        nil,
+			shouldBeNil: true,
+		},
+		{
+			name: "empty host",
+			host: &Host{},
+		},
+		{
+			name: "host with data",
+			host: &Host{
+				RoID:        "12345_HOST-APEX",
+				Name:        DomainName("example.com"),
+				ClID:        "67890",
+				CrRr:        "67890",
+				UpRr:        "67890",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+				InBailiwick: true,
+				Status:      HostStatus{OK: true},
+				Addresses:   []netip.Addr{validIP},
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			clonedHost := tc.host.Clone()
+
+			if tc.shouldBeNil {
+				require.Nil(t, clonedHost)
+				return
+			}
+
+			require.NotNil(t, clonedHost)
+			require.NotSame(t, tc.host, clonedHost)
+
+			// Spot-check all fields
+			require.Equal(t, tc.host.RoID, clonedHost.RoID)
+			require.Equal(t, tc.host.Name, clonedHost.Name)
+			require.Equal(t, tc.host.ClID, clonedHost.ClID)
+			require.Equal(t, tc.host.CrRr, clonedHost.CrRr)
+			require.Equal(t, tc.host.UpRr, clonedHost.UpRr)
+			require.Equal(t, tc.host.CreatedAt, clonedHost.CreatedAt)
+			require.Equal(t, tc.host.UpdatedAt, clonedHost.UpdatedAt)
+			require.Equal(t, tc.host.InBailiwick, clonedHost.InBailiwick)
+			require.Equal(t, tc.host.Status, clonedHost.Status)
+
+			// Check Addresses slice
+			require.Equal(t, len(tc.host.Addresses), len(clonedHost.Addresses))
+			if len(tc.host.Addresses) > 0 {
+
+				for i, addr := range tc.host.Addresses {
+					require.Equal(t, addr, clonedHost.Addresses[i])
+				}
+			}
 		})
 	}
 }

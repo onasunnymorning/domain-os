@@ -98,5 +98,5 @@ func TestPrice_GetMoney_InvalidTransactionType(t *testing.T) {
 
 	_, err := price.GetMoney("invalid")
 
-	assert.Equal(t, ErrInvalidTransactionType, err)
+	assert.Equal(t, ErrInvalidTransactionTypeForQuote, err)
 }

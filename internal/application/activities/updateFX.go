@@ -7,14 +7,21 @@ import (
 )
 
 // UpdateFX updates the FX rate for a given currency.
-func UpdateFX(cur string) error {
+func UpdateFX(correlationID, cur string) error {
 	ENDPOINT := fmt.Sprintf("%s/sync/fx/%s", BASEURL, cur)
 
 	// Set up an API client
 	client := http.Client{}
 
+	// set the correlation ID
+	qParams := map[string]string{"correlationID": correlationID}
+	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
+	if err != nil {
+		return fmt.Errorf("failed to add query params: %w", err)
+	}
+
 	// Get the FX rate
-	req, err := http.NewRequest("PUT", ENDPOINT, nil)
+	req, err := http.NewRequest("PUT", URL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

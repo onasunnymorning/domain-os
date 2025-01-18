@@ -134,7 +134,7 @@ func (suite *GetDomainHostsTestSuite) TestGetDomainHosts_Success() {
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetDomain("space.bar")
+	result, err := GetDomain("testCorrelationID", "space.bar")
 	suite.NoError(err, "Expected no error for successful domain retrieval")
 	suite.NotNil(result, "Expected a valid response")
 	suite.Equal("space.bar", result.Name.String(), "Expected domain name to match")
@@ -148,7 +148,7 @@ func (suite *GetDomainHostsTestSuite) TestGetDomainHosts_BadRequest() {
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetDomain("example.com")
+	result, err := GetDomain("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for bad request")
 	suite.Nil(result, "Expected no result for bad request")
 	suite.Contains(err.Error(), "400", "Error should include HTTP status code")
@@ -162,7 +162,7 @@ func (suite *GetDomainHostsTestSuite) TestGetDomainHosts_ParseError() {
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetDomain("example.com")
+	result, err := GetDomain("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for invalid JSON response")
 	suite.Nil(result, "Expected no result for invalid JSON")
 	suite.Contains(err.Error(), "failed to unmarshal response body", "Error should indicate parse failure")

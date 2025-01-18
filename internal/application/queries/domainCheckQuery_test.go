@@ -13,5 +13,5 @@ func TestNewDomainCheckQuery(t *testing.T) {
 	query, err := NewDomainCheckQuery(domainName, includeFees)
 	require.NoError(t, err, "Failed to create DomainCheckQuery")
 	require.Equal(t, domainName, query.DomainName.String(), "DomainName mismatch")
-	require.Equal(t, includeFees, query.IncludeFees, "IncludeFees mismatch")
+	require.Equal(t, includeFees, query.GetQuote, "IncludeFees mismatch")
 }

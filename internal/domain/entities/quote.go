@@ -10,7 +10,7 @@ import (
 type Quote struct {
 	TimeStamp       time.Time
 	DomainName      DomainName
-	TransactionType string
+	TransactionType TransactionType
 	Clid            ClIDType
 	Years           int
 	Price           *money.Money

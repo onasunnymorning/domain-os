@@ -580,3 +580,31 @@ func TestUpdateDomainCommand_ApplyContactDataPolicy(t *testing.T) {
 		})
 	}
 }
+func TestFeeExtension_IsZero(t *testing.T) {
+	tcases := []struct {
+		name     string
+		fee      FeeExtension
+		expected bool
+	}{
+		{
+			name:     "Zero value FeeExtension",
+			fee:      FeeExtension{},
+			expected: true,
+		},
+		{
+			name: "Non-zero value FeeExtension",
+			fee: FeeExtension{
+				Currency: "USD",
+				Amount:   10.0,
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.fee.IsZero()
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}

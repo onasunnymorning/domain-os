@@ -37,6 +37,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.DELETE(":name", controller.DeleteDomainByName)
 		domainGroup.GET("", controller.ListDomains)
 		domainGroup.GET("count", controller.CountDomains)
+		domainGroup.POST("quote", controller.GetQuote)
 		// Add and remove hosts
 		domainGroup.POST(":name/hosts/:roid", controller.AddHostToDomain)
 		domainGroup.POST(":name/hostname/:hostName", controller.AddHostToDomainByHostName)
@@ -48,13 +49,10 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.DELETE(":name/dropcatch", controller.UnSetDropCatch)
 
 		// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
-		domainGroup.GET(":name/check", controller.CheckDomain)
+		domainGroup.GET(":name/available", controller.CheckDomainAvailability)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
-		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
-		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
-		domainGroup.DELETE(":name/expire", controller.Expire)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
 
 		// Lifecycle endpoints
@@ -62,6 +60,10 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
 		domainGroup.GET("purgeable", controller.ListPurgeableDomains)
 		domainGroup.GET("purgeable/count", controller.CountPurgeableDomains)
+		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
+		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
+		domainGroup.DELETE(":name/expire", controller.Expire)
+		domainGroup.DELETE(":name/purge", controller.Purge)
 	}
 
 	return controller
@@ -94,8 +96,8 @@ func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 }
 
 // CreateDomain godoc
-// @Summary Create a domain
-// @Description Create a domain. Use this to create/import domains as an admin with full control. If you are looking to register a domain as a registrar, use the /register endpoint.
+// @Summary Create a domain as an ADMIN with full control
+// @Description Do not use this for registrar activity or domain lifecycle activity. Use this to create/import domains as an admin with full control. For example during a migration IN. If you are looking to register a domain as a registrar, use the /register endpoint.
 // @Description If you need this endpoint to enforce a current GA phase policy, enable thisby setting commands.CreateDomainCommand.EnforcePhasePolicy to true (defaults to false)
 // @Tags Domains
 // @Accept json
@@ -403,6 +405,7 @@ func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param domain body commands.RegisterDomainCommand true "Domain"
+// @Param correlation_id path string false "Correlation ID"
 // @Success 201 {object} entities.Domain
 // @Failure 400
 // @Failure 403
@@ -443,40 +446,32 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 	ctx.JSON(201, domain)
 }
 
-// CheckDomain godoc
+// CheckDomainAvailability godoc
 // @Summary Check if a domain is available
-// @Description Check if a domain is available
+// @Description A Domain is available if:
+// @Description - The domain does not exist
+// @Description - No NNDN exists with the same name
+// @Description - The domain label is valid in the TLDs current GA phase OR the provided phase name)
+// @Description It will return a 400 error if the TLD is not found, the phase is not found, the phase is not active, or the label is not valid in the phase.
+// @Description It will return a 500 error if an unexpected error occurs.
 // @Tags Domains
 // @Produce json
 // @Param name path string true "Domain Name"
-// @Param includeFees query bool false "Include fees in the response"
+// @Param phase query string false "Phase Name"
 // @Success 200 {object} queries.DomainCheckResult
 // @Failure 400
 // @Failure 500
-// @Router /domains/{name}/check [get]
-func (ctrl *DomainController) CheckDomain(ctx *gin.Context) {
-	name := ctx.Param("name")
-	includeFees := ctx.DefaultQuery("includeFees", "false")
-
-	// Create a query object
-	q, err := queries.NewDomainCheckQuery(name, includeFees == "true")
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Set the phase name and currency if it was provided
-	q.PhaseName = ctx.Query("phase")
-	q.Currency = ctx.Query("currency")
-	if q.IncludeFees && q.Currency == "" {
-		ctx.JSON(400, gin.H{"error": "currency is required when requesting fees"})
-		return
-	}
-
+// @Router /domains/{name}/available [get]
+func (ctrl *DomainController) CheckDomainAvailability(ctx *gin.Context) {
 	// Call the service to check the domain
-	result, err := ctrl.domainService.CheckDomain(ctx, q)
+	result, err := ctrl.domainService.CheckDomainAvailability(ctx, ctx.Param("name"), ctx.Query("phase"))
 	if err != nil {
-		if errors.Is(err, entities.ErrTLDNotFound) || errors.Is(err, entities.ErrPhaseNotFound) || errors.Is(err, entities.ErrNoActivePhase) {
+		// Return 400 if we encounter missing configuration to make a decision
+		if errors.Is(
+			err, entities.ErrTLDNotFound) ||
+			errors.Is(err, entities.ErrPhaseNotFound) ||
+			errors.Is(err, entities.ErrNoActivePhase) ||
+			errors.Is(err, entities.ErrLabelNotValidInPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -641,7 +636,8 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Description It retrieves the domain name from the request context, calls the domainService to expire the domain,
 // @Description and returns the appropriate JSON response based on the outcome.
 // @Description If the domain is not found, it returns a 404 status code with an error message.
-// @Description If the domain is not allowed to be expired (domains can expire only on the day of their expirydate or after), it returns a 403 status code with an error message.
+// @Description If the domain is not allowed it returns a 403 status code with an error message.
+// @Description If the domain has not expired yet, it returns a 425 status code with an error message.
 // @Description If the the TLD does not have an active GA phase (Phase.Policy contains the applicable EOL policy), it returns a 403 status code with an error message.
 // @Description For other errors, it returns a 500 status code with an error message.
 // @Description On success, it returns a 200 status code with the expired domain information.
@@ -651,6 +647,8 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Param name path string true "Domain Name"
 // @Success 200 {object} entities.Domain
 // @Failure 404
+// @Failure 403
+// @Failure 425
 // @Failure 500
 // @Router /domains/{name}/expire [post]
 func (ctrl *DomainController) Expire(ctx *gin.Context) {
@@ -660,9 +658,14 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		// Return 403 if there is no active phase or the domain has not reached the expiry date yet
+		// Return 403 if there is no active phase
 		if errors.Is(err, entities.ErrDomainExpiryNotAllowed) || errors.Is(err, entities.ErrNoActivePhase) {
 			ctx.JSON(403, gin.H{"error": err.Error()})
+			return
+		}
+		// Return 425 is the domain has not expired yet
+		if errors.Is(err, entities.ErrDomainExpiryTooEarly) {
+			ctx.JSON(425, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
@@ -969,4 +972,66 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 
 	// Return the Response
 	ctx.JSON(200, resp)
+}
+
+// GetQuote godoc
+// @Summary returns a quote for a transaction
+// @Description Takes a QuoteRequest and returns a Quote for the transaction including a breakdown of costs.
+// @Description The QuoteRequest parameters are all required, except for phaseName which defaults to Currently Active GA Phase
+// @Description The resulting Quote contains a final price for the transaction as well as all the relevant configured pricepoints including currency conversion if applicable
+// @Tags Domains
+// @Accept  json
+// @Produce  json
+// @Param quoteRequest body queries.QuoteRequest true "QuoteRequest"
+// @Success 200 {object} entities.Quote
+// @Failure 400
+// @Failure 500
+// @Router /domains/quote [post]
+func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
+	var qr queries.QuoteRequest
+	if err := ctx.ShouldBindJSON(&qr); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	quote, err := ctrl.domainService.GetQuote(ctx, &qr)
+	if err != nil {
+		if errors.Is(err, entities.ErrPhaseNotFound) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, quote)
+}
+
+// Purge godoc
+// @Summary Purge a domain
+// @Description Purge a domain at the end of its lifecycle. If the deletion is not allowed, it responds with a 425 status code and an error message.
+// @Description Conditions for successful deletion: The applicable grace period has expired (Domain.RGPStatus.PurgeDate is in the past) and serverDeleteProhibited is not set.
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Success 204
+// @Failure 425
+// @Failure 500
+// @Router /domains/{name}/purge [delete]
+func (ctrl *DomainController) Purge(ctx *gin.Context) {
+	err := ctrl.domainService.PurgeDomain(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
+			ctx.JSON(425, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
 }
