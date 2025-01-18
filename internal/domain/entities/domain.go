@@ -35,6 +35,7 @@ var (
 	ErrDomainDeleteNotAllowed          = errors.New("domain status does not allow delete")
 	ErrDomainRestoreNotAllowed         = errors.New("domain cannot be restored")
 	ErrDomainExpiryNotAllowed          = errors.New("domain expiry not allowed")
+	ErrDomainExpiryTooEarly            = errors.New("domain has not expired yet")
 	ErrDomainExpiryFailed              = errors.New("domain expiry failed")
 	ErrRegistrantIDRequiredButNotSet   = errors.New("RegistrantID is required but not set")
 	ErrTechIDRequiredButNotSet         = errors.New("TechID is required but not set")
@@ -216,6 +217,11 @@ func (d *Domain) Validate() error {
 		}
 	}
 	return nil
+}
+
+// CanBePurged checks if the Domain can be purged (e.g. the PurgeDate is in the past)
+func (d *Domain) CanBePurged() bool {
+	return time.Now().UTC().After(d.RGPStatus.PurgeDate)
 }
 
 // CanBeDeleted checks if the Domain can be deleted (e.g. no delete prohibition is present in its status object: ClientDeleteProhibited or ServerDeleteProhibited). If the domain is alread in pending Delete status, it can't be deleted
@@ -441,7 +447,7 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 func (d *Domain) Expire(phase *Phase) error {
 	// Don't allow expiring a domain that has not expired yet.
 	if time.Now().UTC().Before(d.ExpiryDate) {
-		return errors.Join(ErrDomainExpiryNotAllowed, fmt.Errorf("domain expiry date is %s", d.ExpiryDate))
+		return errors.Join(ErrDomainExpiryTooEarly, fmt.Errorf("expiry date is %s", d.ExpiryDate))
 	}
 
 	// If ServerDeleteProhibited is set, we respect it as it provides a deterministic way to prevent domains from being deleted.

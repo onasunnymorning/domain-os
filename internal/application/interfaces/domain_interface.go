@@ -47,6 +47,8 @@ type DomainService interface {
 	ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 	// RestoreDomain restores a domain as a registrar
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
+	// PurgeDomain purges a domain after it has reached it's purge date
+	PurgeDomain(ctx context.Context, domainName string) error
 
 	// These are DNS services
 	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)

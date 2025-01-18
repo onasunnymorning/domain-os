@@ -52,10 +52,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET(":name/available", controller.CheckDomainAvailability)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
-		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
-		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
-		domainGroup.DELETE(":name/expire", controller.Expire)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
 
 		// Lifecycle endpoints
@@ -63,6 +60,10 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
 		domainGroup.GET("purgeable", controller.ListPurgeableDomains)
 		domainGroup.GET("purgeable/count", controller.CountPurgeableDomains)
+		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
+		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
+		domainGroup.DELETE(":name/expire", controller.Expire)
+		domainGroup.DELETE(":name/purge", controller.Purge)
 	}
 
 	return controller
@@ -635,7 +636,8 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Description It retrieves the domain name from the request context, calls the domainService to expire the domain,
 // @Description and returns the appropriate JSON response based on the outcome.
 // @Description If the domain is not found, it returns a 404 status code with an error message.
-// @Description If the domain is not allowed to be expired (domains can expire only on the day of their expirydate or after), it returns a 403 status code with an error message.
+// @Description If the domain is not allowed it returns a 403 status code with an error message.
+// @Description If the domain has not expired yet, it returns a 425 status code with an error message.
 // @Description If the the TLD does not have an active GA phase (Phase.Policy contains the applicable EOL policy), it returns a 403 status code with an error message.
 // @Description For other errors, it returns a 500 status code with an error message.
 // @Description On success, it returns a 200 status code with the expired domain information.
@@ -645,6 +647,8 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Param name path string true "Domain Name"
 // @Success 200 {object} entities.Domain
 // @Failure 404
+// @Failure 403
+// @Failure 425
 // @Failure 500
 // @Router /domains/{name}/expire [post]
 func (ctrl *DomainController) Expire(ctx *gin.Context) {
@@ -654,9 +658,14 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		// Return 403 if there is no active phase or the domain has not reached the expiry date yet
+		// Return 403 if there is no active phase
 		if errors.Is(err, entities.ErrDomainExpiryNotAllowed) || errors.Is(err, entities.ErrNoActivePhase) {
 			ctx.JSON(403, gin.H{"error": err.Error()})
+			return
+		}
+		// Return 425 is the domain has not expired yet
+		if errors.Is(err, entities.ErrDomainExpiryTooEarly) {
+			ctx.JSON(425, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
@@ -1000,4 +1009,29 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, quote)
+}
+
+// Purge godoc
+// @Summary Purge a domain
+// @Description Purge a domain at the end of its lifecycle. If the deletion is not allowed, it responds with a 425 status code and an error message.
+// @Description Conditions for successful deletion: The applicable grace period has expired (Domain.RGPStatus.PurgeDate is in the past) and serverDeleteProhibited is not set.
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Success 204
+// @Failure 425
+// @Failure 500
+// @Router /domains/{name}/purge [delete]
+func (ctrl *DomainController) Purge(ctx *gin.Context) {
+	err := ctrl.domainService.PurgeDomain(ctx, ctx.Param("name"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
+			ctx.JSON(425, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
 }

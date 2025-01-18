@@ -302,7 +302,7 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 //
 // 1. Retrieves the domain by its name.
 //
-// 2. Checks if the domain can be deleted.
+// 2. Checks if the domain can be purged. (if the purge date has passed)
 //
 // 3. If the domain has associated hosts, it dissociates all hosts.
 //
@@ -318,9 +318,9 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 		return err
 	}
 
-	// Check if we can delete the domain
-	if !dom.CanBeDeleted() {
-		return entities.ErrDomainDeleteNotAllowed
+	// Check if the domain can be purged
+	if !dom.CanBePurged() {
+		return errors.Join(entities.ErrDomainDeleteNotAllowed, errors.New("the purge date is in the future"))
 	}
 
 	// Check if the domain is linked to any hosts

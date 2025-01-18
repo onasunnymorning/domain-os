@@ -1693,7 +1693,7 @@ func TestDomain_Expire(t *testing.T) {
 			domain: &Domain{
 				ExpiryDate: now.AddDate(0, 0, 1),
 			},
-			wantErr: ErrDomainExpiryNotAllowed,
+			wantErr: ErrDomainExpiryTooEarly,
 		},
 		{
 			name: "domain pendingTransfer",
@@ -2067,6 +2067,39 @@ func TestDomain_Clone(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+func TestDomain_CanBePurged(t *testing.T) {
+	now := time.Now().UTC()
+
+	testcases := []struct {
+		name      string
+		purgeDate time.Time
+		want      bool
+	}{
+		{
+			name:      "purge date in the past",
+			purgeDate: now.AddDate(0, 0, -1),
+			want:      true,
+		},
+		{
+			name:      "purge date in the future",
+			purgeDate: now.AddDate(0, 0, 1),
+			want:      false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				RGPStatus: DomainRGPStatus{
+					PurgeDate: tc.purgeDate,
+				},
+			}
+
+			got := d.CanBePurged()
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
