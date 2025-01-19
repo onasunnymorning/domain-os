@@ -25,6 +25,8 @@ type DomainRepository interface {
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 	ListPurgeableDomains(ctx context.Context, after time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error)
+	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
+	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
