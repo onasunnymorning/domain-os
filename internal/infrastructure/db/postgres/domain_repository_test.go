@@ -719,3 +719,113 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	s.Require().Error(err)
 
 }
+
+func (s *DomainSuite) TestGetInt64RoidFromDomainRoidString() {
+	// Test with a valid DOMAIN_ROID_ID
+	roidString := "1234_DOM-APEX"
+	expectedRoid := int64(1234)
+	roid, err := getInt64RoidFromDomainRoidString(roidString)
+	s.Require().NoError(err)
+	s.Require().Equal(expectedRoid, roid)
+
+	// Test with an empty string
+	roidString = ""
+	expectedRoid = int64(0)
+	roid, err = getInt64RoidFromDomainRoidString(roidString)
+	s.Require().NoError(err)
+	s.Require().Equal(expectedRoid, roid)
+
+	// Test with an invalid DOMAIN_ROID_ID
+	roidString = "1234_CONT-APEX"
+	roid, err = getInt64RoidFromDomainRoidString(roidString)
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+	s.Require().Equal(int64(0), roid)
+
+	// Test with an invalid roid int64
+	roidString = "ABCD_DOM-APEX"
+	roid, err = getInt64RoidFromDomainRoidString(roidString)
+	s.Require().Error(err)
+	s.Require().Equal(int64(0), roid)
+}
+
+func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
+	// Create a couple of domains with different expiry dates
+	tx := s.db.Begin()
+	defer tx.Rollback()
+
+	repo := NewDomainRepository(tx)
+
+	// Create 3 domains
+	expecteddomains := make([]*entities.Domain, 3)
+	for i := 0; i < 3; i++ {
+		// Create a domain
+		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
+		name := fmt.Sprintf("geoff-%d.domaintesttld", i)
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		s.Require().NoError(err)
+		domain.ClID = "domaintestRar"
+		domain.TLDName = "domaintesttld"
+		domain.RegistrantID = "myTestContact007"
+		domain.AdminID = "myTestContact007"
+		domain.TechID = "myTestContact007"
+		domain.BillingID = "myTestContact007"
+		// Set the domain to be pending restore
+		domain.Status.PendingRestore = true
+
+		createdDomain, err := repo.CreateDomain(context.Background(), domain)
+		s.Require().NoError(err)
+		s.Require().NotNil(createdDomain)
+
+		expecteddomains[i] = createdDomain
+	}
+
+	// List domains that are pending restore (3)
+	domains, err := repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "domaintesttld", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// List domains that are pending restore without tld
+	domains, err = repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// List domains that are pending restore without registrar
+	domains, err = repo.ListRestoredDomains(context.Background(), 25, "", "", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains))
+
+	// Test the count endpoint while we are here
+	count, err := repo.CountRestoredDomains(context.Background(), "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountRestoredDomains(context.Background(), "domaintestRar", "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountRestoredDomains(context.Background(), "", "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
+	count, err = repo.CountRestoredDomains(context.Background(), "idontexist", "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
+	count, err = repo.CountRestoredDomains(context.Background(), "", "idontexist")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
+	// Now add a cursor and list the last domain
+	domains, err = repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "domaintesttld", expecteddomains[1].RoID.String())
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(domains))
+
+	// Cause an error due to invalid roid
+	_, err = repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "domaintesttld", "1234_CONT-APEX")
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+
+	// Cause an error due to invalid roid int64
+	_, err = repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "domaintesttld", "ABCD_DOM-APEX")
+	s.Require().Error(err)
+
+}
