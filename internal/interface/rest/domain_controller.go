@@ -986,17 +986,17 @@ func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
 	}
 
 	// Move the domains into a domain expiry item
-	expiryItems := make([]response.DomainExpiryItem, len(domains))
+	restoredDomains := make([]response.DomainRestoredItem, len(domains))
 	for i, d := range domains {
-		expiryItems[i] = response.DomainExpiryItem{
-			RoID:       d.RoID.String(),
-			Name:       d.Name.String(),
-			ExpiryDate: d.ExpiryDate,
+		restoredDomains[i] = response.DomainRestoredItem{
+			RoID: d.RoID.String(),
+			Name: d.Name.String(),
+			ClID: d.ClID.String(),
 		}
 	}
 
 	// Set the response MetaData
-	resp.Data = expiryItems
+	resp.Data = restoredDomains
 	if len(domains) > 0 {
 		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
 	}
