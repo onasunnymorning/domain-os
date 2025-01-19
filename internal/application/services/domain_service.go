@@ -1449,6 +1449,16 @@ func (s *DomainService) CountPurgeableDomains(ctx context.Context, q *queries.Pu
 	return s.domainRepository.CountPurgeableDomains(ctx, q.After, q.ClID.String(), q.TLD.String())
 }
 
+// ListRestoredDomains returns a list of domains that have pendingRestore status
+func (s *DomainService) ListRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error) {
+	return s.domainRepository.ListRestoredDomains(ctx, pageSize, q.ClID.String(), q.TLD.String(), cursor)
+}
+
+// CountRestoredDomains returns the number of restored domains
+func (s *DomainService) CountRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery) (int64, error) {
+	return s.domainRepository.CountRestoredDomains(ctx, q.ClID.String(), q.TLD.String())
+}
+
 // GetQuote retrieves a quote for a domain based on the provided QuoteRequest.
 // It validates the request, retrieves the appropriate TLD and phase, and calculates
 // the quote using the PriceEngine.
