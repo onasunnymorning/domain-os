@@ -486,8 +486,11 @@ func (d *Domain) Expire(phase *Phase) error {
 // occurs while unsetting and setting the required statuses. The registrar responsible for
 // the restore is recorded in the UpRr field.
 func (d *Domain) Restore() error {
+	if !d.Status.PendingDelete {
+		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain is not in %s status", DomainStatusPendingDelete))
+	}
 	if !d.CanBeRestored() {
-		return ErrDomainRestoreNotAllowed
+		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain redemption grace period ended %s", d.RGPStatus.RedemptionPeriodEnd.Format(time.RFC3339)))
 	}
 
 	// Unset the pending delete status and set the pending restore status
