@@ -60,6 +60,8 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
 		domainGroup.GET("purgeable", controller.ListPurgeableDomains)
 		domainGroup.GET("purgeable/count", controller.CountPurgeableDomains)
+		domainGroup.GET("restored", controller.ListRestoredDomains)
+		domainGroup.GET("restored/count", controller.CountRestoredDomains)
 		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
 		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/expire", controller.Expire)
@@ -883,7 +885,7 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 // @Tags Domains
 // @Produce json
 // @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
-// @Param clid query string false "Registrar ClID (optional)"
+// @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
 // @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Success 200 {object} response.CountResult
 // @Failure 500
@@ -907,6 +909,100 @@ func (ctrl *DomainController) CountPurgeableDomains(ctx *gin.Context) {
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+// CountRestoredDomains godoc
+// @Summary Count restored domains
+// @Description Counts domains that are restored. This means they are pending restore.  You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /domains/restored/count [get]
+func (ctrl *DomainController) CountRestoredDomains(ctx *gin.Context) {
+	q, err := queries.NewRestoredDomainsQuery(ctx.Query("clid"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	count, err := ctrl.domainService.CountRestoredDomains(ctx, q)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// ListRestoredDomains godoc
+// @Summary List restored domains
+// @Description Lists domains that are restored. This means they are pending restore. You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param clid query string false "Registrar ClID (optional)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} response.ListItemResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/restored [get]
+func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	resp := response.ListItemResult{}
+
+	q, err := queries.NewRestoredDomainsQuery(ctx.Query("clid"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the list of domains
+	domains, err := ctrl.domainService.ListRestoredDomains(ctx, q, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Move the domains into a domain expiry item
+	expiryItems := make([]response.DomainExpiryItem, len(domains))
+	for i, d := range domains {
+		expiryItems[i] = response.DomainExpiryItem{
+			RoID:       d.RoID.String(),
+			Name:       d.Name.String(),
+			ExpiryDate: d.ExpiryDate,
+		}
+	}
+
+	// Set the response MetaData
+	resp.Data = expiryItems
+	if len(domains) > 0 {
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+	}
+
+	// Return the Response
+	ctx.JSON(200, resp)
 }
 
 // ListPurgeableDomains godoc
