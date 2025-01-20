@@ -69,7 +69,24 @@ func RestoreWorkflow(ctx workflow.Context) error {
 			return restoreErr
 		}
 
-		// How to unset PendingRestore ATOMICALY?
+		// Unset PendingRestore
+
+		// Get the domain
+		domain := entities.Domain{}
+		getDomainErr := workflow.ExecuteActivity(ctx, activities.GetDomain, workflowID, domain.Name.String()).Get(ctx, &domain)
+		if getDomainErr != nil {
+			return getDomainErr
+		}
+
+		// Unset the PendingRestore status
+		domain.UnSetStatus(entities.DomainStatusPendingRestore)
+
+		// Update the domain
+		updateDomainErr := workflow.ExecuteActivity(ctx, activities.UpdateDomain, workflowID, domain).Get(ctx, nil)
+		if updateDomainErr != nil {
+			return updateDomainErr
+		}
+
 	}
 
 	return nil
