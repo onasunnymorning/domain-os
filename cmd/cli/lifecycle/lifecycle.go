@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/schedules"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
@@ -62,6 +63,13 @@ func main() {
 				Usage:   "process expired domains",
 				Action:  expire,
 			},
+			{
+				Name:    "restore",
+				Aliases: []string{"res", "r"},
+				Usage:   "process pendingRestore domains using the ",
+				Action:  restore,
+			},
+
 			{
 				Name:      "schedule",
 				Aliases:   []string{"s", "sch"},
@@ -276,4 +284,38 @@ func getCorrelationIDFromContext(c *cli.Context) string {
 		return c.App.Metadata["correlationID"].(string)
 	}
 	return ""
+}
+
+func restore(c *cli.Context) error {
+	correlationID := "lifecycle-cli-" + uuid.New()
+	log.Println("Correlation ID for this command:", correlationID)
+	// trigger the restore workflow activities
+	restoredDomains, err := activities.ListRestoredDomains(correlationID, &queries.RestoredDomainsQuery{})
+	if err != nil {
+		return err
+	}
+
+	// Renew the domains
+	for _, domain := range restoredDomains {
+		// Create the renew command
+		cmd := commands.RenewDomainCommand{
+			Name:  domain.Name,
+			ClID:  domain.ClID,
+			Years: 1,
+		}
+
+		// Renew the domain
+		err := activities.RenewDomain(correlationID, cmd)
+		if err != nil {
+			return err
+		}
+
+		// Unset pendingRestore flag
+		// err = activities.UnsetPendingRestoreFlag(correlationID, domain.Name)
+		// if err != nil {
+		// 	return err
+		// }
+
+	}
+	return nil
 }
