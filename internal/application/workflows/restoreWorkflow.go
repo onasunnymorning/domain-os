@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -56,11 +57,19 @@ func RestoreWorkflow(ctx workflow.Context) error {
 	)
 
 	for _, domain := range domainList {
-		// Restore the domain
-		restoreErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, workflowID, domain.Name.String()).Get(ctx, nil)
+		// Create the renew command
+		cmd := commands.RenewDomainCommand{
+			Name:  domain.Name.String(),
+			ClID:  domain.ClID.String(),
+			Years: 1,
+		}
+		// Renew the domain one year
+		restoreErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd).Get(ctx, nil)
 		if restoreErr != nil {
 			return restoreErr
 		}
+
+		// How to unset PendingRestore ATOMICALY?
 	}
 
 	return nil
