@@ -11,12 +11,13 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-func ListRestoredDomains(correlationID string, q *queries.RestoredDomainsQuery) ([]response.DomainExpiryItem, error) {
+func ListRestoredDomains(correlationID string, q *queries.RestoredDomainsQuery) ([]response.DomainRestoredItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/restored", BASEURL)
 
 	// set the correlation ID and pagesize
 	qParams := make(map[string]string)
 	qParams["correlationID"] = correlationID
+	// This is probably a good place to start if you are looking to optimize
 	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
 
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
@@ -49,11 +50,16 @@ func ListRestoredDomains(correlationID string, q *queries.RestoredDomainsQuery) 
 	}
 
 	// Parse the result
-	listResponse := &ListItemResult{}
+	listResponse := &ListRestoredDomainsResult{}
 	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
 
 	return listResponse.Data, nil
+}
+
+type ListRestoredDomainsResult struct {
+	Meta response.PaginationMetaData   `json:"meta"`
+	Data []response.DomainRestoredItem `json:"data"`
 }
