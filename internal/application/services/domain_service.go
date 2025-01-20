@@ -313,7 +313,7 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 // 6. Logs a lifecycle event for the domain.
 func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 	// Get the domain
-	dom, err := s.GetDomainByName(ctx, name, false)
+	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
 		return err
 	}
