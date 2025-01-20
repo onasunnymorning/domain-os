@@ -49,7 +49,7 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	}
 
 	// Parse the result
-	listResponse := &ListItemResult{}
+	listResponse := &ListExpiredDomainsResult{}
 	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to unmarshal response"), err)
