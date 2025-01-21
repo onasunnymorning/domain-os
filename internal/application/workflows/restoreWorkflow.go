@@ -116,6 +116,8 @@ func RestoreWorkflow(ctx workflow.Context) error {
 			)
 		}
 
+		//TODO: we might need to make some status adjustments as the domains can be clientRenewProhibited or serverRenewProhibited
+
 		// Renew the domain one year
 		renewErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd).Get(ctx, nil)
 		if renewErr != nil {

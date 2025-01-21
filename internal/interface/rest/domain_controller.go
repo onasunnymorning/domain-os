@@ -52,6 +52,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET(":name/available", controller.CheckDomainAvailability)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
+		domainGroup.POST(":name/renew/force", controller.ForceRenew)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
 
@@ -511,7 +512,46 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.RenewDomain(ctx, &req)
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req, false)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRenewal) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	ctx.JSON(200, domain)
+}
+
+// ForceRenew godoc
+// @Summary Force renew a domain as a Registrar
+// @Description Force renew a domain as a Registrar. Is convenience method that renews the domain regardless of it's state.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain body commands.RenewDomainCommand true "Domain"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/{name}/renew/force [post]
+func (ctrl *DomainController) ForceRenew(ctx *gin.Context) {
+	name := ctx.Param("name")
+	var req commands.RenewDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
+		return
+	}
+
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRenewal) {
 			ctx.JSON(400, gin.H{"error": err.Error()})

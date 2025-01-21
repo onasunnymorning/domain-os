@@ -406,6 +406,32 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	return nil
 }
 
+// ForceRenew is a convenience method to renew a domain without checking if it is in a state that allows renewal.
+// This can be useful when a renew is triggered as part of another operation (such as a restore) and failing the renew because of prohibitions is not desired.
+// It sets the domain's expiration date to the current date plus the specified number of years and sets the RGP statuses based on the phase policy.
+func (d *Domain) ForceRenew(years int, isAutoRenew bool, phase *Phase) error {
+	if phase == nil {
+		return errors.Join(ErrInvalidRenewal, ErrPhaseNotProvided)
+	}
+	if years == 0 {
+		return errors.Join(ErrInvalidRenewal, ErrZeroRenewalPeriod)
+
+	}
+
+	d.ExpiryDate = d.ExpiryDate.AddDate(years, 0, 0)
+	d.RenewedYears += years
+	d.UpRr = d.ClID
+
+	// Set the RGP statuses
+	if isAutoRenew {
+		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.AutoRenewalGP)
+	} else {
+		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
+	}
+
+	return nil
+}
+
 // MarkForDeletion ititiates the end-of-life lifecycle for a domain when a delete command is received form the user. Use this to process user delete commands. It sets the domain status to PendingDelete and sets the appropriate RGP statuses depending on the phase policy.
 // If the domain is still in AddGracePeriod, the domain does not go through an EOL process and RGP Statuses are set to it can be deleted immediately.
 // This funciton depends on downstream logic to purge the domain from the repository, we just set the RGP time parameters here.

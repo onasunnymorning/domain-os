@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -434,5 +435,73 @@ func TestDomainStatus_StringSlice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.ElementsMatch(t, tc.want, tc.ds.StringSlice())
 		})
+	}
+}
+
+func TestStringSlice(t *testing.T) {
+	ds := DomainStatus{
+		OK:                       true,
+		ClientTransferProhibited: true,
+		PendingDelete:            true,
+	}
+
+	expected := []string{
+		DomainStatusOK,
+		DomainStatusClientTransferProhibited,
+		DomainStatusPendingDelete,
+	}
+
+	result := ds.StringSlice()
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("StringSlice() = %v, want %v", result, expected)
+	}
+}
+
+func TestClone(t *testing.T) {
+	ds := DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientDeleteProhibited: true,
+		PendingUpdate:          true,
+	}
+
+	clone := ds.Clone()
+
+	if !reflect.DeepEqual(ds, clone) {
+		t.Errorf("Clone() = %v, want %v", clone, ds)
+	}
+}
+
+func TestBackupAndClear(t *testing.T) {
+	ds := DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientUpdateProhibited: true,
+		ServerDeleteProhibited: true,
+		PendingTransfer:        true,
+	}
+
+	backup := ds.BackupAndClear()
+
+	// Ensure backup is identical to original
+	if backup != (DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientUpdateProhibited: true,
+		ServerDeleteProhibited: true,
+		PendingTransfer:        true,
+	}) {
+		t.Errorf("BackupAndClear() backup = %v, expected %v", backup, ds)
+	}
+
+	// Ensure original is cleared except OK and Inactive
+	expected := DomainStatus{
+		OK:       true,
+		Inactive: true,
+	}
+
+	if ds != expected {
+		t.Errorf("BackupAndClear() cleared object = %v, expected %v", ds, expected)
 	}
 }

@@ -942,7 +942,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 }
 
 // RenewDomain renews a domain
-func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error) {
+func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand, force bool) (*entities.Domain, error) {
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, cmd.Name, false)
 	if err != nil {
@@ -1004,10 +1004,18 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	// save the previous state
 	prevState := dom.Clone()
 
-	// Renew the domain using our entity
-	err = dom.Renew(cmd.Years, false, phase)
-	if err != nil {
-		return nil, err
+	// If the force flag is set, we will try to renew the domain anyway using the Domain.ForceRenew method avoiding possible errors due to the domain status
+	if force {
+		err := dom.ForceRenew(cmd.Years, false, phase)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Renew the domain using our entity
+		err = dom.Renew(cmd.Years, false, phase)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Save the domain

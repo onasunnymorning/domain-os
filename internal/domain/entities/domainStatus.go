@@ -321,3 +321,55 @@ func (ds *DomainStatus) StringSlice() []string {
 	}
 	return status
 }
+
+// Clone creates a deep copy of the DomainStatus object, including all its fields
+func (ds *DomainStatus) Clone() DomainStatus {
+	return DomainStatus{
+		OK:                       ds.OK,
+		Inactive:                 ds.Inactive,
+		ClientTransferProhibited: ds.ClientTransferProhibited,
+		ClientUpdateProhibited:   ds.ClientUpdateProhibited,
+		ClientDeleteProhibited:   ds.ClientDeleteProhibited,
+		ClientRenewProhibited:    ds.ClientRenewProhibited,
+		ClientHold:               ds.ClientHold,
+		ServerTransferProhibited: ds.ServerTransferProhibited,
+		ServerUpdateProhibited:   ds.ServerUpdateProhibited,
+		ServerDeleteProhibited:   ds.ServerDeleteProhibited,
+		ServerRenewProhibited:    ds.ServerRenewProhibited,
+		ServerHold:               ds.ServerHold,
+		PendingCreate:            ds.PendingCreate,
+		PendingRenew:             ds.PendingRenew,
+		PendingTransfer:          ds.PendingTransfer,
+		PendingUpdate:            ds.PendingUpdate,
+		PendingRestore:           ds.PendingRestore,
+		PendingDelete:            ds.PendingDelete,
+	}
+}
+
+// BackupAndClear returns a deep copy of the DomainStatus object, including all its fields, and then clears all fields
+func (ds *DomainStatus) BackupAndClear() DomainStatus {
+	backup := ds.Clone()
+	ds.Clear()
+	return backup
+}
+
+// Clear keeps OK and/or Inactive status and sets all OTHER fields of the DomainStatus object to false
+// This is useful when we want to clear all prohibitions to perform an admin task for example and later restore the original status
+func (ds *DomainStatus) Clear() {
+	ds.ClientTransferProhibited = false
+	ds.ClientUpdateProhibited = false
+	ds.ClientDeleteProhibited = false
+	ds.ClientRenewProhibited = false
+	ds.ClientHold = false
+	ds.ServerTransferProhibited = false
+	ds.ServerUpdateProhibited = false
+	ds.ServerDeleteProhibited = false
+	ds.ServerRenewProhibited = false
+	ds.ServerHold = false
+	ds.PendingCreate = false
+	ds.PendingRenew = false
+	ds.PendingTransfer = false
+	ds.PendingUpdate = false
+	ds.PendingRestore = false
+	ds.PendingDelete = false
+}
