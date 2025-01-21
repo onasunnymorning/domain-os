@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,17 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/pborman/uuid"
 	"github.com/urfave/cli/v2"
+)
+
+const (
+	ScheduleTypeExpiry   = "expiry"
+	ScheduleTypePurge    = "purge"
+	ScheduleTypeUpdateFX = "updatefx"
+	ScheduleTypeRestore  = "restore"
+)
+
+var (
+	SupportedScheduleTypes = []string{ScheduleTypeExpiry, ScheduleTypePurge, ScheduleTypeUpdateFX, ScheduleTypeRestore}
 )
 
 func main() {
@@ -231,6 +243,19 @@ func createTemporalPurgeSchedule(cfg *temporal.TemporalClientconfig) error {
 	return nil
 }
 
+// createTemporalRestoreSchedule automates the creation of a temporal schedule as defined in schedules.CreateRestoreScheduleDaily. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
+func createTemporalRestoreSchedule(cfg *temporal.TemporalClientconfig) error {
+	// Create the schedule
+	scheduleID, err := schedules.CreateRestoreScheduleDaily(*cfg)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
+
+	return nil
+}
+
 // createTemporalUpdateFXSchedule automates the creation of a temporal schedule as defined in schedules.CreateUpdateFXScheduleDaily. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
 func createTemporalUpdateFXSchedule(cfg *temporal.TemporalClientconfig) error {
 	// Create the schedule
@@ -247,8 +272,8 @@ func createTemporalUpdateFXSchedule(cfg *temporal.TemporalClientconfig) error {
 // createTemporalSchedules is a CLI command that creates a temporal schedule for domain lifecycle operations. It takes a single argument, either 'expiry' or 'purge', to specify the type of schedule to create.
 func createTemporalSchedules(c *cli.Context) error {
 	// Check if the first argument is a valid schedule (expiry or purge)
-	if c.Args().First() != "expiry" && c.Args().First() != "purge" && c.Args().First() != "updatefx" {
-		log.Println("Invalid schedule type. Must be 'expiry' or 'purge'")
+	if !slices.Contains(SupportedScheduleTypes, c.Args().First()) {
+		log.Println("Invalid schedule type. Must be one of:", SupportedScheduleTypes)
 		return cli.ShowCommandHelp(c, "create")
 	}
 
@@ -269,6 +294,8 @@ func createTemporalSchedules(c *cli.Context) error {
 	case "updatefx":
 		cfg.WorkerQueue = os.Getenv("TMPIO_SYNC_QUEUE")
 		return createTemporalUpdateFXSchedule(cfg)
+	case "restore":
+		return createTemporalRestoreSchedule(cfg)
 	}
 
 	return errors.New("invalid schedule type")

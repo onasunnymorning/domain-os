@@ -29,6 +29,7 @@ var (
 	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
 	ErrPhaseNotProvided                = errors.New("phase is mandatory for registration")
 	ErrDomainRenewNotAllowed           = errors.New("domain renew not allowed")
+	ErrDomainStatusProhibitsRenewal    = errors.New("domain status prohibits renewal")
 	ErrDomainRenewExceedsMaxHorizon    = errors.New("domain renew exceeds the maximum horizon")
 	ErrInvalidRenewal                  = errors.New("invalid renewal")
 	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
@@ -383,7 +384,7 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 
 	}
 	if !d.CanBeRenewed() {
-		return errors.Join(ErrInvalidRenewal, ErrDomainRenewNotAllowed)
+		return errors.Join(ErrDomainRenewNotAllowed, ErrDomainStatusProhibitsRenewal)
 	}
 
 	// Check if we exceed the maximum renewal period

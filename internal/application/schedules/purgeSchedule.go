@@ -33,7 +33,8 @@ func CreateUpdateFXScheduleDaily(cfg temporal.TemporalClientconfig) (string, err
 		Spec: client.ScheduleSpec{
 			Intervals: []client.ScheduleIntervalSpec{
 				{
-					Every: time.Hour * 24,
+					Every:  time.Hour,
+					Offset: time.Minute * 30,
 				},
 			},
 		},
