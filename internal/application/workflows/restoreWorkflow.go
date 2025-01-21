@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -44,7 +45,7 @@ func RestoreWorkflow(ctx workflow.Context) error {
 
 	// WORKFLOW
 
-	// Get the list of domains that are expiring
+	// Get the list of domains that are PendingRestore
 	domainList := []response.DomainRestoredItem{}
 	listErr := workflow.ExecuteActivity(ctx, activities.ListRestoredDomains, workflowID).Get(ctx, &domainList)
 	if listErr != nil {
@@ -52,7 +53,7 @@ func RestoreWorkflow(ctx workflow.Context) error {
 	}
 
 	logger.Info(
-		"Found restored domains",
+		fmt.Sprintf("Found %d PendingRestore domains", len(domainList)),
 		zap.Int("domain_count", len(domainList)),
 		zap.String("workflow_id", workflowID),
 	)
@@ -92,6 +93,17 @@ func RestoreWorkflow(ctx workflow.Context) error {
 			)
 		}
 
+		// Force-Renew the domain
+		forceRenewErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd, true).Get(ctx, nil)
+		if forceRenewErr != nil {
+			logger.Error(
+				"failed to force renew domain, continuing with next domain",
+				zap.String("domain_name", domain.Name.String()),
+				zap.String("workflow_id", workflowID),
+				zap.Error(forceRenewErr),
+			)
+		}
+
 		// Unset the PendingRestore status
 		setStatusErr := domain.UnSetStatus(entities.DomainStatusPendingRestore)
 		if setStatusErr != nil {
@@ -100,58 +112,6 @@ func RestoreWorkflow(ctx workflow.Context) error {
 				zap.String("domain_name", domain.Name.String()),
 				zap.String("workflow_id", workflowID),
 				zap.Error(setStatusErr),
-				zap.Any("domain", domain),
-			)
-		}
-
-		// Update the domain
-		updateDomainErr := workflow.ExecuteActivity(ctx, activities.UpdateDomain, workflowID, domain).Get(ctx, nil)
-		if updateDomainErr != nil {
-			logger.Error(
-				"failed to update domain",
-				zap.String("domain_name", domain.Name.String()),
-				zap.String("workflow_id", workflowID),
-				zap.Error(updateDomainErr),
-				zap.Any("domain", domain),
-			)
-		}
-
-		//TODO: we might need to make some status adjustments as the domains can be clientRenewProhibited or serverRenewProhibited
-
-		// Renew the domain one year
-		renewErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd).Get(ctx, nil)
-		if renewErr != nil {
-			logger.Error(
-				"failed to renew domain, will attempt to re-set pendingRestore status",
-				zap.String("domain_name", domain.Name.String()),
-				zap.String("workflow_id", workflowID),
-				zap.Error(renewErr),
-				zap.Any("renew_command", cmd),
-			)
-			// if the renew fails, we re-set the PendingRestore status
-			setErr := domain.SetStatus(entities.DomainStatusPendingRestore)
-			if setErr != nil {
-				logger.Error(
-					"failed to set PendingRestore status after failed renew as part of restore",
-					zap.String("domain_name", domain.Name.String()),
-					zap.String("workflow_id", workflowID),
-					zap.Error(setErr),
-					zap.Any("domain", domain),
-				)
-			}
-			updateErr := workflow.ExecuteActivity(ctx, activities.UpdateDomain, workflowID, domain).Get(ctx, nil)
-			if updateErr != nil {
-				logger.Error(
-					"failed to update domain after failed renew as part of restore",
-					zap.String("domain_name", domain.Name.String()),
-					zap.String("workflow_id", workflowID),
-					zap.Error(updateErr),
-					zap.Any("domain", domain),
-				)
-			}
-			logger.Info(
-				"re-set PendingRestore status after failed renew as part of restore",
-				zap.String("domain_name", domain.Name.String()),
 				zap.Any("domain", domain),
 			)
 		}
