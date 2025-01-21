@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	updateFXScheduleIDPrefix         = "updatefx_schedule_"
-	updateFXScheduleWorkflowIDPrefix = "updatefx_schedule_workflow_"
+	restoreScheduleIDPrefix = "restore_schedule_"
+	restoreWorkflowIDPrefix = "restore_workflow_"
 )
 
-func CreateUpdateFXScheduleDaily(cfg temporal.TemporalClientconfig) (string, error) {
+func CreateRestoreScheduleDaily(cfg temporal.TemporalClientconfig) (string, error) {
 	ctx := context.Background()
 
-	scheduleID := updateFXScheduleIDPrefix + uuid.NewString()
-	workflowID := updateFXScheduleWorkflowIDPrefix + uuid.NewString()
+	scheduleID := restoreScheduleIDPrefix + uuid.NewString()
+	workflowID := restoreWorkflowIDPrefix + uuid.NewString()
 
 	// Create a Temporal client
 	temporalClient, err := temporal.GetTemporalClient(cfg)
@@ -34,13 +34,13 @@ func CreateUpdateFXScheduleDaily(cfg temporal.TemporalClientconfig) (string, err
 			Intervals: []client.ScheduleIntervalSpec{
 				{
 					Every:  time.Hour,
-					Offset: time.Minute * 30,
+					Offset: time.Minute * 15,
 				},
 			},
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        workflowID,
-			Workflow:  workflows.UpdateFX,
+			Workflow:  workflows.RestoreWorkflow,
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})

@@ -49,6 +49,9 @@ func main() {
 
 	// Register the activities (RestoreWorkflow)
 	w.RegisterActivity(activities.ListRestoredDomains)
+	w.RegisterActivity(activities.GetDomain)
+	w.RegisterActivity(activities.RenewDomain)
+	w.RegisterActivity(activities.UpdateDomain)
 
 	// Start listening to the Task Queue.
 	err = w.Run(worker.InterruptCh())

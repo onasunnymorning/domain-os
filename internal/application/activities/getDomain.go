@@ -12,7 +12,10 @@ import (
 // GetDomain retrieves a domain entity based on the provided domain name.
 // It constructs an API endpoint URL, sets the necessary query parameters (adds correlation-id), and makes an HTTP GET request
 // to fetch the domain details. The response is then unmarshaled into an entities.Domain object.
-func GetDomain(correlationID string, domainName string) (*entities.Domain, error) {
+func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
+	if domainName == "" {
+		return nil, fmt.Errorf("domain name cannot be empty")
+	}
 	ENDPOINT := fmt.Sprintf("%s/domains/%s", BASEURL, domainName)
 
 	// Set up an API client
