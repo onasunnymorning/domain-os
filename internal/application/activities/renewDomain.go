@@ -11,8 +11,12 @@ import (
 )
 
 // RenewDomain takes a domain name and sends a POST request to the admin API to renew the domain.
-func RenewDomain(correlationID string, cmd commands.RenewDomainCommand) error {
+// If force is true, it will call the /domains/{name}/renew/force endpoint instead of /domains/{name}/renew.
+func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bool) error {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/renew", BASEURL, cmd.Name)
+	if force {
+		ENDPOINT = fmt.Sprintf("%s/domains/%s/renew/force", BASEURL, cmd.Name)
+	}
 
 	// marshall the request body
 	jsonData, err := json.Marshal(cmd)

@@ -332,7 +332,7 @@ func restore(c *cli.Context) error {
 		}
 
 		// Renew the domain
-		err := activities.RenewDomain(correlationID, cmd)
+		err := activities.RenewDomain(correlationID, cmd, false)
 		if err != nil {
 			return err
 		}
