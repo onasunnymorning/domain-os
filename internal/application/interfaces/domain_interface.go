@@ -38,7 +38,7 @@ type DomainService interface {
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
-	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error)
+	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand, force bool) (*entities.Domain, error)
 	// CanAutoRenewDomain checks if a domain can be auto-renewed
 	CanAutoRenew(ctx context.Context, domainName string) (bool, error)
 	// AutoRenewDomain renews the domain for the current registrar
