@@ -117,14 +117,24 @@ func (ds *DomainStatus) Validate() error {
 	return nil
 }
 
-// SetStatus sets the status of the DomainStatus object while checking for invalid combinations Ref. https://www.rfc-editor.org/rfc/rfc5731#section-2.3
-// It returns an error if the status is invalid or the domain has update prohibitions and the status is not an update prohibition
-// It also sets the OK and Inactive status if needed
+// SetStatus sets the status of the Domain to the provided status string.
+// It validates the provided status against a list of valid domain statuses.
+// If the status is invalid, it returns an error indicating the invalid status.
+// Certain statuses such as "OK" and "Inactive" cannot be set directly and will
+// return an error if attempted.
+// It also checks if the domain update is allowed based on the current status
+// and returns an error if the update is not allowed.
+// Depending on the provided status, it updates the corresponding status fields
+// of the Domain.
+// After updating the status, it adjusts the "Inactive" and "OK" statuses if needed
+// and validates the final status of the Domain.
 func (d *Domain) SetStatus(s string) error {
 	// Unknown status value
 	if !slices.Contains(ValidDomainStatuses, s) {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("unknown Domain status: %s", s))
 	}
+
+	// Special statuses that cannot be set directly
 	if s == DomainStatusOK {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot set Domain status to OK, it will be set automatically if no prohibitions or pending actions are set"))
 	}
@@ -132,6 +142,7 @@ func (d *Domain) SetStatus(s string) error {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot set Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
 	}
 
+	// When updating is prohibited, only the corresponding prohibitions can be set
 	if d.Status.UpdateProhibited() && !(s == DomainStatusClientUpdateProhibited || s == DomainStatusServerUpdateProhibited) {
 		return ErrDomainUpdateNotAllowed
 	}
@@ -178,12 +189,18 @@ func (d *Domain) SetStatus(s string) error {
 	return d.Status.Validate()
 }
 
-// UnSetStatus unsets the status of the DomainStatus object
+// UnSetStatus unsets a specific status for the Domain. It performs several checks to ensure
+// the status can be unset and updates the Domain's status accordingly. The function will
+// return an error if the status is invalid, if attempting to unset the status to "OK" or
+// "Inactive", or if the update is not allowed due to current prohibitions.
+// OK and Inactive statuses are set/unset automatically and cannot be manipulated directly
 func (d *Domain) UnSetStatus(s string) error {
 	// Unknown status value
 	if !slices.Contains(ValidDomainStatuses, s) {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("unknown Domain status: %s", s))
 	}
+
+	// Special statuses that cannot be unset directly
 	if s == DomainStatusOK {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot unset Domain status to OK, it will be set automatically if no prohibitions or pending actions are set"))
 	}
@@ -191,6 +208,7 @@ func (d *Domain) UnSetStatus(s string) error {
 		return errors.Join(ErrInvalidDomainStatus, fmt.Errorf("cannot unset Domain status to Inactive, it will be set automatically depending on the host associated with the Domain"))
 	}
 
+	// When updating is prohibited, only the corresponding update prohibitions can be unset
 	if d.Status.UpdateProhibited() && !(s == DomainStatusClientUpdateProhibited || s == DomainStatusServerUpdateProhibited) {
 		return ErrDomainUpdateNotAllowed
 	}
@@ -372,4 +390,47 @@ func (ds *DomainStatus) Clear() {
 	ds.PendingUpdate = false
 	ds.PendingRestore = false
 	ds.PendingDelete = false
+}
+
+// isStatusSet checks if a specific status is set in the DomainStatus object
+func (ds *DomainStatus) isStatusSet(status string) bool {
+	switch status {
+	case "ok":
+		return ds.OK
+	case "inactive":
+		return ds.Inactive
+	case "clientTransferProhibited":
+		return ds.ClientTransferProhibited
+	case "clientUpdateProhibited":
+		return ds.ClientUpdateProhibited
+	case "clientDeleteProhibited":
+		return ds.ClientDeleteProhibited
+	case "clientRenewProhibited":
+		return ds.ClientRenewProhibited
+	case "clientHold":
+		return ds.ClientHold
+	case "serverTransferProhibited":
+		return ds.ServerTransferProhibited
+	case "serverUpdateProhibited":
+		return ds.ServerUpdateProhibited
+	case "serverDeleteProhibited":
+		return ds.ServerDeleteProhibited
+	case "serverRenewProhibited":
+		return ds.ServerRenewProhibited
+	case "serverHold":
+		return ds.ServerHold
+	case "pendingCreate":
+		return ds.PendingCreate
+	case "pendingRenew":
+		return ds.PendingRenew
+	case "pendingTransfer":
+		return ds.PendingTransfer
+	case "pendingUpdate":
+		return ds.PendingUpdate
+	case "pendingRestore":
+		return ds.PendingRestore
+	case "pendingDelete":
+		return ds.PendingDelete
+	}
+	return false
 }
