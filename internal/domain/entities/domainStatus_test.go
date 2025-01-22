@@ -505,3 +505,71 @@ func TestBackupAndClear(t *testing.T) {
 		t.Errorf("BackupAndClear() cleared object = %v, expected %v", ds, expected)
 	}
 }
+func TestDomainStatus_isStatusSet(t *testing.T) {
+	testcases := []struct {
+		name   string
+		ds     DomainStatus
+		status string
+		want   bool
+	}{
+		{
+			name: "OK status set",
+			ds: DomainStatus{
+				OK: true,
+			},
+			status: "ok",
+			want:   true,
+		},
+		{
+			name: "Inactive status set",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			status: "inactive",
+			want:   true,
+		},
+		{
+			name: "ClientTransferProhibited status set",
+			ds: DomainStatus{
+				ClientTransferProhibited: true,
+			},
+			status: "clientTransferProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerHold status set",
+			ds: DomainStatus{
+				ServerHold: true,
+			},
+			status: "serverHold",
+			want:   true,
+		},
+		{
+			name: "PendingDelete status set",
+			ds: DomainStatus{
+				PendingDelete: true,
+			},
+			status: "pendingDelete",
+			want:   true,
+		},
+		{
+			name:   "Status not set",
+			ds:     DomainStatus{},
+			status: "ok",
+			want:   false,
+		},
+		{
+			name:   "Invalid status",
+			ds:     DomainStatus{},
+			status: "invalidStatus",
+			want:   false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.ds.isStatusSet(tc.status)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}

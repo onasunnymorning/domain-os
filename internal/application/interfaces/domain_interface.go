@@ -55,4 +55,8 @@ type DomainService interface {
 	// These are DNS services
 	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
 	GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+
+	// Status Manipulation
+	SetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
+	UnSetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
 }
