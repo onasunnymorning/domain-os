@@ -10,14 +10,14 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
-type UnsetStatusCommand struct {
+type SetStatusCommand struct {
 	DomainName    string
 	Status        string
 	CorrelationID string
 	TraceID       string
 }
 
-func UnSetDomainStatus(cmd UnsetStatusCommand) (*entities.Domain, error) {
+func SetDomainStatus(cmd SetStatusCommand) (*entities.Domain, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/status/%s", BASEURL, cmd.DomainName, cmd.Status)
 
 	// marshall the request body
@@ -36,7 +36,7 @@ func UnSetDomainStatus(cmd UnsetStatusCommand) (*entities.Domain, error) {
 		return nil, fmt.Errorf("failed to create URL: %w", err)
 	}
 
-	req, err := http.NewRequest("DELETE", URL.String(), bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -64,5 +64,4 @@ func UnSetDomainStatus(cmd UnsetStatusCommand) (*entities.Domain, error) {
 	}
 
 	return domain, nil
-
 }
