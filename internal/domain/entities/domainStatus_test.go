@@ -537,11 +537,78 @@ func TestDomainStatus_isStatusSet(t *testing.T) {
 			want:   true,
 		},
 		{
+			name: "ClientUpdateProhibited status set",
+			ds: DomainStatus{
+				ClientUpdateProhibited: true,
+			},
+			status: "clientUpdateProhibited",
+			want:   true,
+		},
+		{
+			name: "ClientDeleteProhibited status set",
+			ds: DomainStatus{
+				ClientDeleteProhibited: true,
+			},
+			status: "clientDeleteProhibited",
+			want:   true,
+		},
+		{
+			name: "ClientRenewProhibited status set",
+			ds: DomainStatus{
+				ClientRenewProhibited: true,
+			},
+			status: "clientRenewProhibited",
+			want:   true,
+		},
+
+		{
+			name: "ServerTransferProhibited status set",
+			ds: DomainStatus{
+				ServerTransferProhibited: true,
+			},
+			status: "serverTransferProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerUpdateProhibited status set",
+			ds: DomainStatus{
+				ServerUpdateProhibited: true,
+			},
+			status: "serverUpdateProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerDeleteProhibited status set",
+			ds: DomainStatus{
+				ServerDeleteProhibited: true,
+			},
+			status: "serverDeleteProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerRenewProhibited status set",
+			ds: DomainStatus{
+				ServerRenewProhibited: true,
+			},
+			status: "serverRenewProhibited",
+			want:   true,
+		},
+
+		{
 			name: "ServerHold status set",
 			ds: DomainStatus{
 				ServerHold: true,
 			},
 			status: "serverHold",
+			want:   true,
+		},
+
+		{
+			name: "ClientHold status set",
+			ds: DomainStatus{
+				ClientHold: true,
+			},
+			status: "clientHold",
 			want:   true,
 		},
 		{
@@ -550,6 +617,46 @@ func TestDomainStatus_isStatusSet(t *testing.T) {
 				PendingDelete: true,
 			},
 			status: "pendingDelete",
+			want:   true,
+		},
+		{
+			name: "PendingRestore status set",
+			ds: DomainStatus{
+				PendingRestore: true,
+			},
+			status: "pendingRestore",
+			want:   true,
+		},
+		{
+			name: "PendingTransfer status set",
+			ds: DomainStatus{
+				PendingTransfer: true,
+			},
+			status: "pendingTransfer",
+			want:   true,
+		},
+		{
+			name: "PendingRenew status set",
+			ds: DomainStatus{
+				PendingRenew: true,
+			},
+			status: "pendingRenew",
+			want:   true,
+		},
+		{
+			name: "PendingCreate status set",
+			ds: DomainStatus{
+				PendingCreate: true,
+			},
+			status: "pendingCreate",
+			want:   true,
+		},
+		{
+			name: "PendingUpdate status set",
+			ds: DomainStatus{
+				PendingUpdate: true,
+			},
+			status: "pendingUpdate",
 			want:   true,
 		},
 		{
