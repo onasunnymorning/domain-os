@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/assert"
 )
@@ -16,7 +17,7 @@ func TestSetDomainStatus(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		cmd            SetStatusCommand
+		cmd            commands.ToggleDomainStatusCommand
 		mockStatusCode int
 		mockResponse   string
 		expectedError  string
@@ -24,7 +25,7 @@ func TestSetDomainStatus(t *testing.T) {
 	}{
 		{
 			name: "successful request",
-			cmd: SetStatusCommand{
+			cmd: commands.ToggleDomainStatusCommand{
 				DomainName:    "example.com",
 				Status:        "pendingCreate",
 				CorrelationID: "12345",
@@ -39,7 +40,7 @@ func TestSetDomainStatus(t *testing.T) {
 		},
 		{
 			name: "failed request with unexpected status code",
-			cmd: SetStatusCommand{
+			cmd: commands.ToggleDomainStatusCommand{
 				DomainName:    "example.com",
 				Status:        "inactive",
 				CorrelationID: "12345",
@@ -52,7 +53,7 @@ func TestSetDomainStatus(t *testing.T) {
 		},
 		{
 			name: "failed to unmarshal response",
-			cmd: SetStatusCommand{
+			cmd: commands.ToggleDomainStatusCommand{
 				DomainName:    "example.com",
 				Status:        "inactive",
 				CorrelationID: "12345",

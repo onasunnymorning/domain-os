@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,16 +35,26 @@ func GetPageSize(ctx *gin.Context) (int, error) {
 	return pageSize, nil
 }
 
-// GetAndDecodeCursor returns the cursor from the request or an empty string
-// It returns an error if the cursor is not a valid base64 encoded string
+// GetAndDecodeCursor returns the cursor from the request or an empty string.
+// It returns an error if the cursor is not a valid base64-encoded UTF-8 string.
 func GetAndDecodeCursor(ctx *gin.Context) (string, error) {
 	cursor := ctx.DefaultQuery("cursor", "")
-	if cursor == "" {
+
+	// Treat "null" or empty as no cursor
+	if cursor == "" || cursor == "null" {
 		return "", nil
 	}
+
+	// Decode from base64
 	decodedCursor, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
 		return "", ErrInvalidCursor
 	}
+
+	// Optional: Validate that the decoded bytes are UTF-8
+	if !utf8.Valid(decodedCursor) {
+		return "", ErrInvalidCursor
+	}
+
 	return string(decodedCursor), nil
 }

@@ -51,7 +51,7 @@ func main() {
 	w.RegisterActivity(activities.ListRestoredDomains)
 	w.RegisterActivity(activities.GetDomain)
 	w.RegisterActivity(activities.RenewDomain)
-	w.RegisterActivity(activities.UpdateDomain)
+	w.RegisterActivity(activities.UnSetDomainStatus)
 
 	// Start listening to the Task Queue.
 	err = w.Run(worker.InterruptCh())
