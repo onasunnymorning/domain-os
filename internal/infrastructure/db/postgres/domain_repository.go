@@ -94,17 +94,9 @@ func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string)
 
 // ListDomains returns a list of Domains
 func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, cursor string) ([]*entities.Domain, error) {
-	var roidInt int64
-	var err error
-	if cursor != "" {
-		roid := entities.RoidType(cursor)
-		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
-			return nil, entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
-		if err != nil {
-			return nil, err
-		}
+	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
+	if err != nil {
+		return nil, err
 	}
 	dbDomains := []*Domain{}
 	err = dr.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
@@ -219,18 +211,9 @@ func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
 
 // ListExpiringDomains returns a list of domains that are expiring before the given time. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
 func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, tld, cursor string) ([]*entities.Domain, error) {
-
-	var roidInt int64
-	var err error
-	if cursor != "" {
-		roid := entities.RoidType(cursor)
-		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
-			return nil, entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
-		if err != nil {
-			return nil, err
-		}
+	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
+	if err != nil {
+		return nil, err
 	}
 
 	var dbDomains []*Domain
@@ -256,18 +239,9 @@ func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, before tim
 
 // ListPurgeableDomains returns a list of domains that are pending deletion and have passed the grace period
 func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, after time.Time, pagesize int, clid, cursor, tld string) ([]*entities.Domain, error) {
-
-	var roidInt int64
-	var err error
-	if cursor != "" {
-		roid := entities.RoidType(cursor)
-		if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
-			return nil, entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
-		if err != nil {
-			return nil, err
-		}
+	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
+	if err != nil {
+		return nil, err
 	}
 
 	var dbDomains []*Domain
@@ -289,4 +263,47 @@ func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, after tim
 	var count int64
 	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true", after).Count(&count).Error
 	return count, err
+}
+
+// CountRestoredDomains returns the number of domains that are in pendingRestore state (have been restored using the Domain.Restore() function)
+func (dr *DomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
+	var count int64
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("pending_restore = true").Count(&count).Error
+	return count, err
+}
+
+// ListRestoredDomains returns a list of domains that are in pendingRestore state (have been restored using the Domain.Restore() function)
+func (dr *DomainRepository) ListRestoredDomains(ctx context.Context, pagesize int, clid, tld, cursor string) ([]*entities.Domain, error) {
+	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	var dbDomains []*Domain
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("pending_restore = true").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	domains := make([]*entities.Domain, len(dbDomains))
+	for i, d := range dbDomains {
+		domains[i] = ToDomain(d)
+	}
+
+	return domains, nil
+}
+
+// getInt64RoidFromDomainRoidString converts a ROID string (1234_DOM-APEX) to an int64 (1234) if it is a valid DOMAIN_ROID_ID.
+// It returns an error if the ROID is invalid.
+// If the ROID is empty, it returns 0 and no error (e.g. no pagination is neeced)
+func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
+	// If the cursor is empty, we don't need to paginate, this is not an error
+	if roidString == "" {
+		return 0, nil
+	}
+	roid := entities.RoidType(roidString)
+	if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
+		return 0, entities.ErrInvalidRoid
+	}
+	return roid.Int64()
 }

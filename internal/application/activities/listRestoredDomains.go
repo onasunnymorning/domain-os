@@ -11,14 +11,15 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-// ListPurgeableDomains takes an PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and are past the grace period (PurgeDate is in the past or before the supplied date). It gets these through the admin API.
-func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
-	ENDPOINT := fmt.Sprintf("%s/domains/purgeable", BASEURL)
+func ListRestoredDomains(correlationID string, q *queries.RestoredDomainsQuery) ([]response.DomainRestoredItem, error) {
+	ENDPOINT := fmt.Sprintf("%s/domains/restored", BASEURL)
 
 	// set the correlation ID and pagesize
 	qParams := make(map[string]string)
 	qParams["correlationID"] = correlationID
+	// This is probably a good place to start if you are looking to optimize
 	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add query params: %w", err)
@@ -36,7 +37,7 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch domain count: %w", err)
+		return nil, fmt.Errorf("failed to fetch restored domains: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -49,11 +50,16 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	}
 
 	// Parse the result
-	listResponse := &ListExpiredDomainsResult{}
+	listResponse := &ListRestoredDomainsResult{}
 	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
 
 	return listResponse.Data, nil
+}
+
+type ListRestoredDomainsResult struct {
+	Meta response.PaginationMetaData   `json:"meta"`
+	Data []response.DomainRestoredItem `json:"data"`
 }

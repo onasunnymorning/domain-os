@@ -29,6 +29,7 @@ var (
 	ErrInBailiwickHostsMustHaveAddress = errors.New("hosts must have at least one address to be used In-Bailiwick")
 	ErrPhaseNotProvided                = errors.New("phase is mandatory for registration")
 	ErrDomainRenewNotAllowed           = errors.New("domain renew not allowed")
+	ErrDomainStatusProhibitsRenewal    = errors.New("domain status prohibits renewal")
 	ErrDomainRenewExceedsMaxHorizon    = errors.New("domain renew exceeds the maximum horizon")
 	ErrInvalidRenewal                  = errors.New("invalid renewal")
 	ErrZeroRenewalPeriod               = errors.New("years must be greater than 0")
@@ -383,12 +384,38 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 
 	}
 	if !d.CanBeRenewed() {
-		return errors.Join(ErrInvalidRenewal, ErrDomainRenewNotAllowed)
+		return errors.Join(ErrDomainRenewNotAllowed, ErrDomainStatusProhibitsRenewal)
 	}
 
 	// Check if we exceed the maximum renewal period
 	if d.ExpiryDate.AddDate(years, 0, 0).After(time.Now().UTC().AddDate(phase.Policy.MaxHorizon, 0, 0)) {
 		return errors.Join(ErrInvalidRenewal, ErrDomainRenewExceedsMaxHorizon)
+	}
+
+	d.ExpiryDate = d.ExpiryDate.AddDate(years, 0, 0)
+	d.RenewedYears += years
+	d.UpRr = d.ClID
+
+	// Set the RGP statuses
+	if isAutoRenew {
+		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.AutoRenewalGP)
+	} else {
+		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
+	}
+
+	return nil
+}
+
+// ForceRenew is a convenience method to renew a domain without checking if it is in a state that allows renewal.
+// This can be useful when a renew is triggered as part of another operation (such as a restore) and failing the renew because of prohibitions is not desired.
+// It sets the domain's expiration date to the current date plus the specified number of years and sets the RGP statuses based on the phase policy.
+func (d *Domain) ForceRenew(years int, isAutoRenew bool, phase *Phase) error {
+	if phase == nil {
+		return errors.Join(ErrInvalidRenewal, ErrPhaseNotProvided)
+	}
+	if years == 0 {
+		return errors.Join(ErrInvalidRenewal, ErrZeroRenewalPeriod)
+
 	}
 
 	d.ExpiryDate = d.ExpiryDate.AddDate(years, 0, 0)
@@ -486,8 +513,11 @@ func (d *Domain) Expire(phase *Phase) error {
 // occurs while unsetting and setting the required statuses. The registrar responsible for
 // the restore is recorded in the UpRr field.
 func (d *Domain) Restore() error {
+	if !d.Status.PendingDelete {
+		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain is not in %s status", DomainStatusPendingDelete))
+	}
 	if !d.CanBeRestored() {
-		return ErrDomainRestoreNotAllowed
+		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain redemption grace period ended %s", d.RGPStatus.RedemptionPeriodEnd.Format(time.RFC3339)))
 	}
 
 	// Unset the pending delete status and set the pending restore status

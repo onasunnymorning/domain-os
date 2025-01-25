@@ -27,6 +27,8 @@ type DomainService interface {
 	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
 	ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
 	CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error)
+	ListRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
+	CountRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery) (int64, error)
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available
@@ -36,7 +38,7 @@ type DomainService interface {
 	// RegisterDomain registers a domain as a registrar and supports the fee extension
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
 	// RenewDomain renews a domain as a registrar and supports the fee extension
-	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error)
+	RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand, force bool) (*entities.Domain, error)
 	// CanAutoRenewDomain checks if a domain can be auto-renewed
 	CanAutoRenew(ctx context.Context, domainName string) (bool, error)
 	// AutoRenewDomain renews the domain for the current registrar
@@ -53,4 +55,8 @@ type DomainService interface {
 	// These are DNS services
 	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
 	GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+
+	// Status Manipulation
+	SetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
+	UnSetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
 }

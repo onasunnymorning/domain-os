@@ -48,10 +48,15 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.POST(":name/dropcatch", controller.SetDropCatch)
 		domainGroup.DELETE(":name/dropcatch", controller.UnSetDropCatch)
 
+		// Set/Unset domain status
+		domainGroup.POST(":name/status/:status", controller.SetStatus)
+		domainGroup.DELETE(":name/status/:status", controller.UnSetStatus)
+
 		// Registrar endpoints - These are similar to the EPP commands and are used by registrars, or if an admin wants to pretend to be a registrar
 		domainGroup.GET(":name/available", controller.CheckDomainAvailability)
 		domainGroup.POST(":name/register", controller.RegisterDomain)
 		domainGroup.POST(":name/renew", controller.RenewDomain)
+		domainGroup.POST(":name/renew/force", controller.ForceRenew)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
 
@@ -60,6 +65,8 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("expiring/count", controller.CountExpiringDomains)
 		domainGroup.GET("purgeable", controller.ListPurgeableDomains)
 		domainGroup.GET("purgeable/count", controller.CountPurgeableDomains)
+		domainGroup.GET("restored", controller.ListRestoredDomains)
+		domainGroup.GET("restored/count", controller.CountRestoredDomains)
 		domainGroup.GET(":name/canautorenew", controller.CanAutoRenew)
 		domainGroup.POST(":name/autorenew", controller.AutoRenewDomain)
 		domainGroup.DELETE(":name/expire", controller.Expire)
@@ -397,9 +404,11 @@ func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 }
 
 // RegisterDomain godoc
-// @Summary Register a domain as a Registrar
-// @Description Register a domain as a Registrar. Is modelled after the EPP create command.
-// @Description This operation requires the Registrar to be accredited for the TLD. If the Registrar is not accredited, the request will fail with a 403 status code.
+// @Summary EPP Style Domain registration, creates a domain and starts the lifecycle based on the applicable phase policy
+// @Description This operation requires the Registrar to be accredited for the TLD.
+// @Description Any references to Contact or Host objects must exist in the system prior to calling this endpoint.
+// @Description The optional Phase parameter can be used to register a domain in a specific phase. The phase must be active at the moment of regisration.
+// @Description If the Registrar is not accredited, the request will fail with a 403 status code.
 // @Description If the domain is invalid in some way, the request will fail with a 400 status code with an error message.
 // @Tags Domains
 // @Accept json
@@ -483,8 +492,11 @@ func (ctrl *DomainController) CheckDomainAvailability(ctx *gin.Context) {
 }
 
 // RenewDomain godoc
-// @Summary Renew a domain as a Registrar
-// @Description Renew a domain as a Registrar. Is modelled after the EPP renew command.
+// @Summary EPP-style renew command will explicitly renew the domain for the specified number of years or the default 1 year.
+// @Description Renew a domain as a Registrar.
+// @Description Accepts an optional fee extension that must match the quote for the renewal or the request will fail.
+// @Description If the domain is not in a state that can be renewed, the request will fail with a 400 status code.
+// @Description If the domain is not found, the request will fail with a 404 status code.
 // @Tags Domains
 // @Accept json
 // @Produce json
@@ -509,7 +521,46 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.RenewDomain(ctx, &req)
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req, false)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRenewal) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	ctx.JSON(200, domain)
+}
+
+// ForceRenew godoc
+// @Summary Force renew a domain as a Registrar
+// @Description Force renew a domain as a Registrar. Is convenience method that renews the domain regardless of it's state.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain body commands.RenewDomainCommand true "Domain"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 500
+// @Router /domains/{name}/renew/force [post]
+func (ctrl *DomainController) ForceRenew(ctx *gin.Context) {
+	name := ctx.Param("name")
+	var req commands.RenewDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name != name {
+		ctx.JSON(400, gin.H{"error": "name in body must match name in path"})
+		return
+	}
+
+	domain, err := ctrl.domainService.RenewDomain(ctx, &req, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRenewal) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -604,8 +655,9 @@ func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
 }
 
 // MarkDomainForDeletion godoc
-// @Summary Mark a domain for deletion
-// @Description Mark a domain for deletion. Is modelled after the EPP delete command.
+// @Summary EPP-style delete command that starts the End-Of-Life cycle of the domain.
+// @Description If successful it will mark the domain for deletion by setting PendingDelete to true and start the Redemption Grace Period and set a Purge Date.
+// @Description It return the domain object with the appropriate properties set based on the current GA PhaseConfig.
 // @Tags Domains
 // @Produce json
 // @Param domain path string true "Domain Name"
@@ -883,7 +935,7 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 // @Tags Domains
 // @Produce json
 // @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
-// @Param clid query string false "Registrar ClID (optional)"
+// @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
 // @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Success 200 {object} response.CountResult
 // @Failure 500
@@ -907,6 +959,100 @@ func (ctrl *DomainController) CountPurgeableDomains(ctx *gin.Context) {
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+// CountRestoredDomains godoc
+// @Summary Count restored domains
+// @Description Counts domains that are restored. This means they are pending restore.  You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /domains/restored/count [get]
+func (ctrl *DomainController) CountRestoredDomains(ctx *gin.Context) {
+	q, err := queries.NewRestoredDomainsQuery(ctx.Query("clid"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	count, err := ctrl.domainService.CountRestoredDomains(ctx, q)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		Count:      count,
+		ObjectType: "Domain",
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// ListRestoredDomains godoc
+// @Summary List restored domains
+// @Description Lists domains that are restored. This means they are pending restore. You can optionally filter by registrar ClID and TLD.
+// @Tags Domains
+// @Produce json
+// @Param clid query string false "Registrar ClID (optional)"
+// @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
+// @Param pageSize query int false "Page Size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {array} response.ListItemResult
+// @Failure 400
+// @Failure 500
+// @Router /domains/restored [get]
+func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
+	var err error
+	// Prepare the response
+	resp := response.ListItemResult{}
+
+	q, err := queries.NewRestoredDomainsQuery(ctx.Query("clid"), ctx.Query("tld"))
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the pagesize from the query string
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the cursor from the query string
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the list of domains
+	domains, err := ctrl.domainService.ListRestoredDomains(ctx, q, pageSize, pageCursor)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Move the domains into a domain expiry item
+	restoredDomains := make([]response.DomainRestoredItem, len(domains))
+	for i, d := range domains {
+		restoredDomains[i] = response.DomainRestoredItem{
+			RoID: d.RoID.String(),
+			Name: d.Name.String(),
+			ClID: d.ClID.String(),
+		}
+	}
+
+	// Set the response MetaData
+	resp.Data = restoredDomains
+	if len(domains) > 0 {
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+	}
+
+	// Return the Response
+	ctx.JSON(200, resp)
 }
 
 // ListPurgeableDomains godoc
@@ -1012,8 +1158,8 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 }
 
 // Purge godoc
-// @Summary Purge a domain
-// @Description Purge a domain at the end of its lifecycle. If the deletion is not allowed, it responds with a 425 status code and an error message.
+// @Summary Purge a domain from the system after it's lifecycle has ended (PurgeData has passed)
+// @Description The last step of the domain lifecycle is to purge the domain from the system after all grace periods have expired.
 // @Description Conditions for successful deletion: The applicable grace period has expired (Domain.RGPStatus.PurgeDate is in the past) and serverDeleteProhibited is not set.
 // @Tags Domains
 // @Produce json
@@ -1034,4 +1180,68 @@ func (ctrl *DomainController) Purge(ctx *gin.Context) {
 	}
 
 	ctx.JSON(204, nil)
+}
+
+// SetStatus godoc
+// @Summary Set the status of a domain
+// @Description Toggle a DomainStatus to true. This endpoint will try and set the status of a domain to the provided status.
+// @Description It is idempotent. It return a 404 if the domain is not found or the status is not valid. It will return a 400 if the setting of the status is not allowed including an error message
+// @Description If the operation is successful it will return the domain with the status set.
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param status path string true "Status"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/status/{status} [post]
+func (ctrl *DomainController) SetStatus(ctx *gin.Context) {
+	dom, err := ctrl.domainService.SetStatus(ctx, ctx.Param("name"), ctx.Param("status"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, services.ErrCannotSetDomainStatus) || errors.Is(err, entities.ErrInvalidDomainStatus) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
+}
+
+// UnsetStatus godoc
+// @Summary Unset the status of a domain
+// @Description Toggle a DomainStatus to false. This endpoint will try and unset the status of a domain to the provided status.
+// @Description It is idempotent. It return a 404 if the domain is not found or the status is not valid.
+// @Description It will return a 400 if the setting of the status is not allowed including an error message
+// @Description If the operation is successful it will return the domain with the status unset.
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Param status path string true "Status"
+// @Success 200 {object} entities.Domain
+// @Failure 404
+// @Failure 500
+// @Router /domains/{name}/status/{status} [delete]
+func (ctrl *DomainController) UnSetStatus(ctx *gin.Context) {
+	dom, err := ctrl.domainService.UnSetStatus(ctx, ctx.Param("name"), ctx.Param("status"))
+	if err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrInvalidDomainStatus) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, services.ErrCannotSetDomainStatus) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, dom)
 }

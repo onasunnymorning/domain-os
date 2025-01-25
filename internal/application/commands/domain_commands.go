@@ -49,8 +49,8 @@ type RenewDomainCommand struct {
 
 // FeeExtension is a struct that can optionally be included in commands to provide information about the price
 type FeeExtension struct {
-	Currency string  `json:"Currency"`
-	Amount   float64 `json:"Amount"`
+	Currency string `json:"Currency"`
+	Amount   int64  `json:"Amount"`
 }
 
 // IsZero checks if the FeeExtension instance is equal to the zero value of FeeExtension.

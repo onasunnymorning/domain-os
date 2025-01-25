@@ -53,7 +53,7 @@ func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuer
 	}
 
 	// Parse the result
-	listResponse := &ListItemResult{}
+	listResponse := &ListExpiredDomainsResult{}
 	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to unmarshal response"), err)
@@ -62,7 +62,7 @@ func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuer
 	return listResponse.Data, nil
 }
 
-type ListItemResult struct {
+type ListExpiredDomainsResult struct {
 	Meta response.PaginationMetaData `json:"meta"`
 	Data []response.DomainExpiryItem `json:"data"`
 }
