@@ -38,22 +38,6 @@ func PurgeLoop(ctx workflow.Context) error {
 	// Apply the options.
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// Check if there are any domains that are purgeable
-	domainCount := &response.CountResult{}
-	purgeableDomainCountErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount, workflowID).Get(ctx, domainCount)
-	if purgeableDomainCountErr != nil {
-		logger.Error(
-			"Error getting purgeable domain count",
-			zap.Error(purgeableDomainCountErr),
-		)
-		return purgeableDomainCountErr
-	}
-
-	// If there are no domains to purge, exit
-	if domainCount.Count == 0 {
-		return nil
-	}
-
 	// Get the list of domains that are purgeable
 	domains := []response.DomainExpiryItem{}
 	purgeableDomainsError := workflow.ExecuteActivity(ctx, activities.ListPurgeableDomains, workflowID).Get(ctx, &domains)

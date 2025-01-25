@@ -12,15 +12,10 @@ import (
 // GetDomain retrieves a domain entity based on the provided domain name.
 // It constructs an API endpoint URL, sets the necessary query parameters (adds correlation-id), and makes an HTTP GET request
 // to fetch the domain details. The response is then unmarshaled into an entities.Domain object.
-//
-// Parameters:
-//   - correlationID: A unique identifier for tracking the request. Such as the workflow ID.
-//   - domainName: The name of the domain to be retrieved.
-//
-// Returns:
-//   - *entities.Domain: A pointer to the retrieved domain entity.
-//   - error: An error object if any error occurs during the process, otherwise nil.
-func GetDomain(correlationID string, domainName string) (*entities.Domain, error) {
+func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
+	if domainName == "" {
+		return nil, fmt.Errorf("domain name cannot be empty")
+	}
 	ENDPOINT := fmt.Sprintf("%s/domains/%s", BASEURL, domainName)
 
 	// Set up an API client

@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -2102,4 +2103,52 @@ func TestDomain_CanBePurged(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// TestForceRenew tests the ForceRenew method of the Domain struct
+func TestForceRenew(t *testing.T) {
+	// Setup
+	initialExpiry := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	domain := &Domain{
+		ExpiryDate: initialExpiry,
+		ClID:       "ClientX",
+		RGPStatus:  DomainRGPStatus{},
+	}
+
+	phase := &Phase{Policy: PhasePolicy{
+		AutoRenewalGP: 45, // 45 days for auto-renew
+		RenewalGP:     30, // 30 days for manual renew
+	}}
+
+	t.Run("Renew with valid years and auto-renew", func(t *testing.T) {
+		err := domain.ForceRenew(2, true, phase)
+		assert.NoError(t, err)
+		assert.Equal(t, initialExpiry.AddDate(2, 0, 0), domain.ExpiryDate)
+		assert.Equal(t, 2, domain.RenewedYears)
+		assert.Equal(t, domain.ClID, domain.UpRr)
+		assert.WithinDuration(t, time.Now().UTC().AddDate(0, 0, 45), domain.RGPStatus.AutoRenewPeriodEnd, time.Second)
+	})
+
+	t.Run("Renew with valid years and manual renew", func(t *testing.T) {
+		err := domain.ForceRenew(1, false, phase)
+		assert.NoError(t, err)
+		assert.Equal(t, initialExpiry.AddDate(3, 0, 0), domain.ExpiryDate)
+		assert.Equal(t, 3, domain.RenewedYears)
+		assert.Equal(t, domain.ClID, domain.UpRr)
+		assert.WithinDuration(t, time.Now().UTC().AddDate(0, 0, 30), domain.RGPStatus.RenewPeriodEnd, time.Second)
+	})
+
+	t.Run("Renew with years = 0 should return error", func(t *testing.T) {
+		err := domain.ForceRenew(0, true, phase)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidRenewal))
+		assert.True(t, errors.Is(err, ErrZeroRenewalPeriod))
+	})
+
+	t.Run("Renew with nil phase should return error", func(t *testing.T) {
+		err := domain.ForceRenew(1, true, nil)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidRenewal))
+		assert.True(t, errors.Is(err, ErrPhaseNotProvided))
+	})
 }

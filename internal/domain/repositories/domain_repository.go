@@ -25,6 +25,8 @@ type DomainRepository interface {
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 	ListPurgeableDomains(ctx context.Context, after time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error)
+	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
+	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -113,5 +115,17 @@ func (m *MockDomainRepository) ListPurgeableDomains(ctx context.Context, before 
 // CountPurgeableDomains counts the number of purgeable domains
 func (m *MockDomainRepository) CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	args := m.Called(ctx, before, clid)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+// ListRestoredDomains lists restored domains
+func (m *MockDomainRepository) ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error) {
+	args := m.Called(ctx, pageSize, clid, tld, cursor)
+	return args.Get(0).([]*entities.Domain), args.Error(1)
+}
+
+// CountRestoredDomains counts the number of restored domains
+func (m *MockDomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
+	args := m.Called(ctx, clid, tld)
 	return args.Get(0).(int64), args.Error(1)
 }

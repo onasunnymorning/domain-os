@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,6 +35,10 @@ var (
 	ErrCouldNotDetermineAccreditation = errors.New("could not determine accreditation")
 	// ErrMissingFXRate is returned when the FX rate is required but can't be determined
 	ErrMissingFXRate = errors.New("missing FX rate")
+	// ErrCannotSetDomainStatus is returned when the domain status cannot be set
+	ErrCannotSetDomainStatus = errors.New("cannot set domain status")
+	// ErrCannotUnSetDomainStatus is returned when the domain status cannot be unset
+	ErrCannotUnSetDomainStatus = errors.New("cannot unset domain status")
 )
 
 // DomainService immplements the DomainService interface
@@ -313,7 +318,7 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 // 6. Logs a lifecycle event for the domain.
 func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 	// Get the domain
-	dom, err := s.GetDomainByName(ctx, name, false)
+	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
 		return err
 	}
@@ -893,11 +898,15 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	event.Quote = *quote
 	checkResult.Quote = quote
 
-	// TODO: do something with the quote
-	// We should somehow compare the Quote with the FeeExtension
-	// Because of the currency conversion, we need to check if the fee is within a certain range instead of an exact match
-	// This requiress some thought and is not implemented yet
-	// Ref: https://github.com/onasunnymorning/domain-os/issues/225
+	// Check the fee extension against the quote ONLY if it is provided
+	if cmd.Fee.Currency != "" && cmd.Fee.Amount != 0 {
+		if strings.ToUpper(cmd.Fee.Currency) != quote.Price.Currency().Code {
+			return nil, errors.Join(entities.ErrInvalidRenewal, fmt.Errorf("currency mismatch: requested %s, got %s", strings.ToUpper(cmd.Fee.Currency), quote.Price.Currency().Code))
+		}
+		if cmd.Fee.Amount != quote.Price.Amount() {
+			return nil, errors.Join(entities.ErrInvalidRenewal, fmt.Errorf("amount mismatch: requested %d, got %d", cmd.Fee.Amount, quote.Price.Amount()))
+		}
+	}
 
 	// Generate a RoID for our new domain
 	roid, err := svc.roidService.GenerateRoid(entities.RoidTypeDomain)
@@ -942,7 +951,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 }
 
 // RenewDomain renews a domain
-func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand) (*entities.Domain, error) {
+func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDomainCommand, force bool) (*entities.Domain, error) {
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, cmd.Name, false)
 	if err != nil {
@@ -1001,13 +1010,31 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	}
 	event.Quote = *quote
 
+	// Check the fee extension against the quote ONLY if it is provided
+	if cmd.Fee.Currency != "" && cmd.Fee.Amount != 0 {
+		if strings.ToUpper(cmd.Fee.Currency) != quote.Price.Currency().Code {
+			return nil, errors.Join(entities.ErrInvalidRenewal, fmt.Errorf("currency mismatch: requested %s, got %s", strings.ToUpper(cmd.Fee.Currency), quote.Price.Currency().Code))
+		}
+		if cmd.Fee.Amount != quote.Price.Amount() {
+			return nil, errors.Join(entities.ErrInvalidRenewal, fmt.Errorf("amount mismatch: requested %d, got %d", cmd.Fee.Amount, quote.Price.Amount()))
+		}
+	}
+
 	// save the previous state
 	prevState := dom.Clone()
 
-	// Renew the domain using our entity
-	err = dom.Renew(cmd.Years, false, phase)
-	if err != nil {
-		return nil, err
+	// If the force flag is set, we will try to renew the domain anyway using the Domain.ForceRenew method avoiding possible errors due to the domain status
+	if force {
+		err := dom.ForceRenew(cmd.Years, false, phase)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Renew the domain using our entity
+		err = dom.Renew(cmd.Years, false, phase)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Save the domain
@@ -1449,6 +1476,16 @@ func (s *DomainService) CountPurgeableDomains(ctx context.Context, q *queries.Pu
 	return s.domainRepository.CountPurgeableDomains(ctx, q.After, q.ClID.String(), q.TLD.String())
 }
 
+// ListRestoredDomains returns a list of domains that have pendingRestore status
+func (s *DomainService) ListRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error) {
+	return s.domainRepository.ListRestoredDomains(ctx, pageSize, q.ClID.String(), q.TLD.String(), cursor)
+}
+
+// CountRestoredDomains returns the number of restored domains
+func (s *DomainService) CountRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery) (int64, error) {
+	return s.domainRepository.CountRestoredDomains(ctx, q.ClID.String(), q.TLD.String())
+}
+
 // GetQuote retrieves a quote for a domain based on the provided QuoteRequest.
 // It validates the request, retrieves the appropriate TLD and phase, and calculates
 // the quote using the PriceEngine.
@@ -1572,4 +1609,58 @@ func (s *DomainService) logDomainLifecycleEvent(
 		zap.Any("new_state", newState),
 		zap.Any("previous_state", previousState),
 	)
+}
+
+// SetStatus sets the provided status value on the Domain.Status struct to true
+func (s *DomainService) SetStatus(ctx context.Context, domainName, status string) (*entities.Domain, error) {
+	// Fail early before making any DB calls
+	if !slices.Contains(entities.ValidDomainStatuses, (status)) {
+		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
+	}
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the status
+	err = dom.SetStatus(status)
+	if err != nil {
+		return nil, errors.Join(ErrCannotSetDomainStatus, err)
+	}
+
+	// Save the domain
+	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
+}
+
+// UnsetStatus sets the provided status value on the Domain.Status struct to false
+func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status string) (*entities.Domain, error) {
+	// Fail early before making any DB calls
+	if !slices.Contains(entities.ValidDomainStatuses, status) {
+		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
+	}
+	// Get the domain
+	dom, err := s.GetDomainByName(ctx, domainName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unset the status
+	err = dom.UnSetStatus(status)
+	if err != nil {
+		return nil, errors.Join(ErrCannotSetDomainStatus, err)
+	}
+
+	// Save the domain
+	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedDomain, nil
 }

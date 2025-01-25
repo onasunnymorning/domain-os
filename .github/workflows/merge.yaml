@@ -52,7 +52,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push Event Consumer
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/cli/messaging/streamclient/Dockerfile
@@ -64,7 +64,7 @@ jobs:
           cache-from: type=registry,ref=geapex/streamclient:buildcache
           cache-to: type=registry,ref=geapex/streamclient:buildcache,mode=max 
       - name: Build and push EPP Client API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/api/epp-client/Dockerfile
@@ -76,7 +76,7 @@ jobs:
           cache-from: type=registry,ref=geapex/epp-client-api:buildcache
           cache-to: type=registry,ref=geapex/epp-client-api:buildcache,mode=max
       - name: Build and push AdminAPI
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -87,7 +87,7 @@ jobs:
           cache-from: type=registry,ref=geapex/domain-os:buildcache
           cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
       - name: Build and push Domain Lifecycle Worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/workers/domainLifecycle/Dockerfile
@@ -99,7 +99,7 @@ jobs:
           cache-from: type=registry,ref=geapex/domain-lifecycle-worker:buildcache
           cache-to: type=registry,ref=geapex/domain-lifecycle-worker:buildcache,mode=max
       - name: Build and push Sync Worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/workers/sync/Dockerfile
@@ -163,7 +163,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Retag Admin API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -174,7 +174,7 @@ jobs:
           cache-from: type=registry,ref=geapex/domain-os:buildcache
           cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
       - name: Retag EPP Client API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/api/epp-client/Dockerfile
@@ -186,7 +186,7 @@ jobs:
           cache-from: type=registry,ref=geapex/epp-client-api:buildcache
           cache-to: type=registry,ref=geapex/epp-client-api:buildcache,mode=max
       - name: Retag Domain Lifecycle Worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/workers/domainLifecycle/Dockerfile

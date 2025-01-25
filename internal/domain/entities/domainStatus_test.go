@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -433,6 +434,249 @@ func TestDomainStatus_StringSlice(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.ElementsMatch(t, tc.want, tc.ds.StringSlice())
+		})
+	}
+}
+
+func TestStringSlice(t *testing.T) {
+	ds := DomainStatus{
+		OK:                       true,
+		ClientTransferProhibited: true,
+		PendingDelete:            true,
+	}
+
+	expected := []string{
+		DomainStatusOK,
+		DomainStatusClientTransferProhibited,
+		DomainStatusPendingDelete,
+	}
+
+	result := ds.StringSlice()
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("StringSlice() = %v, want %v", result, expected)
+	}
+}
+
+func TestClone(t *testing.T) {
+	ds := DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientDeleteProhibited: true,
+		PendingUpdate:          true,
+	}
+
+	clone := ds.Clone()
+
+	if !reflect.DeepEqual(ds, clone) {
+		t.Errorf("Clone() = %v, want %v", clone, ds)
+	}
+}
+
+func TestBackupAndClear(t *testing.T) {
+	ds := DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientUpdateProhibited: true,
+		ServerDeleteProhibited: true,
+		PendingTransfer:        true,
+	}
+
+	backup := ds.BackupAndClear()
+
+	// Ensure backup is identical to original
+	if backup != (DomainStatus{
+		OK:                     true,
+		Inactive:               true,
+		ClientUpdateProhibited: true,
+		ServerDeleteProhibited: true,
+		PendingTransfer:        true,
+	}) {
+		t.Errorf("BackupAndClear() backup = %v, expected %v", backup, ds)
+	}
+
+	// Ensure original is cleared except OK and Inactive
+	expected := DomainStatus{
+		OK:       true,
+		Inactive: true,
+	}
+
+	if ds != expected {
+		t.Errorf("BackupAndClear() cleared object = %v, expected %v", ds, expected)
+	}
+}
+func TestDomainStatus_isStatusSet(t *testing.T) {
+	testcases := []struct {
+		name   string
+		ds     DomainStatus
+		status string
+		want   bool
+	}{
+		{
+			name: "OK status set",
+			ds: DomainStatus{
+				OK: true,
+			},
+			status: "ok",
+			want:   true,
+		},
+		{
+			name: "Inactive status set",
+			ds: DomainStatus{
+				Inactive: true,
+			},
+			status: "inactive",
+			want:   true,
+		},
+		{
+			name: "ClientTransferProhibited status set",
+			ds: DomainStatus{
+				ClientTransferProhibited: true,
+			},
+			status: "clientTransferProhibited",
+			want:   true,
+		},
+		{
+			name: "ClientUpdateProhibited status set",
+			ds: DomainStatus{
+				ClientUpdateProhibited: true,
+			},
+			status: "clientUpdateProhibited",
+			want:   true,
+		},
+		{
+			name: "ClientDeleteProhibited status set",
+			ds: DomainStatus{
+				ClientDeleteProhibited: true,
+			},
+			status: "clientDeleteProhibited",
+			want:   true,
+		},
+		{
+			name: "ClientRenewProhibited status set",
+			ds: DomainStatus{
+				ClientRenewProhibited: true,
+			},
+			status: "clientRenewProhibited",
+			want:   true,
+		},
+
+		{
+			name: "ServerTransferProhibited status set",
+			ds: DomainStatus{
+				ServerTransferProhibited: true,
+			},
+			status: "serverTransferProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerUpdateProhibited status set",
+			ds: DomainStatus{
+				ServerUpdateProhibited: true,
+			},
+			status: "serverUpdateProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerDeleteProhibited status set",
+			ds: DomainStatus{
+				ServerDeleteProhibited: true,
+			},
+			status: "serverDeleteProhibited",
+			want:   true,
+		},
+		{
+			name: "ServerRenewProhibited status set",
+			ds: DomainStatus{
+				ServerRenewProhibited: true,
+			},
+			status: "serverRenewProhibited",
+			want:   true,
+		},
+
+		{
+			name: "ServerHold status set",
+			ds: DomainStatus{
+				ServerHold: true,
+			},
+			status: "serverHold",
+			want:   true,
+		},
+
+		{
+			name: "ClientHold status set",
+			ds: DomainStatus{
+				ClientHold: true,
+			},
+			status: "clientHold",
+			want:   true,
+		},
+		{
+			name: "PendingDelete status set",
+			ds: DomainStatus{
+				PendingDelete: true,
+			},
+			status: "pendingDelete",
+			want:   true,
+		},
+		{
+			name: "PendingRestore status set",
+			ds: DomainStatus{
+				PendingRestore: true,
+			},
+			status: "pendingRestore",
+			want:   true,
+		},
+		{
+			name: "PendingTransfer status set",
+			ds: DomainStatus{
+				PendingTransfer: true,
+			},
+			status: "pendingTransfer",
+			want:   true,
+		},
+		{
+			name: "PendingRenew status set",
+			ds: DomainStatus{
+				PendingRenew: true,
+			},
+			status: "pendingRenew",
+			want:   true,
+		},
+		{
+			name: "PendingCreate status set",
+			ds: DomainStatus{
+				PendingCreate: true,
+			},
+			status: "pendingCreate",
+			want:   true,
+		},
+		{
+			name: "PendingUpdate status set",
+			ds: DomainStatus{
+				PendingUpdate: true,
+			},
+			status: "pendingUpdate",
+			want:   true,
+		},
+		{
+			name:   "Status not set",
+			ds:     DomainStatus{},
+			status: "ok",
+			want:   false,
+		},
+		{
+			name:   "Invalid status",
+			ds:     DomainStatus{},
+			status: "invalidStatus",
+			want:   false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.ds.isStatusSet(tc.status)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
