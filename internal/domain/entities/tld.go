@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"errors"
+
 	"golang.org/x/net/idna"
 )
 
@@ -39,6 +40,7 @@ type TLD struct {
 	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
 	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
 	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label). Should be empty if the TLD is not an IDN.
+	RyID      ClIDType   `json:"RyID"`  // RyID is the Registry Operator ID
 	Phases    []Phase    `json:"Phases"`
 	CreatedAt time.Time  `json:"CreatedAt"`
 	UpdatedAt time.Time  `json:"UpdatedAt"`

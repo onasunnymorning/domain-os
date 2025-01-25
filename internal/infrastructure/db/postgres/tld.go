@@ -14,7 +14,8 @@ type TLD struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Phases    []Phase `gorm:"foreignKey:TLDName;references:Name;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-
+	// FK relationship with RegistryOperator
+	RyID string
 	// Many to Many relationship with Registrars (AKA accreditations)
 	Registrars []Registrar `gorm:"many2many:accreditations;"`
 
@@ -28,6 +29,7 @@ func ToDBTLD(tld *entities.TLD) *TLD {
 		Name:      tld.Name.String(),
 		Type:      tld.Type.String(),
 		UName:     tld.UName.String(),
+		RyID:      tld.RyID.String(),
 		CreatedAt: tld.CreatedAt,
 		UpdatedAt: tld.UpdatedAt,
 	}
@@ -46,6 +48,7 @@ func FromDBTLD(dbtld *TLD) *entities.TLD {
 		Name:      entities.DomainName(dbtld.Name),
 		Type:      entities.TLDType(dbtld.Type),
 		UName:     entities.DomainName(dbtld.UName),
+		RyID:      entities.ClIDType(dbtld.RyID),
 		CreatedAt: dbtld.CreatedAt.UTC(),
 		UpdatedAt: dbtld.UpdatedAt.UTC(),
 	}

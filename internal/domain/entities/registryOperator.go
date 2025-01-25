@@ -15,15 +15,15 @@ var (
 
 // RegistryOperator represents a registry Operator that manages one or more TLDs.
 type RegistryOperator struct {
-	RyID      ClIDType `json:"RyID"`
-	Name      string   `json:"Name"`
-	URL       URL      `json:"URL"`
-	Email     string   `json:"Email"`
-	Voice     E164Type `json:"Voice"`
-	Fax       E164Type `json:"Fax"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-
+	RyID         ClIDType
+	Name         string
+	URL          URL
+	Email        string
+	Voice        E164Type
+	Fax          E164Type
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	TLDs         []*TLD
 	PremiumLists []*PremiumList
 }
 
