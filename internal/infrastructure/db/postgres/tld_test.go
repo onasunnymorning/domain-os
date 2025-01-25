@@ -11,6 +11,7 @@ import (
 
 func TestToDBTld(t *testing.T) {
 	tld, err := entities.NewTLD("com")
+	tld.RyID = "ry-123"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +33,7 @@ func TestToDBTld(t *testing.T) {
 	require.Equal(t, tld.UName.String(), dbtld.UName, "TLD UName mismatch")
 	require.Equal(t, tld.CreatedAt, dbtld.CreatedAt, "TLD CreatedAt mismatch")
 	require.Equal(t, tld.UpdatedAt, dbtld.UpdatedAt, "TLD UpdatedAt mismatch")
+	require.Equal(t, tld.RyID.String(), dbtld.RyID, "TLD RyID mismatch")
 	require.Len(t, dbtld.Phases, 2, "TLD Phases length mismatch")
 }
 
@@ -40,6 +42,7 @@ func TestFromDBTld(t *testing.T) {
 		Name:      "com",
 		Type:      "generic",
 		UName:     "com",
+		RyID:      "ry-123",
 		CreatedAt: entities.RoundTime(time.Now().UTC()),
 		UpdatedAt: entities.RoundTime(time.Now().UTC()),
 	}
@@ -66,5 +69,6 @@ func TestFromDBTld(t *testing.T) {
 	require.Equal(t, dbtld.UName, tld.UName.String(), "TLD UName mismatch")
 	require.Equal(t, dbtld.CreatedAt, tld.CreatedAt, "TLD CreatedAt mismatch")
 	require.Equal(t, dbtld.UpdatedAt, tld.UpdatedAt, "TLD UpdatedAt mismatch")
+	require.Equal(t, dbtld.RyID, tld.RyID.String(), "TLD RyID mismatch")
 	require.Len(t, tld.Phases, 2, "TLD Phases length mismatch")
 }
