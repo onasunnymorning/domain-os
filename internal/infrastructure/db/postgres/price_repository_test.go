@@ -16,6 +16,7 @@ type PriceSuite struct {
 	TLDName   string
 	PhaseID   int64
 	PhaseName string
+	ry        *entities.RegistryOperator
 }
 
 func TestPriceSuite(t *testing.T) {
@@ -27,9 +28,18 @@ func (s *PriceSuite) SetupSuite() {
 	repo := NewGormTLDRepo(s.db)
 	phaseRepo := NewGormPhaseRepository(s.db)
 
+	// Create a Registry Operator
+	ro, _ := entities.NewRegistryOperator("PriceSuiteRo", "PriceSuiteRo", "PriceSuiteRo@my.email")
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err := roRepo.Create(context.Background(), ro)
+	s.Require().NoError(err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	s.Require().NoError(err)
+	s.ry = createdRo
+
 	// Create a tld
-	tld, _ := entities.NewTLD("phaseprice.test")
-	err := repo.Create(context.Background(), tld)
+	tld, _ := entities.NewTLD("phaseprice.test", "PriceSuiteRo")
+	err = repo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 
 	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)

@@ -19,6 +19,7 @@ type DomainSuite struct {
 	tld       string
 	contactID string
 	hosts     []*entities.Host
+	ry        *entities.RegistryOperator
 }
 
 func TestDomainSuite(t *testing.T) {
@@ -36,8 +37,17 @@ func (s *DomainSuite) SetupSuite() {
 	s.Require().NotNil(createdRar)
 	s.rarClid = createdRar.ClID.String()
 
+	// Create a Registry Operator
+	ro, _ := entities.NewRegistryOperator("DomainSuiteRy", "DomainSuiteRy", "me@my.email")
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err = roRepo.Create(context.Background(), ro)
+	s.Require().NoError(err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	s.Require().NoError(err)
+	s.ry = createdRo
+
 	// Create a TLD
-	tld, _ := entities.NewTLD("domaintesttld")
+	tld, _ := entities.NewTLD("domaintesttld", "DomainSuiteRy")
 	tldRepo := NewGormTLDRepo(s.db)
 	err = tldRepo.Create(context.Background(), tld)
 	s.Require().NoError(err)
@@ -45,7 +55,7 @@ func (s *DomainSuite) SetupSuite() {
 
 	// Create a 5 more TLDs
 	for i := 0; i < 5; i++ {
-		tld, _ := entities.NewTLD(fmt.Sprintf("domaintesttld%d", i))
+		tld, _ := entities.NewTLD(fmt.Sprintf("domaintesttld%d", i), "DomainSuiteRy")
 		err = tldRepo.Create(context.Background(), tld)
 		s.Require().NoError(err)
 	}
@@ -108,6 +118,11 @@ func (s *DomainSuite) TearDownSuite() {
 			_ = repo.DeleteHostByRoid(context.Background(), hoRoID)
 		}
 	}
+	if s.ry != nil {
+		repo := NewGORMRegistryOperatorRepository(s.db)
+		_ = repo.DeleteByRyID(context.Background(), s.ry.RyID.String())
+	}
+
 }
 
 func (s *DomainSuite) TestDomainRepository_CreateDomain() {

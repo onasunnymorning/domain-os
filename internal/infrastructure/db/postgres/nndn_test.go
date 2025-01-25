@@ -16,6 +16,7 @@ type NNDNSuite struct {
 	suite.Suite
 	db  *gorm.DB
 	tld string
+	ry  *entities.RegistryOperator
 }
 
 func TestNNDNSuite(t *testing.T) {
@@ -25,8 +26,18 @@ func TestNNDNSuite(t *testing.T) {
 func (s *NNDNSuite) SetupSuite() {
 	s.db = getTestDB()
 	tldRepo := NewGormTLDRepo(s.db)
-	tld, _ := entities.NewTLD("nndntld")
-	err := tldRepo.Create(context.Background(), tld)
+
+	// Create a Registry Operator
+	ro, _ := entities.NewRegistryOperator("NNDNSuiteRo", "NNDNSuiteRo", "NNDNSuiteRo@my.email")
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err := roRepo.Create(context.Background(), ro)
+	require.NoError(s.T(), err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	require.NoError(s.T(), err)
+	s.ry = createdRo
+
+	tld, _ := entities.NewTLD("nndntld", "NNDNSuiteRo")
+	err = tldRepo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 	s.tld = tld.Name.String()
 }
@@ -35,6 +46,11 @@ func (s *NNDNSuite) TearDownSuite() {
 	if s.tld != "" {
 		tldRepo := NewGormTLDRepo(s.db)
 		err := tldRepo.DeleteByName(context.Background(), s.tld)
+		require.NoError(s.T(), err)
+	}
+	if s.ry != nil {
+		roRepo := NewGORMRegistryOperatorRepository(s.db)
+		err := roRepo.DeleteByRyID(context.Background(), s.ry.RyID.String())
 		require.NoError(s.T(), err)
 	}
 }

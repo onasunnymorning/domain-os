@@ -47,12 +47,17 @@ type TLD struct {
 }
 
 // NewTLD returns a pointer to a TLD struct or an error (ErrInvalidDomainName) if the domain name is invalid. It will set the Uname and TLDType fields.
-func NewTLD(name string) (*TLD, error) {
+func NewTLD(name, RyID string) (*TLD, error) {
 	d, err := NewDomainName(name)
 	if err != nil {
 		return nil, err
 	}
+	validatedRyID, err := NewClIDType(RyID)
+	if err != nil {
+		return nil, err
+	}
 	tld := &TLD{Name: *d}
+	tld.RyID = validatedRyID
 	tld.SetUname()
 	tld.setTLDType()
 	tld.CreatedAt = RoundTime(time.Now().UTC())

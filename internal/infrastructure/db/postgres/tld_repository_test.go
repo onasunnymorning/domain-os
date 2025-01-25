@@ -12,7 +12,8 @@ import (
 
 type TLDSuite struct {
 	suite.Suite
-	db *gorm.DB
+	db               *gorm.DB
+	RegistryOperator *entities.RegistryOperator
 }
 
 func TestTLDSuite(t *testing.T) {
@@ -22,6 +23,28 @@ func TestTLDSuite(t *testing.T) {
 func (s *TLDSuite) SetupSuite() {
 	s.db = getTestDB()
 	NewGormTLDRepo(s.db)
+
+	// Create a Registry Operator
+	ro, _ := entities.NewRegistryOperator("TLDSuiteRo", "TLDSuiteRo", "TLDSuiteRo@me.email")
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err := roRepo.Create(context.Background(), ro)
+	require.NoError(s.T(), err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	require.NoError(s.T(), err)
+	s.RegistryOperator = createdRo
+
+	createdRo, err = roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	require.NoError(s.T(), err)
+	s.RegistryOperator = createdRo
+
+}
+
+func (s *TLDSuite) TearDownSuite() {
+	if s.RegistryOperator != nil {
+		roRepo := NewGORMRegistryOperatorRepository(s.db)
+		_ = roRepo.DeleteByRyID(context.Background(), s.RegistryOperator.RyID.String())
+	}
+
 }
 
 func (s *TLDSuite) TestCreateTLD() {
@@ -29,7 +52,7 @@ func (s *TLDSuite) TestCreateTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld, _ := entities.NewTLD("com")
+	tld, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
@@ -45,7 +68,7 @@ func (s *TLDSuite) TestCreateTLD_Duplicate() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld, _ := entities.NewTLD("com")
+	tld, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
@@ -59,11 +82,11 @@ func (s *TLDSuite) TestListTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld1, _ := entities.NewTLD("com")
+	tld1, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld1)
 	require.NoError(s.T(), err)
 
-	tld2, _ := entities.NewTLD("net")
+	tld2, _ := entities.NewTLD("net", "TLDSuiteRo")
 	err = repo.Create(context.Background(), tld2)
 	require.NoError(s.T(), err)
 
@@ -78,7 +101,7 @@ func (s *TLDSuite) TestUpdateTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld, _ := entities.NewTLD("com")
+	tld, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
@@ -98,7 +121,7 @@ func (s *TLDSuite) TestGetTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld, _ := entities.NewTLD("com")
+	tld, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
@@ -110,6 +133,7 @@ func (s *TLDSuite) TestGetTLD() {
 	// Test not found
 	readTLD, err = repo.GetByName(context.Background(), "notfound", false)
 	require.Error(s.T(), err)
+	require.Nil(s.T(), readTLD)
 }
 
 func (s *TLDSuite) TestCountTLD() {
@@ -117,7 +141,7 @@ func (s *TLDSuite) TestCountTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld, _ := entities.NewTLD("com")
+	tld, _ := entities.NewTLD("com", "TLDSuiteRo")
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
