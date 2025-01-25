@@ -7,17 +7,11 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
-type SetStatusCommand struct {
-	DomainName    string
-	Status        string
-	CorrelationID string
-	TraceID       string
-}
-
-func SetDomainStatus(cmd SetStatusCommand) (*entities.Domain, error) {
+func SetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/status/%s", BASEURL, cmd.DomainName, cmd.Status)
 
 	// marshall the request body

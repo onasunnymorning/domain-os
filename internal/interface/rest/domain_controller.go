@@ -1199,11 +1199,11 @@ func (ctrl *DomainController) Purge(ctx *gin.Context) {
 func (ctrl *DomainController) SetStatus(ctx *gin.Context) {
 	dom, err := ctrl.domainService.SetStatus(ctx, ctx.Param("name"), ctx.Param("status"))
 	if err != nil {
-		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrInvalidDomainStatus) {
+		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, services.ErrCannotSetDomainStatus) {
+		if errors.Is(err, services.ErrCannotSetDomainStatus) || errors.Is(err, entities.ErrInvalidDomainStatus) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

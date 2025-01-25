@@ -1614,7 +1614,7 @@ func (s *DomainService) logDomainLifecycleEvent(
 // SetStatus sets the provided status value on the Domain.Status struct to true
 func (s *DomainService) SetStatus(ctx context.Context, domainName, status string) (*entities.Domain, error) {
 	// Fail early before making any DB calls
-	if !slices.Contains(entities.ValidDomainStatuses, status) {
+	if !slices.Contains(entities.ValidDomainStatuses, (status)) {
 		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
 	}
 	// Get the domain

@@ -81,15 +81,19 @@ func RestoreWorkflow(ctx workflow.Context) error {
 			zap.Any("RenewDomainCommand", cmd),
 		)
 
-		// Get the domain
-		domain := &entities.Domain{}
-		getDomainErr := workflow.ExecuteActivity(ctx, activities.GetDomain, workflowID, cmd.Name).Get(ctx, domain)
-		if getDomainErr != nil {
-			logger.Error(
-				"failed to get domain, continuing with next domain",
-				zap.String("domain_name", domain.Name.String()),
+		// Unset the PendingRestore status
+		unsetStatusCommand := commands.ToggleDomainStatusCommand{
+			DomainName:    cmd.Name,
+			Status:        entities.DomainStatusPendingRestore,
+			CorrelationID: workflowID,
+		}
+		unSetStatusErr := workflow.ExecuteActivity(ctx, activities.UnSetDomainStatus, unsetStatusCommand).Get(ctx, nil)
+		if unSetStatusErr != nil {
+			logger.Warn(
+				"failed to unset PendingRestore status",
+				zap.String("domain_name", cmd.Name),
 				zap.String("workflow_id", workflowID),
-				zap.Error(getDomainErr),
+				zap.Error(unSetStatusErr),
 			)
 		}
 
@@ -97,23 +101,23 @@ func RestoreWorkflow(ctx workflow.Context) error {
 		forceRenewErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd, true).Get(ctx, nil)
 		if forceRenewErr != nil {
 			logger.Error(
-				"failed to force renew domain, continuing with next domain",
-				zap.String("domain_name", domain.Name.String()),
+				"failed to force a renew as part of the restore process",
+				zap.String("domain_name", cmd.Name),
 				zap.String("workflow_id", workflowID),
 				zap.Error(forceRenewErr),
 			)
-		}
 
-		// Unset the PendingRestore status
-		setStatusErr := domain.UnSetStatus(entities.DomainStatusPendingRestore)
-		if setStatusErr != nil {
-			logger.Error(
-				"failed to unset PendingRestore status",
-				zap.String("domain_name", domain.Name.String()),
-				zap.String("workflow_id", workflowID),
-				zap.Error(setStatusErr),
-				zap.Any("domain", domain),
-			)
+			// if the renew fails, set the domain status to PendingRestore again so we can try again later
+			setStatusErr := workflow.ExecuteActivity(ctx, activities.SetDomainStatus, unsetStatusCommand).Get(ctx, nil)
+			if setStatusErr != nil {
+				logger.Error(
+					"failed to re-set PendingRestore status after failed renew as part of the restore process",
+					zap.String("domain_name", cmd.Name),
+					zap.String("workflow_id", workflowID),
+					zap.Error(setStatusErr),
+				)
+			}
+
 		}
 
 	}
