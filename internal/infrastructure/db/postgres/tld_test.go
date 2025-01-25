@@ -10,7 +10,7 @@ import (
 )
 
 func TestToDBTld(t *testing.T) {
-	tld, err := entities.NewTLD("com")
+	tld, err := entities.NewTLD("com", "apex")
 	tld.RyID = "ry-123"
 	if err != nil {
 		t.Fatal(err)

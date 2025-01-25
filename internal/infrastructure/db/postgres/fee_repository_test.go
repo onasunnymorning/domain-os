@@ -16,6 +16,7 @@ type FeeSuite struct {
 	TLDName   string
 	PhaseID   int64
 	PhaseName string
+	Ry        *entities.RegistryOperator
 }
 
 func TestPhaseFeeSuite(t *testing.T) {
@@ -27,9 +28,18 @@ func (s *FeeSuite) SetupSuite() {
 	repo := NewGormTLDRepo(s.db)
 	phaseRepo := NewGormPhaseRepository(s.db)
 
+	// Create a Registry Operator
+	ro, _ := entities.NewRegistryOperator("FeeSuiteRo", "FeeSuiteRo", "FeeSuiteRo@my.email")
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err := roRepo.Create(context.Background(), ro)
+	s.Require().NoError(err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	s.Require().NoError(err)
+	s.Ry = createdRo
+
 	// Create a tld
-	tld, _ := entities.NewTLD("phasefee.test")
-	err := repo.Create(context.Background(), tld)
+	tld, _ := entities.NewTLD("phasefee.test", "FeeSuiteRo")
+	err = repo.Create(context.Background(), tld)
 	s.Require().NoError(err)
 
 	readTLD, err := repo.GetByName(context.Background(), tld.Name.String(), false)
@@ -60,6 +70,10 @@ func (s *FeeSuite) TearDownSuite() {
 	if s.PhaseName != "" {
 		repo := NewGormPhaseRepository(s.db)
 		_ = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, s.PhaseName)
+	}
+	if s.Ry != nil {
+		repo := NewGORMRegistryOperatorRepository(s.db)
+		_ = repo.DeleteByRyID(context.Background(), s.Ry.RyID.String())
 	}
 }
 

@@ -75,7 +75,7 @@ func TestTLDService_CreateTLD(t *testing.T) {
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
-	tld, err := entities.NewTLD("com")
+	tld, err := entities.NewTLD("com", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -96,6 +96,7 @@ func TestTLDService_CreateTLD(t *testing.T) {
 func getCreateTLDCommand(tld *entities.TLD) *commands.CreateTLDCommand {
 	return &commands.CreateTLDCommand{
 		Name: tld.Name.String(),
+		RyID: tld.RyID.String(),
 	}
 }
 
@@ -105,7 +106,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
-	tld, err := entities.NewTLD("apex")
+	tld, err := entities.NewTLD("apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -114,7 +115,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	tld, err = entities.NewTLD("com.apex")
+	tld, err = entities.NewTLD("com.apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -149,7 +150,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
-	tld, err := entities.NewTLD("apex")
+	tld, err := entities.NewTLD("apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -158,7 +159,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	tld, err = entities.NewTLD("com.apex")
+	tld, err = entities.NewTLD("com.apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -184,7 +185,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
-	tld, err := entities.NewTLD("apex")
+	tld, err := entities.NewTLD("apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -193,7 +194,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	tld, err = entities.NewTLD("com.apex")
+	tld, err = entities.NewTLD("com.apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -240,7 +241,7 @@ func TestTLDService_CountTLDs(t *testing.T) {
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
 	// Create 2 TLDs
-	tld, err := entities.NewTLD("apex")
+	tld, err := entities.NewTLD("apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -249,7 +250,7 @@ func TestTLDService_CountTLDs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	tld, err = entities.NewTLD("com.apex")
+	tld, err = entities.NewTLD("com.apex", "apex")
 	if err != nil {
 		t.Error(err)
 	}

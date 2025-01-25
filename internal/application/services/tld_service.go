@@ -33,7 +33,7 @@ func NewTLDService(tldRepo repositories.TLDRepository, dnsRecRepo repositories.T
 
 // CreateTLD creates a new TLD
 func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error) {
-	newTLD, err := entities.NewTLD(cmd.Name)
+	newTLD, err := entities.NewTLD(cmd.Name, cmd.RyID)
 	if err != nil {
 		return nil, err
 	}
