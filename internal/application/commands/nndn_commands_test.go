@@ -20,7 +20,8 @@ func TestCreateNNDNCommand_FromRDENNDN(t *testing.T) {
 				AName: "example.com",
 			},
 			cmd: &CreateNNDNCommand{
-				Name: "example.com",
+				Name:   "example.com",
+				Reason: "RDE-import",
 			},
 			wantErr: nil,
 		},
