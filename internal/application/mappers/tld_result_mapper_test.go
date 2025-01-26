@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewTLDResultFromTLD(t *testing.T) {
-	tld, err := entities.NewTLD("com")
+	tld, err := entities.NewTLD("com", "apex")
 	if err != nil {
 		t.Fatal(err)
 	}

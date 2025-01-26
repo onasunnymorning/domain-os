@@ -8,23 +8,32 @@ import (
 func TestNewTLD(t *testing.T) {
 	tests := []struct {
 		name     string
+		ryID     string
 		expected *TLD
 		err      error
 	}{
 		{
 			name:     "example.com",
+			ryID:     "apex",
 			expected: &TLD{Name: "example.com"},
 			err:      nil,
 		},
 		{
 			name:     "-invalid",
+			ryID:     "apex",
 			expected: nil,
 			err:      ErrInvalidLabelDash,
+		},
+		{
+			name:     "validdomain-invalid-ryid.com",
+			ryID:     "thisisaverylongryidthatshouldnotbeaccepted",
+			expected: nil,
+			err:      ErrInvalidClIDType,
 		},
 	}
 
 	for _, test := range tests {
-		result, err := NewTLD(test.name)
+		result, err := NewTLD(test.name, test.ryID)
 		if err != test.err {
 			t.Errorf("Expected error to be %v, but got %v for input %s", test.err, err, test.name)
 		}
