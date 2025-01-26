@@ -26,7 +26,7 @@ func NewNNDNService(nndnRepo repositories.NNDNRepository) *NNDNService {
 func (svc *NNDNService) CreateNNDN(ctx context.Context, cmd *commands.CreateNNDNCommand) (*entities.NNDN, error) {
 	newNNDN, err := entities.NewNNDN(cmd.Name)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(entities.ErrInvalidNNDN, err)
 	}
 	if cmd.Reason != "" {
 		r, err := entities.NewClIDType(cmd.Reason)

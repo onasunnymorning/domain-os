@@ -182,7 +182,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 	result, err := ctrl.tldService.CreateTLD(ctx, cmd)
 	if err != nil {
 		event.Details.Error = err.Error()
-		if errors.Is(err, entities.ErrinvalIdDomainNameLength) || errors.Is(err, entities.ErrInvalidLabelLength) || errors.Is(err, entities.ErrInvalidLabelDash) || errors.Is(err, entities.ErrInvalidLabelDoubleDash) || errors.Is(err, entities.ErrInvalidLabelIDN) || errors.Is(err, entities.ErrLabelContainsInvalidCharacter) {
+		if errors.Is(err, services.ErrInvalidCreateTLDCommand) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
