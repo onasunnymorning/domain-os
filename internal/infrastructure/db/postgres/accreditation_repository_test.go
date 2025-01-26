@@ -14,6 +14,7 @@ type AccreditationSuite struct {
 	db  *gorm.DB
 	rar *entities.Registrar
 	tld *entities.TLD
+	ry  *entities.RegistryOperator
 }
 
 func TestAccreditationSuite(t *testing.T) {
@@ -35,8 +36,24 @@ func (s *AccreditationSuite) SetupSuite() {
 	}
 	s.rar = createdRar
 
+	// Create a Registry Operator
+	ro, err := entities.NewRegistryOperator("apex", "apex", "me@my.email")
+	if err != nil {
+		s.T().Fatal(err)
+	}
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err = roRepo.Create(context.Background(), ro)
+	if err != nil {
+		s.T().Fatal(err)
+	}
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	if err != nil {
+		s.T().Fatal(err)
+	}
+	s.ry = createdRo
+
 	// Create a TLD
-	tld, err := entities.NewTLD("apex")
+	tld, err := entities.NewTLD("apex", createdRo.RyID.String())
 	if err != nil {
 		s.T().Fatal(err)
 	}
@@ -57,6 +74,10 @@ func (s *AccreditationSuite) TearDownSuite() {
 	if s.tld != nil {
 		tldRepo := NewGormTLDRepo(s.db)
 		_ = tldRepo.DeleteByName(context.Background(), s.tld.Name.String())
+	}
+	if s.ry != nil {
+		ryRepo := NewGORMRegistryOperatorRepository(s.db)
+		_ = ryRepo.DeleteByRyID(context.Background(), s.ry.RyID.String())
 	}
 }
 

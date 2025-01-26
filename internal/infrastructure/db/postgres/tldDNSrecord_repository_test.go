@@ -13,6 +13,7 @@ type DNSRecordSuite struct {
 	suite.Suite
 	db      *gorm.DB
 	tldName string
+	ry      *entities.RegistryOperator
 }
 
 func TestDNSRecordSuite(t *testing.T) {
@@ -22,8 +23,18 @@ func TestDNSRecordSuite(t *testing.T) {
 func (s *DNSRecordSuite) SetupSuite() {
 	s.db = setupTestDB()
 
+	// Create a Registry Operator
+	ro, err := entities.NewRegistryOperator("DNSRecordSuitRo", "DNSRecordSuitRo", "DNSRecordSuitRo@me.email")
+	s.Require().NoError(err)
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_, err = roRepo.Create(context.Background(), ro)
+	s.Require().NoError(err)
+	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
+	s.Require().NoError(err)
+	s.ry = createdRo
+
 	// Create a TLD
-	tld, err := entities.NewTLD("waves")
+	tld, err := entities.NewTLD("waves", "DNSRecordSuitRo")
 	s.Require().NoError(err)
 	tldRepo := NewGormTLDRepo(s.db)
 	err = tldRepo.Create(context.Background(), tld)
@@ -35,6 +46,11 @@ func (s *DNSRecordSuite) TearDownSuite() {
 	if s.tldName != "" {
 		tldRepo := NewGormTLDRepo(s.db)
 		err := tldRepo.DeleteByName(context.Background(), s.tldName)
+		s.Require().NoError(err)
+	}
+	if s.ry != nil {
+		roRepo := NewGORMRegistryOperatorRepository(s.db)
+		err := roRepo.DeleteByRyID(context.Background(), s.ry.RyID.String())
 		s.Require().NoError(err)
 	}
 }

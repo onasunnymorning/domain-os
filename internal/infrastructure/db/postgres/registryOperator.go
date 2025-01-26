@@ -8,15 +8,15 @@ import (
 
 // RegistryOperator represents a registry Operator Entity in our repository
 type RegistryOperator struct {
-	RyID      string `gorm:"primary_key"`
-	Name      string `gorm:"unique;not null"`
-	URL       string
-	Email     string `gorm:"not null"`
-	Voice     string
-	Fax       string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-
+	RyID         string `gorm:"primary_key"`
+	Name         string `gorm:"unique;not null"`
+	URL          string
+	Email        string `gorm:"not null"`
+	Voice        string
+	Fax          string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	TLDs         []*TLD         `gorm:"foreignKey:RyID"`
 	PremiumLists []*PremiumList `gorm:"foreignKey:RyID"`
 }
 
@@ -30,6 +30,10 @@ func (ro *RegistryOperator) ToEntity() *entities.RegistryOperator {
 	pls := make([]*entities.PremiumList, len(ro.PremiumLists))
 	for i, pl := range ro.PremiumLists {
 		pls[i] = pl.ToEntity()
+	}
+	tlds := make([]*entities.TLD, len(ro.TLDs))
+	for i, tld := range ro.TLDs {
+		tlds[i] = FromDBTLD(tld)
 	}
 	return &entities.RegistryOperator{
 		RyID:         entities.ClIDType(ro.RyID),
@@ -61,4 +65,10 @@ func (ro *RegistryOperator) FromEntity(e *entities.RegistryOperator) {
 		pls[i].FromEntity(pl)
 	}
 	ro.PremiumLists = pls
+
+	tlds := make([]*TLD, len(e.TLDs))
+	for i, tld := range e.TLDs {
+		tlds[i] = ToDBTLD(tld)
+	}
+	ro.TLDs = tlds
 }

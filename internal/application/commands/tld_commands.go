@@ -14,6 +14,7 @@ type TLDResult struct {
 // CreateTLDCommand is the command to create a TLD
 type CreateTLDCommand struct {
 	Name string
+	RyID string
 }
 
 // CreateTLDCommandResult is the result of the CreateTLDCommand

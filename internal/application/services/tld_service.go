@@ -8,13 +8,13 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/mappers"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
 
 var (
 	ErrCannotDeleteTLDWithActivePhases = errors.New("cannot delete TLD with active phases")
+	ErrInvalidCreateTLDCommand         = errors.New("invalid create TLD command")
 )
 
 // TLDService implements the TLDService interface
@@ -31,22 +31,26 @@ func NewTLDService(tldRepo repositories.TLDRepository, dnsRecRepo repositories.T
 	}
 }
 
-// CreateTLD creates a new TLD
-func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*commands.CreateTLDCommandResult, error) {
-	newTLD, err := entities.NewTLD(cmd.Name)
+// CreateTLD creates a new top-level domain (TLD) based on the provided command.
+// It validates the command and attempts to create the TLD in the repository.
+// If successful, it retrieves and returns the created TLD.
+func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*entities.TLD, error) {
+	newTLD, err := entities.NewTLD(cmd.Name, cmd.RyID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
 	}
 
 	err = svc.tldRepository.Create(ctx, newTLD)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
 	}
 
-	var result commands.CreateTLDCommandResult
-	result.Result = mappers.NewTLDResultFromTLD(newTLD)
+	createdTLD, err := svc.tldRepository.GetByName(ctx, strings.ToLower(cmd.Name), false)
+	if err != nil {
+		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
+	}
 
-	return &result, nil
+	return createdTLD, nil
 }
 
 // GetTLDByName gets a TLD by name

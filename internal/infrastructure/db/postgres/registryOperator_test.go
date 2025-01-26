@@ -56,6 +56,14 @@ func TestRegistryOperator_FromEntity(t *testing.T) {
 				Name: "premium-list2",
 			},
 		},
+		TLDs: []*TLD{
+			{
+				Name: "tld1",
+			},
+			{
+				Name: "tld2",
+			},
+		},
 	}
 
 	ro.FromEntity(&e)
@@ -69,5 +77,6 @@ func TestRegistryOperator_FromEntity(t *testing.T) {
 	assert.Equal(t, e.CreatedAt, ro.CreatedAt)
 	assert.Equal(t, e.UpdatedAt, ro.UpdatedAt)
 	assert.Equal(t, len(e.PremiumLists), len(ro.PremiumLists))
+	assert.Equal(t, len(e.TLDs), len(ro.TLDs))
 
 }
