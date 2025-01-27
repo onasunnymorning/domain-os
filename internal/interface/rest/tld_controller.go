@@ -33,6 +33,8 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss inte
 		tldRoutes.GET("count", controller.GetTLDCount)
 		tldRoutes.POST("", controller.CreateTLD)
 		tldRoutes.DELETE(":tldName", controller.DeleteTLDByName)
+		tldRoutes.POST(":tldName/status/:status", controller.SetTLDStatus)
+		tldRoutes.DELETE(":tldName/status", controller.DeleteTLDStatus)
 		tldRoutes.GET(":tldName/dns/resource-records", controller.GetTLDHeader)
 		tldRoutes.GET(":tldName/dns/domain-delegations", controller.GetNSRecordsPerTLD)
 		tldRoutes.GET(":tldName/dns/glue-records", controller.GetGlueRecordsPerTLD)
@@ -326,4 +328,78 @@ func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
 		Count:      count,
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+// SetTLDStatus godoc
+// @Summary Set TLD status
+// @Description Toggle the status for a TLD to ON. Currently supports AllowEscrowImport only
+// @Tags TLDs
+// @Produce json
+// @Param tldName path string true "TLD Name"
+// @Param status path string true "Status"
+// @Success 204
+// @Failure 400
+// @Failure 409
+// @Failure 500
+// @Router /tlds/{tldName}/status/{status} [post]
+func (ctrl *TLDController) SetTLDStatus(ctx *gin.Context) {
+	// check if the status string is valid
+	status := ctx.Param("status")
+	if status != "AllowEscrowImport" {
+		ctx.JSON(400, gin.H{"error": "Invalid status"})
+		return
+	}
+
+	tldName := ctx.Param("tldName")
+
+	// Use the service to set the status
+	_, err := ctrl.tldService.SetAllowEscrowImport(ctx, tldName, true)
+	if err != nil {
+		// Return 409 conflict if the error is ErrCannotSetEscrowImportWithActivePhases
+		if errors.Is(err, entities.ErrCannotSetEscrowImportWithActivePhases) {
+			ctx.JSON(409, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
+}
+
+// DeleteTLDStatus godoc
+// @Summary Delete TLD status
+// @Description Toggle the status for a TLD to OFF. Currently supports AllowEscrowImport only
+// @Tags TLDs
+// @Produce json
+// @Param tldName path string true "TLD Name"
+// @Param status path string true "Status"
+// @Success 204
+// @Failure 400
+// @Failure 409
+// @Failure 500
+// @Router /tlds/{tldName}/status/:status [delete]
+func (ctrl *TLDController) DeleteTLDStatus(ctx *gin.Context) {
+	// check if the status string is valid
+	status := ctx.Param("status")
+	if status != "AllowEscrowImport" {
+		ctx.JSON(400, gin.H{"error": "Invalid status"})
+		return
+	}
+
+	tldName := ctx.Param("tldName")
+
+	// Use the service to set the status
+	_, err := ctrl.tldService.SetAllowEscrowImport(ctx, tldName, false)
+	if err != nil {
+		// Return 409 conflict if the error is ErrCannotSetEscrowImportWithActivePhases
+		if errors.Is(err, entities.ErrCannotSetEscrowImportWithActivePhases) {
+			ctx.JSON(409, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
 }
