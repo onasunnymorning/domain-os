@@ -151,7 +151,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 
-	// If the phase is provided, check if the domain is valid in the phase
+	// If the phase policy check is requested, check if the domain is valid in the phase
 	if cmd.EnforcePhasePolicy {
 		// Get the phase
 		tld, err := s.tldRepo.GetByName(ctx, d.Name.ParentDomain(), true)
