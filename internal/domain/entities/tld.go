@@ -47,7 +47,7 @@ type TLD struct {
 	// RyID is the Registry Operator ID
 	RyID ClIDType `json:"RyID"`
 	// AllowEscrowImports is a boolean indicating if the TLD allows escrow imports
-	AllowEscrowImport bool `json:"AllowEscrowImports"`
+	AllowEscrowImport bool `json:"AllowEscrowImport"`
 	// EnableDNS is a boolean indicating if the TLD has DNS enabled
 	EnableDNS bool `json:"EnableDNS"`
 	// Phases is a slice of phases for the TLD
