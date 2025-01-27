@@ -28,19 +28,24 @@ func (repo *MockDNSRecordRepository) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-// MockTLDRepository is a mock implementation of the TLDRepository interface
-type MockTLDRepository struct {
+// MocktldRepository is a mock implementation of the tldRepository interface
+type MocktldRepository struct {
 	Tlds []*entities.TLD
 }
 
+// Update updates a TLD
+func (repo *MocktldRepository) Update(ctx context.Context, tld *entities.TLD) error {
+	return nil
+}
+
 // CreateTLD creates a TLD
-func (repo *MockTLDRepository) Create(ctx context.Context, tld *entities.TLD) error {
+func (repo *MocktldRepository) Create(ctx context.Context, tld *entities.TLD) error {
 	repo.Tlds = append(repo.Tlds, tld)
 	return nil
 }
 
 // GetByName returns a TLD by name
-func (repo *MockTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
+func (repo *MocktldRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	for _, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			return tld, nil
@@ -50,12 +55,12 @@ func (repo *MockTLDRepository) GetByName(ctx context.Context, name string, prelo
 }
 
 // List returns a list of all TLDs
-func (repo *MockTLDRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
+func (repo *MocktldRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
 	return repo.Tlds, nil
 }
 
 // DeleteByName deletes a TLD by name
-func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) error {
+func (repo *MocktldRepository) DeleteByName(ctx context.Context, name string) error {
 	for i, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			repo.Tlds = append(repo.Tlds[:i], repo.Tlds[i+1:]...)
@@ -66,12 +71,12 @@ func (repo *MockTLDRepository) DeleteByName(ctx context.Context, name string) er
 }
 
 // Count returns the number of TLDs
-func (repo *MockTLDRepository) Count(ctx context.Context) (int64, error) {
+func (repo *MocktldRepository) Count(ctx context.Context) (int64, error) {
 	return int64(len(repo.Tlds)), nil
 }
 
 func TestTLDService_CreateTLD(t *testing.T) {
-	tldRepo := MockTLDRepository{}
+	tldRepo := MocktldRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
@@ -101,7 +106,7 @@ func getCreateTLDCommand(tld *entities.TLD) *commands.CreateTLDCommand {
 }
 
 func TestTLDService_GetTLDByName(t *testing.T) {
-	tldRepo := MockTLDRepository{}
+	tldRepo := MocktldRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
@@ -145,7 +150,7 @@ func TestTLDService_GetTLDByName(t *testing.T) {
 }
 
 func TestTLDService_ListTLDs(t *testing.T) {
-	tldRepo := MockTLDRepository{}
+	tldRepo := MocktldRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
@@ -180,7 +185,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 }
 
 func TestTLDService_DeleteTLDByName(t *testing.T) {
-	tldRepo := MockTLDRepository{}
+	tldRepo := MocktldRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
@@ -236,7 +241,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 }
 
 func TestTLDService_CountTLDs(t *testing.T) {
-	tldRepo := MockTLDRepository{}
+	tldRepo := MocktldRepository{}
 	dnsRecRepo := MockDNSRecordRepository{}
 	service := NewTLDService(&tldRepo, &dnsRecRepo)
 
@@ -267,5 +272,39 @@ func TestTLDService_CountTLDs(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("Expected 2 tlds, got %d", count)
+	}
+}
+func TestTLDService_SetAllowEscrowImport(t *testing.T) {
+	tldRepo := MocktldRepository{}
+	dnsRecRepo := MockDNSRecordRepository{}
+	service := NewTLDService(&tldRepo, &dnsRecRepo)
+
+	// Create a TLD
+	tld, err := entities.NewTLD("apex", "apex")
+	if err != nil {
+		t.Error(err)
+	}
+	cmd := getCreateTLDCommand(tld)
+	_, err = service.CreateTLD(context.Background(), cmd)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Set AllowEscrowImport to true
+	updatedTLD, err := service.SetAllowEscrowImport(context.Background(), "apex", true)
+	if err != nil {
+		t.Error(err)
+	}
+	if !updatedTLD.AllowEscrowImport {
+		t.Errorf("Expected AllowEscrowImport to be true, got %v", updatedTLD.AllowEscrowImport)
+	}
+
+	// Set AllowEscrowImport to false
+	updatedTLD, err = service.SetAllowEscrowImport(context.Background(), "apex", false)
+	if err != nil {
+		t.Error(err)
+	}
+	if updatedTLD.AllowEscrowImport {
+		t.Errorf("Expected AllowEscrowImport to be false, got %v", updatedTLD.AllowEscrowImport)
 	}
 }

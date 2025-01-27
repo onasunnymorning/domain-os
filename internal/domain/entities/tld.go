@@ -10,14 +10,15 @@ import (
 )
 
 var (
-	ErrTLDNotFound         = errors.New("TLD not found")
-	ErrPhaseAlreadyExists  = errors.New("phase with this name already exists")
-	ErrGAPhaseOverlaps     = errors.New("GA phase date range overlaps with existing GA phase")
-	ErrNoActivePhase       = errors.New("no active phase found")
-	ErrPhaseNotFound       = errors.New("phase not found")
-	ErrDeleteHistoricPhase = errors.New("cannot delete a historic phase")
-	ErrUpdateHistoricPhase = errors.New("cannot update a historic phase")
-	ErrDeleteCurrentPhase  = errors.New("cannot delete the current phase, set an end date instead")
+	ErrTLDNotFound                           = errors.New("TLD not found")
+	ErrPhaseAlreadyExists                    = errors.New("phase with this name already exists")
+	ErrGAPhaseOverlaps                       = errors.New("GA phase date range overlaps with existing GA phase")
+	ErrNoActivePhase                         = errors.New("no active phase found")
+	ErrPhaseNotFound                         = errors.New("phase not found")
+	ErrDeleteHistoricPhase                   = errors.New("cannot delete a historic phase")
+	ErrUpdateHistoricPhase                   = errors.New("cannot update a historic phase")
+	ErrDeleteCurrentPhase                    = errors.New("cannot delete the current phase, set an end date instead")
+	ErrCannotSetEscrowImportWithActivePhases = errors.New("cannot set AllowEscrowImport to true with active phases")
 )
 
 // TLDType is a custom type describing the type of TLD
@@ -37,13 +38,22 @@ const (
 
 // TLD is a struct representing a top-level domain
 type TLD struct {
-	Name      DomainName `json:"Name"`  // Name is the ASCII name of the TLD (aka A-label)
-	Type      TLDType    `json:"Type"`  // Type is the type of TLD (generic, country-code, second-level)
-	UName     DomainName `json:"UName"` // UName is the unicode name of the TLD (aka U-label). Should be empty if the TLD is not an IDN.
-	RyID      ClIDType   `json:"RyID"`  // RyID is the Registry Operator ID
-	Phases    []Phase    `json:"Phases"`
-	CreatedAt time.Time  `json:"CreatedAt"`
-	UpdatedAt time.Time  `json:"UpdatedAt"`
+	// ASCII name of the TLD (aka A-label)
+	Name DomainName `json:"Name"`
+	// The type of TLD (generic, country-code, second-level)
+	Type TLDType `json:"Type"`
+	// UName is the unicode name of the TLD (aka U-label). Should be empty if the TLD is not an IDN.
+	UName DomainName `json:"UName"`
+	// RyID is the Registry Operator ID
+	RyID ClIDType `json:"RyID"`
+	// AllowEscrowImports is a boolean indicating if the TLD allows escrow imports
+	AllowEscrowImport bool `json:"AllowEscrowImport"`
+	// EnableDNS is a boolean indicating if the TLD has DNS enabled
+	EnableDNS bool `json:"EnableDNS"`
+	// Phases is a slice of phases for the TLD
+	Phases    []Phase   `json:"Phases"`
+	CreatedAt time.Time `json:"CreatedAt"`
+	UpdatedAt time.Time `json:"UpdatedAt"`
 }
 
 // NewTLD returns a pointer to a TLD struct or an error (ErrInvalidDomainName) if the domain name is invalid. It will set the Uname and TLDType fields.
@@ -329,4 +339,28 @@ func (t *TLD) GetCurrentPhases() []Phase {
 		}
 	}
 	return phases
+}
+
+// SetAllowEscrowImport sets the AllowEscrowImport field of the TLD
+// This will only allow the flag to be set if there are no active phases
+// This requies the calling code to ensure the Phases property is populated
+func (t *TLD) SetAllowEscrowImport(allow bool) error {
+	// there are no restrictions to setting this to false
+	if !allow {
+		t.AllowEscrowImport = allow
+		return nil
+	}
+	// if we are trying to set it to true, we need to check if there are any active phases
+	currentPhases := t.GetCurrentPhases()
+	if len(currentPhases) > 0 {
+		return ErrCannotSetEscrowImportWithActivePhases
+	}
+
+	t.AllowEscrowImport = allow
+	return nil
+}
+
+// SetEnableDNS sets the EnableDNS field of the TLD
+func (t *TLD) SetEnableDNS(enable bool) {
+	t.EnableDNS = enable
 }

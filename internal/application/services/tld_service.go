@@ -103,37 +103,37 @@ func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.T
 		case "SOA":
 			s, ok := rr.(*dns.SOA)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a SOA record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a SOA record: %s" + rr.String())
 			}
 			tldHeader.Soa = *s
 		case "NS":
 			ns, ok := rr.(*dns.NS)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a NS record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a NS record: %s" + rr.String())
 			}
 			tldHeader.Ns = append(tldHeader.Ns, *ns)
 		case "A":
 			_, ok := rr.(*dns.A)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not an A record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an A record: %s" + rr.String())
 			}
 			tldHeader.Glue = append(tldHeader.Glue, rr)
 		case "AAAA":
 			_, ok := rr.(*dns.AAAA)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not an AAAA record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an AAAA record: %s" + rr.String())
 			}
 			tldHeader.Glue = append(tldHeader.Glue, rr)
 		case "DS":
 			ds, ok := rr.(*dns.DS)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a DS record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DS record: %s" + rr.String())
 			}
 			tldHeader.Ds = append(tldHeader.Ds, *ds)
 		case "DNSKEY":
 			dnskey, ok := rr.(*dns.DNSKEY)
 			if !ok {
-				return nil, fmt.Errorf("Error converting TLDHeader to string: RR is not a DNSKEY record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DNSKEY record: %s" + rr.String())
 			}
 			tldHeader.DNSKey = append(tldHeader.DNSKey, *dnskey)
 		}
@@ -145,4 +145,29 @@ func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.T
 // CountTLDs returns the number of TLDs
 func (svc *TLDService) CountTLDs(ctx context.Context) (int64, error) {
 	return svc.tldRepository.Count(ctx)
+}
+
+// SetAllowEscrowImport sets the AllowEscrowImport flag for a TLD
+// It will validate the action at the domain layer and return an error if the action is invalid
+func (svc *TLDService) SetAllowEscrowImport(ctx context.Context, tldName string, allowEscrowImport bool) (*entities.TLD, error) {
+	// Get the tld from the repository
+	// Include the phases in the query!
+	tld, err := svc.tldRepository.GetByName(ctx, tldName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use the tld method to set the flag
+	err = tld.SetAllowEscrowImport(allowEscrowImport)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the tld back to the repository
+	err = svc.tldRepository.Update(ctx, tld)
+	if err != nil {
+		return nil, err
+	}
+
+	return tld, nil
 }

@@ -1,9 +1,9 @@
 package interfaces
 
 import (
+	"context"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"golang.org/x/net/context"
 )
 
 type TLDService interface {
@@ -13,4 +13,5 @@ type TLDService interface {
 	DeleteTLDByName(ctx context.Context, name string) error
 	GetTLDHeader(ctx context.Context, name string) (*entities.TLDHeader, error)
 	CountTLDs(ctx context.Context) (int64, error)
+	SetAllowEscrowImport(ctx context.Context, name string, allowEscrowImport bool) (*entities.TLD, error)
 }
