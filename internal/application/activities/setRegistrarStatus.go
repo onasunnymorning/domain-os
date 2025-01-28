@@ -1,16 +1,13 @@
 package activities
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"strings"
 )
 
 func SetRegistrarStatus(correlationID, clid, status string) error {
-	ENDPOINT := fmt.Sprintf("%s/registrars/%s/status/%s", BASEURL, clid, status)
+	ENDPOINT := fmt.Sprintf("%s/registrars/%s/status/%s", BASEURL, clid, strings.ToLower(status))
 
 	// Set up an API client
 	client := http.Client{}
@@ -35,20 +32,9 @@ func SetRegistrarStatus(correlationID, clid, status string) error {
 		return fmt.Errorf("failed to set registrar %s status to %s: %w", clid, status, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
-	}
-
-	var rar *entities.Registrar
-
-	err = json.Unmarshal(body, rar)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal response body: %w", err)
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to set registrar status through API: %s", resp.Status)
 	}
 
 	return nil

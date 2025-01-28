@@ -34,7 +34,7 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.I
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchRegistrarsPage(context.Background(), client, currentURL, bearerToken)
+		apiResponse, err := fetchIANARegistrarsPage(context.Background(), client, currentURL, bearerToken)
 		if err != nil {
 			return nil, err
 		}
@@ -67,9 +67,9 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.I
 	return allRegistrars, nil
 }
 
-// fetchRegistrarsPage fetches a single page of IANA registrars from the provided URL.
+// fetchIANARegistrarsPage fetches a single page of IANA registrars from the provided URL.
 // It handles sending the request, reading the response, checking the status code, and unmarshaling JSON.
-func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
+func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
 	// Create the request with context for cancellation/timeouts
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
