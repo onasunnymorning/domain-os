@@ -1,9 +1,7 @@
 package activities
 
 import (
-	"io"
-
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
 )
 
 // GetICANNRegistrars parses a csv file as published here https://www.icann.org/en/accredited-registrars
@@ -12,9 +10,11 @@ import (
 // This file conatinas complementary information to the IANA registrar list.
 // It is useful only once, during system init, to enrich the IANA registrar list
 // before importing registrars for the first time
-func GetICANNRegistrars(correlationID string, fileReader io.Reader) ([]entities.IANARegistrar, error) {
+func GetICANNRegistrars(correlationID, filename string) ([]icannregistrars.CSVRegistrar, error) {
+	rars, err := icannregistrars.GetICANNCSVRegistrarsFromFile(filename)
+	if err != nil {
+		return nil, err
+	}
 
-	var returnVal []entities.IANARegistrar
-
-	return returnVal, nil
+	return rars, nil
 }

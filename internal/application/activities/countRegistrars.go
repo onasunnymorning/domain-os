@@ -44,7 +44,7 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
 	}
 
-	var countResult *response.CountResult
+	countResult := &response.CountResult{}
 
 	err = json.Unmarshal(body, countResult)
 	if err != nil {

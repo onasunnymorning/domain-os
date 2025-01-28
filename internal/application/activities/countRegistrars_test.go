@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	// Make sure to import your "response" package or wherever CountResult is defined
+	// For example:
+	// "github.com/youruser/yourrepo/response"
 )
 
 func TestCountRegistrars(t *testing.T) {
@@ -20,7 +23,7 @@ func TestCountRegistrars(t *testing.T) {
 			name:               "success response",
 			correlationID:      "corr-id-123",
 			serverStatusCode:   http.StatusOK,
-			serverResponseBody: `{"count": 42}`,
+			serverResponseBody: `{"objectType": "Registrar","count": 42,"timestamp": "2025-01-28T00:59:59.244028648Z"}`,
 			wantCount:          42,
 			wantErr:            false,
 		},
@@ -41,7 +44,7 @@ func TestCountRegistrars(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc // capture range variable for parallel test usage if desired
+		tc := tc // capture range variable if running subtests in parallel
 
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a mock server

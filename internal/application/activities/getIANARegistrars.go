@@ -57,6 +57,9 @@ func GetIANARegistrars(correlationID string) ([]entities.IANARegistrar, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
+	// Append the first batch to the returnVal
+	ianaRars = *apiResponse.Data.(*[]entities.IANARegistrar)
+	returnVal = append(returnVal, ianaRars...)
 
 	// Repeat until the last page by following the next link until empty
 	for apiResponse.Meta.NextLink != "" {
