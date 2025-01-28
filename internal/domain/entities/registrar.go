@@ -73,6 +73,27 @@ type Registrar struct {
 	TLDs                      []*TLD
 }
 
+// RegistrarListItem is a subset of the Registrar object that is used in lists (e.g. list all registrars) when the full object is not needed
+type RegistrarListItem struct {
+	ClID      ClIDType
+	Name      string
+	GurID     int
+	Status    RegistrarStatus
+	Autorenew bool
+}
+
+// GetListRegistrarItem returns a pointer to a ListRegistrarItem struct
+// populated with the Registrar's ClID, Name, GurID, Status, and Autorenew fields.
+func (r *Registrar) GetListRegistrarItem() *RegistrarListItem {
+	return &RegistrarListItem{
+		ClID:      r.ClID,
+		Name:      r.Name,
+		GurID:     r.GurID,
+		Status:    r.Status,
+		Autorenew: r.Autorenew,
+	}
+}
+
 // NewRegistrar creates a new instance of Registrar
 func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarPostalInfo) (*Registrar, error) {
 	r := &Registrar{

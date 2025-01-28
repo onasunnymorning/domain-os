@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
-	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )
 
@@ -39,19 +38,18 @@ func main() {
 	app := &cli.App{
 		Commands: []*cli.Command{
 			{
+				Name:        "spec5",
+				Aliases:     []string{"spec"},
+				Usage:       "sync spec5 data",
+				Description: "pulls the XML spec5 provided by ICANN and replaces our local copy in the database",
+				Action:      notImplemented,
+			},
+			{
 				Name:        "registrars",
 				Aliases:     []string{"rar"},
-				Usage:       "initially import registrars from IANA + ICANN data",
-				Description: "use this to populate the data at first run, it will error if you are trying to import into a system that already has registrars populated",
-				Action:      importRegistrars,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "filename",
-						Aliases:  []string{"f"},
-						Usage:    "the CSV file containing the ICANN registrar data downloaded from here: https://www.icann.org/en/accredited-registrars",
-						Required: true,
-					},
-				},
+				Usage:       "sync registrar status with the IANA repository",
+				Description: "pulls the iana registrar repository and ensures that our registrar status is up to date",
+				Action:      notImplemented,
 			},
 		},
 	}
@@ -74,25 +72,19 @@ func notImplemented(c *cli.Context) error {
 	return cli.Exit("Not implemented", 1)
 }
 
-func importRegistrars(c *cli.Context) error {
-	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
+func syncRegistrars(c *cli.Context) error {
+	correlationID := "cli-sync-registrars-" + time.Now().Format("20060102150405")
 	log.Println("Correlation ID:", correlationID)
+
 	// Get a count of the registrars in the system
 	count, err := activities.CountRegistrars(correlationID)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
-	// if count > 0 exit
-	if count.Count > 0 {
-		return cli.Exit("Found at least one existing registrar, cannot continue", 1)
-	}
-
-	// Get the ICANN registrars
-	log.Printf("Getting ICANN registrars from file: %s\n", c.String("filename"))
-	icannRars, err := activities.GetICANNRegistrars(correlationID, c.String("filename"))
-	if err != nil {
-		return cli.Exit(err, 1)
+	// if count = 0 exit
+	if count.Count == 0 {
+		return cli.Exit("no registrars found in the system, consider importing", 1)
 	}
 
 	// Sync our IANA registrar list
@@ -112,25 +104,9 @@ func importRegistrars(c *cli.Context) error {
 		return cli.Exit(err, 1)
 	}
 
-	// Get the create commands
-	log.Println("Creating registrar CREATE commands...")
-	createCommands, err := activities.MakeCreateRegistrarCommands(correlationID, icannRars, ianaRars)
-	if err != nil {
-		return cli.Exit(err, 1)
-	}
+	// Get the registrars currently in the platform
+	fmt.Println(ianaRars)
+	// Compare the two lists and update the platform as necessary
 
-	// Execute the create commands
-	log.Println("Creating registrars ... ")
-	// create a progress bar
-	pbar := progressbar.New(len(createCommands))
-	for _, cmd := range createCommands {
-		_, err := activities.CreateRegistrar(correlationID, cmd)
-		if err != nil {
-			return cli.Exit(err, 1)
-		}
-		pbar.Add(1)
-	}
-
-	log.Printf("\n%d Registrars imported successfully\n", len(createCommands))
 	return nil
 }

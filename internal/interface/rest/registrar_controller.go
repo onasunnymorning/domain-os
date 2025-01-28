@@ -114,7 +114,7 @@ func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
-// @Success 200 {array} entities.Registrar
+// @Success 200 {array} entities.RegistrarListItem
 // @Failure 400
 // @Failure 500
 // @Router /registrars [get]

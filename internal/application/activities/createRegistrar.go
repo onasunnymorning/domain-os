@@ -48,7 +48,7 @@ func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) 
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
 	}
 

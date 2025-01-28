@@ -493,3 +493,69 @@ func TestRegistrarStatus_SetStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, RegistrarStatusReadonly, r.Status)
 }
+func TestRegistrar_GetListRegistrarItem(t *testing.T) {
+	tests := []struct {
+		name string
+		reg  *Registrar
+		want *RegistrarListItem
+	}{
+		{
+			name: "valid registrar",
+			reg: &Registrar{
+				ClID:      "my-registrar-007",
+				Name:      "My Registrar",
+				GurID:     123,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-007",
+				Name:      "My Registrar",
+				GurID:     123,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+			},
+		},
+		{
+			name: "readonly status",
+			reg: &Registrar{
+				ClID:      "my-registrar-008",
+				Name:      "Another Registrar",
+				GurID:     456,
+				Status:    RegistrarStatusReadonly,
+				Autorenew: false,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-008",
+				Name:      "Another Registrar",
+				GurID:     456,
+				Status:    RegistrarStatusReadonly,
+				Autorenew: false,
+			},
+		},
+		{
+			name: "terminated status",
+			reg: &Registrar{
+				ClID:      "my-registrar-009",
+				Name:      "Terminated Registrar",
+				GurID:     789,
+				Status:    RegistrarStatusTerminated,
+				Autorenew: true,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-009",
+				Name:      "Terminated Registrar",
+				GurID:     789,
+				Status:    RegistrarStatusTerminated,
+				Autorenew: true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := test.reg.GetListRegistrarItem()
+			require.Equal(t, test.want, got)
+		})
+	}
+}
