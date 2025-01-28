@@ -101,7 +101,7 @@ func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 
 	// Log the skipped registrars
 	if len(skipped) > 0 {
-		log.Printf("[INFO] Skipped the following reserved registrars: %v\n", skipped)
+		log.Printf("[INFO] Skipped %d reserved registrars\n", len(skipped))
 	}
 
 	return createCommands, nil

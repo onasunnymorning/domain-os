@@ -60,7 +60,7 @@ func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities
 }
 
 // List returns a list of registrars
-func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
+func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error) {
 	return s.registrarRepository.List(ctx, pagesize, pagecursor)
 }
 

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"runtime"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )
 
@@ -74,6 +76,7 @@ func notImplemented(c *cli.Context) error {
 
 func importRegistrars(c *cli.Context) error {
 	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
+	log.Println("Correlation ID:", correlationID)
 	// Get a count of the registrars in the system
 	count, err := activities.CountRegistrars(correlationID)
 	if err != nil {
@@ -86,30 +89,48 @@ func importRegistrars(c *cli.Context) error {
 	}
 
 	// Get the ICANN registrars
+	log.Printf("Getting ICANN registrars from file: %s\n", c.String("filename"))
 	icannRars, err := activities.GetICANNRegistrars(correlationID, c.String("filename"))
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
+	// Sync our IANA registrar list
+	log.Println("Syncing IANA registrars...")
+	syncErr := activities.SyncIanaRegistrars(correlationID)
+	if syncErr != nil {
+		return cli.Exit(err, 1)
+	}
+
 	// Get the IANA registrars
-	ianaRars, err := activities.GetIANARegistrars(correlationID)
+	log.Println("Getting IANA registrars...")
+	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
+	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("API_TOKEN"))
+
+	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the create commands
+	log.Println("Creating registrar CREATE commands...")
 	createCommands, err := activities.MakeCreateRegistrarCommands(correlationID, icannRars, ianaRars)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Execute the create commands
+	log.Println("Creating registrars ... ")
+	// create a progress bar
+	pbar := progressbar.New(len(createCommands))
 	for _, cmd := range createCommands {
 		_, err := activities.CreateRegistrar(correlationID, cmd)
 		if err != nil {
 			return cli.Exit(err, 1)
 		}
+		pbar.Add(1)
 	}
 
-	return cli.Exit("Not implemented", 1)
+	log.Printf("\n%d Registrars imported successfully\n", len(createCommands))
+	return nil
 }
