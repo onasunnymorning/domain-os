@@ -1,4 +1,4 @@
-package icann
+package icannspec5
 
 import (
 	"encoding/xml"

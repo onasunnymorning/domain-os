@@ -1,4 +1,4 @@
-package icann
+package icannspec5
 
 // 1. Example. The label “EXAMPLE” shall be reserved at the second level and at all other levels within
 // the TLD at which Registry Operator makes registrations.

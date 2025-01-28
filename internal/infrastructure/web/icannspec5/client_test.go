@@ -1,4 +1,4 @@
-package iana
+package icannspec5
 
 import (
 	"testing"
