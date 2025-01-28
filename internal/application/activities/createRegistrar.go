@@ -1,16 +1,18 @@
 package activities
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
-func CountRegistrars(correlationID string) (*response.CountResult, error) {
-	ENDPOINT := fmt.Sprintf("%s/registrars/count", BASEURL)
+func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) (*entities.Registrar, error) {
+	ENDPOINT := fmt.Sprintf("%s/registrars", BASEURL)
 
 	// Set up an API client
 	client := http.Client{}
@@ -22,8 +24,14 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 		return nil, fmt.Errorf("failed to add query params: %w", err)
 	}
 
+	// Marshall the body
+	jsonBody, err := json.Marshal(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal command: %w", err)
+	}
+
 	// Create the request
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -32,7 +40,7 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 	// Hit the endpoint
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get registrar count: %w", err)
+		return nil, fmt.Errorf("failed to create registrar with iana id %d: %w", cmd.GurID, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -44,12 +52,12 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
 	}
 
-	countResult := &response.CountResult{}
+	var rar entities.Registrar
 
-	err = json.Unmarshal(body, countResult)
+	err = json.Unmarshal(body, &rar)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 
-	return countResult, nil
+	return &rar, nil
 }

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -46,28 +48,83 @@ func SyncRegistrarsWorkflow(ctx workflow.Context) error {
 
 	// WORKFLOW
 
-	// Sync registrars with IANA
+	// Sync registrars with IANA to ensure that we have up to date information
 	syncErr := workflow.ExecuteActivity(ctx, activities.SyncIanaRegistrars, workflowID).Get(ctx, nil)
 	if syncErr != nil {
 		logger.Error(fmt.Sprintf("failed to sync registrars with IANA: %v", syncErr))
 		return syncErr
 	}
 
-	// Check if this is our first time syncing registrars
+	// Check if this is our first time syncing registrars (zero registrars in the system)
 	var rarCount *response.CountResult
-	countErr := workflow.ExecuteActivity(ctx, activities.CountRegistrars, workflowID).Get(ctx, rarCount)
+	countErr := workflow.ExecuteActivity(ctx, activities.CountRegistrars, workflowID).Get(ctx, &rarCount)
 	if countErr != nil {
 		logger.Error(fmt.Sprintf("failed to count registrars: %v", countErr))
 		return countErr
 	}
+	// Error here avoiding a nil pointer dereference down the line
+	if rarCount == nil {
+		logger.Error("failed to get registrar count")
+		return fmt.Errorf("failed to get registrar count")
+	}
 
-	// If it is our first time syncing, launch an import of all registrars
+	// If it is our first time syncing, launch an first import of registrars
 	if rarCount.Count == 0 {
-		// Launch an Import Registrars workflow
-		//exit
+		// Get the ICANN registrars
+		csvRars, err := icannregistrars.GetICANNCSVRegistrarsFromFile("./initdata/icann_registrars.csv")
+		if err != nil {
+			logger.Error(fmt.Sprintf("failed to get ICANN registrars from file: %v", err))
+		}
+		// Get the IANA registrars
+		var ianaRars []entities.IANARegistrar
+		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID).Get(ctx, ianaRars)
+		if ianaRarErr != nil {
+			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
+		}
+		// Merge both into a create command
+		cmds, createCmdErr := icannregistrars.GetCreateCommands(csvRars, ianaRars)
+		if createCmdErr != nil {
+			logger.Error(fmt.Sprintf("failed to get create commands: %v", createCmdErr))
+		}
+		// Create the registrars
+		createdRarCounter := 0
+		for _, cmd := range cmds {
+			createErr := workflow.ExecuteActivity(ctx, activities.CreateRegistrar, workflowID, cmd).Get(ctx, nil)
+			if createErr != nil {
+				logger.Error(fmt.Sprintf("failed to create registrar: %v", createErr))
+			}
+			createdRarCounter++
+		}
+
+		logger.Info(fmt.Sprintf("created %d registrars", createdRarCounter))
+
+		// nothing further to do
+		return nil
 	}
 
 	// Update the registrars that have changed
+
+	// First get the IANA registrars
+	var ianaRars []entities.IANARegistrar
+	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID).Get(ctx, ianaRars)
+	if ianaRarErr != nil {
+		logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
+		return ianaRarErr
+	}
+
+	// For each registrar set the status using the API
+	for _, irar := range ianaRars {
+		// Use activity to set the status (this is idempotent and will log the change if there is one)
+		clid, err := irar.CreateClID()
+		if err != nil {
+			logger.Error(fmt.Sprintf("failed to create ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err))
+		}
+		setStatusErr := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, clid, irar.Status).Get(ctx, nil)
+		if setStatusErr != nil {
+			logger.Error(fmt.Sprintf("failed to set registrar status: %v", setStatusErr))
+			return setStatusErr
+		}
+	}
 
 	return nil
 }
