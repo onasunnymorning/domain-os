@@ -56,16 +56,11 @@ func SyncRegistrarsWorkflow(ctx workflow.Context) error {
 	}
 
 	// Check if this is our first time syncing registrars (zero registrars in the system)
-	var rarCount *response.CountResult
+	var rarCount response.CountResult
 	countErr := workflow.ExecuteActivity(ctx, activities.CountRegistrars, workflowID).Get(ctx, &rarCount)
 	if countErr != nil {
 		logger.Error(fmt.Sprintf("failed to count registrars: %v", countErr))
 		return countErr
-	}
-	// Error here avoiding a nil pointer dereference down the line
-	if rarCount == nil {
-		logger.Error("failed to get registrar count")
-		return fmt.Errorf("failed to get registrar count")
 	}
 
 	// If it is our first time syncing, launch an first import of registrars
