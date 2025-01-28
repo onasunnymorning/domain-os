@@ -30,11 +30,12 @@ func TestCreateRegistrar(t *testing.T) {
 			cmd: commands.CreateRegistrarCommand{
 				GurID: 123,
 				Name:  "Test Registrar",
+				Email: "me@email.com",
 			},
-			mockResponse:   `{"ClID": "1", "name": "Test Registrar"}`,
-			mockStatusCode: http.StatusOK,
+			mockResponse:   `{"ClID": "1", "name": "Test Registrar", "email": "me@email.com"}`,
+			mockStatusCode: http.StatusCreated,
 			expectedError:  nil,
-			expectedResult: &entities.Registrar{ClID: entities.ClIDType("1"), Name: "Test Registrar"},
+			expectedResult: &entities.Registrar{ClID: entities.ClIDType("1"), Name: "Test Registrar", Email: "me@email.com"},
 		},
 		{
 			name:           "failed to add query params",
