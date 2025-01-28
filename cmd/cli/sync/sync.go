@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/urfave/cli/v2"
 )
@@ -116,19 +117,45 @@ func syncRegistrars(c *cli.Context) error {
 	// Compare the two lists and update the platform as necessary
 	log.Println("Comparing IANA registrars with platform registrars...")
 	for _, ianaRar := range ianaRars {
+		// Create a ClID for the IANA registrar using our naming convention
+		clid, _ := ianaRar.CreateClID()
+		found := false
 		for _, rar := range rars {
-			clid, _ := ianaRar.CreateClID()
 			if clid == rar.ClID {
+				// Found the registrar
+				found = true
+				// compare statuses
 				cmd := compareIANARegistrarStatusWithRarStatus(ianaRar, rar)
 				if cmd != nil {
 					log.Printf("Updating registrar %s status from %s to %s\n", cmd.ClID, cmd.OldStatus, cmd.NewStatus)
+
 					// update the registrar status
 					err := activities.SetRegistrarStatus(correlationID, cmd.ClID, cmd.NewStatus)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}
 				}
+
+				// Only one match is expected
+				break
 			}
+		}
+
+		if !found {
+			log.Printf("found new IANARegistrar: %s, creating it\n", clid)
+
+			// Create our Create command
+			cmd, err := createCreateRegistrarCommand(ianaRar)
+			if err != nil {
+				return cli.Exit(err, 1)
+			}
+
+			// create the registrar
+			_, err = activities.CreateRegistrar(correlationID, *cmd)
+			if err != nil {
+				return cli.Exit(err, 1)
+			}
+
 		}
 	}
 
@@ -166,4 +193,40 @@ func compareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar
 		NewStatus: newStatus,
 		OldStatus: rar.Status.String(),
 	}
+}
+
+func createCreateRegistrarCommand(ianaRar entities.IANARegistrar) (*commands.CreateRegistrarCommand, error) {
+	// Create a ClID for the IANA registrar using our naming convention
+	clid, err := ianaRar.CreateClID()
+	if err != nil {
+		return nil, fmt.Errorf("error creating ClID for registrar %d - %s: %v", ianaRar.GurID, ianaRar.Name, err)
+	}
+
+	pi, err := createDummyPostalInfo()
+
+	// Create the command with dummy information
+	cmd := commands.CreateRegistrarCommand{
+		ClID:  clid.String(),
+		Name:  ianaRar.Name,
+		Email: "i.need@2be.replaced",
+		PostalInfo: [2]*entities.RegistrarPostalInfo{
+			pi,
+		},
+	}
+
+	return &cmd, nil
+}
+
+func createDummyPostalInfo() (*entities.RegistrarPostalInfo, error) {
+	// Create a dummy postalinfo that will be overwritten if there is data, otherwise it will make it easy to find the missing data
+	a, err := entities.NewAddress("Replaceme", "PE")
+	if err != nil {
+		return nil, fmt.Errorf("error creating address: %v", err)
+	}
+	pi, err := entities.NewRegistrarPostalInfo(entities.PostalInfoEnumTypeINT, a)
+	if err != nil {
+		return nil, fmt.Errorf("error creating postalinfo: %v", err)
+	}
+
+	return pi, nil
 }
