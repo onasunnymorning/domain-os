@@ -12,15 +12,15 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-// GetIANARegistrars queries an API for all IANA registrars, following pagination links until there are no more.
-func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.IANARegistrar, error) {
+// GetRegistrarListItems queries an API for all Registrar List Items, following pagination links until there are no more.
+func GetRegistrarListItems(correlationID, baseURL, bearerToken string) ([]entities.RegistrarListItem, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	// Build the initial URL with query parameters (correlationID)
-	ENDPOINT := fmt.Sprintf("%s/ianaregistrars", baseURL)
+	ENDPOINT := fmt.Sprintf("%s/registrars", baseURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
 	})
@@ -28,19 +28,19 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.I
 		return nil, fmt.Errorf("failed to build initial URL: %w", err)
 	}
 
-	var allRegistrars []entities.IANARegistrar
+	var allRegistrars []entities.RegistrarListItem
 	currentURL := initialURL.String()
 
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchIANARegistrarsPage(context.Background(), client, currentURL, bearerToken)
+		apiResponse, err := fetchRegistrarsPage(context.Background(), client, currentURL, bearerToken)
 		if err != nil {
 			return nil, err
 		}
 
 		// Extract the data
-		pageRegistrars, ok := apiResponse.Data.(*[]entities.IANARegistrar)
+		pageRegistrars, ok := apiResponse.Data.(*[]entities.RegistrarListItem)
 		if !ok {
 			return nil, fmt.Errorf("unexpected data type in response - maybe null response/sync failed")
 		}
@@ -67,9 +67,9 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.I
 	return allRegistrars, nil
 }
 
-// fetchIANARegistrarsPage fetches a single page of IANA registrars from the provided URL.
+// fetchRegistrarsPage fetches a single page of IANA registrars from the provided URL.
 // It handles sending the request, reading the response, checking the status code, and unmarshaling JSON.
-func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
+func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
 	// Create the request with context for cancellation/timeouts
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
@@ -101,7 +101,7 @@ func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, b
 	var apiResponse response.ListItemResult
 	// Make sure apiResponse.Data is set to a pointer of the correct type so that
 	// JSON unmarshal knows where to put the data.
-	apiResponse.Data = &[]entities.IANARegistrar{}
+	apiResponse.Data = &[]entities.RegistrarListItem{}
 
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)

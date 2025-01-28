@@ -5,9 +5,11 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/urfave/cli/v2"
 )
 
@@ -49,7 +51,7 @@ func main() {
 				Aliases:     []string{"rar"},
 				Usage:       "sync registrar status with the IANA repository",
 				Description: "pulls the iana registrar repository and ensures that our registrar status is up to date",
-				Action:      notImplemented,
+				Action:      syncRegistrars,
 			},
 		},
 	}
@@ -105,8 +107,63 @@ func syncRegistrars(c *cli.Context) error {
 	}
 
 	// Get the registrars currently in the platform
-	fmt.Println(ianaRars)
+	log.Println("Getting exiting Registrars...")
+	rars, err := activities.GetRegistrarListItems(correlationID, baseURL, bearerToken)
+	if err != nil {
+		return cli.Exit(err, 1)
+	}
+
 	// Compare the two lists and update the platform as necessary
+	log.Println("Comparing IANA registrars with platform registrars...")
+	for _, ianaRar := range ianaRars {
+		for _, rar := range rars {
+			clid, _ := ianaRar.CreateClID()
+			if clid == rar.ClID {
+				cmd := compareIANARegistrarStatusWithRarStatus(ianaRar, rar)
+				if cmd != nil {
+					log.Printf("Updating registrar %s status from %s to %s\n", cmd.ClID, cmd.OldStatus, cmd.NewStatus)
+					// update the registrar status
+					err := activities.SetRegistrarStatus(correlationID, cmd.ClID, cmd.NewStatus)
+					if err != nil {
+						return cli.Exit(err, 1)
+					}
+				}
+			}
+		}
+	}
 
 	return nil
+}
+
+// UpdateRegistrarStatusCommand represents a command to update the status of a registrar.
+type UpdateRegistrarStatusCommand struct {
+	ClID      string
+	NewStatus string
+	OldStatus string
+}
+
+// compareIANARegistrarStatusWithRarStatus compares the status of an IANA registrar with a platform registrar.
+// If the status is different, it returns a command to update the status.
+func compareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar entities.RegistrarListItem) *UpdateRegistrarStatusCommand {
+	// if the status is the same, return nil
+	if strings.EqualFold(ianaRar.Status.String(), rar.Status.String()) {
+		return nil
+	}
+	// if the status is accredited (iana) and ok (platform), return nil
+	if strings.EqualFold(ianaRar.Status.String(), "accredited") && strings.EqualFold(rar.Status.String(), "ok") {
+		return nil
+	}
+
+	// if the status is different, return a command to update the status
+	newStatus := strings.ToLower(ianaRar.Status.String())
+	// IANA uses "accredited" for "ok" status
+	if newStatus == "accredited" {
+		newStatus = "ok"
+	}
+
+	return &UpdateRegistrarStatusCommand{
+		ClID:      rar.ClID.String(),
+		NewStatus: newStatus,
+		OldStatus: rar.Status.String(),
+	}
 }

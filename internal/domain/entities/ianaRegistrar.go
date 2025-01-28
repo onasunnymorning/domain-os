@@ -15,6 +15,10 @@ const (
 // IANARegistrarStatus is a string representing the status of an IANA Registrar
 type IANARegistrarStatus string
 
+func (s IANARegistrarStatus) String() string {
+	return string(s)
+}
+
 // IANARegistrar is a struct representing an IANA Registrar
 type IANARegistrar struct {
 	GurID     int
