@@ -197,3 +197,15 @@ jobs:
           tags: geapex/domain-lifecycle-worker:latest
           cache-from: type=registry,ref=geapex/domain-lifecycle-worker:buildcache
           cache-to: type=registry,ref=geapex/domain-lifecycle-worker:buildcache,mode=max
+      - name: Retag Sync Worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./cmd/workers/sync/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: geapex/sync-worker:latest
+          cache-from: type=registry,ref=geapex/sync-worker:buildcache
+          cache-to: type=registry,ref=geapex/sync-worker:buildcache,mode=max
