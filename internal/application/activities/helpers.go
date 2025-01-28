@@ -8,14 +8,6 @@ import (
 // getURLAndSetQueryParams takes a URI string and a map of query parameters,
 // parses the URI, adds or overwrites the query parameters from the map,
 // and returns the resulting URL with the updated query parameters.
-//
-// Parameters:
-//   - uri: A string representing the base URI.
-//   - queryParamsMap: A map[string]string containing the query parameters to be added or overwritten.
-//
-// Returns:
-//   - *url.URL: A pointer to the resulting URL with the updated query parameters.
-//   - error: An error if the URI parsing fails.
 func getURLAndSetQueryParams(uri string, queryParamsMap map[string]string) (*url.URL, error) {
 	endpointURL, err := url.Parse(uri)
 	if err != nil {

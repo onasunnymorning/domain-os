@@ -1,4 +1,4 @@
-package icann
+package icannspec5
 
 var (
 	SPEC5_4 = []string{

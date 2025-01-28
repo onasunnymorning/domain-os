@@ -1,4 +1,4 @@
-package icann
+package icannspec5
 
 // Ideally we'd pull this from an ISO api but until we have a budget and incentive to do so, we can use this one time export from the ISO website
 

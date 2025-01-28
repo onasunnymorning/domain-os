@@ -1,4 +1,4 @@
-package iana
+package ianaregistrars
 
 import (
 	"strconv"
