@@ -5,12 +5,25 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/schedules"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
+)
+
+const (
+	ScheduleTypeSyncRegistrars = "sync-registrars"
+)
+
+var (
+	supportedScheduleTypes = []string{
+		ScheduleTypeSyncRegistrars,
+	}
 )
 
 func main() {
@@ -61,12 +74,11 @@ func main() {
 				},
 			},
 			{
-				Name:        "schedule",
-				Aliases:     []string{"s", "sch"},
-				Usage:       "imports temporal schedules",
-				UsageText:   "Use this command to created/delete temporal schedules see subcommands for options",
-				Subcommands: []*cli.Command{},
-				Action:      notImplemented,
+				Name:      "schedule",
+				Aliases:   []string{"s", "sch"},
+				Usage:     "import schedules {schedulename}",
+				UsageText: "Use this command to import (create) temporal schedules",
+				Action:    importSchedule,
 				// TODO: port this over from the lifecycle cli tool
 			},
 		},
@@ -155,4 +167,32 @@ func importRegistrars(c *cli.Context) error {
 	log.Println("")
 	log.Printf("[INFO] %d Registrars imported successfully\n", len(createCommands))
 	return nil
+}
+
+func importSchedule(c *cli.Context) error {
+	// Validate input
+	if !slices.Contains(supportedScheduleTypes, c.Args().First()) {
+		return cli.Exit(fmt.Sprintf("[ERROR] Unsupported schedule type: %s. Currently supporting %v", c.Args().First(), supportedScheduleTypes), 1)
+	}
+
+	// Create the schedule
+	scheduleID, err := schedules.CreateSyncRegistrarScheduleDaily(getTemporalClientConfig())
+	if err != nil {
+		return err
+	}
+
+	log.Println("Created schedule with ID:", scheduleID)
+
+	return nil
+}
+
+func getTemporalClientConfig() temporal.TemporalClientconfig {
+	// Create a temporal client config
+	return temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+	}
 }

@@ -15,7 +15,7 @@ var (
 	syncRegistrarScheduleWorkflowIDPrefix = "sync_registrar_schedule_workflow_"
 )
 
-func CreateSyncRegistrarScheduleHourly(cfg temporal.TemporalClientconfig) (string, error) {
+func CreateSyncRegistrarScheduleDaily(cfg temporal.TemporalClientconfig) (string, error) {
 	ctx := context.Background()
 
 	scheduleID := syncRegistrarScheduleIDPrefix + uuid.NewString()
@@ -39,8 +39,10 @@ func CreateSyncRegistrarScheduleHourly(cfg temporal.TemporalClientconfig) (strin
 			},
 		},
 		Action: &client.ScheduleWorkflowAction{
-			ID:        workflowID,
-			Workflow:  workflows.SyncRegistrarsWorkflow,
+			ID:       workflowID,
+			Workflow: workflows.SyncRegistrarsWorkflow,
+			// TODO: fix hard coded 100 batchsize
+			Args:      []interface{}{100},
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})
