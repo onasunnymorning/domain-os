@@ -125,7 +125,7 @@ func syncRegistrars(c *cli.Context) error {
 				// Found the registrar
 				found = true
 				// compare statuses
-				cmd := compareIANARegistrarStatusWithRarStatus(ianaRar, rar)
+				cmd := commands.CompareIANARegistrarStatusWithRarStatus(ianaRar, rar)
 				if cmd != nil {
 					log.Printf("Updating registrar %s status from %s to %s\n", cmd.ClID, cmd.OldStatus, cmd.NewStatus)
 
@@ -150,7 +150,7 @@ func syncRegistrars(c *cli.Context) error {
 			log.Printf("found new IANARegistrar: %s, creating it\n", clid)
 
 			// Create our Create command
-			cmd, err := createCreateRegistrarCommand(ianaRar)
+			cmd, err := commands.CreateCreateRegistrarCommandFromIANARegistrar(ianaRar)
 			if err != nil {
 				return cli.Exit(err, 1)
 			}
@@ -165,73 +165,4 @@ func syncRegistrars(c *cli.Context) error {
 	}
 
 	return nil
-}
-
-// UpdateRegistrarStatusCommand represents a command to update the status of a registrar.
-type UpdateRegistrarStatusCommand struct {
-	ClID      string
-	NewStatus string
-	OldStatus string
-}
-
-// compareIANARegistrarStatusWithRarStatus compares the status of an IANA registrar with a platform registrar.
-// If the status is different, it returns a command to update the status.
-func compareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar entities.RegistrarListItem) *UpdateRegistrarStatusCommand {
-	// if the status is the same, return nil
-	if strings.EqualFold(ianaRar.Status.String(), rar.Status.String()) {
-		return nil
-	}
-	// if the status is accredited (iana) and ok (platform), return nil
-	if strings.EqualFold(ianaRar.Status.String(), "accredited") && strings.EqualFold(rar.Status.String(), "ok") {
-		return nil
-	}
-
-	// if the status is different, return a command to update the status
-	newStatus := strings.ToLower(ianaRar.Status.String())
-	// IANA uses "accredited" for "ok" status
-	if newStatus == "accredited" {
-		newStatus = "ok"
-	}
-
-	return &UpdateRegistrarStatusCommand{
-		ClID:      rar.ClID.String(),
-		NewStatus: newStatus,
-		OldStatus: rar.Status.String(),
-	}
-}
-
-func createCreateRegistrarCommand(ianaRar entities.IANARegistrar) (*commands.CreateRegistrarCommand, error) {
-	// Create a ClID for the IANA registrar using our naming convention
-	clid, err := ianaRar.CreateClID()
-	if err != nil {
-		return nil, fmt.Errorf("error creating ClID for registrar %d - %s: %v", ianaRar.GurID, ianaRar.Name, err)
-	}
-
-	pi, err := createDummyPostalInfo()
-
-	// Create the command with dummy information
-	cmd := commands.CreateRegistrarCommand{
-		ClID:  clid.String(),
-		Name:  ianaRar.Name,
-		Email: "i.need@2be.replaced",
-		PostalInfo: [2]*entities.RegistrarPostalInfo{
-			pi,
-		},
-	}
-
-	return &cmd, nil
-}
-
-func createDummyPostalInfo() (*entities.RegistrarPostalInfo, error) {
-	// Create a dummy postalinfo that will be overwritten if there is data, otherwise it will make it easy to find the missing data
-	a, err := entities.NewAddress("Replaceme", "PE")
-	if err != nil {
-		return nil, fmt.Errorf("error creating address: %v", err)
-	}
-	pi, err := entities.NewRegistrarPostalInfo(entities.PostalInfoEnumTypeINT, a)
-	if err != nil {
-		return nil, fmt.Errorf("error creating postalinfo: %v", err)
-	}
-
-	return pi, nil
 }

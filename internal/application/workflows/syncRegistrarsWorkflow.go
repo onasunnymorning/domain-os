@@ -6,9 +6,12 @@ package workflows
 
 import (
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -17,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func SyncRegistrarsWorkflow(ctx workflow.Context) error {
+func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	// SETUP
 	// Set up our logger
 	logger, _ := zap.NewDevelopment()
@@ -63,7 +66,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context) error {
 		return countErr
 	}
 
-	// If it is our first time syncing, launch an first import of registrars
+	// If it is our first time syncing, launch the first import of registrars
 	if rarCount.Count == 0 {
 		// Get the ICANN registrars
 		csvRars, err := icannregistrars.GetICANNCSVRegistrarsFromFile("./initdata/icann_registrars.csv")
@@ -77,23 +80,24 @@ func SyncRegistrarsWorkflow(ctx workflow.Context) error {
 			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		}
 		// Merge both into a create command
-		cmds, createCmdErr := icannregistrars.GetCreateCommands(csvRars, ianaRars)
+		cmds := []commands.CreateRegistrarCommand{}
+		createCmdErr := workflow.ExecuteActivity(ctx, activities.MakeCreateRegistrarCommands, workflowID, csvRars, ianaRars).Get(ctx, &cmds)
 		if createCmdErr != nil {
 			logger.Error(fmt.Sprintf("failed to get create commands: %v", createCmdErr))
 		}
 		// Create the registrars
 		createdRarCounter := 0
-		for _, cmd := range cmds {
-			createErr := workflow.ExecuteActivity(ctx, activities.CreateRegistrar, workflowID, cmd).Get(ctx, nil)
-			if createErr != nil {
-				logger.Error(fmt.Sprintf("failed to create registrar: %v", createErr))
+		// Process the commands in chunks
+		for chunk := range commands.ChunkCreateRegistrarCommands(cmds, 100) {
+			if err := activities.BulkCreateRegistrars(workflowID, chunk); err != nil {
+				return err
 			}
-			createdRarCounter++
+			createdRarCounter += len(chunk)
 		}
 
 		logger.Info(fmt.Sprintf("created %d registrars", createdRarCounter))
 
-		// nothing further to do
+		// TODO: launch as new the same workflow so the sync happens after the init
 		return nil
 	}
 
@@ -107,18 +111,60 @@ func SyncRegistrarsWorkflow(ctx workflow.Context) error {
 		return ianaRarErr
 	}
 
-	// For each registrar set the status using the API
-	for _, irar := range ianaRars {
-		// Use activity to set the status (this is idempotent and will log the change if there is one)
-		clid, err := irar.CreateClID()
-		if err != nil {
-			logger.Error(fmt.Sprintf("failed to create ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err))
+	// Get our existing registrars
+	var rars []entities.RegistrarListItem
+	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID).Get(ctx, rars)
+	if rarsErr != nil {
+		logger.Error(fmt.Sprintf("failed to get registrar list items: %v", rarsErr))
+		return rarsErr
+	}
+
+	// Compare the two lists and update the platform as necessary
+	for _, ianaRar := range ianaRars {
+		// Create a ClID for the IANA registrar using our naming convention
+		clid, _ := ianaRar.CreateClID()
+		found := false
+		for _, rar := range rars {
+			if clid == rar.ClID {
+				// Found the registrar
+				found = true
+				// compare statuses
+				cmd := commands.CompareIANARegistrarStatusWithRarStatus(ianaRar, rar)
+				if cmd != nil {
+					// update the registrar status
+					err := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, cmd.ClID, cmd.NewStatus).Get(ctx, nil)
+					if err != nil {
+						logger.Error(fmt.Sprintf("failed to set registrar status: %v", err))
+					}
+
+				}
+				// Only one match is expected
+				break
+			}
 		}
-		setStatusErr := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, clid, irar.Status).Get(ctx, nil)
-		if setStatusErr != nil {
-			logger.Error(fmt.Sprintf("failed to set registrar status: %v", setStatusErr))
-			return setStatusErr
+
+		if !found {
+			if strings.EqualFold(ianaRar.Status.String(), string(entities.IANARegistrarStatusReserved)) {
+				log.Printf("found new IANARegistrar: %s, but it is reserved, skipping\n", clid)
+				continue
+			}
+
+			log.Printf("found new IANARegistrar: %s, creating it\n", clid)
+
+			// Create our Create command
+			cmd, err := commands.CreateCreateRegistrarCommandFromIANARegistrar(ianaRar)
+			if err != nil {
+				return err
+			}
+
+			// create the registrar
+			_, err = activities.CreateRegistrar(workflowID, *cmd)
+			if err != nil {
+				return err
+			}
+
 		}
+
 	}
 
 	return nil
