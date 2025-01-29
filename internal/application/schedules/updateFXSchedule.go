@@ -40,7 +40,7 @@ func CreatePurgeScheduleHourly(cfg temporal.TemporalClientconfig) (string, error
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        workflowID,
-			Workflow:  workflows.PurgeLoop,
+			Workflow:  workflows.UpdateFX,
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})

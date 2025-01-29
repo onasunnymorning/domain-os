@@ -60,6 +60,15 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:        "schedule",
+				Aliases:     []string{"s", "sch"},
+				Usage:       "imports temporal schedules",
+				UsageText:   "Use this command to created/delete temporal schedules see subcommands for options",
+				Subcommands: []*cli.Command{},
+				Action:      notImplemented,
+				// TODO: port this over from the lifecycle cli tool
+			},
 		},
 	}
 
