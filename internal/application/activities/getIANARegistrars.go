@@ -13,7 +13,7 @@ import (
 )
 
 // GetIANARegistrars queries an API for all IANA registrars, following pagination links until there are no more.
-func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.IANARegistrar, error) {
+func GetIANARegistrars(correlationID, baseURL, bearerToken string, batchsize int) ([]entities.IANARegistrar, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -23,6 +23,7 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string) ([]entities.I
 	ENDPOINT := fmt.Sprintf("%s/ianaregistrars", baseURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
+		"pagesize":      fmt.Sprintf("%d", batchsize),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build initial URL: %w", err)

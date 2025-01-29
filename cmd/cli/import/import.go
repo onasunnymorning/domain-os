@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )
@@ -51,6 +52,12 @@ func main() {
 						Usage:    "the CSV file containing the ICANN registrar data downloaded from here: https://www.icann.org/en/accredited-registrars",
 						Required: true,
 					},
+					&cli.IntFlag{
+						Name:    "chunksize",
+						Aliases: []string{"c"},
+						Usage:   "value between 1 and 100 - the number of registrars to create in a single batch",
+						Value:   100,
+					},
 				},
 			},
 		},
@@ -75,6 +82,11 @@ func notImplemented(c *cli.Context) error {
 }
 
 func importRegistrars(c *cli.Context) error {
+	// check for a chunk size
+	if c.Int("chunksize") < 1 || c.Int("chunksize") > 1000 {
+		return cli.Exit("Chunk size should be between 1 and 100", 1)
+	}
+
 	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
 	log.Println("Correlation ID:", correlationID)
 	// Get a count of the registrars in the system
@@ -107,7 +119,7 @@ func importRegistrars(c *cli.Context) error {
 	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("API_TOKEN"))
 
-	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken)
+	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -123,14 +135,39 @@ func importRegistrars(c *cli.Context) error {
 	log.Println("Creating registrars ... ")
 	// create a progress bar
 	pbar := progressbar.New(len(createCommands))
-	for _, cmd := range createCommands {
-		_, err := activities.CreateRegistrar(correlationID, cmd)
-		if err != nil {
+	// Process the commands in chunks of 100
+	for chunk := range chunkCommands(createCommands, c.Int("chunksize")) {
+		if err := activities.BulkCreateRegistrars(correlationID, chunk); err != nil {
 			return cli.Exit(err, 1)
 		}
-		pbar.Add(1)
+		pbar.Add(len(chunk))
 	}
 
 	log.Printf("\n%d Registrars imported successfully\n", len(createCommands))
 	return nil
+}
+
+// chunkCommands returns a channel that yields slices of size chunkSize.
+func chunkCommands(cmds []commands.CreateRegistrarCommand, chunkSize int) <-chan []commands.CreateRegistrarCommand {
+	ch := make(chan []commands.CreateRegistrarCommand)
+
+	go func() {
+		defer close(ch)
+
+		if chunkSize <= 0 {
+			// Fallback to 1 if invalid chunkSize
+			chunkSize = 1
+		}
+
+		for i := 0; i < len(cmds); i += chunkSize {
+			end := i + chunkSize
+			if end > len(cmds) {
+				end = len(cmds)
+			}
+			// Send the chunk to the channel
+			ch <- cmds[i:end]
+		}
+	}()
+
+	return ch
 }
