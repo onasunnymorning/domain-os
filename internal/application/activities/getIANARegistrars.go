@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -23,7 +24,7 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string, batchsize int
 	ENDPOINT := fmt.Sprintf("%s/ianaregistrars", baseURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
-		"pagesize":      fmt.Sprintf("%d", batchsize),
+		"pagesize":      strconv.Itoa(batchsize),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build initial URL: %w", err)
