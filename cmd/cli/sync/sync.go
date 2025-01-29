@@ -108,7 +108,7 @@ func syncRegistrars(c *cli.Context) error {
 	}
 
 	// Get the registrars currently in the platform
-	log.Println("Getting exiting Registrars...")
+	log.Println("Getting existing Registrars...")
 	rars, err := activities.GetRegistrarListItems(correlationID, baseURL, bearerToken)
 	if err != nil {
 		return cli.Exit(err, 1)
