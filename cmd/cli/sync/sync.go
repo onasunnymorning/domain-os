@@ -102,7 +102,7 @@ func syncRegistrars(c *cli.Context) error {
 	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("API_TOKEN"))
 
-	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken)
+	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -142,6 +142,11 @@ func syncRegistrars(c *cli.Context) error {
 		}
 
 		if !found {
+			if strings.EqualFold(ianaRar.Status.String(), string(entities.IANARegistrarStatusReserved)) {
+				log.Printf("found new IANARegistrar: %s, but it is reserved, skipping\n", clid)
+				continue
+			}
+
 			log.Printf("found new IANARegistrar: %s, creating it\n", clid)
 
 			// Create our Create command
