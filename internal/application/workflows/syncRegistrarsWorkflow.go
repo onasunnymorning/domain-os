@@ -7,6 +7,7 @@ package workflows
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -23,8 +24,14 @@ import (
 func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	// SETUP
 	// Set up our logger
-	logger, _ := zap.NewDevelopment()
+	logger, _ := zap.NewProduction()
 	defer logger.Sync()
+	// Set envars
+	apiHost := os.Getenv("API_HOST")
+	apiPort := os.Getenv("API_PORT")
+	apiToken := os.Getenv("API_TOKEN")
+	baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
+	logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
 
 	// Get the workflow ID
 	workflowID := getWorkflowID(ctx)
@@ -75,7 +82,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		}
 		// Get the IANA registrars
 		var ianaRars []entities.IANARegistrar
-		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID).Get(ctx, ianaRars)
+		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, apiToken, batchsize).Get(ctx, &ianaRars)
 		if ianaRarErr != nil {
 			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		}
@@ -105,7 +112,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// First get the IANA registrars
 	var ianaRars []entities.IANARegistrar
-	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID).Get(ctx, ianaRars)
+	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, apiToken, batchsize).Get(ctx, &ianaRars)
 	if ianaRarErr != nil {
 		logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		return ianaRarErr
@@ -113,7 +120,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// Get our existing registrars
 	var rars []entities.RegistrarListItem
-	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID).Get(ctx, rars)
+	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID).Get(ctx, &rars)
 	if rarsErr != nil {
 		logger.Error(fmt.Sprintf("failed to get registrar list items: %v", rarsErr))
 		return rarsErr
