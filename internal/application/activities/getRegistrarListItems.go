@@ -13,7 +13,7 @@ import (
 )
 
 // GetRegistrarListItems queries an API for all Registrar List Items, following pagination links until there are no more.
-func GetRegistrarListItems(correlationID, baseURL, bearerToken string) ([]entities.RegistrarListItem, error) {
+func GetRegistrarListItems(correlationID, baseURL, bearerToken string, batchsize int) ([]entities.RegistrarListItem, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -23,6 +23,7 @@ func GetRegistrarListItems(correlationID, baseURL, bearerToken string) ([]entiti
 	ENDPOINT := fmt.Sprintf("%s/registrars", baseURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
+		"pagesize":      fmt.Sprintf("%d", batchsize),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build initial URL: %w", err)
