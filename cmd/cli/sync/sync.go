@@ -102,6 +102,7 @@ func syncRegistrars(c *cli.Context) error {
 	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("API_TOKEN"))
 
+	// TODO: add command flag for batchsize instead of hard coding
 	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
@@ -109,7 +110,7 @@ func syncRegistrars(c *cli.Context) error {
 
 	// Get the registrars currently in the platform
 	log.Println("Getting existing Registrars...")
-	rars, err := activities.GetRegistrarListItems(correlationID, baseURL, bearerToken)
+	rars, err := activities.GetRegistrarListItems(correlationID, baseURL, bearerToken, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
