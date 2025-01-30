@@ -54,6 +54,7 @@ func main() {
 	w.RegisterActivity(activities.GetIANARegistrars)
 	w.RegisterActivity(activities.MakeCreateRegistrarCommands)
 	w.RegisterActivity(activities.SetRegistrarStatus)
+	w.RegisterActivity(activities.GetRegistrarListItems)
 
 	// Start listening to the Task Queue.
 	err = w.Run(worker.InterruptCh())

@@ -29,7 +29,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	// Set envars
 	apiHost := os.Getenv("API_HOST")
 	apiPort := os.Getenv("API_PORT")
-	apiToken := os.Getenv("API_TOKEN")
+	bearerToken := "Bearer " + os.Getenv("API_TOKEN")
 	baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
 	logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
 
@@ -82,7 +82,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		}
 		// Get the IANA registrars
 		var ianaRars []entities.IANARegistrar
-		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, apiToken, batchsize).Get(ctx, &ianaRars)
+		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &ianaRars)
 		if ianaRarErr != nil {
 			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		}
@@ -112,7 +112,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// First get the IANA registrars
 	var ianaRars []entities.IANARegistrar
-	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, apiToken, batchsize).Get(ctx, &ianaRars)
+	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &ianaRars)
 	if ianaRarErr != nil {
 		logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		return ianaRarErr
@@ -120,7 +120,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// Get our existing registrars
 	var rars []entities.RegistrarListItem
-	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID).Get(ctx, &rars)
+	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &rars)
 	if rarsErr != nil {
 		logger.Error(fmt.Sprintf("failed to get registrar list items: %v", rarsErr))
 		return rarsErr
