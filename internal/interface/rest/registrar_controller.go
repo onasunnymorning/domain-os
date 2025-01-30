@@ -149,8 +149,11 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 }
 
 // Create godoc
-// @Summary Create a new Registrar
-// @Description Create a new Registrar
+// @Summary Create a new Registrar, will be created with the status 'readonly'
+// @Description Create a new Registrar using CreateRegistrarCommand. ClID, email,
+// @Description name and at least one postal info is required. A new Registrar will be created with the status 'readonly'.
+// @Description A RegistrarLifecycleEvent will be created with the status 'created'.
+// @Description This should trigger the Registrar onboarding process.
 // @Tags Registrars
 // @Accept json
 // @Produce json
