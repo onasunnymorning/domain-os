@@ -151,7 +151,9 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		}
 
 		if !found {
-			if strings.EqualFold(ianaRar.Status.String(), string(entities.IANARegistrarStatusReserved)) {
+
+			// Do not create reserved registrars, except the ones Reserved for Pre-Delegation Testing transactions (id's 9995 and 9996) Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+			if (strings.EqualFold(ianaRar.Status.String(), string(entities.IANARegistrarStatusReserved))) && !(ianaRar.GurID == 9995 || ianaRar.GurID == 9996) {
 				log.Printf("found new IANARegistrar: %s, but it is reserved, skipping\n", clid)
 				continue
 			}
@@ -165,9 +167,10 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 			}
 
 			// create the registrar
-			_, err = activities.CreateRegistrar(workflowID, *cmd)
-			if err != nil {
-				return err
+			createdRar := entities.Registrar{}
+			createErr := workflow.ExecuteActivity(ctx, activities.CreateRegistrar, workflowID, *cmd).Get(ctx, &createdRar)
+			if createErr != nil {
+				return createErr
 			}
 
 		}
