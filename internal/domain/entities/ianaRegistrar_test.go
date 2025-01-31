@@ -29,6 +29,7 @@ func TestIANARegistrarStatusString(t *testing.T) {
 		{IANARegistrarStatusAccredited, "Accredited"},
 		{IANARegistrarStatusReserved, "Reserved"},
 		{IANARegistrarStatusTerminated, "Terminated"},
+		{IANARegistrarStatusUnknown, "Unknown"},
 	}
 
 	for _, test := range tests {
