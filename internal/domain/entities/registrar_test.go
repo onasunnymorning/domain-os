@@ -164,6 +164,19 @@ func TestRegistrar_IsValid(t *testing.T) {
 			want: ErrInvalidRegistrarStatus,
 		},
 		{
+			testname: "invalid IANAstatus",
+			reg: &Registrar{
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "g@my.com",
+				GurID:      123,
+				Status:     RegistrarStatus("ok"),
+				IANAStatus: IANARegistrarStatus("invalid"),
+			},
+			want: ErrInvalidRegistrarIANAStatus,
+		},
+		{
 			testname: "valid",
 			reg: &Registrar{
 				ClID:     "my-registrar-007",

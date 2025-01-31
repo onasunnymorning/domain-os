@@ -137,6 +137,13 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 				found = true
 				// compare statuses
 				cmd := commands.CompareIANARegistrarStatusWithRarStatus(ianaRar, rar)
+
+				// Exception for the 9995 and 9996 IANA Registrars
+				if ianaRar.GurID == 9995 || ianaRar.GurID == 9996 {
+					// Even though they are "Reserved" we need them to be "OK" for Pre-Delegation Testing transactions to happen
+					cmd.NewStatus = string(entities.RegistrarStatusOK)
+				}
+
 				if cmd != nil {
 					// update the registrar status
 					err := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, cmd.ClID, cmd.NewStatus).Get(ctx, nil)
