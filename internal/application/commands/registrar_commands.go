@@ -31,13 +31,6 @@ type UpdateRegistrarStatusCommand struct {
 	OldStatus string
 }
 
-// FromIANARegistrar creates a CreateRegistrarCommand from an IANARegistrar entity
-func FromIANARegistrar(registrar entities.IANARegistrar) CreateRegistrarCommand {
-	return CreateRegistrarCommand{
-		Name: registrar.Name,
-	}
-}
-
 // ChunkCreateRegistrarCommands returns a channel that yields slices of size chunkSize.
 func ChunkCreateRegistrarCommands(cmds []CreateRegistrarCommand, chunkSize int) <-chan []CreateRegistrarCommand {
 	ch := make(chan []CreateRegistrarCommand)
@@ -90,6 +83,10 @@ func CompareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar
 }
 
 func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistrar) (*CreateRegistrarCommand, error) {
+	if ianaRar.GurID < 0 {
+		return nil, fmt.Errorf("invalid GurID for registrar %s: %d", ianaRar.Name, ianaRar.GurID)
+	}
+
 	// Create a ClID for the IANA registrar using our naming convention
 	clid, err := ianaRar.CreateClID()
 	if err != nil {
@@ -103,9 +100,11 @@ func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistra
 
 	// Create the command with dummy information
 	cmd := CreateRegistrarCommand{
-		ClID:  clid.String(),
-		Name:  ianaRar.Name,
-		Email: "i.need@2be.replaced",
+		ClID:        clid.String(),
+		Name:        ianaRar.Name,
+		GurID:       ianaRar.GurID,
+		RdapBaseURL: ianaRar.RdapURL,
+		Email:       "i.need@2be.replaced",
 		PostalInfo: [2]*entities.RegistrarPostalInfo{
 			pi,
 		},

@@ -26,6 +26,7 @@ var (
 	ErrRegistrarMissingEmail                            = errors.New("missing email: a valid email is required")
 	ErrRegistrarMissingName                             = errors.New("missing name: a valid name and unique name is required")
 	ErrInvalidRegistrarStatus                           = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
+	ErrInvalidRegistrarIANAStatus                       = errors.New("invalid registrar status: status must be one of 'Reserved', 'Terminated', 'Accredited', 'Unknown'")
 	ErrRegistrarPostalInfoTypeExists                    = errors.New("postalinfo of this type already exists")
 	ErrRegistrarStatusPreventsAccreditation             = errors.New("registrar status prevents accreditation")
 	ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs = errors.New("only ICANN accredited registrars can accredit for gTLDs")
@@ -160,7 +161,7 @@ func (r *Registrar) Validate() error {
 	}
 	// This can be empty, but if it is not empty, it must be valid
 	if r.IANAStatus != "" && !r.IANAStatus.IsValid() {
-		return ErrInvalidRegistrarStatus
+		return ErrInvalidRegistrarIANAStatus
 	}
 	_, err := mail.ParseAddress(r.Email)
 	if err != nil {
