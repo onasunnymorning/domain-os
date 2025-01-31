@@ -158,7 +158,7 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param registrar body commands.CreateRegistrarCommand true "Registrar"
-// @Success 200 {object} commands.CreateRegistrarCommandResult
+// @Success 200 {object} entities.Registrar
 // @Failure 400
 // @Failure 500
 // @Router /registrars [post]
