@@ -48,13 +48,14 @@ func TestNewRegistrar(t *testing.T) {
 			},
 			wantErr: nil,
 			want: &Registrar{
-				ClID:      "my-registrar-007",
-				Name:      "My Registrar",
-				NickName:  "My Registrar",
-				Email:     "geoff@apex.domains",
-				GurID:     123,
-				Status:    RegistrarStatusReadonly,
-				Autorenew: false,
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "geoff@apex.domains",
+				GurID:      123,
+				Status:     RegistrarStatusReadonly,
+				IANAStatus: IANARegistrarStatusUnknown,
+				Autorenew:  false,
 				PostalInfo: [2]*RegistrarPostalInfo{
 					nil,
 					getValidRegistrarPostalInfo("loc"),
@@ -82,12 +83,13 @@ func TestNewRegistrar(t *testing.T) {
 			},
 			wantErr: nil,
 			want: &Registrar{
-				ClID:     "my-registrar-007",
-				Name:     "My Registrar",
-				NickName: "My Registrar",
-				Email:    "geoff@apex.domains",
-				GurID:    123,
-				Status:   RegistrarStatusReadonly,
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "geoff@apex.domains",
+				GurID:      123,
+				Status:     RegistrarStatusReadonly,
+				IANAStatus: IANARegistrarStatusUnknown,
 				PostalInfo: [2]*RegistrarPostalInfo{
 					getValidRegistrarPostalInfo("int"),
 					getValidRegistrarPostalInfo("loc"),
@@ -357,6 +359,7 @@ func TestRegistrar_AccreditFor(t *testing.T) {
 
 	// Test case 4: Accredited GTLD
 	r.GurID = 1123
+	r.IANAStatus = IANARegistrarStatusAccredited
 	err = r.AccreditFor(&TLD{Name: "apex", Type: TLDTypeGTLD})
 	require.NoError(t, err)
 	require.Equal(t, 5, len(r.TLDs))
@@ -458,6 +461,56 @@ func TestRegistrarStatus_IsValid(t *testing.T) {
 			name: "case insensitive",
 			s:    RegistrarStatus("tErMiNaTeD"),
 			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, test.s.IsValid())
+		})
+	}
+}
+
+func TestRegistrarIANAStatus_IsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		s    IANARegistrarStatus
+		want bool
+	}{
+		{
+			name: "empty", // nil value is not allowed, should use unknown
+			s:    IANARegistrarStatus(""),
+			want: false,
+		},
+		{
+			name: "Unknown",
+			s:    IANARegistrarStatus("Unknown"),
+			want: true,
+		},
+		{
+			name: "Accredited",
+			s:    IANARegistrarStatusAccredited,
+			want: true,
+		},
+		{
+			name: "Reserved",
+			s:    IANARegistrarStatusReserved,
+			want: true,
+		},
+		{
+			name: "Terminated",
+			s:    IANARegistrarStatusTerminated,
+			want: true,
+		},
+		{
+			name: "invalid",
+			s:    IANARegistrarStatus("invalid"),
+			want: false,
+		},
+		{
+			name: "case insensitive",
+			s:    IANARegistrarStatus("tErMiNaTeD"),
+			want: false,
 		},
 	}
 

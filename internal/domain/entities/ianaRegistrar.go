@@ -10,6 +10,7 @@ const (
 	IANARegistrarStatusAccredited IANARegistrarStatus = "Accredited"
 	IANARegistrarStatusReserved   IANARegistrarStatus = "Reserved"
 	IANARegistrarStatusTerminated IANARegistrarStatus = "Terminated"
+	IANARegistrarStatusUnknown    IANARegistrarStatus = "Unknown"
 )
 
 // IANARegistrarStatus is a string representing the status of an IANA Registrar
@@ -17,6 +18,14 @@ type IANARegistrarStatus string
 
 func (s IANARegistrarStatus) String() string {
 	return string(s)
+}
+
+func (s IANARegistrarStatus) IsValid() bool {
+	switch s {
+	case IANARegistrarStatusAccredited, IANARegistrarStatusReserved, IANARegistrarStatusTerminated, IANARegistrarStatusUnknown:
+		return true
+	}
+	return false
 }
 
 // IANARegistrar is a struct representing an IANA Registrar
