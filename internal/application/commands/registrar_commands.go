@@ -20,10 +20,6 @@ type CreateRegistrarCommand struct {
 	WhoisInfo   *entities.WhoisInfo              `json:"WhoisInfo"`
 }
 
-type CreateRegistrarCommandResult struct {
-	Result entities.Registrar
-}
-
 // UpdateRegistrarStatusCommand represents a command to update the status of a registrar.
 type UpdateRegistrarStatusCommand struct {
 	ClID      string
