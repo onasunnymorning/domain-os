@@ -581,16 +581,10 @@ func (d *Domain) ApplyContactDataPolicy(
 	return nil
 }
 
-// Clone creates a deep copy of the Domain object, including all its fields and nested structures.
+// DeepCopy creates a deep copy of the Domain object, including all its fields and nested structures.
 // It returns a pointer to the new Domain object. If the original Domain object is nil, it returns nil.
-//
-// The method performs the following steps:
-// 1. Copies all top-level fields of the Domain struct.
-// 2. Deep-copies the Hosts slice by calling the Clone method on each Host pointer.
-//
-// Returns:
-// - *Domain: A pointer to the newly created Domain object, or nil if the original Domain object is nil.
-func (d *Domain) Clone() *Domain {
+
+func (d *Domain) DeepCopy() *Domain {
 	if d == nil {
 		return nil
 	}
@@ -621,12 +615,12 @@ func (d *Domain) Clone() *Domain {
 		// Hosts handled below
 	}
 
-	// Deep-copy the Hosts slice, calling Host.Clone() on each.
+	// Deep-copy the Hosts slice, calling Host.DeepCopy() on each.
 	if d.Hosts != nil {
 		newDomain.Hosts = make([]*Host, len(d.Hosts))
 		for i, hostPtr := range d.Hosts {
 			if hostPtr != nil {
-				newDomain.Hosts[i] = hostPtr.Clone()
+				newDomain.Hosts[i] = hostPtr.DeepCopy()
 			}
 		}
 	}

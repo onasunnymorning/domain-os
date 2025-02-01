@@ -458,7 +458,7 @@ func TestStringSlice(t *testing.T) {
 	}
 }
 
-func TestClone(t *testing.T) {
+func TestDeepCopy(t *testing.T) {
 	ds := DomainStatus{
 		OK:                     true,
 		Inactive:               true,
@@ -466,10 +466,10 @@ func TestClone(t *testing.T) {
 		PendingUpdate:          true,
 	}
 
-	clone := ds.Clone()
+	clone := ds.DeepCopy()
 
 	if !reflect.DeepEqual(ds, clone) {
-		t.Errorf("Clone() = %v, want %v", clone, ds)
+		t.Errorf("DeepCopy() = %v, want %v", clone, ds)
 	}
 }
 

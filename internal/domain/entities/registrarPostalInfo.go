@@ -42,3 +42,17 @@ func (t *RegistrarPostalInfo) IsValid() error {
 	}
 	return nil
 }
+
+// DeepCopy creates a new RegistrarPostalInfo with a copy of the original values
+func (rp RegistrarPostalInfo) DeepCopy() RegistrarPostalInfo {
+	// Shallow copy of rp
+	copyRP := rp
+
+	// Address is a pointer, so we need to allocate new memory if it's non-nil
+	if rp.Address != nil {
+		addrCopy := rp.Address.DeepCopy() // calls Address.DeepCopy()
+		copyRP.Address = &addrCopy
+	}
+
+	return copyRP
+}

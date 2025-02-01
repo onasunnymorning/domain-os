@@ -2,6 +2,7 @@ package entities
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -623,5 +624,43 @@ func TestRegistrar_GetListRegistrarItem(t *testing.T) {
 			got := test.reg.GetListRegistrarItem()
 			require.Equal(t, test.want, got)
 		})
+	}
+}
+func TestRegistrar_DeepCopy(t *testing.T) {
+	original := &Registrar{
+		ClID:        "my-registrar-007",
+		Name:        "My Registrar",
+		NickName:    "My Registrar",
+		GurID:       123,
+		Status:      RegistrarStatusOK,
+		IANAStatus:  IANARegistrarStatusAccredited,
+		Autorenew:   true,
+		Voice:       "1234567890",
+		Fax:         "0987654321",
+		Email:       "my@registrar.com",
+		URL:         "http://myregistrar.com",
+		WhoisInfo:   WhoisInfo{Name: "whois.myregistrar.com"},
+		RdapBaseURL: "http://rdap.myregistrar.com",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		PostalInfo: [2]*RegistrarPostalInfo{
+			getValidRegistrarPostalInfo("int"),
+			getValidRegistrarPostalInfo("loc"),
+		},
+	}
+
+	copy := original.DeepCopy()
+
+	// Ensure the copied registrar is equal to the original
+	require.Equal(t, original, &copy)
+
+	// Ensure the copied registrar is not the same instance as the original
+	require.NotSame(t, original, &copy)
+
+	// Ensure the PostalInfo elements are deep copied
+	for i := range original.PostalInfo {
+		if original.PostalInfo[i] != nil {
+			require.NotSame(t, original.PostalInfo[i], copy.PostalInfo[i])
+		}
 	}
 }

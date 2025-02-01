@@ -75,3 +75,19 @@ func TestAddress_IsASCII(t *testing.T) {
 	_, err := a.IsASCII()
 	require.Equal(t, ErrInvalidASCIIInIntAddress, err, "Expected IsASCII to return ErrInvalidASCIIInIntAddress, but got %s", err)
 }
+func TestAddress_DeepCopy(t *testing.T) {
+	original := Address{
+		Street1:       OptPostalLineType("Boulnes 2545"),
+		Street2:       OptPostalLineType("Piso8"),
+		Street3:       OptPostalLineType("Portero"),
+		City:          PostalLineType("Buenos Aires"),
+		StateProvince: OptPostalLineType("Palermo SOHO"),
+		PostalCode:    PCType("EN234Z"),
+		CountryCode:   CCType("AR"),
+	}
+
+	copy := original.DeepCopy()
+
+	require.Equal(t, original, copy, "Expected DeepCopy to return an identical Address")
+	require.NotSame(t, &original, &copy, "Expected DeepCopy to return a different Address instance")
+}

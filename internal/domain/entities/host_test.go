@@ -694,7 +694,7 @@ func TestHostStatus_IsNil(t *testing.T) {
 }
 
 // Example improved test for Host.Clone
-func TestHost_Clone(t *testing.T) {
+func TestHost_DeepCopy(t *testing.T) {
 	now := time.Now()
 	validIP := netip.MustParseAddr("195.238.2.21")
 
@@ -731,7 +731,7 @@ func TestHost_Clone(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			clonedHost := tc.host.Clone()
+			clonedHost := tc.host.DeepCopy()
 
 			if tc.shouldBeNil {
 				require.Nil(t, clonedHost)
