@@ -14,8 +14,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/iana"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icann"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"go.uber.org/zap"
 
@@ -233,8 +233,8 @@ func main() {
 	fxRepo := postgres.NewFXRepository(gormDB)
 	fxService := services.NewFXService(fxRepo)
 	// Sync
-	ianaRepo := iana.NewIANARRepository()
-	icannRepo := icann.NewICANNRepo()
+	ianaRepo := ianaregistrars.NewIANARRepository()
+	icannRepo := icannspec5.NewICANNRepo()
 	spec5Repo := postgres.NewSpec5Repository(gormDB)
 	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
 	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)

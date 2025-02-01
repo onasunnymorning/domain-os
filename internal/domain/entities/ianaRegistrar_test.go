@@ -21,3 +21,20 @@ func TestCreateClID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedClID, clID)
 }
+func TestIANARegistrarStatusString(t *testing.T) {
+	tests := []struct {
+		status   IANARegistrarStatus
+		expected string
+	}{
+		{IANARegistrarStatusAccredited, "Accredited"},
+		{IANARegistrarStatusReserved, "Reserved"},
+		{IANARegistrarStatusTerminated, "Terminated"},
+		{IANARegistrarStatusUnknown, "Unknown"},
+	}
+
+	for _, test := range tests {
+		t.Run(string(test.status), func(t *testing.T) {
+			require.Equal(t, test.expected, test.status.String())
+		})
+	}
+}

@@ -1,4 +1,4 @@
-package icann
+package ianaregistrars
 
 import "net/http"
 

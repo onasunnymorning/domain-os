@@ -26,6 +26,7 @@ var (
 	ErrRegistrarMissingEmail                            = errors.New("missing email: a valid email is required")
 	ErrRegistrarMissingName                             = errors.New("missing name: a valid name and unique name is required")
 	ErrInvalidRegistrarStatus                           = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
+	ErrInvalidRegistrarIANAStatus                       = errors.New("invalid registrar status: status must be one of 'Reserved', 'Terminated', 'Accredited', 'Unknown'")
 	ErrRegistrarPostalInfoTypeExists                    = errors.New("postalinfo of this type already exists")
 	ErrRegistrarStatusPreventsAccreditation             = errors.New("registrar status prevents accreditation")
 	ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs = errors.New("only ICANN accredited registrars can accredit for gTLDs")
@@ -54,34 +55,70 @@ func (r *RegistrarStatus) IsValid() bool {
 // Registrar object represents the sponsoring client for other objects and is typically referred to as the sponsoring registrar.
 // Ref: https://www.rfc-editor.org/rfc/rfc9022.html#name-registrar-object
 type Registrar struct {
-	ClID                      ClIDType        `json:"ClID" example:"my-regisrar-007" extensions:"x-order:0"` // ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
-	Name                      string          // A human-readable name for the registrar. Must match the Legal entity name. For ICANN Accredite registrars, must match the entity registered with ICANN for the corresponding GurID.
-	NickName                  string          // A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
-	GurID                     int             // The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
-	Status                    RegistrarStatus // The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
-	Autorenew                 bool            // A flag that indicates whether the registrar has opted-in to automatically renew domains that are eligible for auto-renewal.
-	AutorenewDaysBeforeExpiry int             // The number of days before the expiry date of a domain that the registrar has opted-in to automatically renew the domain. Default is 0 (on the day of expiry)
-	PostalInfo                [2]*RegistrarPostalInfo
-	Voice                     E164Type
-	Fax                       E164Type
-	Email                     string
-	URL                       URL
-	WhoisInfo                 WhoisInfo
-	RdapBaseURL               URL
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
-	TLDs                      []*TLD
+	// ClID is the client identifier of the registrar and is used throughout the Registry to identify the sponsoring registrar.
+	ClID ClIDType `json:"ClID" example:"my-regisrar-007" extensions:"x-order:0"`
+	// Must match the Legal entity name. For ICANN Accredited registrars, must match the entity registered with ICANN for the corresponding GurID.
+	Name string
+	// A Nickname for the regisrar, can be used if the registrar has multiple brands or it is know in the industry as a different name than their legal entity.
+	NickName string
+	// The IANA Registrar ID for the registrar. This is the ID that is attributed in the IANA Registrar ID Registry if the Registrar is accredited by ICANN. Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+	GurID int
+	// The status of the registrar. It can be one of the following: "ok", "readonly", "terminated"
+	Status RegistrarStatus
+	// IANAStatus is the status of the registrar as defined by IANA here Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
+	// can be one of the following: "Accredited", "Reserved", "Terminated"
+	IANAStatus IANARegistrarStatus
+	// A flag that indicates whether the registrar has opted-in to automatically renew domains that are eligible for auto-renewal.
+	Autorenew  bool
+	PostalInfo [2]*RegistrarPostalInfo
+	// The ABUSE phone number for the registrar
+	Voice E164Type
+	Fax   E164Type
+	// The ABUSE email address for the registrar
+	Email       string
+	URL         URL
+	WhoisInfo   WhoisInfo
+	RdapBaseURL URL
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	// The TLDs the registrar is accredited for
+	TLDs []*TLD
+}
+
+// RegistrarListItem is a subset of the Registrar object that is used in lists (e.g. list all registrars) when the full object is not needed
+type RegistrarListItem struct {
+	ClID      ClIDType
+	Name      string
+	GurID     int
+	Status    RegistrarStatus
+	Autorenew bool
+}
+
+// GetListRegistrarItem returns a pointer to a ListRegistrarItem struct
+// populated with the Registrar's ClID, Name, GurID, Status, and Autorenew fields.
+func (r *Registrar) GetListRegistrarItem() *RegistrarListItem {
+	return &RegistrarListItem{
+		ClID:      r.ClID,
+		Name:      r.Name,
+		GurID:     r.GurID,
+		Status:    r.Status,
+		Autorenew: r.Autorenew,
+	}
 }
 
 // NewRegistrar creates a new instance of Registrar
 func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarPostalInfo) (*Registrar, error) {
 	r := &Registrar{
-		ClID:     ClIDType(NormalizeString(clID)),
-		Name:     NormalizeString(name),
-		NickName: NormalizeString(name), // By default, the nickname is the same as the name
+		ClID: ClIDType(NormalizeString(clID)),
+		Name: NormalizeString(name),
+		// By default, the nickname is the same as the name
+		NickName: NormalizeString(name),
 		GurID:    gurid,
 		Email:    strings.ToLower(NormalizeString(email)),
-		Status:   RegistrarStatusReadonly, // Create the status as readonly by default
+		// Create the status as readonly by default
+		Status: RegistrarStatusReadonly,
+		// Create the IANAStatus as Unknown by default
+		IANAStatus: IANARegistrarStatusUnknown,
 	}
 
 	// Add the postal info information
@@ -118,8 +155,13 @@ func (r *Registrar) Validate() error {
 	if r.Email == "" {
 		return ErrRegistrarMissingEmail
 	}
+	// Status must be one of the valid values
 	if r.Status != RegistrarStatusOK && r.Status != RegistrarStatusReadonly && r.Status != RegistrarStatusTerminated {
 		return ErrInvalidRegistrarStatus
+	}
+	// This can be empty, but if it is not empty, it must be valid
+	if r.IANAStatus != "" && !r.IANAStatus.IsValid() {
+		return ErrInvalidRegistrarIANAStatus
 	}
 	_, err := mail.ParseAddress(r.Email)
 	if err != nil {
@@ -195,6 +237,8 @@ func (r *Registrar) IsAccreditedFor(tld *TLD) (int, bool) {
 }
 
 // Accreditation is the process by which a registrar is granted the ability to register domain names in a particular TLD.
+// In order for a Registrar to be able to accredit for a TLD, the Registrar.Status needs to be "ok".
+// If the TLD is a Generic TLD, the Registrar.GurID must be set and the Registrar.IANAStatus must be "Accredited".
 func (r *Registrar) AccreditFor(tld *TLD) error {
 	_, isAccredited := r.IsAccreditedFor(tld)
 	if isAccredited {
@@ -203,7 +247,7 @@ func (r *Registrar) AccreditFor(tld *TLD) error {
 	if r.Status != "ok" {
 		return ErrRegistrarStatusPreventsAccreditation
 	}
-	if r.GurID == 0 && tld.Type == TLDTypeGTLD {
+	if (r.GurID == 0 || r.IANAStatus != IANARegistrarStatusAccredited) && tld.Type == TLDTypeGTLD {
 		return ErrOnlyICANNAccreditedRegistrarsCanAccreditForGTLDs
 	}
 

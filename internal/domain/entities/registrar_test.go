@@ -48,13 +48,14 @@ func TestNewRegistrar(t *testing.T) {
 			},
 			wantErr: nil,
 			want: &Registrar{
-				ClID:      "my-registrar-007",
-				Name:      "My Registrar",
-				NickName:  "My Registrar",
-				Email:     "geoff@apex.domains",
-				GurID:     123,
-				Status:    RegistrarStatusReadonly,
-				Autorenew: false,
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "geoff@apex.domains",
+				GurID:      123,
+				Status:     RegistrarStatusReadonly,
+				IANAStatus: IANARegistrarStatusUnknown,
+				Autorenew:  false,
 				PostalInfo: [2]*RegistrarPostalInfo{
 					nil,
 					getValidRegistrarPostalInfo("loc"),
@@ -82,12 +83,13 @@ func TestNewRegistrar(t *testing.T) {
 			},
 			wantErr: nil,
 			want: &Registrar{
-				ClID:     "my-registrar-007",
-				Name:     "My Registrar",
-				NickName: "My Registrar",
-				Email:    "geoff@apex.domains",
-				GurID:    123,
-				Status:   RegistrarStatusReadonly,
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "geoff@apex.domains",
+				GurID:      123,
+				Status:     RegistrarStatusReadonly,
+				IANAStatus: IANARegistrarStatusUnknown,
 				PostalInfo: [2]*RegistrarPostalInfo{
 					getValidRegistrarPostalInfo("int"),
 					getValidRegistrarPostalInfo("loc"),
@@ -160,6 +162,19 @@ func TestRegistrar_IsValid(t *testing.T) {
 				Status:   RegistrarStatus("invalid"),
 			},
 			want: ErrInvalidRegistrarStatus,
+		},
+		{
+			testname: "invalid IANAstatus",
+			reg: &Registrar{
+				ClID:       "my-registrar-007",
+				Name:       "My Registrar",
+				NickName:   "My Registrar",
+				Email:      "g@my.com",
+				GurID:      123,
+				Status:     RegistrarStatus("ok"),
+				IANAStatus: IANARegistrarStatus("invalid"),
+			},
+			want: ErrInvalidRegistrarIANAStatus,
 		},
 		{
 			testname: "valid",
@@ -357,6 +372,7 @@ func TestRegistrar_AccreditFor(t *testing.T) {
 
 	// Test case 4: Accredited GTLD
 	r.GurID = 1123
+	r.IANAStatus = IANARegistrarStatusAccredited
 	err = r.AccreditFor(&TLD{Name: "apex", Type: TLDTypeGTLD})
 	require.NoError(t, err)
 	require.Equal(t, 5, len(r.TLDs))
@@ -468,6 +484,56 @@ func TestRegistrarStatus_IsValid(t *testing.T) {
 	}
 }
 
+func TestRegistrarIANAStatus_IsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		s    IANARegistrarStatus
+		want bool
+	}{
+		{
+			name: "empty", // nil value is not allowed, should use unknown
+			s:    IANARegistrarStatus(""),
+			want: false,
+		},
+		{
+			name: "Unknown",
+			s:    IANARegistrarStatus("Unknown"),
+			want: true,
+		},
+		{
+			name: "Accredited",
+			s:    IANARegistrarStatusAccredited,
+			want: true,
+		},
+		{
+			name: "Reserved",
+			s:    IANARegistrarStatusReserved,
+			want: true,
+		},
+		{
+			name: "Terminated",
+			s:    IANARegistrarStatusTerminated,
+			want: true,
+		},
+		{
+			name: "invalid",
+			s:    IANARegistrarStatus("invalid"),
+			want: false,
+		},
+		{
+			name: "case insensitive",
+			s:    IANARegistrarStatus("tErMiNaTeD"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, test.s.IsValid())
+		})
+	}
+}
+
 func TestRegistrarStatus_SetStatus(t *testing.T) {
 	r := &Registrar{
 		Status: RegistrarStatusOK,
@@ -492,4 +558,70 @@ func TestRegistrarStatus_SetStatus(t *testing.T) {
 	err = r.SetStatus(RegistrarStatus("rEaDoNlY"))
 	require.NoError(t, err)
 	require.Equal(t, RegistrarStatusReadonly, r.Status)
+}
+func TestRegistrar_GetListRegistrarItem(t *testing.T) {
+	tests := []struct {
+		name string
+		reg  *Registrar
+		want *RegistrarListItem
+	}{
+		{
+			name: "valid registrar",
+			reg: &Registrar{
+				ClID:      "my-registrar-007",
+				Name:      "My Registrar",
+				GurID:     123,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-007",
+				Name:      "My Registrar",
+				GurID:     123,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+			},
+		},
+		{
+			name: "readonly status",
+			reg: &Registrar{
+				ClID:      "my-registrar-008",
+				Name:      "Another Registrar",
+				GurID:     456,
+				Status:    RegistrarStatusReadonly,
+				Autorenew: false,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-008",
+				Name:      "Another Registrar",
+				GurID:     456,
+				Status:    RegistrarStatusReadonly,
+				Autorenew: false,
+			},
+		},
+		{
+			name: "terminated status",
+			reg: &Registrar{
+				ClID:      "my-registrar-009",
+				Name:      "Terminated Registrar",
+				GurID:     789,
+				Status:    RegistrarStatusTerminated,
+				Autorenew: true,
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-009",
+				Name:      "Terminated Registrar",
+				GurID:     789,
+				Status:    RegistrarStatusTerminated,
+				Autorenew: true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := test.reg.GetListRegistrarItem()
+			require.Equal(t, test.want, got)
+		})
+	}
 }

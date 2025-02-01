@@ -113,7 +113,7 @@ func (r *GormRegistrarRepository) Delete(ctx context.Context, clid string) error
 }
 
 // List returns a list of registrars
-func (r *GormRegistrarRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.Registrar, error) {
+func (r *GormRegistrarRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.RegistrarListItem, error) {
 	dbRars := []*Registrar{}
 
 	err := r.db.WithContext(ctx).Order("cl_id ASC").Limit(pagesize).Find(&dbRars, "cl_id > ?", cursor).Error
@@ -121,12 +121,13 @@ func (r *GormRegistrarRepository) List(ctx context.Context, pagesize int, cursor
 		return nil, err
 	}
 
-	rars := make([]*entities.Registrar, len(dbRars))
+	rarList := make([]*entities.RegistrarListItem, len(dbRars))
 	for i, dbRar := range dbRars {
-		rars[i] = FromDBRegistrar(dbRar)
+		rar := FromDBRegistrar(dbRar)
+		rarList[i] = rar.GetListRegistrarItem()
 	}
 
-	return rars, nil
+	return rarList, nil
 }
 
 // Count returns the total number of registrars in the repository
