@@ -184,6 +184,21 @@ func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDo
 		return nil, err
 	}
 
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		d.ClID.String(),
+		"",
+		d.Name.ParentDomain(),
+		d.Name.String(),
+		0,
+		entities.TransactionTypeAdminCreate,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain %s ADMIN created", createdDomain.Name), event, cmd, createdDomain, nil)
+
 	return createdDomain, nil
 }
 
@@ -206,6 +221,10 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	if err != nil {
 		return nil, err
 	}
+
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
+
 	// Make the changes
 	dom.OriginalName = entities.DomainName(upDom.OriginalName)
 	dom.UName = entities.DomainName(upDom.UName)
@@ -253,6 +272,21 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	if err != nil {
 		return nil, err
 	}
+
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain %s updated", updatedDomain.Name), event, upDom, updatedDomain, prevDom)
 
 	return updatedDomain, nil
 }
@@ -394,6 +428,9 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 		return err
 	}
 
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
+
 	// Get the host
 	hRoid := entities.RoidType(roid)
 	if err := hRoid.Validate(); err != nil {
@@ -433,6 +470,21 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 		return err
 	}
 
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+
 	return nil
 }
 
@@ -443,6 +495,9 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 	if err != nil {
 		return err
 	}
+
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
 
 	// Get the host by host name and clid
 	host, err := s.hostRepository.GetHostByNameAndClID(ctx, strings.ToLower(hostName), dom.ClID.String())
@@ -471,6 +526,21 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 		return err
 	}
 
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+
 	return nil
 }
 
@@ -481,6 +551,9 @@ func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) e
 	if err != nil {
 		return err
 	}
+
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
 
 	// Dissasociate all hosts
 	for _, h := range dom.Hosts {
@@ -508,6 +581,21 @@ func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) e
 		return err
 	}
 
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("All hosts removed from domain %s", dom.Name), event, nil, dom, prevDom)
+
 	return nil
 }
 
@@ -518,6 +606,9 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 	if err != nil {
 		return err
 	}
+
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
 
 	domRoidInt, err := dom.RoID.Int64()
 	if err != nil {
@@ -579,6 +670,22 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 			log.Printf("Failed to update host %s: %v", host.RoID.String(), err)
 		}
 	}
+
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+
 	return nil
 }
 
@@ -589,6 +696,9 @@ func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, doma
 	if err != nil {
 		return err
 	}
+
+	// Make a copy of the original domain
+	prevDom := dom.DeepCopy()
 
 	domRoidInt, err := dom.RoID.Int64()
 	if err != nil {
@@ -642,6 +752,22 @@ func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, doma
 			log.Printf("Failed to update host %s: %v", host.RoID.String(), err)
 		}
 	}
+
+	// Log a lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+
 	return nil
 }
 
@@ -1417,6 +1543,9 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 		return err
 	}
 
+	// Make a copy of the domain
+	previousDom := dom.DeepCopy()
+
 	// Set or unset the DropCatch flag
 	if dropcatch {
 		dom.DropCatch = true
@@ -1425,10 +1554,25 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 	}
 
 	// Save the domain
-	_, err = svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDom, err := svc.domainRepository.UpdateDomain(ctx, dom)
 	if err != nil {
 		return err
 	}
+
+	// Log the domain update
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return err
+	}
+
+	svc.logDomainLifecycleEvent(ctx, fmt.Sprintf("DropCatch flag set to %t for domain %s", dropcatch, domainName), event, nil, updatedDom, previousDom)
 
 	return nil
 }
@@ -1617,6 +1761,9 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 		return nil, err
 	}
 
+	// Make a copy of the domain
+	previousDom := dom.DeepCopy()
+
 	// Set the status
 	err = dom.SetStatus(status)
 	if err != nil {
@@ -1628,6 +1775,21 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the domain update
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain status %s set to true", status), event, nil, updatedDomain, previousDom)
 
 	return updatedDomain, nil
 }
@@ -1644,6 +1806,9 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 		return nil, err
 	}
 
+	// Make a copy of the domain
+	previousDom := dom.DeepCopy()
+
 	// Unset the status
 	err = dom.UnSetStatus(status)
 	if err != nil {
@@ -1655,6 +1820,21 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the domain update
+	event, err := entities.NewDomainLifeCycleEvent(
+		dom.ClID.String(),
+		"",
+		dom.Name.ParentDomain(),
+		dom.Name.String(),
+		0,
+		entities.TransactionTypeUpdate,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain status %s set to false", status), event, nil, updatedDomain, previousDom)
 
 	return updatedDomain, nil
 }
