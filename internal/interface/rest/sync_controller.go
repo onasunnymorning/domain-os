@@ -34,7 +34,7 @@ func NewSyncController(e *gin.Engine, syncService interfaces.SyncService, handle
 }
 
 // SyncSpec5 godoc
-// @Summary Sync Spec5 labels from ICANN to the database
+// @Summary Sync Spec5 labels from ICANN XML and replace current entries with the new ones
 // @Description Reads in the spec5 labels from ICANN XML repository (https://www.icann.org/sites/default/files/packages/reserved-names/ReservedNames.xml) and refreshes the database.
 // @Description This will replace all spec5Labels in the database. Its recommended to first backup the current spec5Labels.
 // @Description Use this endpoint when there is an update to the spec5 policy by ICANN. See this webpage for reference (https://www.icann.org/reserved-names-en).
@@ -57,7 +57,7 @@ func (ctrl *SyncController) SyncSpec5(ctx *gin.Context) {
 }
 
 // SyncRegistrars godoc
-// @Summary Sync Registrars from IANA to the database
+// @Summary Sync Registrars from IANA repository and replace the existing ones with the new ones
 // @Description Reads in the registrars from IANA XML repository (https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml) and refreshes the database.
 // @Description This will replace all IANARegistrars in the database. Its recommended to first backup the current IANARegistrars.
 // @Description Use this endpoint when there is an update to the IANA registrar list or you are notified by ICANN of a termination of a registrar.

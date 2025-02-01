@@ -2,7 +2,6 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -56,12 +54,12 @@ var _ = Describe("RegistrarController", func() {
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
-			var res commands.CreateRegistrarCommandResult
+			var res entities.Registrar
 			err = json.NewDecoder(resp.Body).Decode(&res)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			createdID = res.Result.ClID.String()
+			createdID = res.ClID.String()
 			Expect(createdID).NotTo(BeEmpty())
 		})
 
@@ -116,54 +114,6 @@ var _ = Describe("RegistrarController", func() {
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
-		It("should NOT create a new registrar by non existing GurID", func() {
-			reqBody := request.CreateRegistrarFromGurIDRequest{
-				Email: "contact@example.com",
-			}
-			payloadBytes, err := json.Marshal(reqBody)
-			Expect(err).NotTo(HaveOccurred())
-			gurid := "9999"
-			// Send the request to create a new registrar
-			req, err := http.NewRequest(http.MethodPost, "/registrars/"+gurid, bytes.NewReader(payloadBytes))
-			Expect(err).NotTo(HaveOccurred())
-
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-			var res commands.CreateRegistrarCommandResult
-			err = json.NewDecoder(resp.Body).Decode(&res)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-		})
-
-		It("should create a new registrar by GurID", func() {
-			err := ianaRepo.UpdateAll(context.Background(), []*entities.IANARegistrar{
-				{
-					GurID:   12345,
-					Name:    "Example Registrar Name",
-					Status:  entities.IANARegistrarStatusReserved,
-					RdapURL: "https://rdap.example.com",
-				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			reqBody := request.CreateRegistrarFromGurIDRequest{
-				Email: "contact@example.com",
-			}
-
-			payloadBytes, err := json.Marshal(reqBody)
-			Expect(err).NotTo(HaveOccurred())
-			gurid := "12345"
-			// Send the request to create a new registrar
-			req, err := http.NewRequest(http.MethodPost, "/registrars/"+gurid, bytes.NewReader(payloadBytes))
-			Expect(err).NotTo(HaveOccurred())
-
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-			var res commands.CreateRegistrarCommandResult
-			err = json.NewDecoder(resp.Body).Decode(&res)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.Code).To(Equal(http.StatusInternalServerError)) // fixme: should be 200, getting {"error":"invalid registrar postalinfo"}
-		})
 	})
 
 })

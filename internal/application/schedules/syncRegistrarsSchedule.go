@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	purgeScheduleIDPrefix         = "purge_schedule_"
-	purgeScheduleWorkflowIDPrefix = "purge_schedule_workflow_"
+	syncRegistrarScheduleIDPrefix         = "sync_registrar_schedule_"
+	syncRegistrarScheduleWorkflowIDPrefix = "sync_registrar_schedule_workflow_"
 )
 
-func CreatePurgeScheduleHourly(cfg temporal.TemporalClientconfig) (string, error) {
+func CreateSyncRegistrarScheduleDaily(cfg temporal.TemporalClientconfig) (string, error) {
 	ctx := context.Background()
 
-	scheduleID := purgeScheduleIDPrefix + uuid.NewString()
-	workflowID := purgeScheduleWorkflowIDPrefix + uuid.NewString()
+	scheduleID := syncRegistrarScheduleIDPrefix + uuid.NewString()
+	workflowID := syncRegistrarScheduleWorkflowIDPrefix + uuid.NewString()
 
 	// Create a Temporal client
 	temporalClient, err := temporal.GetTemporalClient(cfg)
@@ -33,14 +33,16 @@ func CreatePurgeScheduleHourly(cfg temporal.TemporalClientconfig) (string, error
 		Spec: client.ScheduleSpec{
 			Intervals: []client.ScheduleIntervalSpec{
 				{
-					Every:  time.Hour,
-					Offset: time.Minute * 30,
+					Every:  time.Hour * 24,
+					Offset: time.Hour * 2,
 				},
 			},
 		},
 		Action: &client.ScheduleWorkflowAction{
-			ID:        workflowID,
-			Workflow:  workflows.UpdateFX,
+			ID:       workflowID,
+			Workflow: workflows.SyncRegistrarsWorkflow,
+			// TODO: fix hard coded 100 batchsize
+			Args:      []interface{}{100},
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})

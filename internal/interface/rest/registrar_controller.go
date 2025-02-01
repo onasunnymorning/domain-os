@@ -8,12 +8,9 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 
-	"github.com/docker/docker/pkg/namesgenerator"
-
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
@@ -37,9 +34,10 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 		rarGroup.GET("", controller.List)
 		rarGroup.GET("count", controller.GetRegistrarCount)
 		rarGroup.POST("", controller.Create)
+		rarGroup.POST("/bulk", controller.BulkCreate)
 		rarGroup.PUT(":clid", controller.UpdateRegistrar)
 		rarGroup.PUT(":clid/status/:status", controller.SetRegistrarStatus)
-		rarGroup.POST(":gurid", controller.CreateRegistrarByGurID)
+		// REQUEST REMOVAL rarGroup.POST(":gurid", controller.CreateRegistrarByGurID)
 		rarGroup.DELETE(":clid", controller.DeleteRegistrarByClID)
 	}
 
@@ -114,7 +112,7 @@ func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
-// @Success 200 {array} entities.Registrar
+// @Success 200 {array} entities.RegistrarListItem
 // @Failure 400
 // @Failure 500
 // @Router /registrars [get]
@@ -151,13 +149,16 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 }
 
 // Create godoc
-// @Summary Create a new Registrar
-// @Description Create a new Registrar
+// @Summary Create a new Registrar, will be created with the status 'readonly'
+// @Description Create a new Registrar using CreateRegistrarCommand. ClID, email,
+// @Description name and at least one postal info is required. A new Registrar will be created with the status 'readonly'.
+// @Description A RegistrarLifecycleEvent will be created with the status 'created'.
+// @Description This should trigger the Registrar onboarding process.
 // @Tags Registrars
 // @Accept json
 // @Produce json
 // @Param registrar body commands.CreateRegistrarCommand true "Registrar"
-// @Success 200 {object} commands.CreateRegistrarCommandResult
+// @Success 200 {object} entities.Registrar
 // @Failure 400
 // @Failure 500
 // @Router /registrars [post]
@@ -244,60 +245,66 @@ func (ctrl *RegistrarController) DeleteRegistrarByClID(ctx *gin.Context) {
 	ctx.JSON(204, nil)
 }
 
-// CreateRegistrarByGurID godoc
-// @Summary Create a new Registrar by GurID
-// @Description Creates a registrar by looking up the GurID in the IANA repository and taking the data from there. You will need to supply an email only. All the other data will be taken from the IANA repository.
-// @Tags Registrars
-// @Accept json
-// @Produce json
-// @Param gurid path int true "Registrar GurID"
-// @Param registrarEmail body request.CreateRegistrarFromGurIDRequest true "RegistrarEmail"
-// @Success 200 {object} commands.CreateRegistrarCommandResult
-// @Failure 400
-// @Failure 500
-// @Router /registrars/{gurid} [post]
-func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
-	// Get the email from the request body
-	var req request.CreateRegistrarFromGurIDRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-	// get the GurID from the request
-	guridString := ctx.Param("gurid")
-	// turn the GurID into an int
-	gurid, err := strconv.Atoi(guridString)
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": ErrInvalidGurID.Error()})
-		return
-	}
-	// TODO: Check if a registrar already exists with that gurid (if we want to keep it quite strict)
+//
+// This conflicts with /bulk endpoint
+// Under evaluation for removal
+//
+//
+//
+// // CreateRegistrarByGurID godoc
+// // @Summary Create a new Registrar by GurID
+// // @Description Creates a registrar by looking up the GurID in the IANA repository and taking the data from there. You will need to supply an email only. All the other data will be taken from the IANA repository.
+// // @Tags Registrars
+// // @Accept json
+// // @Produce json
+// // @Param gurid path int true "Registrar GurID"
+// // @Param registrarEmail body request.CreateRegistrarFromGurIDRequest true "RegistrarEmail"
+// // @Success 200 {object} commands.CreateRegistrarCommandResult
+// // @Failure 400
+// // @Failure 500
+// // @Router /registrars/{gurid} [post]
+// func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
+// 	// Get the email from the request body
+// 	var req request.CreateRegistrarFromGurIDRequest
+// 	if err := ctx.ShouldBindJSON(&req); err != nil {
+// 		ctx.JSON(400, gin.H{"error": err.Error()})
+// 		return
+// 	}
+// 	// get the GurID from the request
+// 	guridString := ctx.Param("gurid")
+// 	// turn the GurID into an int
+// 	gurid, err := strconv.Atoi(guridString)
+// 	if err != nil {
+// 		ctx.JSON(400, gin.H{"error": ErrInvalidGurID.Error()})
+// 		return
+// 	}
+// 	// TODO: Check if a registrar already exists with that gurid (if we want to keep it quite strict)
 
-	// look up the GurID in our internal repository
-	ianaRar, err := ctrl.ianaRegistrarService.GetByGurID(ctx, gurid)
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
+// 	// look up the GurID in our internal repository
+// 	ianaRar, err := ctrl.ianaRegistrarService.GetByGurID(ctx, gurid)
+// 	if err != nil {
+// 		ctx.JSON(400, gin.H{"error": err.Error()})
+// 		return
+// 	}
 
-	// if it does exist, create a new registrar using the data from the IANA registrar
-	var cmd commands.CreateRegistrarCommand
-	cmd.ClID = namesgenerator.GetRandomName(0)
-	cmd.Name = ianaRar.Name
-	cmd.Email = req.Email
-	cmd.GurID = ianaRar.GurID
-	cmd.PostalInfo = [2]*entities.RegistrarPostalInfo{
-		{Type: "int"}, {Type: "loc"},
-	}
+// 	// if it does exist, create a new registrar using the data from the IANA registrar
+// 	var cmd commands.CreateRegistrarCommand
+// 	cmd.ClID = namesgenerator.GetRandomName(0)
+// 	cmd.Name = ianaRar.Name
+// 	cmd.Email = req.Email
+// 	cmd.GurID = ianaRar.GurID
+// 	cmd.PostalInfo = [2]*entities.RegistrarPostalInfo{
+// 		{Type: "int"}, {Type: "loc"},
+// 	}
 
-	result, err := ctrl.rarService.Create(ctx, &cmd)
-	if err != nil {
-		ctx.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
+// 	result, err := ctrl.rarService.Create(ctx, &cmd)
+// 	if err != nil {
+// 		ctx.JSON(500, gin.H{"error": err.Error()})
+// 		return
+// 	}
 
-	ctx.JSON(200, result)
-}
+// 	ctx.JSON(200, result)
+// }
 
 // UpdateRegistrar godoc
 // @Summary Update a Registrar

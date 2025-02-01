@@ -22,21 +22,13 @@ func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *
 }
 
 // Create creates a new registrar
-func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*commands.CreateRegistrarCommandResult, error) {
+func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegistrarCommand) (*entities.Registrar, error) {
 	newRar, err := rarFromCmd(cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	createdRegistrar, err := s.registrarRepository.Create(ctx, newRar)
-	if err != nil {
-		return nil, err
-	}
-
-	var result commands.CreateRegistrarCommandResult
-	result.Result = *createdRegistrar
-
-	return &result, nil
+	return s.registrarRepository.Create(ctx, newRar)
 }
 
 // Bulk Create new registrars
@@ -60,7 +52,7 @@ func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities
 }
 
 // List returns a list of registrars
-func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.Registrar, error) {
+func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error) {
 	return s.registrarRepository.List(ctx, pagesize, pagecursor)
 }
 

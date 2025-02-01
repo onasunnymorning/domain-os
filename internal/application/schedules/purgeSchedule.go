@@ -40,7 +40,7 @@ func CreateUpdateFXScheduleDaily(cfg temporal.TemporalClientconfig) (string, err
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        workflowID,
-			Workflow:  workflows.UpdateFX,
+			Workflow:  workflows.PurgeLoop,
 			TaskQueue: cfg.WorkerQueue,
 		},
 	})
