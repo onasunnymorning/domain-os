@@ -14,7 +14,8 @@ var (
 	ErrEmptyDomainName      = errors.New("DomainName cannot be empty")
 )
 
-// DomainLifeCycleEvent struct defines a billing event that is generated each time a domain is registered, renewed, transferred or deleted
+// DomainLifeCycleEvent struct defines an event that is generated each time a domain is registered, renewed, transferred or deleted
+// Its consumers are the billing and reporting systems as well as make lifecycle events visible to users
 type DomainLifeCycleEvent struct {
 	ClientID        string          // ClientID is the unique identifier of the client Registrar.ClID
 	ResellerID      string          // ResellerID is the unique identifier of the reseller if applicable

@@ -1021,7 +1021,7 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	}
 
 	// save the previous state
-	prevState := dom.Clone()
+	prevState := dom.DeepCopy()
 
 	// If the force flag is set, we will try to renew the domain anyway using the Domain.ForceRenew method avoiding possible errors due to the domain status
 	if force {
@@ -1182,7 +1182,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	event.Quote = *quote
 
 	// Save the previous state
-	prevState := dom.Clone()
+	prevState := dom.DeepCopy()
 
 	// Renew the domain using our entity
 	err = dom.Renew(years, true, phase)
@@ -1249,7 +1249,7 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	}
 
 	// Save the previous state
-	prevState := dom.Clone()
+	prevState := dom.DeepCopy()
 
 	// Mark the domain for deletion
 	err = dom.MarkForDeletion(phase)
@@ -1318,7 +1318,7 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 	}
 
 	// Save the previous state
-	prevState := dom.Clone()
+	prevState := dom.DeepCopy()
 
 	// Expire the domain
 	err = dom.Expire(phase)
@@ -1387,7 +1387,7 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 	event.Quote = *quote
 
 	// Save the previous state
-	prevState := dom.Clone()
+	prevState := dom.DeepCopy()
 
 	// Restore the domain
 	err = dom.Restore()
@@ -1578,13 +1578,7 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 
 // logDomainLifecycleEvent logs a domain lifecycle event with the provided context, event, command, and result.
 // It extracts trace_id and correlation_id from the context if they exist and includes them in the event.
-//
-// Parameters:
-//
-//	ctx - The context containing trace_id and correlation_id.
-//	event - The domain lifecycle event to be logged.
-//	command - The command associated with the event.
-//	result - The result of the domain lifecycle operation.
+
 func (s *DomainService) logDomainLifecycleEvent(
 	ctx context.Context,
 	msg string,

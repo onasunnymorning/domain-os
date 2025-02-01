@@ -99,3 +99,11 @@ func (a *Address) IsASCII() (bool, error) {
 	}
 	return true, nil
 }
+
+// Address is effectively all value types (string aliases), so a simple copy suffices.
+// However, we’ll give it a method for consistency and future-proofing:
+func (a Address) DeepCopy() Address {
+	// Since everything inside Address is just a string or string alias,
+	// a shallow copy is enough; there's nothing that can share memory inside.
+	return a
+}
