@@ -340,8 +340,8 @@ func (ds *DomainStatus) StringSlice() []string {
 	return status
 }
 
-// Clone creates a deep copy of the DomainStatus object, including all its fields
-func (ds *DomainStatus) Clone() DomainStatus {
+// DeepCopy creates a deep copy of the DomainStatus object, including all its fields
+func (ds *DomainStatus) DeepCopy() DomainStatus {
 	return DomainStatus{
 		OK:                       ds.OK,
 		Inactive:                 ds.Inactive,
@@ -366,7 +366,7 @@ func (ds *DomainStatus) Clone() DomainStatus {
 
 // BackupAndClear returns a deep copy of the DomainStatus object, including all its fields, and then clears all fields
 func (ds *DomainStatus) BackupAndClear() DomainStatus {
-	backup := ds.Clone()
+	backup := ds.DeepCopy()
 	ds.Clear()
 	return backup
 }

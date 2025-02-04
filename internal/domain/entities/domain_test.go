@@ -1914,7 +1914,7 @@ func TestDomain_applyContactDataPolicy(t *testing.T) {
 		})
 	}
 }
-func TestDomain_Clone(t *testing.T) {
+func TestDomain_DeepCopy(t *testing.T) {
 	now := time.Now()
 	later := now.Add(time.Hour * 24)
 
@@ -1994,7 +1994,7 @@ func TestDomain_Clone(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cloned := tc.domain.Clone()
+			cloned := tc.domain.DeepCopy()
 
 			if tc.shouldBeNil {
 				require.Nil(t, cloned)

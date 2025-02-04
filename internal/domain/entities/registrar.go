@@ -273,3 +273,38 @@ func (r *Registrar) SetStatus(s RegistrarStatus) error {
 	r.Status = RegistrarStatus(strings.ToLower(string(s))) // When setting always use lowercase
 	return nil
 }
+
+// DeepCopy creates a new Registrar with a copy of the original values
+func (r Registrar) DeepCopy() Registrar {
+	// First, do a shallow copy of all value fields:
+	copyR := Registrar{
+		ClID:        r.ClID,
+		Name:        r.Name,
+		NickName:    r.NickName,
+		GurID:       r.GurID,
+		Status:      r.Status,
+		IANAStatus:  r.IANAStatus,
+		Autorenew:   r.Autorenew,
+		Voice:       r.Voice,
+		Fax:         r.Fax,
+		Email:       r.Email,
+		URL:         r.URL,       // If URL is a value type (no pointers), shallow copy is fine
+		WhoisInfo:   r.WhoisInfo, // same reasoning
+		RdapBaseURL: r.RdapBaseURL,
+		CreatedAt:   r.CreatedAt, // time.Time is a value type
+		UpdatedAt:   r.UpdatedAt,
+		// TLDs omitted per request (would need its own deep copy logic if included)
+	}
+
+	// Now deep-copy the PostalInfo array (which holds *RegistrarPostalInfo):
+	for i, pi := range r.PostalInfo {
+		if pi != nil {
+			// Use RegistrarPostalInfo.DeepCopy() to ensure a new instance
+			piCopy := pi.DeepCopy()
+			// Since DeepCopy() returns a value, we need a new pointer:
+			copyR.PostalInfo[i] = &piCopy
+		}
+	}
+
+	return copyR
+}

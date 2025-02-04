@@ -25,6 +25,7 @@ const (
 	TransactionTypeInfo         = TransactionType("info")
 	TransactionTypeExpiry       = TransactionType("expiry")
 	TransactionTypePurge        = TransactionType("purge")
+	TransactionTypeUpdate       = TransactionType("update")
 )
 
 var (
