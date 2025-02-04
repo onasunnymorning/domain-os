@@ -130,7 +130,7 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 	// Set the event details.command
 	event.Details.Command = req
 
-	domain, err := ctrl.domainService.CreateDomain(ctx, &req)
+	domain, err := ctrl.domainService.Create(ctx, &req)
 	if err != nil {
 		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidDomain) {
