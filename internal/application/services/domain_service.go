@@ -202,19 +202,35 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 	return createdDomain, nil
 }
 
+// Bulk Create new domains, useful when importing data, not for normal domain operations.
+// If any of the domains fails to create, the operation is aborted (no domains are created) and the error is returned.
+// Hosts are not created or associated with the domains.
+// Hosts, Registrars and Contacts must exist before calling this method or the operation will fail if a reference is not found.
+// It logs a domain lifecycle event for the bulk operation.
+func (s *DomainService) BulkCreate(ctx context.Context, cmds []*commands.CreateDomainCommand) error {
+	doms, err := s.bulkDomainFromCreateDomainCommands(cmds)
+	if err != nil {
+		return err
+	}
+
+	err = s.domainRepository.BulkCreate(ctx, doms)
+	if err != nil {
+		return err
+	}
+
+	// Log the domain lifecycle event
+	event, err := entities.NewDomainLifeCycleEvent("SYSTEM", "", doms[0].TLDName.String(), "bulk.domain.import", 0, entities.TransactionTypeAdminCreate)
+	if err != nil {
+		return err
+	}
+	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("bulk created %d domains", len(cmds)), event, nil, nil, nil)
+
+	return nil
+}
+
 // UpdateDomain updates the details of an existing domain identified by its name.
 // It retrieves the domain from the repository, applies the changes specified in upDom,
 // optionally validates the domain against the current GA phase policy if so stated in the command,
-//
-// Parameters:
-//   - ctx: Context for the operation, enabling cancellation and deadlines.
-//   - name: The identifier (name) of the domain to be updated.
-//   - upDom: The command containing new domain data such as names and contact info.
-//   - phase: Optional phase data containing policy rules for contact data validation.
-//
-// Returns:
-//   - A pointer to the updated domain if successful.
-//   - An error if retrieval, validation, or updating fails.
 func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
 	// Look up the domain
 	dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
@@ -1837,4 +1853,85 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain status %s set to false", status), event, nil, updatedDomain, previousDom)
 
 	return updatedDomain, nil
+}
+
+// domainFromCreateDomainCommand creates a domain entity from a CreateDomainCommand
+func (s *DomainService) domainFromCreateDomainCommand(cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
+	var roid entities.RoidType
+	var err error
+	if cmd.RoID == "" {
+		// Generate a RoID if none is supplied
+		roid, err = s.roidService.GenerateRoid("domain")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		roid = entities.RoidType(cmd.RoID) // Validity will be checked in NewDomain
+	}
+	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
+	// Set the optional fields
+	if cmd.OriginalName != "" {
+		d.OriginalName = entities.DomainName(strings.ToLower(cmd.OriginalName))
+	}
+	if cmd.UName != "" {
+		d.UName = entities.DomainName(strings.ToLower(cmd.UName))
+	}
+	if cmd.RegistrantID != "" {
+		d.RegistrantID = entities.ClIDType(cmd.RegistrantID)
+	}
+	if cmd.AdminID != "" {
+		d.AdminID = entities.ClIDType(cmd.AdminID)
+	}
+	if cmd.TechID != "" {
+		d.TechID = entities.ClIDType(cmd.TechID)
+	}
+	if cmd.BillingID != "" {
+		d.BillingID = entities.ClIDType(cmd.BillingID)
+	}
+	if cmd.CrRr != "" {
+		d.CrRr = entities.ClIDType(cmd.CrRr)
+	}
+	if cmd.UpRr != "" {
+		d.UpRr = entities.ClIDType(cmd.UpRr)
+	}
+	if !cmd.ExpiryDate.IsZero() {
+		d.ExpiryDate = cmd.ExpiryDate
+	}
+	if !cmd.CreatedAt.IsZero() {
+		d.CreatedAt = cmd.CreatedAt
+	}
+	if !cmd.UpdatedAt.IsZero() {
+		d.UpdatedAt = cmd.UpdatedAt
+	}
+	if !cmd.Status.IsNil() {
+		d.Status = cmd.Status
+	}
+	if !cmd.RGPStatus.IsNil() {
+		d.RGPStatus = cmd.RGPStatus
+	}
+	d.GrandFathering = cmd.GrandFathering
+	d.RenewedYears = cmd.RenewedYears
+
+	// Check if the domain is valid
+	if err := d.Validate(); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
+
+	return d, nil
+}
+
+// bulkDomainFromCreateDomainCommands creates a slice of domain entities from a slice of CreateDomainCommands
+func (s *DomainService) bulkDomainFromCreateDomainCommands(cmds []*commands.CreateDomainCommand) ([]*entities.Domain, error) {
+	domains := make([]*entities.Domain, 0, len(cmds))
+	for _, cmd := range cmds {
+		d, err := s.domainFromCreateDomainCommand(cmd)
+		if err != nil {
+			return nil, err
+		}
+		domains = append(domains, d)
+	}
+	return domains, nil
 }

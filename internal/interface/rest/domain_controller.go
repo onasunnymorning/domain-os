@@ -31,7 +31,8 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 	{
 
 		// Admin endpoints
-		domainGroup.POST("", controller.CreateDomain) // use this when importing or creating a domain as an admin with full control
+		domainGroup.POST("", controller.CreateDomain)   // use this when importing or creating a domain as an admin with full control
+		domainGroup.POST("bulk", controller.BulkCreate) // use this when importing or creating multiple domains as an admin with full control
 		domainGroup.GET(":name", controller.GetDomainByName)
 		domainGroup.PUT(":name", controller.UpdateDomain)
 		domainGroup.DELETE(":name", controller.DeleteDomainByName)
@@ -146,6 +147,41 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 	ctx.Set("event", event)
 
 	ctx.JSON(201, domain)
+}
+
+// BulkCreate godoc
+// @Summary Bulk create domains when importing data
+// @Description Bulk Create new domains, useful when importing data, not for normal domain operations.
+// @Description If any of the domains fails to create, the operation is aborted (no domains are created) and the error is returned.
+// @Description Hosts are not created or associated with the domains.
+// @Description Hosts, Registrars and Contacts must exist before calling this method or the operation will fail if a reference is not found.
+// @Description It logs a domain lifecycle event for the bulk operation.
+// @Description It returns a 201 status code if all domains are created successfully with no body.
+// @Tags Domains
+// @Accept json
+// @Param domains body []commands.CreateDomainCommand true "Domains"
+// @Success 201
+// @Failure 400
+// @Failure 500
+// @Router /domains/bulk [post]
+func (ctrl *DomainController) BulkCreate(ctx *gin.Context) {
+	var req []*commands.CreateDomainCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := ctrl.domainService.BulkCreate(ctx, req)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(201, nil)
 }
 
 // DeleteDomainByName godoc
