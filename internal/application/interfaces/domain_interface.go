@@ -29,6 +29,7 @@ type DomainService interface {
 	CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error)
 	ListRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, q *queries.RestoredDomainsQuery) (int64, error)
+	BulkCreate(ctx context.Context, cmds []*commands.CreateDomainCommand) error
 
 	// These are Registrar services
 	// CheckDomain checks if a domain is available
