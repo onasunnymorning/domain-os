@@ -176,7 +176,7 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 	}
 
 	// Save the domain
-	createdDomain, err := s.domainRepository.CreateDomain(ctx, d)
+	createdDomain, err := s.domainRepository.Create(ctx, d)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainAlreadyExists) {
 			return nil, errors.Join(entities.ErrInvalidDomain, err)
@@ -1062,7 +1062,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 
 	// Save the domain including optional host associations
-	createdDomain, err := svc.domainRepository.CreateDomain(ctx, dom)
+	createdDomain, err := svc.domainRepository.Create(ctx, dom)
 	if err != nil {
 		return nil, err
 	}

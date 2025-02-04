@@ -138,7 +138,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 	s.Require().Equal(domain.Name, createdDomain.Name)
@@ -147,7 +147,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	s.Require().NotNil(createdDomain.RoID)
 
 	// Create the same domains again should result in an error
-	_, err = repo.CreateDomain(context.Background(), createdDomain)
+	_, err = repo.Create(context.Background(), createdDomain)
 	s.Require().Error(err)
 
 }
@@ -171,7 +171,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	domain.Status.Inactive = false
 
 	// Create the domain in the db
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 	s.Require().Equal(domain.Name, createdDomain.Name)
@@ -230,7 +230,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	domain.Status.Inactive = false
 
 	// Create the domain
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 	s.Require().Equal(domain.Name, createdDomain.Name)
@@ -276,7 +276,7 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	domain.Status.Inactive = false // in real life the domain layer will take care of this
 
 	// Create the domain
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 	s.Require().Equal(domain.Name, createdDomain.Name)
@@ -335,7 +335,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 
@@ -367,7 +367,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 
@@ -396,7 +396,7 @@ func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
 	domain.Hosts = s.hosts
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 
@@ -425,7 +425,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 
@@ -453,7 +453,7 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 
@@ -487,7 +487,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	_, err = repo.CreateDomain(context.Background(), domain)
+	_, err = repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 
 	// Create a second domain
@@ -498,7 +498,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain2, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain2, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 
 	// Create a third domain
@@ -509,7 +509,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	domain.AdminID = "myTestContact007"
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
-	createdDomain3, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain3, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 
 	// List all three
@@ -552,7 +552,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	domain.TechID = "myTestContact007"
 	domain.BillingID = "myTestContact007"
 	domain.Hosts = s.hosts
-	createdDomain, err := repo.CreateDomain(context.Background(), domain)
+	createdDomain, err := repo.Create(context.Background(), domain)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdDomain)
 	s.Require().Equal(len(s.hosts), len(createdDomain.Hosts))
@@ -605,7 +605,7 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 		// Set the expiry date to be in 1, 2, 3 days
 		domain.ExpiryDate = time.Now().AddDate(0, 0, i+1).UTC()
 
-		createdDomain, err := repo.CreateDomain(context.Background(), domain)
+		createdDomain, err := repo.Create(context.Background(), domain)
 		s.Require().NoError(err)
 		s.Require().NotNil(createdDomain)
 
@@ -690,7 +690,7 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 		// Set the domain to be pending delete
 		domain.Status.PendingDelete = true
 
-		createdDomain, err := repo.CreateDomain(context.Background(), domain)
+		createdDomain, err := repo.Create(context.Background(), domain)
 		s.Require().NoError(err)
 		s.Require().NotNil(createdDomain)
 
@@ -787,7 +787,7 @@ func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
 		// Set the domain to be pending restore
 		domain.Status.PendingRestore = true
 
-		createdDomain, err := repo.CreateDomain(context.Background(), domain)
+		createdDomain, err := repo.Create(context.Background(), domain)
 		s.Require().NoError(err)
 		s.Require().NotNil(createdDomain)
 
@@ -843,4 +843,50 @@ func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
 	_, err = repo.ListRestoredDomains(context.Background(), 25, "domaintestRar", "domaintesttld", "ABCD_DOM-APEX")
 	s.Require().Error(err)
 
+}
+
+func (s *DomainSuite) TestDomainRepository_BulkCreate() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	// Create a slice of domains to bulk-create.
+	var domains []*entities.Domain
+	for i := 0; i < 3; i++ {
+		domain, err := entities.NewDomain(
+			fmt.Sprintf("BULK%d_DOM-APEX", i),
+			fmt.Sprintf("bulk%d.domaintesttld", i),
+			"GoMamma",
+			"STr0mgP@ZZ",
+		)
+		s.Require().NoError(err)
+		domain.ClID = "domaintestRar"
+		domain.RegistrantID = "myTestContact007"
+		domain.AdminID = "myTestContact007"
+		domain.TechID = "myTestContact007"
+		domain.BillingID = "myTestContact007"
+
+		// Intentionally add hosts to ensure BulkCreate does NOT persist them.
+		domain.Hosts = s.hosts
+
+		domains = append(domains, domain)
+	}
+
+	// Bulk-create domains.
+	err := repo.BulkCreate(context.Background(), domains)
+	s.Require().NoError(err)
+
+	// Verify each domain is created without hosts linked.
+	for i, d := range domains {
+		retrievedDomain, err := repo.GetDomainByName(context.Background(), d.Name.String(), true)
+		s.Require().NoError(err)
+		s.Require().NotNil(retrievedDomain)
+		s.Require().Equal(d.Name, retrievedDomain.Name)
+		s.Require().Equal(d.ClID, retrievedDomain.ClID)
+		s.Require().NotEmpty(retrievedDomain.RoID)
+
+		// We expect zero hosts because BulkCreate omits host creation/linking.
+		s.Require().Equal(0, len(retrievedDomain.Hosts),
+			"domain %d was not supposed to have hosts, but found %d", i, len(retrievedDomain.Hosts))
+	}
 }

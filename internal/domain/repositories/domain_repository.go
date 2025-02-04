@@ -11,7 +11,7 @@ import (
 
 // DomainRepository is the interface for the DomainRepository
 type DomainRepository interface {
-	CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
+	Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
@@ -35,7 +35,7 @@ type MockDomainRepository struct {
 }
 
 // CreateDomain creates a new domain
-func (m *MockDomainRepository) CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+func (m *MockDomainRepository) Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	args := m.Called(ctx, d)
 	return args.Get(0).(*entities.Domain), args.Error(1)
 }
