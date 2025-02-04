@@ -286,15 +286,11 @@ func (h *Host) Validate() error {
 	return nil
 }
 
-// Clone creates a deep copy of the Host object. It returns a new Host instance
+// DeepCopy creates a deep copy of the Host object. It returns a new Host instance
 // with all top-level fields copied by value or shallow copy, and the Addresses
 // slice deep-copied. If the original Host is nil, it returns nil.
-//
-// Returns:
-//
-//	*Host: A new Host instance that is a deep copy of the original Host, or nil
-//	if the original Host is nil.
-func (h *Host) Clone() *Host {
+
+func (h *Host) DeepCopy() *Host {
 	if h == nil {
 		return nil
 	}

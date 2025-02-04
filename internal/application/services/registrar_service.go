@@ -3,21 +3,26 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"go.uber.org/zap"
 )
 
 // RegistrarService implements the RegistrarService interface
 type RegistrarService struct {
 	registrarRepository repositories.RegistrarRepository
+	logger              *zap.Logger
 }
 
 // NewRegistrarService creates a new RegistrarService
 func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *RegistrarService {
+	logger, _ := zap.NewProduction()
 	return &RegistrarService{
 		registrarRepository: registrarRepository,
+		logger:              logger,
 	}
 }
 
@@ -28,7 +33,16 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 		return nil, err
 	}
 
-	return s.registrarRepository.Create(ctx, newRar)
+	createdRar, err := s.registrarRepository.Create(ctx, newRar)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the registrar lifecycle event
+	event := entities.NewRegistrarLifecycleEvent(createdRar.ClID.String(), entities.RegistrarEventTypeCreate)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s created", cmd.ClID), event, cmd, createdRar, nil)
+
+	return createdRar, nil
 }
 
 // Bulk Create new registrars
@@ -38,7 +52,16 @@ func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.Crea
 		return err
 	}
 
-	return s.registrarRepository.BulkCreate(ctx, rars)
+	err = s.registrarRepository.BulkCreate(ctx, rars)
+	if err != nil {
+		return err
+	}
+
+	// Log the registrar lifecycle events
+	event := entities.NewRegistrarLifecycleEvent("", entities.RegistrarEventTypeCreate)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("bulk created %d registrars", len(cmds)), event, cmds, rars, nil)
+
+	return nil
 }
 
 // GetByClID returns a registrar by its ClID
@@ -58,12 +81,47 @@ func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor st
 
 // Update updates a registrar
 func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
-	return s.registrarRepository.Update(ctx, rar)
+	// get the registrar
+	registrar, err := s.registrarRepository.GetByClID(ctx, rar.ClID.String(), false)
+	if err != nil {
+		return nil, err
+	}
+
+	// make a copy of the original
+	previousRar := registrar.DeepCopy()
+
+	// update the registrar
+	updatedRar, err := s.registrarRepository.Update(ctx, rar)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the registrar lifecycle event
+	event := entities.NewRegistrarLifecycleEvent(rar.ClID.String(), entities.RegistrarEventTypeUpdate)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s updated", rar.ClID), event, rar, updatedRar, previousRar)
+
+	return updatedRar, nil
 }
 
 // Delete deletes a registrar by its ClID
 func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
-	return s.registrarRepository.Delete(ctx, clid)
+	// get the registrar
+	previousRar, err := s.registrarRepository.GetByClID(ctx, clid, false)
+	if err != nil {
+		return err
+	}
+
+	// delete the registrar
+	err = s.registrarRepository.Delete(ctx, clid)
+	if err != nil {
+		return err
+	}
+
+	// Log the registrar lifecycle event
+	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeDelete)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s deleted", clid), event, nil, nil, previousRar)
+
+	return nil
 }
 
 // Count returns the number of registrars
@@ -79,6 +137,9 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 		return err
 	}
 
+	// make a copy of the original
+	previousRar := registrar.DeepCopy()
+
 	// set the status using domain logic
 	err = registrar.SetStatus(status)
 	if err != nil {
@@ -86,10 +147,14 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 	}
 
 	// save the registrar
-	_, err = s.registrarRepository.Update(ctx, registrar)
+	updatedRar, err := s.registrarRepository.Update(ctx, registrar)
 	if err != nil {
 		return err
 	}
+
+	// Log the registrar lifecycle event
+	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeUpdate)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s status set to %s", clid, status), event, registrar, updatedRar, previousRar)
 
 	return nil
 }
@@ -157,4 +222,30 @@ func rarFromCmd(cmd *commands.CreateRegistrarCommand) (*entities.Registrar, erro
 	}
 
 	return newRar, nil
+}
+
+func (s *RegistrarService) logLifecycleEvent(
+	ctx context.Context,
+	msg string,
+	event *entities.RegistrarLifecycleEvent,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	// Populate trace_id and correlation_id if they exist
+	if trace_id, ok := ctx.Value("trace_id").(string); ok {
+		event.TraceID = trace_id
+	}
+	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
+		event.CorrelationID = correlation_id
+	}
+	// Log the domain lifecycle event
+	s.logger.Info(
+		msg,
+		zap.String("event_type", "registrar_lifecycle_event"),
+		zap.Any("registrar_lifecycle_event", event),
+		zap.Any("command", command),
+		zap.Any("new_state", newState),
+		zap.Any("previous_state", previousState),
+	)
 }
