@@ -12,7 +12,7 @@ import (
 type DomainService interface {
 	// These are ADMIN services
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
-	CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
+	Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
 	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)

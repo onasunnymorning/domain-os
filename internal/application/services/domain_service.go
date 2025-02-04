@@ -82,12 +82,12 @@ func NewDomainService(
 	}
 }
 
-// CreateDomain creates a new domain using the provided CreateDomainCommand.
+// Create creates a new domain using the provided CreateDomainCommand.
 // It generates a RoID if none is provided, sets optional fields from the command,
 // validates the resulting domain entity, and persists it in the domain repository.
 // Returns the created Domain or an error if validation fails or persistence is unsuccessful.
 // It optionally validates the domain against the current GA phase polify if so stated in the command.
-func (s *DomainService) CreateDomain(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
+func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
 	var roid entities.RoidType
 	var err error
 	if cmd.RoID == "" {
