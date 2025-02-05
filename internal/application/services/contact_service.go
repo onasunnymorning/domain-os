@@ -29,13 +29,13 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	// Create a new contact from the command
 	c, err := s.contactFromCreateContactCommand(cmd)
 	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidContact, err)
+		return nil, err
 	}
 
 	// Save the contact
 	newContact, err := s.contactRepository.CreateContact(ctx, c)
 	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidContact, err)
+		return nil, err
 	}
 
 	return newContact, nil
