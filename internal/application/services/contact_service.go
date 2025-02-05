@@ -38,10 +38,28 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 
-	// Map to the response if successful
-	// resp := mappers.ContactCreateResultFromContact(newContact)
-
 	return newContact, nil
+}
+
+// BulkCreateContacts creates multiple contacts
+func (s *ContactService) BulkCreate(ctx context.Context, cmds []*commands.CreateContactCommand) error {
+	// Create contacts out of the commands
+	var contacts []*entities.Contact
+	for _, cmd := range cmds {
+		c, err := s.CreateContact(ctx, cmd)
+		if err != nil {
+			return err
+		}
+		contacts = append(contacts, c)
+	}
+
+	// save in the repository
+	err := s.contactRepository.BulkCreate(ctx, contacts)
+	if err != nil {
+		return errors.Join(entities.ErrInvalidContact, err)
+	}
+
+	return nil
 }
 
 func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
