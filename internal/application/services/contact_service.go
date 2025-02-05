@@ -25,6 +25,43 @@ func NewContactService(contactRepo repositories.ContactRepository, roidService R
 
 // CreateContact creates a new contact
 func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*entities.Contact, error) {
+
+	// Create a new contact from the command
+	c, err := s.contactFromCreateContactCommand(cmd)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidContact, err)
+	}
+
+	// Save the contact
+	newContact, err := s.contactRepository.CreateContact(ctx, c)
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidContact, err)
+	}
+
+	// Map to the response if successful
+	// resp := mappers.ContactCreateResultFromContact(newContact)
+
+	return newContact, nil
+}
+
+func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
+	return s.contactRepository.GetContactByID(ctx, id)
+}
+
+func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	return s.contactRepository.UpdateContact(ctx, c)
+}
+
+func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
+	return s.contactRepository.DeleteContactByID(ctx, id)
+}
+
+func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
+	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
+}
+
+// contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact
+func (s *ContactService) contactFromCreateContactCommand(cmd *commands.CreateContactCommand) (*entities.Contact, error) {
 	var roid entities.RoidType
 	var err error
 	if cmd.RoID == "" {
@@ -102,30 +139,5 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 
-	// Save the contact
-	newContact, err := s.contactRepository.CreateContact(ctx, c)
-	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidContact, err)
-	}
-
-	// Map to the response if successful
-	// resp := mappers.ContactCreateResultFromContact(newContact)
-
-	return newContact, nil
-}
-
-func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
-	return s.contactRepository.GetContactByID(ctx, id)
-}
-
-func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
-	return s.contactRepository.UpdateContact(ctx, c)
-}
-
-func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
-	return s.contactRepository.DeleteContactByID(ctx, id)
-}
-
-func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
-	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
+	return c, nil
 }

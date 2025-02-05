@@ -19,6 +19,48 @@ func TestContactSuite(t *testing.T) {
 	suite.Run(t, new(ContactSuite))
 }
 
+func (s *ContactSuite) TestBulkCreateContacts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+
+	contact2, err := entities.NewContact("contactID2", "1235_CONT-APEX", "jane@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+
+	contacts := []*entities.Contact{contact1, contact2}
+
+	err = repo.BulkCreate(context.Background(), contacts)
+	s.Require().NoError(err)
+
+	createdContact1, err := repo.GetContactByID(context.Background(), contact1.ID.String())
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact1)
+
+	createdContact2, err := repo.GetContactByID(context.Background(), contact2.ID.String())
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact2)
+}
+
+func (s *ContactSuite) TestBulkCreateContacts_Duplicate() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+
+	contact2, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jane@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+
+	contacts := []*entities.Contact{contact1, contact2}
+
+	err = repo.BulkCreate(context.Background(), contacts)
+	s.Require().Error(err)
+}
+
 func (s *ContactSuite) SetupSuite() {
 	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
