@@ -1,10 +1,12 @@
 package postgres
 
 import (
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
 
+	"github.com/brianvoe/gofakeit/v7"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 )
@@ -16,8 +18,8 @@ func TestHost_Tablename(t *testing.T) {
 
 func getValidHost(clid string, t *time.Time) *entities.Host {
 	h := &entities.Host{
-		RoID:        entities.RoidType("12345_HOST-APEX"),
-		Name:        "my-host.com",
+		RoID:        entities.RoidType(fmt.Sprintf("%d_HOST-APEX", gofakeit.Uint32())),
+		Name:        entities.DomainName(gofakeit.DomainName()),
 		ClID:        entities.ClIDType(clid),
 		CrRr:        entities.ClIDType(clid),
 		UpRr:        entities.ClIDType(clid),
