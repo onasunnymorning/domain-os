@@ -16,4 +16,5 @@ type HostRepository interface {
 	DeleteHostByRoid(ctx context.Context, roid int64) error
 	ListHosts(ctx context.Context, pageSize int, cursor string) ([]*entities.Host, error)
 	GetHostAssociationCount(ctx context.Context, roid int64) (int64, error)
+	BulkCreate(ctx context.Context, hosts []*entities.Host) error
 }
