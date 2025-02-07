@@ -39,6 +39,11 @@ github.com/beorn7/perks/quantile
 # github.com/biter777/countries v1.7.2
 ## explicit; go 1.13
 github.com/biter777/countries
+# github.com/brianvoe/gofakeit/v7 v7.2.1
+## explicit; go 1.22
+github.com/brianvoe/gofakeit/v7
+github.com/brianvoe/gofakeit/v7/data
+github.com/brianvoe/gofakeit/v7/source
 # github.com/bwmarrin/snowflake v0.3.0
 ## explicit
 github.com/bwmarrin/snowflake
@@ -96,7 +101,6 @@ github.com/cpuguy83/go-md2man/v2/md2man
 github.com/davecgh/go-spew/spew
 # github.com/docker/docker v25.0.6+incompatible
 ## explicit
-github.com/docker/docker/pkg/namesgenerator
 # github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
 ## explicit; go 1.18
 github.com/dotse/epp-client/pkg

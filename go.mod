@@ -1,6 +1,8 @@
 module github.com/onasunnymorning/domain-os
 
-go 1.21.3
+go 1.22
+
+toolchain go1.23.2
 
 require (
 	github.com/Rhymond/go-money v1.0.10
@@ -9,9 +11,9 @@ require (
 	github.com/apex/gateway v1.1.2
 	github.com/beevik/etree v1.1.0
 	github.com/biter777/countries v1.7.2
+	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/confluentinc/confluent-kafka-go/v2 v2.4.0
-	github.com/docker/docker v25.0.6+incompatible
 	github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
 	github.com/dotse/epp-lib v0.1.1
 	github.com/gin-contrib/cors v1.7.2
@@ -60,6 +62,7 @@ require (
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/docker/docker v25.0.6+incompatible // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect

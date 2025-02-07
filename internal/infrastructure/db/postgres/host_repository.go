@@ -35,6 +35,18 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 	return ToHost(gormHost), nil
 }
 
+// BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well
+// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
+func (r *HostRepository) BulkCreate(ctx context.Context, hosts []*entities.Host) error {
+	// Convert entities to db entities
+	dbHosts := make([]*Host, len(hosts))
+	for i, h := range hosts {
+		dbHosts[i] = ToDBHost(h)
+	}
+
+	return r.db.WithContext(ctx).Create(dbHosts).Error
+}
+
 // GetHostByRoid gets a host by its roid
 func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entities.Host, error) {
 	var gormHost Host
