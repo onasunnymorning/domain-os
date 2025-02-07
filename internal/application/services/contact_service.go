@@ -46,9 +46,9 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 // If any of the contacts is invalid, it returns an error and does not save any of the contacts
 func (s *ContactService) BulkCreate(ctx context.Context, cmds []*commands.CreateContactCommand) error {
 	// Create contacts out of the commands
-	var contacts []*entities.Contact
+	contacts := make([]*entities.Contact, 0, len(cmds))
 	for _, cmd := range cmds {
-		c, err := s.CreateContact(ctx, cmd)
+		c, err := s.contactFromCreateContactCommand(cmd)
 		if err != nil {
 			return err
 		}
