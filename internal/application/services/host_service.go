@@ -7,6 +7,7 @@ import (
 	"net/netip"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -15,11 +16,11 @@ import (
 type HostService struct {
 	hostRepository    repositories.HostRepository
 	addressRepository repositories.HostAddressRepository
-	roidService       RoidService
+	roidService       interfaces.RoidService
 }
 
 // NewHostService creates a new instance of HostService
-func NewHostService(hostRepository repositories.HostRepository, addressRepository repositories.HostAddressRepository, roidService RoidService) *HostService {
+func NewHostService(hostRepository repositories.HostRepository, addressRepository repositories.HostAddressRepository, roidService interfaces.RoidService) *HostService {
 	return &HostService{
 		hostRepository:    hostRepository,
 		addressRepository: addressRepository,
