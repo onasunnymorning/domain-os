@@ -10,7 +10,7 @@ import (
 type Contact struct {
 	// ID is the ID of the contact as provided by the registrar.
 	ID                       string `gorm:"primaryKey"`
-	RoID                     int64  `gorm:"uniqueIndex;not null"` // It would be very unefficient to store the roid as a string so we use the int64 representation
+	RoID                     int64  `gorm:"uniqueIndex;not null"` // we use the int64 representation of our roid to allow time based sorting using roid
 	Voice                    string
 	Fax                      string
 	Email                    string

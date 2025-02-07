@@ -43,12 +43,7 @@ func (r *ContactRepository) BulkCreate(ctx context.Context, contacts []*entities
 		dbContacts[i] = ToDBContact(c)
 	}
 
-	err := r.db.WithContext(ctx).Create(dbContacts).Error
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return r.db.WithContext(ctx).Create(dbContacts).Error
 }
 
 // GetContactByID retrieves a contact from the database by its ID
