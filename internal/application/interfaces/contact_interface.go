@@ -13,4 +13,5 @@ type ContactService interface {
 	UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error)
 	DeleteContactByID(ctx context.Context, id string) error
 	ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error)
+	BulkCreate(ctx context.Context, cmds []*commands.CreateContactCommand) error
 }

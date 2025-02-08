@@ -29,6 +29,7 @@ func NewHostController(e *gin.Engine, hostService interfaces.HostService, handle
 		hostGroup.GET("", c.ListHosts)
 		hostGroup.DELETE(":roid", c.DeleteHostByRoID)
 		hostGroup.POST("", c.CreateHost)
+		hostGroup.POST("/bulk", c.BulkCreate)
 		hostGroup.POST(":roid/addresses/:ip", c.AddAddressToHost)
 		hostGroup.DELETE(":roid/addresses/:ip", c.RemoveAddressFromHost)
 	}
@@ -114,14 +115,8 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		return
 	}
 
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "CREATE", "Host", "", ctx.Request.URL.RequestURI())
-	event.Details.Command = req
-
 	host, err := ctrl.hostService.CreateHost(ctx, &req)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidHost) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -129,9 +124,6 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	event.Details.After = host
-	event.ObjectID = host.RoID.String()
 
 	ctx.JSON(http.StatusCreated, host)
 }
@@ -284,4 +276,39 @@ func (ctrl *HostController) GetHostByNameAndClid(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, host)
+}
+
+// BulkCreate godoc
+// @Summary Create multiple hosts
+// @Description Create multiple hosts
+// @Tags Hosts
+// @Accept json
+// @Produce json
+// @Param hosts body []commands.CreateHostCommand true "Hosts"
+// @Success 201
+// @Failure 400
+// @Failure 500
+// @Router /hosts/bulk [post]
+func (ctrl *HostController) BulkCreate(ctx *gin.Context) {
+	var req []*commands.CreateHostCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := ctrl.hostService.BulkCreate(ctx, req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidHost) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, nil)
 }

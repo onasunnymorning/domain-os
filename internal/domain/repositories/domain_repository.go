@@ -11,7 +11,7 @@ import (
 
 // DomainRepository is the interface for the DomainRepository
 type DomainRepository interface {
-	CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
+	Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
@@ -27,6 +27,7 @@ type DomainRepository interface {
 	CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error)
 	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
+	BulkCreate(ctx context.Context, domains []*entities.Domain) error
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -35,9 +36,15 @@ type MockDomainRepository struct {
 }
 
 // CreateDomain creates a new domain
-func (m *MockDomainRepository) CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+func (m *MockDomainRepository) Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	args := m.Called(ctx, d)
 	return args.Get(0).(*entities.Domain), args.Error(1)
+}
+
+// BulkCreate creates multiple domains
+func (m *MockDomainRepository) BulkCreate(ctx context.Context, domains []*entities.Domain) error {
+	args := m.Called(ctx, domains)
+	return args.Error(0)
 }
 
 // GetDomainByName retrieves a domain by its name

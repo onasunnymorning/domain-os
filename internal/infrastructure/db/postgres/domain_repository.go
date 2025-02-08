@@ -22,8 +22,8 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 	return &DomainRepository{db}
 }
 
-// CreateDomain creates a new domain in the database
-func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+// Create creates a new domain in the database
+func (dr *DomainRepository) Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
 	err := dr.db.WithContext(ctx).Create(dbDomain).Error
 	if err != nil {
@@ -34,6 +34,15 @@ func (dr *DomainRepository) CreateDomain(ctx context.Context, d *entities.Domain
 		return nil, err
 	}
 	return ToDomain(dbDomain), nil
+}
+
+// Bulk Create Creates multiple domains in the repository, useful when importing data. Does not persist Hosts if present
+func (r *DomainRepository) BulkCreate(ctx context.Context, doms []*entities.Domain) error {
+	dbdoms := make([]*Domain, len(doms))
+	for i, dom := range doms {
+		dbdoms[i] = ToDBDomain(dom)
+	}
+	return r.db.WithContext(ctx).Omit("Hosts").Create(dbdoms).Error // We omit Hosts as we manage these through the Host linking functions
 }
 
 // GetDomainByID retrieves a domain from the database by its ID

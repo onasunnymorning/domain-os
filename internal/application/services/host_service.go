@@ -7,6 +7,7 @@ import (
 	"net/netip"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -15,11 +16,11 @@ import (
 type HostService struct {
 	hostRepository    repositories.HostRepository
 	addressRepository repositories.HostAddressRepository
-	roidService       RoidService
+	roidService       interfaces.RoidService
 }
 
 // NewHostService creates a new instance of HostService
-func NewHostService(hostRepository repositories.HostRepository, addressRepository repositories.HostAddressRepository, roidService RoidService) *HostService {
+func NewHostService(hostRepository repositories.HostRepository, addressRepository repositories.HostAddressRepository, roidService interfaces.RoidService) *HostService {
 	return &HostService{
 		hostRepository:    hostRepository,
 		addressRepository: addressRepository,
@@ -29,34 +30,9 @@ func NewHostService(hostRepository repositories.HostRepository, addressRepositor
 
 // CreateHost creates a new host including its optional addresses
 func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCommand) (*entities.Host, error) {
-	roid, err := s.roidService.GenerateRoid("host")
+	// Convert the command to a host and validate it
+	host, err := s.createHostFromCreateHostCommand(cmd)
 	if err != nil {
-		return nil, err
-	}
-	host, err := entities.NewHost(cmd.Name, roid.String(), cmd.ClID.String())
-	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidHost, err)
-	}
-	// Add the addresses
-	for _, a := range cmd.Addresses {
-		_, err := host.AddAddress(a)
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidHost, err)
-		}
-	}
-	// Set the optional paramerters
-	if cmd.CrRr != "" {
-		host.CrRr = cmd.CrRr
-	}
-	if cmd.UpRr != "" {
-		host.UpRr = cmd.UpRr
-	}
-	if !cmd.Status.IsNil() {
-		host.Status = cmd.Status
-	}
-
-	// Check if we still have a valid host
-	if err := host.Validate(); err != nil {
 		return nil, errors.Join(entities.ErrInvalidHost, err)
 	}
 
@@ -73,6 +49,7 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 		return nil, fmt.Errorf("error converting system generated RoID of created host (%s) to int64", dbHost.RoID)
 	}
 
+	// Validate and save the addresses
 	for _, a := range cmd.Addresses {
 		addr, err := netip.ParseAddr(a)
 		if err != nil {
@@ -91,6 +68,24 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 	}
 
 	return dbHost, nil
+}
+
+// BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well
+// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
+func (s *HostService) BulkCreate(ctx context.Context, cmds []*commands.CreateHostCommand) error {
+
+	// Create a slice of hosts
+	hosts := make([]*entities.Host, 0, len(cmds))
+	for _, cmd := range cmds {
+		host, err := s.createHostFromCreateHostCommand(cmd)
+		if err != nil {
+			return errors.Join(entities.ErrInvalidHost, err)
+		}
+		hosts = append(hosts, host)
+	}
+
+	// Create the hosts in the repository
+	return s.hostRepository.BulkCreate(ctx, hosts)
 }
 
 // GetHostByRoid gets a host by its roid in string format
@@ -209,4 +204,56 @@ func (s *HostService) RemoveHostAddress(ctx context.Context, roidString, ip stri
 // GetHostByNameAndClID gets a host by its name and clid
 func (s *HostService) GetHostByNameAndClID(ctx context.Context, name string, clid string) (*entities.Host, error) {
 	return s.hostRepository.GetHostByNameAndClID(ctx, name, clid)
+}
+
+// createHostFromCreateHostCommand creates a new host from a CreateHostCommand.
+// if a RoID is not provided, it will generate a new one, otherwise it will use the provided RoID
+// if the RoID or any of the attributes are invalid, it will return an error
+func (s *HostService) createHostFromCreateHostCommand(cmd *commands.CreateHostCommand) (*entities.Host, error) {
+	var roid entities.RoidType
+	var err error
+	if cmd.RoID == "" {
+		// Generate a Roid if none is provided
+		roid, err = s.roidService.GenerateRoid("host")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Validate the provided Roid
+		roid = entities.RoidType(cmd.RoID)
+		if err := roid.Validate(); err != nil {
+			return nil, err
+		}
+		if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
+			return nil, entities.ErrInvalidObjectIdentifier
+		}
+	}
+
+	host, err := entities.NewHost(cmd.Name, roid.String(), cmd.ClID.String())
+	if err != nil {
+		return nil, err
+	}
+	// Add the addresses
+	for _, a := range cmd.Addresses {
+		_, err := host.AddAddress(a)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Set the optional paramerters
+	if cmd.CrRr != "" {
+		host.CrRr = cmd.CrRr
+	}
+	if cmd.UpRr != "" {
+		host.UpRr = cmd.UpRr
+	}
+	if !cmd.Status.IsNil() {
+		host.Status = cmd.Status
+	}
+
+	// Check if we still have a valid host
+	if err := host.Validate(); err != nil {
+		return nil, err
+	}
+	return host, nil
 }
