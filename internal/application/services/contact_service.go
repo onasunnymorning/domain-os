@@ -41,7 +41,7 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	return newContact, nil
 }
 
-// BulkCreateContacts creates multiple contacts.
+// BulkCreate creates multiple contacts.
 // It creates contacts out of the commands and saves them in the repository
 // If any of the contacts is invalid, it returns an error and does not save any of the contacts
 func (s *ContactService) BulkCreate(ctx context.Context, cmds []*commands.CreateContactCommand) error {
