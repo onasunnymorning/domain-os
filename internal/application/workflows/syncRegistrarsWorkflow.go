@@ -76,7 +76,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	// If it is our first time syncing, launch the first import of registrars
 	if rarCount.Count == 0 {
 		// Get the ICANN registrars
-		csvRars, err := icannregistrars.GetICANNCSVRegistrarsFromFile("./initdata/icann_registrars.csv")
+		csvRars, err := icannregistrars.GetICANNCSVRegistrarsFromFile("./initdata/icannRegistrarList.csv")
 		if err != nil {
 			logger.Error(fmt.Sprintf("failed to get ICANN registrars from file: %v", err))
 		}

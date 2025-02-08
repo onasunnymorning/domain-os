@@ -26,6 +26,7 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 		contactGroup.GET("", controller.ListContacts)
 		contactGroup.GET(":id", controller.GetContactByID)
 		contactGroup.POST("", controller.CreateContact)
+		contactGroup.POST("/bulk", controller.BulkCreateContacts)
 		contactGroup.PUT(":id", controller.UpdateContact)
 		contactGroup.DELETE(":id", controller.DeleteContactByID)
 	}
@@ -104,6 +105,40 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	event.ObjectID = contact.RoID.String()
 
 	ctx.JSON(http.StatusCreated, contact)
+}
+
+// BulkCreateContacts godoc
+// @Summary Bulk create contacts - for import only
+// @Description Bulk create contacts, useful when importing data, not for normal domain operations.
+// @Description If any of the contacts is invalid, it returns an error and does not save any of the contacts
+// @Tags Contacts
+// @Accept json
+// @Produce json
+// @Param contacts body []commands.CreateContactCommand true "Contacts"
+// @Success 201
+// @Failure 400
+// @Failure 500
+// @Router /contacts/bulk [post]
+func (ctrl *ContactController) BulkCreateContacts(ctx *gin.Context) {
+	var req []*commands.CreateContactCommand
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Create the contacts
+	err := ctrl.contactService.BulkCreate(ctx, req)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidContact) ||
+			errors.Is(err, entities.ErrContactAlreadyExists) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, nil)
 }
 
 // UpdateContact godoc

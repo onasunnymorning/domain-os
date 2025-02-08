@@ -35,6 +35,17 @@ func (r *ContactRepository) CreateContact(ctx context.Context, c *entities.Conta
 	return FromDBContact(dbContact), nil
 }
 
+// BulkCreate creates multiple contacts at once
+func (r *ContactRepository) BulkCreate(ctx context.Context, contacts []*entities.Contact) error {
+	// convert entities to db entities
+	dbContacts := make([]*Contact, len(contacts))
+	for i, c := range contacts {
+		dbContacts[i] = ToDBContact(c)
+	}
+
+	return r.db.WithContext(ctx).Create(dbContacts).Error
+}
+
 // GetContactByID retrieves a contact from the database by its ID
 func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
 	dbContact := &Contact{}

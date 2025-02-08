@@ -21,6 +21,64 @@ func TestHostSuite(t *testing.T) {
 	suite.Run(t, new(HostSuite))
 }
 
+func (s *HostSuite) TestBulkCreateHosts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormHostRepository(tx)
+
+	t := time.Now().UTC()
+	host1 := getValidHost("hostSuiteRar", &t)
+	host1.ClID = entities.ClIDType(s.rarClid)
+	host2 := getValidHost("hostSuiteRar", &t)
+	host2.ClID = entities.ClIDType(s.rarClid)
+
+	hosts := []*entities.Host{host1, host2}
+
+	err := repo.BulkCreate(context.Background(), hosts)
+	s.Require().NoError(err)
+
+	// Verify that both hosts were created
+	roidInt1, _ := host1.RoID.Int64()
+	readHost1, err := repo.GetHostByRoid(context.Background(), roidInt1)
+	s.Require().NoError(err)
+	s.Require().NotNil(readHost1)
+	s.Require().Equal(host1.Name, readHost1.Name)
+
+	roidInt2, _ := host2.RoID.Int64()
+	readHost2, err := repo.GetHostByRoid(context.Background(), roidInt2)
+	s.Require().NoError(err)
+	s.Require().NotNil(readHost2)
+	s.Require().Equal(host2.Name, readHost2.Name)
+}
+
+func (s *HostSuite) TestBulkCreateHosts_Duplicate() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormHostRepository(tx)
+
+	t := time.Now().UTC()
+	host1 := getValidHost("hostSuiteRar1", &t)
+	host1.ClID = entities.ClIDType(s.rarClid)
+	host2 := getValidHost("hostSuiteRar1", &t) // Duplicate name
+	host2.ClID = entities.ClIDType(s.rarClid)
+
+	hosts := []*entities.Host{host1, host2}
+
+	err := repo.BulkCreate(context.Background(), hosts)
+	s.Require().Error(err)
+
+	// Verify that no hosts were created
+	roidInt1, _ := host1.RoID.Int64()
+	readHost1, err := repo.GetHostByRoid(context.Background(), roidInt1)
+	s.Require().Error(err)
+	s.Require().Nil(readHost1)
+
+	roidInt2, _ := host2.RoID.Int64()
+	readHost2, err := repo.GetHostByRoid(context.Background(), roidInt2)
+	s.Require().Error(err)
+	s.Require().Nil(readHost2)
+}
+
 func (s *HostSuite) SetupSuite() {
 	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)

@@ -80,8 +80,8 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 			c.svc.SaveImportResult()
 			return err
 		}
-		log.Printf("Hosts count from deposit: %d\n", len(hostCmds))
-		log.Println("Duplicating Hosts where needed to ensure correct sponsorship")
+		log.Printf("Host count from deposit: %d\n", len(hostCmds))
+		log.Println("Some hosts were duplicated to ensure correct sponsorship")
 		// See if we need to duplicate some hosts so we can respect the strict sponsorship enforcement
 		hostCmds, err = c.svc.DuplicateHostCommands(hostCmds)
 		log.Printf("Hosts after correction: %d\n", len(hostCmds))

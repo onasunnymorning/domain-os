@@ -25,6 +25,63 @@ func NewContactService(contactRepo repositories.ContactRepository, roidService R
 
 // CreateContact creates a new contact
 func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*entities.Contact, error) {
+
+	// Create a new contact from the command
+	c, err := s.contactFromCreateContactCommand(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the contact
+	newContact, err := s.contactRepository.CreateContact(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+
+	return newContact, nil
+}
+
+// BulkCreate creates multiple contacts.
+// It creates contacts out of the commands and saves them in the repository
+// If any of the contacts is invalid, it returns an error and does not save any of the contacts
+func (s *ContactService) BulkCreate(ctx context.Context, cmds []*commands.CreateContactCommand) error {
+	// Create contacts out of the commands
+	contacts := make([]*entities.Contact, 0, len(cmds))
+	for _, cmd := range cmds {
+		c, err := s.contactFromCreateContactCommand(cmd)
+		if err != nil {
+			return err
+		}
+		contacts = append(contacts, c)
+	}
+
+	// save in the repository
+	err := s.contactRepository.BulkCreate(ctx, contacts)
+	if err != nil {
+		return errors.Join(entities.ErrInvalidContact, err)
+	}
+
+	return nil
+}
+
+func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
+	return s.contactRepository.GetContactByID(ctx, id)
+}
+
+func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	return s.contactRepository.UpdateContact(ctx, c)
+}
+
+func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
+	return s.contactRepository.DeleteContactByID(ctx, id)
+}
+
+func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
+	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
+}
+
+// contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact
+func (s *ContactService) contactFromCreateContactCommand(cmd *commands.CreateContactCommand) (*entities.Contact, error) {
 	var roid entities.RoidType
 	var err error
 	if cmd.RoID == "" {
@@ -102,30 +159,5 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 
-	// Save the contact
-	newContact, err := s.contactRepository.CreateContact(ctx, c)
-	if err != nil {
-		return nil, errors.Join(entities.ErrInvalidContact, err)
-	}
-
-	// Map to the response if successful
-	// resp := mappers.ContactCreateResultFromContact(newContact)
-
-	return newContact, nil
-}
-
-func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entities.Contact, error) {
-	return s.contactRepository.GetContactByID(ctx, id)
-}
-
-func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
-	return s.contactRepository.UpdateContact(ctx, c)
-}
-
-func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
-	return s.contactRepository.DeleteContactByID(ctx, id)
-}
-
-func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
-	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
+	return c, nil
 }
