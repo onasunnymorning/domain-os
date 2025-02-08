@@ -8,6 +8,7 @@ import (
 
 // HostRepository is the interface for the HostRepository
 type HostRepository interface {
+	// CreateHost creates a new host and does NOT create the addresses
 	CreateHost(ctx context.Context, h *entities.Host) (*entities.Host, error)
 	GetHostByRoid(ctx context.Context, roid int64) (*entities.Host, error)
 	// GetHostByNameAndClID gets a host by its name and clid
@@ -16,6 +17,8 @@ type HostRepository interface {
 	DeleteHostByRoid(ctx context.Context, roid int64) error
 	ListHosts(ctx context.Context, pageSize int, cursor string) ([]*entities.Host, error)
 	GetHostAssociationCount(ctx context.Context, roid int64) (int64, error)
+	// BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well
+	// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
 	BulkCreate(ctx context.Context, hosts []*entities.Host) error
 }
 
