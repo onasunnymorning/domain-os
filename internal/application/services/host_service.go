@@ -75,13 +75,13 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 func (s *HostService) BulkCreate(ctx context.Context, cmds []*commands.CreateHostCommand) error {
 
 	// Create a slice of hosts
-	hosts := make([]*entities.Host, len(cmds))
-	for i, cmd := range cmds {
+	hosts := make([]*entities.Host, 0, len(cmds))
+	for _, cmd := range cmds {
 		host, err := s.createHostFromCreateHostCommand(cmd)
 		if err != nil {
 			return errors.Join(entities.ErrInvalidHost, err)
 		}
-		hosts[i] = host
+		hosts = append(hosts, host)
 	}
 
 	// Create the hosts in the repository
