@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -1161,48 +1162,17 @@ type ErrorResponse struct {
 
 // CreateContacts Creates the contacts in the repository through the Admin API
 func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand) error {
-	// Create a re-usable client optimized for tcp connections
-	client := getHTTPClient()
-
-	// Create channels for sending commands
-	cmdChan := make(chan commands.CreateContactCommand, len(cmds))
-	wg := sync.WaitGroup{}
-
-	// Loop over the commands and create the contacts in parrallel
-	pbar := progressbar.Default(int64(len(cmds)), "Creating Contacts")
-
-	// Start workers
-	for i := 0; i < CONCURRENT_CLIENTS; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for cmd := range cmdChan {
-				svc.createContact(*client, cmd)
-				pbar.Add(1)
-			}
-		}()
-	}
-
-	// Send commands to the workers
-	for _, cmd := range cmds {
-		cmdChan <- cmd
-	}
-	close(cmdChan)
-
-	// Wait for all workers to finish
-	wg.Wait()
-
-	if svc.Import.Contacts.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d contacts failed to be created\n", svc.Import.Contacts.Failed)
-		for _, e := range svc.Import.Errors {
-			log.Println(e)
+	// Execute the create commands
+	log.Println("[INFO] Creating contacts ... ")
+	// create a progress bar
+	pbar := progressbar.New(len(cmds))
+	// Process the commands in chunks of 100
+	for chunk := range commands.ChunkCreateContactCommand(cmds, 100) {
+		if err := activities.BulkCreateContacts("change-this-correlation-id", chunk); err != nil {
+			return err
 		}
-		return nil
+		pbar.Add(len(chunk))
 	}
-
-	log.Printf("✅ Created all contacts successfully\n")
-	// Do some housekeeping
-	client.CloseIdleConnections()
 	return nil
 }
 

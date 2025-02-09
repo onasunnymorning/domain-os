@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
 // EscrowImportController is a controller for escrow analysis
@@ -36,12 +37,13 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 	}
 
 	// Check the TLD is in a state allowing import
-	// TODO: Implement thi https://github.com/onasunnymorning/domain-os/issues/60
 	tld, err := c.svc.GetTLDFromAPI(c.svc.Header.TLD)
 	if err != nil || tld == nil {
 		return err
 	}
-	log.Println("Found TLD in API")
+	if !tld.AllowEscrowImport {
+		return entities.ErrTLDEscrowImportNotAllowed
+	}
 
 	// Import the Contacts if the number of contacts > 0
 	if c.svc.Header.ContactCount() > 0 {
