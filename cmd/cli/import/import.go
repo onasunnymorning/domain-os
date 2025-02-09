@@ -105,7 +105,7 @@ func notImplemented(c *cli.Context) error {
 func importRegistrars(c *cli.Context) error {
 	// check for a chunk size
 	if c.Int("chunksize") < 1 || c.Int("chunksize") > 1000 {
-		return cli.Exit("[ERROR] Chunk size should be between 1 and 100", 1)
+		return cli.Exit("[ERROR] Chunk size should be between 1 and 1000", 1)
 	}
 
 	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
