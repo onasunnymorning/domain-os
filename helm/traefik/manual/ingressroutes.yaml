@@ -1,0 +1,48 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: simpleingressroute
+  namespace: default
+spec:
+  entryPoints:
+  - web
+  routes:
+  - match: Host(`dev.geoff.it`) && PathPrefix(`/notls`)
+    kind: Rule
+    services:
+    - name: whoami
+      port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroutetls
+  namespace: default
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`dev.geoff.it`) && PathPrefix(`/tls`)
+    kind: Rule
+    services:
+    - name: whoami
+      port: 80
+  tls:
+    certResolver: myresolver
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroutetls2
+  namespace: geoffdev
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`dev.geoff.it`)
+    kind: Rule
+    services:
+    - name: metabase
+      port: 3000
+  tls:
+    certResolver: myresolver

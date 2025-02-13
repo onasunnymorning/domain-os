@@ -1,0 +1,43 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: traefik
+  name: traefik
+  labels:
+    app: traefik
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      containers:
+      - name: traefik
+        image: traefik:v3.3
+        args:
+        # - --log.level=DEBUG
+        - --api.insecure
+        - --accesslog
+        - --entryPoints.web.Address=:80
+        - --entryPoints.websecure.Address=:443
+        - --providers.kubernetescrd
+        # - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
+        - --certificatesresolvers.myresolver.acme.tlschallenge
+        - --certificatesresolvers.myresolver.acme.email=geoff@apex.domains
+        - --certificatesresolvers.myresolver.acme.storage=acme.json
+        # Please note that this is the staging Let's Encrypt server.
+        # Once you get things working, you should remove that whole line altogether.
+        # - --certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+        ports:
+        - name: web
+          containerPort: 80
+        - name: websecure
+          containerPort: 443
+        - name: admin
+          containerPort: 8080
