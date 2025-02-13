@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metabase
+  labels:
+    app: metabase
+spec:
+  replicas: {{ .Values.metabase.replicaCount }}
+  selector:
+    matchLabels:
+      app: metabase
+  template:
+    metadata:
+      labels:
+        app: metabase
+    spec:
+      containers:
+        - name: metabase
+          image: {{ .Values.metabase.image }}
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: metabase-config
+            - secretRef:
+                name: metabase-secret
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: urandom-volume
+              mountPath: /dev/random
+              readOnly: true
+      volumes:
+        - name: urandom-volume
+          hostPath:
+            path: /dev/urandom

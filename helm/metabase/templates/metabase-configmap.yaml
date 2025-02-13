@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metabase-config
+  labels:
+    app: metabase
+data:
+  MB_DB_TYPE: {{ .Values.metabase.config.MB_DB_TYPE | quote }}
+  MB_DB_DBNAME: {{ .Values.metabase.config.MB_DB_DBNAME | quote }}
+  MB_DB_PORT: {{ .Values.metabase.config.MB_DB_PORT | quote }}
+  MB_DB_HOST: {{ .Values.metabase.config.MB_DB_HOST | quote }}
