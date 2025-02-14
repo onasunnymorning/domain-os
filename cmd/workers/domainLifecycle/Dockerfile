@@ -19,7 +19,7 @@ ARG GIT_SHA
 RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o domainLifeCycleWorker /cmd/workers/domainLifecycle/domainLifecycleWorker.go
 
 # Create API release image
-FROM alpine:3.21 AS domain-lifecycle-worker
+FROM alpine:3.21.3 AS domain-lifecycle-worker
 
 # Copy our init data
 COPY ./initdata /initdata
