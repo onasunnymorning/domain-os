@@ -37,7 +37,7 @@ type DomainTransfer struct {
 	ID uuid.UUID
 
 	// The RoID of the domain being transferred.
-	DomainRoiD int64
+	DomainRoiD RoidType
 
 	// The name of domain being transferred.
 	DomainName DomainName
