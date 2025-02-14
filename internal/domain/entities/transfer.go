@@ -58,6 +58,9 @@ type DomainTransfer struct {
 	// must respond (configured in PhasePolicy.TransferGP).
 	ExpiryDate time.Time
 
+	// Time the transfer was approved by the losing registrar. If the transfer is auto-approved, this will be nil.
+	AcceptDate time.Time
+
 	// Time the transfer was last updated.
 	UpdatedAt time.Time
 
@@ -82,6 +85,17 @@ func NewDomainTransfer(transferGracePolicyDays int) DomainTransfer {
 		ExpiryDate: time.Now().UTC().AddDate(0, 0, transferGracePolicyDays),
 		UpdatedAt:  time.Now().UTC(),
 	}
+}
+
+// RequestTransferCommand is a command that can be used to request a domain transfer.
+type RequestTransferCommand struct {
+	// GainingRegistrar is the registrar that is attempting to take over management of the domain.
+	GainingRegistrar string
+
+	// LosingRegistrar is the current registrar of the domain.
+	LosingRegistrar string
+
+	// DomainName is the name of the domain being transferred.
 }
 
 // FinalizeTransferCommand is a command that can be used to approve or deny a domain transfer.
@@ -113,6 +127,7 @@ func (t *DomainTransfer) Finalize(cmd FinalizeTransferCommand) error {
 // CorrelationID is an optional field that can be used to store the ID of the request that approved the transfer.
 // If the transfer is already denied, it will return an error. If the transfer is already approved, it will be idempotent.
 func (t *DomainTransfer) approve(correlationID, reason string) error {
+	now := time.Now().UTC()
 	if t.isComplete() {
 		if t.Status == TransferStatusApproved {
 			return nil // already approved - idempotent
@@ -122,7 +137,8 @@ func (t *DomainTransfer) approve(correlationID, reason string) error {
 	t.Status = TransferStatusApproved
 	t.CorrelationID = correlationID
 	t.Reason = reason
-	t.UpdatedAt = time.Now().UTC()
+	t.AcceptDate = now
+	t.UpdatedAt = now
 
 	return nil
 }
