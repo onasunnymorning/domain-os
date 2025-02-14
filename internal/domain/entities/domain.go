@@ -230,14 +230,18 @@ func (d *Domain) CanBeDeleted() bool {
 	return !d.Status.ClientDeleteProhibited && !d.Status.ServerDeleteProhibited && !d.Status.PendingDelete
 }
 
-// CanBeRenewed checks if the Domain can be renewed (e.g. no renew prohibition is present in its status object: ClientRenewProhibited or ServerRenewProhibited). If the domain has any pending status, it can't be renewed
+// CanBeRenewed checks if the domain can be renewed.
+// It returns true if the domain is not prohibited from being renewed by the client or server,
+// and if there are no pending actions on the domain.
 func (d *Domain) CanBeRenewed() bool {
 	return !d.Status.ClientRenewProhibited && !d.Status.ServerRenewProhibited && !d.Status.HasPendings()
 }
 
-// CanBeTransferred checks if the Domain can be transferred (e.g. no transfer prohibition is present in its status object: ClientTransferProhibited or ServerTransferProhibited). If the domain is alread in pending Transfer status, it can't be transferred
+// CanBeTransferred checks if the domain can be transferred based on its status.
+// It returns true if the domain is not prohibited from client or server transfer,
+// has no pending operations, and the transfer lock period has ended.
 func (d *Domain) CanBeTransferred() bool {
-	return !d.Status.ClientTransferProhibited && !d.Status.ServerTransferProhibited && !d.Status.PendingTransfer
+	return !d.Status.ClientTransferProhibited && !d.Status.ServerTransferProhibited && !d.Status.HasPendings() && d.RGPStatus.TransferLockPeriodEnd.Before(time.Now().UTC())
 }
 
 // CanBeUpdated checks if the Domain can be updated (e.g. no update prohibition is present in its status object: ClientUpdateProhibited or ServerUpdateProhibited). If the domain is alread in pending Update status, it can't be updated
