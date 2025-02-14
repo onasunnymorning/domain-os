@@ -4,7 +4,7 @@ import "time"
 
 // DomainRGPStatus value object
 type DomainRGPStatus struct {
-	// AddPeriodEnd is the end of the period in which the domain may be deleted by the registrars after a registration.
+	// AddPeriodEnd is the end of the period in which the domain may be deleted by the registrars after a registration with no financial penalty.
 	AddPeriodEnd time.Time `json:"addPeriodEnd"`
 	// RenewPeriodEnd is the end of the period in which the domain may be deleted by the registrars after a renew.
 	RenewPeriodEnd time.Time `json:"renewPeriodEnd"`

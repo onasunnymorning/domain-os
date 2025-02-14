@@ -37,45 +37,22 @@ Domain (Registry for now) Operating System (DOS)
 * ESCROW import/export functionality for RDE and importing data
 * Migration toolkit
 
-## Deployment
-The app is containerized and suggests a kubernetes deployment for production and docker-compose or Tilt for development.
-* github CI pipeline running unit and integration tests + push new images (CD pending)
-* Helm for templating deployments
-* Docker compose or Tilt for a quick feedback look when developing
-* Postman integration tests
-
-### Setting up a development environment
-Make sure you have the following installed:
-* git
-* docker
-* kubectl
-* helm
-* tilt (optional if you plan to use docker compose)
-
-Check out the code
-
-Set your ENVARS
-This repository contains an `example.env` file that you can use to set your environment variables. 
-
-
-Compose/Tilt up
-
-
-# Deploying the app
-## Requirements
+## Getting up and running
+First rename example.env to .env
+```bash
+mv example.env .env
 ```
-$ cat .eksctl/minimal-cluster.yaml
-apiVersion: eksctl.io/v1alpha5
-kind: ClusterConfig
+Then edit the .env file to your taste (or leave default for local development)
 
-metadata:
-  name: poc-cluster
-  region: us-west-2
-
-nodeGroups:
-  - name: ng-1
-    instanceType: m5.large
-    desiredCapacity: 1
-$ eksctl create cluster -f .eksctl/minimal-cluster.yaml
-
+Next run the following command to start the app
 ```
+BRANCH=latest docker compose --profile essential -f docker-compose.yml up
+```
+
+### troubleshooting
+if you get this error
+```
+Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "/host_mnt/Users/gprins/dos/.rabbitmq/enabled_plugins" to rootfs at "/etc/rabbitmq/enabled_plugins": mount /host_mnt/Users/gprins/dos/.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins (via /proc/self/fd/6), flags: 0x5000: not a directory: unknown: Are you trying to mount a directory onto a file (or vice-versa)? Check if the specified host path exists and is the expected type
+```
+you should check if you have .rabbitmq/enabled_plugins file containting the following content:
+`[rabbitmq_stream, rabbitmq_prometheus].`

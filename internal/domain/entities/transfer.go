@@ -52,11 +52,11 @@ type DomainTransfer struct {
 	Status TransferStatus
 
 	// Time the transfer was requested (when <transfer> command was sent to the registry).
-	RequestedAt time.Time
+	CreatedAt time.Time
 
 	// If the transfer is pending, this could be the deadline by which the losing registrar
 	// must respond (configured in PhasePolicy.TransferGP).
-	ExpiresAt time.Time
+	ExpiryDate time.Time
 
 	// Time the transfer was last updated.
 	UpdatedAt time.Time
@@ -72,15 +72,15 @@ type DomainTransfer struct {
 }
 
 // NewDomainTransfer creates a new DomainTransfer object with default values.
-// The transferGracePolicyDays parameter is used to calculate the ExpiresAt field and
+// The transferGracePolicyDays parameter is used to calculate the ExpiryDate field and
 // should be set to the value of the TransferGP field in the PhasePolicy in which the transfer is being processed.
 func NewDomainTransfer(transferGracePolicyDays int) DomainTransfer {
 	return DomainTransfer{
-		ID:          uuid.New(),
-		Status:      TransferStatusPending,
-		RequestedAt: time.Now().UTC(),
-		ExpiresAt:   time.Now().UTC().AddDate(0, 0, transferGracePolicyDays),
-		UpdatedAt:   time.Now().UTC(),
+		ID:         uuid.New(),
+		Status:     TransferStatusPending,
+		CreatedAt:  time.Now().UTC(),
+		ExpiryDate: time.Now().UTC().AddDate(0, 0, transferGracePolicyDays),
+		UpdatedAt:  time.Now().UTC(),
 	}
 }
 
