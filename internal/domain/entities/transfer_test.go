@@ -18,13 +18,13 @@ func TestNewDomainTransfer(t *testing.T) {
 		t.Errorf("expected status %v, got %v", TransferStatusPending, domainTransfer.Status)
 	}
 
-	if domainTransfer.RequestedAt.IsZero() {
-		t.Errorf("expected a valid RequestedAt time, got %v", domainTransfer.RequestedAt)
+	if domainTransfer.CreatedAt.IsZero() {
+		t.Errorf("expected a valid RequestedAt time, got %v", domainTransfer.CreatedAt)
 	}
 
-	expectedExpiresAt := domainTransfer.RequestedAt.AddDate(0, 0, transferGracePolicyDays)
-	if !domainTransfer.ExpiresAt.Equal(expectedExpiresAt) {
-		t.Errorf("expected ExpiresAt %v, got %v", expectedExpiresAt, domainTransfer.ExpiresAt)
+	expectedExpiresAt := domainTransfer.CreatedAt.AddDate(0, 0, transferGracePolicyDays)
+	if !domainTransfer.ExpiryDate.Equal(expectedExpiresAt) {
+		t.Errorf("expected ExpiresAt %v, got %v", expectedExpiresAt, domainTransfer.ExpiryDate)
 	}
 }
 
