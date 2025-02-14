@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewDomainTransfer(t *testing.T) {
@@ -95,10 +96,20 @@ func TestDomainTransfer_ApproveDeny(t *testing.T) {
 				if err != tc.expectedError {
 					t.Errorf("expected error %v, got %v", tc.expectedError, err)
 				}
+				if tc.expectedError == nil {
+					assert.Equal(t, TransferStatusApproved, tc.transfer.Status)
+					time.Sleep(1 * time.Millisecond) // sleep to ensure the time is different
+					assert.True(t, tc.transfer.AcceptDate.Before(time.Now().UTC()))
+					assert.True(t, tc.transfer.UpdatedAt.Before(time.Now().UTC()))
+				}
 			case TransferStatusDenied:
 				err := tc.transfer.deny("correlationID", "reason")
 				if err != tc.expectedError {
 					t.Errorf("expected error %v, got %v", tc.expectedError, err)
+				}
+				if tc.expectedError == nil {
+					time.Sleep(1 * time.Millisecond) // sleep to ensure the time is different
+					assert.True(t, tc.transfer.UpdatedAt.Before(time.Now().UTC()))
 				}
 			}
 		})
