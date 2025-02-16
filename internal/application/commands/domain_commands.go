@@ -97,8 +97,12 @@ func (cmd *CreateDomainCommand) ApplyContactDataPolicy(policy entities.ContactDa
 	)
 }
 
+type FromRdeDomainResult struct {
+	Warnings []string
+}
+
 // FromRdeDomain creates a CreateDomainCommand from an RdeDomain
-func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) error {
+func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) (*FromRdeDomainResult, error) {
 	// Check if we have a valid RoID (this will only be the case if we are importing our own escrows).
 	// If the Roid is invalid, use a valid one to pass through domain validation and unset it in the final command to have one generated.
 	roid := entities.RoidType(rdeDomain.RoID)
@@ -108,10 +112,22 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	}
 
 	// Create the domain entity from our RDEDomain, this will validate the domain
-	dom, err := rdeDomain.ToEntity()
+	result, err := rdeDomain.ToEntity()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	if result.Domain == nil {
+		return nil, errors.New("RdeDomain.ToEmtitY() returned no error and nil Domain")
+	}
+
+	var finalResult = FromRdeDomainResult{}
+	if result.Warnings != nil {
+		for _, warning := range result.Warnings {
+			finalResult.Warnings = append(finalResult.Warnings, warning.Error())
+		}
+	}
+
+	dom := result.Domain
 
 	// Now that we have a a valid domain, convert it to a command
 	// Only set the RoID if it is not the dummy RoID
@@ -122,7 +138,7 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	cmd.OriginalName = dom.OriginalName.String()
 	cmd.UName = dom.UName.String()
 	if dom.RegistrantID == "" {
-		return ErrRegistrantIDNotSet
+		return nil, ErrRegistrantIDNotSet
 	}
 	cmd.RegistrantID = dom.RegistrantID.String()
 	cmd.AdminID = dom.AdminID.String()
@@ -151,7 +167,7 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) err
 	cmd.RGPStatus = dom.RGPStatus
 	cmd.RenewedYears = dom.RenewedYears
 
-	return nil
+	return &finalResult, nil
 }
 
 // UpdateDomainCommand is a command to update a domain. RoID and Name are not updatable, please delete and create a new domain if you need to change these fields

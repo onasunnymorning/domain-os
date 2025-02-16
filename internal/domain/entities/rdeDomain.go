@@ -1,7 +1,10 @@
 package entities
 
 import (
+	"encoding/json"
 	"encoding/xml"
+	"errors"
+	"fmt"
 	"reflect"
 	"time"
 )
@@ -37,8 +40,15 @@ func (d *RDEDomain) ToCSV() []string {
 	return []string{string(d.Name), d.RoID, d.UName, d.IdnTableId, d.OriginalName, d.Registrant, d.ClID, d.CrRr, d.CrDate, d.ExDate, d.UpRr, d.UpDate}
 }
 
+// ToEntityResult represents the result of converting to a Domain entity.
+// It contains the Domain entity and any warnings that occurred during the conversion process.
+type ToEntityResult struct {
+	Domain   *Domain
+	Warnings []error
+}
+
 // ToEntity converts the RDEDomain to a Domain entity
-func (d *RDEDomain) ToEntity() (*Domain, error) {
+func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
 	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
 	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
 	if err != nil {
@@ -128,6 +138,10 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 			}
 		}
 	}
+
+	// Set the RenewedYears based on the ExpiryDate and CreatedAt
+	domain.RenewedYears = domain.ExpiryDate.Year() - domain.CreatedAt.Year() - 1 // the first year is a registration
+
 	// Set the status
 	ds, err := GetDomainStatusFromRDEDomainStatus(d.Status)
 	if err != nil {
@@ -138,20 +152,54 @@ func (d *RDEDomain) ToEntity() (*Domain, error) {
 	// TODO: add the nameservers prior to this
 	domain.SetUnsetInactiveStatus() // this will always set the status to inactive as the domain does not contain any hosts. Once we link the hosts, the status will get updated.
 
+	var result ToEntityResult
 	err = domain.Status.Validate()
 	if err != nil {
-		return nil, err
+		fmt.Printf("\n\nError validating domain status\n\n")
+
+		// JSON pretty print
+		jsonData, err := json.MarshalIndent(domain, "", "    ")
+		if err != nil {
+			fmt.Printf("\n\nError marshalling domain to JSON\n\n")
+			return nil, err
+		}
+
+		fmt.Printf("\n\nDomain: %s\n\n", jsonData)
+
+		// CNIC-FIX: try and fix issue with pendingDelete Ref.https://www.notion.so/apex-domains/Importing-Escrows-Experiment-1956c0599d5380b488d8f6f4ead200e8?pvs=4
+		// IF expiryDate is in the future and pendingDelete is set together with serverDeleteProhibited or clientDeleteProhibited, remove the pendingDelete status
+		// TODO: move this to GetDomainStatusFromRDEDomainStatus()
+		if domain.ExpiryDate.After(time.Now()) && (domain.Status.PendingDelete && (domain.Status.ServerDeleteProhibited || domain.Status.ClientDeleteProhibited)) {
+			ErrAppliedFixCNIC01 := fmt.Errorf("applied Fix-CNIC01 to domain %s", domain.Name)
+
+			// remove pendingDelete status
+			domain.Status.PendingDelete = false
+
+			// try and validate again
+			err = domain.Status.Validate()
+			if err != nil {
+				// if it fails again, return the error
+				fmt.Printf("\n\nError validating domain status after removing pendingDelete\n\n")
+				return nil, err
+			}
+			// if we succeed, append it to the warnings in the result
+			result.Warnings = append(result.Warnings, ErrAppliedFixCNIC01)
+
+		} else {
+			ErrNoFixAvailable := fmt.Errorf("no fix available for domain %s", domain.Name)
+			return nil, errors.Join(ErrInvalidDomainStatusCombination, ErrNoFixAvailable)
+		}
 	}
 
-	// Set the RenewedYears based on the ExpiryDate and CreatedAt
-	domain.RenewedYears = domain.ExpiryDate.Year() - domain.CreatedAt.Year() - 1 // the first year is a registration
-
+	// Validate the final domain
 	err = domain.Validate()
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(errors.New("[ERROR] Final Create Domain Command validation failed"), err)
 	}
 
-	return domain, nil
+	result.Domain = domain
+
+	return &result, nil
 
 }
 
@@ -265,5 +313,6 @@ func GetDomainStatusFromRDEDomainStatus(statuses []RDEDomainStatus) (DomainStatu
 		}
 
 	}
+
 	return ds, nil
 }

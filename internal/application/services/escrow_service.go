@@ -705,6 +705,13 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 		return nil, err
 	}
 
+	// Create a writer for the createDomainCommands file
+	createDomainCommandsFileName := svc.GetDepositFileNameWoExtension() + "-createDomainCommands.json"
+	createDomainCommandsFile, err := os.Create(createDomainCommandsFileName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a CSV file and writer to write the main domain information to
 	outFileName := svc.GetDepositFileNameWoExtension() + "-domains.csv"
 	outFile, err := os.Create(outFileName)
@@ -787,14 +794,32 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 
 				// Validate using a CreateDomainCommand
 				cmd := commands.CreateDomainCommand{}
-				err = cmd.FromRdeDomain(&dom)
+				result, err := cmd.FromRdeDomain(&dom)
 				if err != nil {
 					errCount++
 					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("error creating domain command for %s: %s", dom.Name, err))
 				}
+				if err == nil && result == nil {
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("received no error and a nil create command for %s", dom.Name))
+				}
+
+				if result != nil && result.Warnings != nil {
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, result.Warnings...)
+				}
 
 				if returnCommands {
 					domCreateCommands = append(domCreateCommands, cmd)
+				}
+
+				// Write the create command to file if it's not nil
+				if result != nil {
+					jsonCmd, err := json.MarshalIndent(cmd, "", "	")
+					if err != nil {
+						log.Fatal(err)
+					}
+					createDomainCommandsFile.Write(jsonCmd)
+					createDomainCommandsFile.Write([]byte("\n"))
 				}
 
 				// Write the domain to the domain file
@@ -1108,7 +1133,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 }
 
 // Loads the analysis file produced by the escrow analyzer. Input should be provided by the user
-func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string) error {
+func (svc *XMLEscrowService) LoadDepositAnalysis(analysisFile, escrowFile string) error {
 	f, err := os.Open(analysisFile)
 	if err != nil {
 		return err
@@ -1144,7 +1169,7 @@ func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string
 	}
 
 	if len(svc.Analysis.Warnings) != 0 {
-		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
+		log.Printf("⚠️ WARNING ⚠️ the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
 		// for _, w := range svc.Analysis.Warnings {
 		// 	log.Println(w)
 		// }
