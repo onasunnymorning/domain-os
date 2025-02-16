@@ -1,7 +1,6 @@
 package entities
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -155,16 +154,6 @@ func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
 	var result ToEntityResult
 	err = domain.Status.Validate()
 	if err != nil {
-		fmt.Printf("\n\nError validating domain status\n\n")
-
-		// JSON pretty print
-		jsonData, err := json.MarshalIndent(domain, "", "    ")
-		if err != nil {
-			fmt.Printf("\n\nError marshalling domain to JSON\n\n")
-			return nil, err
-		}
-
-		fmt.Printf("\n\nDomain: %s\n\n", jsonData)
 
 		// CNIC-FIX: try and fix issue with pendingDelete Ref.https://www.notion.so/apex-domains/Importing-Escrows-Experiment-1956c0599d5380b488d8f6f4ead200e8?pvs=4
 		// IF expiryDate is in the future and pendingDelete is set together with serverDeleteProhibited or clientDeleteProhibited, remove the pendingDelete status

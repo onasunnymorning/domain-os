@@ -20,13 +20,17 @@ func NewEscrowImportController(escrowService *services.XMLEscrowService) *Escrow
 }
 
 // Import calls the escrow analysis service to import the data into the database
-func (c *EscrowImportController) Import(analysisFile, depositFile string) error {
+func (c *EscrowImportController) Import(analysisFile, depositFile string, ignoreErrorsInAnalysisFile bool) error {
 
 	// Load the analysis file
 
 	err := c.svc.LoadDepositAnalysis(analysisFile, depositFile)
 	if err != nil {
-		return err
+		if err == services.ErrAnalysisContainsErrors && ignoreErrorsInAnalysisFile {
+			log.Println("Ignoring errors")
+		} else {
+			return err
+		}
 	}
 
 	// Load the unique contact IDs from file
