@@ -14,7 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const APP_VERSION = "0.1.0"
+const APP_VERSION = "0.2.2"
 
 func main() {
 	start := time.Now()
@@ -68,6 +68,15 @@ func main() {
 				Aliases: []string{"imp"},
 				Usage:   "import an RDE escrow deposit file (XML)",
 				Action:  importDeposit,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:     "ignore-errors-in-analysis",
+						Aliases:  []string{"i"},
+						Usage:    "if the analysis shows errors, ignore them and try to import the data anyway",
+						Value:    false,
+						Required: false,
+					},
+				},
 			},
 			{
 				Name:    "generate",
@@ -145,7 +154,7 @@ func importDeposit(c *cli.Context) error {
 	importController := escrow.NewEscrowImportController(escrowService)
 
 	// Import the data
-	err = importController.Import(strings.TrimSuffix(filename, ".xml")+"-analysis.json", filename)
+	err = importController.Import(strings.TrimSuffix(filename, ".xml")+"-analysis.json", filename, c.Bool("ignore-errors-in-analysis"))
 	if err != nil {
 		log.Fatal(err)
 	}

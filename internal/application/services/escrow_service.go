@@ -814,7 +814,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 
 				// Write the create command to file if it's not nil
 				if result != nil {
-					jsonCmd, err := json.MarshalIndent(cmd, "", "	")
+					jsonCmd, err := json.Marshal(cmd)
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -1159,12 +1159,13 @@ func (svc *XMLEscrowService) LoadDepositAnalysis(analysisFile, escrowFile string
 	log.Println("Analysis file loaded successfully")
 
 	if len(svc.Analysis.Errors) != 0 {
-		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d errors", len(svc.Analysis.Errors))
-		// for _, e := range svc.Analysis.Errors {
-		// 	log.Println(e)
-		// }
-
-		log.Println("Cannot proceed with import due to errors in the analysis file. Please fix the errors and try again.")
+		log.Printf("[ERROR] the analysis file shows there are %d errors", len(svc.Analysis.Errors))
+		// print the first 10 errors
+		for i := 0; i < 10; i++ {
+			if i < len(svc.Analysis.Errors) {
+				log.Println(svc.Analysis.Errors[i])
+			}
+		}
 		return ErrAnalysisContainsErrors
 	}
 
