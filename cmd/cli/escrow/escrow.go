@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -12,6 +13,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/cli/escrow"
 	"github.com/urfave/cli/v2"
 )
+
+const APP_VERSION = "0.1.0"
 
 func main() {
 	start := time.Now()
@@ -39,6 +42,12 @@ func main() {
 
 	app := &cli.App{
 		Commands: []*cli.Command{
+			{
+				Name:    "version",
+				Aliases: []string{"v", "ver"},
+				Usage:   "Print the version of this escrow tool",
+				Action:  printVersion,
+			},
 			{
 				Name:    "analyze",
 				Aliases: []string{"an"},
@@ -146,5 +155,10 @@ func importDeposit(c *cli.Context) error {
 
 func generateDeposit(c *cli.Context) error {
 	log.Println("Generate command - not implemented")
+	return nil
+}
+
+func printVersion(c *cli.Context) error {
+	fmt.Printf("Version %s\n", APP_VERSION)
 	return nil
 }

@@ -29,6 +29,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 		rdeDomain *entities.RDEDomain
 		cmd       *CreateDomainCommand
 		wantErr   error
+		wantWarn  error
 	}{
 		{
 			name: "valid RDEDomain with valid Roid",
@@ -125,7 +126,7 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 	for _, tc := range tetcases {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := &CreateDomainCommand{}
-			err := cmd.FromRdeDomain(tc.rdeDomain)
+			_, err := cmd.FromRdeDomain(tc.rdeDomain)
 			require.Equal(t, tc.wantErr, err)
 			if err == nil {
 				require.Equal(t, tc.cmd, cmd)

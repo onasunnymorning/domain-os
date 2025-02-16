@@ -24,7 +24,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string) error 
 
 	// Load the analysis file
 
-	err := c.svc.LoadDepostiAnalysis(analysisFile, depositFile)
+	err := c.svc.LoadDepositAnalysis(analysisFile, depositFile)
 	if err != nil {
 		return err
 	}
