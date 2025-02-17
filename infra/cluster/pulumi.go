@@ -104,7 +104,7 @@ func main() {
 		// Create a security group allowing inbound access over port 80 and outbound
 		// access to anywhere.
 		secGroup, err := ec2.NewSecurityGroup(ctx, "secGroup", &ec2.SecurityGroupArgs{
-			Description: pulumi.String("Enable HTTP access"),
+			Description: pulumi.String("Enable FULL network access"),
 			VpcId:       vpc.ID(),
 			Ingress: ec2.SecurityGroupIngressArray{
 				&ec2.SecurityGroupIngressArgs{
