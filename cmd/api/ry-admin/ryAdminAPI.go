@@ -23,6 +23,7 @@ import (
 
 	"github.com/apex/gateway"
 	"github.com/gin-contrib/cors"
+	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 
@@ -270,7 +271,15 @@ func main() {
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
 	// Create Gin Engine/Router
-	r := gin.Default()
+	// r := gin.Default()
+	// Create a new Gin router without any default middleware.
+	r := gin.New()
+	// Use ginzap middleware to log requests with Zap
+	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
+
+	// Use ginzap recovery middleware to catch panics and log with Zap
+	r.Use(ginzap.RecoveryWithZap(logger, true))
+
 	// Configure CORS middleware
 	config := cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"}, // Add your frontend URL here
