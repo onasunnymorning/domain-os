@@ -127,3 +127,28 @@ type UpdateContactCommand struct {
 	Status     entities.ContactStatus         `json:"Status"`
 	Disclose   entities.ContactDisclose       `json:"Disclose"`
 }
+
+// ChunkCreateContactCommand returns a channel that yields slices of size chunkSize.
+func ChunkCreateContactCommand(cmds []CreateContactCommand, chunkSize int) <-chan []CreateContactCommand {
+	ch := make(chan []CreateContactCommand)
+
+	go func() {
+		defer close(ch)
+
+		if chunkSize <= 0 {
+			// Fallback to 1 if invalid chunkSize
+			chunkSize = 1
+		}
+
+		for i := 0; i < len(cmds); i += chunkSize {
+			end := i + chunkSize
+			if end > len(cmds) {
+				end = len(cmds)
+			}
+			// Send the chunk to the channel
+			ch <- cmds[i:end]
+		}
+	}()
+
+	return ch
+}

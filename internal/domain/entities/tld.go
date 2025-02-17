@@ -13,6 +13,7 @@ var (
 	ErrTLDNotFound                           = errors.New("TLD not found")
 	ErrPhaseAlreadyExists                    = errors.New("phase with this name already exists")
 	ErrGAPhaseOverlaps                       = errors.New("GA phase date range overlaps with existing GA phase")
+	ErrTLDEscrowImportNotAllowed             = errors.New("escrow import not allowed for this TLD")
 	ErrNoActivePhase                         = errors.New("no active phase found")
 	ErrPhaseNotFound                         = errors.New("phase not found")
 	ErrDeleteHistoricPhase                   = errors.New("cannot delete a historic phase")

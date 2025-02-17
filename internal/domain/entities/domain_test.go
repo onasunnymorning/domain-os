@@ -2152,3 +2152,86 @@ func TestForceRenew(t *testing.T) {
 		assert.True(t, errors.Is(err, ErrPhaseNotProvided))
 	})
 }
+func TestDomain_CanBeTransferredExtensive(t *testing.T) {
+	now := time.Now().UTC()
+
+	testcases := []struct {
+		name         string
+		domainStatus DomainStatus
+		rgpStatus    DomainRGPStatus
+		want         bool
+	}{
+		{
+			name: "can be transferred",
+			domainStatus: DomainStatus{
+				OK: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, -1),
+			},
+			want: true,
+		},
+		{
+			name: "client transfer prohibited",
+			domainStatus: DomainStatus{
+				ClientTransferProhibited: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+		{
+			name: "server transfer prohibited",
+			domainStatus: DomainStatus{
+				ServerTransferProhibited: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+		{
+			name: "has pending actions",
+			domainStatus: DomainStatus{
+				PendingTransfer: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+		{
+			name: "has pending actions - pending delete",
+			domainStatus: DomainStatus{
+				PendingDelete: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, -1),
+			},
+			want: false,
+		},
+		{
+			name: "transfer lock period not ended",
+			domainStatus: DomainStatus{
+				OK: true,
+			},
+			rgpStatus: DomainRGPStatus{
+				TransferLockPeriodEnd: now.AddDate(0, 0, 1),
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{
+				Status:    tc.domainStatus,
+				RGPStatus: tc.rgpStatus,
+			}
+
+			got := d.CanBeTransferred()
+			require.Equal(t, tc.want, got)
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 		rdeDomain *RDEDomain
 		domain    *Domain
 		wantErr   error
+		wantWarn  []error
 	}{
 		{
 			name: "invalid roid",
@@ -445,14 +447,81 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 			},
 			wantErr: nil,
 		},
+		{
+			name: "Fix-CNIC-1: valid domain with multiple statuses",
+			rdeDomain: &RDEDomain{
+				Name:       "apex.domains",
+				RoID:       "12345_DOM-APEX",
+				ClID:       "GoMamma",
+				CrRr:       "GoMamma",
+				ExDate:     "2222-01-01T00:00:00Z",
+				CrDate:     "2021-01-01T00:00:00Z",
+				UpRr:       "GoMamma",
+				UpDate:     "2021-01-01T00:00:00Z",
+				Registrant: "GoMamma",
+				Status: []RDEDomainStatus{
+					{
+						S: "pendingDelete",
+					},
+					{
+						S: "serverDeleteProhibited",
+					},
+				},
+				Contact: []RDEDomainContact{
+					{
+						ID:   "GoMamma",
+						Type: "admin",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "tech",
+					},
+					{
+						ID:   "GoMamma",
+						Type: "billing",
+					},
+				},
+			},
+			domain: &Domain{
+				Name:         DomainName("apex.domains"),
+				RoID:         "12345_DOM-APEX",
+				ClID:         "GoMamma",
+				CrRr:         "GoMamma",
+				UpRr:         "GoMamma",
+				CreatedAt:    time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt:    time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
+				ExpiryDate:   time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC),
+				RegistrantID: "GoMamma",
+				AdminID:      "GoMamma",
+				TechID:       "GoMamma",
+				BillingID:    "GoMamma",
+				Status: DomainStatus{
+					PendingDelete:          false,
+					ServerDeleteProhibited: true,
+					Inactive:               true,
+					OK:                     false,
+				},
+			},
+			wantErr: nil,
+			wantWarn: []error{
+				errors.New("removed pendingDelete status from domain apex.domains - Ref.https://www.notion.so/apex-domains/Importing-Escrows-Experiment-1956c0599d5380b488d8f6f4ead200e8?pvs=4"),
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			domain, err := tt.rdeDomain.ToEntity()
+			result, err := tt.rdeDomain.ToEntity()
 			require.ErrorIs(t, err, tt.wantErr)
 
 			if tt.wantErr == nil {
+
+				if tt.wantErr != nil {
+					require.Equal(t, tt.wantWarn[0].Error(), result.Warnings[0].Error())
+				}
+
+				domain := result.Domain
+
 				require.Equal(t, tt.domain.Name, domain.Name)
 				require.Equal(t, tt.domain.Name.ParentDomain(), domain.TLDName.String())
 				require.Equal(t, tt.domain.ClID, domain.ClID)

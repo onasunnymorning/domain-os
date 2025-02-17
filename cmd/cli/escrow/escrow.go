@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -12,6 +13,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/cli/escrow"
 	"github.com/urfave/cli/v2"
 )
+
+const APP_VERSION = "0.2.2"
 
 func main() {
 	start := time.Now()
@@ -40,6 +43,12 @@ func main() {
 	app := &cli.App{
 		Commands: []*cli.Command{
 			{
+				Name:    "version",
+				Aliases: []string{"v", "ver"},
+				Usage:   "Print the version of this escrow tool",
+				Action:  printVersion,
+			},
+			{
 				Name:    "analyze",
 				Aliases: []string{"an"},
 				Usage:   "analyze an RDE escrow deposit file (XML)",
@@ -59,6 +68,15 @@ func main() {
 				Aliases: []string{"imp"},
 				Usage:   "import an RDE escrow deposit file (XML)",
 				Action:  importDeposit,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:     "ignore-errors-in-analysis",
+						Aliases:  []string{"i"},
+						Usage:    "if the analysis shows errors, ignore them and try to import the data anyway",
+						Value:    false,
+						Required: false,
+					},
+				},
 			},
 			{
 				Name:    "generate",
@@ -136,7 +154,7 @@ func importDeposit(c *cli.Context) error {
 	importController := escrow.NewEscrowImportController(escrowService)
 
 	// Import the data
-	err = importController.Import(strings.TrimSuffix(filename, ".xml")+"-analysis.json", filename)
+	err = importController.Import(strings.TrimSuffix(filename, ".xml")+"-analysis.json", filename, c.Bool("ignore-errors-in-analysis"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -146,5 +164,10 @@ func importDeposit(c *cli.Context) error {
 
 func generateDeposit(c *cli.Context) error {
 	log.Println("Generate command - not implemented")
+	return nil
+}
+
+func printVersion(c *cli.Context) error {
+	fmt.Printf("Version %s\n", APP_VERSION)
 	return nil
 }

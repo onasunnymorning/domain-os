@@ -19,7 +19,7 @@ ARG GIT_SHA
 RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o syncWorker //cmd/workers/sync/syncWorker.go
 
 # Create API release image
-FROM alpine:3.21 AS domain-sync
+FROM alpine:3.21.3 AS domain-sync
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

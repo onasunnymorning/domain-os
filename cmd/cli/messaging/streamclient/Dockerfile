@@ -20,7 +20,7 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o streamC
 
 
 # Create CONSUMER release image
-FROM alpine:3.21 AS release-consumer
+FROM alpine:3.21.3 AS release-consumer
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

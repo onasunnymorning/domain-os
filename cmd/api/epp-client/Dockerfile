@@ -31,7 +31,7 @@ RUN go build -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api
 
 
 # Create API release image
-FROM alpine:3.21 as epp-client-api
+FROM alpine:3.21.3 as epp-client-api
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
