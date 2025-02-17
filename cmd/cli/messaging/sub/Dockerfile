@@ -40,7 +40,7 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o consume
 
 
 # Create Consumer release image
-FROM alpine:3.21 AS consumerApp
+FROM alpine:3.21.3 AS consumerApp
 
 # Copy librdkafka from the build image
 COPY --from=build /usr/lib/librdkafka* /usr/lib/

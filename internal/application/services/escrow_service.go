@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	CONCURRENT_CLIENTS = 10
+	CONCURRENT_CLIENTS = 100
 )
 
 var (
@@ -291,6 +291,12 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 		return nil, err
 	}
 
+	// Create a writer for the createContactCommands file
+	createContactsCommandsFile, err := os.Create(svc.GetDepositFileNameWoExtension() + "-createContactCommands.json")
+	if err != nil {
+		return nil, err
+	}
+
 	// Prepare the CSV file to receive the contacts
 	outFileName := svc.GetDepositFileNameWoExtension() + "-contacts.csv"
 	outFile, err := os.Create(outFileName)
@@ -362,6 +368,16 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 						createCommands = append(createCommands, cmd)
 					}
 
+					if cmd.Status.Linked && cmd.ID != "" {
+						jsonCmd, err := json.Marshal(cmd)
+						if err != nil {
+							errCount++
+							svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating JSON for contact command %s: %s", rdeContact.ID, err))
+						}
+						createContactsCommandsFile.Write(jsonCmd)
+						createContactsCommandsFile.Write([]byte("\n"))
+					}
+
 					// Write the contact to the contact file
 					contactWriter.Write(rdeContact.ToCSV())
 					// Set Status in statusFile
@@ -404,13 +420,13 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 	}
 	log.Println("Done!")
 	if unlinkedCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d unlinked contacts were found in the escrow file and will not be imported\n", unlinkedCount)
+		log.Printf("⚠️  WARNING %d unlinked contacts were found in the escrow file and will not be imported\n", unlinkedCount)
 	}
 	if postalInfoCounter < svc.Header.ContactCount()-unlinkedCount {
-		log.Printf("🔥 WARNING 🔥 Expected at least %d postalInfo objects, but found %d\n", svc.Header.ContactCount(), postalInfoCounter)
+		log.Printf("⚠️  WARNING at least %d postalInfo objects, but found %d\n", svc.Header.ContactCount(), postalInfoCounter)
 	}
 	if statusCounter < svc.Header.ContactCount()-unlinkedCount {
-		log.Printf("🔥 WARNING 🔥 Expected at least %d status objects, but found %d\n", svc.Header.ContactCount(), statusCounter)
+		log.Printf("⚠️  WARNING Expected at least %d status objects, but found %d\n", svc.Header.ContactCount(), statusCounter)
 	}
 	statusWriter.Flush()
 	checkLineCount(statusFileName, statusCounter)
@@ -419,7 +435,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 	contactWriter.Flush()
 	checkLineCount(outFileName, svc.Header.ContactCount()-unlinkedCount)
 	if errCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
+		log.Printf("🔥 ERROR %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
 	}
 	return createCommands, nil
 }
@@ -444,6 +460,12 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 	defer f.Close()
 
 	d := xml.NewDecoder(f)
+
+	// Create a writer for the createHostCommands file
+	createHostCommandsFile, err := os.Create(svc.GetDepositFileNameWoExtension() + "-createHostCommands.json")
+	if err != nil {
+		return nil, err
+	}
 
 	// Prepare the CSV file to receive the hosts
 	outFileName := svc.GetDepositFileNameWoExtension() + "-hosts.csv"
@@ -541,6 +563,15 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					hostCmds = append(hostCmds, cmd)
 				}
 
+				// Write them to file
+				jsonCmd, err := json.Marshal(cmd)
+				if err != nil {
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating JSON for host command %s: %s", host.Name, err))
+				}
+				createHostCommandsFile.Write(jsonCmd)
+				createHostCommandsFile.Write([]byte("\n"))
+
 				// Update counters in Registrar Map
 				objCount := svc.RegistrarMapping[host.ClID]
 				objCount.HostCount++
@@ -553,7 +584,7 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 	}
 	log.Println("Done!")
 	if unlinkedCount > svc.Header.HostCount()/10 {
-		log.Printf("🔥 WARNING 🔥 %d more than 1/10th hosts are unlinked, but can still be imported\n", unlinkedCount)
+		log.Printf("⚠️  WARNING %d more than 1/10th hosts are unlinked, but can still be imported\n", unlinkedCount)
 	}
 	addrWriter.Flush()
 	checkLineCount(addrFileName, addrCounter)
@@ -562,7 +593,7 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.HostCount())
 	if errCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
+		log.Printf("🔥 ERROR %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
 	}
 	return hostCmds, nil
 }
@@ -578,6 +609,12 @@ func (svc *XMLEscrowService) ExtractNNDNS(returnNNDNCreateCommands bool) ([]comm
 	nndnCmds := []commands.CreateNNDNCommand{}
 
 	d, err := svc.getXMLDecoder()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a writer for the createNNDNCommands file
+	createNNDNCommandsFile, err := os.Create(svc.GetDepositFileNameWoExtension() + "-createNNDNCommands.json")
 	if err != nil {
 		return nil, err
 	}
@@ -632,6 +669,15 @@ func (svc *XMLEscrowService) ExtractNNDNS(returnNNDNCreateCommands bool) ([]comm
 					nndnCmds = append(nndnCmds, cmd)
 				}
 
+				// Write them to file
+				jsonCmd, err := json.Marshal(cmd)
+				if err != nil {
+					errCount++
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating JSON for NNDN command %s: %s", rdeNNDN.AName, err))
+				}
+				createNNDNCommandsFile.Write(jsonCmd)
+				createNNDNCommandsFile.Write([]byte("\n"))
+
 				// Write to CSV
 				writer.Write(rdeNNDN.ToCSV())
 				count++
@@ -643,7 +689,7 @@ func (svc *XMLEscrowService) ExtractNNDNS(returnNNDNCreateCommands bool) ([]comm
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.NNDNCount())
 	if errCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing NNDNs. See analysis file for details\n", errCount)
+		log.Printf("🔥 ERROR %d errors were encountered while processing NNDNs. See analysis file for details\n", errCount)
 	}
 	return nndnCmds, nil
 }
@@ -678,7 +724,7 @@ func checkLineCount(filename string, expected int) {
 		if lineCount > expected {
 			tip = `This might indicate there are newline(\n) characters in the data.`
 		}
-		log.Printf("🔥 WARNING 🔥 Expecting %d objects, found %d objects in %s %s\n", expected, lineCount, filename, tip)
+		log.Printf("⚠️  WARNING Expecting %d objects, found %d objects in %s %s\n", expected, lineCount, filename, tip)
 	} else {
 		log.Printf("✅ All %d objects were extracted to %s \n", expected, filename)
 	}
@@ -700,6 +746,13 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 	errCount := 0
 
 	d, err := svc.getXMLDecoder()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a writer for the createDomainCommands file
+	createDomainCommandsFileName := svc.GetDepositFileNameWoExtension() + "-createDomainCommands.json"
+	createDomainCommandsFile, err := os.Create(createDomainCommandsFileName)
 	if err != nil {
 		return nil, err
 	}
@@ -786,14 +839,33 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 
 				// Validate using a CreateDomainCommand
 				cmd := commands.CreateDomainCommand{}
-				err = cmd.FromRdeDomain(&dom)
+				result, err := cmd.FromRdeDomain(&dom)
 				if err != nil {
 					errCount++
 					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("error creating domain command for %s: %s", dom.Name, err))
 				}
+				if err == nil && result == nil {
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("received no error and a nil create command for %s", dom.Name))
+				}
+
+				if result != nil && result.Warnings != nil {
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, result.Warnings...)
+				}
 
 				if returnCommands {
 					domCreateCommands = append(domCreateCommands, cmd)
+				}
+
+				// Write the create command to file if it's not nil
+				if result != nil {
+					jsonCmd, err := json.Marshal(cmd)
+					if err != nil {
+						errCount++
+						svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("error marshalling domain command for %s: %s", dom.Name, err))
+					}
+					createDomainCommandsFile.Write(jsonCmd)
+					createDomainCommandsFile.Write([]byte("\n"))
 				}
 
 				// Write the domain to the domain file
@@ -863,7 +935,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 	log.Printf("✅  Written %d unique contact IDs used by Domains to : %s", len(svc.uniqueContactIDs), contactIDFileName)
 	log.Println("Done!")
 	if statusCounter < svc.Header.DomainCount() {
-		log.Printf("🔥 WARNING 🔥 Expected at least %d status objects, but found %d\n", svc.Header.DomainCount(), statusCounter)
+		log.Printf("⚠️  WARNING Expected at least %d status objects, but found %d\n", svc.Header.DomainCount(), statusCounter)
 	}
 	statusWriter.Flush()
 	checkLineCount(statusFileName, statusCounter)
@@ -876,7 +948,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 	domainWriter.Flush()
 	checkLineCount(outFileName, svc.Header.DomainCount())
 	if errCount > 0 {
-		log.Printf("🔥 WARNING 🔥 %d errors were encountered while processing domains. See analysis file for details\n", errCount)
+		log.Printf("🔥 ERROR %d errors were encountered while processing domains. See analysis file for details\n", errCount)
 	}
 	return domCreateCommands, nil
 }
@@ -962,7 +1034,7 @@ func (svc *XMLEscrowService) LookForMissingContacts() error {
 	}
 	if errorCount > 0 {
 		svc.Analysis.MissingContacts = missingContactIDs
-		log.Printf("🔥 WARNING 🔥 Found %d missing contact IDs in %s \n", errorCount, svc.GetDepositFileNameWoExtension()+"-uniqueDomainContactIDs.csv")
+		log.Printf("🔥 ERROR Found %d missing contact IDs in %s \n", errorCount, svc.GetDepositFileNameWoExtension()+"-uniqueDomainContactIDs.csv")
 	} else {
 		log.Printf("✅ Found all domain contact IDs in the contact file\n")
 
@@ -1107,7 +1179,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 }
 
 // Loads the analysis file produced by the escrow analyzer. Input should be provided by the user
-func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string) error {
+func (svc *XMLEscrowService) LoadDepositAnalysis(analysisFile, escrowFile string) error {
 	f, err := os.Open(analysisFile)
 	if err != nil {
 		return err
@@ -1133,17 +1205,18 @@ func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string
 	log.Println("Analysis file loaded successfully")
 
 	if len(svc.Analysis.Errors) != 0 {
-		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d errors", len(svc.Analysis.Errors))
-		// for _, e := range svc.Analysis.Errors {
-		// 	log.Println(e)
-		// }
-
-		log.Println("Cannot proceed with import due to errors in the analysis file. Please fix the errors and try again.")
+		log.Printf("[ERROR] the analysis file shows there are %d errors", len(svc.Analysis.Errors))
+		// print the first 10 errors
+		for i := 0; i < 10; i++ {
+			if i < len(svc.Analysis.Errors) {
+				log.Println(svc.Analysis.Errors[i])
+			}
+		}
 		return ErrAnalysisContainsErrors
 	}
 
 	if len(svc.Analysis.Warnings) != 0 {
-		log.Printf("🔥 WARNING 🔥 the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
+		log.Printf("⚠️  WARNING the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
 		// for _, w := range svc.Analysis.Warnings {
 		// 	log.Println(w)
 		// }
@@ -1156,8 +1229,6 @@ func (svc *XMLEscrowService) LoadDepostiAnalysis(analysisFile, escrowFile string
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
-
-// GetContactCount
 
 // CreateContacts Creates the contacts in the repository through the Admin API
 func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand) error {
@@ -1177,7 +1248,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createContact(*client, cmd)
+				svc.createContact(client, cmd)
 				pbar.Add(1)
 			}
 		}()
@@ -1193,7 +1264,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 	wg.Wait()
 
 	if svc.Import.Contacts.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d contacts failed to be created\n", svc.Import.Contacts.Failed)
+		log.Printf("🔥 ERROR %d contacts failed to be created\n", svc.Import.Contacts.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
@@ -1207,7 +1278,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 }
 
 // createContact handles the actual creation of a contact through an API request. If a contact already exists, that is not an error.
-func (svc *XMLEscrowService) createContact(client http.Client, cmd commands.CreateContactCommand) error {
+func (svc *XMLEscrowService) createContact(client *http.Client, cmd commands.CreateContactCommand) error {
 
 	URL := BASE_URL + "/contacts"
 
@@ -1320,7 +1391,7 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) erro
 	wg.Wait()
 
 	if svc.Import.Hosts.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d hosts failed to be created\n", svc.Import.Hosts.Failed)
+		log.Printf("🔥 ERROR %d hosts failed to be created\n", svc.Import.Hosts.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
@@ -1451,7 +1522,7 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 	wg.Wait()
 
 	if svc.Import.Domains.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d domains failed to be created\n", svc.Import.Domains.Failed)
+		log.Printf("🔥 ERROR %d domains failed to be created\n", svc.Import.Domains.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
@@ -1672,7 +1743,7 @@ func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand) erro
 	wg.Wait()
 
 	if svc.Import.NNDNs.Failed > 0 {
-		log.Printf("🔥 WARNING 🔥 %d NNDNs failed to be created\n", svc.Import.NNDNs.Failed)
+		log.Printf("🔥 ERROR %d NNDNs failed to be created\n", svc.Import.NNDNs.Failed)
 		for _, e := range svc.Import.Errors {
 			log.Println(e)
 		}
@@ -1833,9 +1904,9 @@ func (svc *XMLEscrowService) GetContactCountFromAPI() (int64, error) {
 func getHTTPClient() *http.Client {
 	// Create a re-usable client optimized for tcp connections
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		MaxIdleConnsPerHost: 10,
+		MaxIdleConns:        1000,
+		IdleConnTimeout:     30 * time.Second,
+		MaxIdleConnsPerHost: 1000,
 		MaxConnsPerHost:     1000,
 	}
 	return &http.Client{
