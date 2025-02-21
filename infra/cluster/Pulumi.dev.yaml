@@ -1,6 +1,0 @@
-config:
-  aws:region: us-west-2
-  cluster:instanceType: t2.large
-  cluster:vpcNetworkCidr: 10.0.0.0/16
-  sshKeyName: geoff-mb
-  amiName: # defaults to Ubuntu 22.04
