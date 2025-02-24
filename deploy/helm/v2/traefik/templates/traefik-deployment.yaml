@@ -27,8 +27,9 @@ spec:
         - --accesslog
         - --entryPoints.web.Address=:80
         - --entryPoints.websecure.Address=:443
-        - --entryPoints.ssh.Address=:2222
-        - --entryPoints.dns.Address=:53
+        - --entryPoints.ssh.Address=:22
+        - --entryPoints.ssh.tls.passthrough=true
+        # - --entryPoints.dns.Address=:53
         - --providers.kubernetescrd
         # - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
         - --certificatesresolvers.myresolver.acme.tlschallenge
@@ -36,7 +37,7 @@ spec:
         - --certificatesresolvers.myresolver.acme.storage=acme.json
         # Please note that this is the staging Let's Encrypt server.
         # Once you get things working, you should remove that whole line altogether.
-        # - --certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+        - --certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
         ports:
         - name: web
           containerPort: 80
@@ -46,6 +47,6 @@ spec:
           containerPort: 8080
         - name: ssh
           containerPort: 2222
-        - name: dns
-          containerPort: 53
+        # - name: dns
+        #   containerPort: 53
 
