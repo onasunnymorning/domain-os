@@ -2,6 +2,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.app.configMapName }}
+  labels:
+    app: {{ .Release.Name }}
 data:
   GIN_MODE: {{ .Values.GIN_MODE | quote }}
 
@@ -23,7 +25,7 @@ data:
   RMQ_HOST: {{ .Values.RMQ_HOST | quote }}
   RMQ_PORT: {{ .Values.RMQ_PORT | quote }}
 
-  TMPIO_HOST_PORT: {{ .ValuesTMPIO_HOST_PORT | quote }}
+  TMPIO_HOST_PORT: {{ .Values.TMPIO_HOST_PORT | quote }}
   TMPIO_NAME_SPACE: {{ .Values.TMPIO_NAME_SPACE | quote }}
   TMPIO_QUEUE: {{ .Values.TMPIO_QUEUE | quote }}
   TMPIO_SYNC_QUEUE: {{ .Values.TMPIO_SYNC_QUEUE | quote }}
