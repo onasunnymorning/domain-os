@@ -8,15 +8,9 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - name: ssh
-    protocol: TCP
-    port: 22
   - name: web
     protocol: TCP
     port: 80
-  # - name: dns
-  #   protocol: UDP
-  #   port: 53
   - name: websecure
     protocol: TCP
     port: 443
