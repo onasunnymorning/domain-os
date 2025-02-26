@@ -1,0 +1,5 @@
+apiVersion: v2
+name: metabase-helm-chart
+description: Helm chart for Metabase
+version: 1.0.0
+appVersion: latest

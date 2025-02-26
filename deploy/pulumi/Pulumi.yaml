@@ -1,0 +1,7 @@
+name: domain-os
+description: Deploy Domain OS infrastrucutre using Pulumi
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-go

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.app.configMapName }}
+  labels:
+    app: {{ .Release.Name }}
+data:
+  GIN_MODE: {{ .Values.GIN_MODE | quote }}
+
+  NEW_RELIC_ENABLED: {{ .Values.NEW_RELIC_ENABLED | quote }}
+  EVENT_STREAM_ENABLED: {{ .Values.EVENT_STREAM_ENABLED | quote }}
+  EVENT_STREAM_TOPIC: {{ .Values.EVENT_STREAM_TOPIC | quote }}
+
+  DB_HOST: {{ .Values.DB_HOST | quote }}
+  DB_PORT: {{ .Values.DB_PORT | quote }}
+  DB_NAME: {{ .Values.DB_NAME | quote }}
+  DB_SSLMODE: {{ .Values.DB_SSLMODE | quote }}
+  AUTO_MIGRATE: {{ .Values.AUTO_MIGRATE | quote }}
+
+  API_PORT: {{ .Values.API_PORT | quote }}
+  API_HOST: {{ .Values.API_HOST | quote }}
+  API_VERSION: {{ .Values.API_VERSION | quote }}
+  API_NAME: {{ .Values.API_NAME | quote }}
+
+  RMQ_HOST: {{ .Values.RMQ_HOST | quote }}
+  RMQ_PORT: {{ .Values.RMQ_PORT | quote }}
+
+  TMPIO_HOST_PORT: {{ .Values.TMPIO_HOST_PORT | quote }}
+  TMPIO_NAME_SPACE: {{ .Values.TMPIO_NAME_SPACE | quote }}
+  TMPIO_QUEUE: {{ .Values.TMPIO_QUEUE | quote }}
+  TMPIO_SYNC_QUEUE: {{ .Values.TMPIO_SYNC_QUEUE | quote }}
+
+  PROMETHEUS_ENABLED: {{ .Values.PROMETHEUS_ENABLED | quote }}

@@ -1,0 +1,17 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: adminapiingressroute
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`api.play.geoff.it`)
+    kind: Rule
+    services:
+    - name: {{ .Values.service.name }}
+      port: {{ .Values.service.port }}
+  tls:
+    certResolver: myresolver

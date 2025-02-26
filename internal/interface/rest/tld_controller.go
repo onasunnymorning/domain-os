@@ -3,7 +3,6 @@ package rest
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -96,9 +95,6 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	log.Println("pagesize:", pageSize)
-	log.Println("pageCursor:", pageCursor)
 
 	// Get the tlds from the service
 	tlds, err := ctrl.tldService.ListTLDs(ctx, pageSize, pageCursor)
