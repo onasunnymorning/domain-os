@@ -1,0 +1,5 @@
+apiVersion: v2
+name: traefik-helm
+description: Helm chart for deploying Traefik ingress controller with automation-friendly variables
+version: 2.0.0
+appVersion: 2.9.4 # Replace with the desired Traefik version

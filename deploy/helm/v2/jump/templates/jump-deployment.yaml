@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.host.name}}
+  labels:
+    app: {{ .Values.host.name}}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.host.name}}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.host.name}}
+    spec:
+      containers:
+      - name: bastion-host
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 22
+        env:
+        - name: SSH_PASSWORD
+          value: {{ .Values.ssh.password | quote }}
