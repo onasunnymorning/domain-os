@@ -342,13 +342,13 @@ func (t *TLD) GetCurrentPhases() []Phase {
 	return phases
 }
 
-// SetAllowEscrowImport sets the AllowEscrowImport field of the TLD
+// ToggleAllowEscrowImport sets the AllowEscrowImport field of the TLD
 // This will only allow the flag to be set if there are no active phases
 // This requies the calling code to ensure the Phases property is populated
-func (t *TLD) SetAllowEscrowImport(allow bool) error {
+func (t *TLD) ToggleAllowEscrowImport(newValue bool) error {
 	// there are no restrictions to setting this to false
-	if !allow {
-		t.AllowEscrowImport = allow
+	if !newValue {
+		t.AllowEscrowImport = newValue
 		return nil
 	}
 	// if we are trying to set it to true, we need to check if there are any active phases
@@ -357,11 +357,11 @@ func (t *TLD) SetAllowEscrowImport(allow bool) error {
 		return ErrCannotSetEscrowImportWithActivePhases
 	}
 
-	t.AllowEscrowImport = allow
+	t.AllowEscrowImport = newValue
 	return nil
 }
 
-// SetEnableDNS sets the EnableDNS field of the TLD
-func (t *TLD) SetEnableDNS(enable bool) {
-	t.EnableDNS = enable
+// ToggleEnableDNS sets the EnableDNS field of the TLD
+func (t *TLD) ToggleEnableDNS(newValue bool) {
+	t.EnableDNS = newValue
 }
