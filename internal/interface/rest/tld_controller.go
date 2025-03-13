@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
@@ -70,34 +71,47 @@ func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 
 // ListTLDs godoc
 // @Summary List TLDs
-// @Description List TLDs.
+// @Description Returns a list of TLDs, ordered alphabetically by name, with pagination support. The cursor is the name of the last TLD in the previous page, base64 encoded.
+// @Description The response includes a metadata object with the cursor for the next page.
+// @Description You can filter by name (partial match), type (exact match), and ryid (exact match).
 // @Tags TLDs
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
+// @Param name_like query string false "Filter by name, partial match"
+// @Param type_equals query string false "Filter by type, exact match"
+// @Param ryid_equals query string false "Filter by ryid, exact match"
 // @Success 200 {array} response.ListItemResult
-// @Failure 400
-// @Failure 500
+// @Failure 400 {object} gin.H
+// @Failure 500 {object} gin.H
 // @Router /tlds [get]
 func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
-	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+
+	// Prepare the query
+	query := queries.ListTldQuery{}
+
+	// Get the pagesize from the request
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	// Get the cursor from the request
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	// Set the Filters
+	query.Filter.NameLike = ctx.Query("name_like")
+	query.Filter.TypeEquals = ctx.Query("type_equals")
+	query.Filter.RyIDEquals = ctx.Query("ryid_equals")
 
 	// Get the tlds from the service
-	tlds, err := ctrl.tldService.ListTLDs(ctx, pageSize, pageCursor)
+	tlds, err := ctrl.tldService.ListTLDs(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -106,7 +120,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	// Set the Data and metadata if there are results only
 	response.Data = tlds
 	if len(tlds) > 0 {
-		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), query.PageSize)
 	}
 
 	// Return the response

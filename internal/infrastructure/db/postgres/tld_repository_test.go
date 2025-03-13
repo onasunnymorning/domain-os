@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -90,7 +91,7 @@ func (s *TLDSuite) TestListTLD() {
 	err = repo.Create(context.Background(), tld2)
 	require.NoError(s.T(), err)
 
-	tlds, err := repo.List(context.Background(), 2, "")
+	tlds, err := repo.List(context.Background(), queries.ListTldQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
