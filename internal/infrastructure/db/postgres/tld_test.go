@@ -77,12 +77,12 @@ func TestSetAllowEscrowImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test setting AllowEscrowImport to true with no active phases
-	err = tld.SetAllowEscrowImport(true)
+	err = tld.ToggleAllowEscrowImport(true)
 	require.NoError(t, err)
 	require.True(t, tld.AllowEscrowImport, "AllowEscrowImport should be true")
 
 	// Test setting AllowEscrowImport to false
-	err = tld.SetAllowEscrowImport(false)
+	err = tld.ToggleAllowEscrowImport(false)
 	require.NoError(t, err)
 	require.False(t, tld.AllowEscrowImport, "AllowEscrowImport should be false")
 
@@ -93,7 +93,7 @@ func TestSetAllowEscrowImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test setting AllowEscrowImport to true with active phases
-	err = tld.SetAllowEscrowImport(true)
+	err = tld.ToggleAllowEscrowImport(true)
 	require.Error(t, err)
 	require.Equal(t, entities.ErrCannotSetEscrowImportWithActivePhases, err, "Expected ErrCannotSetEscrowImportWithActivePhases")
 	require.False(t, tld.AllowEscrowImport, "AllowEscrowImport should be false after error")
@@ -104,10 +104,10 @@ func TestSetEnableDNS(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test setting EnableDNS to true
-	tld.SetEnableDNS(true)
+	tld.ToggleEnableDNS(true)
 	require.True(t, tld.EnableDNS, "EnableDNS should be true")
 
 	// Test setting EnableDNS to false
-	tld.SetEnableDNS(false)
+	tld.ToggleEnableDNS(false)
 	require.False(t, tld.EnableDNS, "EnableDNS should be false")
 }
