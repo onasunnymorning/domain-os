@@ -8,6 +8,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -60,8 +61,8 @@ func (svc *TLDService) GetTLDByName(ctx context.Context, name string, preloadAll
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (svc *TLDService) ListTLDs(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	return svc.tldRepository.List(ctx, pageSize, pageCursor)
+func (svc *TLDService) ListTLDs(ctx context.Context, params queries.ListTldQuery) ([]*entities.TLD, error) {
+	return svc.tldRepository.List(ctx, params)
 }
 
 // DeleteTLDByName deletes a TLD by name. To prevent accidental deletions, we check if there are no active phases for the TLD before deleting it.

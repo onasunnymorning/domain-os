@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"golang.org/x/net/context"
@@ -55,7 +56,7 @@ func (repo *MocktldRepository) GetByName(ctx context.Context, name string, prelo
 }
 
 // List returns a list of all TLDs
-func (repo *MocktldRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
+func (repo *MocktldRepository) List(ctx context.Context, params queries.ListTldQuery) ([]*entities.TLD, error) {
 	return repo.Tlds, nil
 }
 
@@ -175,7 +176,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), 100, "")
+	tlds, err := service.ListTLDs(context.Background(), queries.ListTldQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -216,7 +217,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), 100, "")
+	tlds, err := service.ListTLDs(context.Background(), queries.ListTldQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -231,7 +232,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err = service.ListTLDs(context.Background(), 100, "")
+	tlds, err = service.ListTLDs(context.Background(), queries.ListTldQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}

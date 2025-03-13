@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -68,14 +69,44 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 }
 
 // List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (repo *GormTLDRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	dbtlds := []*TLD{}
+func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListTldQuery) ([]*entities.TLD, error) {
+	// Get a query object ordering by name (PK used for cursor pagination)
+	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
 
-	err := repo.db.WithContext(ctx).Order("name ASC").Limit(pageSize).Find(&dbtlds, "name > ?", pageCursor).Error
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
+	}
+
+	// Add filters if provided
+	if params.Filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name LIKE ?", "%"+params.Filter.NameLike+"%")
+	}
+	if params.Filter.TypeEquals != "" {
+		dbQuery = dbQuery.Where("type = ?", params.Filter.TypeEquals)
+	}
+	if params.Filter.RyIDEquals != "" {
+		dbQuery = dbQuery.Where("ry_id = ?", params.Filter.RyIDEquals)
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbtlds := []*TLD{}
+	err := dbQuery.Find(&dbtlds).Error
 	if err != nil {
 		return nil, err
 	}
 
+	// Check if there is a next page
+	hasMore := len(dbtlds) == params.PageSize+1
+	if hasMore {
+		// Return only up to Pagesize
+		dbtlds = dbtlds[:params.PageSize]
+	}
+
+	// Map the DBTLDs to TLDs
 	tlds := make([]*entities.TLD, len(dbtlds))
 	for i, dbtld := range dbtlds {
 		tlds[i] = FromDBTLD(dbtld)
