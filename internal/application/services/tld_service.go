@@ -158,7 +158,7 @@ func (svc *TLDService) SetAllowEscrowImport(ctx context.Context, tldName string,
 	}
 
 	// Use the tld method to set the flag
-	err = tld.SetAllowEscrowImport(allowEscrowImport)
+	err = tld.ToggleAllowEscrowImport(allowEscrowImport)
 	if err != nil {
 		return nil, err
 	}
