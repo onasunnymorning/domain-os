@@ -170,6 +170,11 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 		domains[i] = ToDomain(d)
 	}
 
+	// Set the cursor to the last element
+	if hasMore {
+		params.PageCursor = domains[len(domains)].RoID.String()
+	}
+
 	return domains, nil
 }
 

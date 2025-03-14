@@ -112,6 +112,11 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListTlds
 		tlds[i] = FromDBTLD(dbtld)
 	}
 
+	// Set the cursor to the last name in the list
+	if hasMore {
+		params.PageCursor = tlds[len(tlds)].Name.String()
+	}
+
 	return tlds, nil
 }
 
