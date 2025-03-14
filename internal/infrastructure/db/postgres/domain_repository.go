@@ -105,7 +105,7 @@ func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string)
 // ListDomains returns a list of Domains
 func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
 	// Convert the cursor to an int64
-	roidInt, err := getInt64RoidFromDomainRoidString(params.PageCursor)
+	cursor, err := getInt64RoidFromDomainRoidString(params.PageCursor)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
-		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+		dbQuery = dbQuery.Where("ro_id > ?", cursor)
 	}
 
 	// Add filters if provided
@@ -132,18 +132,22 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 		dbQuery = dbQuery.Where("name = ?", params.Filter.NameEquals)
 	}
 	if params.Filter.RoidEquals != "" {
-		dbQuery = dbQuery.Where("ro_id = ?", params.Filter.RoidEquals)
+		roidInt, err := getInt64RoidFromDomainRoidString(params.Filter.RoidEquals)
+		if err != nil {
+			return nil, err
+		}
+		dbQuery = dbQuery.Where("ro_id = ?", roidInt)
 	}
-	if params.Filter.ExpiresBefore.IsZero() {
+	if !params.Filter.ExpiresBefore.IsZero() {
 		dbQuery = dbQuery.Where("expiry_date < ?", params.Filter.ExpiresBefore)
 	}
-	if params.Filter.ExpiresAfter.IsZero() {
+	if !params.Filter.ExpiresAfter.IsZero() {
 		dbQuery = dbQuery.Where("expiry_date > ?", params.Filter.ExpiresAfter)
 	}
-	if params.Filter.CreatedBefore.IsZero() {
+	if !params.Filter.CreatedBefore.IsZero() {
 		dbQuery = dbQuery.Where("created_at < ?", params.Filter.CreatedBefore)
 	}
-	if params.Filter.CreatedAfter.IsZero() {
+	if !params.Filter.CreatedAfter.IsZero() {
 		dbQuery = dbQuery.Where("created_at > ?", params.Filter.CreatedAfter)
 	}
 
@@ -170,9 +174,9 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 		domains[i] = ToDomain(d)
 	}
 
-	// Set the cursor to the last element
+	// Set the cursor to the last element if needed
 	if hasMore {
-		params.PageCursor = domains[len(domains)].RoID.String()
+		params.PageCursor = domains[len(domains)-1].RoID.String()
 	}
 
 	return domains, nil

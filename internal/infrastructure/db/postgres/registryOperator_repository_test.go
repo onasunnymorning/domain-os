@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
@@ -128,9 +127,6 @@ func (s *RySuite) TestListRos() {
 
 	ros, err = repo.List(context.Background(), 25, "")
 	s.Require().NoError(err)
-	for _, ro := range ros {
-		fmt.Println(ro.Name)
-	}
 	s.Require().GreaterOrEqual(len(ros), 3)
 
 	err = repo.DeleteByRyID(context.Background(), "ra-dix")
