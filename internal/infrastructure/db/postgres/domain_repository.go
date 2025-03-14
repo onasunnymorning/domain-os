@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -102,17 +103,68 @@ func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string)
 }
 
 // ListDomains returns a list of Domains
-func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, cursor string) ([]*entities.Domain, error) {
-	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
-	if err != nil {
-		return nil, err
-	}
-	dbDomains := []*Domain{}
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
+	// Convert the cursor to an int64
+	roidInt, err := getInt64RoidFromDomainRoidString(params.PageCursor)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create a query and order by our pk
+	dbQuery := dr.db.WithContext(ctx).Order("ro_id ASC")
+
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+	}
+
+	// Add filters if provided
+	if params.Filter.ClIDEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", params.Filter.ClIDEquals)
+	}
+	if params.Filter.TldEquals != "" {
+		dbQuery = dbQuery.Where("tld_name = ?", params.Filter.TldEquals)
+	}
+	if params.Filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name LIKE ?", "%"+params.Filter.NameLike+"%")
+	}
+	if params.Filter.NameEquals != "" {
+		dbQuery = dbQuery.Where("name = ?", params.Filter.NameEquals)
+	}
+	if params.Filter.RoidEquals != "" {
+		dbQuery = dbQuery.Where("ro_id = ?", params.Filter.RoidEquals)
+	}
+	if params.Filter.ExpiresBefore.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date < ?", params.Filter.ExpiresBefore)
+	}
+	if params.Filter.ExpiresAfter.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date > ?", params.Filter.ExpiresAfter)
+	}
+	if params.Filter.CreatedBefore.IsZero() {
+		dbQuery = dbQuery.Where("created_at < ?", params.Filter.CreatedBefore)
+	}
+	if params.Filter.CreatedAfter.IsZero() {
+		dbQuery = dbQuery.Where("created_at > ?", params.Filter.CreatedAfter)
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbDomains := []*Domain{}
+	err = dbQuery.Find(&dbDomains).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbDomains) == params.PageSize+1
+	if hasMore {
+		// Return up to PageSize
+		dbDomains = dbDomains[:params.PageSize]
+	}
+
+	// Map the DBDomains to Domains
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
 		domains[i] = ToDomain(d)

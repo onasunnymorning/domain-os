@@ -14,7 +14,7 @@ type DomainService interface {
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error)
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, name string, hostRoID string, force bool) error
 	AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, force bool) error

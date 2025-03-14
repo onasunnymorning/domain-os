@@ -239,21 +239,59 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
+	// Prepare the query
+	query := queries.ListDomainsQuery{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the filters
+	query.Filter.ClIDEquals = ctx.Query("clid_equals")
+	query.Filter.TldEquals = ctx.Query("tld_equals")
+	query.Filter.NameEquals = ctx.Query("name_equals")
+	query.Filter.NameLike = ctx.Query("name_like")
+	query.Filter.RoidEquals = ctx.Query("roid_equals")
+	if ctx.Query("created_after") != "" {
+		query.Filter.CreatedAfter, err = time.Parse(time.RFC3339, ctx.Query("created_after"))
+		if err != nil {
+			ctx.JSON(400, gin.H{"error": "invalid created_after date: " + err.Error()})
+			return
+		}
+	}
+	if ctx.Query("created_before") != "" {
+		query.Filter.CreatedBefore, err = time.Parse(time.RFC3339, ctx.Query("created_before"))
+		if err != nil {
+			ctx.JSON(400, gin.H{"error": "invalid created_before date: " + err.Error()})
+			return
+		}
+	}
+	if ctx.Query("expires_after") != "" {
+		query.Filter.ExpiresAfter, err = time.Parse(time.RFC3339, ctx.Query("expires_after"))
+		if err != nil {
+			ctx.JSON(400, gin.H{"error": "invalid expires_after date: " + err.Error()})
+			return
+		}
+	}
+	if ctx.Query("expires_before") != "" {
+		query.Filter.ExpiresBefore, err = time.Parse(time.RFC3339, ctx.Query("expires_before"))
+		if err != nil {
+			ctx.JSON(400, gin.H{"error": "invalid expires_before date: " + err.Error()})
+			return
+		}
+	}
+
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListDomains(ctx, pageSize, pageCursor)
+	domains, err := ctrl.domainService.ListDomains(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -262,7 +300,7 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 	// Set the response MetaData
 	response.Data = domains
 	if len(domains) > 0 {
-		response.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+		response.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), query.PageSize)
 	}
 
 	// Return the Response

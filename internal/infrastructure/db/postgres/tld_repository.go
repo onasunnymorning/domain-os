@@ -69,7 +69,7 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 }
 
 // List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListTldQuery) ([]*entities.TLD, error) {
+func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListTldsQuery) ([]*entities.TLD, error) {
 	// Get a query object ordering by name (PK used for cursor pagination)
 	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
 
