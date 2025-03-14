@@ -114,7 +114,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListTlds
 
 	// Set the cursor to the last name in the list
 	if hasMore {
-		params.PageCursor = tlds[len(tlds)].Name.String()
+		params.PageCursor = tlds[len(tlds)-1].Name.String()
 	}
 
 	return tlds, nil
