@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/mock"
 )
@@ -15,7 +16,7 @@ type DomainRepository interface {
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
@@ -66,8 +67,8 @@ func (m *MockDomainRepository) DeleteDomainByName(ctx context.Context, name stri
 }
 
 // ListDomains lists all domains
-func (m *MockDomainRepository) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error) {
-	args := m.Called(ctx, pageSize, cursor)
+func (m *MockDomainRepository) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
+	args := m.Called(ctx, params)
 	return args.Get(0).([]*entities.Domain), args.Error(1)
 }
 

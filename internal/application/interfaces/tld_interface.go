@@ -11,7 +11,7 @@ import (
 type TLDService interface {
 	CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*entities.TLD, error)
 	GetTLDByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error)
-	ListTLDs(ctx context.Context, params queries.ListTldQuery) ([]*entities.TLD, error)
+	ListTLDs(ctx context.Context, params queries.ListTldsQuery) ([]*entities.TLD, error)
 	DeleteTLDByName(ctx context.Context, name string) error
 	GetTLDHeader(ctx context.Context, name string) (*entities.TLDHeader, error)
 	CountTLDs(ctx context.Context) (int64, error)

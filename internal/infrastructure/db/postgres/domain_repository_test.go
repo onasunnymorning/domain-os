@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -513,27 +514,27 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 
 	// List all three
-	domains, err := repo.ListDomains(context.Background(), 25, "")
+	domains, err := repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// List 2
-	domains, err = repo.ListDomains(context.Background(), 2, "")
+	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 2})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// list the last one
-	domains, err = repo.ListDomains(context.Background(), 25, createdDomain2.RoID.String())
+	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 2, PageCursor: createdDomain2.RoID.String()})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 	s.Require().Equal(createdDomain3.RoID, domains[0].RoID)
 
 	// Use a bad roid objectidentifier
-	_, err = repo.ListDomains(context.Background(), 25, "1234_CONT-APEX")
+	_, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, PageCursor: "1234_CONT-APEX"})
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 
 	// Use a bad roid int64
-	_, err = repo.ListDomains(context.Background(), 25, "ABCD_DOM-APEX")
+	_, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, PageCursor: "ABCD_DOM-APEX"})
 	s.Require().Error(err)
 }
 

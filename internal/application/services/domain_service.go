@@ -432,8 +432,8 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 }
 
 // ListDomains returns a list of domains
-func (s *DomainService) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error) {
-	return s.domainRepository.ListDomains(ctx, pageSize, cursor)
+func (s *DomainService) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
+	return s.domainRepository.ListDomains(ctx, params)
 }
 
 // AddHostToDomain adds a host to a domain

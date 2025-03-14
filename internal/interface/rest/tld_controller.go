@@ -91,7 +91,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	response := response.ListItemResult{}
 
 	// Prepare the query
-	query := queries.ListTldQuery{}
+	query := queries.ListTldsQuery{}
 
 	// Get the pagesize from the request
 	query.PageSize, err = GetPageSize(ctx)
