@@ -165,9 +165,7 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 	}
 
 	response.Data = hosts
-	if len(hosts) > 0 {
-		response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)

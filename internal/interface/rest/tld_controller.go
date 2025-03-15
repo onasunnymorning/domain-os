@@ -111,6 +111,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	filter.NameLike = ctx.Query("name_like")
 	filter.TypeEquals = ctx.Query("type_equals")
 	filter.RyIDEquals = ctx.Query("ryid_equals")
+	query.Filter = filter
 
 	// Get the tlds from the service
 	tlds, err := ctrl.tldService.ListTLDs(ctx, query)
