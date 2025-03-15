@@ -19,7 +19,7 @@ type DomainRepository interface {
 	ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
-	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
+	GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
@@ -85,8 +85,8 @@ func (m *MockDomainRepository) RemoveHostFromDomain(ctx context.Context, domRoid
 }
 
 // GetActiveDomainsWithHosts retrieves active domains with hosts
-func (m *MockDomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error) {
-	args := m.Called(ctx, tld)
+func (m *MockDomainRepository) GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
+	args := m.Called(ctx, params)
 	return args.Get(0).([]dns.RR), args.Error(1)
 }
 

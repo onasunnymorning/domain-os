@@ -200,7 +200,7 @@ type ActiveDomainQueryResult struct {
 
 // GetActiveDomainsWithHosts gets the domains that are flagged as active and their associated hosts
 // This data is used to build the NS records for a given TLD
-func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error) {
+func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
 	var queryResults []ActiveDomainQueryResult
 	err := dr.db.Raw(`
 		SELECT dom.name AS domain, ho.name AS host
@@ -210,7 +210,7 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld s
 		WHERE dom.tld_name = ?
 		AND dom.inactive = false
 		AND dom.pending_delete = false
-	`, tld).Scan(&queryResults).Error
+	`, params.TldName).Scan(&queryResults).Error
 	if err != nil {
 		return nil, err
 	}

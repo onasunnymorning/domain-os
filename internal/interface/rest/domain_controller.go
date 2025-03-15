@@ -126,14 +126,8 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		return
 	}
 
-	// Get the Event from the context
-	event := GetEventFromContext(ctx)
-	// Set the event details.command
-	event.Details.Command = req
-
 	domain, err := ctrl.domainService.Create(ctx, &req)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -141,10 +135,6 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Set the event details.after
-	event.Details.After = domain
-	ctx.Set("event", event)
 
 	ctx.JSON(201, domain)
 }
@@ -155,7 +145,6 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 // @Description If any of the domains fails to create, the operation is aborted (no domains are created) and the error is returned.
 // @Description Hosts are not created or associated with the domains.
 // @Description Hosts, Registrars and Contacts must exist before calling this method or the operation will fail if a reference is not found.
-// @Description It logs a domain lifecycle event for the bulk operation.
 // @Description It returns a 201 status code if all domains are created successfully with no body.
 // @Tags Domains
 // @Accept json
@@ -803,7 +792,7 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 
 // RestoreDomain godoc
 // @Summary Restore a domain
-// @Description Restore a domain. It marks the domain as pendingRestore and fires off an event. The domain will be restored by the registry when the restore event is processed.
+// @Description Restore a domain. It marks the domain as pendingRestore, this relies on a downstream process to process the restore. The operation will fail with error if the domain is not in a state that allows restoration.
 // @Tags Domains
 // @Produce json
 // @Param domain path string true "Domain Name"
