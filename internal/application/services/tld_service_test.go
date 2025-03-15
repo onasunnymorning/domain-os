@@ -56,7 +56,7 @@ func (repo *MocktldRepository) GetByName(ctx context.Context, name string, prelo
 }
 
 // List returns a list of all TLDs
-func (repo *MocktldRepository) List(ctx context.Context, params queries.ListTldsQuery) ([]*entities.TLD, error) {
+func (repo *MocktldRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, error) {
 	return repo.Tlds, nil
 }
 
@@ -176,7 +176,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), queries.ListTldsQuery{PageSize: 100})
+	tlds, err := service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -217,7 +217,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), queries.ListTldsQuery{PageSize: 100})
+	tlds, err := service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -232,7 +232,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err = service.ListTLDs(context.Background(), queries.ListTldsQuery{PageSize: 100})
+	tlds, err = service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}

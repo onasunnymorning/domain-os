@@ -522,81 +522,81 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 
 	// List all three
-	domains, err := repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25})
+	domains, _, err := repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// List 2
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 2})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// list the last one
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 2, PageCursor: createdDomain2.RoID.String()})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 2, PageCursor: createdDomain2.RoID.String()})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 	s.Require().Equal(createdDomain3.RoID, domains[0].RoID)
 
 	// Use a bad roid objectidentifier
-	_, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, PageCursor: "1234_CONT-APEX"})
+	_, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, PageCursor: "1234_CONT-APEX"})
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 
 	// Use a bad roid int64
-	_, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, PageCursor: "ABCD_DOM-APEX"})
+	_, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, PageCursor: "ABCD_DOM-APEX"})
 	s.Require().Error(err)
 
-	// Filter by RoidEquals
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidEquals: createdDomain2.RoID.String()}})
+	// Filter by RoidGreaterThan
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidGreaterThan: createdDomain2.RoID.String()}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
-	// Filter by RoidEquals with a bad roid
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidEquals: "1234_CONT-APEX"}})
+	// Filter by RoidLessThan with a bad roid
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidLessThan: "1234_CONT-APEX"}})
 	s.Require().Error(err)
 	s.Require().Equal(0, len(domains))
 
 	// Filter by ClID Equals
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ClIDEquals: "domaintestRar"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ClIDEquals: "domaintestRar"}})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// Filter by TldEquals
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{TldEquals: "domaintesttld"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{TldEquals: "domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// Filter by NameLike
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameLike: "geoff"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameLike: "geoff"}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Filter by NameEquals
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "geoff.domaintesttld"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "geoff.domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Filter by NameEquals Zero results
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "idontexist.domaintesttld"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "idontexist.domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(0, len(domains))
 
 	// Filter by ExpiryDateBefore
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresBefore: NOW.AddDate(0, 0, 201)}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresBefore: NOW.AddDate(0, 0, 201)}})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// Filter by ExpiryDateAfter
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresAfter: NOW.AddDate(0, 0, 100), ExpiresBefore: NOW.AddDate(0, 0, 201)}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresAfter: NOW.AddDate(0, 0, 100), ExpiresBefore: NOW.AddDate(0, 0, 201)}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Filter by CreatedBefore
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedBefore: NOW.AddDate(0, 0, -101)}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedBefore: NOW.AddDate(0, 0, -101)}})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
 	// Filter by CreatedAfter
-	domains, err = repo.ListDomains(context.Background(), queries.ListDomainsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedAfter: NOW.AddDate(0, 0, -201), CreatedBefore: NOW.AddDate(0, 0, -101)}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedAfter: NOW.AddDate(0, 0, -201), CreatedBefore: NOW.AddDate(0, 0, -101)}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 

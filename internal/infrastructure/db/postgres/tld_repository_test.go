@@ -91,7 +91,7 @@ func (s *TLDSuite) TestListTLD() {
 	err = repo.Create(context.Background(), tld2)
 	require.NoError(s.T(), err)
 
-	tlds, err := repo.List(context.Background(), queries.ListTldsQuery{PageSize: 2})
+	tlds, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)

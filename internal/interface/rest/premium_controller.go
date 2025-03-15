@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -104,6 +105,7 @@ func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 // @Failure 500
 // @Router /premium/lists [get]
 func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -129,7 +131,7 @@ func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 	response.Data = lists
 	// Set the metadata if there are results only
 	if len(lists) > 0 {
-		response.SetMeta(ctx, lists[len(lists)-1].Name, len(lists), pageSize)
+		response.SetMeta(ctx, lists[len(lists)-1].Name, len(lists), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)
@@ -250,6 +252,7 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 // @Failure 500
 // @Router /premium/labels [get]
 func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -281,7 +284,7 @@ func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
 	response.Data = labels
 	// Set the metadata if there are results only
 	if len(labels) > 0 {
-		response.SetMeta(ctx, labels[len(labels)-1].Label.String(), len(labels), pageSize)
+		response.SetMeta(ctx, labels[len(labels)-1].Label.String(), len(labels), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)

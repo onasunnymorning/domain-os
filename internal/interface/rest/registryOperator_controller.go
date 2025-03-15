@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -173,6 +174,7 @@ func (ctrl *RegistryOperatorController) DeleteByRyID(ctx *gin.Context) {
 // @Failure 500
 // @Router /registry-operators [get]
 func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -198,7 +200,7 @@ func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
 	response.Data = ros
 	// Set the metadata if there are results only
 	if len(ros) > 0 {
-		response.SetMeta(ctx, ros[len(ros)-1].RyID.String(), len(ros), pageSize)
+		response.SetMeta(ctx, ros[len(ros)-1].RyID.String(), len(ros), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)

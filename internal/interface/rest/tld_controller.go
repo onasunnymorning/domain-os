@@ -92,7 +92,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	response := response.ListItemResult{}
 
 	// Prepare the query
-	query := queries.ListTldsQuery{}
+	query := queries.ListItemsQuery{}
 
 	// Get the pagesize from the request
 	query.PageSize, err = GetPageSize(ctx)
@@ -107,9 +107,10 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 		return
 	}
 	// Set the Filters
-	query.Filter.NameLike = ctx.Query("name_like")
-	query.Filter.TypeEquals = ctx.Query("type_equals")
-	query.Filter.RyIDEquals = ctx.Query("ryid_equals")
+	filter := queries.ListTldsFilter{}
+	filter.NameLike = ctx.Query("name_like")
+	filter.TypeEquals = ctx.Query("type_equals")
+	filter.RyIDEquals = ctx.Query("ryid_equals")
 
 	// Get the tlds from the service
 	tlds, err := ctrl.tldService.ListTLDs(ctx, query)
@@ -121,7 +122,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	// Set the Data and metadata if there are results only
 	response.Data = tlds
 	if len(tlds) > 0 {
-		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), query.PageSize)
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), query.PageSize, query.Filter)
 	}
 
 	// Return the response
