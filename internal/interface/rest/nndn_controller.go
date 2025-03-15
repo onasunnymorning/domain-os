@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -68,6 +69,7 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 // @Failure 500
 // @Router /nndns [get]
 func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	resp := response.ListItemResult{}
 
 	pageSize, err := GetPageSize(ctx)
@@ -90,7 +92,7 @@ func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
 
 	resp.Data = nndns
 	if len(nndns) > 0 {
-		resp.SetMeta(ctx, nndns[len(nndns)-1].Name.String(), len(nndns), pageSize)
+		resp.SetMeta(ctx, nndns[len(nndns)-1].Name.String(), len(nndns), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, resp)

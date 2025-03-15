@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
@@ -117,6 +118,7 @@ func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
 // @Failure 500
 // @Router /registrars [get]
 func (ctrl *RegistrarController) List(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -142,7 +144,7 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 	response.Data = rars
 	// Set the metadata if there are results only
 	if len(rars) > 0 {
-		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize)
+		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)

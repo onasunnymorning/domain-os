@@ -432,7 +432,7 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 }
 
 // ListDomains returns a list of domains
-func (s *DomainService) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
+func (s *DomainService) ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error) {
 	return s.domainRepository.ListDomains(ctx, params)
 }
 

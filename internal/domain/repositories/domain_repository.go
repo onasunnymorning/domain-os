@@ -16,7 +16,7 @@ type DomainRepository interface {
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error)
+	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
@@ -67,9 +67,9 @@ func (m *MockDomainRepository) DeleteDomainByName(ctx context.Context, name stri
 }
 
 // ListDomains lists all domains
-func (m *MockDomainRepository) ListDomains(ctx context.Context, params queries.ListDomainsQuery) ([]*entities.Domain, error) {
+func (m *MockDomainRepository) ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error) {
 	args := m.Called(ctx, params)
-	return args.Get(0).([]*entities.Domain), args.Error(1)
+	return args.Get(0).([]*entities.Domain), "", args.Error(1)
 }
 
 // AddHostToDomain adds a host to a domain

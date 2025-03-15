@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -108,6 +109,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 // @Failure 500
 // @Router /accreditations/registrar/{rarClID} [get]
 func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	rarClID := ctx.Param("rarClID")
 	var err error
 	// Prepare the response
@@ -137,7 +139,7 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 	// Pour into our response struct
 	response.Data = tlds
 	if len(tlds) > 0 {
-		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize)
+		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), pageSize, query.Filter)
 	}
 
 	// Return the response
@@ -156,6 +158,7 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 // @Failure 500
 // @Router /accreditations/tld/{tldName} [get]
 func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	tldName := ctx.Param("tldName")
 	var err error
 	// Prepare the response
@@ -185,7 +188,7 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 	// Pour into our response struct
 	response.Data = rars
 	if len(rars) > 0 {
-		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize)
+		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize, query.Filter)
 	}
 
 	// Return the response

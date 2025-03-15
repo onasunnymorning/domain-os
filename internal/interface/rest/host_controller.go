@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -139,6 +140,7 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts [get]
 func (ctrl *HostController) ListHosts(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -164,7 +166,7 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 
 	response.Data = hosts
 	if len(hosts) > 0 {
-		response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize)
+		response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize, query.Filter)
 	}
 
 	// Return the response

@@ -8,6 +8,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -257,6 +258,7 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 // @Failure 500
 // @Router /contacts [get]
 func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -282,7 +284,7 @@ func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
 
 	response.Data = contacts
 	if len(contacts) > 0 {
-		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize)
+		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize, query.Filter)
 	}
 
 	// Return the response
