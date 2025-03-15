@@ -27,7 +27,8 @@ func (r *ListItemResult) SetMeta(ctx *gin.Context, cursor string, listLength, pa
 	// Only set the cursor and nextlink if we have a non-empty cursor (meaning there is a next page)
 	if cursor != "" {
 		r.Meta.PageCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
-		// FIXME: add provision for the searches that may occur on list endpoints
+
+		// Create a NextLink that retrieves the next oage with the same filters applied
 		nextLink := fmt.Sprintf("http://%s%s?pagesize=%d&cursor=%s", ctx.Request.Host, ctx.Request.URL.Path, r.Meta.PageSize, r.Meta.PageCursor)
 		// If there is a filter, add it to the next link so it keeps filters the same on the next page
 		if filter != nil && filter.ToQueryParams() != "" {
