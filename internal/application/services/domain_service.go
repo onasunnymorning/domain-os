@@ -1594,8 +1594,8 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 }
 
 // GetNSRecordsPerTLD gets NS records for a TLD
-func (s *DomainService) GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error) {
-	response, err := s.domainRepository.GetActiveDomainsWithHosts(ctx, strings.ToLower(tld))
+func (s *DomainService) GetNSRecordsPerTLD(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
+	response, err := s.domainRepository.GetActiveDomainsWithHosts(ctx, params)
 	if err != nil {
 		return nil, err
 	}

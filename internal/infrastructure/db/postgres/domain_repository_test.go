@@ -188,7 +188,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
 
 	// Retrieve the NS records that result from the domain having hosts
-	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), s.tld)
+	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), queries.ActiveDomainsWithHostsQuery{TldName: s.tld})
 	s.Require().NoError(err)
 	s.Require().Equal(len(domain.Hosts), len(rr))
 
@@ -247,7 +247,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	s.Require().Equal(len(domain.Hosts), len(retrievedDomain.Hosts))
 
 	// Retrieve the NS records that result from the domain having hosts
-	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), s.tld)
+	rr, err := repo.GetActiveDomainsWithHosts(context.Background(), queries.ActiveDomainsWithHostsQuery{TldName: s.tld})
 	s.Require().NoError(err)
 	s.Require().Equal(len(domain.Hosts), len(rr))
 

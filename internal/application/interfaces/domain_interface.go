@@ -54,7 +54,7 @@ type DomainService interface {
 	PurgeDomain(ctx context.Context, domainName string) error
 
 	// These are DNS services
-	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+	GetNSRecordsPerTLD(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
 
 	// Status Manipulation

@@ -29,45 +29,6 @@ services:
     volumes: 
       - db:/var/lib/postgresql/data 
 
-# RabbitMQ Broker container
-  msg-broker:
-    image: rabbitmq:3.13
-    restart: unless-stopped
-    profiles: [essential, full]
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmqctl node_health_check"]
-      interval: 15s
-      retries: 3
-    ports:
-      - 5552:5552
-      - 5672:5672
-      - 15672:15672
-    networks:
-      - dos
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RMQ_USER}
-      - RABBITMQ_DEFAULT_PASS=${RMQ_PASS}
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream
-      - RABBITMQ_ENABLED_PLUGINS_FILE=/etc/rabbitmq/enabled_plugins
-    volumes:
-      - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
-
-# Event Stream Echo service
-  msg-stream-echo:
-    image: "geapex/streamclient:${BRANCH}"
-    restart: always
-    profiles: [full]
-    depends_on:
-      msg-broker:
-        condition: service_healthy
-    environment:
-      - RMQ_PASS=${RMQ_PASS}
-      - RMQ_USER=${RMQ_USER}
-      - RMQ_HOST=${RMQ_HOST}
-      - RMQ_PORT=${RMQ_PORT}
-      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
-    networks:
-      - dos
 
 # Core API container
   admin-api:
@@ -81,8 +42,6 @@ services:
       start_period: 10s
     depends_on:
       db:
-        condition: service_healthy
-      msg-broker:
         condition: service_healthy
     environment:
       - GIN_MODE=${GIN_MODE}
@@ -105,7 +64,7 @@ services:
       - RMQ_USER=${RMQ_USER}
       - RMQ_PASS=${RMQ_PASS}
       - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
-      - EVENT_STREAM_ENABLED=${EVENT_STREAM_ENABLED}
+      - EVENT_STREAM_ENABLED=false
 
     ports:
       - ${API_PORT}:${API_PORT}

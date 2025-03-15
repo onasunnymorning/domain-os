@@ -3,6 +3,7 @@ package rest
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -140,12 +141,8 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	// Get the Event from the context
-	event := GetEventFromContext(ctx)
-
 	err := ctrl.tldService.DeleteTLDByName(ctx, name)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -179,21 +176,14 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 		return
 	}
 
-	// Get the Event from the context
-	event := GetEventFromContext(ctx)
-	// Set the event details.command
-	event.Details.Command = req
-
 	cmd, err := req.ToCreateTLDCommand()
 	if err != nil {
-		event.Details.Error = err.Error()
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	result, err := ctrl.tldService.CreateTLD(ctx, cmd)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidCreateTLDCommand) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -201,10 +191,6 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Set the event details.after
-	event.Details.After = result
-	ctx.Set("event", event)
 
 	ctx.JSON(201, result)
 }
@@ -245,20 +231,41 @@ func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 // @Produce json
 // @Param tld path string true "TLD"
 // @Param format query string false "Output format"
+// @Param pagesize query string false "pagesize"
+// @Param cursor query string false "cursor"
 // @Success 200 {array} dns.RR
 // @Failure 404
 // @Failure 500
 // @Router /tlds/{tldName}/dns/domain-delegations [get]
 func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
+	pagesize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Check if the TLD exists
-	tldName := ctx.Param("tldName")
-	_, err := c.tldService.GetTLDByName(ctx, tldName, false)
+	tldName := strings.ToLower(ctx.Param("tldName"))
+	_, err = c.tldService.GetTLDByName(ctx, tldName, false)
 	if err != nil {
 		ctx.JSON(404, gin.H{"error": "TLD not found"})
 		return
 	}
 
-	rrs, err := c.domService.GetNSRecordsPerTLD(ctx, tldName)
+	// Create our query object
+	query := queries.ActiveDomainsWithHostsQuery{
+		TldName:  tldName,
+		PageSize: pagesize,
+	}
+
+	// Get the cursor from the request
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	rrs, err := c.domService.GetNSRecordsPerTLD(ctx, query)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": "Error getting NS records"})
