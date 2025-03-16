@@ -8,6 +8,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -121,8 +122,8 @@ func (s *HostService) DeleteHostByRoID(ctx context.Context, roidString string) e
 }
 
 // ListHosts lists hosts
-func (s *HostService) ListHosts(ctx context.Context, pageSize int, cursor string) ([]*entities.Host, error) {
-	return s.hostRepository.ListHosts(ctx, pageSize, cursor)
+func (s *HostService) ListHosts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error) {
+	return s.hostRepository.ListHosts(ctx, params)
 }
 
 // AddHostAddress adds an ip address to an existing host

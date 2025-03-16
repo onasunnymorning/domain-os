@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -241,22 +242,22 @@ func (s *HostSuite) TestListHosts() {
 	s.Require().NotNil(createdHost3)
 
 	// List them all
-	hosts, err := repo.ListHosts(context.Background(), 25, "")
+	hosts, _, err := repo.ListHosts(context.Background(), queries.ListItemsQuery{PageSize: 25})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(hosts), 3) // tests run in parallel so we can't be sure of the exact number
 
 	// Limit to 2
-	hosts, err = repo.ListHosts(context.Background(), 2, "")
+	hosts, _, err = repo.ListHosts(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(hosts))
 
 	// Wrong roid object type
-	hosts, err = repo.ListHosts(context.Background(), 2, "1234_CONT-APEX")
+	hosts, _, err = repo.ListHosts(context.Background(), queries.ListItemsQuery{PageSize: 2, PageCursor: "123456_CONTACT-APEX"})
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 	s.Require().Nil(hosts)
 
 	// Roid first part not an int64
-	hosts, err = repo.ListHosts(context.Background(), 2, "abcd_HOST-APEX")
+	hosts, _, err = repo.ListHosts(context.Background(), queries.ListItemsQuery{PageSize: 2, PageCursor: "abcd_HOST-APEX"})
 	s.Require().Error(err)
 	s.Require().Nil(hosts)
 
