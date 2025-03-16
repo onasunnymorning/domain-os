@@ -10,7 +10,7 @@ import (
 type TLDRepository interface {
 	Create(ctx context.Context, tld *entities.TLD) error
 	GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error)
-	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, error)
+	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error)
 	Update(ctx context.Context, tld *entities.TLD) error
 	DeleteByName(ctx context.Context, name string) error
 	Count(ctx context.Context) (int64, error)

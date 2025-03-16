@@ -61,7 +61,7 @@ func (svc *TLDService) GetTLDByName(ctx context.Context, name string, preloadAll
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (svc *TLDService) ListTLDs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, error) {
+func (svc *TLDService) ListTLDs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
 	return svc.tldRepository.List(ctx, params)
 }
 

@@ -91,10 +91,26 @@ func (s *TLDSuite) TestListTLD() {
 	err = repo.Create(context.Background(), tld2)
 	require.NoError(s.T(), err)
 
-	tlds, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
+	// retrieve all tlds
+	tlds, _, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
+
+	// retrieve first page of tlds
+	tlds, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1})
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), tlds)
+	require.Len(s.T(), tlds, 1)
+	require.NotNil(s.T(), cursor)
+
+	// retrieve last page of tlds
+	tlds, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1, PageCursor: cursor})
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), tlds)
+	require.Len(s.T(), tlds, 1)
+	require.Nil(s.T(), cursor)
+
 }
 
 func (s *TLDSuite) TestUpdateTLD() {
