@@ -114,7 +114,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	query.Filter = filter
 
 	// Get the tlds from the service
-	tlds, err := ctrl.tldService.ListTLDs(ctx, query)
+	tlds, cursor, err := ctrl.tldService.ListTLDs(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -122,9 +122,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 
 	// Set the Data and metadata if there are results only
 	response.Data = tlds
-	if len(tlds) > 0 {
-		response.SetMeta(ctx, tlds[len(tlds)-1].Name.String(), len(tlds), query.PageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(tlds), query.PageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)

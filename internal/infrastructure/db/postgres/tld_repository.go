@@ -69,7 +69,7 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 }
 
 // List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, error) {
+func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
 	// Get a query object ordering by name (PK used for cursor pagination)
 	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
 
@@ -81,7 +81,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 		// Add filters if provided
 		filter, ok := params.Filter.(queries.ListTldsFilter)
 		if !ok {
-			return nil, errors.New("invalid filter type")
+			return nil, "", errors.New("invalid filter type")
 		}
 		if filter.NameLike != "" {
 			dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
@@ -101,7 +101,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	dbtlds := []*TLD{}
 	err := dbQuery.Find(&dbtlds).Error
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Check if there is a next page
@@ -118,11 +118,12 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	}
 
 	// Set the cursor to the last name in the list
+	var newCursor string
 	if hasMore {
-		params.PageCursor = tlds[len(tlds)-1].Name.String()
+		newCursor = tlds[len(tlds)-1].Name.String()
 	}
 
-	return tlds, nil
+	return tlds, newCursor, nil
 }
 
 // Delete deletes a TLD from the database
