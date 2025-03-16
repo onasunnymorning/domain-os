@@ -72,28 +72,27 @@ func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
 	query := queries.ListItemsQuery{}
 	resp := response.ListItemResult{}
 
-	pageSize, err := GetPageSize(ctx)
+	var err error
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	nndns, err := ctrl.nndnService.ListNNDNs(ctx, pageSize, pageCursor)
+	nndns, cursor, err := ctrl.nndnService.ListNNDNs(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	resp.Data = nndns
-	if len(nndns) > 0 {
-		resp.SetMeta(ctx, nndns[len(nndns)-1].Name.String(), len(nndns), pageSize, query.Filter)
-	}
+	resp.SetMeta(ctx, cursor, len(nndns), query.PageSize, query.Filter)
 
 	ctx.JSON(200, resp)
 }
