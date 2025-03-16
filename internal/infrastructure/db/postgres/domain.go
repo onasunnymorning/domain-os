@@ -22,9 +22,9 @@ type Domain struct {
 	TLDName                       string `gorm:"not null;foreignKey"`
 	TLD                           TLD
 	ExpiryDate                    time.Time `gorm:"not null;index"`
-	DropCatch                     bool      `gorm:"index"`
-	RenewedYears                  int       `gorm:"index"`
-	AuthInfo                      string    `gorm:"not null"`
+	DropCatch                     bool
+	RenewedYears                  int
+	AuthInfo                      string `gorm:"not null"`
 	CreatedAt                     time.Time
 	UpdatedAt                     time.Time
 	entities.DomainStatus         `gorm:"embedded"`
