@@ -145,27 +145,27 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Get the contacts from the service
-	hosts, err := ctrl.hostService.ListHosts(ctx, pageSize, pageCursor)
+	hosts, cursor, err := ctrl.hostService.ListHosts(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = hosts
-	response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize, query.Filter)
+	response.SetMeta(ctx, cursor, len(hosts), query.PageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)
