@@ -83,34 +83,58 @@ func (s *TLDSuite) TestListTLD() {
 	defer tx.Rollback()
 	repo := NewGormTLDRepo(tx)
 
-	tld1, _ := entities.NewTLD("com", "TLDSuiteRo")
+	filter := queries.ListTldsFilter{
+		RyIDEquals: "TLDSuiteRo",
+	}
+
+	tld1, _ := entities.NewTLD("com", filter.RyIDEquals)
 	err := repo.Create(context.Background(), tld1)
 	require.NoError(s.T(), err)
 
-	tld2, _ := entities.NewTLD("net", "TLDSuiteRo")
+	tld2, _ := entities.NewTLD("net", filter.RyIDEquals)
 	err = repo.Create(context.Background(), tld2)
 	require.NoError(s.T(), err)
 
 	// retrieve all tlds
-	tlds, _, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
+	tlds, _, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: filter})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
 
 	// retrieve first page of tlds
-	tlds, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1})
+	tlds, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1, Filter: filter})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 1)
 	require.NotNil(s.T(), cursor)
 
 	// retrieve last page of tlds
-	tlds, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1, PageCursor: cursor})
+	tlds, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1, PageCursor: cursor, Filter: filter})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 1)
-	require.Nil(s.T(), cursor)
+	require.Equal(s.T(), "", cursor)
 
+	// Test filter by type
+	filter.TypeEquals = "generic"
+	tlds, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: filter})
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), tlds)
+	require.Len(s.T(), tlds, 2)
+
+	filter.TypeEquals = "country-code"
+	tlds, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: filter})
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), tlds)
+	require.Len(s.T(), tlds, 0)
+
+	// Test filter by name
+	filter.TypeEquals = ""
+	filter.NameLike = "com"
+	tlds, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: filter})
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), tlds)
+	require.Len(s.T(), tlds, 1)
 }
 
 func (s *TLDSuite) TestUpdateTLD() {
