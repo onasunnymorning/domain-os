@@ -296,6 +296,10 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 	// Get the list of domains
 	domains, cursor, err := ctrl.domainService.ListDomains(ctx, query)
 	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRoid) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

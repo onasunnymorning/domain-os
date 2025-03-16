@@ -144,14 +144,14 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 			if filter.RoidGreaterThan != "" {
 				roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidGreaterThan)
 				if err != nil {
-					return nil, "", err
+					return nil, "", fmt.Errorf("invalid RoId for greater than filter: %w", err)
 				}
 				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 			}
 			if filter.RoidLessThan != "" {
 				roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidLessThan)
 				if err != nil {
-					return nil, "", err
+					return nil, "", fmt.Errorf("invalid RoId for less than filter: %w", err)
 				}
 				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
 			}
@@ -392,6 +392,9 @@ func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
 		return 0, nil
 	}
 	roid := entities.RoidType(roidString)
+	if validationErr := roid.Validate(); validationErr != nil {
+		return 0, validationErr
+	}
 	if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
 		return 0, entities.ErrInvalidRoid
 	}

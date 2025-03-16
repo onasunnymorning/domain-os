@@ -826,6 +826,12 @@ func (s *DomainSuite) TestGetInt64RoidFromDomainRoidString() {
 	roid, err = getInt64RoidFromDomainRoidString(roidString)
 	s.Require().Error(err)
 	s.Require().Equal(int64(0), roid)
+
+	// Test with and invalid roid
+	roidString = "geoff.domain.name"
+	roid, err = getInt64RoidFromDomainRoidString(roidString)
+	s.Require().Error(err)
+	s.Require().Equal(int64(0), roid)
 }
 
 func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
