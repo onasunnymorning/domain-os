@@ -11,8 +11,8 @@ type TLD struct {
 	Name              string `gorm:"primary_key"`
 	Type              string `gorm:"index"`
 	UName             string
-	AllowEscrowImport bool `gorm:"index"`
-	EnableDNS         bool `gorm:"index"`
+	AllowEscrowImport bool
+	EnableDNS         bool
 	// One to Many relationship with Phases
 	Phases []Phase `gorm:"foreignKey:TLDName;references:Name;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	// FK relationship with RegistryOperator
