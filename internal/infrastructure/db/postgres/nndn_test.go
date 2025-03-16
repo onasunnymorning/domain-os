@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -129,7 +130,10 @@ func (s *NNDNSuite) TestListNNDNs() {
 		createdNNDNs = append(createdNNDNs, createdNNDN.Name.String())
 	}
 
-	nndns, err := repo.ListNNDNs(context.Background(), 3, createdNNDNs[0])
+	nndns, _, err := repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize:   3,
+		PageCursor: createdNNDNs[0],
+	})
 	require.NoError(s.T(), err)
 	require.Len(s.T(), nndns, 2)
 }
