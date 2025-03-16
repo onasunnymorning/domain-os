@@ -818,15 +818,6 @@ func (svc *DomainService) CheckDomainIsBlocked(ctx context.Context, domainName s
 // 3. Checks if the domain is blocked.
 // 4. Retrieves the phase by name if provided, otherwise gets the current GA phase.
 // 5. Checks if the domain label is valid in the current phase.
-//
-// Parameters:
-// - ctx: The context for the request.
-// - domainName: The name of the domain to check.
-// - phaseName: The name of the phase to check against.
-//
-// Returns:
-// - A DomainCheckResult containing the availability status and reason if not available.
-// - An error if any of the checks fail.
 func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainName, phaseName string) (*queries.DomainCheckResult, error) {
 	response := &queries.DomainCheckResult{
 		TimeStamp:  time.Now().UTC(),
@@ -1198,14 +1189,6 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 // 2. Retrieves the TLD (Top-Level Domain) including its phases.
 // 3. Uses the current General Availability (GA) phase policy to determine if auto-renewal is allowed.
 // 4. Checks if the registrar has opted in for auto-renewal.
-//
-// Parameters:
-// - ctx: The context for managing request-scoped values, cancellation, and deadlines.
-// - domainName: The name of the domain to check for auto-renewal eligibility.
-//
-// Returns:
-// - bool: True if the domain can be auto-renewed, false otherwise.
-// - error: An error if any step in the process fails.
 func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (bool, error) {
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
@@ -1256,15 +1239,6 @@ func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (
 // 4. Retrieves the registrar and checks if the registrar has opted in for auto-renewal.
 // 5. Renews the domain using the specified number of years.
 // 6. Saves the updated domain.
-//
-// Parameters:
-// - ctx: The context for controlling cancellation and deadlines.
-// - name: The name of the domain to be renewed.
-// - years: The number of years to renew the domain for.
-//
-// Returns:
-// - A pointer to the updated domain entity.
-// - An error if any step in the process fails.
 func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, years int) (*entities.Domain, error) {
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, name, false)
@@ -1350,14 +1324,6 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 // It retrieves the domain, its TLD, and the current GA phase, then marks the domain for deletion (this sets all of the appropriate RGP statuses)
 // and updates it in the repository.
 // This is what you would use to process an EPP delete command. (should we rename this to EPPDeleteDomain?)
-//
-// Parameters:
-//   - ctx: The context for the request.
-//   - domainName: The name of the domain to be marked for deletion.
-//
-// Returns:
-//   - *entities.Domain: The updated domain entity.
-//   - error: An error if any occurred during the process.
 func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error) {
 	// Get the domain
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
@@ -1417,16 +1383,6 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 // ExpireDomain expires a domain by its name. It retrieves the domain,
 // fetches the TLD and its current GA phase, and then uses the domain layer to expire the domain.
 // Finally, it updates the domain in the repository.
-//
-// Parameters:
-//
-//	ctx - The context for managing request-scoped values, deadlines, and cancelation signals.
-//	domainName - The name of the domain to be expired.
-//
-// Returns:
-//
-//	*entities.Domain - The updated domain entity after expiration.
-//	error - An error if any operation fails, otherwise nil.
 func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error) {
 	// Get the domain
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
@@ -1648,18 +1604,7 @@ func (s *DomainService) CountRestoredDomains(ctx context.Context, q *queries.Res
 
 // GetQuote retrieves a quote for a domain based on the provided QuoteRequest.
 // It validates the request, retrieves the appropriate TLD and phase, and calculates
-// the quote using the PriceEngine.
-//
-// Parameters:
-//
-//	ctx - The context for the request, used for cancellation and deadlines.
-//	q - The QuoteRequest containing the details for the quote. All parameters are required, except for phaseName which defaults to the "Currently Active GA Phase".
-//
-// Returns:
-//
-//	*entities.Quote - The calculated quote for the domain.
-//	error - An error if the request is invalid or if there is an issue retrieving
-//	        the necessary data or calculating the quote.
+// the quote using the PriceEngine. It returns the quote or an error if any step fails.
 func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (*entities.Quote, error) {
 	// Validate the request and
 	if err := q.Validate(); err != nil {
