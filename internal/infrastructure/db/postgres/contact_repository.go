@@ -138,7 +138,7 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 			dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
 		}
 		if f.ClidEquals != "" {
-			dbQuery = dbQuery.Where("cl_id = ?", "%"+f.ClidEquals+"%")
+			dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
 		}
 	}
 

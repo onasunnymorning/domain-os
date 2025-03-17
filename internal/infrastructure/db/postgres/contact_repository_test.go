@@ -250,3 +250,183 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().Error(err)
 	s.Require().Nil(contacts)
 }
+
+func (s *ContactSuite) TestFilterContacts() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	a, err := entities.NewAddress("El Cuyo", "MX")
+	s.Require().NoError(err)
+	pi, _ := entities.NewContactPostalInfo("int", "my pi", a)
+	s.Require().NoError(err)
+
+	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "clid1@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	err = contact1.AddPostalInfo(pi)
+	s.Require().NoError(err)
+
+	createdContact1, err := repo.CreateContact(context.Background(), contact1)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact1)
+
+	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "clid2@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	err = contact2.AddPostalInfo(pi)
+	s.Require().NoError(err)
+	createdContact2, err := repo.CreateContact(context.Background(), contact2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact2)
+
+	contact3, err := entities.NewContact("clid3", "1236_CONT-APEX", "clid3@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	s.Require().NoError(err)
+	err = contact3.AddPostalInfo(pi)
+	s.Require().NoError(err)
+	createdContact3, err := repo.CreateContact(context.Background(), contact3)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdContact3)
+
+	// Test RoidGreaterThan
+	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidGreaterThan: "1234_CONT-APEX",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 2)
+
+	// Test RoidLessThan + RoidGreaterThan
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidGreaterThan: "1234_CONT-APEX",
+			RoidLessThan:    "1236_CONT-APEX",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 1)
+
+	// Test IdLike
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			IdLike: "clid",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 3)
+
+	// Test EmailLike 1
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			EmailLike: "clid1",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 1)
+
+	// Test EmailLike 3
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			EmailLike: "me.com",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 3)
+
+	// Test ClidEquals
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			ClidEquals: s.rarClid,
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 3)
+
+	// ClidEquals + Pagination
+	contacts, cursor, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter: queries.ListContactsFilter{
+			ClidEquals: s.rarClid,
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 2)
+	s.Require().NotEqual("", cursor)
+
+	// ClidEquals + Pagination + Cursor
+	contacts, newCursor, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize:   2,
+		PageCursor: cursor,
+		Filter: queries.ListContactsFilter{
+			ClidEquals: s.rarClid,
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(contacts)
+	s.Require().Len(contacts, 1)
+	s.Require().Equal("", newCursor)
+}
+
+func (s *ContactSuite) TestFilterContactsRoidGTError() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	// invalid roid
+	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidGreaterThan: "1234_DOM-APEX",
+		},
+	})
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+	s.Require().Nil(contacts)
+
+	// invalid roid int64
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidGreaterThan: "abcd_DOM-APEX",
+		},
+	})
+	s.Require().Error(err)
+	s.Require().Nil(contacts)
+}
+
+func (s *ContactSuite) TestFilterContactsRoidLTError() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewContactRepository(tx)
+
+	// invalid roid
+	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidLessThan: "1234_DOM-APEX",
+		},
+	})
+	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
+	s.Require().Nil(contacts)
+
+	// invalid roid int64
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListContactsFilter{
+			RoidLessThan: "abcd_DOM-APEX",
+		},
+	})
+	s.Require().Error(err)
+	s.Require().Nil(contacts)
+}
