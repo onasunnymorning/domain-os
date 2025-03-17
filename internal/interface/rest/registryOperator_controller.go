@@ -191,12 +191,21 @@ func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
 		return
 	}
 
+	// Add filters if provided
+	filter := queries.ListRegistryOperatorsFilter{}
+	filter.RyidLike = ctx.Query("ryid_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.NameLike = ctx.Query("name_like")
+	query.Filter = filter
+
+	// List the Registry Operators
 	ros, cursor, err := ctrl.ryService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the response Data and Meta
 	response.Data = ros
 	response.SetMeta(ctx, cursor, len(ros), query.PageSize, query.Filter)
 
