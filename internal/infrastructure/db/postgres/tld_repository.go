@@ -81,7 +81,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 		// Add filters if provided
 		filter, ok := params.Filter.(queries.ListTldsFilter)
 		if !ok {
-			return nil, "", errors.New("invalid filter type")
+			return nil, "", ErrInvalidFilterType
 		}
 		if filter.NameLike != "" {
 			dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")

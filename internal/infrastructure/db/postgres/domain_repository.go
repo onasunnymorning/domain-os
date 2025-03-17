@@ -127,7 +127,7 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 	if params.Filter != nil {
 		// cast interface to ListDomainsQueryFilter
 		if filter, ok := params.Filter.(queries.ListDomainsFilter); !ok {
-			return nil, "", errors.New("invalid filter type")
+			return nil, "", ErrInvalidFilterType
 		} else {
 			if filter.ClIDEquals != "" {
 				dbQuery = dbQuery.Where("cl_id = ?", filter.ClIDEquals)
