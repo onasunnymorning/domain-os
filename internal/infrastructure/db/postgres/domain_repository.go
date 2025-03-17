@@ -136,7 +136,7 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 				dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
 			}
 			if filter.NameLike != "" {
-				dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
+				dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
 			}
 			if filter.NameEquals != "" {
 				dbQuery = dbQuery.Where("name = ?", filter.NameEquals)

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"golang.org/x/net/context"
@@ -76,8 +77,8 @@ func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error
 	return s.contactRepository.DeleteContactByID(ctx, id)
 }
 
-func (s *ContactService) ListContacts(ctx context.Context, pageSize int, cursor string) ([]*entities.Contact, error) {
-	return s.contactRepository.ListContacts(ctx, pageSize, cursor)
+func (s *ContactService) ListContacts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Contact, string, error) {
+	return s.contactRepository.ListContacts(ctx, params)
 }
 
 // contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact
