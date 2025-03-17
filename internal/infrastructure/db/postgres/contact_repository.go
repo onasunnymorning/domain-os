@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
@@ -94,13 +95,9 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 	var roidInt int64
 	var err error
 	if params.PageCursor != "" {
-		roid := entities.RoidType(params.PageCursor)
-		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-			return nil, "", entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
+		roidInt, err = getInt64RoidFromContactRoidString(params.PageCursor)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("invalid cursor: %w", err)
 		}
 
 		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
@@ -108,37 +105,32 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 
 	// Add filters
 	if params.Filter != nil {
-		f := params.Filter.(queries.ListContactsFilter)
-		if f.RoidGreaterThan != "" {
-			roid := entities.RoidType(f.RoidGreaterThan)
-			if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-				return nil, "", entities.ErrInvalidRoid
+		if f, ok := params.Filter.(queries.ListContactsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			if f.RoidGreaterThan != "" {
+				roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 			}
-			roidInt, err = roid.Int64()
-			if err != nil {
-				return nil, "", err
+			if f.RoidLessThan != "" {
+				roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
 			}
-			dbQuery = dbQuery.Where("ro_id > ?", roidInt)
-		}
-		if f.RoidLessThan != "" {
-			roid := entities.RoidType(f.RoidLessThan)
-			if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-				return nil, "", entities.ErrInvalidRoid
+			if f.IdLike != "" {
+				dbQuery = dbQuery.Where("id ILIKE ?", "%"+f.IdLike+"%")
 			}
-			roidInt, err = roid.Int64()
-			if err != nil {
-				return nil, "", err
+			if f.EmailLike != "" {
+				dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
 			}
-			dbQuery = dbQuery.Where("ro_id < ?", roidInt)
-		}
-		if f.IdLike != "" {
-			dbQuery = dbQuery.Where("id ILIKE ?", "%"+f.IdLike+"%")
-		}
-		if f.EmailLike != "" {
-			dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
-		}
-		if f.ClidEquals != "" {
-			dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+			if f.ClidEquals != "" {
+				dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+			}
 		}
 	}
 
@@ -172,4 +164,19 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 	}
 
 	return contacts, nextPageCursor, nil
+}
+
+func getInt64RoidFromContactRoidString(roidString string) (int64, error) {
+	// If the cursor is empty, we don't need to paginate, this is not an error
+	if roidString == "" {
+		return 0, nil
+	}
+	roid := entities.RoidType(roidString)
+	if validationErr := roid.Validate(); validationErr != nil {
+		return 0, validationErr
+	}
+	if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+		return 0, entities.ErrInvalidRoid
+	}
+	return roid.Int64()
 }

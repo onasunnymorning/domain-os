@@ -97,59 +97,49 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 	dbQuery := r.db.WithContext(ctx).Order("ro_id ASC")
 
 	// Add cursor pagination if a cursor is provided
-	var roidInt int64
-	var err error
 	if params.PageCursor != "" {
-		roid := entities.RoidType(params.PageCursor)
-		if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
-			return nil, "", entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
+		roidInt, err := getInt64RoidFromHostRoidString(params.PageCursor)
 		if err != nil {
 			return nil, "", err
 		}
 		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 	}
 
-	// Limit the number of results
-	dbQuery = dbQuery.Limit(params.PageSize + 1) // We fetch one more than the page size to determine if there are more results
-
 	// Add filters
 	if params.Filter != nil {
-		f := params.Filter.(queries.ListHostsFilter)
-		if f.RoidGreaterThan != "" {
-			roid := entities.RoidType(f.RoidGreaterThan)
-			if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
-				return nil, "", entities.ErrInvalidRoid
+		// cast interface to ListDomainsQueryFilter
+		if f, ok := params.Filter.(queries.ListHostsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			if f.RoidGreaterThan != "" {
+				roidInt, err := getInt64RoidFromHostRoidString(f.RoidGreaterThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 			}
-			roidInt, err = roid.Int64()
-			if err != nil {
-				return nil, "", err
+			if f.RoidLessThan != "" {
+				roidInt, err := getInt64RoidFromHostRoidString(f.RoidLessThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
 			}
-			dbQuery = dbQuery.Where("ro_id > ?", roidInt)
-		}
-		if f.RoidLessThan != "" {
-			roid := entities.RoidType(f.RoidLessThan)
-			if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
-				return nil, "", entities.ErrInvalidRoid
+			if f.ClidEquals != "" {
+				dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
 			}
-			roidInt, err = roid.Int64()
-			if err != nil {
-				return nil, "", err
+			if f.NameLike != "" {
+				dbQuery = dbQuery.Where("name ILIKE ?", "%"+f.NameLike+"%")
 			}
-			dbQuery = dbQuery.Where("ro_id < ?", roidInt)
-		}
-		if f.ClidEquals != "" {
-			dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
-		}
-		if f.NameLike != "" {
-			dbQuery = dbQuery.Where("name ILIKE ?", "%"+f.NameLike+"%")
 		}
 	}
 
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // We fetch one more than the page size to determine if there are more results
+
 	// Execute the query
 	dbHosts := []*Host{}
-	err = dbQuery.Find(&dbHosts).Error
+	err := dbQuery.Find(&dbHosts).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -184,4 +174,19 @@ func (r *HostRepository) GetHostAssociationCount(ctx context.Context, roid int64
 		return 0, err
 	}
 	return count, nil
+}
+
+func getInt64RoidFromHostRoidString(roidString string) (int64, error) {
+	// If the cursor is empty, we don't need to paginate, this is not an error
+	if roidString == "" {
+		return 0, nil
+	}
+	roid := entities.RoidType(roidString)
+	if validationErr := roid.Validate(); validationErr != nil {
+		return 0, validationErr
+	}
+	if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
+		return 0, entities.ErrInvalidRoid
+	}
+	return roid.Int64()
 }
