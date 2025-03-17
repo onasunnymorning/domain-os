@@ -157,6 +157,15 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 		return
 	}
 
+	// Get the filter from the query string
+	filter := queries.ListHostsFilter{
+		NameLike:        ctx.Query("name_like"),
+		ClidEquals:      ctx.Query("clid_equals"),
+		RoidGreaterThan: ctx.Query("roid_greater_than"),
+		RoidLessThan:    ctx.Query("roid_less_than"),
+	}
+	query.Filter = filter
+
 	// Get the contacts from the service
 	hosts, cursor, err := ctrl.hostService.ListHosts(ctx, query)
 	if err != nil {
