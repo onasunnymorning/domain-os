@@ -116,7 +116,7 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 			}
 			if f.RoidLessThan != "" {
-				roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
+				roidInt, err := getInt64RoidFromContactRoidString(f.RoidLessThan)
 				if err != nil {
 					return nil, "", err
 				}
