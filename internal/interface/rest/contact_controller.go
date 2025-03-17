@@ -277,10 +277,11 @@ func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
 
 	// Set the Filters
 	filter := queries.ListContactsFilter{}
-	filter.RoidGreaterThan = ctx.Query("roidGreaterThan")
-	filter.RoidLessThan = ctx.Query("roidLessThan")
-	filter.IdLike = ctx.Query("idLike")
-	filter.EmailLike = ctx.Query("emailLike")
+	filter.RoidGreaterThan = ctx.Query("roid_greater_than")
+	filter.RoidLessThan = ctx.Query("roid_less_than")
+	filter.IdLike = ctx.Query("id_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.ClidEquals = ctx.Query("clid_equals")
 	query.Filter = filter
 
 	// Get the contacts from the service
