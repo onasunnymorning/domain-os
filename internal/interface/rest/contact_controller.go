@@ -263,29 +263,36 @@ func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the Filters
+	filter := queries.ListContactsFilter{}
+	filter.RoidGreaterThan = ctx.Query("roidGreaterThan")
+	filter.RoidLessThan = ctx.Query("roidLessThan")
+	filter.IdLike = ctx.Query("idLike")
+	filter.EmailLike = ctx.Query("emailLike")
+	query.Filter = filter
+
 	// Get the contacts from the service
-	contacts, err := ctrl.contactService.ListContacts(ctx, pageSize, pageCursor)
+	contacts, cursor, err := ctrl.contactService.ListContacts(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the response metadata
 	response.Data = contacts
-	if len(contacts) > 0 {
-		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(contacts), query.PageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)

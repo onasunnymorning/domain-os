@@ -114,6 +114,39 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 	// Limit the number of results
 	dbQuery = dbQuery.Limit(params.PageSize + 1) // We fetch one more than the page size to determine if there are more results
 
+	// Add filters
+	if params.Filter != nil {
+		f := params.Filter.(queries.ListHostsFilter)
+		if f.RoidGreaterThan != "" {
+			roid := entities.RoidType(f.RoidGreaterThan)
+			if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
+				return nil, "", entities.ErrInvalidRoid
+			}
+			roidInt, err = roid.Int64()
+			if err != nil {
+				return nil, "", err
+			}
+			dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+		}
+		if f.RoidLessThan != "" {
+			roid := entities.RoidType(f.RoidLessThan)
+			if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
+				return nil, "", entities.ErrInvalidRoid
+			}
+			roidInt, err = roid.Int64()
+			if err != nil {
+				return nil, "", err
+			}
+			dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+		}
+		if f.ClidEquals != "" {
+			dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+		}
+		if f.NameLike != "" {
+			dbQuery = dbQuery.Where("name ILIKE ?", "%"+f.NameLike+"%")
+		}
+	}
+
 	// Execute the query
 	dbHosts := []*Host{}
 	err = dbQuery.Find(&dbHosts).Error

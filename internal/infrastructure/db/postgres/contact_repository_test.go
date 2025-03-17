@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -220,21 +221,32 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact2)
 
-	contacts, err := repo.ListContacts(context.Background(), 25, "")
+	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(contacts)
 	s.Require().Len(contacts, 2)
 
-	contacts, err = repo.ListContacts(context.Background(), 25, "1234_CONT-APEX")
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize:   25,
+		PageCursor: "1234_CONT-APEX",
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(contacts)
 	s.Require().Len(contacts, 1)
 
-	contacts, err = repo.ListContacts(context.Background(), 25, "1234_HOST-APEX")
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize:   25,
+		PageCursor: "1234_HOST-APEX",
+	})
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 	s.Require().Nil(contacts)
 
-	contacts, err = repo.ListContacts(context.Background(), 25, "abc_CONT-APEX")
+	contacts, _, err = repo.ListContacts(context.Background(), queries.ListItemsQuery{
+		PageSize:   25,
+		PageCursor: "abc_CONT-APEX",
+	})
 	s.Require().Error(err)
 	s.Require().Nil(contacts)
 }
