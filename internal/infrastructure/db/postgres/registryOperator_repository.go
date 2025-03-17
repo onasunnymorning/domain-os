@@ -109,10 +109,10 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 	}
 
 	// Set the cursor to the last ry_id in the list
-	var newCursor string
+	var lastID string
 	if hasMore {
-		newCursor = ros[len(ros)-1].RyID.String()
+		lastID = ros[len(ros)-1].RyID.String()
 	}
 
-	return ros, newCursor, nil
+	return ros, lastID, nil
 }
