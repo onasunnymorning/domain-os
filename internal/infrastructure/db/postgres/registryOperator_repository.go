@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -58,18 +59,60 @@ func (r *RegistryOperatorRepository) DeleteByRyID(ctx context.Context, ryID stri
 }
 
 // List retrieves RegistryOperators from the database
-func (r *RegistryOperatorRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.RegistryOperator, error) {
-	dbRos := []*RegistryOperator{}
+func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistryOperator, string, error) {
+	// Get a query object ordering by PK
+	dbQuery := r.db.WithContext(ctx).Order("ry_id ASC")
 
-	err := r.db.WithContext(ctx).Order("ry_id ASC").Limit(pagesize).Find(&dbRos, "ry_id > ?", cursor).Error
-	if err != nil {
-		return nil, err
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("ry_id > ?", params.PageCursor)
 	}
 
+	// Add filters if provided
+	if params.Filter != nil {
+		filter, ok := params.Filter.(queries.ListRegistryOperatorsFilter)
+		if !ok {
+			return nil, "", ErrInvalidFilterType
+		}
+		if filter.NameLike != "" {
+			dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
+		}
+		if filter.RyidLike != "" {
+			dbQuery = dbQuery.Where("ry_id LIKE ?", "%"+filter.RyidLike+"%")
+		}
+		if filter.EmailLike != "" {
+			dbQuery = dbQuery.Where("email LIKE ?", "%"+filter.EmailLike+"%")
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbRos := []*RegistryOperator{}
+	err := dbQuery.Find(&dbRos).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbRos) == params.PageSize+1
+	if hasMore {
+		// Return only up to Pagesize
+		dbRos = dbRos[:params.PageSize]
+	}
+
+	// Map the DBROs to ROs
 	ros := make([]*entities.RegistryOperator, len(dbRos))
 	for i, dbRo := range dbRos {
 		ros[i] = dbRo.ToEntity()
 	}
 
-	return ros, nil
+	// Set the cursor to the last ry_id in the list
+	var newCursor string
+	if hasMore {
+		newCursor = ros[len(ros)-1].RyID.String()
+	}
+
+	return ros, newCursor, nil
 }

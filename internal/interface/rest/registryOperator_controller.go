@@ -179,29 +179,26 @@ func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	ros, err := ctrl.ryService.List(ctx, pageSize, pageCursor)
+	ros, cursor, err := ctrl.ryService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = ros
-	// Set the metadata if there are results only
-	if len(ros) > 0 {
-		response.SetMeta(ctx, ros[len(ros)-1].RyID.String(), len(ros), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(ros), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }

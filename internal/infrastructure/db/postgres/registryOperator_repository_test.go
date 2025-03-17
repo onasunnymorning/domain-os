@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -116,37 +117,95 @@ func (s *RySuite) TestListRos() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRy2)
 
-	ry3, _ := entities.NewRegistryOperator("abc", "ABC Inc.", "me@abx.com")
+	ry3, _ := entities.NewRegistryOperator("abc", "ABC LLC", "me@abx.com")
 	createdRy3, err := repo.Create(context.Background(), ry3)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRy3)
 
-	ros, err := repo.List(context.Background(), 2, "")
+	ros, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(ros, 2)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 3)
 
 	err = repo.DeleteByRyID(context.Background(), "ra-dix")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 2)
 
 	err = repo.DeleteByRyID(context.Background(), "xyz")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 1)
 
 	err = repo.DeleteByRyID(context.Background(), "abc")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 0)
+
+	// Pagesize = 2
+	ros, next, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+	s.Require().NotEmpty(next)
+
+	// Pagesize = 2, cursor = next
+	ros, next, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   2,
+		PageCursor: next,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Empty(next)
+
+	// Test filtering
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListRegistryOperatorsFilter{
+			RyidLike: "dix",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Equal(ros[0].RyID, "ra-dix")
+
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListRegistryOperatorsFilter{
+			EmailLike: "xyz",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Equal(ros[0].Email, "d@xyz.com")
+
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter: queries.ListRegistryOperatorsFilter{
+			NameLike: "Inc",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+	s.Require().Empty(next)
 }
