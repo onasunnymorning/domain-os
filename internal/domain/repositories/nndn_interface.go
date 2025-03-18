@@ -23,4 +23,7 @@ type NNDNRepository interface {
 
 	// ListNNDNs returns a list of NNDN objects, with pagination support.
 	ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error)
+
+	// Count returns the number of NNDN objects in the repository optionally filtered by the provided query.
+	Count(ctx context.Context, filter queries.ListNndnsFilter) (int, error)
 }

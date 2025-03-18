@@ -62,3 +62,8 @@ func (svc *NNDNService) ListNNDNs(ctx context.Context, params queries.ListItemsQ
 func (svc *NNDNService) DeleteNNDNByName(ctx context.Context, name string) error {
 	return svc.nndnRepository.DeleteNNDN(ctx, name)
 }
+
+// Count returns the number of NNDNs in the repository optionally filtered by the provided query
+func (svc *NNDNService) Count(ctx context.Context, filter queries.ListNndnsFilter) (int, error) {
+	return svc.nndnRepository.Count(ctx, filter)
+}
