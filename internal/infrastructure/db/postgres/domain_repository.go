@@ -129,43 +129,8 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 		if filter, ok := params.Filter.(queries.ListDomainsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
-			if filter.ClIDEquals != "" {
-				dbQuery = dbQuery.Where("cl_id = ?", filter.ClIDEquals)
-			}
-			if filter.TldEquals != "" {
-				dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
-			}
-			if filter.NameLike != "" {
-				dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
-			}
-			if filter.NameEquals != "" {
-				dbQuery = dbQuery.Where("name = ?", filter.NameEquals)
-			}
-			if filter.RoidGreaterThan != "" {
-				roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidGreaterThan)
-				if err != nil {
-					return nil, "", fmt.Errorf("invalid RoId for greater than filter: %w", err)
-				}
-				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
-			}
-			if filter.RoidLessThan != "" {
-				roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidLessThan)
-				if err != nil {
-					return nil, "", fmt.Errorf("invalid RoId for less than filter: %w", err)
-				}
-				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
-			}
-			if !filter.ExpiresBefore.IsZero() {
-				dbQuery = dbQuery.Where("expiry_date < ?", filter.ExpiresBefore)
-			}
-			if !filter.ExpiresAfter.IsZero() {
-				dbQuery = dbQuery.Where("expiry_date > ?", filter.ExpiresAfter)
-			}
-			if !filter.CreatedBefore.IsZero() {
-				dbQuery = dbQuery.Where("created_at < ?", filter.CreatedBefore)
-			}
-			if !filter.CreatedAfter.IsZero() {
-				dbQuery = dbQuery.Where("created_at > ?", filter.CreatedAfter)
+			if err := setDomainFilters(dbQuery, filter); err != nil {
+				return nil, "", err
 			}
 		}
 	}
@@ -293,9 +258,21 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 }
 
 // Count returns the number of domains in the database
-func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
+func (dr *DomainRepository) Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Count(&count).Error
+
+	// Create a query object
+	dbQuery := dr.db.WithContext(ctx).Model(&Domain{})
+
+	// Add filters
+	if err := setDomainFilters(dbQuery, filter); err != nil {
+		return 0, err
+	}
+
+	// Execute the query
+	err := dbQuery.Count(&count).Error
+
+	// Return the count
 	return count, err
 }
 
@@ -399,4 +376,48 @@ func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
 		return 0, entities.ErrInvalidRoid
 	}
 	return roid.Int64()
+}
+
+func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) error {
+
+	if filter.ClIDEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", filter.ClIDEquals)
+	}
+	if filter.TldEquals != "" {
+		dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
+	}
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.NameEquals != "" {
+		dbQuery = dbQuery.Where("name = ?", filter.NameEquals)
+	}
+	if filter.RoidGreaterThan != "" {
+		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidGreaterThan)
+		if err != nil {
+			return fmt.Errorf("invalid RoId for greater than filter: %w", err)
+		}
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+	}
+	if filter.RoidLessThan != "" {
+		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidLessThan)
+		if err != nil {
+			return fmt.Errorf("invalid RoId for less than filter: %w", err)
+		}
+		dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+	}
+	if !filter.ExpiresBefore.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date < ?", filter.ExpiresBefore)
+	}
+	if !filter.ExpiresAfter.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date > ?", filter.ExpiresAfter)
+	}
+	if !filter.CreatedBefore.IsZero() {
+		dbQuery = dbQuery.Where("created_at < ?", filter.CreatedBefore)
+	}
+	if !filter.CreatedAfter.IsZero() {
+		dbQuery = dbQuery.Where("created_at > ?", filter.CreatedAfter)
+	}
+
+	return nil
 }

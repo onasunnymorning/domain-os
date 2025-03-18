@@ -254,44 +254,13 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 		return
 	}
 
-	// Set the filters
-	filter := queries.ListDomainsFilter{}
-	filter.ClIDEquals = ctx.Query("clid_equals")
-	filter.TldEquals = ctx.Query("tld_equals")
-	filter.NameEquals = ctx.Query("name_equals")
-	filter.NameLike = ctx.Query("name_like")
-	filter.RoidGreaterThan = ctx.Query("roid_greater_than")
-	filter.RoidLessThan = ctx.Query("roid_less_than")
-	if ctx.Query("created_after") != "" {
-		filter.CreatedAfter, err = time.Parse(time.RFC3339, ctx.Query("created_after"))
-		if err != nil {
-			ctx.JSON(400, gin.H{"error": "invalid created_after date: " + err.Error()})
-			return
-		}
+	// Set the Filters
+	filter, err := getDomainListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
 	}
-	if ctx.Query("created_before") != "" {
-		filter.CreatedBefore, err = time.Parse(time.RFC3339, ctx.Query("created_before"))
-		if err != nil {
-			ctx.JSON(400, gin.H{"error": "invalid created_before date: " + err.Error()})
-			return
-		}
-	}
-	if ctx.Query("expires_after") != "" {
-		filter.ExpiresAfter, err = time.Parse(time.RFC3339, ctx.Query("expires_after"))
-		if err != nil {
-			ctx.JSON(400, gin.H{"error": "invalid expires_after date: " + err.Error()})
-			return
-		}
-	}
-	if ctx.Query("expires_before") != "" {
-		filter.ExpiresBefore, err = time.Parse(time.RFC3339, ctx.Query("expires_before"))
-		if err != nil {
-			ctx.JSON(400, gin.H{"error": "invalid expires_before date: " + err.Error()})
-			return
-		}
-	}
-
-	query.Filter = filter
+	query.Filter = *filter
 
 	// Get the list of domains
 	domains, cursor, err := ctrl.domainService.ListDomains(ctx, query)
@@ -892,12 +861,28 @@ func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
 // @Summary Count domains
 // @Description Count domains
 // @Tags Domains
+// @Param clid_equals query string false "ClID Equals"
+// @Param tld_equals query string false "TLD Equals"
+// @Param name_equals query string false "Name Equals"
+// @Param name_like query string false "Name Like"
+// @Param roid_greater_than query string false "RoID Greater Than"
+// @Param roid_less_than query string false "RoID Less Than"
+// @Param created_after query string false "Created After"
+// @Param created_before query string false "Created Before"
+// @Param expires_after query string false "Expires After"
+// @Param expires_before query string false "Expires Before"
 // @Produce json
 // @Success 200 {object} response.CountResult
 // @Failure 500
 // @Router /domains/count [get]
 func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
-	count, err := ctrl.domainService.Count(ctx)
+	filter, err := getDomainListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	count, err := ctrl.domainService.Count(ctx, *filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -907,6 +892,7 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 		Count:      count,
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
+		Filter:     filter,
 	})
 }
 
@@ -1323,4 +1309,41 @@ func (ctrl *DomainController) UnSetStatus(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, dom)
+}
+
+func getDomainListFilterFromContext(ctx *gin.Context) (*queries.ListDomainsFilter, error) {
+	var err error
+	filter := &queries.ListDomainsFilter{}
+	// set filters
+	filter.ClIDEquals = ctx.Query("clid_equals")
+	filter.TldEquals = ctx.Query("tld_equals")
+	filter.NameEquals = ctx.Query("name_equals")
+	filter.NameLike = ctx.Query("name_like")
+	filter.RoidGreaterThan = ctx.Query("roid_greater_than")
+	filter.RoidLessThan = ctx.Query("roid_less_than")
+	if ctx.Query("created_after") != "" {
+		filter.CreatedAfter, err = time.Parse(time.RFC3339, ctx.Query("created_after"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid created_after date: "), err)
+		}
+	}
+	if ctx.Query("created_before") != "" {
+		filter.CreatedBefore, err = time.Parse(time.RFC3339, ctx.Query("created_before"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid created_before date: "), err)
+		}
+	}
+	if ctx.Query("expires_after") != "" {
+		filter.ExpiresAfter, err = time.Parse(time.RFC3339, ctx.Query("expires_after"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid expires_after date: "), err)
+		}
+	}
+	if ctx.Query("expires_before") != "" {
+		filter.ExpiresBefore, err = time.Parse(time.RFC3339, ctx.Query("expires_before"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid expires_before date: "), err)
+		}
+	}
+	return filter, nil
 }

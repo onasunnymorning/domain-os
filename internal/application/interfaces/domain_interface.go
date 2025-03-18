@@ -22,7 +22,7 @@ type DomainService interface {
 	RemoveHostFromDomain(ctx context.Context, name string, hostRoID string) error
 	RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
 	ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)

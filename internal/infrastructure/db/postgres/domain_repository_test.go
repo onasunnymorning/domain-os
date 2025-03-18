@@ -193,7 +193,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().Equal(len(domain.Hosts), len(rr))
 
 	// Count the domains
-	count, err := repo.Count(context.Background())
+	count, err := repo.Count(context.Background(), queries.ListDomainsFilter{})
 	s.Require().NoError(err)
 	s.Require().Equal(int64(1), count)
 
@@ -550,6 +550,31 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
+	// Count with same filters
+	count, err := repo.Count(context.Background(), queries.ListDomainsFilter{RoidGreaterThan: createdDomain2.RoID.String()})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
+	// Filter by RoidGreaterThan with a bad roid
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidGreaterThan: "1234_CONT-APEX"}})
+	s.Require().Error(err)
+	s.Require().Equal(0, len(domains))
+
+	// Count with RoidGreaterThan with a bad roid
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{RoidGreaterThan: "1234_CONT-APEX"})
+	s.Require().Error(err)
+	s.Require().Equal(int64(0), count)
+
+	// Filter by RoidLessThan
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidLessThan: createdDomain2.RoID.String()}})
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(domains))
+
+	// count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{RoidLessThan: createdDomain2.RoID.String()})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
 	// Filter by RoidLessThan with a bad roid
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{RoidLessThan: "1234_CONT-APEX"}})
 	s.Require().Error(err)
@@ -560,45 +585,90 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{ClIDEquals: "domaintestRar"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
+
 	// Filter by TldEquals
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{TldEquals: "domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
+
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{TldEquals: "domaintesttld"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count)
 
 	// Filter by NameLike
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameLike: "geoff"}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{NameLike: "geoff"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
 	// Filter by NameEquals
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "geoff.domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
+
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{NameEquals: "geoff.domaintesttld"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
 
 	// Filter by NameEquals Zero results
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{NameEquals: "idontexist.domaintesttld"}})
 	s.Require().NoError(err)
 	s.Require().Equal(0, len(domains))
 
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{NameEquals: "idontexist.domaintesttld"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), count)
+
 	// Filter by ExpiryDateBefore
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresBefore: NOW.AddDate(0, 0, 201)}})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
+
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{ExpiresBefore: NOW.AddDate(0, 0, 201)})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), count)
 
 	// Filter by ExpiryDateAfter
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ExpiresAfter: NOW.AddDate(0, 0, 100), ExpiresBefore: NOW.AddDate(0, 0, 201)}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{ExpiresAfter: NOW.AddDate(0, 0, 100), ExpiresBefore: NOW.AddDate(0, 0, 201)})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
 	// Filter by CreatedBefore
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedBefore: NOW.AddDate(0, 0, -101)}})
 	s.Require().NoError(err)
 	s.Require().Equal(2, len(domains))
 
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{CreatedBefore: NOW.AddDate(0, 0, -101)})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), count)
+
 	// Filter by CreatedAfter
 	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{CreatedAfter: NOW.AddDate(0, 0, -201), CreatedBefore: NOW.AddDate(0, 0, -101)}})
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
+
+	// Count with same filters
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{CreatedAfter: NOW.AddDate(0, 0, -201), CreatedBefore: NOW.AddDate(0, 0, -101)})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
 
 }
 
