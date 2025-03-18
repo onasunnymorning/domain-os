@@ -25,5 +25,5 @@ type NNDNRepository interface {
 	ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error)
 
 	// Count returns the number of NNDN objects in the repository optionally filtered by the provided query.
-	Count(ctx context.Context, filter queries.ListNndnsFilter) (int, error)
+	Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error)
 }

@@ -150,7 +150,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	// Count with same filter
 	count, err := repo.Count(context.Background(), queries.ListNndnsFilter{NameLike: "example"})
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), 3, count)
+	require.Equal(s.T(), int64(3), count)
 
 	// Filter With TldEquals
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
@@ -164,7 +164,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	// Count with same filter
 	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{TldEquals: s.tld})
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), 3, count)
+	require.Equal(s.T(), int64(3), count)
 
 	// Filter with TldEquals zero results
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
@@ -178,7 +178,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	// count with same filter
 	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{TldEquals: "non-existent-tld"})
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), 0, count)
+	require.Equal(s.T(), int64(0), count)
 
 	// Filter with ReasonEquals
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
@@ -192,7 +192,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	// Count with same filter
 	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{ReasonEquals: "list-reason"})
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), 3, count)
+	require.Equal(s.T(), int64(3), count)
 
 	// Filter with ReasonLike
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
@@ -206,7 +206,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	// Count with same filter
 	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{ReasonLike: "list"})
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), 3, count)
+	require.Equal(s.T(), int64(3), count)
 
 	// Filter with ReasonLike and pagination
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
