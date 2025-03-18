@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -113,21 +114,60 @@ func (r *GormRegistrarRepository) Delete(ctx context.Context, clid string) error
 }
 
 // List returns a list of registrars
-func (r *GormRegistrarRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.RegistrarListItem, error) {
-	dbRars := []*Registrar{}
+func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error) {
+	// Get a query object ordering by PK
+	dbQuery := r.db.WithContext(ctx).Order("cl_id ASC")
 
-	err := r.db.WithContext(ctx).Order("cl_id ASC").Limit(pagesize).Find(&dbRars, "cl_id > ?", cursor).Error
-	if err != nil {
-		return nil, err
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("cl_id > ?", params.PageCursor)
 	}
 
+	// Add filters if provided
+	var err error
+	if params.Filter != nil {
+		filter, ok := params.Filter.(queries.ListRegistrarsFilter)
+		if !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			dbQuery, err = setRegistrarFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbRars := []*Registrar{}
+	err = dbQuery.Find(&dbRars).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbRars) == params.PageSize+1
+	if hasMore {
+		// Return up to the page size
+		dbRars = dbRars[:params.PageSize]
+	}
+
+	// Convert the results to entities
 	rarList := make([]*entities.RegistrarListItem, len(dbRars))
 	for i, dbRar := range dbRars {
 		rar := FromDBRegistrar(dbRar)
 		rarList[i] = rar.GetListRegistrarItem()
 	}
 
-	return rarList, nil
+	// Set the cursor to the last cl_id in the list
+	var lastID string
+	if hasMore {
+		lastID = rarList[len(rarList)-1].ClID.String()
+	}
+
+	return rarList, lastID, nil
 }
 
 // Count returns the total number of registrars in the repository
@@ -152,4 +192,34 @@ func (r *GormRegistrarRepository) IsRegistrarAccreditedForTLD(ctx context.Contex
 	}
 
 	return rar == rarClID, nil
+}
+
+// setRegistrarFilters applies the provided filters to the query
+func setRegistrarFilters(dbQuery *gorm.DB, filter queries.ListRegistrarsFilter) (*gorm.DB, error) {
+	if filter.ClidLike != "" {
+		dbQuery = dbQuery.Where("cl_id ILIKE ?", "%"+filter.ClidLike+"%")
+	}
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.NickNameLike != "" {
+		dbQuery = dbQuery.Where("nick_name ILIKE ?", "%"+filter.NickNameLike+"%")
+	}
+	if filter.GuridEquals != 0 {
+		dbQuery = dbQuery.Where("gur_id = ?", filter.GuridEquals)
+	}
+	if filter.EmailLike != "" {
+		dbQuery = dbQuery.Where("email ILIKE ?", "%"+filter.EmailLike+"%")
+	}
+	if filter.StatusEquals != "" {
+		dbQuery = dbQuery.Where("status = ?", filter.StatusEquals)
+	}
+	if filter.IANAStatusEquals != "" {
+		dbQuery = dbQuery.Where("iana_status = ?", filter.IANAStatusEquals)
+	}
+	if filter.AutorenewEquals != "" {
+		dbQuery = dbQuery.Where("autorenew = ?", filter.AutorenewEquals)
+	}
+
+	return dbQuery, nil
 }

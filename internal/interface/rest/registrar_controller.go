@@ -107,12 +107,20 @@ func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
 }
 
 // List godoc
-// @Summary List Registrars
-// @Description List Registrars.
+// @Summary Returns paginated list of Registrars optinally filtered
+// @Description Returns paginated list of Registrars optinally filtered.
 // @Tags Registrars
 // @Produce json
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor"
+// @Param clid_like query string false "ClID like"
+// @Param name_like query string false "Name like"
+// @Param nick_name_like query string false "NickName like"
+// @Param gurid_equals query int false "GurID equals"
+// @Param email_like query string false "Email like"
+// @Param status_equals query string false "Status equals"
+// @Param iana_status_equals query string false "IANAStatus equals"
+// @Param autorenew_equals query string false "Autorenew equals"
 // @Success 200 {array} entities.RegistrarListItem
 // @Failure 400
 // @Failure 500
@@ -123,29 +131,36 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	rars, err := ctrl.rarService.List(ctx, pageSize, pageCursor)
+	// Apply filters
+	filter, err := getRegistrarListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = *filter
+
+	// List the Registrars
+	rars, cursor, err := ctrl.rarService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the response Data and Meta
 	response.Data = rars
-	// Set the metadata if there are results only
-	if len(rars) > 0 {
-		response.SetMeta(ctx, rars[len(rars)-1].ClID.String(), len(rars), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(rars), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }
@@ -247,67 +262,6 @@ func (ctrl *RegistrarController) DeleteRegistrarByClID(ctx *gin.Context) {
 	ctx.JSON(204, nil)
 }
 
-//
-// This conflicts with /bulk endpoint
-// Under evaluation for removal
-//
-//
-//
-// // CreateRegistrarByGurID godoc
-// // @Summary Create a new Registrar by GurID
-// // @Description Creates a registrar by looking up the GurID in the IANA repository and taking the data from there. You will need to supply an email only. All the other data will be taken from the IANA repository.
-// // @Tags Registrars
-// // @Accept json
-// // @Produce json
-// // @Param gurid path int true "Registrar GurID"
-// // @Param registrarEmail body request.CreateRegistrarFromGurIDRequest true "RegistrarEmail"
-// // @Success 200 {object} commands.CreateRegistrarCommandResult
-// // @Failure 400
-// // @Failure 500
-// // @Router /registrars/{gurid} [post]
-// func (ctrl *RegistrarController) CreateRegistrarByGurID(ctx *gin.Context) {
-// 	// Get the email from the request body
-// 	var req request.CreateRegistrarFromGurIDRequest
-// 	if err := ctx.ShouldBindJSON(&req); err != nil {
-// 		ctx.JSON(400, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	// get the GurID from the request
-// 	guridString := ctx.Param("gurid")
-// 	// turn the GurID into an int
-// 	gurid, err := strconv.Atoi(guridString)
-// 	if err != nil {
-// 		ctx.JSON(400, gin.H{"error": ErrInvalidGurID.Error()})
-// 		return
-// 	}
-// 	// TODO: Check if a registrar already exists with that gurid (if we want to keep it quite strict)
-
-// 	// look up the GurID in our internal repository
-// 	ianaRar, err := ctrl.ianaRegistrarService.GetByGurID(ctx, gurid)
-// 	if err != nil {
-// 		ctx.JSON(400, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	// if it does exist, create a new registrar using the data from the IANA registrar
-// 	var cmd commands.CreateRegistrarCommand
-// 	cmd.ClID = namesgenerator.GetRandomName(0)
-// 	cmd.Name = ianaRar.Name
-// 	cmd.Email = req.Email
-// 	cmd.GurID = ianaRar.GurID
-// 	cmd.PostalInfo = [2]*entities.RegistrarPostalInfo{
-// 		{Type: "int"}, {Type: "loc"},
-// 	}
-
-// 	result, err := ctrl.rarService.Create(ctx, &cmd)
-// 	if err != nil {
-// 		ctx.JSON(500, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	ctx.JSON(200, result)
-// }
-
 // UpdateRegistrar godoc
 // @Summary Update a Registrar
 // @Description Update a Registrar
@@ -397,4 +351,26 @@ func (ctrl *RegistrarController) GetRegistrarCount(ctx *gin.Context) {
 		Count:      count,
 		Timestamp:  time.Now().UTC(),
 	})
+}
+
+func getRegistrarListFilterFromContext(ctx *gin.Context) (*queries.ListRegistrarsFilter, error) {
+	var err error
+	filter := &queries.ListRegistrarsFilter{}
+	filter.ClidLike = ctx.Query("clid_like")
+	filter.NameLike = ctx.Query("name_like")
+	filter.NickNameLike = ctx.Query("nick_name_like")
+
+	if ctx.Query("gurid_equals") != "" {
+		filter.GuridEquals, err = strconv.Atoi(ctx.Query("gurid_equals"))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	filter.EmailLike = ctx.Query("email_like")
+	filter.StatusEquals = ctx.Query("status_equals")
+	filter.IANAStatusEquals = ctx.Query("iana_status_equals")
+	filter.AutorenewEquals = ctx.Query("autorenew_equals")
+
+	return filter, nil
 }
