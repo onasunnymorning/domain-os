@@ -77,13 +77,14 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	if params.PageCursor != "" {
 		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
 	}
+	var err error
 	if params.Filter != nil {
 		// cast interface to ListTldsFilter
 		if filter, ok := params.Filter.(queries.ListTldsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
 			// Add filters if provided
-			err := setTldFilters(dbQuery, filter)
+			dbQuery, err = setTldFilters(dbQuery, filter)
 			if err != nil {
 				return nil, "", err
 			}
@@ -96,7 +97,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 
 	// Execute the query
 	dbtlds := []*TLD{}
-	err := dbQuery.Find(&dbtlds).Error
+	err = dbQuery.Find(&dbtlds).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -157,7 +158,7 @@ func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTld
 	// create query object
 	dbQuery := repo.db.WithContext(ctx).Model(&TLD{})
 	// add filters if provided
-	err := setTldFilters(dbQuery, filter)
+	dbQuery, err := setTldFilters(dbQuery, filter)
 	if err != nil {
 		return 0, err
 	}
@@ -169,7 +170,7 @@ func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTld
 	return count, nil
 }
 
-func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) error {
+func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) (*gorm.DB, error) {
 
 	if filter.NameLike != "" {
 		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
@@ -181,6 +182,6 @@ func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) error {
 		dbQuery = dbQuery.Where("ry_id = ?", filter.RyIDEquals)
 	}
 
-	return nil
+	return dbQuery, nil
 
 }
