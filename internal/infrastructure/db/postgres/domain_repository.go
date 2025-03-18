@@ -124,12 +124,13 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 	}
 
 	// Add filters if provided
+	var err error
 	if params.Filter != nil {
 		// cast interface to ListDomainsQueryFilter
 		if filter, ok := params.Filter.(queries.ListDomainsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
-			if err := setDomainFilters(dbQuery, filter); err != nil {
+			if dbQuery, err = setDomainFilters(dbQuery, filter); err != nil {
 				return nil, "", err
 			}
 		}
@@ -140,7 +141,7 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 
 	// Execute the query
 	dbDomains := []*Domain{}
-	err := dbQuery.Find(&dbDomains).Error
+	err = dbQuery.Find(&dbDomains).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -265,12 +266,13 @@ func (dr *DomainRepository) Count(ctx context.Context, filter queries.ListDomain
 	dbQuery := dr.db.WithContext(ctx).Model(&Domain{})
 
 	// Add filters
-	if err := setDomainFilters(dbQuery, filter); err != nil {
+	var err error
+	if dbQuery, err = setDomainFilters(dbQuery, filter); err != nil {
 		return 0, err
 	}
 
 	// Execute the query
-	err := dbQuery.Count(&count).Error
+	err = dbQuery.Count(&count).Error
 
 	// Return the count
 	return count, err
@@ -378,7 +380,7 @@ func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
 	return roid.Int64()
 }
 
-func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) error {
+func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) (*gorm.DB, error) {
 
 	if filter.ClIDEquals != "" {
 		dbQuery = dbQuery.Where("cl_id = ?", filter.ClIDEquals)
@@ -395,14 +397,14 @@ func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) error 
 	if filter.RoidGreaterThan != "" {
 		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidGreaterThan)
 		if err != nil {
-			return fmt.Errorf("invalid RoId for greater than filter: %w", err)
+			return nil, fmt.Errorf("invalid RoId for greater than filter: %w", err)
 		}
 		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 	}
 	if filter.RoidLessThan != "" {
 		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidLessThan)
 		if err != nil {
-			return fmt.Errorf("invalid RoId for less than filter: %w", err)
+			return nil, fmt.Errorf("invalid RoId for less than filter: %w", err)
 		}
 		dbQuery = dbQuery.Where("ro_id < ?", roidInt)
 	}
@@ -419,5 +421,5 @@ func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) error 
 		dbQuery = dbQuery.Where("created_at > ?", filter.CreatedAfter)
 	}
 
-	return nil
+	return dbQuery, nil
 }
