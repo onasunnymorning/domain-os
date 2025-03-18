@@ -45,7 +45,7 @@ func (repo *ICANNRepository) ListSpec5Labels() ([]*entities.Spec5Label, error) {
 	var icannSpec5Registry IcannXmlSpec5Registry
 	err = xml.Unmarshal(byteValue, &icannSpec5Registry)
 	if err != nil {
-		return nil, fmt.Errorf("error while unmarshalling ICANN XML Spec5 Registry, this might indicate the ICANN site is under maintenance or has updated the XML format: %v", err)
+		return nil, fmt.Errorf("error while unmarshalling ICANN XML Spec5 Registry, this might indicate the ICANN page (%s) is under maintenance or has updated the XML format: %v", ICANN_SPEC5_XML_URL, err)
 	}
 
 	// Convert the struct to a list of IcannSpec5Labels
