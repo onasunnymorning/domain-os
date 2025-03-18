@@ -211,7 +211,7 @@ func (s *RySuite) TestListRosFilters() {
 	s.Require().Len(ros, 1)
 	s.Require().Empty(newCursor)
 
-	// Test filtering
+	// Test filtering RyIDLike
 	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
 		PageSize: 25,
 		Filter: queries.ListRegistryOperatorsFilter{
@@ -222,6 +222,14 @@ func (s *RySuite) TestListRosFilters() {
 	s.Require().Len(ros, 1)
 	s.Require().Equal(ros[0].RyID.String(), "ra-dix-listro")
 
+	// Count with same filter
+	count, err := repo.Count(context.Background(), queries.ListRegistryOperatorsFilter{
+		RyidLike: "dix-listro",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
+	// Test filtering NameLike
 	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
 		PageSize: 25,
 		Filter: queries.ListRegistryOperatorsFilter{
@@ -233,6 +241,15 @@ func (s *RySuite) TestListRosFilters() {
 	s.Require().Len(ros, 1)
 	s.Require().Equal(ros[0].Email, "d@xyz.com")
 
+	// Count with same filter
+	count, err = repo.Count(context.Background(), queries.ListRegistryOperatorsFilter{
+		EmailLike: "xyz",
+		RyidLike:  "listro",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
+	// Test filtering NameLike and pagesize
 	ros, newCursor, err = repo.List(context.Background(), queries.ListItemsQuery{
 		PageSize: 2,
 		Filter: queries.ListRegistryOperatorsFilter{
