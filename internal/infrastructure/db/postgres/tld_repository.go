@@ -172,7 +172,7 @@ func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTld
 func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) error {
 
 	if filter.NameLike != "" {
-		dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
 	}
 	if filter.TypeEquals != "" {
 		dbQuery = dbQuery.Where("type = ?", filter.TypeEquals)

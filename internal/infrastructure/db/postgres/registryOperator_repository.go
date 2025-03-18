@@ -75,13 +75,13 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 			return nil, "", ErrInvalidFilterType
 		}
 		if filter.NameLike != "" {
-			dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
+			dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
 		}
 		if filter.RyidLike != "" {
-			dbQuery = dbQuery.Where("ry_id LIKE ?", "%"+filter.RyidLike+"%")
+			dbQuery = dbQuery.Where("ry_id ILIKE ?", "%"+filter.RyidLike+"%")
 		}
 		if filter.EmailLike != "" {
-			dbQuery = dbQuery.Where("email LIKE ?", "%"+filter.EmailLike+"%")
+			dbQuery = dbQuery.Where("email ILIKE ?", "%"+filter.EmailLike+"%")
 		}
 	}
 
