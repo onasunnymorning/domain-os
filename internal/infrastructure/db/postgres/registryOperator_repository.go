@@ -69,12 +69,13 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 	}
 
 	// Add filters if provided
+	var err error
 	if params.Filter != nil {
 		filter, ok := params.Filter.(queries.ListRegistryOperatorsFilter)
 		if !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
-			err := setRegistryOperatorFilters(dbQuery, filter)
+			dbQuery, err = setRegistryOperatorFilters(dbQuery, filter)
 			if err != nil {
 				return nil, "", err
 			}
@@ -86,7 +87,7 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 
 	// Execute the query
 	dbRos := []*RegistryOperator{}
-	err := dbQuery.Find(&dbRos).Error
+	err = dbQuery.Find(&dbRos).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -113,8 +114,25 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 	return ros, lastID, nil
 }
 
+func (r *RegistryOperatorRepository) Count(ctx context.Context, filter queries.ListRegistryOperatorsFilter) (int64, error) {
+	dbQuery := r.db.WithContext(ctx)
+
+	dbQuery, err := setRegistryOperatorFilters(dbQuery, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	var count int64
+	err = dbQuery.Model(&RegistryOperator{}).Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // setRegistryOperatorFilters adds query params from the context to the dbquery object
-func setRegistryOperatorFilters(dbQuery *gorm.DB, filter queries.ListRegistryOperatorsFilter) error {
+func setRegistryOperatorFilters(dbQuery *gorm.DB, filter queries.ListRegistryOperatorsFilter) (*gorm.DB, error) {
 	if filter.NameLike != "" {
 		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
 	}
@@ -124,5 +142,5 @@ func setRegistryOperatorFilters(dbQuery *gorm.DB, filter queries.ListRegistryOpe
 	if filter.EmailLike != "" {
 		dbQuery = dbQuery.Where("email ILIKE ?", "%"+filter.EmailLike+"%")
 	}
-	return nil
+	return dbQuery, nil
 }
