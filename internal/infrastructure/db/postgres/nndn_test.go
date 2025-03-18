@@ -125,6 +125,7 @@ func (s *NNDNSuite) TestListNNDNs() {
 	var createdNNDNs []string
 	for i := 0; i < 3; i++ {
 		nndn, _ := entities.NewNNDN(fmt.Sprintf("list%dexample.%s", i, s.tld))
+		nndn.Reason = "list-reason"
 		createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
 		require.NoError(s.T(), err)
 		createdNNDNs = append(createdNNDNs, createdNNDN.Name.String())
@@ -136,6 +137,80 @@ func (s *NNDNSuite) TestListNNDNs() {
 	})
 	require.NoError(s.T(), err)
 	require.Len(s.T(), nndns, 2)
+
+	// Filter with NameLike
+	nndns, cursor, err := repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter:   queries.ListNndnsFilter{NameLike: "example"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 3)
+	require.Equal(s.T(), "", cursor)
+
+	// Filter With TldEquals
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter:   queries.ListNndnsFilter{TldEquals: s.tld},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 3)
+	require.Equal(s.T(), "", cursor)
+
+	// Filter with TldEquals zero results
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter:   queries.ListNndnsFilter{TldEquals: "non-existent-tld"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 0)
+	require.Equal(s.T(), "", cursor)
+
+	// Filter with ReasonEquals
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter:   queries.ListNndnsFilter{ReasonEquals: "list-reason"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 3)
+	require.Equal(s.T(), "", cursor)
+
+	// Filter with ReasonLike
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter:   queries.ListNndnsFilter{ReasonLike: "list"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 3)
+	require.Equal(s.T(), "", cursor)
+
+	// Filter with ReasonLike and pagination
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter:   queries.ListNndnsFilter{ReasonLike: "list"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 2)
+	require.NotEqual(s.T(), "", cursor)
+
+	// Filter with ReasonLike and pagination + cursor to get next page
+	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize:   2,
+		PageCursor: cursor,
+		Filter:     queries.ListNndnsFilter{ReasonLike: "list"},
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), nndns, 1)
+	require.Equal(s.T(), "", cursor)
+
+	// Invalid filter type
+	_, _, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListTldsFilter{
+			NameLike: "example",
+		},
+	})
+	require.Error(s.T(), err)
+
 }
 
 func (s *NNDNSuite) TestCreateNNDN_Error() {
