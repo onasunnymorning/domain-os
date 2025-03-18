@@ -147,6 +147,11 @@ func (s *NNDNSuite) TestListNNDNs() {
 	require.Len(s.T(), nndns, 3)
 	require.Equal(s.T(), "", cursor)
 
+	// Count with same filter
+	count, err := repo.Count(context.Background(), queries.ListNndnsFilter{NameLike: "example"})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 3, count)
+
 	// Filter With TldEquals
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
 		PageSize: 25,
@@ -155,6 +160,11 @@ func (s *NNDNSuite) TestListNNDNs() {
 	require.NoError(s.T(), err)
 	require.Len(s.T(), nndns, 3)
 	require.Equal(s.T(), "", cursor)
+
+	// Count with same filter
+	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{TldEquals: s.tld})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 3, count)
 
 	// Filter with TldEquals zero results
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
@@ -165,6 +175,11 @@ func (s *NNDNSuite) TestListNNDNs() {
 	require.Len(s.T(), nndns, 0)
 	require.Equal(s.T(), "", cursor)
 
+	// count with same filter
+	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{TldEquals: "non-existent-tld"})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 0, count)
+
 	// Filter with ReasonEquals
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
 		PageSize: 25,
@@ -174,6 +189,11 @@ func (s *NNDNSuite) TestListNNDNs() {
 	require.Len(s.T(), nndns, 3)
 	require.Equal(s.T(), "", cursor)
 
+	// Count with same filter
+	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{ReasonEquals: "list-reason"})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 3, count)
+
 	// Filter with ReasonLike
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
 		PageSize: 25,
@@ -182,6 +202,11 @@ func (s *NNDNSuite) TestListNNDNs() {
 	require.NoError(s.T(), err)
 	require.Len(s.T(), nndns, 3)
 	require.Equal(s.T(), "", cursor)
+
+	// Count with same filter
+	count, err = repo.Count(context.Background(), queries.ListNndnsFilter{ReasonLike: "list"})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 3, count)
 
 	// Filter with ReasonLike and pagination
 	nndns, cursor, err = repo.ListNNDNs(context.Background(), queries.ListItemsQuery{
