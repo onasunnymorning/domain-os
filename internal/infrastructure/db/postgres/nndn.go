@@ -118,12 +118,27 @@ func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, params queries.ListI
 		dbQuery = dbQuery.Where("Name > ?", params.PageCursor)
 	}
 
+	// Add Filters if provided
+	var err error
+	if params.Filter != nil {
+		// cast interface to ListNNDNsFilter
+		if filter, ok := params.Filter.(queries.ListNndnsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			// Add filters if provided
+			dbQuery, err = setNNDNFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
 	// Limit the number of results
 	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the limit to determine if there are more results
 
 	// Execute the query
 	var gormNNDNs []*NNDN
-	err := dbQuery.Find(&gormNNDNs).Error
+	err = dbQuery.Find(&gormNNDNs).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -148,4 +163,25 @@ func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, params queries.ListI
 	}
 
 	return nndns, newCursor, nil
+}
+
+func setNNDNFilters(dbQuery *gorm.DB, filter queries.ListNndnsFilter) (*gorm.DB, error) {
+
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+
+	if filter.TldEquals != "" {
+		dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
+	}
+
+	if filter.ReasonEquals != "" {
+		dbQuery = dbQuery.Where("reason = ?", filter.ReasonEquals)
+	}
+
+	if filter.ReasonLike != "" {
+		dbQuery = dbQuery.Where("reason ILIKE ?", "%"+filter.ReasonLike+"%")
+	}
+
+	return dbQuery, nil
 }
