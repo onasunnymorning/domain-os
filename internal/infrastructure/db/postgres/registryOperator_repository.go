@@ -73,15 +73,11 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 		filter, ok := params.Filter.(queries.ListRegistryOperatorsFilter)
 		if !ok {
 			return nil, "", ErrInvalidFilterType
-		}
-		if filter.NameLike != "" {
-			dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
-		}
-		if filter.RyidLike != "" {
-			dbQuery = dbQuery.Where("ry_id ILIKE ?", "%"+filter.RyidLike+"%")
-		}
-		if filter.EmailLike != "" {
-			dbQuery = dbQuery.Where("email ILIKE ?", "%"+filter.EmailLike+"%")
+		} else {
+			err := setRegistryOperatorFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
 		}
 	}
 
@@ -115,4 +111,18 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 	}
 
 	return ros, lastID, nil
+}
+
+// setRegistryOperatorFilters adds query params from the context to the dbquery object
+func setRegistryOperatorFilters(dbQuery *gorm.DB, filter queries.ListRegistryOperatorsFilter) error {
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.RyidLike != "" {
+		dbQuery = dbQuery.Where("ry_id ILIKE ?", "%"+filter.RyidLike+"%")
+	}
+	if filter.EmailLike != "" {
+		dbQuery = dbQuery.Where("email ILIKE ?", "%"+filter.EmailLike+"%")
+	}
+	return nil
 }
