@@ -78,20 +78,17 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
 	}
 	if params.Filter != nil {
-		// Add filters if provided
-		filter, ok := params.Filter.(queries.ListTldsFilter)
-		if !ok {
+		// cast interface to ListTldsFilter
+		if filter, ok := params.Filter.(queries.ListTldsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
+		} else {
+			// Add filters if provided
+			err := setTldFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
 		}
-		if filter.NameLike != "" {
-			dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
-		}
-		if filter.TypeEquals != "" {
-			dbQuery = dbQuery.Where("type = ?", filter.TypeEquals)
-		}
-		if filter.RyIDEquals != "" {
-			dbQuery = dbQuery.Where("ry_id = ?", filter.RyIDEquals)
-		}
+
 	}
 
 	// Limit the number of results
@@ -155,11 +152,35 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 
 // Count returns the total number of TLDs in the database
 // TODO: add a filter to count only TLDs that match a certain criteria
-func (repo *GormTLDRepository) Count(ctx context.Context) (int64, error) {
+func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error) {
 	var count int64
-	err := repo.db.WithContext(ctx).Model(&TLD{}).Count(&count).Error
+	// create query object
+	dbQuery := repo.db.WithContext(ctx).Model(&TLD{})
+	// add filters if provided
+	err := setTldFilters(dbQuery, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	err = dbQuery.Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) error {
+
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name LIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.TypeEquals != "" {
+		dbQuery = dbQuery.Where("type = ?", filter.TypeEquals)
+	}
+	if filter.RyIDEquals != "" {
+		dbQuery = dbQuery.Where("ry_id = ?", filter.RyIDEquals)
+	}
+
+	return nil
+
 }

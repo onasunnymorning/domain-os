@@ -14,6 +14,6 @@ type TLDService interface {
 	ListTLDs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error)
 	DeleteTLDByName(ctx context.Context, name string) error
 	GetTLDHeader(ctx context.Context, name string) (*entities.TLDHeader, error)
-	CountTLDs(ctx context.Context) (int64, error)
+	CountTLDs(ctx context.Context, filter queries.ListTldsFilter) (int64, error)
 	SetAllowEscrowImport(ctx context.Context, name string, allowEscrowImport bool) (*entities.TLD, error)
 }

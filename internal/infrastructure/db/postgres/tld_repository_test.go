@@ -101,6 +101,11 @@ func (s *TLDSuite) TestListTLD() {
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
 
+	// count tlds
+	count, err := repo.Count(context.Background(), filter)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(2), count)
+
 	// retrieve first page of tlds
 	tlds, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 1, Filter: filter})
 	require.NoError(s.T(), err)
@@ -122,11 +127,22 @@ func (s *TLDSuite) TestListTLD() {
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 2)
 
+	// Count with same filter
+	count, err = repo.Count(context.Background(), filter)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(2), count)
+
+	// Test filter by type counrty-code
 	filter.TypeEquals = "country-code"
 	tlds, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: filter})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 0)
+
+	// Count with same filter
+	count, err = repo.Count(context.Background(), filter)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(0), count)
 
 	// Test filter by name
 	filter.TypeEquals = ""
@@ -135,6 +151,11 @@ func (s *TLDSuite) TestListTLD() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), tlds)
 	require.Len(s.T(), tlds, 1)
+
+	// Count with same filter
+	count, err = repo.Count(context.Background(), filter)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(1), count)
 }
 
 func (s *TLDSuite) TestUpdateTLD() {
@@ -186,7 +207,7 @@ func (s *TLDSuite) TestCountTLD() {
 	err := repo.Create(context.Background(), tld)
 	require.NoError(s.T(), err)
 
-	count, err := repo.Count(context.Background())
+	count, err := repo.Count(context.Background(), queries.ListTldsFilter{})
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), int64(6), count)
 }

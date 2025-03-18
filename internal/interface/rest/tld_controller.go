@@ -107,11 +107,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 		return
 	}
 	// Set the Filters
-	filter := queries.ListTldsFilter{}
-	filter.NameLike = ctx.Query("name_like")
-	filter.TypeEquals = ctx.Query("type_equals")
-	filter.RyIDEquals = ctx.Query("ryid_equals")
-	query.Filter = filter
+	query.Filter = getTldListFilterFromContext(ctx)
 
 	// Get the tlds from the service
 	tlds, cursor, err := ctrl.tldService.ListTLDs(ctx, query)
@@ -330,11 +326,15 @@ func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 // @Description Get TLD count
 // @Tags TLDs
 // @Produce json
+// @Param name_like query string false "Filter by name, partial match"
+// @Param type_equals query string false "Filter by type, exact match"
+// @Param ryid_equals query string false "Filter by ryid, exact match"
 // @Success 200 {object} response.CountResult
 // @Failure 500
 // @Router /tlds/count [get]
 func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
-	count, err := ctrl.tldService.CountTLDs(ctx)
+	filter := getTldListFilterFromContext(ctx)
+	count, err := ctrl.tldService.CountTLDs(ctx, filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -344,6 +344,7 @@ func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
 		ObjectType: "TLD",
 		Count:      count,
 		Timestamp:  time.Now().UTC(),
+		Filter:     filter,
 	})
 }
 
@@ -419,4 +420,12 @@ func (ctrl *TLDController) DeleteTLDStatus(ctx *gin.Context) {
 	}
 
 	ctx.JSON(204, nil)
+}
+
+func getTldListFilterFromContext(ctx *gin.Context) queries.ListTldsFilter {
+	filter := queries.ListTldsFilter{}
+	filter.NameLike = ctx.Query("name_like")
+	filter.TypeEquals = ctx.Query("type_equals")
+	filter.RyIDEquals = ctx.Query("ryid_equals")
+	return filter
 }

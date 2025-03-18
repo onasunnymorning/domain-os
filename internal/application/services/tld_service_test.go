@@ -72,7 +72,7 @@ func (repo *MocktldRepository) DeleteByName(ctx context.Context, name string) er
 }
 
 // Count returns the number of TLDs
-func (repo *MocktldRepository) Count(ctx context.Context) (int64, error) {
+func (repo *MocktldRepository) Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error) {
 	return int64(len(repo.Tlds)), nil
 }
 
@@ -267,7 +267,7 @@ func TestTLDService_CountTLDs(t *testing.T) {
 	}
 
 	// Count all TLDs
-	count, err := service.CountTLDs(context.Background())
+	count, err := service.CountTLDs(context.Background(), queries.ListTldsFilter{})
 	if err != nil {
 		t.Error(err)
 	}

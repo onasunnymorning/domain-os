@@ -13,5 +13,5 @@ type TLDRepository interface {
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error)
 	Update(ctx context.Context, tld *entities.TLD) error
 	DeleteByName(ctx context.Context, name string) error
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error)
 }
