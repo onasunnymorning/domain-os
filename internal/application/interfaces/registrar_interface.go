@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -15,7 +16,7 @@ type RegistrarService interface {
 	BulkCreate(ctx context.Context, rars []*commands.CreateRegistrarCommand) error
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
-	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error)
+	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error)
 	Count(ctx context.Context) (int64, error)
 	SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error
 }

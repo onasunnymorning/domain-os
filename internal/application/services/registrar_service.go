@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"go.uber.org/zap"
@@ -75,8 +76,8 @@ func (s *RegistrarService) GetByGurID(ctx context.Context, gurID int) (*entities
 }
 
 // List returns a list of registrars
-func (s *RegistrarService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error) {
-	return s.registrarRepository.List(ctx, pagesize, pagecursor)
+func (s *RegistrarService) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error) {
+	return s.registrarRepository.List(ctx, params)
 }
 
 // Update updates a registrar

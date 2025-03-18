@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -199,7 +200,7 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), createdRegistrar2)
 
-	registrars, err := repo.List(context.Background(), 2, "")
+	registrars, _, err := repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 	require.Len(s.T(), registrars, 2)
@@ -208,7 +209,7 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	err = repo.Delete(context.Background(), createdRegistrar1.ClID.String())
 	require.NoError(s.T(), err)
 
-	registrars, err = repo.List(context.Background(), 2, "")
+	registrars, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 	require.GreaterOrEqual(s.T(), len(registrars), 1)
@@ -217,7 +218,7 @@ func (s *RegistrarSuite) TestListRegistrars() {
 	err = repo.Delete(context.Background(), createdRegistrar2.ClID.String())
 	require.NoError(s.T(), err)
 
-	registrars, err = repo.List(context.Background(), 2, "")
+	registrars, _, err = repo.List(context.Background(), queries.ListItemsQuery{PageSize: 2})
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), registrars)
 
