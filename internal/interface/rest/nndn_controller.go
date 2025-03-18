@@ -27,6 +27,7 @@ func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService, handle
 		nndnRouter.GET("", controller.ListNNDNs)
 		nndnRouter.POST("", controller.CreateNNDN)
 		nndnRouter.DELETE(":name", controller.DeleteNNDNByName)
+		nndnRouter.GET("/count", controller.Count)
 	}
 
 	return controller
@@ -59,11 +60,15 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 }
 
 // Count godoc
-// @Summary      Count NNDNs
-// @Description  Applies filtering options to count NNDNs.
+// @Summary      Returns a count of the amount of NNDNs that match the filter.
+// @Description  Counts all NNDNs in the database that match the filter and returns a timestamped count including the filters that were used.
 // @Tags         nndn
 // @Accept       json
 // @Produce      json
+// @Param name_like query string false "Name like"
+// @Param reason_like query string false "Reason like"
+// @Param reason_equals query string false "Reason equals"
+// @Param tld_equals query string false "TLD equals"
 // @Param        filter  query     string  false  "Filter options for NNDNs"
 // @Success      200     {object}  response.CountResult "Count of NNDNs"
 // @Failure      400     {object}  gin.H "Error message when client fails to provide the correct filter"
@@ -95,6 +100,10 @@ func (ctrl *NNDNController) Count(ctx *gin.Context) {
 // @Produce json
 // @Param cursor query string false "Cursor"
 // @Param page_size query int false "Page size"
+// @Param name_like query string false "Name like"
+// @Param reason_like query string false "Reason like"
+// @Param reason_equals query string false "Reason equals"
+// @Param tld_equals query string false "TLD equals"
 // @Success 200 {object} response.ListItemResult
 // @Failure 500
 // @Router /nndns [get]
