@@ -87,7 +87,7 @@ func TestSetAllowEscrowImport(t *testing.T) {
 	require.False(t, tld.AllowEscrowImport, "AllowEscrowImport should be false")
 
 	// Add an active phase
-	phase, err := entities.NewPhase("GA1", "GA", time.Now().UTC())
+	phase, err := entities.NewPhase("GA1", "GA", time.Now().UTC().AddDate(0, 0, -1))
 	require.NoError(t, err)
 	err = tld.AddPhase(phase)
 	require.NoError(t, err)
