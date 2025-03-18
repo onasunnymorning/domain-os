@@ -109,6 +109,17 @@ func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, name string) error 
 	return result.Error
 }
 
+func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndnsFilter) (int, error) {
+	dbQuery := r.db.WithContext(ctx).Model(&NNDN{})
+	dbQuery, err := setNNDNFilters(dbQuery, filter)
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	err = dbQuery.Count(&count).Error
+	return int(count), err
+}
+
 func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error) {
 	// Get a query object ordering by name (PK used for cursor pagination)
 	dbQuery := r.db.WithContext(ctx).Order("Name ASC")
