@@ -246,9 +246,19 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 
 // ListPremiumLabels godoc
 // @Summary List Premium Labels
-// @Description List Premium Labels.
+// @Description Pull Premium labels with optional filters. The results are paginated.
 // @Tags Premiums
 // @Produce json
+// @Param pagesize query int false "Page Size"
+// @Param cursor query string false "Page Cursor"
+// @Param label_like query string false "Label like"
+// @Param premium_list_name_equals query string false "Premium List Name equals"
+// @Param currency_equals query string false "Currency equals"
+// @Param class_equals query string false "Class equals"
+// @Param registration_amount_equals query string false "Registration Amount equals"
+// @Param renewal_amount_equals query string false "Renewal Amount equals"
+// @Param transfer_amount_equals query string false "Transfer Amount equals"
+// @Param restore_amount_equals query string false "Restore Amount equals"
 // @Success 200 {array} entities.PremiumLabel
 // @Failure 500
 // @Router /premium/labels [get]
@@ -303,6 +313,18 @@ func getPremiumLabelFilterFromContext(ctx *gin.Context) (queries.ListPremiumLabe
 	filter.RenewalAmountEquals = ctx.Query("renewal_amount_equals")
 	filter.TransferAmountEquals = ctx.Query("transfer_amount_equals")
 	filter.RestoreAmountEquals = ctx.Query("restore_amount_equals")
+
+	return filter, nil
+}
+
+func getPremiumListFilterFromContext(ctx *gin.Context) (queries.ListPremiumListsFilter, error) {
+	filter := queries.ListPremiumListsFilter{}
+
+	// Get the filter from the query string
+	filter.NameLike = ctx.Query("name_like")
+	filter.RyIDEquals = ctx.Query("ryid_equals")
+	filter.CreatedBefore = ctx.Query("created_before")
+	filter.CreatedAfter = ctx.Query("created_after")
 
 	return filter, nil
 }
