@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
@@ -52,11 +54,15 @@ func (plr *PremiumLabelRepository) DeleteByLabelListAndCurrency(ctx context.Cont
 // List retrieves a list of premium labels
 func (plr *PremiumLabelRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumLabel, string, error) {
 	// Create a query object ordering by label (PK used for cursor pagination)
-	dbQuery := plr.db.WithContext(ctx).Order("label ASC")
+	dbQuery := plr.db.WithContext(ctx).Order("id ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
-		dbQuery = dbQuery.Where("label > ?", params.PageCursor)
+		cursorInt64, err := strconv.ParseInt(params.PageCursor, 10, 64)
+		if err != nil {
+			return nil, "", err
+		}
+		dbQuery = dbQuery.Where("id > ?", cursorInt64)
 	}
 
 	// Add Filters if provided
@@ -98,7 +104,7 @@ func (plr *PremiumLabelRepository) List(ctx context.Context, params queries.List
 	// Set cursor to the last label in the list if there are more results
 	var cursor string
 	if hasMore {
-		cursor = pls[len(pls)-1].Label.String()
+		cursor = fmt.Sprintf("%d", dbpls[len(dbpls)-1].ID)
 	}
 
 	// Return the results
@@ -113,7 +119,7 @@ func setPremiumLabelFilters(dbQuery *gorm.DB, filter queries.ListPremiumLabelsFi
 		dbQuery = dbQuery.Where("premium_list_name = ?", filter.PremiumListNameEquals)
 	}
 	if filter.CurrencyEquals != "" {
-		dbQuery = dbQuery.Where("currency = ?", filter.CurrencyEquals)
+		dbQuery = dbQuery.Where("currency = ?", strings.ToUpper(filter.CurrencyEquals))
 	}
 	if filter.ClassEquals != "" {
 		dbQuery = dbQuery.Where("class = ?", filter.ClassEquals)
