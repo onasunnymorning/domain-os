@@ -129,30 +129,192 @@ func (s *PLabelSuite) TestPremiumLabelRepo_List() {
 
 	repo := NewGORMPremiumLabelRepository(tx)
 
-	pl1, _ := entities.NewPremiumLabel("myLabel", 100, 200, 300, 400, "USD", "class", s.listName)
-	_, err := repo.Create(context.Background(), pl1)
+	pl1, err := entities.NewPremiumLabel("myLabel", 100, 200, 300, 400, "USD", "class1", s.listName)
 	s.Require().NoError(err)
-
-	pl2, _ := entities.NewPremiumLabel("myLabel2", 100, 200, 300, 400, "USD", "class", s.listName)
-	_, err = repo.Create(context.Background(), pl2)
+	createdPL1, err := repo.Create(context.Background(), pl1)
 	s.Require().NoError(err)
+	s.Require().NotNil(createdPL1)
 
-	pl3, _ := entities.NewPremiumLabel("myLabel3", 100, 200, 300, 400, "USD", "class", s.listName)
-	_, err = repo.Create(context.Background(), pl3)
+	pl2, err := entities.NewPremiumLabel("myLabel2", 100, 200, 300, 400, "USD", "class2", s.listName)
 	s.Require().NoError(err)
+	createdPL2, err := repo.Create(context.Background(), pl2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdPL2)
 
-	pls, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+	pl3, err := entities.NewPremiumLabel("superdomain", 1000, 2000, 300, 4000, "PEN", "class2", s.listName)
+	s.Require().NoError(err)
+	createdPL3, err := repo.Create(context.Background(), pl3)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdPL3)
+
+	pls, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{
 		PageSize: 10,
 	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 3)
+	s.Require().Equal(cursor, "")
 
 	// Limit to 2
-	pls, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
 		PageSize: 2,
 	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 2)
+	s.Require().NotEmpty(cursor)
+
+	// Retrieve the next and last page
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   2,
+		PageCursor: cursor,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 1)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: ClassEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			ClassEquals: "class1",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 1)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: LabelLike
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			LabelLike: "myLabel",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 2)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: CurrencyEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			CurrencyEquals: "USD",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 2)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: PremiumListNameEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			PremiumListNameEquals: s.listName,
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 3)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: PremiumListNameEquals + LabelLike
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			PremiumListNameEquals: s.listName,
+			LabelLike:             "super",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 1)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: ClassEquals with pagination
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter: queries.ListPremiumLabelsFilter{
+			ClassEquals: "class2",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 2)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: ClassEquals with pagination
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 1,
+		Filter: queries.ListPremiumLabelsFilter{
+			ClassEquals: "class2",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 1)
+	s.Require().NotEqual(cursor, "")
+
+	//  Test Filters: ClassEquals with error in pagination
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   1,
+		PageCursor: "invalidCursor",
+		Filter: queries.ListPremiumLabelsFilter{
+			ClassEquals: "class2",
+		},
+	})
+	s.Require().Error(err)
+	s.Require().Len(pls, 0)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: RegistrationAmountEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			RegistrationAmountEquals: "100",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 2)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: RenewalAmountEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			RenewalAmountEquals: "200",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 2)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: TransferAmountEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			TransferAmountEquals: "300",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 3)
+	s.Require().Equal(cursor, "")
+
+	//  Test Filters: RestoreAmountEquals
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListPremiumLabelsFilter{
+			RestoreAmountEquals: "4000",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pls, 1)
+	s.Require().Equal(cursor, "")
+
+	// Test invalidFilterType
+	pls, cursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListRegistrarsFilter{
+			ClidLike: "dummy",
+		},
+	})
+	s.Require().Error(err)
+	s.Require().Len(pls, 0)
+	s.Require().Equal(cursor, "")
 
 	// Delete one of the premium labels
 	err = repo.DeleteByLabelListAndCurrency(context.Background(), "myLabel", s.listName, "USD")
@@ -168,7 +330,7 @@ func (s *PLabelSuite) TestPremiumLabelRepo_List() {
 	// Delete the rest
 	err = repo.DeleteByLabelListAndCurrency(context.Background(), "myLabel2", s.listName, "USD")
 	s.Require().NoError(err)
-	err = repo.DeleteByLabelListAndCurrency(context.Background(), "myLabel3", s.listName, "USD")
+	err = repo.DeleteByLabelListAndCurrency(context.Background(), "superdomain", s.listName, "PEN")
 	s.Require().NoError(err)
 
 	// List again
