@@ -29,6 +29,7 @@ func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListServi
 		premiumGroup.GET("lists/:name", ctrl.GetListByName)
 		premiumGroup.DELETE("lists/:name", ctrl.DeleteListByName)
 		premiumGroup.GET("lists", ctrl.ListPremiumLists)
+
 		premiumGroup.GET("labels", ctrl.ListPremiumLabels)
 		premiumGroup.POST("lists/:name/labels", ctrl.CreateLabel)
 		premiumGroup.GET("lists/:name/labels/:label/:currency", ctrl.GetLabelByLabelListAndCurrency)
