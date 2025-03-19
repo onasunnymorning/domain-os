@@ -16,7 +16,7 @@ type ListRegistrarsFilter struct {
 	AutorenewEquals  string
 }
 
-// ToQueryParams converts the filter to a query string. If you need to repeat the filters of a request, you can use this to build your URL search query string.
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (f ListRegistrarsFilter) ToQueryParams() string {
 	queryString := ""
 	if f.ClidLike != "" {

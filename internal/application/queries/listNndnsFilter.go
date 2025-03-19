@@ -8,7 +8,7 @@ type ListNndnsFilter struct {
 	ReasonLike   string
 }
 
-// ToQueryParams converts the ListNndnsFilter to a query string that can be appended to the URL
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (nf ListNndnsFilter) ToQueryParams() string {
 	queryString := ""
 	if nf.NameLike != "" {

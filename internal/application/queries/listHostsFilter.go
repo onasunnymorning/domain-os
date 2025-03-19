@@ -8,6 +8,7 @@ type ListHostsFilter struct {
 	NameLike        string
 }
 
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (f ListHostsFilter) ToQueryParams() string {
 	var queryParams string
 

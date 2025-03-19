@@ -7,7 +7,7 @@ type ListRegistryOperatorsFilter struct {
 	EmailLike string
 }
 
-// ToQueryParams converts the ListRegistryOperatoresFilter to a query string that can be appended to the URL
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (rf ListRegistryOperatorsFilter) ToQueryParams() string {
 	queryString := ""
 	if rf.RyidLike != "" {

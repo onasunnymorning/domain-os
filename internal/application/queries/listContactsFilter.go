@@ -9,7 +9,7 @@ type ListContactsFilter struct {
 	ClidEquals      string
 }
 
-// ToQueryParams converts the filter to query parameters
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (f ListContactsFilter) ToQueryParams() string {
 	var queryParams string
 

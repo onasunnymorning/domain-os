@@ -26,7 +26,7 @@ type ListDomainsFilter struct {
 	CreatedAfter time.Time
 }
 
-// ToQueryParams converts the ListDomainsFilter to a query string that can be appended to the URL
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (df ListDomainsFilter) ToQueryParams() string {
 	queryString := ""
 	if df.RoidGreaterThan != "" {
