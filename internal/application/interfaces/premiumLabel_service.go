@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -12,5 +13,5 @@ type PremiumLabelService interface {
 	CreateLabel(ctx context.Context, cmd commands.CreatePremiumLabelCommand) (*entities.PremiumLabel, error)
 	GetLabelByLabelListAndCurrency(ctx context.Context, label, list, currency string) (*entities.PremiumLabel, error)
 	DeleteLabelByLabelListAndCurrency(ctx context.Context, label, list, currency string) error
-	ListLabels(ctx context.Context, pagesize int, cursor, listName, currency, label string) ([]*entities.PremiumLabel, error)
+	ListLabels(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumLabel, string, error)
 }

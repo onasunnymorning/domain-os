@@ -257,36 +257,52 @@ func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	// filter options
-	// this endpoint allows filtering by currency, listName and label
-	listName := ctx.Query("list")
-	currency := strings.ToUpper(ctx.Query("currency"))
-	label := ctx.Query("label")
+	// Get the filter from the query string
+	filter, err := getPremiumLabelFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
 
-	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor, listName, currency, label)
+	labels, cursor, err := ctrl.labelService.ListLabels(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = labels
-	// Set the metadata if there are results only
-	if len(labels) > 0 {
-		response.SetMeta(ctx, labels[len(labels)-1].Label.String(), len(labels), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(labels), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
+}
+
+func getPremiumLabelFilterFromContext(ctx *gin.Context) (queries.ListPremiumLabelsFilter, error) {
+	filter := queries.ListPremiumLabelsFilter{}
+
+	// Get the filter from the query string
+	filter.LabelLike = ctx.Query("label_like")
+	filter.PremiumListNameEquals = ctx.Query("premium_list_name_equals")
+	filter.CurrencyEquals = strings.ToUpper(ctx.Query("currency_equals"))
+	filter.ClassEquals = ctx.Query("class_equals")
+	filter.RegistrationAmountEquals = ctx.Query("registration_amount_equals")
+	filter.RenewalAmountEquals = ctx.Query("renewal_amount_equals")
+	filter.TransferAmountEquals = ctx.Query("transfer_amount_equals")
+	filter.RestoreAmountEquals = ctx.Query("restore_amount_equals")
+
+	return filter, nil
 }
