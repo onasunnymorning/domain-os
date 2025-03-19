@@ -10,7 +10,7 @@ type ListTldsFilter struct {
 	RyIDEquals string
 }
 
-// ToQueryParams converts the ListTldsQueryFilter to a query string that can be appended to the URL
+// ToQueryParams converts the Filter to a query string that can be appended to the URL
 func (f ListTldsFilter) ToQueryParams() string {
 	queryString := ""
 	if f.NameLike != "" {
