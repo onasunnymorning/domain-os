@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -49,17 +50,86 @@ func (plr *PremiumLabelRepository) DeleteByLabelListAndCurrency(ctx context.Cont
 }
 
 // List retrieves a list of premium labels
-func (plr *PremiumLabelRepository) List(ctx context.Context, pagesize int, cursor, listName, currency, label string) ([]*entities.PremiumLabel, error) {
-	dbpls := []*PremiumLabel{}
-	err := plr.db.WithContext(ctx).Where(&PremiumLabel{PremiumListName: listName, Currency: currency, Label: label}).Order("label ASC").Limit(pagesize).Find(&dbpls, "label > ?", cursor).Error
-	if err != nil {
-		return nil, err
+func (plr *PremiumLabelRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumLabel, string, error) {
+	// Create a query object ordering by label (PK used for cursor pagination)
+	dbQuery := plr.db.WithContext(ctx).Order("label ASC")
+
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("label > ?", params.PageCursor)
 	}
 
+	// Add Filters if provided
+	if params.Filter != nil {
+		var err error
+		if filter, ok := params.Filter.(queries.ListPremiumLabelsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			dbQuery, err = setPremiumLabelFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the limit to determine if there are more results
+
+	// Execute the query
+	dbpls := []*PremiumLabel{}
+	err := dbQuery.Find(&dbpls).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there are more results
+	hasMore := len(dbpls) == params.PageSize+1
+	if hasMore {
+		// Return up to the pagesize
+		dbpls = dbpls[:params.PageSize]
+	}
+
+	// Convert the results to entities
 	pls := make([]*entities.PremiumLabel, len(dbpls))
 	for i, dbpl := range dbpls {
 		pls[i] = dbpl.ToEntity()
 	}
 
-	return pls, nil
+	// Set cursor to the last label in the list if there are more results
+	var cursor string
+	if hasMore {
+		cursor = pls[len(pls)-1].Label.String()
+	}
+
+	// Return the results
+	return pls, cursor, nil
+}
+
+func setPremiumLabelFilters(dbQuery *gorm.DB, filter queries.ListPremiumLabelsFilter) (*gorm.DB, error) {
+	if filter.LabelLike != "" {
+		dbQuery = dbQuery.Where("label ILIKE ?", "%"+filter.LabelLike+"%")
+	}
+	if filter.PremiumListNameEquals != "" {
+		dbQuery = dbQuery.Where("premium_list_name = ?", filter.PremiumListNameEquals)
+	}
+	if filter.CurrencyEquals != "" {
+		dbQuery = dbQuery.Where("currency = ?", filter.CurrencyEquals)
+	}
+	if filter.ClassEquals != "" {
+		dbQuery = dbQuery.Where("class = ?", filter.ClassEquals)
+	}
+	if filter.RegistrationAmountEquals != "" {
+		dbQuery = dbQuery.Where("registration_amount = ?", filter.RegistrationAmountEquals)
+	}
+	if filter.RenewalAmountEquals != "" {
+		dbQuery = dbQuery.Where("renewal_amount = ?", filter.RenewalAmountEquals)
+	}
+	if filter.TransferAmountEquals != "" {
+		dbQuery = dbQuery.Where("transfer_amount = ?", filter.TransferAmountEquals)
+	}
+	if filter.RestoreAmountEquals != "" {
+		dbQuery = dbQuery.Where("restore_amount = ?", filter.RestoreAmountEquals)
+	}
+
+	return dbQuery, nil
 }

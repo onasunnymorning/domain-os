@@ -1654,7 +1654,14 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 	// Get the PremiumLabels in all currencies
 	pe := []*entities.PremiumLabel{}
 	if phase.PremiumListName != nil {
-		pe, err = s.premiumLabelRepo.List(ctx, 25, "", *phase.PremiumListName, "", domainName.Label())
+		// pe, err = s.premiumLabelRepo.List(ctx, 25, "", *phase.PremiumListName, "", domainName.Label())
+		pe, _, err = s.premiumLabelRepo.List(ctx, queries.ListItemsQuery{
+			PageSize: 25,
+			Filter: queries.ListPremiumLabelsFilter{
+				PremiumListNameEquals: *phase.PremiumListName,
+				LabelLike:             domainName.Label(),
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
