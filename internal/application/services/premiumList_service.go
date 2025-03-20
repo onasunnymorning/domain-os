@@ -2,6 +2,7 @@ package services
 
 import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"golang.org/x/net/context"
@@ -34,8 +35,8 @@ func (pls *PremiumListService) GetListByName(ctx context.Context, name string) (
 }
 
 // List retrieves a list of premium lists
-func (pls *PremiumListService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.PremiumList, error) {
-	return pls.listRepo.List(ctx, pagesize, pagecursor)
+func (pls *PremiumListService) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumList, string, error) {
+	return pls.listRepo.List(ctx, params)
 }
 
 // DeleteListByName deletes a premium list by name

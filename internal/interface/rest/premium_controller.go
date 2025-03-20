@@ -108,32 +108,39 @@ func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 	query := queries.ListItemsQuery{}
 	var err error
+
 	// Prepare the response
 	response := response.ListItemResult{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	lists, err := ctrl.listService.List(ctx, pageSize, pageCursor)
+	// Get the filters from the query string
+	filter, err := getPremiumListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
+
+	lists, cursor, err := ctrl.listService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = lists
-	// Set the metadata if there are results only
-	if len(lists) > 0 {
-		response.SetMeta(ctx, lists[len(lists)-1].Name, len(lists), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, cursor, len(lists), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }
