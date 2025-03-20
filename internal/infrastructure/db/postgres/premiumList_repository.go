@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -49,18 +51,77 @@ func (plr *PremiumListRepository) DeleteByName(ctx context.Context, name string)
 }
 
 // List retrieves premium lists
-func (plr *PremiumListRepository) List(ctx context.Context, pagesize int, cursor string) ([]*entities.PremiumList, error) {
-	dbpls := []*PremiumList{}
+func (plr *PremiumListRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumList, string, error) {
+	// Create a query object
+	dbQuery := plr.db.WithContext(ctx).Order("name ASC")
 
-	err := plr.db.WithContext(ctx).Order("name ASC").Limit(pagesize).Find(&dbpls, "name > ?", cursor).Error
-	if err != nil {
-		return nil, err
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		cursorInt64, err := strconv.ParseInt(params.PageCursor, 10, 64)
+		if err != nil {
+			return nil, "", err
+		}
+		dbQuery = dbQuery.Where("id > ?", cursorInt64)
 	}
 
+	// Apply filter
+	if params.Filter != nil {
+		var err error
+		if filter, ok := params.Filter.(queries.ListPremiumListsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			dbQuery, err = setPremiumListFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
+	// Limit results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the limit to determine if there are more results
+
+	// Do the query
+	dbpls := []*PremiumList{}
+	err := dbQuery.Find(&dbpls).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check result size
+	hasMore := len(dbpls) == params.PageSize+1
+	if hasMore {
+		// Return up to the pagesize
+		dbpls = dbpls[:params.PageSize]
+	}
+
+	// Convert to entities
 	pls := make([]*entities.PremiumList, len(dbpls))
 	for i, dbpl := range dbpls {
 		pls[i] = dbpl.ToEntity()
 	}
 
-	return pls, nil
+	// Set the cursor to the last label if there are more results
+	var cursor string
+	if hasMore {
+		cursor = dbpls[len(dbpls)-1].Name
+	}
+
+	return pls, cursor, nil
+}
+
+func setPremiumListFilters(dbQuery *gorm.DB, filter queries.ListPremiumListsFilter) (*gorm.DB, error) {
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.RyIDEquals != "" {
+		dbQuery = dbQuery.Where("ry_id = ?", filter.RyIDEquals)
+	}
+	if filter.CreatedAfter != "" {
+		dbQuery = dbQuery.Where("created_at > ?", filter.CreatedAfter)
+	}
+	if filter.CreatedBefore != "" {
+		dbQuery = dbQuery.Where("created_at < ?", filter.CreatedBefore)
+	}
+
+	return dbQuery, nil
 }

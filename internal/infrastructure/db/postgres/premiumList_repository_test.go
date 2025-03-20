@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -108,25 +109,33 @@ func (s *PLSuite) TestList() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdPL2)
 
-	pls, err := repo.List(context.Background(), 10, "")
+	pls, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 2)
 
-	pls, err = repo.List(context.Background(), 1, "")
+	pls, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 1,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 1)
 
 	err = repo.DeleteByName(context.Background(), "myPremiums")
 	s.Require().NoError(err)
 
-	pls, err = repo.List(context.Background(), 10, "")
+	pls, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 1,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 1)
 
 	err = repo.DeleteByName(context.Background(), "myPremiums2")
 	s.Require().NoError(err)
 
-	pls, err = repo.List(context.Background(), 10, "")
+	pls, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 1,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(pls, 0)
 }
