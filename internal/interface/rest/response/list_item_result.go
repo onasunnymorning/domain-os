@@ -10,20 +10,22 @@ import (
 
 // ListItemResult is the struct that adds metadata to the list item query
 type ListItemResult struct {
-	Meta PaginationMetaData `json:"Meta"`
-	Data interface{}        `json:"Data"`
+	Meta PaginationMetaData
+	Data interface{}
 }
 
 // PaginationMetaData is the struct that conatins the metadata for the list item query
 type PaginationMetaData struct {
-	PageSize   int    `json:"PageSize"`
-	PageCursor string `json:"PageCursor"`
-	NextLink   string `json:"NextLink"`
+	PageSize   itn
+	PageCursor string
+	NextLink   string
+	Filter     queries.ListItemsFilter
 }
 
 // SetCursor sets the cursor for the list item query
 func (r *ListItemResult) SetMeta(ctx *gin.Context, cursor string, listLength, pageSize int, filter queries.ListItemsFilter) {
 	r.Meta.PageSize = pageSize
+	r.Meta.Filter = filter
 	// Only set the cursor and nextlink if we have a non-empty cursor (meaning there is a next page)
 	if cursor != "" {
 		r.Meta.PageCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
