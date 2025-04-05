@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -101,24 +102,70 @@ func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string)
 	return dr.db.WithContext(ctx).Where("name = ?", name).Delete(&Domain{}).Error
 }
 
-// ListDomains returns a list of Domains
-func (dr *DomainRepository) ListDomains(ctx context.Context, pagesize int, cursor string) ([]*entities.Domain, error) {
-	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
-	if err != nil {
-		return nil, err
-	}
-	dbDomains := []*Domain{}
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
-	if err != nil {
-		return nil, err
+// ListDomains retrieves domains from the database applying optional filters and cursor-based pagination.
+// It constructs a query that orders domain records by their primary key (ro_id) in ascending order.
+// It supports filtering by various domain attributes such as client ID, TLD name, domain name (both exact and partial matches),
+// ROID, and by creation or expiry dates (before/after).
+//
+// If a page cursor is provided, the query starts after the given ro_id. The query limits the results to
+// (PageSize + 1) records to determine if there is an additional page. If more results exist than PageSize,
+// a new cursor is set to the ro_id of the last returned domain, enabling further pagination.
+func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error) {
+	// Create a query and order by our pk
+	dbQuery := dr.db.WithContext(ctx).Order("ro_id ASC")
+
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		cursor, err := getInt64RoidFromDomainRoidString(params.PageCursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid page cursor: %w", err)
+		}
+		dbQuery = dbQuery.Where("ro_id > ?", cursor)
 	}
 
+	// Add filters if provided
+	var err error
+	if params.Filter != nil {
+		// cast interface to ListDomainsQueryFilter
+		if filter, ok := params.Filter.(queries.ListDomainsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			if dbQuery, err = setDomainFilters(dbQuery, filter); err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbDomains := []*Domain{}
+	err = dbQuery.Find(&dbDomains).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbDomains) == params.PageSize+1
+	if hasMore {
+		// Return up to PageSize
+		dbDomains = dbDomains[:params.PageSize]
+	}
+
+	// Map the DBDomains to Domains
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
 		domains[i] = ToDomain(d)
 	}
 
-	return domains, nil
+	// Set the cursor to the last element if needed
+	var newCursor string
+	if hasMore {
+		newCursor = domains[len(domains)-1].RoID.String()
+	}
+
+	return domains, newCursor, nil
 }
 
 // AddHostToDomain adds a domain_hosts association to the database
@@ -139,7 +186,7 @@ type ActiveDomainQueryResult struct {
 
 // GetActiveDomainsWithHosts gets the domains that are flagged as active and their associated hosts
 // This data is used to build the NS records for a given TLD
-func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error) {
+func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
 	var queryResults []ActiveDomainQueryResult
 	err := dr.db.Raw(`
 		SELECT dom.name AS domain, ho.name AS host
@@ -149,7 +196,7 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld s
 		WHERE dom.tld_name = ?
 		AND dom.inactive = false
 		AND dom.pending_delete = false
-	`, tld).Scan(&queryResults).Error
+	`, params.TldName).Scan(&queryResults).Error
 	if err != nil {
 		return nil, err
 	}
@@ -212,9 +259,22 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 }
 
 // Count returns the number of domains in the database
-func (dr *DomainRepository) Count(ctx context.Context) (int64, error) {
+func (dr *DomainRepository) Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Count(&count).Error
+
+	// Create a query object
+	dbQuery := dr.db.WithContext(ctx).Model(&Domain{})
+
+	// Add filters
+	var err error
+	if dbQuery, err = setDomainFilters(dbQuery, filter); err != nil {
+		return 0, err
+	}
+
+	// Execute the query
+	err = dbQuery.Count(&count).Error
+
+	// Return the count
 	return count, err
 }
 
@@ -311,8 +371,55 @@ func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
 		return 0, nil
 	}
 	roid := entities.RoidType(roidString)
+	if validationErr := roid.Validate(); validationErr != nil {
+		return 0, validationErr
+	}
 	if roid.ObjectIdentifier() != entities.DOMAIN_ROID_ID {
 		return 0, entities.ErrInvalidRoid
 	}
 	return roid.Int64()
+}
+
+func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) (*gorm.DB, error) {
+
+	if filter.ClidEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", filter.ClidEquals)
+	}
+	if filter.TldEquals != "" {
+		dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
+	}
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.NameEquals != "" {
+		dbQuery = dbQuery.Where("name = ?", filter.NameEquals)
+	}
+	if filter.RoidGreaterThan != "" {
+		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidGreaterThan)
+		if err != nil {
+			return nil, fmt.Errorf("invalid RoId for greater than filter: %w", err)
+		}
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+	}
+	if filter.RoidLessThan != "" {
+		roidInt, err := getInt64RoidFromDomainRoidString(filter.RoidLessThan)
+		if err != nil {
+			return nil, fmt.Errorf("invalid RoId for less than filter: %w", err)
+		}
+		dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+	}
+	if !filter.ExpiresBefore.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date < ?", filter.ExpiresBefore)
+	}
+	if !filter.ExpiresAfter.IsZero() {
+		dbQuery = dbQuery.Where("expiry_date > ?", filter.ExpiresAfter)
+	}
+	if !filter.CreatedBefore.IsZero() {
+		dbQuery = dbQuery.Where("created_at < ?", filter.CreatedBefore)
+	}
+	if !filter.CreatedAfter.IsZero() {
+		dbQuery = dbQuery.Where("created_at > ?", filter.CreatedAfter)
+	}
+
+	return dbQuery, nil
 }

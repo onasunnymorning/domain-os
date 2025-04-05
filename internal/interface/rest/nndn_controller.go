@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -26,6 +27,7 @@ func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService, handle
 		nndnRouter.GET("", controller.ListNNDNs)
 		nndnRouter.POST("", controller.CreateNNDN)
 		nndnRouter.DELETE(":name", controller.DeleteNNDNByName)
+		nndnRouter.GET("/count", controller.Count)
 	}
 
 	return controller
@@ -57,41 +59,85 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 	ctx.JSON(200, nndn)
 }
 
+// Count godoc
+// @Summary      Returns a count of the amount of NNDNs that match the filter.
+// @Description  Counts all NNDNs in the database that match the filter and returns a timestamped count including the filters that were used.
+// @Tags         nndn
+// @Accept       json
+// @Produce      json
+// @Param name_like query string false "Name like"
+// @Param reason_like query string false "Reason like"
+// @Param reason_equals query string false "Reason equals"
+// @Param tld_equals query string false "TLD equals"
+// @Param        filter  query     string  false  "Filter options for NNDNs"
+// @Success      200     {object}  response.CountResult "Count of NNDNs"
+// @Failure      400     {object}  gin.H "Error message when client fails to provide the correct filter"
+// @Failure      500     {object}  gin.H "Error message when server fails to process the count"
+// @Router       /nndn/count [get]
+func (ctrl *NNDNController) Count(ctx *gin.Context) {
+	result := response.CountResult{}
+
+	filter, err := getListNndnsFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	result.Filter = filter
+
+	result.Count, err = ctrl.nndnService.Count(ctx, filter)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, result)
+}
+
 // ListNNDNs godoc
 // @Summary List NNDNs
 // @Description List NNDNs
 // @Tags NNDNs
 // @Produce json
 // @Param cursor query string false "Cursor"
-// @Param page_size query int false "Page size"
+// @Param pagesize query int false "Page size"
+// @Param name_like query string false "Name like"
+// @Param reason_like query string false "Reason like"
+// @Param reason_equals query string false "Reason equals"
+// @Param tld_equals query string false "TLD equals"
 // @Success 200 {object} response.ListItemResult
 // @Failure 500
 // @Router /nndns [get]
 func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	resp := response.ListItemResult{}
 
-	pageSize, err := GetPageSize(ctx)
+	filter, err := getListNndnsFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
+
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	nndns, err := ctrl.nndnService.ListNNDNs(ctx, pageSize, pageCursor)
+	nndns, cursor, err := ctrl.nndnService.ListNNDNs(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	resp.Data = nndns
-	if len(nndns) > 0 {
-		resp.SetMeta(ctx, nndns[len(nndns)-1].Name.String(), len(nndns), pageSize)
-	}
+	resp.SetMeta(ctx, cursor, len(nndns), query.PageSize, query.Filter)
 
 	ctx.JSON(200, resp)
 }
@@ -165,4 +211,14 @@ func (ctrl *NNDNController) CreateNNDN(ctx *gin.Context) {
 	}
 
 	ctx.JSON(201, result)
+}
+
+func getListNndnsFilterFromContext(ctx *gin.Context) (queries.ListNndnsFilter, error) {
+	filter := queries.ListNndnsFilter{}
+	filter.NameLike = ctx.Query("name_like")
+	filter.ReasonLike = ctx.Query("reason_like")
+	filter.ReasonEquals = ctx.Query("reason_equals")
+	filter.TldEquals = ctx.Query("tld_equals")
+
+	return filter, nil
 }

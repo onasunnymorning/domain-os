@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -28,6 +29,7 @@ func NewPremiumController(e *gin.Engine, listService interfaces.PremiumListServi
 		premiumGroup.GET("lists/:name", ctrl.GetListByName)
 		premiumGroup.DELETE("lists/:name", ctrl.DeleteListByName)
 		premiumGroup.GET("lists", ctrl.ListPremiumLists)
+
 		premiumGroup.GET("labels", ctrl.ListPremiumLabels)
 		premiumGroup.POST("lists/:name/labels", ctrl.CreateLabel)
 		premiumGroup.GET("lists/:name/labels/:label/:currency", ctrl.GetLabelByLabelListAndCurrency)
@@ -100,37 +102,51 @@ func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 // @Description List all Premium Lists. There is no pagination on this endpoint.
 // @Tags Premiums
 // @Produce json
+// @Param pagesize query int false "Page Size"
+// @Param cursor query string false "Page Cursor"
+// @Param name_like query string false "Name like"
+// @Param ryid_equals query string false "RYID equals"
+// @Param created_before query string false "Created Before"
+// @Param created_after query string false "Created After"
 // @Success 200 {array} entities.PremiumList
 // @Failure 500
 // @Router /premium/lists [get]
 func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
+
 	// Prepare the response
 	response := response.ListItemResult{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	lists, err := ctrl.listService.List(ctx, pageSize, pageCursor)
+	// Get the filters from the query string
+	filter, err := getPremiumListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
+
+	lists, cursor, err := ctrl.listService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = lists
-	// Set the metadata if there are results only
-	if len(lists) > 0 {
-		response.SetMeta(ctx, lists[len(lists)-1].Name, len(lists), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(lists), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }
@@ -243,46 +259,85 @@ func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Contex
 
 // ListPremiumLabels godoc
 // @Summary List Premium Labels
-// @Description List Premium Labels.
+// @Description Pull Premium labels with optional filters. The results are paginated.
 // @Tags Premiums
 // @Produce json
+// @Param pagesize query int false "Page Size"
+// @Param cursor query string false "Page Cursor"
+// @Param label_like query string false "Label like"
+// @Param premium_list_name_equals query string false "Premium List Name equals"
+// @Param currency_equals query string false "Currency equals"
+// @Param class_equals query string false "Class equals"
+// @Param registration_amount_equals query string false "Registration Amount equals"
+// @Param renewal_amount_equals query string false "Renewal Amount equals"
+// @Param transfer_amount_equals query string false "Transfer Amount equals"
+// @Param restore_amount_equals query string false "Restore Amount equals"
 // @Success 200 {array} entities.PremiumLabel
 // @Failure 500
 // @Router /premium/labels [get]
 func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	// filter options
-	// this endpoint allows filtering by currency, listName and label
-	listName := ctx.Query("list")
-	currency := strings.ToUpper(ctx.Query("currency"))
-	label := ctx.Query("label")
+	// Get the filter from the query string
+	filter, err := getPremiumLabelFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
 
-	labels, err := ctrl.labelService.ListLabels(ctx, pageSize, pageCursor, listName, currency, label)
+	labels, cursor, err := ctrl.labelService.ListLabels(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = labels
-	// Set the metadata if there are results only
-	if len(labels) > 0 {
-		response.SetMeta(ctx, labels[len(labels)-1].Label.String(), len(labels), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(labels), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
+}
+
+func getPremiumLabelFilterFromContext(ctx *gin.Context) (queries.ListPremiumLabelsFilter, error) {
+	filter := queries.ListPremiumLabelsFilter{}
+
+	// Get the filter from the query string
+	filter.LabelLike = ctx.Query("label_like")
+	filter.PremiumListNameEquals = ctx.Query("premium_list_name_equals")
+	filter.CurrencyEquals = strings.ToUpper(ctx.Query("currency_equals"))
+	filter.ClassEquals = ctx.Query("class_equals")
+	filter.RegistrationAmountEquals = ctx.Query("registration_amount_equals")
+	filter.RenewalAmountEquals = ctx.Query("renewal_amount_equals")
+	filter.TransferAmountEquals = ctx.Query("transfer_amount_equals")
+	filter.RestoreAmountEquals = ctx.Query("restore_amount_equals")
+
+	return filter, nil
+}
+
+func getPremiumListFilterFromContext(ctx *gin.Context) (queries.ListPremiumListsFilter, error) {
+	filter := queries.ListPremiumListsFilter{}
+
+	// Get the filter from the query string
+	filter.NameLike = ctx.Query("name_like")
+	filter.RyIDEquals = ctx.Query("ryid_equals")
+	filter.CreatedBefore = ctx.Query("created_before")
+	filter.CreatedAfter = ctx.Query("created_after")
+
+	return filter, nil
 }

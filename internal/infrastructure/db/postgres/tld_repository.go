@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -68,20 +69,59 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 }
 
 // List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
-func (repo *GormTLDRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	dbtlds := []*TLD{}
+func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
+	// Get a query object ordering by name (PK used for cursor pagination)
+	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
 
-	err := repo.db.WithContext(ctx).Order("name ASC").Limit(pageSize).Find(&dbtlds, "name > ?", pageCursor).Error
-	if err != nil {
-		return nil, err
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
+	}
+	var err error
+	if params.Filter != nil {
+		// cast interface to ListTldsFilter
+		if filter, ok := params.Filter.(queries.ListTldsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			// Add filters if provided
+			dbQuery, err = setTldFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+
 	}
 
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
+
+	// Execute the query
+	dbtlds := []*TLD{}
+	err = dbQuery.Find(&dbtlds).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbtlds) == params.PageSize+1
+	if hasMore {
+		// Return only up to Pagesize
+		dbtlds = dbtlds[:params.PageSize]
+	}
+
+	// Map the DBTLDs to TLDs
 	tlds := make([]*entities.TLD, len(dbtlds))
 	for i, dbtld := range dbtlds {
 		tlds[i] = FromDBTLD(dbtld)
 	}
 
-	return tlds, nil
+	// Set the cursor to the last name in the list
+	var newCursor string
+	if hasMore {
+		newCursor = tlds[len(tlds)-1].Name.String()
+	}
+
+	return tlds, newCursor, nil
 }
 
 // Delete deletes a TLD from the database
@@ -113,11 +153,35 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 
 // Count returns the total number of TLDs in the database
 // TODO: add a filter to count only TLDs that match a certain criteria
-func (repo *GormTLDRepository) Count(ctx context.Context) (int64, error) {
+func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error) {
 	var count int64
-	err := repo.db.WithContext(ctx).Model(&TLD{}).Count(&count).Error
+	// create query object
+	dbQuery := repo.db.WithContext(ctx).Model(&TLD{})
+	// add filters if provided
+	dbQuery, err := setTldFilters(dbQuery, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	err = dbQuery.Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) (*gorm.DB, error) {
+
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+	if filter.TypeEquals != "" {
+		dbQuery = dbQuery.Where("type = ?", filter.TypeEquals)
+	}
+	if filter.RyIDEquals != "" {
+		dbQuery = dbQuery.Where("ry_id = ?", filter.RyIDEquals)
+	}
+
+	return dbQuery, nil
+
 }

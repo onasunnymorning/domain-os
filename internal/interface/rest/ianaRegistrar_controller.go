@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
@@ -47,6 +48,7 @@ func NewIANARegistrarController(e *gin.Engine, ianaRegistrarService interfaces.I
 // @Failure 500
 // @Router /ianaregistrars [get]
 func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -82,7 +84,7 @@ func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
 	// TODO: FIXME: If we are using a search string, will the nextlink include the search?
 	if len(ianaRegistrars) > 0 {
 		response.Data = ianaRegistrars
-		response.SetMeta(ctx, fmt.Sprintf("%d", ianaRegistrars[len(ianaRegistrars)-1].GurID), len(ianaRegistrars), pageSize)
+		response.SetMeta(ctx, fmt.Sprintf("%d", ianaRegistrars[len(ianaRegistrars)-1].GurID), len(ianaRegistrars), pageSize, query.Filter)
 	}
 	ctx.JSON(200, response)
 }

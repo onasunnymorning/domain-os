@@ -2,31 +2,40 @@ package response
 
 import (
 	"encoding/base64"
-	"strconv"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 )
 
 // ListItemResult is the struct that adds metadata to the list item query
 type ListItemResult struct {
-	Meta PaginationMetaData `json:"Meta"`
-	Data interface{}        `json:"Data"`
+	Meta PaginationMetaData
+	Data interface{}
 }
 
 // PaginationMetaData is the struct that conatins the metadata for the list item query
 type PaginationMetaData struct {
-	PageSize   int    `json:"PageSize"`
-	PageCursor string `json:"PageCursor"`
-	NextLink   string `json:"NextLink"`
+	PageSize   int
+	PageCursor string
+	NextLink   string
+	Filter     queries.ListItemsFilter
 }
 
 // SetCursor sets the cursor for the list item query
-func (r *ListItemResult) SetMeta(ctx *gin.Context, lastItem string, listLength, pageSize int) {
+func (r *ListItemResult) SetMeta(ctx *gin.Context, cursor string, listLength, pageSize int, filter queries.ListItemsFilter) {
 	r.Meta.PageSize = pageSize
-	// Only set the next cursor if we have a full page of data or if we have no more data
-	if listLength > 0 && listLength == r.Meta.PageSize {
-		r.Meta.PageCursor = base64.URLEncoding.EncodeToString([]byte(lastItem))
-		// FIXME: add provision for the searches that may occur on list endpoints
-		r.Meta.NextLink = "http://" + ctx.Request.Host + ctx.Request.URL.Path + "?pagesize=" + strconv.Itoa(r.Meta.PageSize) + "&cursor=" + r.Meta.PageCursor
+	r.Meta.Filter = filter
+	// Only set the cursor and nextlink if we have a non-empty cursor (meaning there is a next page)
+	if cursor != "" {
+		r.Meta.PageCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
+
+		// Create a NextLink that retrieves the next oage with the same filters applied
+		nextLink := fmt.Sprintf("http://%s%s?pagesize=%d&cursor=%s", ctx.Request.Host, ctx.Request.URL.Path, r.Meta.PageSize, r.Meta.PageCursor)
+		// If there is a filter, add it to the next link so it keeps filters the same on the next page
+		if filter != nil && filter.ToQueryParams() != "" {
+			nextLink += filter.ToQueryParams()
+		}
+		r.Meta.NextLink = nextLink
 	}
 }

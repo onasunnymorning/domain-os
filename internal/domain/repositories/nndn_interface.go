@@ -2,6 +2,8 @@ package repositories
 
 import (
 	"context"
+
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -20,5 +22,8 @@ type NNDNRepository interface {
 	DeleteNNDN(ctx context.Context, name string) error
 
 	// ListNNDNs returns a list of NNDN objects, with pagination support.
-	ListNNDNs(ctx context.Context, limit int, cursor string) ([]*entities.NNDN, error)
+	ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error)
+
+	// Count returns the number of NNDN objects in the repository optionally filtered by the provided query.
+	Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error)
 }

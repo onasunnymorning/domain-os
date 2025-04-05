@@ -8,6 +8,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -257,33 +258,42 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 // @Failure 500
 // @Router /contacts [get]
 func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the Filters
+	filter := queries.ListContactsFilter{}
+	filter.RoidGreaterThan = ctx.Query("roid_greater_than")
+	filter.RoidLessThan = ctx.Query("roid_less_than")
+	filter.IdLike = ctx.Query("id_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.ClidEquals = ctx.Query("clid_equals")
+	query.Filter = filter
+
 	// Get the contacts from the service
-	contacts, err := ctrl.contactService.ListContacts(ctx, pageSize, pageCursor)
+	contacts, cursor, err := ctrl.contactService.ListContacts(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the response metadata
 	response.Data = contacts
-	if len(contacts) > 0 {
-		response.SetMeta(ctx, contacts[len(contacts)-1].RoID.String(), len(contacts), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(contacts), query.PageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)

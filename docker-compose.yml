@@ -34,7 +34,7 @@ services:
   msg-broker:
     image: rabbitmq:3.13
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [full]
     healthcheck:
       test: ["CMD-SHELL", "rabbitmqctl node_health_check"]
       interval: 15s
@@ -118,16 +118,16 @@ services:
     image: "geapex/domain-os:${BRANCH}"
     restart: always
     profiles: [essential, full]
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]
-      interval: 3s
-      retries: 5
-      start_period: 10s
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]
+    #   interval: 3s
+    #   retries: 5
+    #   start_period: 10s
     depends_on:
       db:
         condition: service_healthy
-      msg-broker:
-        condition: service_healthy
+      # msg-broker:
+      #   condition: service_healthy
     develop:
       watch:
         - action: rebuild

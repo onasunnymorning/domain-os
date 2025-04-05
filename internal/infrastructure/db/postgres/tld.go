@@ -9,7 +9,7 @@ import (
 // TLD is a GORM struct representing a TLD in the database
 type TLD struct {
 	Name              string `gorm:"primary_key"`
-	Type              string
+	Type              string `gorm:"index"`
 	UName             string
 	AllowEscrowImport bool
 	EnableDNS         bool

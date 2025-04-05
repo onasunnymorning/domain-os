@@ -3,6 +3,7 @@ package rest
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
@@ -31,27 +32,39 @@ func NewSpec5Controller(e *gin.Engine, spec5Service interfaces.Spec5Service, han
 // @Description List Spec5 labels from our internal repository. If you need to update the Spec5 label list, please use the /sync endpoint.
 // @Tags Spec5Labels
 // @Produce json
+// @Param pagesize query int false "Page size"
+// @Param cursor query string false "Page cursor"
+// @Param label_like query string false "Label like"
+// @Param type_equals query string false "Type equals"
 // @Success 200 {array} entities.Spec5Label
 // @Failure 500
 // @Router /spec5labels [get]
 func (ctrl *Spec5Controller) List(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	// Get the filters from the query string
+	filter, err := getSpec5FilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = filter
 	// Get the list of Spec5Labels
-	spec5Labels, err := ctrl.Spec5Service.List(ctx, pageSize, pageCursor)
+	spec5Labels, cursor, err := ctrl.Spec5Service.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -59,9 +72,17 @@ func (ctrl *Spec5Controller) List(ctx *gin.Context) {
 
 	// Set the meta and data if there are results only
 	response.Data = spec5Labels
-	if len(spec5Labels) > 0 {
-		response.SetMeta(ctx, spec5Labels[len(spec5Labels)-1].Label, len(spec5Labels), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(spec5Labels), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
+}
+
+// getSpec5FilterFromContext gets the filter from the context
+func getSpec5FilterFromContext(ctx *gin.Context) (queries.ListSpec5LabelsFilter, error) {
+	filter := queries.ListSpec5LabelsFilter{}
+	// Get the filter from the query string
+	filter.LabelLike = ctx.Query("label_like")
+	filter.TypeEquals = ctx.Query("type_equals")
+
+	return filter, nil
 }
