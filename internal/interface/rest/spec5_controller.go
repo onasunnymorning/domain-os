@@ -32,6 +32,10 @@ func NewSpec5Controller(e *gin.Engine, spec5Service interfaces.Spec5Service, han
 // @Description List Spec5 labels from our internal repository. If you need to update the Spec5 label list, please use the /sync endpoint.
 // @Tags Spec5Labels
 // @Produce json
+// @Param pagesize query int false "Page size"
+// @Param cursor query string false "Page cursor"
+// @Param label_like query string false "Label like"
+// @Param type_equals query string false "Type equals"
 // @Success 200 {array} entities.Spec5Label
 // @Failure 500
 // @Router /spec5labels [get]

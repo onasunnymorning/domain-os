@@ -102,6 +102,12 @@ func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 // @Description List all Premium Lists. There is no pagination on this endpoint.
 // @Tags Premiums
 // @Produce json
+// @Param pagesize query int false "Page Size"
+// @Param cursor query string false "Page Cursor"
+// @Param name_like query string false "Name like"
+// @Param ryid_equals query string false "RYID equals"
+// @Param created_before query string false "Created Before"
+// @Param created_after query string false "Created After"
 // @Success 200 {array} entities.PremiumList
 // @Failure 500
 // @Router /premium/lists [get]
