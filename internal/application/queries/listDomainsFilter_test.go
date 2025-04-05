@@ -25,7 +25,7 @@ func TestToQueryParams_FullFilter(t *testing.T) {
 		NameLike:        "example",
 		NameEquals:      "example.com",
 		TldEquals:       "com",
-		ClIDEquals:      "clid_abc",
+		ClidEquals:      "clid_abc",
 		ExpiresBefore:   expiresBefore,
 		ExpiresAfter:    expiresAfter,
 		CreatedBefore:   createdBefore,

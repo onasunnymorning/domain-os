@@ -1315,7 +1315,7 @@ func getDomainListFilterFromContext(ctx *gin.Context) (*queries.ListDomainsFilte
 	var err error
 	filter := &queries.ListDomainsFilter{}
 	// set filters
-	filter.ClIDEquals = ctx.Query("clid_equals")
+	filter.ClidEquals = ctx.Query("clid_equals")
 	filter.TldEquals = ctx.Query("tld_equals")
 	filter.NameEquals = ctx.Query("name_equals")
 	filter.NameLike = ctx.Query("name_like")
