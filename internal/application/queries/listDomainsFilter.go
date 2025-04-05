@@ -14,8 +14,8 @@ type ListDomainsFilter struct {
 	NameEquals string
 	// TldEquals does an equals search on the Tld
 	TldEquals string
-	// ClIDEquals does an equals search on the ClID
-	ClIDEquals string
+	// ClidEquals does an equals search on the ClID
+	ClidEquals string
 	// ExpiresBefore does a less than search on the ExpiryDate
 	ExpiresBefore time.Time
 	// ExpiresAfter does a greater than search on the ExpiryDate
@@ -44,8 +44,8 @@ func (df ListDomainsFilter) ToQueryParams() string {
 	if df.TldEquals != "" {
 		queryString += "&tld_equals=" + df.TldEquals
 	}
-	if df.ClIDEquals != "" {
-		queryString += "&clid_equals=" + df.ClIDEquals
+	if df.ClidEquals != "" {
+		queryString += "&clid_equals=" + df.ClidEquals
 	}
 	if !df.ExpiresBefore.IsZero() {
 		queryString += "&expires_before=" + df.ExpiresBefore.Format(time.RFC3339)

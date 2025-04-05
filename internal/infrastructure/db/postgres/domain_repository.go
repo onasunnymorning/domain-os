@@ -382,8 +382,8 @@ func getInt64RoidFromDomainRoidString(roidString string) (int64, error) {
 
 func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) (*gorm.DB, error) {
 
-	if filter.ClIDEquals != "" {
-		dbQuery = dbQuery.Where("cl_id = ?", filter.ClIDEquals)
+	if filter.ClidEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", filter.ClidEquals)
 	}
 	if filter.TldEquals != "" {
 		dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)

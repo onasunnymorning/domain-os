@@ -581,12 +581,12 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().Equal(0, len(domains))
 
 	// Filter by ClID Equals
-	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ClIDEquals: "domaintestRar"}})
+	domains, _, err = repo.ListDomains(context.Background(), queries.ListItemsQuery{PageSize: 25, Filter: queries.ListDomainsFilter{ClidEquals: "domaintestRar"}})
 	s.Require().NoError(err)
 	s.Require().Equal(3, len(domains))
 
 	// Count with same filters
-	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{ClIDEquals: "domaintestRar"})
+	count, err = repo.Count(context.Background(), queries.ListDomainsFilter{ClidEquals: "domaintestRar"})
 	s.Require().NoError(err)
 	s.Require().Equal(int64(3), count)
 
