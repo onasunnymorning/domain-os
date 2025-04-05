@@ -61,9 +61,7 @@ func (ctrl *Spec5Controller) List(ctx *gin.Context) {
 
 	// Set the meta and data if there are results only
 	response.Data = spec5Labels
-	if len(spec5Labels) > 0 {
-		response.SetMeta(ctx, spec5Labels[len(spec5Labels)-1].Label, len(spec5Labels), pageSize, query.Filter)
-	}
+	response.SetMeta(ctx, spec5Labels[len(spec5Labels)-1].Label, len(spec5Labels), pageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }

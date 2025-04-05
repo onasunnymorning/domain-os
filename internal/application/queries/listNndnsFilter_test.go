@@ -2,7 +2,7 @@ package queries
 
 import "testing"
 
-func TestToQueryParams(t *testing.T) {
+func TestToNNDNQueryParams(t *testing.T) {
 	tests := []struct {
 		name     string
 		filter   ListNndnsFilter
