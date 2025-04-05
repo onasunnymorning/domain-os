@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -20,6 +21,6 @@ func NewSpec5Service(spec5Repo repositories.Spec5LabelRepository) *Spec5Service 
 }
 
 // ListAll lists all the Spec5Labels
-func (s *Spec5Service) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Spec5Label, error) {
-	return s.spec5Repository.List(ctx, pageSize, pageCursor)
+func (s *Spec5Service) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Spec5Label, string, error) {
+	return s.spec5Repository.List(ctx, params)
 }
