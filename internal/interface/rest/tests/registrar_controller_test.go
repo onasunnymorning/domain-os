@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -95,6 +96,8 @@ var _ = Describe("RegistrarController", func() {
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			res := response.ListItemResult{}
+			filter := queries.ListRegistrarsFilter{}
+			res.Meta.Filter = &filter
 			err = json.Unmarshal(resp.Body.Bytes(), &res)
 			Expect(err).NotTo(HaveOccurred())
 			itemSlice, ok := res.Data.([]interface{})

@@ -16,7 +16,7 @@ type ListItemResult struct {
 
 // PaginationMetaData is the struct that conatins the metadata for the list item query
 type PaginationMetaData struct {
-	PageSize   itn
+	PageSize   int
 	PageCursor string
 	NextLink   string
 	Filter     queries.ListItemsFilter
