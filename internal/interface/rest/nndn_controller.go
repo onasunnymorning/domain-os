@@ -99,7 +99,7 @@ func (ctrl *NNDNController) Count(ctx *gin.Context) {
 // @Tags NNDNs
 // @Produce json
 // @Param cursor query string false "Cursor"
-// @Param page_size query int false "Page size"
+// @Param pagesize query int false "Page size"
 // @Param name_like query string false "Name like"
 // @Param reason_like query string false "Reason like"
 // @Param reason_equals query string false "Reason equals"
