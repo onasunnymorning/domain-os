@@ -2,9 +2,9 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -117,40 +117,157 @@ func (s *RySuite) TestListRos() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRy2)
 
-	ry3, _ := entities.NewRegistryOperator("abc", "ABC Inc.", "me@abx.com")
+	ry3, _ := entities.NewRegistryOperator("abc", "ABC LLC", "me@abx.com")
 	createdRy3, err := repo.Create(context.Background(), ry3)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRy3)
 
-	ros, err := repo.List(context.Background(), 2, "")
+	ros, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+	})
 	s.Require().NoError(err)
 	s.Require().Len(ros, 2)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
-	for _, ro := range ros {
-		fmt.Println(ro.Name)
-	}
 	s.Require().GreaterOrEqual(len(ros), 3)
 
 	err = repo.DeleteByRyID(context.Background(), "ra-dix")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 2)
 
 	err = repo.DeleteByRyID(context.Background(), "xyz")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 1)
 
 	err = repo.DeleteByRyID(context.Background(), "abc")
 	s.Require().NoError(err)
 
-	ros, err = repo.List(context.Background(), 25, "")
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+	})
 	s.Require().NoError(err)
 	s.Require().GreaterOrEqual(len(ros), 0)
+
+}
+
+func (s *RySuite) TestListRosFilters() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGORMRegistryOperatorRepository(tx)
+
+	ry1, err := entities.NewRegistryOperator("ra-dix-listro", "Radix Inc.", "s@radix.com")
+	s.Require().NoError(err)
+	createdRy1, err := repo.Create(context.Background(), ry1)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy1)
+
+	ry2, err := entities.NewRegistryOperator("xyz-listro", "XYZ Inc.", "d@xyz.com")
+	s.Require().NoError(err)
+	createdRy2, err := repo.Create(context.Background(), ry2)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy2)
+
+	ry3, err := entities.NewRegistryOperator("abc-listro", "ABC LLC", "me@abx.com")
+	s.Require().NoError(err)
+	createdRy3, err := repo.Create(context.Background(), ry3)
+	s.Require().NoError(err)
+	s.Require().NotNil(createdRy3)
+
+	// Pagesize = 2
+	ros, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter: queries.ListRegistryOperatorsFilter{
+			RyidLike: "listro",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+	s.Require().NotEmpty(ros[1].RyID)
+	s.Require().NotEqual("", cursor)
+	s.Require().Equal(ros[1].RyID.String(), cursor)
+
+	// Pagesize = 2, cursor set
+	ros, newCursor, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   2,
+		PageCursor: cursor,
+		Filter: queries.ListRegistryOperatorsFilter{
+			RyidLike: "listro",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Empty(newCursor)
+
+	// Test filtering RyIDLike
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListRegistryOperatorsFilter{
+			RyidLike: "dix-listro",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Equal(ros[0].RyID.String(), "ra-dix-listro")
+
+	// Count with same filter
+	count, err := repo.Count(context.Background(), queries.ListRegistryOperatorsFilter{
+		RyidLike: "dix-listro",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
+	// Test filtering NameLike
+	ros, _, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 25,
+		Filter: queries.ListRegistryOperatorsFilter{
+			EmailLike: "xyz",
+			RyidLike:  "listro",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 1)
+	s.Require().Equal(ros[0].Email, "d@xyz.com")
+
+	// Count with same filter
+	count, err = repo.Count(context.Background(), queries.ListRegistryOperatorsFilter{
+		EmailLike: "xyz",
+		RyidLike:  "listro",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), count)
+
+	// Test filtering NameLike and pagesize
+	ros, newCursor, err = repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 2,
+		Filter: queries.ListRegistryOperatorsFilter{
+			NameLike: "Inc",
+			RyidLike: "listro",
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(ros, 2)
+	s.Require().Empty(newCursor)
+
+	err = repo.DeleteByRyID(context.Background(), "ra-dix-listro")
+	s.Require().NoError(err)
+
+	err = repo.DeleteByRyID(context.Background(), "xyz-listro")
+	s.Require().NoError(err)
+
+	err = repo.DeleteByRyID(context.Background(), "abc-listro")
+	s.Require().NoError(err)
+
 }

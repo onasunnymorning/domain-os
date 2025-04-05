@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -53,11 +54,16 @@ func (svc *NNDNService) GetNNDNByName(ctx context.Context, name string) (*entiti
 }
 
 // ListNNDNs retrieves a list of NNDNs with pagination support
-func (svc *NNDNService) ListNNDNs(ctx context.Context, pageSize int, pageCursor string) ([]*entities.NNDN, error) {
-	return svc.nndnRepository.ListNNDNs(ctx, pageSize, pageCursor)
+func (svc *NNDNService) ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error) {
+	return svc.nndnRepository.ListNNDNs(ctx, params)
 }
 
 // DeleteNNDNByName deletes an NNDN by its name
 func (svc *NNDNService) DeleteNNDNByName(ctx context.Context, name string) error {
 	return svc.nndnRepository.DeleteNNDN(ctx, name)
+}
+
+// Count returns the number of NNDNs in the repository optionally filtered by the provided query
+func (svc *NNDNService) Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error) {
+	return svc.nndnRepository.Count(ctx, filter)
 }

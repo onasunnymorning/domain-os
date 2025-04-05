@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -108,23 +109,90 @@ func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, name string) error 
 	return result.Error
 }
 
-func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, limit int, cursor string) ([]*entities.NNDN, error) {
+func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error) {
+	dbQuery := r.db.WithContext(ctx).Model(&NNDN{})
+	dbQuery, err := setNNDNFilters(dbQuery, filter)
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	err = dbQuery.Count(&count).Error
+	return count, err
+}
+
+func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error) {
+	// Get a query object ordering by name (PK used for cursor pagination)
+	dbQuery := r.db.WithContext(ctx).Order("Name ASC")
+
+	// Add cursor pagination if a cursor is provided
+	if params.PageCursor != "" {
+		dbQuery = dbQuery.Where("Name > ?", params.PageCursor)
+	}
+
+	// Add Filters if provided
+	var err error
+	if params.Filter != nil {
+		// cast interface to ListNNDNsFilter
+		if filter, ok := params.Filter.(queries.ListNndnsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			// Add filters if provided
+			dbQuery, err = setNNDNFilters(dbQuery, filter)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the limit to determine if there are more results
+
+	// Execute the query
 	var gormNNDNs []*NNDN
-	query := r.db.WithContext(ctx).Limit(limit)
-
-	// If a cursor is provided, use it to paginate
-	if cursor != "" {
-		query = query.Where("Name > ?", cursor)
+	err = dbQuery.Find(&gormNNDNs).Error
+	if err != nil {
+		return nil, "", err
 	}
 
-	result := query.Order("Name ASC").Find(&gormNNDNs)
-	if result.Error != nil {
-		return nil, result.Error
+	// Check if there are more results
+	hasMore := len(gormNNDNs) == params.PageSize+1
+	if hasMore {
+		// Return only up to the limit
+		gormNNDNs = gormNNDNs[:params.PageSize]
 	}
 
+	// Map the GormNNDNs to NNDNs}
 	nndns := make([]*entities.NNDN, len(gormNNDNs))
 	for i, gNNDN := range gormNNDNs {
 		nndns[i] = gNNDN.toNNDN()
 	}
-	return nndns, nil
+
+	// Set the cursor to the last name in the list
+	var newCursor string
+	if hasMore {
+		newCursor = nndns[len(nndns)-1].Name.String()
+	}
+
+	return nndns, newCursor, nil
+}
+
+func setNNDNFilters(dbQuery *gorm.DB, filter queries.ListNndnsFilter) (*gorm.DB, error) {
+
+	if filter.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+filter.NameLike+"%")
+	}
+
+	if filter.TldEquals != "" {
+		dbQuery = dbQuery.Where("tld_name = ?", filter.TldEquals)
+	}
+
+	if filter.ReasonEquals != "" {
+		dbQuery = dbQuery.Where("reason = ?", filter.ReasonEquals)
+	}
+
+	if filter.ReasonLike != "" {
+		dbQuery = dbQuery.Where("reason ILIKE ?", "%"+filter.ReasonLike+"%")
+	}
+
+	return dbQuery, nil
 }

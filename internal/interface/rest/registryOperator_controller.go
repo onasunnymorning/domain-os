@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -173,33 +174,40 @@ func (ctrl *RegistryOperatorController) DeleteByRyID(ctx *gin.Context) {
 // @Failure 500
 // @Router /registry-operators [get]
 func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	ros, err := ctrl.ryService.List(ctx, pageSize, pageCursor)
+	// Add filters if provided
+	filter := queries.ListRegistryOperatorsFilter{}
+	filter.RyidLike = ctx.Query("ryid_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.NameLike = ctx.Query("name_like")
+	query.Filter = filter
+
+	// List the Registry Operators
+	ros, cursor, err := ctrl.ryService.List(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Set the response Data and Meta
 	response.Data = ros
-	// Set the metadata if there are results only
-	if len(ros) > 0 {
-		response.SetMeta(ctx, ros[len(ros)-1].RyID.String(), len(ros), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(ros), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
 }

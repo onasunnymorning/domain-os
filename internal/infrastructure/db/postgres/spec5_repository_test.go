@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -68,7 +69,11 @@ func (s *Spec5Suite) TestReadAll() {
 	err := repo.UpdateAll(context.Background(), labels)
 	require.NoError(s.T(), err)
 
-	readLabels, err := repo.List(context.Background(), 25, "")
+	readLabels, cursor, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   25,
+		PageCursor: "",
+	})
+	require.Equal(s.T(), "", cursor)
 	require.NoError(s.T(), err)
 	for i, label := range labels {
 		require.Equal(s.T(), label.Label, readLabels[i].Label)

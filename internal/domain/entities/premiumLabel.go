@@ -14,6 +14,7 @@ var (
 
 // PremiumLabel represents a premium label entity
 type PremiumLabel struct {
+	ID                 int64
 	Label              Label
 	PremiumListName    string
 	RegistrationAmount uint64

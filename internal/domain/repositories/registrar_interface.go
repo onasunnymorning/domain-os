@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/mock"
 )
@@ -15,7 +16,7 @@ type RegistrarRepository interface {
 	BulkCreate(ctx context.Context, cmds []*entities.Registrar) error
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
-	List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error)
+	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error)
 	Count(ctx context.Context) (int64, error)
 	IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error)
 }
@@ -62,9 +63,9 @@ func (m *MockRegistrarRepository) Delete(ctx context.Context, clid string) error
 }
 
 // List lists all registrars
-func (m *MockRegistrarRepository) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistrarListItem, error) {
-	args := m.Called(ctx, pagesize, pagecursor)
-	return args.Get(0).([]*entities.RegistrarListItem), args.Error(1)
+func (m *MockRegistrarRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).([]*entities.RegistrarListItem), "", args.Error(1)
 }
 
 // Count counts the number of registrars

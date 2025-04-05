@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 )
@@ -71,6 +72,6 @@ func (s *RegistryOperatorService) DeleteByRyID(ctx context.Context, ryid string)
 }
 
 // List retrieves RegistryOperators
-func (s *RegistryOperatorService) List(ctx context.Context, pagesize int, pagecursor string) ([]*entities.RegistryOperator, error) {
-	return s.ryRepo.List(ctx, pagesize, pagecursor)
+func (s *RegistryOperatorService) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistryOperator, string, error) {
+	return s.ryRepo.List(ctx, params)
 }

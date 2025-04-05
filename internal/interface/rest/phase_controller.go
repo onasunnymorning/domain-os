@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -184,6 +185,7 @@ func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases [get]
 func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -209,7 +211,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 	// Set the Data and metadata if there are results only
 	response.Data = phases
 	if len(phases) > 0 {
-		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)
@@ -225,6 +227,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/active [get]
 func (ctrl *PhaseController) ListActivePhasesPerTLD(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -250,7 +253,7 @@ func (ctrl *PhaseController) ListActivePhasesPerTLD(ctx *gin.Context) {
 	// Set the Data and metadata if there are results only
 	response.Data = phases
 	if len(phases) > 0 {
-		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)
@@ -265,6 +268,7 @@ func (ctrl *PhaseController) ListActivePhasesPerTLD(ctx *gin.Context) {
 // @Failure 500
 // @Router /phases/active/ga [get]
 func (ctrl *PhaseController) ListActiveGAPhases(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
@@ -290,7 +294,7 @@ func (ctrl *PhaseController) ListActiveGAPhases(ctx *gin.Context) {
 	// Set the Data and metadata if there are results only
 	response.Data = phases
 	if len(phases) > 0 {
-		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize)
+		response.SetMeta(ctx, phases[len(phases)-1].Name.String(), len(phases), pageSize, query.Filter)
 	}
 
 	ctx.JSON(200, response)

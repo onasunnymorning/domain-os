@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"golang.org/x/net/context"
@@ -55,8 +56,8 @@ func (repo *MocktldRepository) GetByName(ctx context.Context, name string, prelo
 }
 
 // List returns a list of all TLDs
-func (repo *MocktldRepository) List(ctx context.Context, pageSize int, pageCursor string) ([]*entities.TLD, error) {
-	return repo.Tlds, nil
+func (repo *MocktldRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
+	return repo.Tlds, "", nil
 }
 
 // DeleteByName deletes a TLD by name
@@ -71,7 +72,7 @@ func (repo *MocktldRepository) DeleteByName(ctx context.Context, name string) er
 }
 
 // Count returns the number of TLDs
-func (repo *MocktldRepository) Count(ctx context.Context) (int64, error) {
+func (repo *MocktldRepository) Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error) {
 	return int64(len(repo.Tlds)), nil
 }
 
@@ -175,7 +176,7 @@ func TestTLDService_ListTLDs(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), 100, "")
+	tlds, _, err := service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -216,7 +217,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err := service.ListTLDs(context.Background(), 100, "")
+	tlds, _, err := service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -231,7 +232,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// List all TLDs
-	tlds, err = service.ListTLDs(context.Background(), 100, "")
+	tlds, _, err = service.ListTLDs(context.Background(), queries.ListItemsQuery{PageSize: 100})
 	if err != nil {
 		t.Error(err)
 	}
@@ -266,7 +267,7 @@ func TestTLDService_CountTLDs(t *testing.T) {
 	}
 
 	// Count all TLDs
-	count, err := service.CountTLDs(context.Background())
+	count, err := service.CountTLDs(context.Background(), queries.ListTldsFilter{})
 	if err != nil {
 		t.Error(err)
 	}

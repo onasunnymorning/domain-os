@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -139,33 +140,41 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts [get]
 func (ctrl *HostController) ListHosts(ctx *gin.Context) {
+	query := queries.ListItemsQuery{}
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Get the filter from the query string
+	filter := queries.ListHostsFilter{
+		NameLike:        ctx.Query("name_like"),
+		ClidEquals:      ctx.Query("clid_equals"),
+		RoidGreaterThan: ctx.Query("roid_greater_than"),
+		RoidLessThan:    ctx.Query("roid_less_than"),
+	}
+	query.Filter = filter
+
 	// Get the contacts from the service
-	hosts, err := ctrl.hostService.ListHosts(ctx, pageSize, pageCursor)
+	hosts, cursor, err := ctrl.hostService.ListHosts(ctx, query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	response.Data = hosts
-	if len(hosts) > 0 {
-		response.SetMeta(ctx, hosts[len(hosts)-1].RoID.String(), len(hosts), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(hosts), query.PageSize, query.Filter)
 
 	// Return the response
 	ctx.JSON(200, response)

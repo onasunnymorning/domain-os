@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 )
 
@@ -15,7 +16,7 @@ type HostService interface {
 	// GetHostByNameAndClID gets a host by its name and clid
 	GetHostByNameAndClID(ctx context.Context, name, clid string) (*entities.Host, error)
 	DeleteHostByRoID(ctx context.Context, roidString string) error
-	ListHosts(ctx context.Context, pageSize int, cursor string) ([]*entities.Host, error)
+	ListHosts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error)
 	AddHostAddress(ctx context.Context, roidString, ip string) (*entities.Host, error)
 	RemoveHostAddress(ctx context.Context, roidString, ip string) (*entities.Host, error)
 	// BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well

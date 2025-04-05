@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/stretchr/testify/mock"
 )
@@ -15,12 +16,12 @@ type DomainRepository interface {
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
-	GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error)
+	GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 	ListPurgeableDomains(ctx context.Context, after time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
@@ -66,9 +67,9 @@ func (m *MockDomainRepository) DeleteDomainByName(ctx context.Context, name stri
 }
 
 // ListDomains lists all domains
-func (m *MockDomainRepository) ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error) {
-	args := m.Called(ctx, pageSize, cursor)
-	return args.Get(0).([]*entities.Domain), args.Error(1)
+func (m *MockDomainRepository) ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).([]*entities.Domain), "", args.Error(1)
 }
 
 // AddHostToDomain adds a host to a domain
@@ -84,8 +85,8 @@ func (m *MockDomainRepository) RemoveHostFromDomain(ctx context.Context, domRoid
 }
 
 // GetActiveDomainsWithHosts retrieves active domains with hosts
-func (m *MockDomainRepository) GetActiveDomainsWithHosts(ctx context.Context, tld string) ([]dns.RR, error) {
-	args := m.Called(ctx, tld)
+func (m *MockDomainRepository) GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
+	args := m.Called(ctx, params)
 	return args.Get(0).([]dns.RR), args.Error(1)
 }
 
@@ -96,7 +97,7 @@ func (m *MockDomainRepository) GetActiveDomainGlue(ctx context.Context, tld stri
 }
 
 // Count counts the number of domains
-func (m *MockDomainRepository) Count(ctx context.Context) (int64, error) {
+func (m *MockDomainRepository) Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }

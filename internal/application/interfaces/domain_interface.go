@@ -14,7 +14,7 @@ type DomainService interface {
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
 	DeleteDomainByName(ctx context.Context, name string) error
-	ListDomains(ctx context.Context, pageSize int, cursor string) ([]*entities.Domain, error)
+	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, name string, hostRoID string, force bool) error
 	AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, force bool) error
@@ -22,7 +22,7 @@ type DomainService interface {
 	RemoveHostFromDomain(ctx context.Context, name string, hostRoID string) error
 	RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error
 	DropCatchDomain(ctx context.Context, name string, dropcatch bool) error
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, q *queries.ExpiringDomainsQuery) (int64, error)
 	ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error)
@@ -54,7 +54,7 @@ type DomainService interface {
 	PurgeDomain(ctx context.Context, domainName string) error
 
 	// These are DNS services
-	GetNSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
+	GetNSRecordsPerTLD(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetGlueRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error)
 
 	// Status Manipulation

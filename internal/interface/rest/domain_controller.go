@@ -126,14 +126,8 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		return
 	}
 
-	// Get the Event from the context
-	event := GetEventFromContext(ctx)
-	// Set the event details.command
-	event.Details.Command = req
-
 	domain, err := ctrl.domainService.Create(ctx, &req)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -141,10 +135,6 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Set the event details.after
-	event.Details.After = domain
-	ctx.Set("event", event)
 
 	ctx.JSON(201, domain)
 }
@@ -155,7 +145,6 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 // @Description If any of the domains fails to create, the operation is aborted (no domains are created) and the error is returned.
 // @Description Hosts are not created or associated with the domains.
 // @Description Hosts, Registrars and Contacts must exist before calling this method or the operation will fail if a reference is not found.
-// @Description It logs a domain lifecycle event for the bulk operation.
 // @Description It returns a 201 status code if all domains are created successfully with no body.
 // @Tags Domains
 // @Accept json
@@ -231,6 +220,16 @@ func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 // @Produce json
 // @Param pageSize query int false "Page Size"
 // @Param cursor query string false "Cursor"
+// @Param clid_equals query string false "ClID Equals"
+// @Param tld_equals query string false "TLD Equals"
+// @Param name_equals query string false "Name Equals"
+// @Param name_like query string false "Name Like"
+// @Param roid_greater_than query string false "RoID Greater Than"
+// @Param roid_less_than query string false "RoID Less Than"
+// @Param created_after query string false "Created After"
+// @Param created_before query string false "Created Before"
+// @Param expires_after query string false "Expires After"
+// @Param expires_before query string false "Expires Before"
 // @Success 200 {array} response.ListItemResult
 // @Failure 400
 // @Failure 500
@@ -239,31 +238,44 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 	var err error
 	// Prepare the response
 	response := response.ListItemResult{}
+	// Prepare the query
+	query := queries.ListItemsQuery{}
+
 	// Get the pagesize from the query string
-	pageSize, err := GetPageSize(ctx)
+	query.PageSize, err = GetPageSize(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 	// Get the cursor from the query string
-	pageCursor, err := GetAndDecodeCursor(ctx)
+	query.PageCursor, err = GetAndDecodeCursor(ctx)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Get the list of domains
-	domains, err := ctrl.domainService.ListDomains(ctx, pageSize, pageCursor)
+	// Set the Filters
+	filter, err := getDomainListFilterFromContext(ctx)
 	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	query.Filter = *filter
+
+	// Get the list of domains
+	domains, cursor, err := ctrl.domainService.ListDomains(ctx, query)
+	if err != nil {
+		if errors.Is(err, entities.ErrInvalidRoid) {
+			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Set the response MetaData
 	response.Data = domains
-	if len(domains) > 0 {
-		response.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
-	}
+	response.SetMeta(ctx, cursor, len(domains), query.PageSize, query.Filter)
 
 	// Return the Response
 	ctx.JSON(200, response)
@@ -765,7 +777,7 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 
 // RestoreDomain godoc
 // @Summary Restore a domain
-// @Description Restore a domain. It marks the domain as pendingRestore and fires off an event. The domain will be restored by the registry when the restore event is processed.
+// @Description Restore a domain. It marks the domain as pendingRestore, this relies on a downstream process to process the restore. The operation will fail with error if the domain is not in a state that allows restoration.
 // @Tags Domains
 // @Produce json
 // @Param domain path string true "Domain Name"
@@ -849,12 +861,28 @@ func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
 // @Summary Count domains
 // @Description Count domains
 // @Tags Domains
+// @Param clid_equals query string false "ClID Equals"
+// @Param tld_equals query string false "TLD Equals"
+// @Param name_equals query string false "Name Equals"
+// @Param name_like query string false "Name Like"
+// @Param roid_greater_than query string false "RoID Greater Than"
+// @Param roid_less_than query string false "RoID Less Than"
+// @Param created_after query string false "Created After"
+// @Param created_before query string false "Created Before"
+// @Param expires_after query string false "Expires After"
+// @Param expires_before query string false "Expires Before"
 // @Produce json
 // @Success 200 {object} response.CountResult
 // @Failure 500
 // @Router /domains/count [get]
 func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
-	count, err := ctrl.domainService.Count(ctx)
+	filter, err := getDomainListFilterFromContext(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	count, err := ctrl.domainService.Count(ctx, *filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -864,6 +892,7 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 		Count:      count,
 		ObjectType: "Domain",
 		Timestamp:  time.Now().UTC(),
+		Filter:     filter,
 	})
 }
 
@@ -925,7 +954,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	// Set the response MetaData
 	resp.Data = expiryItems
 	if len(domains) > 0 {
-		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize, queries.ListDomainsFilter{})
 	}
 
 	// Return the Response
@@ -1084,7 +1113,7 @@ func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
 	// Set the response MetaData
 	resp.Data = restoredDomains
 	if len(domains) > 0 {
-		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize, queries.ListDomainsFilter{})
 	}
 
 	// Return the Response
@@ -1149,7 +1178,7 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 	// Set the response MetaData
 	resp.Data = expiryItems
 	if len(domains) > 0 {
-		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize)
+		resp.SetMeta(ctx, domains[len(domains)-1].RoID.String(), len(domains), pageSize, queries.ListDomainsFilter{})
 	}
 
 	// Return the Response
@@ -1280,4 +1309,41 @@ func (ctrl *DomainController) UnSetStatus(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, dom)
+}
+
+func getDomainListFilterFromContext(ctx *gin.Context) (*queries.ListDomainsFilter, error) {
+	var err error
+	filter := &queries.ListDomainsFilter{}
+	// set filters
+	filter.ClidEquals = ctx.Query("clid_equals")
+	filter.TldEquals = ctx.Query("tld_equals")
+	filter.NameEquals = ctx.Query("name_equals")
+	filter.NameLike = ctx.Query("name_like")
+	filter.RoidGreaterThan = ctx.Query("roid_greater_than")
+	filter.RoidLessThan = ctx.Query("roid_less_than")
+	if ctx.Query("created_after") != "" {
+		filter.CreatedAfter, err = time.Parse(time.RFC3339, ctx.Query("created_after"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid created_after date: "), err)
+		}
+	}
+	if ctx.Query("created_before") != "" {
+		filter.CreatedBefore, err = time.Parse(time.RFC3339, ctx.Query("created_before"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid created_before date: "), err)
+		}
+	}
+	if ctx.Query("expires_after") != "" {
+		filter.ExpiresAfter, err = time.Parse(time.RFC3339, ctx.Query("expires_after"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid expires_after date: "), err)
+		}
+	}
+	if ctx.Query("expires_before") != "" {
+		filter.ExpiresBefore, err = time.Parse(time.RFC3339, ctx.Query("expires_before"))
+		if err != nil {
+			return nil, errors.Join(errors.New("invalid expires_before date: "), err)
+		}
+	}
+	return filter, nil
 }

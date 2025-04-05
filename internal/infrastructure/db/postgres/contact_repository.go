@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"gorm.io/gorm"
 )
@@ -85,29 +87,96 @@ func (r *ContactRepository) DeleteContactByID(ctx context.Context, id string) er
 }
 
 // ListContacts returns a list of contacts
-func (r *ContactRepository) ListContacts(ctx context.Context, pagesize int, cursor string) ([]*entities.Contact, error) {
+func (r *ContactRepository) ListContacts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Contact, string, error) {
+	// Create a query object
+	dbQuery := r.db.WithContext(ctx).Order("ro_id ASC")
+
+	// Add cursor pagination if a cursor is provided
 	var roidInt int64
 	var err error
-	if cursor != "" {
-		roid := entities.RoidType(cursor)
-		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-			return nil, entities.ErrInvalidRoid
-		}
-		roidInt, err = roid.Int64()
+	if params.PageCursor != "" {
+		roidInt, err = getInt64RoidFromContactRoidString(params.PageCursor)
 		if err != nil {
-			return nil, err
+			return nil, "", fmt.Errorf("invalid cursor: %w", err)
 		}
-	}
-	dbContacts := []*Contact{}
-	err = r.db.WithContext(ctx).Order("ro_id ASC").Limit(pagesize).Find(&dbContacts, "ro_id > ?", roidInt).Error
-	if err != nil {
-		return nil, err
+
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
 	}
 
+	// Add filters
+	if params.Filter != nil {
+		if f, ok := params.Filter.(queries.ListContactsFilter); !ok {
+			return nil, "", ErrInvalidFilterType
+		} else {
+			if f.RoidGreaterThan != "" {
+				roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+			}
+			if f.RoidLessThan != "" {
+				roidInt, err := getInt64RoidFromContactRoidString(f.RoidLessThan)
+				if err != nil {
+					return nil, "", err
+				}
+				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+			}
+			if f.IdLike != "" {
+				dbQuery = dbQuery.Where("id ILIKE ?", "%"+f.IdLike+"%")
+			}
+			if f.EmailLike != "" {
+				dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
+			}
+			if f.ClidEquals != "" {
+				dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+			}
+		}
+	}
+
+	// Limit the number of results
+	dbQuery = dbQuery.Limit(params.PageSize + 1) // We fetch one more than the page size to determine if there are more results
+
+	// Execute the query
+	dbContacts := []*Contact{}
+	err = dbQuery.Find(&dbContacts).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Check if there is a next page
+	hasMore := len(dbContacts) == params.PageSize+1
+	if hasMore {
+		// Return only up to PageSize
+		dbContacts = dbContacts[:params.PageSize]
+	}
+
+	// Map the results to entities
 	contacts := make([]*entities.Contact, len(dbContacts))
 	for i, c := range dbContacts {
 		contacts[i] = FromDBContact(c)
 	}
 
-	return contacts, nil
+	// Set the next page cursor
+	var nextPageCursor string
+	if hasMore {
+		nextPageCursor = contacts[len(contacts)-1].RoID.String()
+	}
+
+	return contacts, nextPageCursor, nil
+}
+
+func getInt64RoidFromContactRoidString(roidString string) (int64, error) {
+	// If the cursor is empty, we don't need to paginate, this is not an error
+	if roidString == "" {
+		return 0, nil
+	}
+	roid := entities.RoidType(roidString)
+	if validationErr := roid.Validate(); validationErr != nil {
+		return 0, validationErr
+	}
+	if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+		return 0, entities.ErrInvalidRoid
+	}
+	return roid.Int64()
 }

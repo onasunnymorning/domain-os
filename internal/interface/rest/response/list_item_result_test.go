@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,9 +20,10 @@ func TestListItemResult_SetMeta(t *testing.T) {
 	lastItem := "co.apex"
 	lastItemBase64 := base64.URLEncoding.EncodeToString([]byte(lastItem))
 
-	// Test case 1: Full page of data
+	// Test case 1: Full page of data no Filter
 	r := ListItemResult{}
-	r.SetMeta(&ctx, lastItem, 25, 25)
+	f := queries.ListDomainsFilter{}
+	r.SetMeta(&ctx, lastItem, 25, 25, f)
 
 	require.Equal(t, 25, r.Meta.PageSize, "page size mismatch")
 	require.Equal(t, lastItemBase64, r.Meta.PageCursor, "cursor mismatch")

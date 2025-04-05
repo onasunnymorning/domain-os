@@ -352,8 +352,7 @@ func (t *TLD) ToggleAllowEscrowImport(newValue bool) error {
 		return nil
 	}
 	// if we are trying to set it to true, we need to check if there are any active phases
-	currentPhases := t.GetCurrentPhases()
-	if len(currentPhases) > 0 {
+	if len(t.GetCurrentPhases()) > 0 {
 		return ErrCannotSetEscrowImportWithActivePhases
 	}
 
