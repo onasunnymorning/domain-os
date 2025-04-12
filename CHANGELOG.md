@@ -2,9 +2,10 @@
 ## [Unreleased]
 
 
-<a name="v0.6.0"></a>
-## v0.6.0 - 2025-04-05
+<a name="v0.6.1"></a>
+## v0.6.1 - 2025-04-12
 ### Chore
+- update comment for Phase entity to include reference link
 - move startTestDBServer script for PostgreSQL database setup and cleanup scripts
 - update example.env for database host and event stream configuration
 - update ToQueryParams method documentation for various filter types to clarify conversion to query string
@@ -28,6 +29,7 @@
 - enhance BulkCreateContacts method documentation for clarity on error handling
 
 ### Feat
+- add changelog template and configuration for version tracking
 - refactor Spec5 service and repository to use ListItemsQuery for pagination and filtering
 - add ListSpec5LabelsFilter struct and corresponding ToQueryParams method with tests refactor: rename TestToQueryParams to TestToNNDNQueryParams for clarity
 - aedit json tags on ListItemResult
@@ -140,6 +142,8 @@
 - Add DockerHub credentials for CI integration
 
 ### Fix
+- upgrade net lib + tidy and vendor
+- standardize tag naming for NNDN endpoint documentation
 - standardize ClID field naming to 'Clid' across filters and queries
 - standardize query parameter naming to 'pagesize' across controllers
 - correct type for PageSize in PaginationMetaData and update test to include filter
@@ -188,6 +192,7 @@
 - Enhance Clone tests for Domain and Host entities with comprehensive test cases
 
 ### Pull Requests
+- Merge pull request [#273](https://github.com/onasunnymorning/domain-os/issues/273) from onasunnymorning/244-implement-filter-functionality-on-entity-list-endpoints
 - Merge pull request [#268](https://github.com/onasunnymorning/domain-os/issues/268) from onasunnymorning/267-security-update
 - Merge pull request [#264](https://github.com/onasunnymorning/domain-os/issues/264) from onasunnymorning/infra-update
 - Merge pull request [#262](https://github.com/onasunnymorning/domain-os/issues/262) from onasunnymorning/260-rework-escrow-import-to-use-batch-endpoints
@@ -283,4 +288,4 @@
 - Merge pull request [#1](https://github.com/onasunnymorning/domain-os/issues/1) from onasunnymorning/APOS-175-NNDN
 
 
-[Unreleased]: https://github.com/onasunnymorning/domain-os/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/onasunnymorning/domain-os/compare/v0.6.1...HEAD
