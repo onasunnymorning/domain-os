@@ -1,0 +1,291 @@
+<a name="unreleased"></a>
+## [Unreleased]
+
+
+<a name="v0.6.1"></a>
+## v0.6.1 - 2025-04-12
+### Chore
+- update comment for Phase entity to include reference link
+- move startTestDBServer script for PostgreSQL database setup and cleanup scripts
+- update example.env for database host and event stream configuration
+- update ToQueryParams method documentation for various filter types to clarify conversion to query string
+- remove redundant build and push steps for Event Consumer and EPP Client API in CI workflows
+- bump crypto lib to 0.35.0 for https://scout.docker.com/vulnerabilities/id/CVE-2025-22869/org/geapex?s=golang&n=crypto&ns=golang.org%2Fx&t=golang&vr=%3C0.35.0
+- cleanup
+- update Alpine base image version to 3.21.3 in multiple Dockerfiles
+- vendor
+- vendor
+- update Go module dependencies and versioning
+- Enhance DomainRGPStatus with detailed comments for clarity on time periods
+- Refactor quotes into domainService and remove quoteService and quoteController
+- Refactor expiry-loop.go to use environment variables for API host and port
+- Update default value for days in ListExpiringDomains method
+- Set RenewedYears when creating a domain and in grace delete support
+- Add support for output format selection in DNSController and TLDController
+- Add Kafka environment variables for CI integration
+- Add Kafka configuration to CI workflow
+
+### Docs
+- enhance BulkCreateContacts method documentation for clarity on error handling
+
+### Feat
+- add changelog template and configuration for version tracking
+- refactor Spec5 service and repository to use ListItemsQuery for pagination and filtering
+- add ListSpec5LabelsFilter struct and corresponding ToQueryParams method with tests refactor: rename TestToQueryParams to TestToNNDNQueryParams for clarity
+- aedit json tags on ListItemResult
+- implement filrtering on ListPremiumList repository
+- add tests for filter extraction from context in premium and NNDN controllers
+- add ID field to PremiumLabel entity and update related methods for consistency
+- refactor ListLabels method to use ListItemsQuery for improved filtering and pagination
+- add ListPremiumLabelsFilter and ListPremiumListsFilter with ToQueryParams method for query string conversion
+- add ToQueryParams method to ListRegistrarsFilter for converting filters to query string
+- refactor List method in RegistrarService and RegistrarRepository to use ListItemsQuery for improved filtering
+- add Count endpoint to NNDNController with filtering options
+- update Count method to return int64 instead of int for NNDNs and add filtering support in controller
+- add Count method to NNDNService and NNDNRepository for counting NNDNs with optional filters
+- add Count method to GormNNDNRepository for counting NNDNs with filters
+- implement filtering in ListNNDNs method with NameLike, TldEquals, ReasonEquals, and ReasonLike options
+- add Count method to RegistryOperatorRepository for counting with filters
+- update CountTLDs method to accept filters for improved counting functionality
+- refactor domain counting logic to accept filters and improve query handling
+- update query parameter names in ListContacts filter for consistency and add ClidEquals filter
+- refactor ListContacts and ListHosts methods to improve filter handling and pagination logic
+- enhance ListContacts method with filtering options and add corresponding tests
+- refactor ListContacts method to use ListItemsQuery for improved pagination and filtering
+- add ListContactsFilter for query parameter construction and implement tests
+- add filtering options to ListHosts endpoint
+- add filtering capabilities to ListRegistryOperators endpoint
+- add ListHostsFilter for query parameter construction and implement tests
+- implement cursor pagination and filtering for ListRegistryOperators
+- add indexing to DropCatch, RenewedYears, and AuthInfo fields in Domain and TLD structs
+- update ListTLDs method to return cursor for pagination support
+- refactor ListHosts method to use ListItemsQuery for improved parameter handling
+- introduce ListItemsQuery for improved query handling
+- remove rabbitMQ and event generation in controllers
+- refactor TLD listing to use ListTldQuery for improved pagination and filtering
+- update Go base image to 1.24.1 and add Helm chart for workers
+- add labels to Kubernetes resources and clean up unused configurations
+- infra update
+- add Helm charts for various services and remove deprecated files
+- small change to logging + vendor
+- update app version to 0.2.2 and add flag to ignore errors during import analysis
+- add AcceptDate to DomainTransfer and enhance approval logic with tests
+- update README and environment configuration for improved setup instructions and clarity
+- update DomainRoiD type to RoidType for improved type safety in domain transfers
+- enhance domain transfer functionality with comprehensive checks and new transfer management
+- add Helm charts for Metabase and Traefik with necessary configurations and resources
+- implement bulk create contacts functionality and improve error handling
+- add BulkCreate method to HostService and HostRepository for creating multiple hosts in a single transaction
+- introduce RoidService interface and its mock implementation for testing
+- add BulkCreate method to HostRepository Interface
+- implement BulkCreate on HostReposiotry and add gofakeit package for testing
+- add BulkCreateContacts endpoint to ContactController and implement BulkCreate method in ContactService
+- add BulkCreate method to ContactService for batch contact creation
+- implement BulkCreate method in ContactRepository for batch contact creation + add corresponding tests
+- add BulkCreate method to DomainService and DomainRepository for bulk domain creation + expose in DomainController as endpoint
+- add gitleaks scanning job to CI workflow for secret detection
+- add lifecycle event logging for domain operations and introduce TransactionTypeUpdate
+- implement DeepCopy methods and RegistrarService Lifecycle logging
+- enhance CreateRegistrarCommand from IANARegistrar with GurID and RdapBaseURL, add validation for GurID, and update tests
+- add IANARegistrarStatusUnknown and validation method, update registrar struct and tests to inclue IANAStatus
+- update registrar creation to return entity and enhance API documentation
+- add CreateRegistrar activity and update SyncRegistrarsWorkflow to handle reserved registrars
+- add GetRegistrarListItems activity and update workflows to use bearer token for API requests
+- update IANA registrars retrieval to include base URL and API token, and switch logger to production mode
+- implement daily synchronization schedule for registrars and update import command
+- add hourly synchronization schedule for registrars and update related workflows
+- add registrar synchronization workflow and related activities for IANA registrars
+- add RegistrarLifecycleEvent entity for event tracking and correlation
+- implement bulk registrar creation and add chunk size option for import
+- enhance registrar synchronization by adding creation logic for new IANA registrars and improving ClID generation
+- implement registrar synchronization with IANA repository and add status update logic
+- add email field to CreateRegistrarCommand and update related test assertions
+- introduce RegistrarListItem type and update related methods for improved registrar listing
+- add retagging step for sync worker in GitHub Actions workflow
+- implement import command for ICANN and IANA registrars with initial README
+- add initial data files and implement ICANN registrar CSV handling
+- add SetTLDStatus and DeleteTLDStatus methods to TLDController for managing AllowEscrowImport status
+- add AllowEscrowImport and EnableDNS fields to TLD, implement SetAllowEscrowImport method, and enhance error handling in TLDService
+- make Reason field required in CreateNNDNCommand and set default value in FromRDENNDN method
+- update CreateTLD method to return TLD entity and improve error handling
+- update TLD creation to include RyID and adjust related tests
+- add TLDs field to RegistryOperator and RyID field to TLD entity
+- refactor domain status commands to use ToggleDomainStatusCommand and update related activities and tests
+- add SetDomainStatus and UnSetDomainStatus activities with corresponding tests
+- implement UnSetDomainStatus Activity for removing domain statuses and add corresponding tests
+- add SetStatus and UnSetStatus methods to DomainService for managing domain statuses
+- update RestoreWorkflow to handle PendingRestore domains and improve logging
+- update RenewDomain function to support forced renewal option and add corresponding tests
+- add ForceRenew method to domain service and controller for unconditional domain renewal
+- enhance domain lifecycle management with restore schedule and activity updates
+- update functionality in activities and restoreWorkflow
+- Update RestoreWorkflow to use RenewDomainCommand for domain renewal
+- Add RestoreWorkflow and ListRestoredDomains and RenewDomain activity
+- Implement ListRestoredDomains activity and update /domains/restored response structure
+- Implement ListRestoredDomains and CountRestoredDomains endpoints in DomainController
+- Add ListRestoredDomains and CountRestoredDomains methods to DomainService and DomainRepository
+- Add ListRestoredDomains and CountRestoredDomains methods to DomainRepository Interface
+- Add ListRestoredDomains and CountRestoredDomains methods to DomainRepository
+- Upgrade Docker build-push action to v6 in CI workflows
+- Update Dockerfiles to create non-root user for application execution
+- Update Dockerfile to create a non-root user for running the application
+- Add PurgeDomain method to DomainService and implement domain purging logic + expose endpoint - working postman tests
+- Add Clone method to Host and Domain entities for deep copying functionality include zap.logger DomainLifecycleEvents on relevant DomainService functions
+- Implement GetQuote functionality in DomainService and add corresponding REST endpoint under /domains
+- Add validation error for invalid domain label in phase and refactor domain check functionality
+- Add quote retrieval functionality to domain check and lifecycle events
+- Enhance domain lifecycle event logging with correlation ID and price points
+- Introduce correlation ID in activities and workflows + cli (calling apps)
+- Add correlation ID handling to workflows and activities + lifecycle cli
+- Add IsRegistrarAccreditedForTLD method and response structure for accreditation checks
+- Add support for client ID in ListExpiringDomains method
+- Add DockerHub credentials for CI integration
+
+### Fix
+- upgrade net lib + tidy and vendor
+- standardize tag naming for NNDN endpoint documentation
+- standardize ClID field naming to 'Clid' across filters and queries
+- standardize query parameter naming to 'pagesize' across controllers
+- correct type for PageSize in PaginationMetaData and update test to include filter
+- update queries to use ILIKE for case-insensitive matching in List and Count methods
+- improve error message for ICANN XML Spec5 Registry unmarshalling to include specific URL for better clarity
+- enhance error message for ICANN XML Spec5 Registry unmarshalling to indicate potential site maintenance or format changes
+- enhance error handling for RoId filters and validation in domain repository
+- implement Fix-CNIC01- try and correct status error and return warning
+- correct BulkCreate method in ContactService to avoid duplicates
+- update file path for ICANN registrars CSV in SyncRegistrarsWorkflow
+- correct typo in log message for retrieving existing registrars
+- correct formatting issue in GetCreateCommands function
+- correct JSON tag for AllowEscrowImport field in TLD struct
+- modify GetDomainByName call in PurgeDomain to include hosts so we can dissasociate the hosts if needed
+- Handle ErrPhaseNotFound in GetQuote method to return a 400 status code
+- Update quote endpoint to /domains/quote and adjust tags accordingly - working integration tests
+- Update IDNA label validation to use Registration.ToUnicode for improved accuracy in DNS
+- Clarify Restore method documentation in Domain entity to improve understanding of its functionality and error handling
+
+### Refactor
+- modify setDomainFilters to return modified query and handle errors in ListDomains and Count methods
+- update setTldFilters to return modified query and handle errors in List and Count methods
+- extract filter logic into separate function for improved readability and maintainability
+-  pagination and filtering for ListNNDNs with ListItemsQuery struct
+- remove indexing from DropCatch, RenewedYears, AllowEscrowImport, and EnableDNS fields in Domain and TLD structs
+- remove redundant parameter documentation in DomainService methods
+- streamline metadata handling in ListHosts and ListTLDs methods
+- improve cursor pagination and filtering in ListDomains and ListTlds methods
+- update docker-compose and repository methods for improved health checks and pagination
+- rename ListTldQuery to ListTldsQuery for consistency and clarity
+- rename SetAllowEscrowImport to ToggleAllowEscrowImport for clarity
+- optimize BulkCreate method in HostService for better host slice handling
+- update log messages in EscrowImportController for clarity on host duplication
+- rename CreateDomain method to Create for consistency across domain repository + add BulkCreate to Domain repository
+- rename CreateDomain method to Create for consistency
+- remove CreateRegistrarCommandResult and update API documentation to reflect changes in response type + working postman tests
+- rename ICANN and IANA related packages and files for clarity
+- Update endpoint for PurgeDomain method to use Purge endpoint instead of Admin Delete
+- Enhance logging for domain lifecycle events with detailed messages
+- Enhance DomainLifeCycleEvent struct with additional CorrelationID field and improved comments for clarity
+- Replace string TransactionType with TransactionType type for improved type safety and clarity
+
+### Test
+- enhance ListTLD tests with filtering capabilities and pagination adjustments
+- improve expiry date validation in domain transfer tests
+- Enhance Clone tests for Domain and Host entities with comprehensive test cases
+
+### Pull Requests
+- Merge pull request [#273](https://github.com/onasunnymorning/domain-os/issues/273) from onasunnymorning/244-implement-filter-functionality-on-entity-list-endpoints
+- Merge pull request [#268](https://github.com/onasunnymorning/domain-os/issues/268) from onasunnymorning/267-security-update
+- Merge pull request [#264](https://github.com/onasunnymorning/domain-os/issues/264) from onasunnymorning/infra-update
+- Merge pull request [#262](https://github.com/onasunnymorning/domain-os/issues/262) from onasunnymorning/260-rework-escrow-import-to-use-batch-endpoints
+- Merge pull request [#259](https://github.com/onasunnymorning/domain-os/issues/259) from onasunnymorning/255-bulk-create-endpoints
+- Merge pull request [#257](https://github.com/onasunnymorning/domain-os/issues/257) from onasunnymorning/241-lost-commits
+- Merge pull request [#254](https://github.com/onasunnymorning/domain-os/issues/254) from onasunnymorning/241-create-a-workflow-for-registrar-management
+- Merge pull request [#252](https://github.com/onasunnymorning/domain-os/issues/252) from onasunnymorning/251-tld-status-flags
+- Merge pull request [#250](https://github.com/onasunnymorning/domain-os/issues/250) from onasunnymorning/248-make-nndnreason-mandatory
+- Merge pull request [#249](https://github.com/onasunnymorning/domain-os/issues/249) from onasunnymorning/85-link-tld-to-registryoperator
+- Merge pull request [#246](https://github.com/onasunnymorning/domain-os/issues/246) from onasunnymorning/229-restoreworkflow---create-workflow-and-schedule-for-lifecycle-events
+- Merge pull request [#232](https://github.com/onasunnymorning/domain-os/issues/232) from onasunnymorning/197-improve-logging-middleware
+- Merge pull request [#224](https://github.com/onasunnymorning/domain-os/issues/224) from onasunnymorning/220-spike-idn-implementation
+- Merge pull request [#222](https://github.com/onasunnymorning/domain-os/issues/222) from onasunnymorning/221-ensure-accreditation-is-present-in-register-endpoint
+- Merge pull request [#219](https://github.com/onasunnymorning/domain-os/issues/219) from onasunnymorning/175-allow-thick-and-thin-registry-models
+- Merge pull request [#217](https://github.com/onasunnymorning/domain-os/issues/217) from onasunnymorning/184-reorganize-api-documentation
+- Merge pull request [#214](https://github.com/onasunnymorning/domain-os/issues/214) from onasunnymorning/213-deal-with-failed-renewals-and-expire-activities
+- Merge pull request [#209](https://github.com/onasunnymorning/domain-os/issues/209) from onasunnymorning/208-purging-a-domain-with-hosts-fails-on-fk-constraint
+- Merge pull request [#207](https://github.com/onasunnymorning/domain-os/issues/207) from onasunnymorning/204-create-a-workflow-to-update-fx-every-day
+- Merge pull request [#206](https://github.com/onasunnymorning/domain-os/issues/206) from onasunnymorning/203-patch-domainexpire
+- Merge pull request [#202](https://github.com/onasunnymorning/domain-os/issues/202) from onasunnymorning/201-re-work-expiryloop-to-use-canautorenew-endpoint-to-make-a-choice
+- Merge pull request [#200](https://github.com/onasunnymorning/domain-os/issues/200) from onasunnymorning/198-expiryloop-and-purgeloop-testing-with-real-data
+- Merge pull request [#195](https://github.com/onasunnymorning/domain-os/issues/195) from onasunnymorning/191-deploy-expiry-and-purge-workers
+- Merge pull request [#192](https://github.com/onasunnymorning/domain-os/issues/192) from onasunnymorning/183-create-workflow-definitions-for-expiry-and-purge
+- Merge pull request [#187](https://github.com/onasunnymorning/domain-os/issues/187) from onasunnymorning/186-upgrade-packages-to-fix-docker-scout-cves
+- Merge pull request [#182](https://github.com/onasunnymorning/domain-os/issues/182) from onasunnymorning/180-the-expiry-loop
+- Merge pull request [#174](https://github.com/onasunnymorning/domain-os/issues/174) from onasunnymorning/172-add-https-support
+- Merge pull request [#171](https://github.com/onasunnymorning/domain-os/issues/171) from onasunnymorning/167-add-whois-endpoint-to-admin-api
+- Merge pull request [#168](https://github.com/onasunnymorning/domain-os/issues/168) from onasunnymorning/165-autorenew
+- Merge pull request [#164](https://github.com/onasunnymorning/domain-os/issues/164) from onasunnymorning/157-seeding-for-a-devdemos-system
+- Merge pull request [#150](https://github.com/onasunnymorning/domain-os/issues/150) from onasunnymorning/149-add-count-function-to-tld-endpoint
+- Merge pull request [#148](https://github.com/onasunnymorning/domain-os/issues/148) from onasunnymorning/147-fix-bug-in-docs
+- Merge pull request [#145](https://github.com/onasunnymorning/domain-os/issues/145) from onasunnymorning/142-create-facility-to-add-rr-to-the-apex-zone
+- Merge pull request [#144](https://github.com/onasunnymorning/domain-os/issues/144) from onasunnymorning/143-add-integration-tests-for-ns-and-glue-endpoints
+- Merge pull request [#141](https://github.com/onasunnymorning/domain-os/issues/141) from onasunnymorning/139-host---address-association-can-create-duplicates
+- Merge pull request [#140](https://github.com/onasunnymorning/domain-os/issues/140) from onasunnymorning/138-create-ns-record-endpoint
+- Merge pull request [#137](https://github.com/onasunnymorning/domain-os/issues/137) from onasunnymorning/135-create-helm-deployment-of-existing-stack
+- Merge pull request [#134](https://github.com/onasunnymorning/domain-os/issues/134) from onasunnymorning/133-fix-label-validator-to-allow-double-dash-except-in-pos-34
+- Merge pull request [#131](https://github.com/onasunnymorning/domain-os/issues/131) from onasunnymorning/small-tweaks-messaging
+- Merge pull request [#130](https://github.com/onasunnymorning/domain-os/issues/130) from onasunnymorning/118-create-messaging-infrastructure
+- Merge pull request [#128](https://github.com/onasunnymorning/domain-os/issues/128) from onasunnymorning/125-escrow-import-is-not-linking-hosts-to-domains-and-therefore-the-inactive-flag-is-not-set
+- Merge pull request [#126](https://github.com/onasunnymorning/domain-os/issues/126) from onasunnymorning/120-epp-server
+- Merge pull request [#124](https://github.com/onasunnymorning/domain-os/issues/124) from onasunnymorning/122-dev-postgres-container---enable-ssl
+- Merge pull request [#123](https://github.com/onasunnymorning/domain-os/issues/123) from onasunnymorning/119-vendor-code
+- Merge pull request [#121](https://github.com/onasunnymorning/domain-os/issues/121) from onasunnymorning/helm
+- Merge pull request [#116](https://github.com/onasunnymorning/domain-os/issues/116) from onasunnymorning/re-organize-repo
+- Merge pull request [#115](https://github.com/onasunnymorning/domain-os/issues/115) from onasunnymorning/114-epp-client
+- Merge pull request [#110](https://github.com/onasunnymorning/domain-os/issues/110) from onasunnymorning/108-pricepoint-calculation-logic
+- Merge pull request [#109](https://github.com/onasunnymorning/domain-os/issues/109) from onasunnymorning/105-fx-stack--include-ctx
+- Merge pull request [#106](https://github.com/onasunnymorning/domain-os/issues/106) from onasunnymorning/104-include-grandfathering-logic-in-price-check
+- Merge pull request [#103](https://github.com/onasunnymorning/domain-os/issues/103) from onasunnymorning/101-pricecalulator
+- Merge pull request [#102](https://github.com/onasunnymorning/domain-os/issues/102) from onasunnymorning/94-nndn-improvements
+- Merge pull request [#100](https://github.com/onasunnymorning/domain-os/issues/100) from onasunnymorning/99-fix-uri-for-domain-renew-restore-endpoints
+- Merge pull request [#98](https://github.com/onasunnymorning/domain-os/issues/98) from onasunnymorning/97-upgrade-go-version-for-security
+- Merge pull request [#96](https://github.com/onasunnymorning/domain-os/issues/96) from onasunnymorning/77-ensure-price-and-fee-amounts-are-positive-numbers
+- Merge pull request [#95](https://github.com/onasunnymorning/domain-os/issues/95) from onasunnymorning/68-spike-dropcatching
+- Merge pull request [#93](https://github.com/onasunnymorning/domain-os/issues/93) from onasunnymorning/92-create-repository-to-access-fx-api
+- Merge pull request [#91](https://github.com/onasunnymorning/domain-os/issues/91) from onasunnymorning/67-spike-grandfathering
+- Merge pull request [#89](https://github.com/onasunnymorning/domain-os/issues/89) from onasunnymorning/87-create-registerdomain-renewdomain-entity-functions
+- Merge pull request [#86](https://github.com/onasunnymorning/domain-os/issues/86) from onasunnymorning/78-errors-package-or-githubcompkgerrors
+- Merge pull request [#80](https://github.com/onasunnymorning/domain-os/issues/80) from onasunnymorning/65-create-a-domain-price-endpoint
+- Merge pull request [#79](https://github.com/onasunnymorning/domain-os/issues/79) from onasunnymorning/64-premium-price-implementation
+- Merge pull request [#74](https://github.com/onasunnymorning/domain-os/issues/74) from onasunnymorning/63-create-accreditation-functionality
+- Merge pull request [#73](https://github.com/onasunnymorning/domain-os/issues/73) from onasunnymorning/72-mosapi-client-library
+- Merge pull request [#59](https://github.com/onasunnymorning/domain-os/issues/59) from onasunnymorning/46-create-an-escrow-framework-that-allows-importing-a-large-valid-rde-escrow-xml-file
+- Merge pull request [#50](https://github.com/onasunnymorning/domain-os/issues/50) from onasunnymorning/43-make-phase-and-fee--price-names-slugs
+- Merge pull request [#49](https://github.com/onasunnymorning/domain-os/issues/49) from onasunnymorning/44-increase-testing-on-phase-repository-to-and-from-functions
+- Merge pull request [#48](https://github.com/onasunnymorning/domain-os/issues/48) from onasunnymorning/35-pass-down-ctx-from-tld-controller-all-the-way-to-the-repo
+- Merge pull request [#47](https://github.com/onasunnymorning/domain-os/issues/47) from onasunnymorning/32-verify-all-input-timetime-objects-are-in-utc-on-existing-entities
+- Merge pull request [#45](https://github.com/onasunnymorning/domain-os/issues/45) from onasunnymorning/30-create-price-and-fee-service-controller-and-endpoints
+- Merge pull request [#42](https://github.com/onasunnymorning/domain-os/issues/42) from onasunnymorning/40-prevent-delete-tld-if-there-are-active-phases
+- Merge pull request [#41](https://github.com/onasunnymorning/domain-os/issues/41) from onasunnymorning/29-create-phase-service-controller-and-endpoints
+- Merge pull request [#39](https://github.com/onasunnymorning/domain-os/issues/39) from onasunnymorning/tests-cover-fix
+- Merge pull request [#34](https://github.com/onasunnymorning/domain-os/issues/34) from onasunnymorning/26-create-repository-for-phase-and-sub-entities
+- Merge pull request [#33](https://github.com/onasunnymorning/domain-os/issues/33) from onasunnymorning/25-link-phases-to-tld-as-gaphase-and-launchphase
+- Merge pull request [#28](https://github.com/onasunnymorning/domain-os/issues/28) from onasunnymorning/24-add-phase-entity
+- Merge pull request [#27](https://github.com/onasunnymorning/domain-os/issues/27) from onasunnymorning/23-add-fee-and-price-entities
+- Merge pull request [#22](https://github.com/onasunnymorning/domain-os/issues/22) from onasunnymorning/18-admin-api-domain-endpoints
+- Merge pull request [#17](https://github.com/onasunnymorning/domain-os/issues/17) from onasunnymorning/APOS-206_HOSTS
+- Merge pull request [#16](https://github.com/onasunnymorning/domain-os/issues/16) from onasunnymorning/APOS-228_Postman-tests
+- Merge pull request [#14](https://github.com/onasunnymorning/domain-os/issues/14) from onasunnymorning/APOS-226_PostmanCI
+- Merge pull request [#13](https://github.com/onasunnymorning/domain-os/issues/13) from onasunnymorning/APOS-205-contract
+- Merge pull request [#11](https://github.com/onasunnymorning/domain-os/issues/11) from onasunnymorning/APOS-222-singlePIbug
+- Merge pull request [#12](https://github.com/onasunnymorning/domain-os/issues/12) from onasunnymorning/APOS-219-DOMREPO
+- Merge pull request [#10](https://github.com/onasunnymorning/domain-os/issues/10) from onasunnymorning/APOS-221-DOCS
+- Merge pull request [#9](https://github.com/onasunnymorning/domain-os/issues/9) from onasunnymorning/APOS-204-registrar
+- Merge pull request [#8](https://github.com/onasunnymorning/domain-os/issues/8) from onasunnymorning/APOS-213-REPOTESTS
+- Merge pull request [#7](https://github.com/onasunnymorning/domain-os/issues/7) from onasunnymorning/APOS-202-DOMAINS
+- Merge pull request [#6](https://github.com/onasunnymorning/domain-os/issues/6) from onasunnymorning/APOS-192-HOSTS
+- Merge pull request [#5](https://github.com/onasunnymorning/domain-os/issues/5) from onasunnymorning/APOS-193-Contact-Entities
+- Merge pull request [#4](https://github.com/onasunnymorning/domain-os/issues/4) from onasunnymorning/APOS-202-Regsitrar-repo
+- Merge pull request [#3](https://github.com/onasunnymorning/domain-os/issues/3) from onasunnymorning/APOS-194_RegistrarEntities
+- Merge pull request [#2](https://github.com/onasunnymorning/domain-os/issues/2) from onasunnymorning/APOS-202_404insteadof500
+- Merge pull request [#1](https://github.com/onasunnymorning/domain-os/issues/1) from onasunnymorning/APOS-175-NNDN
+
+
+[Unreleased]: https://github.com/onasunnymorning/domain-os/compare/v0.6.1...HEAD

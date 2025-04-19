@@ -27,7 +27,7 @@ const (
 // PhasetType is a custom type for representing the type of a phase.
 type PhaseType string
 
-// Phase entity
+// Phase entity Ref:https://centralnic.atlassian.net/wiki/spaces/REG/pages/5023629498/DOS+-+TLD+Phases
 type Phase struct {
 	ID              int64       `json:"id"`
 	Name            ClIDType    `json:"name"`

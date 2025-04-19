@@ -42,7 +42,7 @@ require (
 	github.com/zsais/go-gin-prometheus v0.1.0
 	go.temporal.io/sdk v1.31.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/net v0.34.0
+	golang.org/x/net v0.36.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
 )

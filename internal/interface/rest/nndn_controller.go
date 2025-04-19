@@ -62,7 +62,7 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 // Count godoc
 // @Summary      Returns a count of the amount of NNDNs that match the filter.
 // @Description  Counts all NNDNs in the database that match the filter and returns a timestamped count including the filters that were used.
-// @Tags         nndn
+// @Tags         NNDNs
 // @Accept       json
 // @Produce      json
 // @Param name_like query string false "Name like"
