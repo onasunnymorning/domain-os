@@ -50,3 +50,4 @@ docs/*.yaml
 
 # don't publish these
 temporal-certs/
+domain-os/
