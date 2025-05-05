@@ -37,7 +37,7 @@ func (suite *AutoRenewTestSuite) SetupTest() {
 
 	os.Setenv("API_HOST", "localhost")
 	os.Setenv("API_PORT", "8080")
-	os.Setenv("API_TOKEN", "somebogustoken")
+	os.Setenv("ADMIN_TOKEN", "somebogustoken")
 }
 
 // TearDownTest runs after each test
