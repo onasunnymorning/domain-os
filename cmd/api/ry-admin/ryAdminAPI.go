@@ -124,6 +124,8 @@ func main() {
 	cfg := config.LoadConfig(GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
 
+	logger.Info("API Token", zap.String("token", JWT_TOKEN))
+
 	// Try and determine the runtime environment
 	if !runningInDocker() {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
