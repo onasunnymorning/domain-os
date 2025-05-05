@@ -113,6 +113,7 @@ jobs:
           API_HOST: domain-os-admin-api-1
           API_NAME: ${{ secrets.API_NAME }}
           API_VERSION: ${{ secrets.API_VERSION }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           BRANCH: ${{ github.sha }}
           GIN_MODE: debug
           AUTO_MIGRATE: true
