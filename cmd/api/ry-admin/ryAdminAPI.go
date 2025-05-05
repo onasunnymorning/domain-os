@@ -36,8 +36,11 @@ import (
 )
 
 const (
-	APP_NAME  = entities.AppAdminAPI
-	JWT_TOKEN = "the-brave-may-not-live-forever-but-the-cautious-do-not-live-at-all"
+	APP_NAME = entities.AppAdminAPI
+)
+
+var (
+	JWT_TOKEN = os.Getenv("ADMIN_TOKEN")
 )
 
 // inLambda returns true if the code is running in AWS Lambda

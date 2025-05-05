@@ -36,7 +36,7 @@ var (
 	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
 
 	BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
-	BEARER   = "Bearer " + os.Getenv("API_TOKEN")
+	BEARER   = "Bearer " + os.Getenv("ADMIN_TOKEN")
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -1089,7 +1089,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 	writer := csv.NewWriter(outFile)
 	defer writer.Flush()
 
-	bearer := "Bearer " + os.Getenv("API_TOKEN")
+	bearer := "Bearer " + os.Getenv("ADMIN_TOKEN")
 
 	var found = 0
 	var missing = 0
