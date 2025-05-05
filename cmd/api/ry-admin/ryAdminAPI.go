@@ -40,7 +40,7 @@ const (
 )
 
 var (
-	JWT_TOKEN = os.Getenv("API_TOKEN")
+	JWT_TOKEN = os.Getenv("ADMIN_TOKEN")
 )
 
 // inLambda returns true if the code is running in AWS Lambda
@@ -123,8 +123,6 @@ func main() {
 	// Load the APP configuration and log it
 	cfg := config.LoadConfig(GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
-
-	logger.Info("API Token", zap.String("token", JWT_TOKEN))
 
 	// Try and determine the runtime environment
 	if !runningInDocker() {

@@ -29,7 +29,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	// Set envars
 	apiHost := os.Getenv("API_HOST")
 	apiPort := os.Getenv("API_PORT")
-	bearerToken := "Bearer " + os.Getenv("API_TOKEN")
+	bearerToken := "Bearer " + os.Getenv("ADMIN_TOKEN")
 	baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
 	logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
 

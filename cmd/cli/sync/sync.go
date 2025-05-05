@@ -100,7 +100,7 @@ func syncRegistrars(c *cli.Context) error {
 	// Get the IANA registrars
 	log.Println("Getting IANA registrars...")
 	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
-	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("API_TOKEN"))
+	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("ADMIN_TOKEN"))
 
 	// TODO: add command flag for batchsize instead of hard coding
 	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken, 100)
