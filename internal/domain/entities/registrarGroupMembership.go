@@ -5,5 +5,5 @@ import "time"
 type RegistrarGroupMembership struct {
 	GroupID     RegistrarGroupID
 	RegistrarID ClIDType
-	AddedAt     time.Time
+	CreatedAt   time.Time
 }
