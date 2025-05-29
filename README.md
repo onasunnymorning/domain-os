@@ -3,10 +3,17 @@
 Domain (Registry for now) Operating System (DOS)
 
  # Why?
+ 
  The registry backend business operates in a high-volume low-margin setup, therefore a highly automated, robust, adaptable system that is cost efficient to operate is required. 
+ The current legacy systems are often monolithic, hard to maintain, and difficult to adapt to new requirements.
+ They are often built on outdated technology stacks that are not well suited for the current and future needs of the industry.
  It should be flexible in terms of policy, infrastructure and quick to evolve and integrate. 
 
- # How? 
+ # How?
+
+By taking the accumulated knowledge of working in the industry and building a system that is modular, flexible, and easy to operate.
+
+
  Offer clear context, a blazing fast developer experience and feedback loop and lots of automated testing for safety.
  I've tried to focus on making this system easy to operate with a low overhead. While it is not yet optimized, it has testing, automation, visibility, and an open architecture and documentation.
  This way, when optimization is needed, it will be staightforward as we will have data and visibility to evolve the system quickly in the desired direction.
