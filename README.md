@@ -23,43 +23,28 @@ By taking the accumulated knowledge of working in the industry and building a sy
   A registry system with core functionality that you can easily integrate into your existing service stack or build on top of
 
 # Running the app
-## Components
-### INFRA dependencies
-* Database (Postgres) to run alongside the app for a quick demo or test deployment
-* Messaging (Rabbit MQ) to allow de-coupling of services.
-* Registrar Data (IANA and ICANN) to allow for compliance and data integrity
-* FX (Foreign Exchange) rates provider to allow for currency conversion
-* APM (NewRelic) can be enabled optionally
-* Monitoring (Prometheus) to allow for visibility, can be enabled optionally
-* Compliance (ICANN RRI and MOSAPI) to allow for compliance and data integrity
 
-### APP components
-* Domain layer: Packages that can be imported and contain all of the business logic and allows configurable options. Highly unit tested.
-* API (Go-Gin) REST API that can be used to interface with the domain layer. This endpoint is geared towards ADMIN users. It could be used by other componenets, but it might be more efficient to import the domain layer directly.
-* EPP client
-* EPP server
-* DNS component that produces a bind compatible zonefile. This can be evolved to be a standalone component that uses events to stay up to date.
-* WHOIS/RDAP for compliance, focus here is data protection and DOS/Excessive crawling mitigation
-* ICANN reporting that offers complete transparency
-* ESCROW import/export functionality for RDE and importing data
-* Migration toolkit
+## Requirements
 
-## Getting up and running
-First rename example.env to .env
-```bash
-mv example.env .env
-```
-Then edit the .env file to your taste (or leave default for local development)
+* You do need docker desktop installed 
+* An API client, I’m using Postman in this video
 
-Next run the following command to start the app
-```
-BRANCH=latest docker compose --profile essential -f docker-compose.yml up
-```
+## Running the app
 
-### troubleshooting
-if you get this error
-```
-Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "/host_mnt/Users/gprins/dos/.rabbitmq/enabled_plugins" to rootfs at "/etc/rabbitmq/enabled_plugins": mount /host_mnt/Users/gprins/dos/.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins (via /proc/self/fd/6), flags: 0x5000: not a directory: unknown: Are you trying to mount a directory onto a file (or vice-versa)? Check if the specified host path exists and is the expected type
-```
-you should check if you have .rabbitmq/enabled_plugins file containting the following content:
-`[rabbitmq_stream, rabbitmq_prometheus].`
+### No Code
+
+Video walkthrough: https://youtu.be/pobt7sm7ixw
+
+* Download this zip file containing a docker-compose file and a basic .env file: https://drive.google.com/file/d/1dbsusOJ2g1FPLJ0rUBkYc3Av8PABgNab/view?usp=sharing
+* Unzip the file and open a terminal in the folder
+* Run `BRANCH=latest docker compose --profile essential up`
+
+* Open http://localhost:8080/swagger/index.html and download the Postman collection (doc.json)
+* Import the Postman collection into your Postman client
+* Configure the environment variables in Postman (baseUrl and token) to match the .env file 
+* Send your first request to the API
+
+If you want to populate the system, start by creating a Registry Operator, then a TLD, Setup a Phase to enable the TLD, create Registrars, and then create Domains...
+
+
+
