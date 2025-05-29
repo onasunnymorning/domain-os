@@ -31,7 +31,7 @@ By taking the accumulated knowledge of working in the industry and building a sy
 
 ## Running the app
 
-### No Code
+### Docker Compose using pre-built images
 
 Video walkthrough: https://youtu.be/pobt7sm7ixw
 
