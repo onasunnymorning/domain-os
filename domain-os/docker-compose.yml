@@ -1,0 +1,84 @@
+services:
+# Database container
+  db:
+    image: postgres:16.1
+    restart: always
+    profiles: [essential, full]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 5
+      start_period: 30s
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    command: >
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+
+    ports:
+      - 5432:5432
+      - 55432:55432
+    networks:
+      - dos
+    volumes: 
+      - db:/var/lib/postgresql/data 
+
+# Core API container
+  admin-api:
+    build: .
+    image: "geapex/domain-os:${BRANCH}"
+    restart: always
+    profiles: [essential, full]
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./cmd/api
+    environment:
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - GIN_MODE=${GIN_MODE}
+      - AUTO_MIGRATE=${AUTO_MIGRATE}
+      - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
+      - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
+      - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
+      - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - API_PORT=${API_PORT}
+      - API_HOST=${API_HOST}
+      - API_NAME=${API_NAME}
+      - API_VERSION=${API_VERSION}
+      - RMQ_HOST=${RMQ_HOST}
+      - RMQ_PORT=${RMQ_PORT}
+      - RMQ_USER=${RMQ_USER}
+      - RMQ_PASS=${RMQ_PASS}
+      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
+      - EVENT_STREAM_ENABLED=${EVENT_STREAM_ENABLED}
+      - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED}
+
+    ports:
+      - ${API_PORT}:${API_PORT}
+    networks:
+      - dos
+
+networks:
+  dos:
+    driver: bridge
+
+volumes:
+  db:
+    driver: local
+  prom_data:
+    driver: local
