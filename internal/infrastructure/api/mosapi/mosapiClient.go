@@ -11,23 +11,45 @@ import (
 )
 
 const (
-	AuthTypeBasic       = "basic"
-	AuthTypeCertificate = "certificate"
-	MOSAPI_URL          = "https://mosapi.icann.org"
-	MOSAPI_OTE_URL      = "https://mosapi-ote.icann.org"
-	V2                  = "v2"
-	EntityRegistry      = "ry"
-	EntityRegistrar     = "rr"
-	ServiceEPP          = "EPP"
-	ServiceDNS          = "DNS"
-	ServiceDNSSEC       = "DNSSEC"
-	ServiceRDDS         = "RDDS"
+	MOSAPI_URL      = "https://mosapi.icann.org"
+	MOSAPI_OTE_URL  = "https://mosapi-ote.icann.org"
+	V2              = "v2"
+	EntityRegistry  = "ry"
+	EntityRegistrar = "rr"
+	ServiceEPP      = "EPP"
+	ServiceDNS      = "DNS"
+	ServiceDNSSEC   = "DNSSEC"
+	ServiceRDDS     = "RDDS"
+)
+
+type MOSAPIAuthType string
+type EntityType string
+
+func (e EntityType) String() string {
+	switch e {
+	case EntityRegistry:
+		return string(EntityTypeRegistry)
+	case EntityRegistrar:
+		return string(EntityTypeRegistrar)
+	default:
+		return "unknown"
+	}
+}
+
+const (
+	AuthTypeBasic       MOSAPIAuthType = "basic"
+	AuthTypeCertificate MOSAPIAuthType = "certificate"
+)
+
+const (
+	EntityTypeRegistry  EntityType = "ry"
+	EntityTypeRegistrar EntityType = "rr"
 )
 
 var (
-	SupportedAuthTypes          = []string{AuthTypeBasic, AuthTypeCertificate}
+	SupportedAuthTypes          = []MOSAPIAuthType{AuthTypeBasic, AuthTypeCertificate}
 	SupportedVersions           = []string{V2}
-	SupportedEntities           = []string{EntityRegistry} // We only support the registry entity for now
+	SupportedEntities           = []EntityType{EntityRegistry} // We only support the registry entity for now
 	SupportedMOSAPIEnvironments = []string{"PROD", "OTE"}
 	SupportedServices           = []string{ServiceEPP, ServiceDNS, ServiceDNSSEC, ServiceRDDS}
 
@@ -57,13 +79,13 @@ func NewMosapiClient(config *MosapiConfig) (*MosapiClient, error) {
 // MosapiConfig is the configuration for the MOSAPI client
 type MosapiConfig struct {
 	TLD         string
-	AuthType    string
+	AuthType    MOSAPIAuthType
 	Certificate string
 	Key         string
 	Username    string
 	Password    string
 	Version     string
-	Entity      string
+	Entity      EntityType // EntityType can be either EntityRegistry (ry) or EntityRegistrar (rr)
 	Environment string
 }
 
@@ -96,9 +118,9 @@ func (c *MosapiClient) BaseURL() (string, error) {
 		return "", ErrUnsupportedEnvironment
 	}
 	if strings.ToUpper(c.Config.Environment) == "PROD" {
-		return MOSAPI_URL + "/" + c.Config.Entity + "/" + c.Config.TLD + "/" + c.Config.Version, nil
+		return MOSAPI_URL + "/" + c.Config.Entity.String() + "/" + c.Config.TLD + "/" + c.Config.Version, nil
 	}
-	return MOSAPI_OTE_URL + "/" + c.Config.Entity + "/" + c.Config.TLD + "/" + c.Config.Version, nil
+	return MOSAPI_OTE_URL + "/" + c.Config.Entity.String() + "/" + c.Config.TLD + "/" + c.Config.Version, nil
 }
 
 // Login does a GET request to the login endpoint of the MOSAPI
