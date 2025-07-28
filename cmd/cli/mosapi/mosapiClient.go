@@ -4,10 +4,16 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/onasunnymorning/domain-os/cmd/cli/mosapi/cmd"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/mosapi"
 )
 
 func main() {
+	cmd.Execute()
+}
+
+// runMeasurementDetailsTest demonstrates how to use the MosapiClient to get measurement details
+func runMeasurementDetailsTest() {
 	// Get a MosapiClientConfig
 	mc := mosapi.NewMosapiClientConfig()
 	// Create a mosapiClient
@@ -22,5 +28,4 @@ func main() {
 	}
 
 	fmt.Println(measurements.PrettyPrint())
-
 }
