@@ -8,6 +8,14 @@ import (
 )
 
 func (c *MosapiClient) GetMeasurementDetails(service, year, month, day, measurementID string) (*MeasurementDetailsResponse, error) {
+	if c.Config.AuthType == AuthTypeBasic {
+		err := c.Login()
+		if err != nil {
+			return nil, err
+		}
+		defer c.Logout()
+	}
+
 	baseURL, err := c.BaseURL()
 	if err != nil {
 		return nil, err
