@@ -16,11 +16,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	days, err := mosapiClient.QueryAvailableMeasurementDays("DNS", "2023", "06")
+	measurements, err := mosapiClient.GetMeasurementDetails("dns", "2025", "07", "28", "1753733280.json")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(days)
+	fmt.Println(measurements)
 
 }
