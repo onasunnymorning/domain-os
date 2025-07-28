@@ -92,24 +92,25 @@ type MosapiConfig struct {
 // NewMosapiClientConfig creates a new MosapiClientConfig
 // TODO: FIXME: Make this configurable for now we just use our test TLD
 func NewMosapiClientConfig() *MosapiConfig {
+	// return &MosapiConfig{
+	// 	TLD:         "example56",
+	// 	AuthType:    AuthTypeCertificate,
+	// 	Certificate: "./scraps/icann-tls.crt.pem",
+	// 	Key:         "./scraps/icann-tls.private-nopass.key",
+	// 	Version:     V2,
+	// 	Entity:      EntityRegistry,
+	// 	Environment: "OTE",
+	// }
+
 	return &MosapiConfig{
-		TLD:         "example56",
-		AuthType:    AuthTypeCertificate,
-		Certificate: "./scraps/icann-tls.crt.pem",
-		Key:         "./scraps/icann-tls.private-nopass.key",
+		TLD:         "build",
+		AuthType:    AuthTypeBasic,
+		Username:    "build_ry",
+		Password:    "ntw{-N+k!H9X%h~^",
 		Version:     V2,
 		Entity:      EntityRegistry,
-		Environment: "OTE",
+		Environment: "PROD",
 	}
-
-	// return &MosapiConfig{
-	// 	TLD:      "build",
-	// 	AuthType: AuthTypeBasic,
-	// 	Username: "build_ry",
-	// 	Password: "ntw{-N+k!H9X%h~^",
-	// 	Version:  V2,
-	// 	Entity:   EntityRegistry,
-	// }
 }
 
 // BASEURL returns the base URL for the MOSAPICient given the current configuration. It supports PROD or OTE environments
@@ -142,6 +143,9 @@ func (c *MosapiClient) Login() error {
 	}
 	// If not succcess
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 429 {
+			return fmt.Errorf("login failed(%d) for %s - too many requests: wait before retrying", resp.StatusCode, c.Config.TLD)
+		}
 		return errors.Join(fmt.Errorf("login failed(%d) for %s", resp.StatusCode, c.Config.TLD), err)
 	}
 	// If success, set the cookies
