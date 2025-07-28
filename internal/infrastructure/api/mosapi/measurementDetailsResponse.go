@@ -1,5 +1,7 @@
 package mosapi
 
+import "encoding/json"
+
 // Root struct for the main response
 type MeasurementDetailsResponse struct {
 	Version                  int                     `json:"version"`
@@ -12,6 +14,12 @@ type MeasurementDetailsResponse struct {
 	NameServerAvailability   *NameServerAvailability `json:"nameServerAvailability,omitempty"`
 	Status                   string                  `json:"status"`
 	TestedInterface          []TestedInterface       `json:"testedInterface"`
+}
+
+// PrettyPrint returns a formatted string of the MeasurementDetailsResponse
+func (m *MeasurementDetailsResponse) PrettyPrint() string {
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return string(b)
 }
 
 // NameServerAvailability struct for name server availability details
