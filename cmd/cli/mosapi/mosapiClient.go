@@ -21,6 +21,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(measurements)
+	fmt.Println(measurements.PrettyPrint())
 
 }
