@@ -92,25 +92,25 @@ type MosapiConfig struct {
 // NewMosapiClientConfig creates a new MosapiClientConfig
 // TODO: FIXME: Make this configurable for now we just use our test TLD
 func NewMosapiClientConfig() *MosapiConfig {
-	// return &MosapiConfig{
-	// 	TLD:         "example56",
-	// 	AuthType:    AuthTypeCertificate,
-	// 	Certificate: "./scraps/icann-tls.crt.pem",
-	// 	Key:         "./scraps/icann-tls.private-nopass.key",
-	// 	Version:     V2,
-	// 	Entity:      EntityRegistry,
-	// 	Environment: "OTE",
-	// }
-
 	return &MosapiConfig{
-		TLD:         "build",
-		AuthType:    AuthTypeBasic,
-		Username:    "build_ry",
-		Password:    "ntw{-N+k!H9X%h~^",
+		TLD:         "example56",
+		AuthType:    AuthTypeCertificate,
+		Certificate: "./scraps/icann-tls.crt.pem",
+		Key:         "./scraps/icann-tls.private-nopass.key",
 		Version:     V2,
 		Entity:      EntityRegistry,
-		Environment: "PROD",
+		Environment: "OTE",
 	}
+
+	// return &MosapiConfig{
+	// 	TLD:         "build",
+	// 	AuthType:    AuthTypeBasic,
+	// 	Username:    "build_ry",
+	// 	Password:    "ntw{-N+k!H9X%h~^",
+	// 	Version:     V2,
+	// 	Entity:      EntityRegistry,
+	// 	Environment: "PROD",
+	// }
 }
 
 // BASEURL returns the base URL for the MOSAPICient given the current configuration. It supports PROD or OTE environments
