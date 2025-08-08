@@ -17,7 +17,10 @@ type StateResponse struct {
 
 // PrettyPrint returns a formatted string of the StateResponse
 func (s *StateResponse) PrettyPrint() string {
-	b, _ := json.MarshalIndent(s, "", "  ")
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return "error marshaling StateResponse: " + err.Error()
+	}
 	return string(b)
 }
 
