@@ -35,7 +35,7 @@ func (c *MosapiClient) QueryAvailableMeasurementIDs(service, year, month, day st
 	}
 
 	url := baseURL + "/monitoring/" + service + "/measurements/" + year + "/" + month + "/" + day
-	fmt.Println("Querying URL:", url)
+	log.Printf("Querying URL: %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
