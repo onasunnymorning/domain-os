@@ -18,7 +18,10 @@ type MeasurementDetailsResponse struct {
 
 // PrettyPrint returns a formatted string of the MeasurementDetailsResponse
 func (m *MeasurementDetailsResponse) PrettyPrint() string {
-	b, _ := json.MarshalIndent(m, "", "  ")
+	b, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return "error marshaling MeasurementDetailsResponse: " + err.Error()
+	}
 	return string(b)
 }
 
