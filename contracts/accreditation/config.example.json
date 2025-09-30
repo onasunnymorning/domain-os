@@ -1,0 +1,6 @@
+{
+  "network": "testnet",
+  "operatorAccount": "0.0.1234",
+  "operatorKey": "302e020100300506032b657004220420...",
+  "contractBytecode": "608060405234801561001057600080fd5b50..."
+}
