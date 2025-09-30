@@ -200,6 +200,11 @@ type RDEDomainRGPStatus struct {
 	S string `xml:"s,attr"`
 }
 
+// ToCSV converts the RDEDomainRGPStatus to a CSV row
+func (r *RDEDomainRGPStatus) ToCSV(domainName string) []string {
+	return []string{domainName, r.S}
+}
+
 type RDEDomainHost struct {
 	HostObjs []string `xml:"hostObj"`
 }
