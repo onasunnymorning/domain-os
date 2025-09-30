@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/xml"
+	"strconv"
 	"strings"
 	"time"
 
@@ -228,4 +229,47 @@ func (r *RDERegistrar) ToEntity() (*Registrar, error) {
 
 type RDERegistrarStatus struct {
 	S string `xml:"s,attr"`
+}
+
+// ToCSV converts the RDERegistrar to a CSV row
+func (r *RDERegistrar) ToCSV() []string {
+	return []string{
+		r.ID,
+		r.Name,
+		strconv.Itoa(r.GurID),
+		r.Status.S,
+		r.Voice,
+		r.Fax,
+		r.Email,
+		r.URL,
+		r.CrDate,
+		r.UpDate,
+	}
+}
+
+// ToCSV converts the RDERegistrarPostalInfo to a CSV row
+func (rpi *RDERegistrarPostalInfo) ToCSV(registrarID string) []string {
+	// Get street addresses, ensuring we have up to 3 street fields
+	street1, street2, street3 := "", "", ""
+	if len(rpi.Address.Street) > 0 {
+		street1 = rpi.Address.Street[0]
+	}
+	if len(rpi.Address.Street) > 1 {
+		street2 = rpi.Address.Street[1]
+	}
+	if len(rpi.Address.Street) > 2 {
+		street3 = rpi.Address.Street[2]
+	}
+
+	return []string{
+		registrarID,
+		rpi.Type,
+		street1,
+		street2,
+		street3,
+		rpi.Address.City,
+		rpi.Address.StateProvince,
+		rpi.Address.PostalCode,
+		rpi.Address.CountryCode,
+	}
 }

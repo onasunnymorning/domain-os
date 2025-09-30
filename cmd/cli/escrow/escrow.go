@@ -61,6 +61,10 @@ func main() {
 						Value:    false,
 						Required: false,
 					},
+					&cli.BoolFlag{
+						Name:  "streaming",
+						Usage: "Use optimized single-pass streaming analysis (recommended for large files)",
+					},
 				},
 			},
 			{
@@ -102,6 +106,7 @@ func main() {
 					},
 				},
 			},
+			escrow.CreateConvertToSQLiteCommand(),
 		},
 	}
 
@@ -119,24 +124,34 @@ func main() {
 	log.Printf("[DEBUG] Maximum memory usage: %d Mbytes\n", maxAlloc/1024/1024)
 }
 
+// Modified analyzeDeposit function to support both approaches
 func analyzeDeposit(c *cli.Context) error {
 	if c.Args().First() == "" {
 		return errors.New("please provide a filename")
 	}
 
-	escrowService, err := services.NewXMLEscrowService(c.Args().First())
-	if err != nil {
-		return err
+	filename := c.Args().First()
+	mapRegistrars := c.Bool("map-registrars")
+	useStreaming := c.Bool("streaming")
+
+	if useStreaming {
+		// Use the optimized streaming approach
+		streamingController, err := escrow.NewStreamingEscrowAnalysisController(filename)
+		if err != nil {
+			return err
+		}
+
+		return streamingController.AnalyzeStreaming(mapRegistrars)
+	} else {
+		// Use the original approach
+		escrowService, err := services.NewXMLEscrowService(filename)
+		if err != nil {
+			return err
+		}
+
+		escrowController := escrow.NewEscrowAnalysisController(escrowService)
+		return escrowController.Analyze(mapRegistrars)
 	}
-
-	escrowController := escrow.NewEscrowAnalysisController(escrowService)
-
-	err = escrowController.Analyze(c.Bool("map-registrars"))
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func importDeposit(c *cli.Context) error {
