@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 // CSVToSQLiteService converts escrow CSV files to SQLite database
@@ -31,7 +31,7 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 
 	// Open/create SQLite database
 	var err error
-	svc.db, err = sql.Open("sqlite3", dbPath)
+	svc.db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open SQLite database: %w", err)
 	}
@@ -805,7 +805,7 @@ func (svc *CSVToSQLiteService) FindRegistrarsByName(namePattern string) ([]Regis
 func OpenEscrowDatabase(dbPath string) (*CSVToSQLiteService, error) {
 	svc := &CSVToSQLiteService{}
 	var err error
-	svc.db, err = sql.Open("sqlite3", dbPath)
+	svc.db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
