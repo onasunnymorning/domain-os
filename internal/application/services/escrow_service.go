@@ -1026,7 +1026,13 @@ func (svc *XMLEscrowService) LookForMissingContacts() error {
 	}
 	errorCount := 0
 	missingContactIDs := []string{}
-	for _, record := range records {
+	// Skip the header row (first record) if records exist
+	startIndex := 0
+	if len(records) > 0 {
+		startIndex = 1 // Skip header row
+	}
+	for i := startIndex; i < len(records); i++ {
+		record := records[i]
 		if !svc.uniqueContactIDs[record[0]] {
 			errorCount++
 			missingContactIDs = append(missingContactIDs, record[0])
