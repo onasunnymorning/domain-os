@@ -15,19 +15,67 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
+	"github.com/redis/go-redis/v9"
 	epp "gitlab.com/internetstiftelsen-oss/epp-lib"
+
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.
 type contextKey string
 
-const connectionIDKey contextKey = "cid"
+const (
+	connectionIDKey contextKey = "cid"
+	clientIPKey     contextKey = "clientIP"
+	registrarIDKey  contextKey = "registrarID"
+)
+
+// Global rate limiter (will be initialized in main)
+var rateLimiter *middleware.RateLimiter
 
 func main() {
 	// Create a structured logger using slog
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
+
+	// Initialize Redis client
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+	redisPort := os.Getenv("REDIS_PORT")
+	if redisPort == "" {
+		redisPort = "6379"
+	}
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       0,
+	})
+
+	// Test Redis connection
+	ctx := context.Background()
+	_, err := redisClient.Ping(ctx).Result()
+	if err != nil {
+		logger.Error("Failed to connect to Redis", "error", err)
+		panic(err)
+	}
+	logger.Info("Connected to Redis", "addr", fmt.Sprintf("%s:%s", redisHost, redisPort))
+
+	// Initialize rate limiter with custom config
+	rateLimitConfig := &middleware.RateLimitConfig{
+		MaxConnPerIP:        10,
+		MaxConnPerRegistrar: 100,
+		ConnTTL:             5 * time.Minute,
+		RequestsPerSecond:   100,
+		BurstSize:           200,
+		RequestWindow:       time.Second,
+		MaxFailedLogins:     5,
+		LockoutDuration:     15 * time.Minute,
+	}
+	rateLimiter = middleware.NewRateLimiter(redisClient, rateLimitConfig, logger)
 
 	commandMux := &epp.CommandMux{}
 
@@ -129,12 +177,50 @@ func getGreetingXML() string {
 
 // logConnection implements the
 // ConnContext func(ctx context.Context, conn *tls.Conn) (context.Context, error)
-// interface and is a placeholder for connection management.
-// We simply log to the console that a connection has been established.
+// interface and handles connection rate limiting and tracking.
 func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error) {
-	// add the connection ID to the context
-	ctx = context.WithValue(ctx, connectionIDKey, "12345")
-	fmt.Printf("Connection with id %s established\n", ctx.Value(connectionIDKey))
+	// Extract client IP
+	clientIP := conn.RemoteAddr().String()
+	if tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		clientIP = tcpAddr.IP.String()
+	}
+
+	// Check connection limit before accepting
+	err := rateLimiter.CheckConnectionLimit(ctx, clientIP, "")
+	if err != nil {
+		fmt.Printf("Connection from %s rejected: %v\n", clientIP, err)
+		return nil, err
+	}
+
+	// Generate connection ID
+	connectionID := fmt.Sprintf("conn-%d", time.Now().UnixNano())
+
+	// Add connection info to context
+	ctx = context.WithValue(ctx, connectionIDKey, connectionID)
+	ctx = context.WithValue(ctx, clientIPKey, clientIP)
+
+	// Increment connection counter
+	err = rateLimiter.IncrementConnection(ctx, clientIP, "")
+	if err != nil {
+		fmt.Printf("Failed to track connection: %v\n", err)
+	}
+
+	fmt.Printf("Connection %s from %s established\n", connectionID, clientIP)
+
+	// Set up cleanup when connection closes
+	go func() {
+		<-ctx.Done()
+		// Get registrar ID from context if available
+		registrarID, _ := ctx.Value(registrarIDKey).(string)
+
+		// Decrement connection counter
+		cleanupCtx := context.Background()
+		if err := rateLimiter.DecrementConnection(cleanupCtx, clientIP, registrarID); err != nil {
+			fmt.Printf("Failed to cleanup connection: %v\n", err)
+		}
+		fmt.Printf("Connection %s from %s closed\n", connectionID, clientIP)
+	}()
+
 	return ctx, nil
 }
 
@@ -142,15 +228,83 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
 	fmt.Println("Login command received")
 
-	// Extract login information from the command (optional - for logging/validation)
+	// Extract login information from the command
 	clID := doc.FindElement("//clID")
+	pw := doc.FindElement("//pw")
+
+	var username string
 	if clID != nil {
-		fmt.Printf("Login attempt from client: %s\n", clID.Text())
+		username = clID.Text()
+		fmt.Printf("Login attempt from client: %s\n", username)
+	}
+
+	// Get client IP from context
+	clientIP, _ := ctx.Value(clientIPKey).(string)
+
+	// Check if account is locked
+	if username != "" {
+		locked, err := rateLimiter.IsAccountLocked(ctx, username)
+		if err != nil {
+			fmt.Printf("Error checking account lock status: %v\n", err)
+		}
+		if locked {
+			fmt.Printf("Login attempt for locked account: %s\n", username)
+			// Send error response
+			rw.Write([]byte(getAuthErrorResponseXML("account locked")))
+			return
+		}
+	}
+
+	// TODO: Implement actual authentication logic here
+	// For now, we'll simulate successful login for demonstration
+	authSuccess := true // This should be replaced with real authentication
+
+	if username == "" || pw == nil {
+		authSuccess = false
+	}
+
+	if !authSuccess {
+		// Record failed login
+		if username != "" && clientIP != "" {
+			if err := rateLimiter.RecordFailedLogin(ctx, username, clientIP); err != nil {
+				fmt.Printf("Failed login recorded, account may be locked: %v\n", err)
+			}
+		}
+
+		// Send authentication error response
+		rw.Write([]byte(getAuthErrorResponseXML("invalid credentials")))
+		return
+	}
+
+	// Successful login - clear failed login attempts
+	if username != "" && clientIP != "" {
+		if err := rateLimiter.ClearFailedLogins(ctx, username, clientIP); err != nil {
+			fmt.Printf("Error clearing failed logins: %v\n", err)
+		}
+
+		// Store registrar ID in context for connection tracking
+		// In a real implementation, you'd extract this from your auth system
+		ctx = context.WithValue(ctx, registrarIDKey, username)
 	}
 
 	// For now, accept any login and return success
 	// In a real implementation, you would validate credentials here
 	rw.Write([]byte(getLoginResponseXML()))
+}
+
+// getAuthErrorResponseXML returns an authentication error response.
+func getAuthErrorResponseXML(reason string) string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <response>
+    <result code="2200">
+      <msg>Authentication error - ` + reason + `</msg>
+    </result>
+    <trID>
+      <svTRID>` + fmt.Sprintf("srv-%d", time.Now().UnixNano()) + `</svTRID>
+    </trID>
+  </response>
+</epp>`
 }
 
 // getLoginResponseXML returns a successful login response.
