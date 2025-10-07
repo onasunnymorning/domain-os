@@ -89,7 +89,9 @@ The EPP server accepts the following environment variables:
 | `REDIS_PORT` | `6379` | Redis server port |
 | `REDIS_PASSWORD` | `` | Redis password (if required) |
 | `REDIS_DB` | `0` | Redis database number |
-| `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
+| `LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`). **Default `info` suppresses health check DEBUG messages**. |
+
+**Note on Health Checks**: The Docker health check opens port 700 every 30 seconds without sending EPP data, causing harmless EOF errors. These are logged at DEBUG level only. In production, keep `LOG_LEVEL=info` to suppress this noise. Set to `debug` only when troubleshooting.
 
 ## Docker Compose Configuration
 

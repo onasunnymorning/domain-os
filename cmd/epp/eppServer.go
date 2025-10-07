@@ -34,9 +34,24 @@ const (
 var rateLimiter *middleware.RateLimiter
 
 func main() {
+	// Get log level from environment (default: INFO for production)
+	logLevel := slog.LevelInfo
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		switch level {
+		case "debug", "DEBUG":
+			logLevel = slog.LevelDebug
+		case "info", "INFO":
+			logLevel = slog.LevelInfo
+		case "warn", "WARN", "warning", "WARNING":
+			logLevel = slog.LevelWarn
+		case "error", "ERROR":
+			logLevel = slog.LevelError
+		}
+	}
+
 	// Create a structured logger using slog
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: logLevel,
 	}))
 
 	// Initialize Redis client
