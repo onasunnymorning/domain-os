@@ -33,6 +33,14 @@ func main() {
 
 	commandMux.BindGreeting(sendGreeting)
 	commandMux.Bind(epp.NewXMLPathBuilder().AddOrphan("//hello", epp.NamespaceIETFEPP10.String()).String(), sendGreeting)
+	// Login is a direct child of command, not in a namespace-specific element
+	commandMux.Bind(epp.NewXMLPathBuilder().
+		AddOrphan("//command", epp.NamespaceIETFEPP10.String()).
+		Add("login", epp.NamespaceIETFEPP10.String()).String(), respondToLoginCommand)
+	// Logout is a direct child of command, not in a namespace-specific element
+	commandMux.Bind(epp.NewXMLPathBuilder().
+		AddOrphan("//command", epp.NamespaceIETFEPP10.String()).
+		Add("logout", epp.NamespaceIETFEPP10.String()).String(), respondToLogoutCommand)
 	commandMux.BindCommand("check", epp.NamespaceIETFDomain10.String(), respondToDomainCheckCommand)
 	// commandMux.BindCommand("info", epp.NamespaceIETFContact10.String(),
 	// 	funcTharHandlesContactInfoCommand,
@@ -103,7 +111,20 @@ func sendGreeting(ctx context.Context, rw epp.Writer, _ *etree.Document) {
 
 // getGreetingXML returns the XML for a greeting.
 func getGreetingXML() string {
-	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?><epp xmlns="urn:ietf:params:xml:ns:epp-1.0"><response><result code="1000"><msg>Welcome Stranger</msg></result><trID><clTRID>ABC-12345</clTRID><svTRID>APEX-123</svTRID></trID></response></epp>`
+	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <greeting>
+    <svID>EPP Server</svID>
+    <svDate>` + time.Now().UTC().Format(time.RFC3339) + `</svDate>
+    <svcMenu>
+      <version>1.0</version>
+      <lang>en</lang>
+      <objURI>urn:ietf:params:xml:ns:domain-1.0</objURI>
+      <objURI>urn:ietf:params:xml:ns:contact-1.0</objURI>
+      <objURI>urn:ietf:params:xml:ns:host-1.0</objURI>
+    </svcMenu>
+  </greeting>
+</epp>`
 }
 
 // logConnection implements the
@@ -115,6 +136,63 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	ctx = context.WithValue(ctx, connectionIDKey, "12345")
 	fmt.Printf("Connection with id %s established\n", ctx.Value(connectionIDKey))
 	return ctx, nil
+}
+
+// respondToLoginCommand handles EPP login commands.
+func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
+	fmt.Println("Login command received")
+
+	// Extract login information from the command (optional - for logging/validation)
+	clID := doc.FindElement("//clID")
+	if clID != nil {
+		fmt.Printf("Login attempt from client: %s\n", clID.Text())
+	}
+
+	// For now, accept any login and return success
+	// In a real implementation, you would validate credentials here
+	rw.Write([]byte(getLoginResponseXML()))
+}
+
+// getLoginResponseXML returns a successful login response.
+func getLoginResponseXML() string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <response>
+    <result code="1000">
+      <msg>Command completed successfully</msg>
+    </result>
+    <trID>
+      <clTRID>ABC-12345</clTRID>
+      <svTRID>APEX-LOGIN-123</svTRID>
+    </trID>
+  </response>
+</epp>`
+}
+
+// respondToLogoutCommand handles EPP logout commands.
+func respondToLogoutCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
+	fmt.Println("Client logout")
+	rw.Write([]byte(getLogoutResponseXML()))
+	// Close the connection after writing the response
+	if respWriter, ok := rw.(*epp.ResponseWriter); ok {
+		respWriter.CloseAfterWrite()
+	}
+}
+
+// getLogoutResponseXML returns a successful logout response.
+func getLogoutResponseXML() string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <response>
+    <result code="1500">
+      <msg>Command completed successfully; ending session</msg>
+    </result>
+    <trID>
+      <clTRID>ABC-12345</clTRID>
+      <svTRID>APEX-LOGOUT-123</svTRID>
+    </trID>
+  </response>
+</epp>`
 }
 
 // respondToDomainCheckCommand is a placeholder function that responds to a domain check command.
