@@ -5,16 +5,31 @@
 # Default target
 help:
 	@echo "EPP Server - Available targets:"
-	@echo "  build         - Build EPP server binary locally"
-	@echo "  run           - Run EPP server locally"
-	@echo "  test          - Run unit tests"
-	@echo "  test-int      - Run integration tests (requires Redis)"
-	@echo "  clean         - Clean build artifacts"
-	@echo "  docker-build  - Build Docker image for EPP server"
-	@echo "  docker-run    - Run EPP server in Docker with compose"
-	@echo "  docker-stop   - Stop EPP server Docker container"
-	@echo "  docker-logs   - Show EPP server logs"
-	@echo "  docker-shell  - Open shell in running EPP container"
+	@echo ""
+	@echo "Local Development:"
+	@echo "  build              - Build EPP server binary locally"
+	@echo "  run                - Run EPP server locally"
+	@echo "  test               - Run unit tests"
+	@echo "  test-int           - Run integration tests (requires Redis)"
+	@echo "  clean              - Clean build artifacts"
+	@echo ""
+	@echo "Docker Operations:"
+	@echo "  docker-build       - Build Docker image for EPP server"
+	@echo "  docker-run         - Run EPP server in Docker with compose"
+	@echo "  docker-stop        - Stop EPP server Docker container"
+	@echo "  docker-logs        - Show EPP server logs"
+	@echo "  docker-shell       - Open shell in running EPP container"
+	@echo ""
+	@echo "Stack Management:"
+	@echo "  docker-stack       - Start full stack (DB, Redis, Admin API, EPP Server)"
+	@echo "  docker-stack-minimal - Start minimal stack (Redis + EPP Server only)"
+	@echo "  docker-stack-down  - Stop all stack services"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  status             - Show container status"
+	@echo "  redis-monitor      - Monitor Redis commands"
+	@echo "  redis-keys         - Show all Redis keys"
+	@echo "  redis-clear        - Clear all Redis data"
 
 # Build EPP server binary locally
 build:
@@ -72,19 +87,38 @@ docker-stop:
 
 # Show EPP server logs
 docker-logs:
-	docker compose logs -f epp-server
+	@echo "Showing EPP server logs (Ctrl+C to exit)..."
+	@docker logs -f domain-os-epp-server-1 2>/dev/null || docker compose logs -f epp-server
 
 # Open shell in running EPP container
 docker-shell:
 	docker compose exec epp-server sh
 
-# Run full stack (Redis + EPP server)
+# Run full stack (all essential services: DB, Redis, Admin API, EPP Server)
 docker-stack:
-	@echo "Starting full EPP stack (Redis + EPP Server)..."
-	doppler run -- docker compose --profile essential up -d redis epp-server
+	@echo "Building EPP server image..."
+	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	@echo "Starting full EPP stack (all essential services)..."
+	BRANCH=latest doppler run -- docker compose --profile essential up -d
 	@echo "✓ EPP stack is running"
+	@echo "  Database: localhost:5432"
 	@echo "  Redis: localhost:6379"
 	@echo "  EPP Server: localhost:700"
+	@echo "  Admin API: localhost:8080"
+	@echo ""
+	@echo "View logs with: make -f Makefile.epp-server docker-logs"
+
+# Run minimal stack (just Redis + EPP server for testing)
+docker-stack-minimal:
+	@echo "Building EPP server image..."
+	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	@echo "Starting minimal EPP stack (Redis + EPP Server only)..."
+	BRANCH=latest doppler run -- docker compose --profile essential up -d redis epp-server
+	@echo "✓ Minimal EPP stack is running"
+	@echo "  Redis: localhost:6379"
+	@echo "  EPP Server: localhost:700"
+	@echo ""
+	@echo "View logs with: make -f Makefile.epp-server docker-logs"
 
 # Stop full stack
 docker-stack-down:
