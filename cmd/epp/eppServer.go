@@ -200,11 +200,13 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 		clientIP = tcpAddr.IP.String()
 	}
 
-	// Check connection limit before accepting
-	err := rateLimiter.CheckConnectionLimit(ctx, clientIP, "")
-	if err != nil {
-		fmt.Printf("Connection from %s rejected: %v\n", clientIP, err)
-		return nil, err
+	// Check connection limit before accepting (only if rateLimiter is initialized)
+	if rateLimiter != nil {
+		err := rateLimiter.CheckConnectionLimit(ctx, clientIP, "")
+		if err != nil {
+			fmt.Printf("Connection from %s rejected: %v\n", clientIP, err)
+			return nil, err
+		}
 	}
 
 	// Generate connection ID
@@ -214,10 +216,12 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	ctx = context.WithValue(ctx, connectionIDKey, connectionID)
 	ctx = context.WithValue(ctx, clientIPKey, clientIP)
 
-	// Increment connection counter
-	err = rateLimiter.IncrementConnection(ctx, clientIP, "")
-	if err != nil {
-		fmt.Printf("Failed to track connection: %v\n", err)
+	// Increment connection counter (only if rateLimiter is initialized)
+	if rateLimiter != nil {
+		err := rateLimiter.IncrementConnection(ctx, clientIP, "")
+		if err != nil {
+			fmt.Printf("Failed to track connection: %v\n", err)
+		}
 	}
 
 	fmt.Printf("Connection %s from %s established\n", connectionID, clientIP)
@@ -228,10 +232,12 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 		// Get registrar ID from context if available
 		registrarID, _ := ctx.Value(registrarIDKey).(string)
 
-		// Decrement connection counter
-		cleanupCtx := context.Background()
-		if err := rateLimiter.DecrementConnection(cleanupCtx, clientIP, registrarID); err != nil {
-			fmt.Printf("Failed to cleanup connection: %v\n", err)
+		// Decrement connection counter (only if rateLimiter is initialized)
+		if rateLimiter != nil {
+			cleanupCtx := context.Background()
+			if err := rateLimiter.DecrementConnection(cleanupCtx, clientIP, registrarID); err != nil {
+				fmt.Printf("Failed to cleanup connection: %v\n", err)
+			}
 		}
 		fmt.Printf("Connection %s from %s closed\n", connectionID, clientIP)
 	}()
@@ -256,8 +262,8 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 	// Get client IP from context
 	clientIP, _ := ctx.Value(clientIPKey).(string)
 
-	// Check if account is locked
-	if username != "" {
+	// Check if account is locked (only if rateLimiter is initialized)
+	if rateLimiter != nil && username != "" {
 		locked, err := rateLimiter.IsAccountLocked(ctx, username)
 		if err != nil {
 			fmt.Printf("Error checking account lock status: %v\n", err)
@@ -279,8 +285,8 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 	}
 
 	if !authSuccess {
-		// Record failed login
-		if username != "" && clientIP != "" {
+		// Record failed login (only if rateLimiter is initialized)
+		if rateLimiter != nil && username != "" && clientIP != "" {
 			if err := rateLimiter.RecordFailedLogin(ctx, username, clientIP); err != nil {
 				fmt.Printf("Failed login recorded, account may be locked: %v\n", err)
 			}
@@ -291,8 +297,8 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 		return
 	}
 
-	// Successful login - clear failed login attempts
-	if username != "" && clientIP != "" {
+	// Successful login - clear failed login attempts (only if rateLimiter is initialized)
+	if rateLimiter != nil && username != "" && clientIP != "" {
 		if err := rateLimiter.ClearFailedLogins(ctx, username, clientIP); err != nil {
 			fmt.Printf("Error clearing failed logins: %v\n", err)
 		}
