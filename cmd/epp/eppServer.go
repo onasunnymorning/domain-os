@@ -8,44 +8,26 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net"
+	"os"
 	"time"
 
 	"github.com/beevik/etree"
-	epp "github.com/dotse/epp-lib"
-	"github.com/sirupsen/logrus"
+	epp "gitlab.com/internetstiftelsen-oss/epp-lib"
 )
 
-// LogrusLogger for the logger interface using logrus.
-type LogrusLogger struct {
-	logger *logrus.Logger
-}
+// contextKey is a custom type for context keys to avoid collisions.
+type contextKey string
 
-// NewLogrusLogger creates a new instance of LogrusLogger.
-func NewLogrusLogger() *LogrusLogger {
-	logger := logrus.New()
-	// Set logger configuration here if needed
-	return &LogrusLogger{logger: logger}
-}
-
-// Errorf logs an error message.
-func (l *LogrusLogger) Errorf(format string, args ...interface{}) {
-	l.logger.Errorf(format, args...)
-}
-
-// Infof logs an info message.
-func (l *LogrusLogger) Infof(format string, args ...interface{}) {
-	l.logger.Infof(format, args...)
-}
-
-// Debugf logs a debug message.
-func (l *LogrusLogger) Debugf(format string, args ...interface{}) {
-	l.logger.Debugf(format, args...)
-}
+const connectionIDKey contextKey = "cid"
 
 func main() {
-	logger := NewLogrusLogger()
+	// Create a structured logger using slog
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	commandMux := &epp.CommandMux{}
 
@@ -70,7 +52,7 @@ func main() {
 		WriteTimeout:   2 * time.Minute,
 		ReadTimeout:    10 * time.Second,
 		Logger:         logger,
-		MaxMessageSize: 1000,
+		MaxMessageSize: 1000, // uint32 type in new library
 	}
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
@@ -130,8 +112,8 @@ func getGreetingXML() string {
 // We simply log to the console that a connection has been established.
 func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error) {
 	// add the connection ID to the context
-	ctx = context.WithValue(ctx, "cid", "12345")
-	fmt.Printf("Connection with id %s established\n", ctx.Value("cid"))
+	ctx = context.WithValue(ctx, connectionIDKey, "12345")
+	fmt.Printf("Connection with id %s established\n", ctx.Value(connectionIDKey))
 	return ctx, nil
 }
 
