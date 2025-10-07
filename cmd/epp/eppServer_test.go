@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"net"
 	"testing"
 
 	"github.com/beevik/etree"
@@ -284,7 +286,22 @@ func TestGenerateCertificate(t *testing.T) {
 func TestLogConnection(t *testing.T) {
 	ctx := context.Background()
 
-	newCtx, err := logConnection(ctx, nil)
+	// Create a mock TCP connection for testing
+	// We'll use a simple net.Pipe to create a connection
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	// We need a TLS connection, so let's create a minimal TLS config
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		Certificates:       []tls.Certificate{generateCertificate()},
+	}
+
+	// Create TLS connection from the client side
+	tlsConn := tls.Client(client, tlsConfig)
+
+	newCtx, err := logConnection(ctx, tlsConn)
 
 	require.NoError(t, err, "Should not return error")
 	require.NotNil(t, newCtx, "Should return context")
@@ -292,5 +309,8 @@ func TestLogConnection(t *testing.T) {
 	// Verify context has connection ID
 	connID := newCtx.Value(connectionIDKey)
 	assert.NotNil(t, connID, "Context should have connection ID")
-	assert.Equal(t, "12345", connID, "Connection ID should be set")
+
+	// Verify context has client IP
+	clientIP := newCtx.Value(clientIPKey)
+	assert.NotNil(t, clientIP, "Context should have client IP")
 }
