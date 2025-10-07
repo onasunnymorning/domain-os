@@ -1,0 +1,118 @@
+# Makefile for EPP Testing Infrastructure
+
+.PHONY: help test test-unit test-integration test-e2e test-coverage lint build-server build-client run-server run-client clean
+
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# Testing targets
+test: test-unit ## Run all tests
+
+test-unit: ## Run unit tests
+	@echo "Running unit tests..."
+	go test ./cmd/epp/... -v -race -short
+	go test ./cmd/cli/epp/... -v -race -short
+
+test-integration: ## Run integration tests
+	@echo "Running integration tests..."
+	go test ./test/epp/... -v -race -tags=integration
+
+test-e2e: ## Run end-to-end tests
+	@echo "Running E2E tests..."
+	go test ./test/e2e/... -v -tags=e2e
+
+test-coverage: ## Run tests with coverage report
+	@echo "Running tests with coverage..."
+	go test ./... -coverprofile=coverage.out -covermode=atomic
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+test-bench: ## Run benchmark tests
+	@echo "Running benchmark tests..."
+	go test ./... -bench=. -benchmem
+
+# Build targets
+build-server: ## Build EPP server
+	@echo "Building EPP server..."
+	go build -o bin/epp-server ./cmd/epp/
+
+build-client: ## Build EPP client
+	@echo "Building EPP client..."
+	go build -o bin/epp-client ./cmd/cli/epp/
+
+build: build-server build-client ## Build both server and client
+
+# Run targets
+run-server: build-server ## Run EPP server
+	@echo "Starting EPP server on port 700..."
+	./bin/epp-server
+
+run-client: build-client ## Run EPP client
+	@echo "Starting EPP client..."
+	./bin/epp-client -h localhost -p 700
+
+# Code quality
+lint: ## Run linters
+	@echo "Running linters..."
+	golangci-lint run ./...
+
+fmt: ## Format code
+	@echo "Formatting code..."
+	go fmt ./...
+	goimports -w .
+
+vet: ## Run go vet
+	@echo "Running go vet..."
+	go vet ./...
+
+# Development
+dev-server: ## Run server in development mode with auto-reload
+	@echo "Starting server in dev mode..."
+	air -c .air.server.toml
+
+dev-client: ## Run client in development mode
+	@echo "Starting client in dev mode..."
+	go run ./cmd/cli/epp/eppCliClient.go -h localhost -p 700
+
+# Testing infrastructure setup
+setup-test-env: ## Set up test environment
+	@echo "Setting up test environment..."
+	go install github.com/stretchr/testify/assert@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Cleanup
+clean: ## Clean build artifacts and test files
+	@echo "Cleaning..."
+	rm -rf bin/
+	rm -f coverage.out coverage.html
+	rm -rf test/e2e/data/
+	go clean -testcache
+
+# Docker targets
+docker-test: ## Run tests in Docker
+	@echo "Running tests in Docker..."
+	docker-compose -f test/docker-compose.test.yml up --abort-on-container-exit
+	docker-compose -f test/docker-compose.test.yml down
+
+# CI/CD helpers
+ci-test: ## Run tests for CI/CD
+	go test ./... -v -race -coverprofile=coverage.out
+
+ci-lint: ## Run linting for CI/CD
+	golangci-lint run --out-format=github-actions
+
+# Load testing
+load-test: ## Run load tests against EPP server
+	@echo "Running load tests..."
+	@echo "Make sure server is running on port 700"
+	go run test/load/main.go -duration 30s -rate 100
+
+# Generate test data
+gen-test-data: ## Generate test XML fixtures
+	@echo "Generating test data..."
+	go run test/fixtures/generate.go
+
+.DEFAULT_GOAL := help
