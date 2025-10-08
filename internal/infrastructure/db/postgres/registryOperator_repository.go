@@ -114,6 +114,7 @@ func (r *RegistryOperatorRepository) List(ctx context.Context, params queries.Li
 	return ros, lastID, nil
 }
 
+// Count returns the number of RegistryOperators in the database using the provided filter
 func (r *RegistryOperatorRepository) Count(ctx context.Context, filter queries.ListRegistryOperatorsFilter) (int64, error) {
 	dbQuery := r.db.WithContext(ctx)
 

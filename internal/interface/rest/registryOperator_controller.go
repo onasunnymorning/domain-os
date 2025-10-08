@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -27,6 +28,7 @@ func NewRegistryOperatorController(e *gin.Engine, ryService interfaces.RegistryO
 	{
 		ryOpGroup.POST("", ctrl.Create)
 		ryOpGroup.GET("", ctrl.List)
+		ryOpGroup.GET("count", ctrl.Count)
 		ryOpGroup.GET(":ryid", ctrl.GetByRyID)
 		ryOpGroup.PUT(":ryid", ctrl.Update)
 		ryOpGroup.DELETE(":ryid", ctrl.DeleteByRyID)
@@ -210,4 +212,36 @@ func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
 	response.SetMeta(ctx, cursor, len(ros), query.PageSize, query.Filter)
 
 	ctx.JSON(200, response)
+}
+
+// Count godoc
+// @Summary Count Registry Operators
+// @Description Count Registry Operators
+// @Tags Registry Operators
+// @Produce json
+// @Param ryid_like query string false "Filter by RyID (partial match)"
+// @Param name_like query string false "Filter by name (partial match)"
+// @Param email_like query string false "Filter by email (partial match)"
+// @Success 200 {object} response.CountResult
+// @Failure 500
+// @Router /registry-operators/count [get]
+func (ctrl *RegistryOperatorController) Count(ctx *gin.Context) {
+	// Add filters if provided
+	filter := queries.ListRegistryOperatorsFilter{}
+	filter.RyidLike = ctx.Query("ryid_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.NameLike = ctx.Query("name_like")
+
+	count, err := ctrl.ryService.Count(ctx, filter)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, response.CountResult{
+		ObjectType: "RegistryOperator",
+		Count:      count,
+		Timestamp:  time.Now().UTC(),
+		Filter:     filter,
+	})
 }
