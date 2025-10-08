@@ -1,5 +1,7 @@
 package mosapi
 
+import "encoding/json"
+
 type StateResponse struct {
 	TLD             string `json:"tld"`
 	LastUpdateApiDb int    `json:"lastUpdateApiDatabase"` // a JSON number that contains the Unix time stamp of the date and time that the monitoring information provided in the MoSAPI was last updated from the monitoring system central database.
@@ -11,6 +13,15 @@ type StateResponse struct {
 	Status         string `json:"status"`
 	TestedServices map[string]TestedService
 	Version        int `json:"version"`
+}
+
+// PrettyPrint returns a formatted string of the StateResponse
+func (s *StateResponse) PrettyPrint() string {
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return "error marshaling StateResponse: " + err.Error()
+	}
+	return string(b)
 }
 
 // TestedService is a struct that represents a tested service in the MOSAPI
