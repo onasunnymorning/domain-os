@@ -285,15 +285,35 @@ func (rl *RateLimiter) ClearFailedLogins(ctx context.Context, username string, i
 func (rl *RateLimiter) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// Get all connection keys
-	ipKeys, err := rl.redis.Keys(ctx, "conn:ip:*").Result()
-	if err != nil {
-		return nil, err
+	// Get all connection keys using SCAN instead of KEYS for better performance
+	var ipKeys []string
+	var cursor uint64
+	for {
+		var keys []string
+		var err error
+		keys, cursor, err = rl.redis.Scan(ctx, cursor, "conn:ip:*", 1000).Result()
+		if err != nil {
+			return nil, err
+		}
+		ipKeys = append(ipKeys, keys...)
+		if cursor == 0 {
+			break
+		}
 	}
 
-	regKeys, err := rl.redis.Keys(ctx, "conn:reg:*").Result()
-	if err != nil {
-		return nil, err
+	var regKeys []string
+	cursor = 0
+	for {
+		var keys []string
+		var err error
+		keys, cursor, err = rl.redis.Scan(ctx, cursor, "conn:reg:*", 1000).Result()
+		if err != nil {
+			return nil, err
+		}
+		regKeys = append(regKeys, keys...)
+		if cursor == 0 {
+			break
+		}
 	}
 
 	stats["total_ip_connections"] = len(ipKeys)
