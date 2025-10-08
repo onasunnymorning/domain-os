@@ -1,0 +1,172 @@
+# Makefile for EPP Server
+
+.PHONY: help build run test clean docker-build docker-run docker-stop docker-logs
+
+# Default target
+help:
+	@echo "EPP Server - Available targets:"
+	@echo ""
+	@echo "Local Development:"
+	@echo "  build              - Build EPP server binary locally"
+	@echo "  run                - Run EPP server locally"
+	@echo "  test               - Run unit tests"
+	@echo "  test-int           - Run integration tests (requires Redis)"
+	@echo "  clean              - Clean build artifacts"
+	@echo ""
+	@echo "Docker Operations:"
+	@echo "  docker-build       - Build Docker image for EPP server"
+	@echo "  docker-run         - Run EPP server in Docker with compose"
+	@echo "  docker-stop        - Stop EPP server Docker container"
+	@echo "  docker-logs        - Show EPP server logs"
+	@echo "  docker-shell       - Open shell in running EPP container"
+	@echo ""
+	@echo "Stack Management:"
+	@echo "  docker-stack       - Start full stack (DB, Redis, Admin API, EPP Server)"
+	@echo "  docker-stack-minimal - Start minimal stack (Redis + EPP Server only)"
+	@echo "  docker-stack-down  - Stop all stack services"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  status             - Show container status"
+	@echo "  redis-monitor      - Monitor Redis commands"
+	@echo "  redis-keys         - Show all Redis keys"
+	@echo "  redis-clear        - Clear all Redis data"
+
+# Build EPP server binary locally
+build:
+	@echo "Building EPP server..."
+	go build -o bin/epp-server cmd/epp/eppServer.go
+	@echo "✓ EPP server built: bin/epp-server"
+
+# Run EPP server locally
+run:
+	@echo "Starting EPP server..."
+	go run cmd/epp/eppServer.go
+
+# Run unit tests
+test:
+	@echo "Running unit tests..."
+	go test ./internal/infrastructure/epp/... -v
+
+# Run integration tests (requires Redis)
+test-int:
+	@echo "Running integration tests (requires Redis)..."
+	go test -tags=integration ./internal/infrastructure/epp/... -v
+
+# Run all EPP server tests with coverage
+coverage:
+	@echo "Running tests with coverage..."
+	go test ./cmd/epp -cover -coverprofile=coverage.out -covermode=atomic
+	go tool cover -func=coverage.out
+	@echo "Generate HTML coverage report with: go tool cover -html=coverage.out"
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	rm -f bin/epp-server
+	rm -f coverage.out coverage.html
+	@echo "✓ Cleaned"
+
+# Build Docker image
+docker-build:
+	@echo "Building EPP server Docker image..."
+	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	@echo "✓ Docker image built: geapex/epp-server:latest"
+
+# Run EPP server with Docker Compose
+docker-run:
+	@echo "Starting EPP server with Docker Compose..."
+	doppler run -- docker compose --profile essential up -d epp-server
+	@echo "✓ EPP server is running on port 700"
+	@echo "  View logs: make docker-logs"
+
+# Stop EPP server
+docker-stop:
+	@echo "Stopping EPP server..."
+	docker compose stop epp-server
+	@echo "✓ EPP server stopped"
+
+# Show EPP server logs
+docker-logs:
+	@echo "Showing EPP server logs (Ctrl+C to exit)..."
+	@docker logs -f domain-os-epp-server-1 2>/dev/null || docker compose logs -f epp-server
+
+# Open shell in running EPP container
+docker-shell:
+	docker compose exec epp-server sh
+
+# Run full stack (all essential services: DB, Redis, Admin API, EPP Server)
+docker-stack:
+	@echo "Building EPP server image..."
+	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	@echo "Starting full EPP stack (all essential services)..."
+	BRANCH=latest doppler run -- docker compose --profile essential up -d
+	@echo "✓ EPP stack is running"
+	@echo "  Database: localhost:5432"
+	@echo "  Redis: localhost:6379"
+	@echo "  EPP Server: localhost:700"
+	@echo "  Admin API: localhost:8080"
+	@echo ""
+	@echo "View logs with: make -f Makefile.epp-server docker-logs"
+
+# Run minimal stack (just Redis + EPP server for testing)
+docker-stack-minimal:
+	@echo "Building EPP server image..."
+	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	@echo "Starting minimal EPP stack (Redis + EPP Server only)..."
+	BRANCH=latest doppler run -- docker compose --profile essential up -d redis epp-server
+	@echo "✓ Minimal EPP stack is running"
+	@echo "  Redis: localhost:6379"
+	@echo "  EPP Server: localhost:700"
+	@echo ""
+	@echo "View logs with: make -f Makefile.epp-server docker-logs"
+
+# Stop full stack
+docker-stack-down:
+	@echo "Stopping EPP stack..."
+	docker compose --profile essential down
+	@echo "✓ EPP stack stopped"
+
+# Rebuild and restart (for development)
+docker-dev:
+	@echo "Rebuilding and restarting EPP server..."
+	docker compose build epp-server
+	docker compose up -d epp-server
+	@echo "✓ EPP server restarted"
+	@echo "  Watching logs..."
+	docker compose logs -f epp-server
+
+# Check EPP server status
+status:
+	@echo "EPP Server Status:"
+	@docker compose ps epp-server || echo "  Not running"
+	@echo ""
+	@echo "Redis Status:"
+	@docker compose ps redis || echo "  Not running"
+
+# Test connection to EPP server
+test-connect:
+	@echo "Testing EPP server connection on port 700..."
+	@nc -zv localhost 700 && echo "✓ EPP server is reachable" || echo "✗ EPP server is not reachable"
+
+# Monitor Redis keys (useful for debugging rate limiting)
+redis-monitor:
+	@echo "Monitoring Redis keys (Ctrl+C to stop)..."
+	docker compose exec redis redis-cli MONITOR
+
+# Show Redis rate limiting keys
+redis-keys:
+	@echo "Redis Rate Limiting Keys:"
+	@docker compose exec redis redis-cli KEYS "conn:*"
+	@docker compose exec redis redis-cli KEYS "failed:*"
+	@docker compose exec redis redis-cli KEYS "locked:*"
+
+# Clear Redis rate limiting data
+redis-clear:
+	@echo "Clearing Redis rate limiting data..."
+	@docker compose exec redis redis-cli FLUSHDB
+	@echo "✓ Redis data cleared"
+
+# Show EPP server metrics (placeholder for future Prometheus integration)
+metrics:
+	@echo "EPP Server Metrics (not yet implemented)"
+	@echo "TODO: Integrate with Prometheus on port 9090"

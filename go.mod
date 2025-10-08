@@ -9,13 +9,12 @@ require (
 	github.com/THREATINT/go-net v1.2.37
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/apex/gateway v1.1.2
-	github.com/beevik/etree v1.1.0
+	github.com/beevik/etree v1.5.0
 	github.com/biter777/countries v1.7.2
 	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/confluentinc/confluent-kafka-go/v2 v2.4.0
 	github.com/dotse/epp-client v0.0.0-20220829132601-f59cb8c6fc07
-	github.com/dotse/epp-lib v0.1.1
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-contrib/zap v1.1.4
 	github.com/gin-gonic/gin v1.10.0
@@ -32,7 +31,6 @@ require (
 	github.com/pborman/uuid v1.2.1
 	github.com/rabbitmq/rabbitmq-stream-go-client v1.4.8
 	github.com/schollz/progressbar/v3 v3.14.2
-	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
@@ -40,6 +38,7 @@ require (
 	github.com/tj/assert v0.0.3
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/zsais/go-gin-prometheus v0.1.0
+	gitlab.com/internetstiftelsen-oss/epp-lib v0.3.0
 	go.temporal.io/sdk v1.31.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.41.0
@@ -64,7 +63,9 @@ require (
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/docker/docker v25.0.6+incompatible // indirect
+	github.com/dotse/epp-lib v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
@@ -115,11 +116,13 @@ require (
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
+	github.com/redis/go-redis/v9 v9.14.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

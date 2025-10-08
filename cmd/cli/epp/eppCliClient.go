@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/xml"
 	"log"
 	"math/big"
 	"net"
@@ -21,6 +22,35 @@ import (
 
 	"github.com/alecthomas/kingpin"
 )
+
+// PrettyXMLLogger wraps a logger and formats XML output.
+type PrettyXMLLogger struct {
+	logger *log.Logger
+}
+
+// NewPrettyXMLLogger creates a new PrettyXMLLogger.
+func NewPrettyXMLLogger() *PrettyXMLLogger {
+	return &PrettyXMLLogger{
+		logger: log.New(os.Stdout, "", 0),
+	}
+}
+
+// Println formats XML if the input looks like XML, otherwise prints normally.
+func (p *PrettyXMLLogger) Println(v ...interface{}) {
+	if len(v) == 1 {
+		if str, ok := v[0].(string); ok && len(str) > 0 && str[0] == '<' {
+			// Looks like XML, format it
+			p.logger.Println(formatXML(str))
+			return
+		}
+	}
+	p.logger.Println(v...)
+}
+
+// Fatalf prints a formatted error message and exits.
+func (p *PrettyXMLLogger) Fatalf(format string, v ...interface{}) {
+	p.logger.Fatalf(format, v...)
+}
 
 func main() {
 	var (
@@ -63,14 +93,19 @@ func main() {
 
 	kingpin.Parse()
 
-	logger := log.New(os.Stdout, "", 0)
+	logger := NewPrettyXMLLogger()
 	ctx := context.Background()
 
 	cl, err := connect(ctx, *host, *port)
 	if err != nil {
 		logger.Fatalf("Failed to connect to EPP server: %v", err)
 	}
-	logger.Println(cl.Greeting)
+
+	// Pretty print the greeting XML
+	prettyGreeting := formatXML(cl.Greeting)
+	logger.Println("=== EPP Greeting ===")
+	logger.Println(prettyGreeting)
+	logger.Println("====================")
 
 	if *keepAlive {
 		cl.KeepAlive(ctx)
@@ -164,4 +199,28 @@ func generateCertificate() tls.Certificate {
 		Certificate: [][]byte{certificate},
 		PrivateKey:  key,
 	}
+}
+
+// formatXML formats XML string with proper indentation for pretty printing.
+func formatXML(xmlStr string) string {
+	var buf bytes.Buffer
+	decoder := xml.NewDecoder(bytes.NewReader([]byte(xmlStr)))
+	encoder := xml.NewEncoder(&buf)
+	encoder.Indent("", "  ")
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		if err := encoder.EncodeToken(token); err != nil {
+			return xmlStr // Return original if formatting fails
+		}
+	}
+
+	if err := encoder.Flush(); err != nil {
+		return xmlStr // Return original if formatting fails
+	}
+
+	return buf.String()
 }

@@ -54,6 +54,63 @@ services:
     volumes:
       - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
 
+# Redis container for session management and rate limiting
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles: [essential, full]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - 6379:6379
+    networks:
+      - dos
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+
+# EPP Server container
+  epp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.epp
+    image: geapex/epp-server:${BRANCH:-latest}
+    restart: unless-stopped
+    profiles: [essential, full]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "700"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 700:700
+    networks:
+      - dos
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    develop:
+      watch:
+        - action: rebuild
+          path: ./cmd/epp
+        - action: rebuild
+          path: ./internal/infrastructure/epp
+
 # Prometheus container
   prometheus:
     image: prom/prometheus
@@ -216,4 +273,6 @@ volumes:
   db:
     driver: local
   prom_data:
+    driver: local
+  redis_data:
     driver: local

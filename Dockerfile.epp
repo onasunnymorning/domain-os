@@ -1,0 +1,69 @@
+# Dockerfile for EPP Server
+# Multi-stage build to keep the final image small
+
+# Stage 1: Build the EPP server binary
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+RUN go mod verify
+
+# Copy source code
+COPY cmd/epp/ ./cmd/epp/
+COPY internal/ ./internal/
+
+# Build the EPP server binary
+# CGO is disabled for a fully static binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a \
+    -o epp-server \
+    ./cmd/epp
+
+# Stage 2: Create minimal runtime image
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    netcat-openbsd \
+    && update-ca-certificates
+
+# Create non-root user for security
+RUN addgroup -g 1000 epp && \
+    adduser -D -u 1000 -G epp epp
+
+# Create directory for certificates (optional, for future use)
+RUN mkdir -p /etc/epp/certs && \
+    chown -R epp:epp /etc/epp
+
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /build/epp-server /app/epp-server
+
+# Make binary executable
+RUN chmod +x /app/epp-server
+
+# Change ownership to non-root user
+RUN chown -R epp:epp /app
+
+# Switch to non-root user
+USER epp
+
+# Expose EPP port (700)
+EXPOSE 700
+
+# Health check - verify EPP port is listening
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD nc -z localhost 700 || exit 1
+
+# Run the EPP server
+CMD ["/app/epp-server"]
