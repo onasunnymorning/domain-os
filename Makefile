@@ -87,16 +87,23 @@ test-unit: ## Run unit tests with coverage
 	@echo "Stopping test database..."
 	@docker stop testdb 2>/dev/null || true
 
-test-integration: ## Run integration tests
-	@echo "Running integration tests..."
+test-integration: ## Run integration tests (requires Postman API keys in Doppler)
+	@echo "Running integration tests with Postman/Newman..."
+	@echo "NOTE: This requires POSTMAN_COLLECTION_ID, POSTMAN_ENVIRONMENT_ID, and POSTMAN_API_KEY in Doppler"
+	@echo "Cleaning up previous test environment..."
+	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) down -v 2>/dev/null || true
 	@docker volume rm domain-os_db 2>/dev/null || true
-	@export BRANCH=$(BRANCH) && \
-	docker build -t geapex/domain-os:$(BRANCH) --build-arg GIT_SHA=$(BRANCH) . && \
-	$(DOPPLER) $(DOCKER_COMPOSE) --profile essential -f $(COMPOSE_CI_FILE) up --abort-on-container-exit
+	@docker network rm domain-os_dos 2>/dev/null || true
+	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
+	@docker build -t geapex/domain-os:$(BRANCH) --build-arg GIT_SHA=$(BRANCH) .
+	@echo "Starting integration test containers (will run Postman tests via Newman)..."
+	@export BRANCH=$(BRANCH) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential -f $(COMPOSE_CI_FILE) up --abort-on-container-exit
 	@echo "Cleaning up integration test containers..."
-	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) rm --force --volumes || true
-	@docker container rm domain-os-db-1 2>/dev/null || true
+	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) down -v 2>/dev/null || true
+	@docker container rm -f domain-os-db-1 2>/dev/null || true
 	@docker volume rm domain-os_db 2>/dev/null || true
+	@docker network rm domain-os_dos 2>/dev/null || true
+	@echo "Integration tests complete!"
 
 test-coverage: ## Generate detailed coverage report
 	@echo "Running tests with coverage..."
