@@ -15,7 +15,12 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 
 const formSchema = z.object({
-  RyID: z.string().min(1, 'RyID is required').regex(/^[A-Z0-9-]+$/, 'RyID must contain only uppercase letters, numbers, and hyphens'),
+  RyID: z
+    .string()
+    .min(3, 'RyID must be at least 3 characters')
+    .max(16, 'RyID must not exceed 16 characters')
+    .regex(/^[\x20-\x7E]+$/, 'RyID must contain only ASCII characters')
+    .refine((val) => val.trim() === val, 'RyID cannot start or end with whitespace'),
   Name: z.string().min(1, 'Name is required').min(3, 'Name must be at least 3 characters'),
   Email: z.string().email('Invalid email address'),
   URL: z.string().url('Invalid URL').optional().or(z.literal('')),
