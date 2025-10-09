@@ -42,7 +42,8 @@ export const isPhaseCurrent = (start: string, end?: string | null): boolean => {
   if (endDate) {
     return isWithinInterval(now, { start: startDate, end: endDate });
   }
-  return !isPast(startDate);
+  // If no end date and start is in the past, it's ongoing (current)
+  return isPast(startDate) || !isFuture(startDate);
 };
 
 export const isPhasePast = (start: string, end?: string | null): boolean => {
