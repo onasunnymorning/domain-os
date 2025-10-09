@@ -158,13 +158,13 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
         // Check various overlap scenarios with [inclusive, exclusive) semantics
         // Phase interval is [start, end) where start is inclusive, end is exclusive
         
-        // Both phases have no end date - they both extend indefinitely
+        // Both phases have no end date - they both extend indefinitely, so they overlap
         if (!pEnd && !newEnd) return true;
         
-        // Existing phase has no end (ongoing) - overlaps if new phase starts before it
-        if (!pEnd) return newStart < pStart;
+        // Existing phase has no end (ongoing) - overlaps if new phase starts at or after existing phase start
+        if (!pEnd) return newStart >= pStart;
         
-        // New phase has no end (ongoing) - overlaps if it starts before existing phase ends
+        // New phase has no end (ongoing) - overlaps if new phase starts before existing phase ends
         if (!newEnd) return newStart < pEnd;
         
         // Both have end dates - use standard interval overlap formula: [a,b) overlaps [c,d) iff a < d && c < b
