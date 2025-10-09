@@ -81,7 +81,7 @@ export function PhaseCard({ phase, status, isFocal = false, onClick }: PhaseCard
               'text-muted-foreground',
               isFocal ? 'text-sm' : 'text-xs'
             )}>
-              <span className="font-medium">Started:</span> {formatPhaseDate(phase.starts)}
+              <span className="font-medium">{status === 'future' ? 'Starts:' : 'Started:'}</span> {formatPhaseDate(phase.starts)}
             </div>
             {phase.ends ? (
               <div className={cn(
@@ -95,7 +95,7 @@ export function PhaseCard({ phase, status, isFocal = false, onClick }: PhaseCard
                 'text-muted-foreground italic',
                 isFocal ? 'text-sm' : 'text-xs'
               )}>
-                Ongoing
+                {status === 'current' ? 'Ongoing' : 'No end date'}
               </div>
             )}
           </div>

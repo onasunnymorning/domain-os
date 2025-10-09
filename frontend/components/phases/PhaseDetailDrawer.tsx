@@ -52,8 +52,10 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
 
   if (!phase) return null;
 
-  const canDelete = isPhaseFuture(phase.starts);
-  const canEnd = isPhaseCurrent(phase.starts, phase.ends) || isPhaseFuture(phase.starts);
+  const isFuture = isPhaseFuture(phase.starts);
+  const isCurrent = isPhaseCurrent(phase.starts, phase.ends);
+  const canDelete = isFuture;
+  const canEnd = isCurrent || isFuture;
   const hasNoEndDate = !phase.ends;
   
   // Find previous phase for diff comparison
@@ -155,7 +157,9 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
               <div className="space-y-4">
                 {/* Start Date */}
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Started</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                    {isFuture ? 'Starts' : 'Started'}
+                  </div>
                   <div className="text-2xl font-bold">{formatPhaseDateLong(phase.starts)}</div>
                   <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.starts)}</div>
                 </div>
@@ -182,7 +186,9 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                       <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.ends)}</div>
                     </>
                   ) : (
-                    <div className="text-2xl font-bold italic">No end date set (ongoing)</div>
+                    <div className="text-2xl font-bold italic">
+                      {isCurrent ? 'No end date set (ongoing)' : 'No end date set'}
+                    </div>
                   )}
                 </div>
               </div>
