@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
+import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,22 +28,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Globe, Plus, Trash2, Eye, Search } from 'lucide-react';
+import { Globe, Plus, Trash2, Eye, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 
 export default function TLDsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [ryidFilter, setRyidFilter] = useState<string>(searchParams.get('ryid_equals') || '');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tldToDelete, setTldToDelete] = useState<string | null>(null);
   
   const debouncedSearch = useDebounce(searchTerm, 300);
   
+  // Load ALL TLDs to determine which operators have TLDs
+  const { data: allTLDsData } = useTLDs({ pagesize: 1000 });
+  
+  // Load registry operators for the filter dropdown
+  const { data: operatorsData } = useRegistryOperators({ pagesize: 100 });
+  
+  // Filter operators to only show those that have at least one TLD
+  const operatorsWithTLDs = operatorsData?.Data?.filter(op => {
+    return allTLDsData?.Data?.some(tld => tld.RyID === op.RyID);
+  }) || [];
+  
   const { data, isLoading } = useTLDs({
     name_like: debouncedSearch || undefined,
     type_equals: typeFilter ? (typeFilter as any) : undefined,
+    ryid_equals: ryidFilter || undefined,
   });
   
   const { mutate: deleteTLD, isPending: isDeleting } = useDeleteTLD();
@@ -102,7 +117,7 @@ export default function TLDsPage() {
             <CardDescription>Search and filter TLDs</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -123,19 +138,79 @@ export default function TLDsPage() {
                   <SelectItem value="second-level">Second Level (SLD)</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={ryidFilter} onValueChange={setRyidFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by operator" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Operators</SelectItem>
+                  {operatorsWithTLDs.length > 0 ? (
+                    operatorsWithTLDs.map((op) => {
+                      const tldCount = allTLDsData?.Data?.filter(tld => tld.RyID === op.RyID).length || 0;
+                      return (
+                        <SelectItem key={op.RyID} value={op.RyID}>
+                          {op.Name} ({op.RyID}) • {tldCount} TLD{tldCount !== 1 ? 's' : ''}
+                        </SelectItem>
+                      );
+                    })
+                  ) : (
+                    <SelectItem value="none" disabled>
+                      No operators with TLDs
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-            {(searchTerm || typeFilter) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSearchTerm('');
-                  setTypeFilter('');
-                }}
-                className="mt-2"
-              >
-                Clear Filters
-              </Button>
+            {(searchTerm || typeFilter || ryidFilter) && (
+              <div className="flex items-center gap-2 mt-3">
+                {typeFilter && typeFilter !== 'all' && (
+                  <Badge variant="secondary" className="gap-1.5 pr-1">
+                    Type: {typeFilter === 'generic' ? 'gTLD' : 
+                           typeFilter === 'country-code' ? 'ccTLD' : 
+                           typeFilter === 'second-level' ? 'SLD' : typeFilter}
+                    <button
+                      type="button"
+                      className="ml-1 rounded-sm hover:bg-destructive/20 p-0.5"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setTypeFilter('');
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {ryidFilter && ryidFilter !== 'all' && (
+                  <Badge variant="secondary" className="gap-1.5 pr-1">
+                    Operator: {operatorsWithTLDs.find(op => op.RyID === ryidFilter)?.Name || 
+                               operatorsData?.Data?.find(op => op.RyID === ryidFilter)?.Name || 
+                               ryidFilter}
+                    <button
+                      type="button"
+                      className="ml-1 rounded-sm hover:bg-destructive/20 p-0.5"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setRyidFilter('');
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setTypeFilter('');
+                    setRyidFilter('');
+                  }}
+                >
+                  Clear All Filters
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -187,7 +262,11 @@ export default function TLDsPage() {
                   </TableHeader>
                   <TableBody>
                     {tlds.map((tld) => (
-                      <TableRow key={tld.Name}>
+                      <TableRow 
+                        key={tld.Name}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => router.push(`/tlds/${tld.Name}`)}
+                      >
                         <TableCell className="font-medium">{tld.Name}</TableCell>
                         <TableCell>
                           <Badge variant={getTypeBadgeVariant(tld.Type)}>
@@ -218,16 +297,8 @@ export default function TLDsPage() {
                             {tld.Phases?.length || 0} phase{tld.Phases?.length !== 1 ? 's' : ''}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => router.push(`/tlds/${tld.Name}`)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              <span className="sr-only">View</span>
-                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"

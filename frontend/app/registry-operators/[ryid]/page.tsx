@@ -4,12 +4,13 @@ import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRegistryOperator, useDeleteRegistryOperator } from '@/lib/hooks/useRegistryOperators';
+import { useTLDsByRyID } from '@/lib/hooks/useTLDs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Pencil, Trash2, Mail, Phone, Globe, FileText } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Mail, Phone, Globe, FileText, Server } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -22,6 +23,7 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
   const { ryid } = use(params);
   const router = useRouter();
   const { data: operator, isLoading, error } = useRegistryOperator(ryid);
+  const { data: tldsData, isLoading: tldsLoading } = useTLDsByRyID(ryid);
   const deleteMutation = useDeleteRegistryOperator();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -214,6 +216,68 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* TLDs Section */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Server className="h-5 w-5" />
+                      Top-Level Domains
+                    </CardTitle>
+                    <CardDescription>
+                      {tldsLoading 
+                        ? 'Loading...' 
+                        : `${tldsData?.Data?.length || 0} TLD(s) managed by this operator`
+                      }
+                    </CardDescription>
+                  </div>
+                  <Link href={`/tlds?ryid_equals=${ryid}`}>
+                    <Button variant="outline" size="sm">
+                      View All
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {tldsLoading ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-6 w-16" />
+                    ))}
+                  </div>
+                ) : tldsData?.Data && tldsData.Data.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {tldsData.Data.map((tld) => (
+                      <Link key={tld.Name} href={`/tlds/${tld.Name}`}>
+                        <Badge 
+                          variant="secondary"
+                          className="text-sm hover:bg-primary/20 cursor-pointer"
+                        >
+                          .{tld.Name}
+                          <span className="ml-2 text-xs opacity-70">
+                            ({tld.Type === 'generic' ? 'gTLD' : tld.Type === 'country-code' ? 'ccTLD' : 'SLD'})
+                          </span>
+                        </Badge>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Server className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      No TLDs assigned to this operator yet
+                    </p>
+                    <Link href="/tlds/create">
+                      <Button variant="outline" size="sm" className="mt-4">
+                        Create First TLD
+                      </Button>
+                    </Link>
                   </div>
                 )}
               </CardContent>

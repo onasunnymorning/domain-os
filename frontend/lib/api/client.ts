@@ -37,6 +37,37 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Log detailed error information for debugging
+    if (error.response) {
+      // Server responded with error status
+      console.error('API Error Response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url,
+        data: error.response.data,
+        headers: error.response.headers,
+      });
+      
+      // Log the actual error message from the API if available
+      if (error.response.data?.message) {
+        console.error('API Error Message:', error.response.data.message);
+      }
+      if (error.response.data?.error) {
+        console.error('API Error Details:', error.response.data.error);
+      }
+    } else if (error.request) {
+      // Request was made but no response received
+      console.error('API No Response:', {
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url,
+        message: 'No response received from server',
+      });
+    } else {
+      // Something else happened
+      console.error('API Request Error:', error.message);
+    }
+
     if (error.response?.status === 401) {
       // Redirect to login (will implement later)
       if (typeof window !== 'undefined') {

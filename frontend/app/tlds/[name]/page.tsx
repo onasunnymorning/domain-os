@@ -22,6 +22,7 @@ import {
 import { ArrowLeft, Globe, Trash2, CheckCircle, XCircle, Calendar, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -232,36 +233,8 @@ export default function TLDDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        {/* Phases Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Phases</CardTitle>
-            <CardDescription>TLD lifecycle phases (Launch, GA, etc.)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-20 w-full" />
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      This TLD has{' '}
-                      <Badge variant="outline" className="mx-1">
-                        {tld?.Phases?.length || 0} phase{tld?.Phases?.length !== 1 ? 's' : ''}
-                      </Badge>
-                    </p>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-dashed p-4 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Phase management coming soon
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Phase Timeline */}
+        {!isLoading && tld && <PhaseTimeline tldName={tld.Name} />}
 
         {/* Actions */}
         <div className="flex gap-4">

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRegistryOperators, useDeleteRegistryOperator } from '@/lib/hooks/useRegistryOperators';
+import { TLDBadges } from '@/components/registry-operators/TLDBadges';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -96,13 +97,18 @@ export default function RegistryOperatorsPage() {
                       <TableHead>RyID</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>TLDs</TableHead>
                       <TableHead>URL</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.Data.map((operator) => (
-                      <TableRow key={operator.RyID}>
+                      <TableRow 
+                        key={operator.RyID}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => window.location.href = `/registry-operators/${operator.RyID}`}
+                      >
                         <TableCell className="font-mono text-sm">
                           {operator.RyID}
                         </TableCell>
@@ -112,7 +118,10 @@ export default function RegistryOperatorsPage() {
                         <TableCell className="text-muted-foreground">
                           {operator.Email}
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <TLDBadges ryid={operator.RyID} maxDisplay={3} />
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           {operator.URL ? (
                             <a 
                               href={operator.URL} 
@@ -126,18 +135,8 @@ export default function RegistryOperatorsPage() {
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-2">
-                            <Link href={`/registry-operators/${operator.RyID}`}>
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </Link>
-                            <Link href={`/registry-operators/${operator.RyID}/edit`}>
-                              <Button variant="ghost" size="sm">
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            </Link>
                             <Button 
                               variant="ghost" 
                               size="sm"
