@@ -11,6 +11,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -98,42 +104,68 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
     });
   };
 
+  // Helper to get currency symbol
+  const getCurrencySymbol = (currency: string): string => {
+    const symbols: Record<string, string> = {
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£',
+      'JPY': '¥',
+      'CNY': '¥',
+      'INR': '₹',
+      'AUD': 'A$',
+      'CAD': 'C$',
+      'CHF': 'Fr',
+      'SEK': 'kr',
+      'NZD': 'NZ$',
+      'KRW': '₩',
+      'SGD': 'S$',
+      'HKD': 'HK$',
+      'NOK': 'kr',
+      'MXN': '$',
+      'ZAR': 'R',
+      'BRL': 'R$',
+      'RUB': '₽',
+      'TRY': '₺',
+    };
+    const upperCurrency = currency?.toUpperCase() || '';
+    return symbols[upperCurrency] || '$';
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto bg-gradient-to-b from-background to-muted/20">
-          <SheetHeader className="pb-6 border-b">
-            <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <SheetTitle className="text-2xl">{phase.name}</SheetTitle>
-                  <Badge 
-                    variant={phase.type === 'GA' ? 'default' : 'secondary'}
-                    className="text-xs px-2 py-0.5"
-                  >
-                    {phase.type}
-                  </Badge>
-                </div>
-                <SheetDescription className="text-sm">
-                  {isPhaseCurrent(phase.starts, phase.ends) 
-                    ? '🟢 Currently active' 
-                    : isPhaseFuture(phase.starts)
-                    ? '🔵 Scheduled'
-                    : '⚫ Past'}
-                </SheetDescription>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader className="pb-6 border-b space-y-4">
+            {/* Title and Badge */}
+            <div className="space-y-3">
+              <div className="flex items-baseline gap-3">
+                <SheetTitle className="text-4xl font-bold">{phase.name}</SheetTitle>
+                <Badge 
+                  variant={phase.type === 'GA' ? 'default' : 'secondary'}
+                  className="text-xs"
+                >
+                  {phase.type}
+                </Badge>
               </div>
+              <SheetDescription className="text-sm text-muted-foreground">
+                {isPhaseCurrent(phase.starts, phase.ends) 
+                  ? '🟢 Currently active' 
+                  : isPhaseFuture(phase.starts)
+                  ? '🔵 Scheduled'
+                  : '⚫ Past'}
+              </SheetDescription>
             </div>
             
             {/* Action Buttons */}
-            <div className="flex flex-wrap gap-2 pt-4">
+            <div className="flex flex-wrap gap-2">
               {previousPhase && (
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setShowDiff(!showDiff)}
-                  className="gap-2"
                 >
-                  <GitCompare className="h-4 w-4" />
+                  <GitCompare className="h-4 w-4 mr-1.5" />
                   {showDiff ? 'Hide' : 'Show'} Diff
                 </Button>
               )}
@@ -142,9 +174,8 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   size="sm"
                   variant="destructive"
                   onClick={() => setShowDeleteDialog(true)}
-                  className="gap-2"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 mr-1.5" />
                   Delete
                 </Button>
               )}
@@ -157,161 +188,250 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
               <PhaseConfigDiff phase={phase} compareWith={previousPhase} />
             )}
 
-            {/* Timeline */}
-            <div className="rounded-lg border bg-card p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-semibold mb-3 text-orange-700">
-                <Calendar className="h-5 w-5" />
-                Timeline
-              </div>
-              <div className="space-y-4">
-                {/* Start Date */}
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                    {isFuture ? 'Starts' : 'Started'}
-                  </div>
-                  <div className="text-2xl font-bold">{formatDateWithTime(phase.starts).date}</div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>{formatDateWithTime(phase.starts).time} UTC</span>
-                  </div>
-                  <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.starts)}</div>
+            {/* Timeline Section - Always Visible */}
+            <div className="space-y-4">
+              {/* Start Date */}
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                  {isFuture ? 'Starts' : 'Started'}
                 </div>
-                
-                {/* End Date */}
-                <div className={`space-y-1 ${!phase.ends ? 'opacity-40' : ''}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">End</div>
-                    {!phase.ends && canEnd && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowEndPhaseDialog(true)}
-                        className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
-                      >
-                        <CalendarX className="h-4 w-4" />
-                        Set End Date
-                      </Button>
-                    )}
-                  </div>
-                  {phase.ends ? (
-                    <>
-                      <div className="text-2xl font-bold">{formatDateWithTime(phase.ends).date}</div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>{formatDateWithTime(phase.ends).time} UTC</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.ends)}</div>
-                    </>
-                  ) : (
-                    <div className="text-2xl font-bold italic">
-                      {isCurrent ? 'No end date set (ongoing)' : 'No end date set'}
-                    </div>
+                <div className="text-3xl font-bold">{formatDateWithTime(phase.starts).date}</div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>{formatDateWithTime(phase.starts).time} UTC</span>
+                  <span>•</span>
+                  <span>{formatRelativeDate(phase.starts)}</span>
+                </div>
+              </div>
+              
+              {/* End Date */}
+              <div className={`space-y-1.5 ${!phase.ends ? 'opacity-60' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Ends</div>
+                  {!phase.ends && canEnd && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowEndPhaseDialog(true)}
+                      className="h-7 text-xs"
+                    >
+                      <CalendarX className="h-3.5 w-3.5 mr-1" />
+                      Set End Date
+                    </Button>
                   )}
                 </div>
-              </div>
-            </div>
-
-            {/* Policy */}
-            <div className="rounded-lg border bg-card p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-semibold mb-3 text-orange-700">
-                <Settings className="h-5 w-5" />
-                Policy Configuration
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {phase.policy.minLabelLength !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Min Label</div>
-                    <div className="font-medium">{phase.policy.minLabelLength} chars</div>
-                  </div>
-                )}
-                {phase.policy.maxLabelLength !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Label</div>
-                    <div className="font-medium">{phase.policy.maxLabelLength} chars</div>
-                  </div>
-                )}
-                {phase.policy.registrationGP !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Registration GP</div>
-                    <div className="font-medium">{phase.policy.registrationGP} days</div>
-                  </div>
-                )}
-                {phase.policy.renewalGP !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Renewal GP</div>
-                    <div className="font-medium">{phase.policy.renewalGP} days</div>
-                  </div>
-                )}
-                {phase.policy.transferGP !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer GP</div>
-                    <div className="font-medium">{phase.policy.transferGP} days</div>
-                  </div>
-                )}
-                {phase.policy.redemptionGP !== undefined && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Redemption GP</div>
-                    <div className="font-medium">{phase.policy.redemptionGP} days</div>
+                {phase.ends ? (
+                  <>
+                    <div className="text-3xl font-bold">{formatDateWithTime(phase.ends).date}</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>{formatDateWithTime(phase.ends).time} UTC</span>
+                      <span>•</span>
+                      <span>{formatRelativeDate(phase.ends)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-lg font-semibold italic text-muted-foreground">
+                    {isCurrent ? 'Ongoing (no end date)' : 'Not set'}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Pricing */}
-            {phase.prices && phase.prices.length > 0 && (
-              <div className="rounded-lg border bg-card p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-semibold mb-3 text-orange-700">
-                  <DollarSign className="h-5 w-5" />
-                  Pricing
-                </div>
-                <div className="space-y-2">
-                  {phase.prices.map((price) => (
-                    <div key={price.id} className="flex items-center justify-between p-2 rounded bg-muted/30">
-                      <span className="text-sm text-muted-foreground font-medium">{price.currency}</span>
-                      <span className="text-lg font-semibold">
-                        ${(price.amount / 100).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Expandable Sections */}
+            <Accordion type="multiple" defaultValue={["policy"]} className="space-y-2">
+              {/* Policy Configuration */}
+              <AccordionItem value="policy" className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Settings className="h-4 w-4 text-orange-600" />
+                    Policy Configuration
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2">
+                    {/* Label Length - Visual representation */}
+                    {(phase.policy.minLabelLength !== undefined || phase.policy.maxLabelLength !== undefined) && (
+                      <div className="col-span-2 space-y-2">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Domain Label Length</div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-orange-500"
+                                style={{ 
+                                  marginLeft: `${((phase.policy.minLabelLength || 1) - 1) / 62 * 100}%`,
+                                  width: `${((phase.policy.maxLabelLength || 63) - (phase.policy.minLabelLength || 1)) / 62 * 100}%` 
+                                }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>1</span>
+                              <span>63</span>
+                            </div>
+                          </div>
+                          <div className="text-sm font-semibold min-w-[80px] text-right">
+                            {phase.policy.minLabelLength || 1}–{phase.policy.maxLabelLength || 63} chars
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {phase.policy.registrationGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Registration GP</div>
+                        <div className="font-semibold">{phase.policy.registrationGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.renewalGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Renewal GP</div>
+                        <div className="font-semibold">{phase.policy.renewalGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.autoRenewalGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Auto Renewal GP</div>
+                        <div className="font-semibold">{phase.policy.autoRenewalGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.transferGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer GP</div>
+                        <div className="font-semibold">{phase.policy.transferGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.redemptionGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Redemption GP</div>
+                        <div className="font-semibold">{phase.policy.redemptionGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.pendingdeleteGP !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Pending Delete GP</div>
+                        <div className="font-semibold">{phase.policy.pendingdeleteGP} days</div>
+                      </div>
+                    )}
+                    {phase.policy.transferLockPeriod !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
+                        <div className="font-semibold">{phase.policy.transferLockPeriod} days</div>
+                      </div>
+                    )}
+                    {phase.policy.maxHorizon !== undefined && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon</div>
+                        <div className="font-semibold">{phase.policy.maxHorizon} years</div>
+                      </div>
+                    )}
+                    {phase.policy.allowAutorenew !== undefined && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</div>
+                        <div className="flex items-center gap-2">
+                          <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phase.policy.allowAutorenew ? 'bg-primary' : 'bg-input'}`}>
+                            <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phase.policy.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </div>
+                          <span className="text-sm font-medium">{phase.policy.allowAutorenew ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                      </div>
+                    )}
+                    {phase.policy.requiresValidation !== undefined && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</div>
+                        <div className="flex items-center gap-2">
+                          <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phase.policy.requiresValidation ? 'bg-primary' : 'bg-input'}`}>
+                            <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phase.policy.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </div>
+                          <span className="text-sm font-medium">{phase.policy.requiresValidation ? 'Required' : 'Not Required'}</span>
+                        </div>
+                      </div>
+                    )}
+                    {phase.policy.baseCurrency && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</div>
+                        <div className="font-semibold">{getCurrencySymbol(phase.policy.baseCurrency)} ({phase.policy.baseCurrency})</div>
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
 
-            {/* Fees */}
-            {phase.fees && phase.fees.length > 0 && (
-              <div className="rounded-lg border bg-card p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-semibold mb-3 text-orange-700">
-                  <Tag className="h-5 w-5" />
-                  Fees
-                </div>
-                <div className="space-y-2">
-                  {phase.fees.map((fee) => (
-                    <div key={fee.id} className="flex items-center justify-between p-2 rounded bg-muted/30">
-                      <span className="text-sm text-muted-foreground">{fee.name}</span>
-                      <span className="font-semibold">
-                        {fee.currency} ${(fee.amount / 100).toFixed(2)}
-                      </span>
+              {/* Pricing */}
+              {phase.prices && phase.prices.length > 0 && (
+                <AccordionItem value="pricing" className="border rounded-lg px-4">
+                  <AccordionTrigger className="hover:no-underline">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <DollarSign className="h-4 w-4 text-orange-600" />
+                      Pricing
+                      <Badge variant="secondary" className="text-xs ml-2">{phase.prices.length}</Badge>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-2 pt-2">
+                      {phase.prices.map((price) => (
+                        <div key={price.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                          <span className="text-sm font-medium text-muted-foreground uppercase">{price.currency}</span>
+                          <span className="text-xl font-bold">
+                            {getCurrencySymbol(price.currency)}{(price.amount / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
 
-            {/* Premium List */}
-            {phase.premiumListName && (
-              <div className="rounded-lg border bg-card p-4 shadow-sm">
-                <div className="text-sm font-semibold mb-2 text-orange-700">Premium List</div>
-                <Badge variant="outline" className="text-sm">{phase.premiumListName}</Badge>
-              </div>
-            )}
+              {/* Fees */}
+              {phase.fees && phase.fees.length > 0 && (
+                <AccordionItem value="fees" className="border rounded-lg px-4">
+                  <AccordionTrigger className="hover:no-underline">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Tag className="h-4 w-4 text-orange-600" />
+                      Fees
+                      <Badge variant="secondary" className="text-xs ml-2">{phase.fees.length}</Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-2 pt-2">
+                      {phase.fees.map((fee) => (
+                        <div key={fee.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                          <span className="text-sm font-medium">{fee.name}</span>
+                          <span className="text-lg font-semibold">
+                            {getCurrencySymbol(fee.currency)}{(fee.amount / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
+
+              {/* Premium List */}
+              {phase.premiumListName && (
+                <AccordionItem value="premium" className="border rounded-lg px-4">
+                  <AccordionTrigger className="hover:no-underline">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Tag className="h-4 w-4 text-orange-600" />
+                      Premium List
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="pt-2">
+                      <Badge variant="outline" className="text-sm font-mono">{phase.premiumListName}</Badge>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
+            </Accordion>
 
             {/* Metadata */}
-            <div className="pt-4 border-t space-y-1">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="pt-4 border-t space-y-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
                 <Info className="h-3 w-3" />
                 <span>Created: {new Date(phase.createdAt).toLocaleString()}</span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+              <div className="pl-5">
                 <span>Updated: {new Date(phase.updatedAt).toLocaleString()}</span>
               </div>
             </div>
