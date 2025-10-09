@@ -23,14 +23,7 @@ export function GATimeline({ current, past, future, onPhaseClick }: GATimelinePr
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="text-sm font-semibold text-foreground">GA Phases</div>
-        {current && (
-          <div className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
-            {current.name} active
-          </div>
-        )}
-      </div>
+      <div className="text-sm font-semibold text-foreground">GA Phases</div>
       
       <div className="relative -mx-6 px-6">
         <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-orange-300 scrollbar-track-transparent">

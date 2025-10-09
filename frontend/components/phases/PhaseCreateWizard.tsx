@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCreatePhase } from '@/lib/hooks/usePhases';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CalendarIcon, AlertCircle, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { CalendarIcon, AlertCircle, CheckCircle2, ArrowRight, ArrowLeft, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -31,30 +31,15 @@ interface PhaseCreateWizardProps {
   }>;
 }
 
-type WizardStep = 'basic' | 'policy' | 'pricing' | 'review';
+type WizardStep = 'basic' | 'review';
 
 interface PhaseFormData {
   name: string;
   type: 'GA' | 'Launch';
   starts: Date | undefined;
+  startsTime: { hours: string; minutes: string };
   ends: Date | undefined;
-  copyPolicyFrom: string;
-  customizePolicy: boolean;
-  policy: {
-    minLabelLength?: number;
-    maxLabelLength?: number;
-    registrationGP?: number;
-    renewalGP?: number;
-    autoRenewalGP?: number;
-    transferGP?: number;
-    redemptionGP?: number;
-    pendingdeleteGP?: number;
-    transferLockPeriod?: number;
-    maxHorizon?: number;
-    allowAutorenew?: boolean;
-    requiresValidation?: boolean;
-    baseCurrency?: string;
-  };
+  endsTime: { hours: string; minutes: string };
 }
 
 export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] }: PhaseCreateWizardProps) {
@@ -66,13 +51,53 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
     name: '',
     type: 'GA',
     starts: undefined,
+    startsTime: { hours: '00', minutes: '00' },
     ends: undefined,
-    copyPolicyFrom: '',
-    customizePolicy: false,
-    policy: {},
+    endsTime: { hours: '00', minutes: '00' },
   });
 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Auto-populate start date from previous phase's end date based on selected type
+  useEffect(() => {
+    if (open && existingPhases.length > 0) {
+      // Find the most recent phase of the same type with an end date
+      const phasesOfSameType = existingPhases.filter(p => p.type === formData.type && p.ends);
+      
+      if (phasesOfSameType.length > 0) {
+        // Get the most recent phase of the same type
+        const previousPhase = phasesOfSameType.sort((a, b) => 
+          new Date(b.ends!).getTime() - new Date(a.ends!).getTime()
+        )[0];
+
+        if (previousPhase.ends) {
+          const endDate = new Date(previousPhase.ends);
+          setFormData(prev => ({
+            ...prev,
+            starts: endDate,
+            startsTime: {
+              hours: endDate.getUTCHours().toString().padStart(2, '0'),
+              minutes: endDate.getUTCMinutes().toString().padStart(2, '0'),
+            },
+          }));
+        }
+      } else {
+        // No previous phase of this type, clear the start date
+        setFormData(prev => ({
+          ...prev,
+          starts: undefined,
+          startsTime: { hours: '00', minutes: '00' },
+        }));
+      }
+    } else if (open) {
+      // No existing phases at all, clear the start date
+      setFormData(prev => ({
+        ...prev,
+        starts: undefined,
+        startsTime: { hours: '00', minutes: '00' },
+      }));
+    }
+  }, [open, existingPhases, formData.type]);
 
   const validateBasicInfo = (): boolean => {
     const errors: string[] = [];
@@ -133,7 +158,7 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
       return;
     }
 
-    const steps: WizardStep[] = ['basic', 'policy', 'pricing', 'review'];
+    const steps: WizardStep[] = ['basic', 'review'];
     const currentIndex = steps.indexOf(step);
     if (currentIndex < steps.length - 1) {
       setStep(steps[currentIndex + 1]);
@@ -142,7 +167,7 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
   };
 
   const handleBack = () => {
-    const steps: WizardStep[] = ['basic', 'policy', 'pricing', 'review'];
+    const steps: WizardStep[] = ['basic', 'review'];
     const currentIndex = steps.indexOf(step);
     if (currentIndex > 0) {
       setStep(steps[currentIndex - 1]);
@@ -157,11 +182,22 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
       return;
     }
 
+    // Combine date and time for starts
+    const startsDate = new Date(formData.starts!);
+    startsDate.setUTCHours(parseInt(formData.startsTime.hours), parseInt(formData.startsTime.minutes), 0, 0);
+
+    // Combine date and time for ends if provided
+    let endsDate = null;
+    if (formData.ends) {
+      endsDate = new Date(formData.ends);
+      endsDate.setUTCHours(parseInt(formData.endsTime.hours), parseInt(formData.endsTime.minutes), 0, 0);
+    }
+
     createPhase({
       name: formData.name,
       type: formData.type,
-      starts: formData.starts!.toISOString(),
-      ends: formData.ends?.toISOString() || null,
+      starts: startsDate.toISOString(),
+      ends: endsDate?.toISOString() || null,
     }, {
       onSuccess: () => {
         onClose();
@@ -170,10 +206,9 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
           name: '',
           type: 'GA',
           starts: undefined,
+          startsTime: { hours: '00', minutes: '00' },
           ends: undefined,
-          copyPolicyFrom: '',
-          customizePolicy: false,
-          policy: {},
+          endsTime: { hours: '00', minutes: '00' },
         });
       },
       onError: (error: any) => {
@@ -192,8 +227,6 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
   const getStepTitle = () => {
     switch (step) {
       case 'basic': return 'Basic Information';
-      case 'policy': return 'Policy Configuration';
-      case 'pricing': return 'Pricing & Fees';
       case 'review': return 'Review & Create';
     }
   };
@@ -201,8 +234,6 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
   const getStepDescription = () => {
     switch (step) {
       case 'basic': return 'Set the phase name, type, and timeline';
-      case 'policy': return 'Configure grace periods and domain policies';
-      case 'pricing': return 'Set prices and fees for this phase';
       case 'review': return 'Review your configuration before creating';
     }
   };
@@ -214,28 +245,6 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
           <DialogTitle>Create New Phase for .{tldName}</DialogTitle>
           <DialogDescription>{getStepDescription()}</DialogDescription>
         </DialogHeader>
-
-        {/* Progress Steps */}
-        <div className="flex items-center justify-between mb-6">
-          {(['basic', 'policy', 'pricing', 'review'] as WizardStep[]).map((s, idx) => (
-            <div key={s} className="flex items-center flex-1">
-              <div className={cn(
-                'flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors',
-                step === s && 'border-primary bg-primary text-primary-foreground',
-                ['basic', 'policy', 'pricing', 'review'].indexOf(step) > idx && 'border-primary bg-primary text-primary-foreground',
-                ['basic', 'policy', 'pricing', 'review'].indexOf(step) <= idx && step !== s && 'border-muted-foreground/30'
-              )}>
-                <span className="text-xs font-medium">{idx + 1}</span>
-              </div>
-              {idx < 3 && (
-                <div className={cn(
-                  'flex-1 h-0.5 mx-2',
-                  ['basic', 'policy', 'pricing', 'review'].indexOf(step) > idx ? 'bg-primary' : 'bg-muted-foreground/30'
-                )} />
-              )}
-            </div>
-          ))}
-        </div>
 
         {/* Validation Errors */}
         {validationErrors.length > 0 && (
@@ -255,16 +264,6 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
         <div className="space-y-4">
           {step === 'basic' && (
             <BasicInfoStep formData={formData} setFormData={setFormData} />
-          )}
-          {step === 'policy' && (
-            <PolicyStep 
-              formData={formData} 
-              setFormData={setFormData}
-              existingPhases={existingPhases}
-            />
-          )}
-          {step === 'pricing' && (
-            <PricingStep formData={formData} setFormData={setFormData} />
           )}
           {step === 'review' && (
             <ReviewStep formData={formData} tldName={tldName} />
@@ -365,136 +364,156 @@ function BasicInfoStep({ formData, setFormData }: {
         </RadioGroup>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-4">
+        {/* Start Date and Time */}
         <div className="space-y-2">
-          <Label>Start Date *</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !formData.starts && 'text-muted-foreground'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.starts ? format(formData.starts, 'PPP') : 'Pick a date'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={formData.starts}
-                onSelect={(date) => setFormData({ ...formData, starts: date })}
+          <Label>Start Date & Time (UTC) *</Label>
+          <div className="flex gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'flex-1 justify-start text-left font-normal',
+                    !formData.starts && 'text-muted-foreground'
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {formData.starts ? format(formData.starts, 'PPP') : 'Pick a date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={formData.starts}
+                  onSelect={(date) => setFormData({ ...formData, starts: date })}
+                />
+              </PopoverContent>
+            </Popover>
+            <div className="flex gap-1">
+              <Input
+                type="number"
+                min="0"
+                max="23"
+                value={formData.startsTime.hours}
+                onChange={(e) => {
+                  const val = Math.min(23, Math.max(0, parseInt(e.target.value) || 0));
+                  setFormData({
+                    ...formData,
+                    startsTime: { ...formData.startsTime, hours: val.toString().padStart(2, '0') }
+                  });
+                }}
+                className="w-16 text-center"
+                placeholder="HH"
               />
-            </PopoverContent>
-          </Popover>
+              <span className="flex items-center">:</span>
+              <Input
+                type="number"
+                min="0"
+                max="59"
+                value={formData.startsTime.minutes}
+                onChange={(e) => {
+                  const val = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                  setFormData({
+                    ...formData,
+                    startsTime: { ...formData.startsTime, minutes: val.toString().padStart(2, '0') }
+                  });
+                }}
+                className="w-16 text-center"
+                placeholder="MM"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Time is in UTC. Current: {formData.startsTime.hours}:{formData.startsTime.minutes}
+          </p>
         </div>
 
+        {/* End Date and Time */}
         <div className="space-y-2">
-          <Label>End Date (Optional)</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !formData.ends && 'text-muted-foreground'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.ends ? format(formData.ends, 'PPP') : 'Ongoing'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={formData.ends}
-                onSelect={(date) => setFormData({ ...formData, ends: date })}
-                disabled={(date) => formData.starts ? date <= formData.starts : false}
-              />
-            </PopoverContent>
-          </Popover>
+          <Label>End Date & Time (UTC) - Optional</Label>
+          <div className="flex gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'flex-1 justify-start text-left font-normal',
+                    !formData.ends && 'text-muted-foreground'
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {formData.ends ? format(formData.ends, 'PPP') : 'Ongoing'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={formData.ends}
+                  onSelect={(date) => setFormData({ ...formData, ends: date })}
+                  disabled={(date) => formData.starts ? date <= formData.starts : false}
+                />
+              </PopoverContent>
+            </Popover>
+            {formData.ends && (
+              <div className="flex gap-1">
+                <Input
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={formData.endsTime.hours}
+                  onChange={(e) => {
+                    const val = Math.min(23, Math.max(0, parseInt(e.target.value) || 0));
+                    setFormData({
+                      ...formData,
+                      endsTime: { ...formData.endsTime, hours: val.toString().padStart(2, '0') }
+                    });
+                  }}
+                  className="w-16 text-center"
+                  placeholder="HH"
+                />
+                <span className="flex items-center">:</span>
+                <Input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={formData.endsTime.minutes}
+                  onChange={(e) => {
+                    const val = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                    setFormData({
+                      ...formData,
+                      endsTime: { ...formData.endsTime, minutes: val.toString().padStart(2, '0') }
+                    });
+                  }}
+                  className="w-16 text-center"
+                  placeholder="MM"
+                />
+              </div>
+            )}
+          </div>
+          {formData.ends && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Time is in UTC. Current: {formData.endsTime.hours}:{formData.endsTime.minutes}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// Step 2: Policy Configuration
-function PolicyStep({ formData, setFormData, existingPhases }: {
-  formData: PhaseFormData;
-  setFormData: React.Dispatch<React.SetStateAction<PhaseFormData>>;
-  existingPhases: any[];
-}) {
-  return (
-    <div className="space-y-4">
-      <Alert>
-        <CheckCircle2 className="h-4 w-4" />
-        <AlertDescription>
-          Policy configuration will use default values. You can customize these later in Phase 2.
-        </AlertDescription>
-      </Alert>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Default Policy Preview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-muted-foreground">Min Label Length</div>
-              <div className="font-medium">1</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Max Label Length</div>
-              <div className="font-medium">63</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Registration GP</div>
-              <div className="font-medium">5 days</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Renewal GP</div>
-              <div className="font-medium">5 days</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Transfer GP</div>
-              <div className="font-medium">5 days</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Redemption GP</div>
-              <div className="font-medium">30 days</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Step 3: Pricing (Placeholder)
-function PricingStep({ formData, setFormData }: {
-  formData: PhaseFormData;
-  setFormData: React.Dispatch<React.SetStateAction<PhaseFormData>>;
-}) {
-  return (
-    <div className="space-y-4">
-      <Alert>
-        <CheckCircle2 className="h-4 w-4" />
-        <AlertDescription>
-          Pricing and fees will be added in Phase 2. The phase will be created with default values.
-        </AlertDescription>
-      </Alert>
-    </div>
-  );
-}
-
-// Step 4: Review
+// Review Step
 function ReviewStep({ formData, tldName }: {
   formData: PhaseFormData;
   tldName: string;
 }) {
+  const formatDateTime = (date: Date | undefined, time: { hours: string; minutes: string }) => {
+    if (!date) return null;
+    return `${format(date, 'PPP')} at ${time.hours}:${time.minutes} UTC`;
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -522,13 +541,17 @@ function ReviewStep({ formData, tldName }: {
           <div className="grid grid-cols-3 items-center gap-4">
             <span className="font-semibold">Starts:</span>
             <span className="col-span-2">
-              {formData.starts && format(formData.starts, 'PPP')}
+              {formatDateTime(formData.starts, formData.startsTime)}
             </span>
           </div>
           <div className="grid grid-cols-3 items-center gap-4">
             <span className="font-semibold">Ends:</span>
             <span className="col-span-2">
-              {formData.ends ? format(formData.ends, 'PPP') : <span className="text-muted-foreground italic">Ongoing</span>}
+              {formData.ends ? (
+                formatDateTime(formData.ends, formData.endsTime)
+              ) : (
+                <span className="text-muted-foreground italic">Ongoing</span>
+              )}
             </span>
           </div>
         </CardContent>
