@@ -5,6 +5,7 @@ import { GATimeline } from './GATimeline';
 import { LaunchTimeline } from './LaunchTimeline';
 import { Phase } from '@/lib/types/phase';
 import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { PhaseDetailDrawer } from './PhaseDetailDrawer';
 import { PhaseCreateWizard } from './PhaseCreateWizard';
 import { Button } from '@/components/ui/button';
@@ -17,19 +18,32 @@ interface PhaseTimelineProps {
 }
 
 export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { categorized, phases, isLoading, error } = useCategorizedPhases(tldName);
   const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [hasOpenedInitialPhase, setHasOpenedInitialPhase] = useState(false);
 
-  // Open the phase drawer if initialPhaseName is provided
+  // Open the phase drawer if initialPhaseName is provided (only once)
   useEffect(() => {
-    if (initialPhaseName && phases && phases.length > 0 && !selectedPhase) {
+    if (initialPhaseName && phases && phases.length > 0 && !hasOpenedInitialPhase) {
       const phase = phases.find(p => p.name === initialPhaseName);
       if (phase) {
         setSelectedPhase(phase);
+        setHasOpenedInitialPhase(true);
       }
     }
-  }, [initialPhaseName, phases, selectedPhase]);
+  }, [initialPhaseName, phases, hasOpenedInitialPhase]);
+
+  // Handle closing the phase drawer and removing query parameter
+  const handleCloseDrawer = () => {
+    setSelectedPhase(null);
+    // Remove the phase query parameter from the URL
+    if (initialPhaseName) {
+      router.replace(pathname);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -91,7 +105,7 @@ export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps)
       <PhaseDetailDrawer
         phase={selectedPhase}
         open={!!selectedPhase}
-        onClose={() => setSelectedPhase(null)}
+        onClose={handleCloseDrawer}
         tldName={tldName}
         allPhases={phases || []}
       />
