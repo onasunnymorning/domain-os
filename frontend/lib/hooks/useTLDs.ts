@@ -10,6 +10,15 @@ export function useTLDs(params?: ListQueryParams) {
   });
 }
 
+// Get TLDs for a specific Registry Operator
+export function useTLDsByRyID(ryid: string) {
+  return useQuery({
+    queryKey: ['tlds', 'by-ryid', ryid],
+    queryFn: () => tldsApi.list({ ryid_equals: ryid, pagesize: 100 }),
+    enabled: !!ryid,
+  });
+}
+
 // Get TLD count
 export function useTLDsCount(params?: ListQueryParams) {
   return useQuery({
