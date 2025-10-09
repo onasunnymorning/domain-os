@@ -67,6 +67,18 @@ export function usePhases(tldName: string) {
   });
 }
 
+// Hook to fetch active phases for a TLD
+export function useActivePhases(tldName: string) {
+  return useQuery({
+    queryKey: ['phases', 'active', tldName],
+    queryFn: async () => {
+      const response = await phasesApi.listActiveByTLD(tldName);
+      return response.Data || [];
+    },
+    enabled: !!tldName,
+  });
+}
+
 // Hook to fetch and categorize phases
 export function useCategorizedPhases(tldName: string) {
   const { data: phases, ...rest } = usePhases(tldName);

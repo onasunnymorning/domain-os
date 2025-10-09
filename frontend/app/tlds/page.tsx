@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
+import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -256,7 +257,7 @@ export default function TLDsPage() {
                       <TableHead>Unicode Name</TableHead>
                       <TableHead>Registry Operator</TableHead>
                       <TableHead>DNS</TableHead>
-                      <TableHead>Phases</TableHead>
+                      <TableHead>Active Phases</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -292,10 +293,8 @@ export default function TLDsPage() {
                             <Badge variant="outline">Disabled</Badge>
                           )}
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {tld.Phases?.length || 0} phase{tld.Phases?.length !== 1 ? 's' : ''}
-                          </Badge>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <TLDActivePhases tldName={tld.Name} />
                         </TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-2">

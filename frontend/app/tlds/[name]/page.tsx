@@ -1,7 +1,7 @@
 'use client';
 
 import { use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD, useDeleteTLD } from '@/lib/hooks/useTLDs';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,8 @@ interface Props {
 export default function TLDDetailPage({ params }: Props) {
   const { name } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const phaseName = searchParams.get('phase');
   const { data: tld, isLoading, error } = useTLD(decodeURIComponent(name));
   const { mutate: deleteTLD, isPending: isDeleting } = useDeleteTLD();
 
@@ -234,7 +236,12 @@ export default function TLDDetailPage({ params }: Props) {
         </Card>
 
         {/* Phase Timeline */}
-        {!isLoading && tld && <PhaseTimeline tldName={tld.Name} />}
+        {!isLoading && tld && (
+          <PhaseTimeline 
+            tldName={tld.Name} 
+            initialPhaseName={phaseName || undefined}
+          />
+        )}
 
         {/* Actions */}
         <div className="flex gap-4">

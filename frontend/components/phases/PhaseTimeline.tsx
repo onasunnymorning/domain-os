@@ -4,7 +4,7 @@ import { useCategorizedPhases } from '@/lib/hooks/usePhases';
 import { GATimeline } from './GATimeline';
 import { LaunchTimeline } from './LaunchTimeline';
 import { Phase } from '@/lib/types/phase';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PhaseDetailDrawer } from './PhaseDetailDrawer';
 import { PhaseCreateWizard } from './PhaseCreateWizard';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,23 @@ import { Card } from '@/components/ui/card';
 
 interface PhaseTimelineProps {
   tldName: string;
+  initialPhaseName?: string;
 }
 
-export function PhaseTimeline({ tldName }: PhaseTimelineProps) {
+export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps) {
   const { categorized, phases, isLoading, error } = useCategorizedPhases(tldName);
   const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+
+  // Open the phase drawer if initialPhaseName is provided
+  useEffect(() => {
+    if (initialPhaseName && phases && phases.length > 0 && !selectedPhase) {
+      const phase = phases.find(p => p.name === initialPhaseName);
+      if (phase) {
+        setSelectedPhase(phase);
+      }
+    }
+  }, [initialPhaseName, phases, selectedPhase]);
 
   if (isLoading) {
     return (
