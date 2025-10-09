@@ -42,7 +42,8 @@ export function PhaseCard({ phase, status, isFocal = false, onClick }: PhaseCard
     config.borderColor,
     config.opacity,
     isFocal && status === 'current' && 'shadow-xl shadow-orange-200/50 scale-105 border-orange-400',
-    'hover:scale-105 hover:shadow-lg',
+    status === 'current' && !isFocal && 'shadow-lg shadow-orange-200/40',
+    'hover:scale-105 hover:shadow-xl',
     'cursor-pointer',
     'relative overflow-hidden',
     // Larger sizes for carousel effect
