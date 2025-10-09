@@ -57,6 +57,7 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
   });
 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [continuityInfo, setContinuityInfo] = useState<string | null>(null);
 
   // Auto-populate start date from previous phase's end date based on selected type
   useEffect(() => {
@@ -127,26 +128,55 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
       errors.push('A phase with this name already exists');
     }
 
-    // Check for GA overlap
+    // Check for GA overlap using [inclusive start, exclusive end) semantics
     if (formData.type === 'GA' && formData.starts) {
+      const newStart = new Date(formData.starts);
+      const newEnd = formData.ends ? new Date(formData.ends) : null;
+      
+      // Check for continuity with existing phases
+      const continuousPhase = existingPhases.filter(p => p.type === 'GA').find(p => {
+        const pEnd = p.ends ? new Date(p.ends) : null;
+        if (pEnd && newStart.getTime() === pEnd.getTime()) {
+          return true;
+        }
+        return false;
+      });
+
+      if (continuousPhase) {
+        setContinuityInfo(`This phase will be continuous with "${continuousPhase.name}" (no gap between phases)`);
+      } else {
+        setContinuityInfo(null);
+      }
+
+      // Check for overlap
       const overlappingGA = existingPhases.filter(p => p.type === 'GA').find(p => {
         const pStart = new Date(p.starts);
         const pEnd = p.ends ? new Date(p.ends) : null;
         
         if (!formData.starts) return false;
         
-        // Check various overlap scenarios
-        if (!pEnd && !formData.ends) return true; // Both ongoing
-        if (!pEnd) return formData.starts >= pStart; // Existing ongoing
-        if (!formData.ends) return formData.starts <= pEnd; // New ongoing
+        // Check various overlap scenarios with [inclusive, exclusive) semantics
+        // Phase interval is [start, end) where start is inclusive, end is exclusive
         
-        // Both have end dates
-        return formData.starts <= pEnd && (!formData.ends || formData.ends >= pStart);
+        // Both phases have no end date - they both extend indefinitely
+        if (!pEnd && !newEnd) return true;
+        
+        // Existing phase has no end (ongoing) - overlaps if new phase starts before it
+        if (!pEnd) return newStart < pStart;
+        
+        // New phase has no end (ongoing) - overlaps if it starts before existing phase ends
+        if (!newEnd) return newStart < pEnd;
+        
+        // Both have end dates - use standard interval overlap formula: [a,b) overlaps [c,d) iff a < d && c < b
+        // Phases touch at boundaries (a == d or b == c) but do NOT overlap
+        return newStart < pEnd && pStart < newEnd;
       });
 
       if (overlappingGA) {
         errors.push(`GA phase would overlap with existing phase "${overlappingGA.name}"`);
       }
+    } else {
+      setContinuityInfo(null);
     }
 
     setValidationErrors(errors);
@@ -260,6 +290,14 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
           </Alert>
         )}
 
+        {/* Continuity Info */}
+        {continuityInfo && !validationErrors.length && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{continuityInfo}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Step Content */}
         <div className="space-y-4">
           {step === 'basic' && (
@@ -345,7 +383,7 @@ function BasicInfoStep({ formData, setFormData }: {
               <div>
                 <div className="font-medium">General Availability (GA)</div>
                 <div className="text-xs text-muted-foreground">
-                  Only one GA phase can be active at a time. Cannot overlap with other GA phases.
+                  Only one GA phase can be active at a time. GA phases can be continuous (touching at boundaries) but cannot overlap.
                 </div>
               </div>
             </Label>
@@ -356,7 +394,7 @@ function BasicInfoStep({ formData, setFormData }: {
               <div>
                 <div className="font-medium">Launch</div>
                 <div className="text-xs text-muted-foreground">
-                  Can have multiple active. Can overlap with GA and other Launch phases.
+                  Can have multiple active simultaneously. Can overlap with GA and other Launch phases.
                 </div>
               </div>
             </Label>
