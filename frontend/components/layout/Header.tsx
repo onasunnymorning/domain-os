@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Menu, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -22,9 +23,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Button>
         
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white text-xl">
-            🦙
-          </div>
+          <AlpacaLogo className="h-10 w-10" />
           <span className="hidden sm:inline-block">Alpaca Names</span>
         </Link>
 
