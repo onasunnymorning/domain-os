@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { formatPhaseDateLong, formatRelativeDate, isPhaseFuture, isPhaseCurrent } from '@/lib/utils/dateUtils';
-import { Calendar, DollarSign, Settings, Tag, Trash2, GitCompare, CalendarX, Info } from 'lucide-react';
+import { Calendar, DollarSign, Settings, Tag, Trash2, GitCompare, CalendarX, Info, Clock } from 'lucide-react';
 import { PhaseConfigDiff } from './PhaseConfigDiff';
 import { format } from 'date-fns';
 
@@ -64,6 +64,15 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
     .sort((a, b) => new Date(a.starts).getTime() - new Date(b.starts).getTime());
   const currentIndex = phasesOfSameType.findIndex(p => p.id === phase.id);
   const previousPhase = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
+
+  // Helper to format date with time in UTC
+  const formatDateWithTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: format(date, 'MMMM d, yyyy'),
+      time: format(date, 'HH:mm:ss'),
+    };
+  };
 
   const handleDelete = () => {
     deletePhase(phase.name, {
@@ -160,7 +169,11 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   <div className="text-xs text-muted-foreground uppercase tracking-wide">
                     {isFuture ? 'Starts' : 'Started'}
                   </div>
-                  <div className="text-2xl font-bold">{formatPhaseDateLong(phase.starts)}</div>
+                  <div className="text-2xl font-bold">{formatDateWithTime(phase.starts).date}</div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{formatDateWithTime(phase.starts).time} UTC</span>
+                  </div>
                   <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.starts)}</div>
                 </div>
                 
@@ -182,7 +195,11 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   </div>
                   {phase.ends ? (
                     <>
-                      <div className="text-2xl font-bold">{formatPhaseDateLong(phase.ends)}</div>
+                      <div className="text-2xl font-bold">{formatDateWithTime(phase.ends).date}</div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{formatDateWithTime(phase.ends).time} UTC</span>
+                      </div>
                       <div className="text-sm text-muted-foreground">{formatRelativeDate(phase.ends)}</div>
                     </>
                   ) : (
