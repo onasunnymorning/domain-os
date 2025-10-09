@@ -50,7 +50,7 @@ export default function Home() {
             Welcome to Alpaca Names
           </h1>
           <p className="text-muted-foreground">
-            Welcome to Domain OS Registry Administration
+            Registry Admin
           </p>
         </div>
 
