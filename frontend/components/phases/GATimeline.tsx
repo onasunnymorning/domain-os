@@ -26,7 +26,7 @@ export function GATimeline({ current, past, future, onPhaseClick }: GATimelinePr
       <div className="text-sm font-semibold text-foreground">GA Phases</div>
       
       <div className="relative -mx-6 px-6">
-        <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-orange-300 scrollbar-track-transparent">
+        <div className="overflow-x-auto pb-8 scrollbar-thin scrollbar-thumb-orange-300 scrollbar-track-transparent">
           <div className={`flex items-center gap-4 min-w-max py-2 ${past.length > 0 ? 'pl-6 pr-1' : 'pl-6 pr-1'}`}>
             {/* Past phases */}
             {past.map((phase) => (
@@ -68,10 +68,10 @@ export function GATimeline({ current, past, future, onPhaseClick }: GATimelinePr
         
         {/* Scroll gradient hints */}
         {past.length > 0 && (
-          <div className="absolute left-0 top-0 bottom-4 w-12 bg-gradient-to-r from-background via-background/80 to-transparent pointer-events-none" />
+          <div className="absolute left-0 top-0 bottom-8 w-12 bg-gradient-to-r from-background via-background/80 to-transparent pointer-events-none" />
         )}
         {future.length > 0 && (
-          <div className="absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-background via-background/80 to-transparent pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-8 w-12 bg-gradient-to-l from-background via-background/80 to-transparent pointer-events-none" />
         )}
       </div>
     </div>
