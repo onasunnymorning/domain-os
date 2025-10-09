@@ -393,7 +393,7 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			thisEnd:    "",
 			otherStart: "2120-01-01T00:00:00Z",
 			otherEnd:   "2121-01-01T00:00:00Z",
-			expected:   true,
+			expected:   false, // Touching phases don't overlap with [inclusive, exclusive) semantics
 		},
 		{
 			name:       "no end + starts just before end date",
@@ -417,7 +417,7 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			thisEnd:    "2121-01-01T00:00:00Z",
 			otherStart: "2121-01-01T00:00:00Z",
 			otherEnd:   "",
-			expected:   true,
+			expected:   false, // Touching phases don't overlap with [inclusive, exclusive) semantics
 		},
 		{
 			name:       "other has no end + starts just before end date",
@@ -441,7 +441,7 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			thisEnd:    "2121-01-01T00:00:00Z",
 			otherStart: "2121-01-01T00:00:00Z",
 			otherEnd:   "2122-01-01T00:00:00Z",
-			expected:   true,
+			expected:   false, // Touching phases don't overlap with [inclusive, exclusive) semantics
 		},
 		{
 			name:       "both end and are overlap slightly wiht other phase first",
@@ -449,7 +449,7 @@ func TestPhase_OverlapsWith(t *testing.T) {
 			thisEnd:    "2122-01-01T00:00:00Z",
 			otherStart: "2120-01-01T00:00:00Z",
 			otherEnd:   "2121-01-01T00:00:00Z",
-			expected:   true,
+			expected:   false, // Touching phases don't overlap with [inclusive, exclusive) semantics
 		},
 		{
 			name:       "both end and are adjacent with the other phase first",

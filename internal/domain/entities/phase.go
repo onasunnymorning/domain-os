@@ -155,64 +155,87 @@ func (p *Phase) SetEnd(endDate time.Time) error {
 	return nil
 }
 
-// IsCurrentlyActive checks if the phase is currently active. A phase is active if the current time is between the start and end date. Or if the end date is nil, the phase is active if the current time is after the start date.
+// IsCurrentlyActive checks if the phase is currently active.
+// A phase is active during the interval [Starts, Ends) - inclusive start, exclusive end.
+// This means:
+//   - A request at exactly Starts time belongs to this phase
+//   - A request at exactly Ends time belongs to the NEXT phase
+//
+// This allows consecutive phases to touch at boundaries without gaps or overlaps.
+// Example: Phase1 [2025-10-01 00:00:00, 2025-10-03 00:00:00) followed by
+//
+//	Phase2 [2025-10-03 00:00:00, 2025-10-05 00:00:00) creates perfect continuity.
 func (p *Phase) IsCurrentlyActive() bool {
 	now := time.Now().UTC()
-	return p.Starts.Before(now) && (p.Ends == nil || p.Ends.After(now))
+	// Active if: now >= Starts AND (no end OR now < Ends)
+	return !now.Before(p.Starts) && (p.Ends == nil || now.Before(*p.Ends))
 }
 
-// OverlapsWith checks if the phase overlaps with the phase that is passed in as an argument. This is intended to be used for GA phases, launch phases may overlap.
+// OverlapsWith checks if the phase overlaps with another phase.
+// This is intended to be used for GA phases; launch phases may overlap.
+//
+// With [inclusive start, exclusive end) semantics, phases can touch at boundaries without overlap.
+// Example: Phase1 [2025-10-01, 2025-10-03) and Phase2 [2025-10-03, 2025-10-05) do NOT overlap.
+//
+// Two phases overlap if there exists any point in time where both would be active.
+// Using interval notation [A, B) and [C, D):
+//   - They overlap if: A < D AND C < B
+//   - They touch (no overlap) if: B == C OR D == A
 func (p *Phase) OverlapsWith(other *Phase) bool {
-	// if both phases no end date, they overlap
+	// if both phases have no end date, they overlap (both extend indefinitely)
 	if p.Ends == nil && other.Ends == nil {
 		return true
 	}
 
-	// if this phase has no end date
+	// if this phase has no end date: [Starts, ∞)
 	if p.Ends == nil {
-		// if the other phase starts after this phase, they overlap
-		if other.Starts.After(p.Starts) {
-			return true
-		}
-		// if the other phase's end date is not before this phase's start date, they overlap
-		if !other.Ends.Before(p.Starts) {
-			return true
-		}
+		// Overlaps if other starts before this phase ends (which is never)
+		// So only overlaps if other starts at or after this phase starts
+		return !other.Starts.Before(p.Starts)
 	}
 
-	// if the other phase has no end date
+	// if the other phase has no end date: [Starts, ∞)
 	if other.Ends == nil {
-		// if this phase starts after the other phase, they overlap
-		if p.Starts.After(other.Starts) {
-			return true
-		}
-		// if this phase's end date is not before the other phase's start date, they overlap
-		if !p.Ends.Before(other.Starts) {
-			return true
-		}
+		// Overlaps if this starts before other phase ends (which is never)
+		// So only overlaps if this starts at or after other phase starts
+		return !p.Starts.Before(other.Starts)
 	}
 
-	// if both phases have an end date
-	if p.Ends != nil && other.Ends != nil {
-		// if this phase starts first
-		if p.Starts.Before(other.Starts) {
-			// Then it has to end before the other phase starts, or it overlaps
-			if !p.Ends.Before(other.Starts) {
-				return true
-			}
-		}
-		// if the other phase starts first
-		if other.Starts.Before(p.Starts) {
-			// Then it has to end before this phase starts, or it overlaps
-			if !other.Ends.Before(p.Starts) {
-				return true
-			}
-		}
+	// if both phases have an end date: [A, B) and [C, D)
+	// They overlap if: A < D AND C < B
+	// This means there's at least one moment where both phases are active
+	return p.Starts.Before(*other.Ends) && other.Starts.Before(*p.Ends)
+}
+
+// IsContinuousWith checks if this phase is continuous with another phase.
+// Returns true if one phase ends exactly when the other starts (no gap, no overlap).
+// With [inclusive start, exclusive end) semantics, phases touch when:
+//   - This phase ends at the exact moment the other starts, OR
+//   - The other phase ends at the exact moment this starts
+//
+// Example: Phase1 [2025-10-01, 2025-10-03) is continuous with Phase2 [2025-10-03, 2025-10-05)
+func (p *Phase) IsContinuousWith(other *Phase) bool {
+	// Can't be continuous if either phase has no end date
+	if p.Ends == nil || other.Ends == nil {
+		return false
 	}
 
-	// if none of these conditions are met, the phases do not overlap
-	return false
+	// Check if this ends when other starts, or vice versa
+	return p.Ends.Equal(other.Starts) || other.Ends.Equal(p.Starts)
+}
 
+// SuggestNextPhaseStart suggests when the next phase should start to maintain continuity.
+// Returns the exact timestamp where this phase ends, which is when the next phase should start.
+// Returns zero time if this phase has no end date (can't suggest next start for indefinite phases).
+//
+// Example: If this phase ends at 2025-10-03 00:00:00 UTC, the next phase should start
+// at exactly 2025-10-03 00:00:00 UTC to maintain continuity with no gaps or overlaps.
+func (p *Phase) SuggestNextPhaseStart() time.Time {
+	if p.Ends == nil {
+		return time.Time{} // Can't suggest if no end date
+	}
+	// With [inclusive start, exclusive end) semantics, next phase starts exactly when this ends
+	return *p.Ends
 }
 
 // GetPrice returns the price for a given currency
