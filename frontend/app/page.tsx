@@ -46,7 +46,9 @@ export default function Home() {
     <DashboardLayout>
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <h1 className="text-4xl font-bold tracking-tight">
+            Welcome to Alpaca Names
+          </h1>
           <p className="text-muted-foreground">
             Welcome to Domain OS Registry Administration
           </p>
