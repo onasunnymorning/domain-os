@@ -22,10 +22,10 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Button>
         
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            DO
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white text-xl">
+            🦙
           </div>
-          <span className="hidden sm:inline-block">Domain OS Admin</span>
+          <span className="hidden sm:inline-block">Alpaca Names</span>
         </Link>
 
         <div className="ml-auto flex items-center gap-4">
