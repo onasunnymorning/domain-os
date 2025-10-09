@@ -5,9 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Building2, Globe, Users, Server } from 'lucide-react';
 import Link from 'next/link';
 import { useRegistryOperatorsCount } from '@/lib/hooks/useRegistryOperators';
+import { useTLDsCount } from '@/lib/hooks/useTLDs';
 
 export default function Home() {
   const { data: countData, isLoading: isLoadingCount } = useRegistryOperatorsCount();
+  const { data: tldCountData, isLoading: isLoadingTldCount } = useTLDsCount();
 
   const stats = [
     {
@@ -19,7 +21,7 @@ export default function Home() {
     },
     {
       name: 'TLDs',
-      value: '0',
+      value: isLoadingTldCount ? '...' : tldCountData?.Count?.toString() ?? '0',
       icon: Globe,
       href: '/tlds',
       description: 'Top-level domains'
