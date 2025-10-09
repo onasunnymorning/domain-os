@@ -1,11 +1,11 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD, useDeleteTLD } from '@/lib/hooks/useTLDs';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
@@ -35,6 +35,11 @@ export default function TLDDetailPage({ params }: Props) {
   const phaseName = searchParams.get('phase');
   const { data: tld, isLoading, error } = useTLD(decodeURIComponent(name));
   const { mutate: deleteTLD, isPending: isDeleting } = useDeleteTLD();
+
+  // Scroll to top when the page loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [name]);
 
   const handleDelete = () => {
     deleteTLD(name, {
@@ -88,29 +93,19 @@ export default function TLDDetailPage({ params }: Props) {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
+      <div className="space-y-8">
+        {/* Back Button */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/tlds">
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                <Globe className="h-8 w-8" />
-                {isLoading ? <Skeleton className="h-8 w-32" /> : tld?.Name}
-              </h1>
-              <p className="text-muted-foreground mt-2">
-                TLD Details
-              </p>
-            </div>
-          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/tlds">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
           {!isLoading && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isDeleting}>
+                <Button variant="destructive" size="sm" disabled={isDeleting}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete TLD
                 </Button>
@@ -136,99 +131,94 @@ export default function TLDDetailPage({ params }: Props) {
           )}
         </div>
 
+        {/* Hero Section */}
+        <div className="space-y-2">
+          <div className="flex items-baseline gap-3">
+            <Globe className="h-10 w-10 text-muted-foreground" />
+            {isLoading ? (
+              <Skeleton className="h-12 w-48" />
+            ) : (
+              <h1 className="text-5xl font-bold tracking-tight">{tld?.Name}</h1>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground ml-[52px]">TLD Details</p>
+        </div>
+
         {/* TLD Information Card */}
         <Card>
-          <CardHeader>
-            <CardTitle>TLD Information</CardTitle>
-            <CardDescription>Basic details about this top-level domain</CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {isLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-48" />
+              <div className="space-y-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-6 w-full max-w-md" />
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="grid gap-4">
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold">Name:</span>
-                  <span className="col-span-2 font-mono text-lg">{tld?.Name}</span>
-                </div>
-                
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold">Type:</span>
-                  <span className="col-span-2">{tld && getTypeBadge(tld.Type)}</span>
+              <div className="space-y-8">
+                {/* Type */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
+                  <div>{tld && getTypeBadge(tld.Type)}</div>
                 </div>
 
-                {tld?.UName && (
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <span className="font-semibold">Unicode Name:</span>
-                    <span className="col-span-2 font-mono">{tld.UName}</span>
+                {/* Registry Operator */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Building2 className="h-3 w-3" />
+                    Registry Operator
+                  </p>
+                  <Link 
+                    href={`/registry-operators/${tld?.RyID}`} 
+                    className="text-lg font-medium text-primary hover:underline inline-block"
+                  >
+                    {tld?.RyID}
+                  </Link>
+                </div>
+
+                {/* Status Grid */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS Enabled</p>
+                    <div>
+                      {tld?.EnableDNS ? (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          <CheckCircle className="mr-1 h-3 w-3" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          <XCircle className="mr-1 h-3 w-3" />
+                          No
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Registry Operator:
-                  </span>
-                  <span className="col-span-2">
-                    <Link href={`/registry-operators/${tld?.RyID}`} className="text-primary hover:underline">
-                      {tld?.RyID}
-                    </Link>
-                  </span>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
+                    <div>
+                      {tld?.AllowEscrowImport ? (
+                        <Badge variant="secondary">Allowed</Badge>
+                      ) : (
+                        <Badge variant="outline">Not Allowed</Badge>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold">DNS Enabled:</span>
-                  <span className="col-span-2">
-                    {tld?.EnableDNS ? (
-                      <Badge variant="secondary" className="bg-green-100 text-green-800">
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                        Yes
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">
-                        <XCircle className="mr-1 h-3 w-3" />
-                        No
-                      </Badge>
-                    )}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold">Escrow Import:</span>
-                  <span className="col-span-2">
-                    {tld?.AllowEscrowImport ? (
-                      <Badge variant="secondary">Allowed</Badge>
-                    ) : (
-                      <Badge variant="outline">Not Allowed</Badge>
-                    )}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold flex items-center gap-2">
+                {/* Metadata */}
+                <div className="pt-6 border-t space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Created:
-                  </span>
-                  <span className="col-span-2 text-muted-foreground">
-                    {tld && format(new Date(tld.CreatedAt), 'PPpp')}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 items-center gap-4">
-                  <span className="font-semibold flex items-center gap-2">
+                    <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Updated:
-                  </span>
-                  <span className="col-span-2 text-muted-foreground">
-                    {tld && format(new Date(tld.UpdatedAt), 'PPpp')}
-                  </span>
+                    <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -242,16 +232,6 @@ export default function TLDDetailPage({ params }: Props) {
             initialPhaseName={phaseName || undefined}
           />
         )}
-
-        {/* Actions */}
-        <div className="flex gap-4">
-          <Button variant="outline" asChild>
-            <Link href="/tlds">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to List
-            </Link>
-          </Button>
-        </div>
       </div>
     </DashboardLayout>
   );

@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Pencil, Trash2, Mail, Phone, Globe, FileText, Server } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Mail, Phone, Globe, FileText, Server, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -59,29 +59,27 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl space-y-6">
-        {/* Header */}
+      <div className="max-w-5xl space-y-8">
+        {/* Back Button and Actions */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" asChild>
             <Link href="/registry-operators">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
             </Link>
-          </div>
+          </Button>
           
           {!isLoading && operator && (
             <div className="flex gap-2">
-              <Link href={`/registry-operators/${ryid}/edit`}>
-                <Button variant="outline">
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/registry-operators/${ryid}/edit`}>
                   <Pencil className="h-4 w-4 mr-2" />
                   Edit
-                </Button>
-              </Link>
+                </Link>
+              </Button>
               <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive">
+                  <Button variant="destructive" size="sm">
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete
                   </Button>
@@ -110,112 +108,106 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
         </div>
 
         {isLoading ? (
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-8 w-64" />
-              <Skeleton className="h-4 w-32 mt-2" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-            </CardContent>
-          </Card>
-        ) : operator ? (
-          <>
-            {/* Main Info */}
+          <div className="space-y-8">
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-64" />
+              <Skeleton className="h-6 w-32 ml-[52px]" />
+            </div>
             <Card>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-2xl">{operator.Name}</CardTitle>
-                    <CardDescription className="mt-2">
-                      <Badge variant="secondary" className="font-mono">
-                        {operator.RyID}
-                      </Badge>
-                    </CardDescription>
-                  </div>
-                </div>
+                <Skeleton className="h-6 w-40" />
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Contact Information */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-4">Contact Information</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="flex items-start gap-3">
-                      <Mail className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Email</p>
-                        <a 
-                          href={`mailto:${operator.Email}`}
-                          className="text-sm text-primary hover:underline"
-                        >
-                          {operator.Email}
-                        </a>
-                      </div>
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </CardContent>
+            </Card>
+          </div>
+        ) : operator ? (
+          <>
+            {/* Hero Section */}
+            <div className="space-y-2">
+              <div className="flex items-baseline gap-3">
+                <Building2 className="h-10 w-10 text-muted-foreground" />
+                <h1 className="text-5xl font-bold tracking-tight">{operator.Name}</h1>
+              </div>
+              <p className="text-sm text-muted-foreground ml-[52px]">Registry Operator</p>
+            </div>
+
+            {/* Contact Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Contact Information</CardTitle>
+                <CardDescription>How to reach this registry operator</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-8">
+                {/* Email */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Mail className="h-3 w-3" />
+                    Email
+                  </p>
+                  <a 
+                    href={`mailto:${operator.Email}`}
+                    className="text-lg font-medium text-primary hover:underline inline-block"
+                  >
+                    {operator.Email}
+                  </a>
+                </div>
+
+                {/* Optional fields in a grid */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {operator.URL && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <Globe className="h-3 w-3" />
+                        Website
+                      </p>
+                      <a 
+                        href={operator.URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-base font-medium text-primary hover:underline inline-block break-all"
+                      >
+                        {operator.URL}
+                      </a>
                     </div>
+                  )}
 
-                    {operator.URL && (
-                      <div className="flex items-start gap-3">
-                        <Globe className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium">Website</p>
-                          <a 
-                            href={operator.URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline"
-                          >
-                            {operator.URL}
-                          </a>
-                        </div>
-                      </div>
-                    )}
+                  {operator.Voice && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <Phone className="h-3 w-3" />
+                        Phone
+                      </p>
+                      <p className="text-base font-medium">{operator.Voice}</p>
+                    </div>
+                  )}
 
-                    {operator.Voice && (
-                      <div className="flex items-start gap-3">
-                        <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium">Phone</p>
-                          <p className="text-sm text-muted-foreground">{operator.Voice}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {operator.Fax && (
-                      <div className="flex items-start gap-3">
-                        <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium">Fax</p>
-                          <p className="text-sm text-muted-foreground">{operator.Fax}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  {operator.Fax && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <FileText className="h-3 w-3" />
+                        Fax
+                      </p>
+                      <p className="text-base font-medium">{operator.Fax}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Metadata */}
                 {(operator.CreatedAt || operator.UpdatedAt) && (
-                  <div className="border-t pt-6">
-                    <h3 className="text-sm font-semibold mb-4">Metadata</h3>
-                    <div className="grid gap-4 md:grid-cols-2 text-sm">
-                      {operator.CreatedAt && (
-                        <div>
-                          <p className="font-medium">Created</p>
-                          <p className="text-muted-foreground">
-                            {new Date(operator.CreatedAt).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                      {operator.UpdatedAt && (
-                        <div>
-                          <p className="font-medium">Last Updated</p>
-                          <p className="text-muted-foreground">
-                            {new Date(operator.UpdatedAt).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                  <div className="pt-6 border-t space-y-3">
+                    {operator.CreatedAt && (
+                      <div className="text-sm text-muted-foreground">
+                        Created {new Date(operator.CreatedAt).toLocaleString()}
+                      </div>
+                    )}
+                    {operator.UpdatedAt && (
+                      <div className="text-sm text-muted-foreground">
+                        Last updated {new Date(operator.UpdatedAt).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
