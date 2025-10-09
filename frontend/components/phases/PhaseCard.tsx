@@ -2,7 +2,7 @@
 
 import { Phase, PhaseStatus } from '@/lib/types/phase';
 import { formatPhaseDate, formatRelativeDate } from '@/lib/utils/dateUtils';
-import { CheckCircle2, Circle, Clock } from 'lucide-react';
+import { Check, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PhaseCardProps {
@@ -15,75 +15,104 @@ interface PhaseCardProps {
 export function PhaseCard({ phase, status, isFocal = false, onClick }: PhaseCardProps) {
   const statusConfig = {
     past: {
-      icon: CheckCircle2,
-      iconColor: 'text-[oklch(0.6_0.12_45)]',
-      bgColor: 'bg-muted/30',
+      bgColor: 'bg-muted/40',
       borderColor: 'border-border/50',
-      opacity: 'opacity-60',
+      opacity: 'opacity-50',
+      showCheck: false,
     },
     current: {
-      icon: Circle,
-      iconColor: 'text-[oklch(0.65_0.18_45)]',
-      bgColor: 'bg-gradient-to-br from-[oklch(0.98_0.02_45)] to-[oklch(0.95_0.05_45)]',
-      borderColor: 'border-[oklch(0.7_0.15_45)]',
+      bgColor: 'bg-gradient-to-br from-orange-50 to-orange-100/50',
+      borderColor: 'border-orange-300',
       opacity: 'opacity-100',
+      showCheck: true,
     },
     future: {
-      icon: Clock,
-      iconColor: 'text-muted-foreground',
       bgColor: 'bg-background',
       borderColor: 'border-dashed border-border',
-      opacity: 'opacity-75',
+      opacity: 'opacity-70',
+      showCheck: false,
     },
   };
 
   const config = statusConfig[status];
-  const Icon = config.icon;
 
   const cardClasses = cn(
-    'rounded-lg border-2 transition-all duration-200',
+    'rounded-xl border-2 transition-all duration-300',
     config.bgColor,
     config.borderColor,
     config.opacity,
-    isFocal && status === 'current' && 'shadow-[0_0_20px_rgba(255,149,0,0.3)] scale-105',
-    'hover:scale-105 hover:shadow-md',
+    isFocal && status === 'current' && 'shadow-xl shadow-orange-200/50 scale-105 border-orange-400',
+    'hover:scale-105 hover:shadow-lg',
     'cursor-pointer',
-    // Size based on status and focal
-    isFocal ? 'p-4 min-w-[200px]' : status === 'current' ? 'p-3 min-w-[160px]' : 'p-2 min-w-[120px]'
+    'relative overflow-hidden',
+    // Larger sizes for carousel effect
+    isFocal ? 'p-6 min-w-[280px]' : status === 'current' ? 'p-5 min-w-[240px]' : 'p-4 min-w-[200px]'
   );
 
   return (
     <div className={cardClasses} onClick={onClick}>
-      <div className="flex items-start gap-2">
-        <Icon className={cn('flex-shrink-0', config.iconColor, isFocal ? 'h-5 w-5' : 'h-4 w-4')} />
-        <div className="flex-1 min-w-0">
+      {/* Status indicator circle */}
+      <div className="flex items-start gap-4">
+        <div className={cn(
+          'flex-shrink-0 rounded-full flex items-center justify-center',
+          isFocal ? 'h-12 w-12' : 'h-10 w-10',
+          status === 'current' ? 'bg-orange-500 text-white' : status === 'past' ? 'bg-muted text-muted-foreground' : 'bg-background border-2 border-dashed border-muted-foreground/40 text-muted-foreground'
+        )}>
+          {status === 'current' ? (
+            <Check className={cn('stroke-[3]', isFocal ? 'h-7 w-7' : 'h-6 w-6')} />
+          ) : status === 'future' ? (
+            <Clock className={isFocal ? 'h-5 w-5' : 'h-4 w-4'} />
+          ) : (
+            <Check className={cn('opacity-40', isFocal ? 'h-6 w-6' : 'h-5 w-5')} />
+          )}
+        </div>
+        
+        <div className="flex-1 min-w-0 space-y-2">
           <div className={cn(
-            'font-medium truncate',
-            isFocal ? 'text-base' : 'text-sm'
+            'font-semibold truncate',
+            isFocal ? 'text-xl' : 'text-lg',
+            status === 'current' && 'text-orange-900'
           )}>
             {phase.name}
           </div>
-          <div className={cn(
-            'text-muted-foreground truncate',
-            isFocal ? 'text-sm' : 'text-xs'
-          )}>
-            {formatPhaseDate(phase.starts)}
-          </div>
-          {phase.ends && (
+          
+          <div className="space-y-1">
             <div className={cn(
-              'text-muted-foreground truncate',
+              'text-muted-foreground',
               isFocal ? 'text-sm' : 'text-xs'
             )}>
-              → {formatPhaseDate(phase.ends)}
+              <span className="font-medium">Started:</span> {formatPhaseDate(phase.starts)}
             </div>
-          )}
+            {phase.ends ? (
+              <div className={cn(
+                'text-muted-foreground',
+                isFocal ? 'text-sm' : 'text-xs'
+              )}>
+                <span className="font-medium">Ends:</span> {formatPhaseDate(phase.ends)}
+              </div>
+            ) : (
+              <div className={cn(
+                'text-muted-foreground italic',
+                isFocal ? 'text-sm' : 'text-xs'
+              )}>
+                Ongoing
+              </div>
+            )}
+          </div>
+          
           {isFocal && status === 'current' && (
-            <div className="text-xs text-[oklch(0.65_0.18_45)] font-medium mt-1">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500 text-white text-xs font-medium mt-2">
+              <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               Active {formatRelativeDate(phase.starts)}
             </div>
           )}
         </div>
       </div>
+      
+      {/* Decorative corner accent for current phase */}
+      {status === 'current' && (
+        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400/20 to-transparent rounded-bl-full" />
+      )}
     </div>
   );
 }
