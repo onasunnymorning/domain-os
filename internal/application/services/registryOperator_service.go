@@ -75,3 +75,8 @@ func (s *RegistryOperatorService) DeleteByRyID(ctx context.Context, ryid string)
 func (s *RegistryOperatorService) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistryOperator, string, error) {
 	return s.ryRepo.List(ctx, params)
 }
+
+// Count returns the number of RegistryOperators
+func (s *RegistryOperatorService) Count(ctx context.Context, filter queries.ListRegistryOperatorsFilter) (int64, error) {
+	return s.ryRepo.Count(ctx, filter)
+}
