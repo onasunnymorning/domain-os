@@ -193,3 +193,35 @@ export function useDeletePrice(tldName: string, phaseName: string) {
     },
   });
 }
+
+// Hook to add a fee to a phase
+export function useAddFee(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (fee: {
+      name: string;
+      currency: string;
+      amount: number;
+      refundable: boolean;
+    }) => phasesApi.addFee(tldName, phaseName, fee),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase', tldName, phaseName] });
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}
+
+// Hook to delete a fee from a phase
+export function useDeleteFee(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ feeName, currency }: { feeName: string; currency: string }) =>
+      phasesApi.deleteFee(tldName, phaseName, feeName, currency),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase', tldName, phaseName] });
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}

@@ -2,7 +2,7 @@
 
 import { Phase } from '@/lib/types/phase';
 import { useState } from 'react';
-import { useDeletePhase, useEndPhase, useUpdatePhasePolicy, useAddPrice, useDeletePrice } from '@/lib/hooks/usePhases';
+import { useDeletePhase, useEndPhase, useUpdatePhasePolicy, useAddPrice, useDeletePrice, useAddFee, useDeleteFee } from '@/lib/hooks/usePhases';
 import { useQuery } from '@tanstack/react-query';
 import { phasesApi } from '@/lib/api/phases';
 import {
@@ -70,12 +70,26 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
     transferAmount: '',
     restoreAmount: '',
   });
+  const [isEditingFees, setIsEditingFees] = useState(false);
+  const [newFee, setNewFee] = useState<{
+    name: string;
+    currency: string;
+    amount: string;
+    refundable: boolean;
+  }>({
+    name: '',
+    currency: '',
+    amount: '',
+    refundable: false,
+  });
   
   const { mutate: deletePhase, isPending: isDeleting } = useDeletePhase(tldName || '');
   const { mutate: endPhase, isPending: isEnding } = useEndPhase(tldName || '');
   const { mutate: updatePolicy, isPending: isSavingPolicy } = useUpdatePhasePolicy(tldName || '', phase?.name || '');
   const { mutate: addPrice, isPending: isAddingPrice } = useAddPrice(tldName || '', phase?.name || '');
   const { mutate: deletePrice, isPending: isDeletingPrice } = useDeletePrice(tldName || '', phase?.name || '');
+  const { mutate: addFee, isPending: isAddingFee } = useAddFee(tldName || '', phase?.name || '');
+  const { mutate: deleteFee, isPending: isDeletingFee } = useDeleteFee(tldName || '', phase?.name || '');
 
   // Fetch full phase details with prices and fees when drawer opens
   const { data: fullPhase, refetch: refetchPhase } = useQuery({
@@ -239,6 +253,51 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
 
   const handleDeletePrice = (currency: string) => {
     deletePrice(currency, {
+      onSuccess: () => {
+        refetchPhase();
+      },
+    });
+  };
+
+  const handleEditFees = () => {
+    setIsEditingFees(true);
+  };
+
+  const handleCancelEditFees = () => {
+    setIsEditingFees(false);
+    setNewFee({
+      name: '',
+      currency: '',
+      amount: '',
+      refundable: false,
+    });
+  };
+
+  const handleAddFee = () => {
+    if (!newFee.name || !newFee.currency || !newFee.amount) {
+      return;
+    }
+
+    addFee({
+      name: newFee.name,
+      currency: newFee.currency.toUpperCase(),
+      amount: parseInt(newFee.amount),
+      refundable: newFee.refundable,
+    }, {
+      onSuccess: () => {
+        setNewFee({
+          name: '',
+          currency: '',
+          amount: '',
+          refundable: false,
+        });
+        refetchPhase();
+      },
+    });
+  };
+
+  const handleDeleteFee = (feeName: string, currency: string) => {
+    deleteFee({ feeName, currency }, {
       onSuccess: () => {
         refetchPhase();
       },
@@ -587,17 +646,113 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-2 pt-2">
+                      {/* Edit Button */}
+                      {!isEditingFees && (
+                        <div className="-mt-2 mb-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleEditFees}
+                            className="h-7"
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Existing Fees */}
                       {phaseData.fees.map((fee, index) => (
                         <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                          <div className="flex flex-col">
+                          <div className="flex flex-col flex-1">
                             <span className="text-sm font-medium">{fee.name}</span>
                             <span className="text-xs text-muted-foreground">{fee.currency}{fee.refundable ? ' • Refundable' : ''}</span>
                           </div>
-                          <span className="text-lg font-semibold">
-                            {getCurrencySymbol(fee.currency)}{(fee.amount / 100).toFixed(2)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-semibold">
+                              {getCurrencySymbol(fee.currency)}{(fee.amount / 100).toFixed(2)}
+                            </span>
+                            {isEditingFees && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteFee(fee.name, fee.currency)}
+                                disabled={isDeletingFee}
+                                className="h-6 text-xs"
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))}
+
+                      {/* Add New Fee Form */}
+                      {isEditingFees && (
+                        <div className="border-t pt-4 space-y-3">
+                          <div className="text-sm font-medium">Add New Fee</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2">
+                              <label className="text-xs text-muted-foreground">Fee Name</label>
+                              <input
+                                type="text"
+                                value={newFee.name}
+                                onChange={(e) => setNewFee({ ...newFee, name: e.target.value })}
+                                placeholder="application_fee"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Currency Code</label>
+                              <input
+                                type="text"
+                                maxLength={3}
+                                value={newFee.currency}
+                                onChange={(e) => setNewFee({ ...newFee, currency: e.target.value.toUpperCase() })}
+                                placeholder="USD"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm uppercase"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Amount (cents)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newFee.amount}
+                                onChange={(e) => setNewFee({ ...newFee, amount: e.target.value })}
+                                placeholder="1000"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={newFee.refundable}
+                                  onChange={(e) => setNewFee({ ...newFee, refundable: e.target.checked })}
+                                  className="h-4 w-4 rounded border-gray-300"
+                                />
+                                <span className="text-sm">Refundable</span>
+                              </label>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={handleAddFee}
+                              disabled={isAddingFee || !newFee.name || !newFee.currency || !newFee.amount}
+                            >
+                              {isAddingFee ? 'Adding...' : 'Add Fee'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleCancelEditFees}
+                            >
+                              Done
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
