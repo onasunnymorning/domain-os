@@ -2,7 +2,7 @@
 
 import { Phase } from '@/lib/types/phase';
 import { useState } from 'react';
-import { useDeletePhase, useEndPhase } from '@/lib/hooks/usePhases';
+import { useDeletePhase, useEndPhase, useUpdatePhasePolicy, useAddPrice, useDeletePrice } from '@/lib/hooks/usePhases';
 import { useQuery } from '@tanstack/react-query';
 import { phasesApi } from '@/lib/api/phases';
 import {
@@ -54,23 +54,68 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
   const [showEndPhaseDialog, setShowEndPhaseDialog] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [isEditingPolicy, setIsEditingPolicy] = useState(false);
+  const [editedPolicy, setEditedPolicy] = useState<Phase['policy'] | null>(null);
+  const [isEditingPrices, setIsEditingPrices] = useState(false);
+  const [newPrice, setNewPrice] = useState<{
+    currency: string;
+    registrationAmount: string;
+    renewalAmount: string;
+    transferAmount: string;
+    restoreAmount: string;
+  }>({
+    currency: '',
+    registrationAmount: '',
+    renewalAmount: '',
+    transferAmount: '',
+    restoreAmount: '',
+  });
   
   const { mutate: deletePhase, isPending: isDeleting } = useDeletePhase(tldName || '');
   const { mutate: endPhase, isPending: isEnding } = useEndPhase(tldName || '');
+  const { mutate: updatePolicy, isPending: isSavingPolicy } = useUpdatePhasePolicy(tldName || '', phase?.name || '');
+  const { mutate: addPrice, isPending: isAddingPrice } = useAddPrice(tldName || '', phase?.name || '');
+  const { mutate: deletePrice, isPending: isDeletingPrice } = useDeletePrice(tldName || '', phase?.name || '');
 
   // Fetch full phase details with prices and fees when drawer opens
-  const { data: fullPhase } = useQuery({
+  const { data: fullPhase, refetch: refetchPhase } = useQuery({
     queryKey: ['phase', tldName, phase?.name],
     queryFn: () => phasesApi.getPhase(tldName!, phase!.name),
     enabled: open && !!tldName && !!phase?.name,
   });
 
   // Fetch full previous phase details when showing diff
+  // For GA phases: previous phase is the one that started before this one
+  // For Launch phases: previous phase is the most recently ended phase, or if none exist,
+  // the one created before this one (since launch phases can overlap)
   const phasesOfSameType = allPhases
     .filter(p => p.type === phase?.type)
     .sort((a, b) => new Date(a.starts).getTime() - new Date(b.starts).getTime());
-  const currentIndex = phasesOfSameType.findIndex(p => p.id === phase?.id);
-  const previousPhaseBasic = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
+  
+  let previousPhaseBasic: Phase | null = null;
+  
+  if (phase?.type === 'GA') {
+    // For GA: simple chronological order by start date
+    const currentIndex = phasesOfSameType.findIndex(p => p.id === phase?.id);
+    previousPhaseBasic = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
+  } else if (phase?.type === 'Launch') {
+    // For Launch: find the most recently ended phase (that ended before this one started)
+    const currentStartTime = new Date(phase.starts).getTime();
+    const endedBeforeThis = phasesOfSameType
+      .filter(p => p.id !== phase.id && p.ends && new Date(p.ends).getTime() <= currentStartTime)
+      .sort((a, b) => new Date(b.ends!).getTime() - new Date(a.ends!).getTime());
+    
+    if (endedBeforeThis.length > 0) {
+      previousPhaseBasic = endedBeforeThis[0];
+    } else {
+      // If no ended phases, fall back to the one created before this one
+      const sortedByCreation = phasesOfSameType
+        .filter(p => p.id !== phase.id)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const currentCreationIndex = sortedByCreation.findIndex(p => new Date(p.createdAt).getTime() >= new Date(phase.createdAt).getTime());
+      previousPhaseBasic = currentCreationIndex > 0 ? sortedByCreation[currentCreationIndex - 1] : null;
+    }
+  }
 
   const { data: fullPreviousPhase } = useQuery({
     queryKey: ['phase', tldName, previousPhaseBasic?.name],
@@ -119,6 +164,83 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
         setShowEndPhaseDialog(false);
         setEndDate(undefined);
         onClose();
+      },
+    });
+  };
+
+  const handleEditPolicy = () => {
+    setEditedPolicy({ ...phaseData.policy });
+    setIsEditingPolicy(true);
+  };
+
+  const handleCancelEditPolicy = () => {
+    setEditedPolicy(null);
+    setIsEditingPolicy(false);
+  };
+
+  const handleSavePolicy = () => {
+    if (!editedPolicy) return;
+    
+    updatePolicy(editedPolicy, {
+      onSuccess: () => {
+        setIsEditingPolicy(false);
+        setEditedPolicy(null);
+        // Refetch to show updated data
+        refetchPhase();
+      },
+    });
+  };
+
+  const handlePolicyChange = (field: keyof Phase['policy'], value: number | boolean | string | undefined) => {
+    if (!editedPolicy) return;
+    setEditedPolicy({ ...editedPolicy, [field]: value });
+  };
+
+  const handleEditPrices = () => {
+    setIsEditingPrices(true);
+  };
+
+  const handleCancelEditPrices = () => {
+    setIsEditingPrices(false);
+    setNewPrice({
+      currency: '',
+      registrationAmount: '',
+      renewalAmount: '',
+      transferAmount: '',
+      restoreAmount: '',
+    });
+  };
+
+  const handleAddPrice = () => {
+    if (!newPrice.currency || !newPrice.registrationAmount || !newPrice.renewalAmount || 
+        !newPrice.transferAmount || !newPrice.restoreAmount) {
+      return;
+    }
+
+    addPrice({
+      currency: newPrice.currency.toUpperCase(),
+      registrationAmount: parseInt(newPrice.registrationAmount),
+      renewalAmount: parseInt(newPrice.renewalAmount),
+      transferAmount: parseInt(newPrice.transferAmount),
+      restoreAmount: parseInt(newPrice.restoreAmount),
+    }, {
+      onSuccess: () => {
+        setNewPrice({
+          currency: '',
+          registrationAmount: '',
+          renewalAmount: '',
+          transferAmount: '',
+          restoreAmount: '',
+        });
+        refetchPhase();
+      },
+    });
+  };
+
+  const handleDeletePrice = (currency: string) => {
+    deletePrice(currency, {
+      onSuccess: () => {
+        refetchPhase();
       },
     });
   };
@@ -308,9 +430,37 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-4 pt-2">
+                      {/* Edit Button */}
+                      {!isEditingPrices && (
+                        <div className="-mt-2 mb-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleEditPrices}
+                            className="h-7"
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Existing Prices */}
                       {phaseData.prices.map((price, index) => (
                         <div key={index} className="space-y-2">
-                          <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{price.currency}</div>
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{price.currency}</div>
+                            {isEditingPrices && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeletePrice(price.currency)}
+                                disabled={isDeletingPrice}
+                                className="h-6 text-xs"
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                               <span className="text-sm font-medium text-muted-foreground">Registration</span>
@@ -339,6 +489,87 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                           </div>
                         </div>
                       ))}
+
+                      {/* Add New Price Form */}
+                      {isEditingPrices && (
+                        <div className="border-t pt-4 space-y-3">
+                          <div className="text-sm font-medium">Add New Currency</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2">
+                              <label className="text-xs text-muted-foreground">Currency Code</label>
+                              <input
+                                type="text"
+                                maxLength={3}
+                                value={newPrice.currency}
+                                onChange={(e) => setNewPrice({ ...newPrice, currency: e.target.value.toUpperCase() })}
+                                placeholder="USD"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm uppercase"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Registration (cents)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newPrice.registrationAmount}
+                                onChange={(e) => setNewPrice({ ...newPrice, registrationAmount: e.target.value })}
+                                placeholder="1000"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Renewal (cents)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newPrice.renewalAmount}
+                                onChange={(e) => setNewPrice({ ...newPrice, renewalAmount: e.target.value })}
+                                placeholder="1000"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Transfer (cents)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newPrice.transferAmount}
+                                onChange={(e) => setNewPrice({ ...newPrice, transferAmount: e.target.value })}
+                                placeholder="1000"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Restore (cents)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newPrice.restoreAmount}
+                                onChange={(e) => setNewPrice({ ...newPrice, restoreAmount: e.target.value })}
+                                placeholder="1000"
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={handleAddPrice}
+                              disabled={isAddingPrice || !newPrice.currency || !newPrice.registrationAmount || 
+                                       !newPrice.renewalAmount || !newPrice.transferAmount || !newPrice.restoreAmount}
+                            >
+                              {isAddingPrice ? 'Adding...' : 'Add Currency'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleCancelEditPrices}
+                            >
+                              Done
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -382,126 +613,291 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-6 pt-2">
-                    {/* Label Length - Visual representation */}
-                    {(phaseData.policy.minLabelLength !== undefined || phaseData.policy.maxLabelLength !== undefined) && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Domain Label Length</div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-orange-500"
-                                style={{ 
-                                  marginLeft: `${((phaseData.policy.minLabelLength || 1) - 1) / 62 * 100}%`,
-                                  width: `${((phaseData.policy.maxLabelLength || 63) - (phaseData.policy.minLabelLength || 1)) / 62 * 100}%` 
-                                }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                              <span>1</span>
-                              <span>63</span>
-                            </div>
-                          </div>
-                          <div className="text-sm font-semibold min-w-[80px] text-right">
-                            {phaseData.policy.minLabelLength || 1}–{phaseData.policy.maxLabelLength || 63} chars
-                          </div>
-                        </div>
+                    {/* Edit Button - Below Policy heading */}
+                    {!isEditingPolicy && (
+                      <div className="-mt-2 mb-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleEditPolicy}
+                          className="h-7"
+                        >
+                          Edit
+                        </Button>
                       </div>
                     )}
 
-                    {/* Grace Periods Section */}
-                    {(phaseData.policy.registrationGP !== undefined || 
-                      phaseData.policy.renewalGP !== undefined || 
-                      phaseData.policy.autoRenewalGP !== undefined || 
-                      phaseData.policy.transferGP !== undefined || 
-                      phaseData.policy.redemptionGP !== undefined || 
-                      phaseData.policy.pendingdeleteGP !== undefined) && (
-                      <div className="space-y-3">
-                        <div className="text-sm font-medium text-orange-700">Grace Periods</div>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                          {phaseData.policy.registrationGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Registration</div>
-                              <div className="font-semibold">{phaseData.policy.registrationGP} days</div>
-                            </div>
-                          )}
-                          {phaseData.policy.renewalGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Renewal</div>
-                              <div className="font-semibold">{phaseData.policy.renewalGP} days</div>
-                            </div>
-                          )}
-                          {phaseData.policy.autoRenewalGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Auto Renewal</div>
-                              <div className="font-semibold">{phaseData.policy.autoRenewalGP} days</div>
-                            </div>
-                          )}
-                          {phaseData.policy.transferGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Transfer</div>
-                              <div className="font-semibold">{phaseData.policy.transferGP} days</div>
-                            </div>
-                          )}
-                          {phaseData.policy.redemptionGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Redemption</div>
-                              <div className="font-semibold">{phaseData.policy.redemptionGP} days</div>
-                            </div>
-                          )}
-                          {phaseData.policy.pendingdeleteGP !== undefined && (
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Pending Delete</div>
-                              <div className="font-semibold">{phaseData.policy.pendingdeleteGP} days</div>
-                            </div>
-                          )}
+                    {/* Label Length - Simple display or edit mode */}
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Domain Label Length</div>
+                      {!isEditingPolicy ? (
+                        <div className="font-semibold">
+                          {phaseData.policy.minLabelLength || 1}–{phaseData.policy.maxLabelLength || 63} chars
                         </div>
-                      </div>
-                    )}
-
-                    {/* Other Policy Settings */}
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      {phaseData.policy.transferLockPeriod !== undefined && (
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
-                          <div className="font-semibold">{phaseData.policy.transferLockPeriod} days</div>
-                        </div>
-                      )}
-                      {phaseData.policy.maxHorizon !== undefined && (
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon</div>
-                          <div className="font-semibold">{phaseData.policy.maxHorizon} years</div>
-                        </div>
-                      )}
-                      {phaseData.policy.allowAutorenew !== undefined && (
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</div>
-                          <div className="flex items-center gap-2">
-                            <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.allowAutorenew ? 'bg-primary' : 'bg-input'}`}>
-                              <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
-                            </div>
-                            <span className="text-sm font-medium">{phaseData.policy.allowAutorenew ? 'Enabled' : 'Disabled'}</span>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Min Length</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="63"
+                              value={editedPolicy?.minLabelLength || 1}
+                              onChange={(e) => handlePolicyChange('minLabelLength', parseInt(e.target.value))}
+                              className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                            />
                           </div>
-                        </div>
-                      )}
-                      {phaseData.policy.requiresValidation !== undefined && (
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</div>
-                          <div className="flex items-center gap-2">
-                            <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.requiresValidation ? 'bg-primary' : 'bg-input'}`}>
-                              <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
-                            </div>
-                            <span className="text-sm font-medium">{phaseData.policy.requiresValidation ? 'Required' : 'Not Required'}</span>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Max Length</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="63"
+                              value={editedPolicy?.maxLabelLength || 63}
+                              onChange={(e) => handlePolicyChange('maxLabelLength', parseInt(e.target.value))}
+                              className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                            />
                           </div>
-                        </div>
-                      )}
-                      {phaseData.policy.baseCurrency && (
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</div>
-                          <div className="font-semibold">{getCurrencySymbol(phaseData.policy.baseCurrency)} ({phaseData.policy.baseCurrency})</div>
                         </div>
                       )}
                     </div>
+
+                    {/* Grace Periods Section */}
+                    <div className="space-y-3">
+                      <div className="text-sm font-medium text-orange-700">Grace Periods</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                        {!isEditingPolicy ? (
+                          <>
+                            {phaseData.policy.registrationGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Registration</div>
+                                <div className="font-semibold">{phaseData.policy.registrationGP} days</div>
+                              </div>
+                            )}
+                            {phaseData.policy.renewalGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Renewal</div>
+                                <div className="font-semibold">{phaseData.policy.renewalGP} days</div>
+                              </div>
+                            )}
+                            {phaseData.policy.autoRenewalGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Auto Renewal</div>
+                                <div className="font-semibold">{phaseData.policy.autoRenewalGP} days</div>
+                              </div>
+                            )}
+                            {phaseData.policy.transferGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Transfer</div>
+                                <div className="font-semibold">{phaseData.policy.transferGP} days</div>
+                              </div>
+                            )}
+                            {phaseData.policy.redemptionGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Redemption</div>
+                                <div className="font-semibold">{phaseData.policy.redemptionGP} days</div>
+                              </div>
+                            )}
+                            {phaseData.policy.pendingdeleteGP !== undefined && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Pending Delete</div>
+                                <div className="font-semibold">{phaseData.policy.pendingdeleteGP} days</div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Registration</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.registrationGP || 0}
+                                onChange={(e) => handlePolicyChange('registrationGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Renewal</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.renewalGP || 0}
+                                onChange={(e) => handlePolicyChange('renewalGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Auto Renewal</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.autoRenewalGP || 0}
+                                onChange={(e) => handlePolicyChange('autoRenewalGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Transfer</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.transferGP || 0}
+                                onChange={(e) => handlePolicyChange('transferGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Redemption</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.redemptionGP || 0}
+                                onChange={(e) => handlePolicyChange('redemptionGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Pending Delete</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editedPolicy?.pendingdeleteGP || 0}
+                                onChange={(e) => handlePolicyChange('pendingdeleteGP', parseInt(e.target.value))}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Other Policy Settings */}
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                      {!isEditingPolicy ? (
+                        <>
+                          {phaseData.policy.transferLockPeriod !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
+                              <div className="font-semibold">{phaseData.policy.transferLockPeriod} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.maxHorizon !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon</div>
+                              <div className="font-semibold">{phaseData.policy.maxHorizon} years</div>
+                            </div>
+                          )}
+                          {phaseData.policy.allowAutorenew !== undefined && (
+                            <div className="space-y-2">
+                              <div className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</div>
+                              <div className="flex items-center gap-2">
+                                <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.allowAutorenew ? 'bg-primary' : 'bg-input'}`}>
+                                  <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </div>
+                                <span className="text-sm font-medium">{phaseData.policy.allowAutorenew ? 'Enabled' : 'Disabled'}</span>
+                              </div>
+                            </div>
+                          )}
+                          {phaseData.policy.requiresValidation !== undefined && (
+                            <div className="space-y-2">
+                              <div className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</div>
+                              <div className="flex items-center gap-2">
+                                <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.requiresValidation ? 'bg-primary' : 'bg-input'}`}>
+                                  <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </div>
+                                <span className="text-sm font-medium">{phaseData.policy.requiresValidation ? 'Required' : 'Not Required'}</span>
+                              </div>
+                            </div>
+                          )}
+                          {phaseData.policy.baseCurrency && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</div>
+                              <div className="font-semibold">{getCurrencySymbol(phaseData.policy.baseCurrency)} ({phaseData.policy.baseCurrency})</div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock (days)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editedPolicy?.transferLockPeriod || 0}
+                              onChange={(e) => handlePolicyChange('transferLockPeriod', parseInt(e.target.value))}
+                              className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon (years)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editedPolicy?.maxHorizon || 0}
+                              onChange={(e) => handlePolicyChange('maxHorizon', parseInt(e.target.value))}
+                              className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</label>
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() => handlePolicyChange('allowAutorenew', !editedPolicy?.allowAutorenew)}
+                                className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${editedPolicy?.allowAutorenew ? 'bg-primary' : 'bg-input'}`}
+                              >
+                                <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${editedPolicy?.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</label>
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() => handlePolicyChange('requiresValidation', !editedPolicy?.requiresValidation)}
+                                className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${editedPolicy?.requiresValidation ? 'bg-primary' : 'bg-input'}`}
+                              >
+                                <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${editedPolicy?.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</label>
+                            <input
+                              type="text"
+                              maxLength={3}
+                              value={editedPolicy?.baseCurrency || ''}
+                              onChange={(e) => handlePolicyChange('baseCurrency', e.target.value.toUpperCase())}
+                              placeholder="USD"
+                              className="mt-1 w-full px-3 py-2 border rounded-md text-sm uppercase"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Save/Cancel Buttons */}
+                    {isEditingPolicy && (
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button
+                          size="sm"
+                          onClick={handleSavePolicy}
+                          disabled={isSavingPolicy}
+                        >
+                          {isSavingPolicy ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCancelEditPolicy}
+                          disabled={isSavingPolicy}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>
