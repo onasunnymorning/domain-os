@@ -1,6 +1,6 @@
 'use client';
 
-import { Phase } from '@/lib/types/phase';
+import { Phase, Price, Fee } from '@/lib/types/phase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Plus, Minus, AlertCircle } from 'lucide-react';
@@ -32,6 +32,7 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
     old: any;
     new: any;
     type: 'added' | 'removed' | 'changed';
+    category: 'policy' | 'pricing' | 'fees';
   }> = [];
 
   // Compare policy fields
@@ -57,31 +58,133 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
 
     if (oldValue !== newValue) {
       if (oldValue === undefined && newValue !== undefined) {
-        changes.push({ field, old: oldValue, new: newValue, type: 'added' });
+        changes.push({ field, old: oldValue, new: newValue, type: 'added', category: 'policy' });
       } else if (oldValue !== undefined && newValue === undefined) {
-        changes.push({ field, old: oldValue, new: newValue, type: 'removed' });
+        changes.push({ field, old: oldValue, new: newValue, type: 'removed', category: 'policy' });
       } else {
-        changes.push({ field, old: oldValue, new: newValue, type: 'changed' });
+        changes.push({ field, old: oldValue, new: newValue, type: 'changed', category: 'policy' });
       }
     }
   });
 
-  // Compare pricing
+  // Compare pricing (now with registrationAmount, renewalAmount, etc.)
   const oldPrices = compareWith.prices || [];
   const newPrices = phase.prices || [];
   
-  const priceChanges = new Map<string, { old?: number; new?: number }>();
-  oldPrices.forEach(p => priceChanges.set(p.currency, { old: p.amount }));
+  const priceMap = new Map<string, { old?: Price; new?: Price }>();
+  oldPrices.forEach(p => priceMap.set(p.currency, { old: p }));
   newPrices.forEach(p => {
-    const existing = priceChanges.get(p.currency);
+    const existing = priceMap.get(p.currency);
     if (existing) {
-      existing.new = p.amount;
+      existing.new = p;
     } else {
-      priceChanges.set(p.currency, { new: p.amount });
+      priceMap.set(p.currency, { new: p });
     }
   });
 
-  if (changes.length === 0 && priceChanges.size === 0) {
+  // Detect price changes for each currency
+  priceMap.forEach((prices, currency) => {
+    const old = prices.old;
+    const neu = prices.new;
+
+    if (!old && neu) {
+      // Currency added
+      changes.push({
+        field: `${currency} (all prices)`,
+        old: undefined,
+        new: neu,
+        type: 'added',
+        category: 'pricing'
+      });
+    } else if (old && !neu) {
+      // Currency removed
+      changes.push({
+        field: `${currency} (all prices)`,
+        old: old,
+        new: undefined,
+        type: 'removed',
+        category: 'pricing'
+      });
+    } else if (old && neu) {
+      // Check individual price types
+      const priceTypes: Array<keyof Price> = ['registrationAmount', 'renewalAmount', 'transferAmount', 'restoreAmount'];
+      priceTypes.forEach(type => {
+        if (old[type] !== neu[type]) {
+          changes.push({
+            field: `${currency} ${type.replace('Amount', '')}`,
+            old: old[type],
+            new: neu[type],
+            type: 'changed',
+            category: 'pricing'
+          });
+        }
+      });
+    }
+  });
+
+  // Compare fees
+  const oldFees = compareWith.fees || [];
+  const newFees = phase.fees || [];
+  
+  const feeMap = new Map<string, { old?: Fee; new?: Fee }>();
+  oldFees.forEach(f => feeMap.set(`${f.name}-${f.currency}`, { old: f }));
+  newFees.forEach(f => {
+    const key = `${f.name}-${f.currency}`;
+    const existing = feeMap.get(key);
+    if (existing) {
+      existing.new = f;
+    } else {
+      feeMap.set(key, { new: f });
+    }
+  });
+
+  // Detect fee changes
+  feeMap.forEach((fees, key) => {
+    const old = fees.old;
+    const neu = fees.new;
+
+    if (!old && neu) {
+      // Fee added
+      changes.push({
+        field: `${neu.name} (${neu.currency})`,
+        old: undefined,
+        new: neu.amount,
+        type: 'added',
+        category: 'fees'
+      });
+    } else if (old && !neu) {
+      // Fee removed
+      changes.push({
+        field: `${old.name} (${old.currency})`,
+        old: old.amount,
+        new: undefined,
+        type: 'removed',
+        category: 'fees'
+      });
+    } else if (old && neu) {
+      // Check if amount or refundable changed
+      if (old.amount !== neu.amount) {
+        changes.push({
+          field: `${neu.name} (${neu.currency}) amount`,
+          old: old.amount,
+          new: neu.amount,
+          type: 'changed',
+          category: 'fees'
+        });
+      }
+      if (old.refundable !== neu.refundable) {
+        changes.push({
+          field: `${neu.name} (${neu.currency}) refundable`,
+          old: old.refundable,
+          new: neu.refundable,
+          type: 'changed',
+          category: 'fees'
+        });
+      }
+    }
+  });
+
+  if (changes.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -107,12 +210,24 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
       .join(' ');
   };
 
-  const formatValue = (value: any) => {
+  const formatValue = (value: any, category: string) => {
     if (value === undefined || value === null) return '-';
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (category === 'pricing' || category === 'fees') {
+      // Handle price amounts (convert from cents to dollars)
+      if (typeof value === 'number') return `$${(value / 100).toFixed(2)}`;
+      // Handle Price object
+      if (typeof value === 'object' && 'registrationAmount' in value) {
+        return `Reg: $${(value.registrationAmount / 100).toFixed(2)}, Renew: $${(value.renewalAmount / 100).toFixed(2)}, Transfer: $${(value.transferAmount / 100).toFixed(2)}, Restore: $${(value.restoreAmount / 100).toFixed(2)}`;
+      }
+    }
     if (typeof value === 'number') return value.toString();
     return value;
   };
+
+  const policyChanges = changes.filter(c => c.category === 'policy');
+  const pricingChanges = changes.filter(c => c.category === 'pricing');
+  const feeChanges = changes.filter(c => c.category === 'fees');
 
   return (
     <Card>
@@ -125,18 +240,18 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
             </CardDescription>
           </div>
           <Badge variant="outline">
-            {changes.length + priceChanges.size} change{changes.length + priceChanges.size !== 1 ? 's' : ''}
+            {changes.length} change{changes.length !== 1 ? 's' : ''}
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {/* Policy Changes */}
-        {changes.length > 0 && (
+        {policyChanges.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Policy Changes
+            <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
+              Policy Changes ({policyChanges.length})
             </div>
-            {changes.map((change, idx) => (
+            {policyChanges.map((change, idx) => (
               <div
                 key={idx}
                 className="flex items-center justify-between text-sm p-2 rounded-lg border"
@@ -150,13 +265,13 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
                 <div className="flex items-center gap-2 text-xs">
                   {change.type !== 'added' && (
                     <span className="text-muted-foreground line-through">
-                      {formatValue(change.old)}
+                      {formatValue(change.old, 'policy')}
                     </span>
                   )}
                   {change.type !== 'removed' && (
                     <>
                       {change.type === 'changed' && <ArrowRight className="h-3 w-3" />}
-                      <span className="font-medium">{formatValue(change.new)}</span>
+                      <span className="font-medium">{formatValue(change.new, 'policy')}</span>
                     </>
                   )}
                 </div>
@@ -165,42 +280,73 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
           </div>
         )}
 
-        {/* Price Changes */}
-        {priceChanges.size > 0 && (
+        {/* Pricing Changes */}
+        {pricingChanges.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Pricing Changes
+            <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
+              Pricing Changes ({pricingChanges.length})
             </div>
-            {Array.from(priceChanges.entries()).map(([currency, prices], idx) => {
-              const hasOld = prices.old !== undefined;
-              const hasNew = prices.new !== undefined;
-              const changeType = !hasOld ? 'added' : !hasNew ? 'removed' : 'changed';
-
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between text-sm p-2 rounded-lg border"
-                >
-                  <div className="flex items-center gap-2">
-                    {changeType === 'added' && <Plus className="h-3 w-3 text-green-600" />}
-                    {changeType === 'removed' && <Minus className="h-3 w-3 text-red-600" />}
-                    {changeType === 'changed' && <ArrowRight className="h-3 w-3 text-orange-600" />}
-                    <span className="font-medium">{currency}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    {hasOld && (
-                      <span className="text-muted-foreground line-through">
-                        {(prices.old! / 100).toFixed(2)}
-                      </span>
-                    )}
-                    {hasOld && hasNew && <ArrowRight className="h-3 w-3" />}
-                    {hasNew && (
-                      <span className="font-medium">{(prices.new! / 100).toFixed(2)}</span>
-                    )}
-                  </div>
+            {pricingChanges.map((change, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between text-sm p-2 rounded-lg border"
+              >
+                <div className="flex items-center gap-2">
+                  {change.type === 'added' && <Plus className="h-3 w-3 text-green-600" />}
+                  {change.type === 'removed' && <Minus className="h-3 w-3 text-red-600" />}
+                  {change.type === 'changed' && <ArrowRight className="h-3 w-3 text-orange-600" />}
+                  <span className="font-medium">{change.field}</span>
                 </div>
-              );
-            })}
+                <div className="flex items-center gap-2 text-xs">
+                  {change.type !== 'added' && (
+                    <span className="text-muted-foreground line-through">
+                      {formatValue(change.old, 'pricing')}
+                    </span>
+                  )}
+                  {change.type !== 'removed' && (
+                    <>
+                      {change.type === 'changed' && <ArrowRight className="h-3 w-3" />}
+                      <span className="font-medium">{formatValue(change.new, 'pricing')}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Fee Changes */}
+        {feeChanges.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
+              Fee Changes ({feeChanges.length})
+            </div>
+            {feeChanges.map((change, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between text-sm p-2 rounded-lg border"
+              >
+                <div className="flex items-center gap-2">
+                  {change.type === 'added' && <Plus className="h-3 w-3 text-green-600" />}
+                  {change.type === 'removed' && <Minus className="h-3 w-3 text-red-600" />}
+                  {change.type === 'changed' && <ArrowRight className="h-3 w-3 text-orange-600" />}
+                  <span className="font-medium">{change.field}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  {change.type !== 'added' && (
+                    <span className="text-muted-foreground line-through">
+                      {formatValue(change.old, 'fees')}
+                    </span>
+                  )}
+                  {change.type !== 'removed' && (
+                    <>
+                      {change.type === 'changed' && <ArrowRight className="h-3 w-3" />}
+                      <span className="font-medium">{formatValue(change.new, 'fees')}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>

@@ -112,9 +112,10 @@ export function PhaseCreateWizard({ tldName, open, onClose, existingPhases = [] 
     if (formData.name.length > 16) {
       errors.push('Phase name must be 16 characters or less');
     }
-    // Check for invalid characters (only lowercase, numbers, hyphens allowed)
-    if (!/^[a-z0-9-]+$/.test(formData.name)) {
-      errors.push('Phase name can only contain lowercase letters, numbers, and hyphens');
+    // Check for invalid characters (only ASCII allowed, matching backend ClIDType validation)
+    // eslint-disable-next-line no-control-regex
+    if (!/^[\x00-\x7F]+$/.test(formData.name)) {
+      errors.push('Phase name can only contain ASCII characters (letters, numbers, symbols)');
     }
     if (!formData.starts) {
       errors.push('Start date is required');
@@ -350,15 +351,15 @@ function BasicInfoStep({ formData, setFormData }: {
         <Label htmlFor="name">Phase Name *</Label>
         <Input
           id="name"
-          placeholder="e.g., sunrise, ga-1, landrush"
+          placeholder="e.g., Sunrise, GA-1, Landrush"
           value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase() })}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           maxLength={16}
           className={formData.name.length > 16 || (formData.name.length > 0 && formData.name.length < 3) ? 'border-destructive' : ''}
         />
         <div className="flex justify-between items-center text-xs">
           <p className="text-muted-foreground">
-            3-16 characters: lowercase, numbers, hyphens only
+            3-16 ASCII characters (letters, numbers, symbols)
           </p>
           <p className={`${
             formData.name.length > 16 ? 'text-destructive font-medium' :
