@@ -39,6 +39,19 @@ I've created a comprehensive architecture and implementation package for integra
    - UX patterns
    - Success metrics
 
+6. **[AGENT_TEMPORAL_INTEGRATION.md](AGENT_TEMPORAL_INTEGRATION.md)** - 🆕 Temporal Workflows
+   - Leverage existing Temporal infrastructure
+   - Human-in-the-loop workflow patterns
+   - Signals, heartbeats, and progress monitoring
+   - Zero workflow rewrites needed
+   - Phase 2+ advanced orchestration
+
+7. **[AGENT_MIGRATION_TO_MCP.md](AGENT_MIGRATION_TO_MCP.md)** - MCP Evolution Path
+   - Migrate from Embedded Assistant to MCP Server
+   - 8-week migration plan
+   - Multi-client support strategy
+   - Standards-based architecture
+
 ---
 
 ## 🎯 Core Recommendation
