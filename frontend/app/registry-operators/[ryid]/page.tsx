@@ -197,17 +197,19 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
 
                 {/* Metadata */}
                 {(operator.CreatedAt || operator.UpdatedAt) && (
-                  <div className="pt-6 border-t space-y-3">
-                    {operator.CreatedAt && (
-                      <div className="text-sm text-muted-foreground">
-                        Created {new Date(operator.CreatedAt).toLocaleString()}
-                      </div>
-                    )}
-                    {operator.UpdatedAt && (
-                      <div className="text-sm text-muted-foreground">
-                        Last updated {new Date(operator.UpdatedAt).toLocaleString()}
-                      </div>
-                    )}
+                  <div className="pt-6 border-t">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-8 text-sm text-muted-foreground">
+                      {operator.CreatedAt && (
+                        <div>
+                          Created {new Date(operator.CreatedAt).toLocaleString()}
+                        </div>
+                      )}
+                      {operator.UpdatedAt && (
+                        <div>
+                          Last updated {new Date(operator.UpdatedAt).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </CardContent>

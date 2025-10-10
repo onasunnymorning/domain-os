@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { PlusIcon, SearchIcon, Pencil, Trash2, Eye } from 'lucide-react';
+import { PlusIcon, SearchIcon, Pencil, Trash2, Eye, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
@@ -40,10 +40,13 @@ export default function RegistryOperatorsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Registry Operators</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Building2 className="h-8 w-8" />
+              Registry Operators
+            </h1>
+            <p className="text-muted-foreground mt-2">
               Manage registry operators in your system
             </p>
           </div>
