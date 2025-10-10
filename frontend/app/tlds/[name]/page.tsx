@@ -210,14 +210,16 @@ export default function TLDDetailPage({ params }: Props) {
                 </div>
 
                 {/* Metadata */}
-                <div className="pt-6 border-t space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
+                <div className="pt-6 border-t">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
+                    </div>
                   </div>
                 </div>
               </div>

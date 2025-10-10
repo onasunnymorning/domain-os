@@ -1090,13 +1090,15 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             </Accordion>
 
             {/* Metadata */}
-            <div className="pt-4 border-t space-y-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Info className="h-3 w-3" />
-                <span>Created: {new Date(phaseData.createdAt).toLocaleString()}</span>
-              </div>
-              <div className="pl-5">
-                <span>Updated: {new Date(phaseData.updatedAt).toLocaleString()}</span>
+            <div className="pt-4 border-t">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Info className="h-3 w-3" />
+                  <span>Created: {new Date(phaseData.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center gap-2 sm:pl-0 pl-5">
+                  <span>Updated: {new Date(phaseData.updatedAt).toLocaleString()}</span>
+                </div>
               </div>
             </div>
           </div>
