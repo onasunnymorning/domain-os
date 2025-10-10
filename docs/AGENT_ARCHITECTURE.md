@@ -16,6 +16,15 @@ This document outlines a comprehensive architecture for integrating a chat-drive
 8. [Deployment Options](#deployment-options)
 9. [Roadmap & Milestones](#roadmap--milestones)
 
+## 📚 Related Documentation
+
+- **[Temporal Workflows Integration](AGENT_TEMPORAL_INTEGRATION.md)** - Advanced orchestration with Temporal workflows, signals, and heartbeats
+- **[MCP Migration Path](AGENT_MIGRATION_TO_MCP.md)** - Evolution from Embedded Assistant to MCP Server
+- **[Implementation Guide](AGENT_IMPLEMENTATION_GUIDE.md)** - 4-week build plan with code examples
+- **[Decision Guide](AGENT_DECISION_GUIDE.md)** - Pattern comparison and cost analysis
+- **[Integration Summary](AGENT_INTEGRATION_SUMMARY.md)** - Executive overview
+- **[Package Index](AGENT_PACKAGE_INDEX.md)** - Master navigation guide
+
 ---
 
 ## Vision & Philosophy
@@ -1251,7 +1260,41 @@ See `/docs/AGENT_FUNCTIONS.md` for complete list of:
 - Error codes
 - Usage examples
 
-## Appendix C: Workflow Templates
+## Appendix C: Temporal Workflow Integration
+
+**Key Insight:** Domain-OS already has Temporal workflows! The agent can leverage these for advanced orchestration without re-inventing state machines.
+
+**Existing Workflows Available:**
+- `syncRegistrarsWorkflow` - IANA/ICANN sync
+- `expiryLoop` - Domain expiration handling  
+- `purgeLoop` - Cleanup processes
+- `restoreWorkflow` - Domain restoration
+- `updateFX` - Currency exchange updates
+
+**Integration Patterns:**
+1. **Agent Triggers Workflows** (Phase 2, Week 5-6)
+   - Agent starts workflows via Temporal client
+   - Monitors progress with queries
+   - Reports status in natural language
+
+2. **Workflow Signals Agent** (Phase 3, Week 9-12)
+   - Workflows send approval requests
+   - Agent facilitates human decisions
+   - Signals workflow to continue
+
+3. **Progress Monitoring** (Phase 3+)
+   - Heartbeats for long-running operations
+   - Real-time progress updates to users
+   - Proactive status notifications
+
+**See [AGENT_TEMPORAL_INTEGRATION.md](AGENT_TEMPORAL_INTEGRATION.md) for:**
+- Complete integration guide
+- Code examples with signals & heartbeats
+- Human-in-the-loop workflow patterns
+- Migration from basic agent to workflow orchestration
+- Best practices for Temporal + Agent collaboration
+
+## Appendix D: Workflow Templates
 
 See `/internal/agent/workflows/templates/` for:
 - New TLD Setup
