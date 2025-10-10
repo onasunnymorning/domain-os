@@ -65,8 +65,22 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
     enabled: open && !!tldName && !!phase?.name,
   });
 
+  // Fetch full previous phase details when showing diff
+  const phasesOfSameType = allPhases
+    .filter(p => p.type === phase?.type)
+    .sort((a, b) => new Date(a.starts).getTime() - new Date(b.starts).getTime());
+  const currentIndex = phasesOfSameType.findIndex(p => p.id === phase?.id);
+  const previousPhaseBasic = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
+
+  const { data: fullPreviousPhase } = useQuery({
+    queryKey: ['phase', tldName, previousPhaseBasic?.name],
+    queryFn: () => phasesApi.getPhase(tldName!, previousPhaseBasic!.name),
+    enabled: showDiff && !!tldName && !!previousPhaseBasic?.name,
+  });
+
   // Use full phase data if available, otherwise fall back to the phase prop
   const phaseData = fullPhase || phase;
+  const previousPhase = showDiff && fullPreviousPhase ? fullPreviousPhase : null;
 
   if (!phaseData) return null;
 
@@ -75,13 +89,6 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
   const canDelete = isFuture;
   const canEnd = isCurrent || isFuture;
   const hasNoEndDate = !phaseData.ends;
-  
-  // Find previous phase for diff comparison
-  const phasesOfSameType = allPhases
-    .filter(p => p.type === phaseData.type)
-    .sort((a, b) => new Date(a.starts).getTime() - new Date(b.starts).getTime());
-  const currentIndex = phasesOfSameType.findIndex(p => p.id === phaseData.id);
-  const previousPhase = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
 
   // Helper to format date with time in UTC
   const formatDateWithTime = (dateString: string) => {
@@ -208,7 +215,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-2">
-              {previousPhase && (
+              {previousPhaseBasic && (
                 <Button
                   size="sm"
                   variant="outline"
