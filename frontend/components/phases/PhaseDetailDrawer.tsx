@@ -478,33 +478,41 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             {/* Expandable Sections */}
             <Accordion type="multiple" defaultValue={[]} className="space-y-2">
               {/* Pricing */}
-              {phaseData.prices && phaseData.prices.length > 0 && (
-                <AccordionItem value="pricing" className="border rounded-lg px-4">
-                  <AccordionTrigger className="hover:no-underline">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <DollarSign className="h-4 w-4 text-orange-600" />
-                      Pricing
+              <AccordionItem value="pricing" className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <DollarSign className="h-4 w-4 text-orange-600" />
+                    Pricing
+                    {phaseData.prices && phaseData.prices.length > 0 && (
                       <Badge variant="secondary" className="text-xs ml-2">{phaseData.prices.length} {phaseData.prices.length === 1 ? 'currency' : 'currencies'}</Badge>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="space-y-4 pt-2">
-                      {/* Edit Button */}
-                      {!isEditingPrices && (
-                        <div className="-mt-2 mb-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleEditPrices}
-                            className="h-7"
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      )}
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4 pt-2">
+                    {/* Edit Button */}
+                    {!isEditingPrices && (
+                      <div className="-mt-2 mb-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleEditPrices}
+                          className="h-7"
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                    )}
 
-                      {/* Existing Prices */}
-                      {phaseData.prices.map((price, index) => (
+                    {/* Empty State */}
+                    {(!phaseData.prices || phaseData.prices.length === 0) && !isEditingPrices && (
+                      <div className="text-sm text-muted-foreground italic">
+                        No pricing configured. Click Edit to add currencies.
+                      </div>
+                    )}
+
+                    {/* Existing Prices */}
+                    {phaseData.prices && phaseData.prices.map((price, index) => (
                         <div key={index} className="space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{price.currency}</div>
@@ -632,36 +640,43 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                     </div>
                   </AccordionContent>
                 </AccordionItem>
-              )}
 
               {/* Fees */}
-              {phaseData.fees && phaseData.fees.length > 0 && (
-                <AccordionItem value="fees" className="border rounded-lg px-4">
-                  <AccordionTrigger className="hover:no-underline">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <Tag className="h-4 w-4 text-orange-600" />
-                      Fees
+              <AccordionItem value="fees" className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Tag className="h-4 w-4 text-orange-600" />
+                    Fees
+                    {phaseData.fees && phaseData.fees.length > 0 && (
                       <Badge variant="secondary" className="text-xs ml-2">{phaseData.fees.length}</Badge>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="space-y-2 pt-2">
-                      {/* Edit Button */}
-                      {!isEditingFees && (
-                        <div className="-mt-2 mb-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleEditFees}
-                            className="h-7"
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      )}
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2 pt-2">
+                    {/* Edit Button */}
+                    {!isEditingFees && (
+                      <div className="-mt-2 mb-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleEditFees}
+                          className="h-7"
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                    )}
 
-                      {/* Existing Fees */}
-                      {phaseData.fees.map((fee, index) => (
+                    {/* Empty State */}
+                    {(!phaseData.fees || phaseData.fees.length === 0) && !isEditingFees && (
+                      <div className="text-sm text-muted-foreground italic">
+                        No fees configured. Click Edit to add fees.
+                      </div>
+                    )}
+
+                    {/* Existing Fees */}
+                    {phaseData.fees && phaseData.fees.map((fee, index) => (
                         <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                           <div className="flex flex-col flex-1">
                             <span className="text-sm font-medium">{fee.name}</span>
@@ -756,7 +771,6 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                     </div>
                   </AccordionContent>
                 </AccordionItem>
-              )}
 
               {/* Policy */}
               <AccordionItem value="policy" className="border rounded-lg px-4">
