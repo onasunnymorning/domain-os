@@ -64,5 +64,21 @@ export const phasesApi = {
   deletePrice: async (tldName: string, phaseName: string, currency: string): Promise<void> => {
     await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}/prices/${currency}`);
   },
+
+  // Add a fee to a phase
+  addFee: async (tldName: string, phaseName: string, fee: {
+    name: string;
+    currency: string;
+    amount: number;
+    refundable: boolean;
+  }): Promise<Phase['fees'][0]> => {
+    const response = await apiClient.post(`/tlds/${tldName}/phases/${phaseName}/fees`, fee);
+    return response.data;
+  },
+
+  // Delete a fee from a phase
+  deleteFee: async (tldName: string, phaseName: string, feeName: string, currency: string): Promise<void> => {
+    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}/fees/${feeName}/${currency}`);
+  },
 };
 
