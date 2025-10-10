@@ -3,6 +3,8 @@
 import { Phase } from '@/lib/types/phase';
 import { useState } from 'react';
 import { useDeletePhase, useEndPhase } from '@/lib/hooks/usePhases';
+import { useQuery } from '@tanstack/react-query';
+import { phasesApi } from '@/lib/api/phases';
 import {
   Sheet,
   SheetContent,
@@ -56,19 +58,29 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
   const { mutate: deletePhase, isPending: isDeleting } = useDeletePhase(tldName || '');
   const { mutate: endPhase, isPending: isEnding } = useEndPhase(tldName || '');
 
-  if (!phase) return null;
+  // Fetch full phase details with prices and fees when drawer opens
+  const { data: fullPhase } = useQuery({
+    queryKey: ['phase', tldName, phase?.name],
+    queryFn: () => phasesApi.getPhase(tldName!, phase!.name),
+    enabled: open && !!tldName && !!phase?.name,
+  });
 
-  const isFuture = isPhaseFuture(phase.starts);
-  const isCurrent = isPhaseCurrent(phase.starts, phase.ends);
+  // Use full phase data if available, otherwise fall back to the phase prop
+  const phaseData = fullPhase || phase;
+
+  if (!phaseData) return null;
+
+  const isFuture = isPhaseFuture(phaseData.starts);
+  const isCurrent = isPhaseCurrent(phaseData.starts, phaseData.ends);
   const canDelete = isFuture;
   const canEnd = isCurrent || isFuture;
-  const hasNoEndDate = !phase.ends;
+  const hasNoEndDate = !phaseData.ends;
   
   // Find previous phase for diff comparison
   const phasesOfSameType = allPhases
-    .filter(p => p.type === phase.type)
+    .filter(p => p.type === phaseData.type)
     .sort((a, b) => new Date(a.starts).getTime() - new Date(b.starts).getTime());
-  const currentIndex = phasesOfSameType.findIndex(p => p.id === phase.id);
+  const currentIndex = phasesOfSameType.findIndex(p => p.id === phaseData.id);
   const previousPhase = currentIndex > 0 ? phasesOfSameType[currentIndex - 1] : null;
 
   // Helper to format date with time in UTC
@@ -81,7 +93,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
   };
 
   const handleDelete = () => {
-    deletePhase(phase.name, {
+    deletePhase(phaseData.name, {
       onSuccess: () => {
         setShowDeleteDialog(false);
         onClose();
@@ -93,7 +105,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
     if (!endDate) return;
     
     endPhase({
-      phaseName: phase.name,
+      phaseName: phaseData.name,
       endDate: endDate.toISOString(),
     }, {
       onSuccess: () => {
@@ -107,26 +119,63 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
   // Helper to get currency symbol
   const getCurrencySymbol = (currency: string): string => {
     const symbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'JPY': '¥',
-      'CNY': '¥',
-      'INR': '₹',
-      'AUD': 'A$',
-      'CAD': 'C$',
-      'CHF': 'Fr',
-      'SEK': 'kr',
-      'NZD': 'NZ$',
-      'KRW': '₩',
-      'SGD': 'S$',
-      'HKD': 'HK$',
-      'NOK': 'kr',
-      'MXN': '$',
-      'ZAR': 'R',
-      'BRL': 'R$',
-      'RUB': '₽',
-      'TRY': '₺',
+      // Major Global Currencies
+      'USD': '$',        // US Dollar
+      'EUR': '€',        // Euro
+      'GBP': '£',        // British Pound
+      'JPY': '¥',        // Japanese Yen
+      'CHF': 'Fr',       // Swiss Franc
+      'CAD': 'C$',       // Canadian Dollar
+      'AUD': 'A$',       // Australian Dollar
+      'NZD': 'NZ$',      // New Zealand Dollar
+      
+      // Asian Currencies
+      'CNY': '¥',        // Chinese Yuan
+      'INR': '₹',        // Indian Rupee
+      'KRW': '₩',        // South Korean Won
+      'SGD': 'S$',       // Singapore Dollar
+      'HKD': 'HK$',      // Hong Kong Dollar
+      'THB': '฿',        // Thai Baht
+      'MYR': 'RM',       // Malaysian Ringgit
+      'IDR': 'Rp',       // Indonesian Rupiah
+      'PHP': '₱',        // Philippine Peso
+      'VND': '₫',        // Vietnamese Dong
+      'TWD': 'NT$',      // Taiwan Dollar
+      
+      // Middle East & Africa
+      'AED': 'د.إ',      // UAE Dirham
+      'SAR': '﷼',        // Saudi Riyal
+      'ZAR': 'R',        // South African Rand
+      'ILS': '₪',        // Israeli Shekel
+      'EGP': 'E£',       // Egyptian Pound
+      
+      // European Currencies
+      'SEK': 'kr',       // Swedish Krona
+      'NOK': 'kr',       // Norwegian Krone
+      'DKK': 'kr',       // Danish Krone
+      'PLN': 'zł',       // Polish Zloty
+      'CZK': 'Kč',       // Czech Koruna
+      'HUF': 'Ft',       // Hungarian Forint
+      'RON': 'lei',      // Romanian Leu
+      'RUB': '₽',        // Russian Ruble
+      'TRY': '₺',        // Turkish Lira
+      'UAH': '₴',        // Ukrainian Hryvnia
+      
+      // Latin American Currencies
+      'MXN': '$',        // Mexican Peso
+      'BRL': 'R$',       // Brazilian Real
+      'ARS': '$',        // Argentine Peso
+      'CLP': '$',        // Chilean Peso
+      'COP': '$',        // Colombian Peso
+      'PEN': 'S/',       // Peruvian Sol
+      'UYU': '$U',       // Uruguayan Peso
+      'CRC': '₡',        // Costa Rican Colón
+      
+      // Other
+      'PKR': '₨',        // Pakistani Rupee
+      'BDT': '৳',        // Bangladeshi Taka
+      'LKR': 'Rs',       // Sri Lankan Rupee
+      'NPR': 'Rs',       // Nepalese Rupee
     };
     const upperCurrency = currency?.toUpperCase() || '';
     return symbols[upperCurrency] || '$';
@@ -140,18 +189,18 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             {/* Title and Badge */}
             <div className="space-y-3">
               <div className="flex items-baseline gap-3">
-                <SheetTitle className="text-4xl font-bold">{phase.name}</SheetTitle>
+                <SheetTitle className="text-4xl font-bold">{phaseData.name}</SheetTitle>
                 <Badge 
-                  variant={phase.type === 'GA' ? 'default' : 'secondary'}
+                  variant={phaseData.type === 'GA' ? 'default' : 'secondary'}
                   className="text-xs"
                 >
-                  {phase.type}
+                  {phaseData.type}
                 </Badge>
               </div>
               <SheetDescription className="text-sm text-muted-foreground">
-                {isPhaseCurrent(phase.starts, phase.ends) 
+                {isPhaseCurrent(phaseData.starts, phaseData.ends) 
                   ? '🟢 Currently active' 
-                  : isPhaseFuture(phase.starts)
+                  : isPhaseFuture(phaseData.starts)
                   ? '🔵 Scheduled'
                   : '⚫ Past'}
               </SheetDescription>
@@ -185,7 +234,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
           <div className="mt-6 space-y-6">
             {/* Configuration Diff */}
             {showDiff && previousPhase && (
-              <PhaseConfigDiff phase={phase} compareWith={previousPhase} />
+              <PhaseConfigDiff phase={phaseData} compareWith={previousPhase} />
             )}
 
             {/* Timeline Section - Always Visible */}
@@ -195,20 +244,20 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">
                   {isFuture ? 'Starts' : 'Started'}
                 </div>
-                <div className="text-3xl font-bold">{formatDateWithTime(phase.starts).date}</div>
+                <div className="text-3xl font-bold">{formatDateWithTime(phaseData.starts).date}</div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
-                  <span>{formatDateWithTime(phase.starts).time} UTC</span>
+                  <span>{formatDateWithTime(phaseData.starts).time} UTC</span>
                   <span>•</span>
-                  <span>{formatRelativeDate(phase.starts)}</span>
+                  <span>{formatRelativeDate(phaseData.starts)}</span>
                 </div>
               </div>
               
               {/* End Date */}
-              <div className={`space-y-1.5 ${!phase.ends ? 'opacity-60' : ''}`}>
+              <div className={`space-y-1.5 ${!phaseData.ends ? 'opacity-60' : ''}`}>
                 <div className="flex items-center justify-between">
                   <div className="text-xs text-muted-foreground uppercase tracking-wide">Ends</div>
-                  {!phase.ends && canEnd && (
+                  {!phaseData.ends && canEnd && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -220,14 +269,14 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                     </Button>
                   )}
                 </div>
-                {phase.ends ? (
+                {phaseData.ends ? (
                   <>
-                    <div className="text-3xl font-bold">{formatDateWithTime(phase.ends).date}</div>
+                    <div className="text-3xl font-bold">{formatDateWithTime(phaseData.ends).date}</div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
-                      <span>{formatDateWithTime(phase.ends).time} UTC</span>
+                      <span>{formatDateWithTime(phaseData.ends).time} UTC</span>
                       <span>•</span>
-                      <span>{formatRelativeDate(phase.ends)}</span>
+                      <span>{formatRelativeDate(phaseData.ends)}</span>
                     </div>
                   </>
                 ) : (
@@ -239,142 +288,48 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             </div>
 
             {/* Expandable Sections */}
-            <Accordion type="multiple" defaultValue={["policy"]} className="space-y-2">
-              {/* Policy Configuration */}
-              <AccordionItem value="policy" className="border rounded-lg px-4">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Settings className="h-4 w-4 text-orange-600" />
-                    Policy Configuration
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2">
-                    {/* Label Length - Visual representation */}
-                    {(phase.policy.minLabelLength !== undefined || phase.policy.maxLabelLength !== undefined) && (
-                      <div className="col-span-2 space-y-2">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Domain Label Length</div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-orange-500"
-                                style={{ 
-                                  marginLeft: `${((phase.policy.minLabelLength || 1) - 1) / 62 * 100}%`,
-                                  width: `${((phase.policy.maxLabelLength || 63) - (phase.policy.minLabelLength || 1)) / 62 * 100}%` 
-                                }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                              <span>1</span>
-                              <span>63</span>
-                            </div>
-                          </div>
-                          <div className="text-sm font-semibold min-w-[80px] text-right">
-                            {phase.policy.minLabelLength || 1}–{phase.policy.maxLabelLength || 63} chars
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {phase.policy.registrationGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Registration GP</div>
-                        <div className="font-semibold">{phase.policy.registrationGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.renewalGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Renewal GP</div>
-                        <div className="font-semibold">{phase.policy.renewalGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.autoRenewalGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Auto Renewal GP</div>
-                        <div className="font-semibold">{phase.policy.autoRenewalGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.transferGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer GP</div>
-                        <div className="font-semibold">{phase.policy.transferGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.redemptionGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Redemption GP</div>
-                        <div className="font-semibold">{phase.policy.redemptionGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.pendingdeleteGP !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Pending Delete GP</div>
-                        <div className="font-semibold">{phase.policy.pendingdeleteGP} days</div>
-                      </div>
-                    )}
-                    {phase.policy.transferLockPeriod !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
-                        <div className="font-semibold">{phase.policy.transferLockPeriod} days</div>
-                      </div>
-                    )}
-                    {phase.policy.maxHorizon !== undefined && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon</div>
-                        <div className="font-semibold">{phase.policy.maxHorizon} years</div>
-                      </div>
-                    )}
-                    {phase.policy.allowAutorenew !== undefined && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</div>
-                        <div className="flex items-center gap-2">
-                          <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phase.policy.allowAutorenew ? 'bg-primary' : 'bg-input'}`}>
-                            <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phase.policy.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
-                          </div>
-                          <span className="text-sm font-medium">{phase.policy.allowAutorenew ? 'Enabled' : 'Disabled'}</span>
-                        </div>
-                      </div>
-                    )}
-                    {phase.policy.requiresValidation !== undefined && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</div>
-                        <div className="flex items-center gap-2">
-                          <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phase.policy.requiresValidation ? 'bg-primary' : 'bg-input'}`}>
-                            <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phase.policy.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
-                          </div>
-                          <span className="text-sm font-medium">{phase.policy.requiresValidation ? 'Required' : 'Not Required'}</span>
-                        </div>
-                      </div>
-                    )}
-                    {phase.policy.baseCurrency && (
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</div>
-                        <div className="font-semibold">{getCurrencySymbol(phase.policy.baseCurrency)} ({phase.policy.baseCurrency})</div>
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
+            <Accordion type="multiple" defaultValue={[]} className="space-y-2">
               {/* Pricing */}
-              {phase.prices && phase.prices.length > 0 && (
+              {phaseData.prices && phaseData.prices.length > 0 && (
                 <AccordionItem value="pricing" className="border rounded-lg px-4">
                   <AccordionTrigger className="hover:no-underline">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <DollarSign className="h-4 w-4 text-orange-600" />
                       Pricing
-                      <Badge variant="secondary" className="text-xs ml-2">{phase.prices.length}</Badge>
+                      <Badge variant="secondary" className="text-xs ml-2">{phaseData.prices.length} {phaseData.prices.length === 1 ? 'currency' : 'currencies'}</Badge>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="space-y-2 pt-2">
-                      {phase.prices.map((price) => (
-                        <div key={price.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                          <span className="text-sm font-medium text-muted-foreground uppercase">{price.currency}</span>
-                          <span className="text-xl font-bold">
-                            {getCurrencySymbol(price.currency)}{(price.amount / 100).toFixed(2)}
-                          </span>
+                    <div className="space-y-4 pt-2">
+                      {phaseData.prices.map((price, index) => (
+                        <div key={index} className="space-y-2">
+                          <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{price.currency}</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                              <span className="text-sm font-medium text-muted-foreground">Registration</span>
+                              <span className="text-lg font-bold">
+                                {getCurrencySymbol(price.currency)}{(price.registrationAmount / 100).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                              <span className="text-sm font-medium text-muted-foreground">Renewal</span>
+                              <span className="text-lg font-bold">
+                                {getCurrencySymbol(price.currency)}{(price.renewalAmount / 100).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                              <span className="text-sm font-medium text-muted-foreground">Transfer</span>
+                              <span className="text-lg font-bold">
+                                {getCurrencySymbol(price.currency)}{(price.transferAmount / 100).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                              <span className="text-sm font-medium text-muted-foreground">Restore</span>
+                              <span className="text-lg font-bold">
+                                {getCurrencySymbol(price.currency)}{(price.restoreAmount / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -383,20 +338,23 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
               )}
 
               {/* Fees */}
-              {phase.fees && phase.fees.length > 0 && (
+              {phaseData.fees && phaseData.fees.length > 0 && (
                 <AccordionItem value="fees" className="border rounded-lg px-4">
                   <AccordionTrigger className="hover:no-underline">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <Tag className="h-4 w-4 text-orange-600" />
                       Fees
-                      <Badge variant="secondary" className="text-xs ml-2">{phase.fees.length}</Badge>
+                      <Badge variant="secondary" className="text-xs ml-2">{phaseData.fees.length}</Badge>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-2 pt-2">
-                      {phase.fees.map((fee) => (
-                        <div key={fee.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                          <span className="text-sm font-medium">{fee.name}</span>
+                      {phaseData.fees.map((fee, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{fee.name}</span>
+                            <span className="text-xs text-muted-foreground">{fee.currency}{fee.refundable ? ' • Refundable' : ''}</span>
+                          </div>
                           <span className="text-lg font-semibold">
                             {getCurrencySymbol(fee.currency)}{(fee.amount / 100).toFixed(2)}
                           </span>
@@ -407,8 +365,142 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                 </AccordionItem>
               )}
 
+              {/* Policy */}
+              <AccordionItem value="policy" className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Settings className="h-4 w-4 text-orange-600" />
+                    Policy
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-6 pt-2">
+                    {/* Label Length - Visual representation */}
+                    {(phaseData.policy.minLabelLength !== undefined || phaseData.policy.maxLabelLength !== undefined) && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Domain Label Length</div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-orange-500"
+                                style={{ 
+                                  marginLeft: `${((phaseData.policy.minLabelLength || 1) - 1) / 62 * 100}%`,
+                                  width: `${((phaseData.policy.maxLabelLength || 63) - (phaseData.policy.minLabelLength || 1)) / 62 * 100}%` 
+                                }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>1</span>
+                              <span>63</span>
+                            </div>
+                          </div>
+                          <div className="text-sm font-semibold min-w-[80px] text-right">
+                            {phaseData.policy.minLabelLength || 1}–{phaseData.policy.maxLabelLength || 63} chars
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Grace Periods Section */}
+                    {(phaseData.policy.registrationGP !== undefined || 
+                      phaseData.policy.renewalGP !== undefined || 
+                      phaseData.policy.autoRenewalGP !== undefined || 
+                      phaseData.policy.transferGP !== undefined || 
+                      phaseData.policy.redemptionGP !== undefined || 
+                      phaseData.policy.pendingdeleteGP !== undefined) && (
+                      <div className="space-y-3">
+                        <div className="text-sm font-medium text-orange-700">Grace Periods</div>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                          {phaseData.policy.registrationGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Registration</div>
+                              <div className="font-semibold">{phaseData.policy.registrationGP} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.renewalGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Renewal</div>
+                              <div className="font-semibold">{phaseData.policy.renewalGP} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.autoRenewalGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Auto Renewal</div>
+                              <div className="font-semibold">{phaseData.policy.autoRenewalGP} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.transferGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Transfer</div>
+                              <div className="font-semibold">{phaseData.policy.transferGP} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.redemptionGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Redemption</div>
+                              <div className="font-semibold">{phaseData.policy.redemptionGP} days</div>
+                            </div>
+                          )}
+                          {phaseData.policy.pendingdeleteGP !== undefined && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">Pending Delete</div>
+                              <div className="font-semibold">{phaseData.policy.pendingdeleteGP} days</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other Policy Settings */}
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                      {phaseData.policy.transferLockPeriod !== undefined && (
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
+                          <div className="font-semibold">{phaseData.policy.transferLockPeriod} days</div>
+                        </div>
+                      )}
+                      {phaseData.policy.maxHorizon !== undefined && (
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Max Horizon</div>
+                          <div className="font-semibold">{phaseData.policy.maxHorizon} years</div>
+                        </div>
+                      )}
+                      {phaseData.policy.allowAutorenew !== undefined && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Allow Autorenew</div>
+                          <div className="flex items-center gap-2">
+                            <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.allowAutorenew ? 'bg-primary' : 'bg-input'}`}>
+                              <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.allowAutorenew ? 'translate-x-4' : 'translate-x-0'}`} />
+                            </div>
+                            <span className="text-sm font-medium">{phaseData.policy.allowAutorenew ? 'Enabled' : 'Disabled'}</span>
+                          </div>
+                        </div>
+                      )}
+                      {phaseData.policy.requiresValidation !== undefined && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Requires Validation</div>
+                          <div className="flex items-center gap-2">
+                            <div className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 transition-colors ${phaseData.policy.requiresValidation ? 'bg-primary' : 'bg-input'}`}>
+                              <div className={`h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${phaseData.policy.requiresValidation ? 'translate-x-4' : 'translate-x-0'}`} />
+                            </div>
+                            <span className="text-sm font-medium">{phaseData.policy.requiresValidation ? 'Required' : 'Not Required'}</span>
+                          </div>
+                        </div>
+                      )}
+                      {phaseData.policy.baseCurrency && (
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wide">Base Currency</div>
+                          <div className="font-semibold">{getCurrencySymbol(phaseData.policy.baseCurrency)} ({phaseData.policy.baseCurrency})</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
               {/* Premium List */}
-              {phase.premiumListName && (
+              {phaseData.premiumListName && (
                 <AccordionItem value="premium" className="border rounded-lg px-4">
                   <AccordionTrigger className="hover:no-underline">
                     <div className="flex items-center gap-2 text-sm font-semibold">
@@ -418,7 +510,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="pt-2">
-                      <Badge variant="outline" className="text-sm font-mono">{phase.premiumListName}</Badge>
+                      <Badge variant="outline" className="text-sm font-mono">{phaseData.premiumListName}</Badge>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -429,10 +521,10 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             <div className="pt-4 border-t space-y-2 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Info className="h-3 w-3" />
-                <span>Created: {new Date(phase.createdAt).toLocaleString()}</span>
+                <span>Created: {new Date(phaseData.createdAt).toLocaleString()}</span>
               </div>
               <div className="pl-5">
-                <span>Updated: {new Date(phase.updatedAt).toLocaleString()}</span>
+                <span>Updated: {new Date(phaseData.updatedAt).toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -445,7 +537,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Phase?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the phase &quot;{phase.name}&quot;?
+              Are you sure you want to delete the phase &quot;{phaseData.name}&quot;?
               <br /><br />
               <strong>Note:</strong> Only future phases can be deleted. Current and past phases are kept for traceability.
             </AlertDialogDescription>
@@ -469,7 +561,7 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
           <AlertDialogHeader>
             <AlertDialogTitle>Set End Date for Phase</AlertDialogTitle>
             <AlertDialogDescription>
-              Choose when this phase should end. The phase &quot;{phase.name}&quot; will become inactive after this date.
+              Choose when this phase should end. The phase &quot;{phaseData.name}&quot; will become inactive after this date.
             </AlertDialogDescription>
           </AlertDialogHeader>
           
@@ -489,13 +581,13 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                   mode="single"
                   selected={endDate}
                   onSelect={setEndDate}
-                  disabled={(date) => date < new Date(phase.starts) || date < new Date()}
+                  disabled={(date) => date < new Date(phaseData.starts) || date < new Date()}
                   initialFocus
                 />
               </PopoverContent>
             </Popover>
             <p className="text-xs text-muted-foreground mt-2">
-              End date must be after the start date ({formatPhaseDateLong(phase.starts)}) and in the future.
+              End date must be after the start date ({formatPhaseDateLong(phaseData.starts)}) and in the future.
             </p>
           </div>
 

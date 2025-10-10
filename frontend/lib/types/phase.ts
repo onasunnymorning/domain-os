@@ -20,20 +20,19 @@ export interface PhasePolicy {
 }
 
 export interface Price {
-  id: number;
   currency: string;
-  amount: number;
-  createdAt: string;
-  updatedAt: string;
+  registrationAmount: number;
+  renewalAmount: number;
+  transferAmount: number;
+  restoreAmount: number;
+  phaseid: number;
 }
 
 export interface Fee {
-  id: number;
-  name: string;
   currency: string;
+  name: string;
   amount: number;
-  createdAt: string;
-  updatedAt: string;
+  refundable: boolean;
 }
 
 export interface Phase {
