@@ -15,4 +15,5 @@ type RegistryOperatorService interface {
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistryOperator, string, error)
 	Update(ctx context.Context, ry *entities.RegistryOperator) (*entities.RegistryOperator, error)
 	DeleteByRyID(ctx context.Context, ryid string) error
+	Count(ctx context.Context, filter queries.ListRegistryOperatorsFilter) (int64, error)
 }
