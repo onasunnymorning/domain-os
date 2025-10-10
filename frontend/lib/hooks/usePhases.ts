@@ -145,3 +145,51 @@ export function useEndPhase(tldName: string) {
     },
   });
 }
+
+// Hook to update phase policy
+export function useUpdatePhasePolicy(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (policy: Phase['policy']) =>
+      phasesApi.updatePolicy(tldName, phaseName, policy),
+    onSuccess: () => {
+      // Invalidate both the specific phase and the list
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName, phaseName] });
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}
+
+// Hook to add a price to a phase
+export function useAddPrice(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (price: {
+      currency: string;
+      registrationAmount: number;
+      renewalAmount: number;
+      transferAmount: number;
+      restoreAmount: number;
+    }) => phasesApi.addPrice(tldName, phaseName, price),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase', tldName, phaseName] });
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}
+
+// Hook to delete a price from a phase
+export function useDeletePrice(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (currency: string) =>
+      phasesApi.deletePrice(tldName, phaseName, currency),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase', tldName, phaseName] });
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}
