@@ -31,6 +31,18 @@ jobs:
           docker run --rm -d -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres -p 5432:5432 postgres:16.1 -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
         id: testdb
 
-      - name: Run Tests
+      - name: Run All Tests
         run: |
           go test -v ./...
+
+      - name: Run Agent Navigation Tests
+        run: |
+          echo "Running agent navigation feature tests..."
+          go test ./internal/agent/service/... -v -run TestAddNavigationActions
+          go test ./internal/agent/service/... -v -run TestNavigationActionStruct
+          go test ./internal/agent/service/... -v -run TestChatResponse
+
+      - name: Generate Coverage Report
+        run: |
+          go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
+          go tool cover -func=agent-coverage.out

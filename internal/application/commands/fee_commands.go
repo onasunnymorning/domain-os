@@ -7,5 +7,5 @@ type CreateFeeCommand struct {
 	Name       string `json:"name" binding:"required" example:"appliction_fee"`
 	Currency   string `json:"currency" binding:"required" example:"USD"`
 	Amount     uint64 `json:"amount" binding:"required" example:"1000"`
-	Refundable bool   `json:"refundable" binding:"required" example:"true"`
+	Refundable bool   `json:"refundable" example:"true"`
 }
