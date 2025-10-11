@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/agent/client"
 	"github.com/onasunnymorning/domain-os/internal/agent/functions"
@@ -45,10 +46,20 @@ type Message struct {
 	Content string `json:"content"`
 }
 
+// NavigationAction represents a navigation action the UI can perform
+type NavigationAction struct {
+	Type         string `json:"type"`         // Always "navigate"
+	Label        string `json:"label"`        // Button label
+	Path         string `json:"path"`         // Navigation path
+	Variant      string `json:"variant"`      // Button variant: default, outline, secondary
+	AutoNavigate bool   `json:"autoNavigate"` // Auto-navigate without user click
+}
+
 // ChatResponse represents the response from the agent
 type ChatResponse struct {
-	Message        string `json:"message"`
-	ConversationID string `json:"conversation_id"`
+	Message        string             `json:"message"`
+	ConversationID string             `json:"conversation_id"`
+	Actions        []NavigationAction `json:"actions,omitempty"`
 }
 
 // StreamWriter is a callback for streaming responses
@@ -87,14 +98,27 @@ func (s *AgentService) Chat(ctx context.Context, req ChatRequest) (*ChatResponse
 
 	// Handle function calls
 	if len(choice.Message.ToolCalls) > 0 {
-		return s.handleFunctionCalls(ctx, messages, choice.Message.ToolCalls)
+		response, err := s.handleFunctionCalls(ctx, messages, choice.Message.ToolCalls)
+		if err != nil {
+			return nil, err
+		}
+
+		// Add navigation actions based on function results
+		s.addNavigationActions(response, req.Message, response.Message)
+
+		return response, nil
 	}
 
 	// Return direct response
-	return &ChatResponse{
+	response := &ChatResponse{
 		Message:        choice.Message.Content,
 		ConversationID: req.ConversationID,
-	}, nil
+	}
+
+	// Add navigation actions based on context
+	s.addNavigationActions(response, req.Message, choice.Message.Content)
+
+	return response, nil
 }
 
 // ChatStream processes a chat request and streams the response
@@ -217,6 +241,7 @@ When helping users:
 3. Use function calls to perform operations
 4. Confirm success or explain errors clearly
 5. Format responses with markdown when helpful
+6. When users ask to "show", "open", or "view" pages, I will automatically navigate them there
 
 Available operations:
 - Create and list registry operators
@@ -224,6 +249,10 @@ Available operations:
 - Create and list phases
 - Search domains
 - Get TLD information
+
+Navigation hints:
+- When listing items, offer to take users to the relevant page
+- Respond naturally to navigation requests like "show me all TLDs" or "open the domains page"
 
 Always ensure you have required information before calling functions.
 Present yourself as "Alpaca Agent" when introducing yourself.`,
@@ -307,4 +336,72 @@ func (s *AgentService) handleFunctionCalls(
 	return &ChatResponse{
 		Message: finalResp.Choices[0].Message.Content,
 	}, nil
+}
+
+// addNavigationActions analyzes the conversation and adds relevant navigation actions
+func (s *AgentService) addNavigationActions(response *ChatResponse, userMessage, assistantMessage string) {
+	userLower := strings.ToLower(userMessage)
+	assistantLower := strings.ToLower(assistantMessage)
+
+	// Check for auto-navigation triggers (show me, open, go to, navigate to)
+	autoNavigate := strings.Contains(userLower, "show me") ||
+		strings.Contains(userLower, "open") ||
+		strings.Contains(userLower, "go to") ||
+		strings.Contains(userLower, "navigate to") ||
+		strings.Contains(userLower, "take me to")
+
+	// TLDs page navigation
+	if strings.Contains(userLower, "tld") || strings.Contains(assistantLower, "tld") {
+		if strings.Contains(userLower, "all tlds") || strings.Contains(userLower, "list tlds") ||
+			strings.Contains(userLower, "show tlds") || strings.Contains(assistantLower, "here are") {
+			response.Actions = append(response.Actions, NavigationAction{
+				Type:         "navigate",
+				Label:        "View All TLDs",
+				Path:         "/tlds",
+				Variant:      "default",
+				AutoNavigate: autoNavigate,
+			})
+		}
+	}
+
+	// Registry Operators page navigation
+	if strings.Contains(userLower, "registry operator") || strings.Contains(userLower, "operators") ||
+		strings.Contains(assistantLower, "registry operator") || strings.Contains(assistantLower, "operators") {
+		if strings.Contains(userLower, "all") || strings.Contains(userLower, "list") ||
+			strings.Contains(userLower, "show") || strings.Contains(assistantLower, "here are") {
+			response.Actions = append(response.Actions, NavigationAction{
+				Type:         "navigate",
+				Label:        "View All Registry Operators",
+				Path:         "/registry-operators",
+				Variant:      "default",
+				AutoNavigate: autoNavigate,
+			})
+		}
+	}
+
+	// Domains page navigation
+	if strings.Contains(userLower, "domain") && !strings.Contains(userLower, "tld") {
+		if strings.Contains(userLower, "all domains") || strings.Contains(userLower, "list domains") ||
+			strings.Contains(userLower, "show domains") {
+			response.Actions = append(response.Actions, NavigationAction{
+				Type:         "navigate",
+				Label:        "View All Domains",
+				Path:         "/domains",
+				Variant:      "default",
+				AutoNavigate: autoNavigate,
+			})
+		}
+	}
+
+	// Dashboard navigation
+	if strings.Contains(userLower, "dashboard") || strings.Contains(userLower, "home") ||
+		strings.Contains(userLower, "overview") {
+		response.Actions = append(response.Actions, NavigationAction{
+			Type:         "navigate",
+			Label:        "Go to Dashboard",
+			Path:         "/",
+			Variant:      "default",
+			AutoNavigate: autoNavigate,
+		})
+	}
 }

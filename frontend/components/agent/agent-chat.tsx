@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Send, Loader2, ExternalLink, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,27 +10,52 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
-
-export interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { Message, NavigationAction } from '@/lib/types/agent';
 
 interface AgentChatProps {
   onClose?: () => void;
 }
 
+const STORAGE_KEY = 'alpaca-agent-chat-history';
+const INITIAL_MESSAGE: Message = {
+  role: 'assistant',
+  content: 'Hello! I\'m Alpaca Agent, your Domain-OS AI assistant. I can help you with:\n\n- Creating registry operators and TLDs\n- Setting up phases\n- Searching domains\n- Viewing TLD information\n\nWhat would you like to do?',
+};
+
 export function AgentChat({ onClose }: AgentChatProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: 'Hello! I\'m Alpaca Agent, your Domain-OS AI assistant. I can help you with:\n\n- Creating registry operators and TLDs\n- Setting up phases\n- Searching domains\n- Viewing TLD information\n\nWhat would you like to do?',
-    },
-  ]);
+  const router = useRouter();
+  
+  // Load messages from localStorage on mount
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          return parsed.length > 0 ? parsed : [INITIAL_MESSAGE];
+        }
+      } catch (error) {
+        console.error('Error loading chat history:', error);
+      }
+    }
+    return [INITIAL_MESSAGE];
+  });
+  
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      } catch (error) {
+        console.error('Error saving chat history:', error);
+      }
+    }
+  }, [messages]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -75,9 +101,22 @@ export function AgentChat({ onClose }: AgentChatProps) {
       const assistantMessage: Message = {
         role: 'assistant',
         content: data.message,
+        actions: data.actions || [],
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Handle auto-navigation
+      if (data.actions && data.actions.length > 0) {
+        const autoNav = data.actions.find((action: NavigationAction) => action.autoNavigate);
+        if (autoNav) {
+          // Wait a moment before navigating so user can see the message
+          setTimeout(() => {
+            router.push(autoNav.path);
+            onClose?.(); // Close the agent drawer
+          }, 1500);
+        }
+      }
     } catch (error) {
       console.error('Chat error:', error);
       const errorMessage: Message = {
@@ -97,6 +136,13 @@ export function AgentChat({ onClose }: AgentChatProps) {
     }
   };
 
+  const handleClearHistory = () => {
+    setMessages([INITIAL_MESSAGE]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
@@ -109,10 +155,20 @@ export function AgentChat({ onClose }: AgentChatProps) {
             height={40}
           />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="text-lg font-semibold">Alpaca Agent</h2>
           <p className="text-xs text-muted-foreground">Domain-OS Helper</p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleClearHistory}
+          title="Clear conversation history"
+          className="gap-2"
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span className="hidden sm:inline">Clear</span>
+        </Button>
       </div>
 
       {/* Messages */}
@@ -158,6 +214,27 @@ export function AgentChat({ onClose }: AgentChatProps) {
                   </div>
                 ) : (
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                )}
+                
+                {/* Navigation Action Buttons */}
+                {message.actions && message.actions.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {message.actions.map((action, actionIndex) => (
+                      <Button
+                        key={actionIndex}
+                        size="sm"
+                        variant={action.variant as any || 'default'}
+                        onClick={() => {
+                          router.push(action.path);
+                          onClose?.(); // Close drawer on navigation
+                        }}
+                        className="gap-2"
+                      >
+                        {action.label}
+                        <ExternalLink className="w-3 h-3" />
+                      </Button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
