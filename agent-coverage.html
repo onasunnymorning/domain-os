@@ -1,0 +1,519 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>service: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/onasunnymorning/domain-os/internal/agent/service/agent_service.go (13.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package service
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "strings"
+
+        "github.com/onasunnymorning/domain-os/internal/agent/client"
+        "github.com/onasunnymorning/domain-os/internal/agent/functions"
+        "github.com/sashabaranov/go-openai"
+        "go.uber.org/zap"
+)
+
+// AgentService handles AI agent operations
+type AgentService struct {
+        llmClient   *openai.Client
+        adminClient *client.AdminAPIClient
+        functions   *functions.Functions
+        logger      *zap.Logger
+}
+
+// NewAgentService creates a new agent service
+func NewAgentService(openaiAPIKey, adminAPIURL, adminAPIToken string, logger *zap.Logger) *AgentService <span class="cov0" title="0">{
+        adminClient := client.NewAdminAPIClient(adminAPIURL, adminAPIToken)
+        funcs := functions.NewFunctions(adminClient)
+
+        return &amp;AgentService{
+                llmClient:   openai.NewClient(openaiAPIKey),
+                adminClient: adminClient,
+                functions:   funcs,
+                logger:      logger,
+        }
+}</span>
+
+// ChatRequest represents a chat request from the user
+type ChatRequest struct {
+        Message             string    `json:"message" binding:"required"`
+        ConversationID      string    `json:"conversation_id"`
+        ConversationHistory []Message `json:"history"`
+}
+
+// Message represents a single message in the conversation
+type Message struct {
+        Role    string `json:"role"`
+        Content string `json:"content"`
+}
+
+// NavigationAction represents a navigation action the UI can perform
+type NavigationAction struct {
+        Type         string `json:"type"`         // Always "navigate"
+        Label        string `json:"label"`        // Button label
+        Path         string `json:"path"`         // Navigation path
+        Variant      string `json:"variant"`      // Button variant: default, outline, secondary
+        AutoNavigate bool   `json:"autoNavigate"` // Auto-navigate without user click
+}
+
+// ChatResponse represents the response from the agent
+type ChatResponse struct {
+        Message        string             `json:"message"`
+        ConversationID string             `json:"conversation_id"`
+        Actions        []NavigationAction `json:"actions,omitempty"`
+}
+
+// StreamWriter is a callback for streaming responses
+type StreamWriter func(chunk string) error
+
+// Chat processes a chat request and returns a response
+func (s *AgentService) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) <span class="cov0" title="0">{
+        s.logger.Info("Processing chat request",
+                zap.String("message", req.Message),
+                zap.String("conversation_id", req.ConversationID),
+        )
+
+        // Build conversation history
+        messages := s.buildMessages(req)
+
+        // Create chat completion request
+        chatReq := openai.ChatCompletionRequest{
+                Model:    openai.GPT4TurboPreview,
+                Messages: messages,
+                Tools:    s.functions.GetFunctionDefinitions(),
+        }
+
+        // Call OpenAI API
+        resp, err := s.llmClient.CreateChatCompletion(ctx, chatReq)
+        if err != nil </span><span class="cov0" title="0">{
+                s.logger.Error("OpenAI API error", zap.Error(err))
+                return nil, fmt.Errorf("failed to get LLM response: %w", err)
+        }</span>
+
+        // Check if function calling is needed
+        <span class="cov0" title="0">if len(resp.Choices) == 0 </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("no response from LLM")
+        }</span>
+
+        <span class="cov0" title="0">choice := resp.Choices[0]
+
+        // Handle function calls
+        if len(choice.Message.ToolCalls) &gt; 0 </span><span class="cov0" title="0">{
+                response, err := s.handleFunctionCalls(ctx, messages, choice.Message.ToolCalls)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+
+                // Add navigation actions based on function results
+                <span class="cov0" title="0">s.addNavigationActions(response, req.Message, response.Message)
+
+                return response, nil</span>
+        }
+
+        // Return direct response
+        <span class="cov0" title="0">response := &amp;ChatResponse{
+                Message:        choice.Message.Content,
+                ConversationID: req.ConversationID,
+        }
+
+        // Add navigation actions based on context
+        s.addNavigationActions(response, req.Message, choice.Message.Content)
+
+        return response, nil</span>
+}
+
+// ChatStream processes a chat request and streams the response
+func (s *AgentService) ChatStream(ctx context.Context, req ChatRequest, writer StreamWriter) error <span class="cov0" title="0">{
+        s.logger.Info("Processing streaming chat request",
+                zap.String("message", req.Message),
+                zap.String("conversation_id", req.ConversationID),
+        )
+
+        // Build conversation history
+        messages := s.buildMessages(req)
+
+        // Create streaming chat completion request
+        chatReq := openai.ChatCompletionRequest{
+                Model:    openai.GPT4TurboPreview,
+                Messages: messages,
+                Tools:    s.functions.GetFunctionDefinitions(),
+                Stream:   true,
+        }
+
+        // Call OpenAI API with streaming
+        stream, err := s.llmClient.CreateChatCompletionStream(ctx, chatReq)
+        if err != nil </span><span class="cov0" title="0">{
+                s.logger.Error("OpenAI streaming API error", zap.Error(err))
+                return fmt.Errorf("failed to create stream: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer stream.Close()
+
+        // Track function calls for potential execution
+        var toolCalls []openai.ToolCall
+        var assistantMessage string
+
+        // Process stream
+        for </span><span class="cov0" title="0">{
+                response, err := stream.Recv()
+                if err == io.EOF </span><span class="cov0" title="0">{
+                        break</span>
+                }
+                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        s.logger.Error("Stream error", zap.Error(err))
+                        return fmt.Errorf("stream error: %w", err)
+                }</span>
+
+                <span class="cov0" title="0">if len(response.Choices) == 0 </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">delta := response.Choices[0].Delta
+
+                // Handle content streaming
+                if delta.Content != "" </span><span class="cov0" title="0">{
+                        assistantMessage += delta.Content
+                        if err := writer(delta.Content); err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("writer error: %w", err)
+                        }</span>
+                }
+
+                // Handle tool calls
+                <span class="cov0" title="0">if len(delta.ToolCalls) &gt; 0 </span><span class="cov0" title="0">{
+                        // Accumulate tool calls
+                        for _, tc := range delta.ToolCalls </span><span class="cov0" title="0">{
+                                if tc.Index != nil </span><span class="cov0" title="0">{
+                                        // New tool call or update existing
+                                        idx := *tc.Index
+                                        if idx &gt;= len(toolCalls) </span><span class="cov0" title="0">{
+                                                toolCalls = append(toolCalls, tc)
+                                        }</span> else<span class="cov0" title="0"> {
+                                                // Update existing tool call
+                                                if tc.Function.Name != "" </span><span class="cov0" title="0">{
+                                                        toolCalls[idx].Function.Name = tc.Function.Name
+                                                }</span>
+                                                <span class="cov0" title="0">if tc.Function.Arguments != "" </span><span class="cov0" title="0">{
+                                                        toolCalls[idx].Function.Arguments += tc.Function.Arguments
+                                                }</span>
+                                        }
+                                }
+                        }
+                }
+        }
+
+        // If function calls were made, execute them
+        <span class="cov0" title="0">if len(toolCalls) &gt; 0 </span><span class="cov0" title="0">{
+                s.logger.Info("Executing function calls", zap.Int("count", len(toolCalls)))
+
+                // Notify user that functions are being executed
+                if err := writer("\n\n_Executing functions..._\n\n"); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                // Execute functions and get final response
+                <span class="cov0" title="0">finalResp, err := s.handleFunctionCalls(ctx, messages, toolCalls)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                // Stream final response
+                <span class="cov0" title="0">return writer(finalResp.Message)</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// buildMessages constructs the message array for the LLM
+func (s *AgentService) buildMessages(req ChatRequest) []openai.ChatCompletionMessage <span class="cov0" title="0">{
+        messages := []openai.ChatCompletionMessage{
+                {
+                        Role: openai.ChatMessageRoleSystem,
+                        Content: `You are Alpaca Agent, an expert AI assistant for Domain-OS, a domain registry management system. 
+
+Your role is to help users manage registry operations including:
+- Registry Operators (ROs)
+- Top-level domains (TLDs)
+- Phases (Sunrise, Landrush, General Availability)
+- Domain registrations
+- Pricing and fees
+
+When helping users:
+1. Be concise and professional
+2. Ask clarifying questions if needed
+3. Use function calls to perform operations
+4. Confirm success or explain errors clearly
+5. Format responses with markdown when helpful
+6. When users ask to "show", "open", or "view" pages, I will automatically navigate them there
+
+Available operations:
+- Create and list registry operators
+- Create and list TLDs
+- Create and list phases
+- Search domains
+- Get TLD information
+
+Navigation hints:
+- When listing items, offer to take users to the relevant page
+- Respond naturally to navigation requests like "show me all TLDs" or "open the domains page"
+
+Always ensure you have required information before calling functions.
+Present yourself as "Alpaca Agent" when introducing yourself.`,
+                },
+        }
+
+        // Add conversation history
+        for _, msg := range req.ConversationHistory </span><span class="cov0" title="0">{
+                messages = append(messages, openai.ChatCompletionMessage{
+                        Role:    msg.Role,
+                        Content: msg.Content,
+                })
+        }</span>
+
+        // Add current message
+        <span class="cov0" title="0">messages = append(messages, openai.ChatCompletionMessage{
+                Role:    openai.ChatMessageRoleUser,
+                Content: req.Message,
+        })
+
+        return messages</span>
+}
+
+// handleFunctionCalls executes function calls and gets the final response
+func (s *AgentService) handleFunctionCalls(
+        ctx context.Context,
+        messages []openai.ChatCompletionMessage,
+        toolCalls []openai.ToolCall,
+) (*ChatResponse, error) <span class="cov0" title="0">{
+        s.logger.Info("Handling function calls", zap.Int("count", len(toolCalls)))
+
+        // Add assistant message with tool calls to history
+        assistantMsg := openai.ChatCompletionMessage{
+                Role:      openai.ChatMessageRoleAssistant,
+                ToolCalls: toolCalls,
+        }
+        messages = append(messages, assistantMsg)
+
+        // Execute each function call
+        for _, toolCall := range toolCalls </span><span class="cov0" title="0">{
+                s.logger.Info("Executing function",
+                        zap.String("function", toolCall.Function.Name),
+                        zap.String("arguments", toolCall.Function.Arguments),
+                )
+
+                result, err := s.functions.ExecuteFunction(
+                        toolCall.Function.Name,
+                        toolCall.Function.Arguments,
+                )
+                if err != nil </span><span class="cov0" title="0">{
+                        s.logger.Error("Function execution error",
+                                zap.String("function", toolCall.Function.Name),
+                                zap.Error(err),
+                        )
+                        result = fmt.Sprintf("Error executing function: %s", err.Error())
+                }</span>
+
+                // Add function result to messages
+                <span class="cov0" title="0">messages = append(messages, openai.ChatCompletionMessage{
+                        Role:       openai.ChatMessageRoleTool,
+                        Content:    result,
+                        ToolCallID: toolCall.ID,
+                })</span>
+        }
+
+        // Get final response from LLM with function results
+        <span class="cov0" title="0">finalReq := openai.ChatCompletionRequest{
+                Model:    openai.GPT4TurboPreview,
+                Messages: messages,
+        }
+
+        finalResp, err := s.llmClient.CreateChatCompletion(ctx, finalReq)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to get final response: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if len(finalResp.Choices) == 0 </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("no final response from LLM")
+        }</span>
+
+        <span class="cov0" title="0">return &amp;ChatResponse{
+                Message: finalResp.Choices[0].Message.Content,
+        }, nil</span>
+}
+
+// addNavigationActions analyzes the conversation and adds relevant navigation actions
+func (s *AgentService) addNavigationActions(response *ChatResponse, userMessage, assistantMessage string) <span class="cov10" title="25">{
+        userLower := strings.ToLower(userMessage)
+        assistantLower := strings.ToLower(assistantMessage)
+
+        // Check for auto-navigation triggers (show me, open, go to, navigate to)
+        autoNavigate := strings.Contains(userLower, "show me") ||
+                strings.Contains(userLower, "open") ||
+                strings.Contains(userLower, "go to") ||
+                strings.Contains(userLower, "navigate to") ||
+                strings.Contains(userLower, "take me to")
+
+        // TLDs page navigation
+        if strings.Contains(userLower, "tld") || strings.Contains(assistantLower, "tld") </span><span class="cov8" title="15">{
+                if strings.Contains(userLower, "all tlds") || strings.Contains(userLower, "list tlds") ||
+                        strings.Contains(userLower, "show tlds") || strings.Contains(assistantLower, "here are") </span><span class="cov7" title="12">{
+                        response.Actions = append(response.Actions, NavigationAction{
+                                Type:         "navigate",
+                                Label:        "View All TLDs",
+                                Path:         "/tlds",
+                                Variant:      "default",
+                                AutoNavigate: autoNavigate,
+                        })
+                }</span>
+        }
+
+        // Registry Operators page navigation
+        <span class="cov10" title="25">if strings.Contains(userLower, "registry operator") || strings.Contains(userLower, "operators") ||
+                strings.Contains(assistantLower, "registry operator") || strings.Contains(assistantLower, "operators") </span><span class="cov4" title="3">{
+                if strings.Contains(userLower, "all") || strings.Contains(userLower, "list") ||
+                        strings.Contains(userLower, "show") || strings.Contains(assistantLower, "here are") </span><span class="cov4" title="3">{
+                        response.Actions = append(response.Actions, NavigationAction{
+                                Type:         "navigate",
+                                Label:        "View All Registry Operators",
+                                Path:         "/registry-operators",
+                                Variant:      "default",
+                                AutoNavigate: autoNavigate,
+                        })
+                }</span>
+        }
+
+        // Domains page navigation
+        <span class="cov10" title="25">if strings.Contains(userLower, "domain") &amp;&amp; !strings.Contains(userLower, "tld") </span><span class="cov4" title="3">{
+                if strings.Contains(userLower, "all domains") || strings.Contains(userLower, "list domains") ||
+                        strings.Contains(userLower, "show domains") </span><span class="cov2" title="2">{
+                        response.Actions = append(response.Actions, NavigationAction{
+                                Type:         "navigate",
+                                Label:        "View All Domains",
+                                Path:         "/domains",
+                                Variant:      "default",
+                                AutoNavigate: autoNavigate,
+                        })
+                }</span>
+        }
+
+        // Dashboard navigation
+        <span class="cov10" title="25">if strings.Contains(userLower, "dashboard") || strings.Contains(userLower, "home") ||
+                strings.Contains(userLower, "overview") </span><span class="cov4" title="3">{
+                response.Actions = append(response.Actions, NavigationAction{
+                        Type:         "navigate",
+                        Label:        "Go to Dashboard",
+                        Path:         "/",
+                        Variant:      "default",
+                        AutoNavigate: autoNavigate,
+                })
+        }</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
