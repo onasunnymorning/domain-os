@@ -116,6 +116,18 @@ test-epp: ## Run EPP-specific tests
 	@go test ./cmd/epp/... -v -race -short
 	@go test ./cmd/cli/epp/... -v -race -short
 
+test-agent: ## Run agent navigation tests
+	@echo "Running agent navigation tests..."
+	@go test ./internal/agent/service/... -v -run TestAddNavigationActions
+	@go test ./internal/agent/service/... -v -run TestNavigationActionStruct
+	@go test ./internal/agent/service/... -v -run TestChatResponse
+
+test-agent-coverage: ## Run agent tests with coverage report
+	@echo "Running agent navigation tests with coverage..."
+	@go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
+	@go tool cover -html=agent-coverage.out -o agent-coverage.html
+	@echo "Agent coverage report generated: agent-coverage.html"
+
 ###################
 # Build & Deploy
 ###################
