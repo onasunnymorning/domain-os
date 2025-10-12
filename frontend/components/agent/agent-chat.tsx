@@ -266,6 +266,7 @@ export function AgentChat({ onClose }: AgentChatProps) {
             size="icon"
             disabled={!input.trim() || isLoading}
             className="self-end"
+            aria-label={isLoading ? "Sending message" : "Send message"}
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
