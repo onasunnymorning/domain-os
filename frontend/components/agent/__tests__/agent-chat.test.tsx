@@ -30,6 +30,16 @@ vi.mock('next/navigation', () => ({
 // Mock fetch globally
 global.fetch = vi.fn();
 
+// Global cleanup after each test
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.clearAllTimers();
+  vi.useRealTimers(); // Ensure timers are always restored
+  localStorage.clear();
+  // Reset fetch mock
+  global.fetch = vi.fn();
+});
+
 describe('AgentChat - Component Rendering', () => {
   beforeEach(() => {
     // Clear localStorage before each test
@@ -222,8 +232,10 @@ describe('AgentChat - Message Handling', () => {
     await userEvent.type(input, 'test');
     await userEvent.click(sendButton);
     
-    // Should show loading spinner
-    expect(screen.getByRole('status', { hidden: true })).toBeInTheDocument();
+    // Should show loading state (button changes to "Sending message")
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /sending/i })).toBeInTheDocument();
+    });
   });
 
   it('should clear input after successful submission', async () => {
@@ -331,8 +343,6 @@ describe('AgentChat - Navigation Actions', () => {
   });
 
   it('should auto-navigate when autoNavigate is true', async () => {
-    vi.useFakeTimers();
-    
     const mockFetch = vi.fn(() =>
       Promise.resolve({
         ok: true,
@@ -365,15 +375,11 @@ describe('AgentChat - Navigation Actions', () => {
       expect(screen.getByText('Navigating to TLDs')).toBeInTheDocument();
     });
     
-    // Fast-forward the 1.5s delay
-    vi.advanceTimersByTime(1500);
-    
+    // Wait for the auto-navigation timeout (1.5s) plus some buffer
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/tlds');
       expect(mockOnClose).toHaveBeenCalled();
-    });
-    
-    vi.useRealTimers();
+    }, { timeout: 3000 });
   });
 
   it('should render multiple navigation buttons', async () => {
