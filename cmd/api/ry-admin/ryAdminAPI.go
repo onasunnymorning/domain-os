@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/dnsevents"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
@@ -165,6 +166,17 @@ func main() {
 		logger.Panic("Failed to connect to the database", zap.Error(err))
 	}
 
+	// Initialize DNS Batch Publisher
+	logger.Info("Initializing DNS batch publisher")
+	dnsBatchPublisher := dnsevents.NewBatchPublisher(gormDB, nil) // nil = use default config
+	if err := dnsBatchPublisher.Start(); err != nil {
+		logger.Panic("Failed to start DNS batch publisher", zap.Error(err))
+	}
+	defer dnsBatchPublisher.Stop()
+	logger.Info("DNS batch publisher started successfully",
+		zap.Duration("batch_interval", 1*time.Minute),
+		zap.Int("max_batch_size", 10000))
+
 	// Set up Eventservice if enabled
 	var eventSvc *services.EventService
 	if cfg.EventStreamEnabled {
@@ -262,7 +274,7 @@ func main() {
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, dnsBatchPublisher)
 
 	// REMOVEME:
 	// Quotes
@@ -273,6 +285,15 @@ func main() {
 
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
+
+	// DNS Service
+	var dnsService *services.DNSService
+	if dnsBatchPublisher != nil {
+		dnsService = services.NewDNSService(dnsBatchPublisher)
+		logger.Info("DNS service initialized")
+	} else {
+		logger.Warn("DNS batch publisher not configured - DNS endpoints will be unavailable")
+	}
 
 	// Agent Service (AI Assistant)
 	var agentService *service.AgentService
@@ -335,6 +356,12 @@ func main() {
 	rest.NewFXController(r, fxService, TokenAuthMiddleware())
 	// rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
 	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
+
+	// DNS Controller (DNS Monitoring & Management)
+	if dnsService != nil {
+		rest.NewDNSController(r, dnsService, TokenAuthMiddleware())
+		logger.Info("DNS routes registered at /api/v1/dns")
+	}
 
 	// Agent Controller (AI Assistant)
 	if agentService != nil {

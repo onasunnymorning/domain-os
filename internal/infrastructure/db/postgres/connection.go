@@ -35,6 +35,19 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	// Run DNS zone support migration
+	// This adds dns_zone_serials and dns_zone_journal tables
+	// plus helper functions for serial management
+	if err := db.Exec(DNSZoneSchemaMigration).Error; err != nil {
+		return fmt.Errorf("failed to run DNS zone support migration: %w", err)
+	}
+
+	// Run DNS queue support migration
+	// This adds dns_change_queue table for time-based batching
+	if err := db.Exec(DNSQueueSchemaMigration).Error; err != nil {
+		return fmt.Errorf("failed to run DNS queue support migration: %w", err)
+	}
+
 	return nil
 }
 
