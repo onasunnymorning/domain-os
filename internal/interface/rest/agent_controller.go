@@ -35,7 +35,7 @@ func (c *AgentController) RegisterRoutes(router *gin.RouterGroup) {
 // Chat godoc
 // @Summary Chat with AI agent
 // @Description Send a message to the AI agent and receive a response
-// @Tags agent
+// @Tags Agent
 // @Accept json
 // @Produce json
 // @Param request body service.ChatRequest true "Chat request"
@@ -65,7 +65,7 @@ func (c *AgentController) Chat(ctx *gin.Context) {
 // ChatStream godoc
 // @Summary Chat with AI agent (streaming)
 // @Description Send a message to the AI agent and receive a streaming response
-// @Tags agent
+// @Tags Agent
 // @Accept json
 // @Produce text/event-stream
 // @Param request body service.ChatRequest true "Chat request"
@@ -125,7 +125,7 @@ func (c *AgentController) ChatStream(ctx *gin.Context) {
 // HealthCheck godoc
 // @Summary Agent health check
 // @Description Check if agent service is running
-// @Tags agent
+// @Tags Agent
 // @Produce json
 // @Success 200 {object} map[string]string
 // @Router /agent/health [get]
