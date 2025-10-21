@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/dnsevents"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )
@@ -43,16 +44,17 @@ var (
 
 // DomainService immplements the DomainService interface
 type DomainService struct {
-	domainRepository repositories.DomainRepository
-	hostRepository   repositories.HostRepository
-	roidService      RoidService
-	nndnRepo         repositories.NNDNRepository
-	tldRepo          repositories.TLDRepository
-	phaseRepo        repositories.PhaseRepository
-	premiumLabelRepo repositories.PremiumLabelRepository
-	fxRepo           repositories.FXRepository
-	rarRepo          repositories.RegistrarRepository
-	logger           *zap.Logger
+	domainRepository  repositories.DomainRepository
+	hostRepository    repositories.HostRepository
+	roidService       RoidService
+	nndnRepo          repositories.NNDNRepository
+	tldRepo           repositories.TLDRepository
+	phaseRepo         repositories.PhaseRepository
+	premiumLabelRepo  repositories.PremiumLabelRepository
+	fxRepo            repositories.FXRepository
+	rarRepo           repositories.RegistrarRepository
+	dnsBatchPublisher *dnsevents.BatchPublisher
+	logger            *zap.Logger
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -66,19 +68,21 @@ func NewDomainService(
 	plr repositories.PremiumLabelRepository,
 	fxr repositories.FXRepository,
 	rRepo repositories.RegistrarRepository,
+	dnsBatchPublisher *dnsevents.BatchPublisher,
 ) *DomainService {
 	logger, _ := zap.NewProduction()
 	return &DomainService{
-		domainRepository: dRepo,
-		hostRepository:   hRepo,
-		roidService:      roidService,
-		nndnRepo:         nndrepo,
-		tldRepo:          tldRepo,
-		phaseRepo:        phr,
-		premiumLabelRepo: plr,
-		fxRepo:           fxr,
-		rarRepo:          rRepo,
-		logger:           logger,
+		domainRepository:  dRepo,
+		hostRepository:    hRepo,
+		roidService:       roidService,
+		nndnRepo:          nndrepo,
+		tldRepo:           tldRepo,
+		phaseRepo:         phr,
+		premiumLabelRepo:  plr,
+		fxRepo:            fxr,
+		rarRepo:           rRepo,
+		dnsBatchPublisher: dnsBatchPublisher,
+		logger:            logger,
 	}
 }
 
@@ -486,6 +490,9 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 		return err
 	}
 
+	// Queue DNS changes for the new NS record
+	s.queueDNSChangesForHost(ctx, dom, host, dnsevents.DNSChangeTypeAdd)
+
 	// Log a lifecycle event
 	event, err := entities.NewDomainLifeCycleEvent(
 		dom.ClID.String(),
@@ -541,6 +548,9 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 	if err != nil {
 		return err
 	}
+
+	// Queue DNS changes for the new NS record
+	s.queueDNSChangesForHost(ctx, dom, host, dnsevents.DNSChangeTypeAdd)
 
 	// Log a lifecycle event
 	event, err := entities.NewDomainLifeCycleEvent(
@@ -1732,6 +1742,15 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 	// Make a copy of the domain
 	previousDom := dom.DeepCopy()
 
+	// Check if setting a hold status - we need to remove DNS records BEFORE setting the status
+	isSettingHold := (status == entities.DomainStatusClientHold || status == entities.DomainStatusServerHold)
+	wasOnHold := previousDom.Status.HasHold()
+
+	if isSettingHold && !wasOnHold {
+		// Domain is being placed on hold - remove all DNS delegation
+		s.queueRemoveAllDomainDelegation(ctx, dom)
+	}
+
 	// Set the status
 	err = dom.SetStatus(status)
 	if err != nil {
@@ -1777,10 +1796,22 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	// Make a copy of the domain
 	previousDom := dom.DeepCopy()
 
+	// Check if unsetting a hold status
+	isUnsettingHold := (status == entities.DomainStatusClientHold || status == entities.DomainStatusServerHold)
+	wasOnHold := previousDom.Status.HasHold()
+
 	// Unset the status
 	err = dom.UnSetStatus(status)
 	if err != nil {
 		return nil, errors.Join(ErrCannotSetDomainStatus, err)
+	}
+
+	// Check if domain is no longer on hold after this change
+	isStillOnHold := dom.Status.HasHold()
+
+	if isUnsettingHold && wasOnHold && !isStillOnHold {
+		// Domain was on hold and now it's not - restore all DNS delegation
+		s.queueAddAllDomainDelegation(ctx, dom)
 	}
 
 	// Save the domain
@@ -1886,4 +1917,117 @@ func (s *DomainService) bulkDomainFromCreateDomainCommands(cmds []*commands.Crea
 		domains = append(domains, d)
 	}
 	return domains, nil
+}
+
+// queueDNSChangesForHost queues DNS changes for a host (NS record and glue records)
+// Does not queue changes if the domain has clientHold or serverHold status set
+func (s *DomainService) queueDNSChangesForHost(ctx context.Context, dom *entities.Domain, host *entities.Host, changeType dnsevents.DNSChangeType) {
+	if s.dnsBatchPublisher == nil {
+		return // DNS publishing disabled
+	}
+
+	// Don't queue DNS changes if domain is on hold
+	if dom.Status.HasHold() {
+		s.logger.Debug("Skipping DNS changes for domain on hold",
+			zap.String("domain", dom.Name.String()),
+			zap.String("host", host.Name.String()))
+		return
+	}
+
+	zoneName := dom.Name.ParentDomain() + "."
+	domainFQDN := dom.Name.String() + "."
+
+	// Queue NS record
+	err := s.dnsBatchPublisher.QueueChange(ctx, &dnsevents.DNSChange{
+		ZoneName:        zoneName,
+		ChangeType:      changeType,
+		RecordType:      dnsevents.DNSRecordTypeNS,
+		RecordName:      domainFQDN,
+		RecordData:      host.Name.String() + ".",
+		TTL:             3600,
+		SourceOperation: "AddHostToDomain",
+		DomainName:      domainFQDN,
+	})
+	if err != nil {
+		s.logger.Error("Failed to queue NS record DNS change",
+			zap.Error(err),
+			zap.String("domain", domainFQDN),
+			zap.String("host", host.Name.String()))
+	}
+
+	// Queue glue records (A/AAAA) if host has addresses
+	for _, addr := range host.Addresses {
+		recordType := dnsevents.DNSRecordTypeA
+		if addr.Is6() {
+			recordType = dnsevents.DNSRecordTypeAAAA
+		}
+
+		err := s.dnsBatchPublisher.QueueChange(ctx, &dnsevents.DNSChange{
+			ZoneName:        zoneName,
+			ChangeType:      changeType,
+			RecordType:      recordType,
+			RecordName:      host.Name.String() + ".",
+			RecordData:      addr.String(),
+			TTL:             3600,
+			SourceOperation: "AddHostToDomain",
+			DomainName:      domainFQDN,
+		})
+		if err != nil {
+			s.logger.Error("Failed to queue glue record DNS change",
+				zap.Error(err),
+				zap.String("host", host.Name.String()),
+				zap.String("address", addr.String()))
+		}
+	}
+}
+
+// queueRemoveAllDomainDelegation queues DELETE operations for all NS and glue records associated with a domain
+// This is used when a domain is placed on clientHold or serverHold
+func (s *DomainService) queueRemoveAllDomainDelegation(ctx context.Context, dom *entities.Domain) {
+	if s.dnsBatchPublisher == nil {
+		return // DNS publishing disabled
+	}
+
+	if !dom.HasHosts() {
+		return // No hosts to remove
+	}
+
+	s.logger.Info("Queueing removal of all DNS delegation records for domain on hold",
+		zap.String("domain", dom.Name.String()),
+		zap.Int("host_count", len(dom.Hosts)))
+
+	// Temporarily disable hold check to allow queueing DELETE operations
+	// We need to queue the deletions even though domain is on hold
+	holdStatus := dom.Status.DeepCopy()
+	dom.Status.ClientHold = false
+	dom.Status.ServerHold = false
+
+	// Queue DELETE for all hosts
+	for _, host := range dom.Hosts {
+		s.queueDNSChangesForHost(ctx, dom, host, dnsevents.DNSChangeTypeDelete)
+	}
+
+	// Restore original status
+	dom.Status = holdStatus
+}
+
+// queueAddAllDomainDelegation queues ADD operations for all NS and glue records associated with a domain
+// This is used when a domain is removed from clientHold or serverHold
+func (s *DomainService) queueAddAllDomainDelegation(ctx context.Context, dom *entities.Domain) {
+	if s.dnsBatchPublisher == nil {
+		return // DNS publishing disabled
+	}
+
+	if !dom.HasHosts() {
+		return // No hosts to add
+	}
+
+	s.logger.Info("Queueing addition of all DNS delegation records for domain released from hold",
+		zap.String("domain", dom.Name.String()),
+		zap.Int("host_count", len(dom.Hosts)))
+
+	// Queue ADD for all hosts
+	for _, host := range dom.Hosts {
+		s.queueDNSChangesForHost(ctx, dom, host, dnsevents.DNSChangeTypeAdd)
+	}
 }
