@@ -17,12 +17,17 @@ CREATE TABLE IF NOT EXISTS dns_zone_serials (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Initialize serials for existing DNS-enabled TLDs
-INSERT INTO dns_zone_serials (zone_name, serial)
-SELECT name, EXTRACT(EPOCH FROM NOW())::BIGINT
-FROM tlds 
-WHERE enable_dns = true
-ON CONFLICT (zone_name) DO NOTHING;
+-- Initialize serials for existing DNS-enabled TLDs (if tlds table exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tlds') THEN
+        INSERT INTO dns_zone_serials (zone_name, serial)
+        SELECT name, EXTRACT(EPOCH FROM NOW())::BIGINT
+        FROM tlds 
+        WHERE enable_dns = true
+        ON CONFLICT (zone_name) DO NOTHING;
+    END IF;
+END $$;
 
 -- ========================================
 -- DNS Zone Journal (IXFR Support)

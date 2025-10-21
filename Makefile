@@ -70,6 +70,8 @@ test: test-unit ## Run unit tests (default)
 
 test-unit: ## Run unit tests with coverage
 	@echo "Starting test database..."
+	@docker stop testdb 2>/dev/null || true
+	@docker rm testdb 2>/dev/null || true
 	@docker volume rm domain-os_db 2>/dev/null || true
 	@docker run --rm -d \
 		-e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
@@ -82,6 +84,10 @@ test-unit: ## Run unit tests with coverage
 		-c ssl=on \
 		-c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem \
 		-c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+	@echo "Waiting for database to be ready..."
+	@sleep 3
+	@echo "Creating test database..."
+	@docker exec testdb psql -U postgres -c "CREATE DATABASE dos_unittests;" || true
 	@echo "Running unit tests..."
 	@go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 	@echo "Stopping test database..."
