@@ -335,6 +335,8 @@ func main() {
 	rest.NewFXController(r, fxService, TokenAuthMiddleware())
 	// rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
 	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
+	// Workflows
+	rest.NewWorkflowController(r, TokenAuthMiddleware())
 
 	// Agent Controller (AI Assistant)
 	if agentService != nil {
