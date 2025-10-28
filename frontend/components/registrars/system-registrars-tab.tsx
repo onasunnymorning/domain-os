@@ -8,7 +8,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRegistrars, useRegistrarCount } from "@/lib/hooks/useRegistrars";
+import { useRegistrars, useRegistrarCount, useStartRegistrarSyncWorkflow } from "@/lib/hooks/useRegistrars";
 import { RegistrarListParams } from "@/lib/types/registrar";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -28,6 +29,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Search, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type { WorkflowStartResponse } from "@/lib/api/workflows";
 
 export function SystemRegistrarsTab() {
   const [searchQuery] = useState("");
@@ -41,6 +50,9 @@ export function SystemRegistrarsTab() {
   // Fetch data
   const { data, isLoading, error } = useRegistrars(queryParams);
   const { data: countData } = useRegistrarCount();
+  const startWorkflow = useStartRegistrarSyncWorkflow();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [workflowInfo, setWorkflowInfo] = useState<WorkflowStartResponse | null>(null);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status.toLowerCase()) {
@@ -67,11 +79,41 @@ export function SystemRegistrarsTab() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="text-sm text-muted-foreground">
               Total System Registrars: <span className="font-semibold">{countData?.Count ?? "-"}</span>
             </div>
+
+            {countData?.Count === 0 && (
+              <Button
+                variant="default"
+                onClick={() => {
+                  startWorkflow.mutate(undefined, {
+                    onSuccess: (data) => {
+                      setWorkflowInfo(data);
+                      setDialogOpen(true);
+                    },
+                  });
+                }}
+                disabled={startWorkflow.isPending}
+              >
+                {startWorkflow.isPending ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Starting…
+                  </span>
+                ) : (
+                  "Pre-populate registrars"
+                )}
+              </Button>
+            )}
           </div>
+
+          {startWorkflow.isError && (
+            <div className="text-sm text-red-600 mt-2">
+              Failed to trigger workflow. Please try again.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -166,6 +208,23 @@ export function SystemRegistrarsTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Success Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Workflow started</DialogTitle>
+            <DialogDescription>
+              Registrar population has been triggered and may take a few seconds to complete.
+            </DialogDescription>
+            {workflowInfo?.workflowId && (
+              <div className="mt-3 text-xs text-muted-foreground">
+                Workflow ID: <span className="font-mono">{workflowInfo.workflowId}</span>
+              </div>
+            )}
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
