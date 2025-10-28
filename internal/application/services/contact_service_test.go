@@ -196,7 +196,8 @@ func TestContactService_GetContactByID(t *testing.T) {
 		mockRepo := new(MockContactRepository)
 		service := NewContactService(mockRepo, *roidService)
 
-		contact, _ := entities.NewContact("contact123", "123_CONT-APEX", "test@example.com", "sTr0N5p@zzWqRD", "client123")
+		contact, err := entities.NewContact("contact123", "123_CONT-APEX", "test@example.com", "sTr0N5p@zzWqRD", "client123")
+		assert.NoError(t, err)
 		mockRepo.On("GetContactByID", mock.Anything, "contact123").
 			Return(contact, nil)
 
@@ -301,8 +302,10 @@ func TestContactService_ListContacts(t *testing.T) {
 		mockRepo := new(MockContactRepository)
 		service := NewContactService(mockRepo, *roidService)
 
-		contact1, _ := entities.NewContact("contact1", "123_CONT-APEX", "test1@example.com", "sTr0N5p@zzWqRD", "client1")
-		contact2, _ := entities.NewContact("contact2", "124_CONT-APEX", "test2@example.com", "sTr0N5p@zzWqRD", "client2")
+		contact1, err := entities.NewContact("contact1", "123_CONT-APEX", "test1@example.com", "sTr0N5p@zzWqRD", "client1")
+		assert.NoError(t, err)
+		contact2, err := entities.NewContact("contact2", "124_CONT-APEX", "test2@example.com", "sTr0N5p@zzWqRD", "client2")
+		assert.NoError(t, err)
 		contacts := []*entities.Contact{contact1, contact2}
 
 		mockRepo.On("ListContacts", mock.Anything, mock.AnythingOfType("queries.ListItemsQuery")).
