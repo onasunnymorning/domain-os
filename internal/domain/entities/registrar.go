@@ -119,6 +119,10 @@ func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarP
 		Status: RegistrarStatusReadonly,
 		// Create the IANAStatus as Unknown by default
 		IANAStatus: IANARegistrarStatusUnknown,
+		// By default, autoresenew is true
+		Autorenew: true,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 
 	// Add the postal info information
