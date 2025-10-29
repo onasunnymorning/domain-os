@@ -47,7 +47,14 @@ export default function RegistrarDetailPage() {
             <h1 className="text-2xl font-semibold">Registrar Detail</h1>
             <p className="text-sm text-muted-foreground mt-1">Read-only view of registrar {clid}</p>
           </div>
-          <Button variant="outline" onClick={() => router.push("/registrars")}>Back to list</Button>
+          <div className="flex gap-2">
+            <Button variant="default" onClick={() => router.push(`/registrars/${encodeURIComponent(clid)}/edit`)}>
+              Edit
+            </Button>
+            <Button variant="outline" onClick={() => router.push("/registrars")}>
+              Back to list
+            </Button>
+          </div>
         </div>
 
         <Card>
@@ -59,6 +66,11 @@ export default function RegistrarDetailPage() {
                 {data?.Status && <Badge>{data.Status}</Badge>}
                 {data?.IANAStatus && (
                   <Badge variant="secondary">{`IANA ${data.IANAStatus}`}</Badge>
+                )}
+                {typeof data?.Autorenew === 'boolean' && (
+                  <Badge variant={data.Autorenew ? 'default' : 'outline'}>
+                    {data.Autorenew ? 'Autorenew on' : 'Autorenew off'}
+                  </Badge>
                 )}
               </CardDescription>
             )}
