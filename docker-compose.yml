@@ -151,24 +151,6 @@ services:
       - ./grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
 
-# Event Stream Echo service
-  msg-stream-echo:
-    image: "geapex/streamclient"
-    restart: always
-    profiles: [full]
-    depends_on:
-      msg-broker:
-        condition: service_healthy
-    environment:
-      - RMQ_PASS=${RMQ_PASS}
-      - RMQ_USER=${RMQ_USER}
-      - RMQ_HOST=msg-broker
-      - RMQ_PORT=${RMQ_PORT}
-      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
-    networks:
-      - dos
-
-
 # Core API container
   admin-api:
     build: .

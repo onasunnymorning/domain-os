@@ -154,7 +154,6 @@ services:
 networks:
   dos:
     name: domain-os_dos
-    external: true
 
 volumes:
   db:
