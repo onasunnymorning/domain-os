@@ -70,8 +70,8 @@ export default function DomainDetailPage() {
             >
               Back to results
             </Button>
-            <Button asChild aria-label="All Domains (reset)" title="Go to all domains (clears filters)">
-              <Link href="/domains">All Domains (reset)</Link>
+            <Button asChild aria-label="All Domains" title="Go to all domains">
+              <Link href="/domains">All Domains</Link>
             </Button>
           </div>
         </div>
