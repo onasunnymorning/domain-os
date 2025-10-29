@@ -204,6 +204,7 @@ services:
       - TMPIO_QUEUE=domain-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
+      - TMPIO_UI_URL="http://localhost:8081"
     ports:
       - ${API_PORT:-8080}:${API_PORT:-8080}
     networks:
@@ -243,7 +244,7 @@ services:
   temporal-ui:
     image: temporalio/ui:latest
     restart: unless-stopped
-    profiles: [full]
+    profiles: [essential, full]
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
