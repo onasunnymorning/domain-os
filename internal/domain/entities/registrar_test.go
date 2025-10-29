@@ -56,7 +56,7 @@ func TestNewRegistrar(t *testing.T) {
 				GurID:      123,
 				Status:     RegistrarStatusReadonly,
 				IANAStatus: IANARegistrarStatusUnknown,
-				Autorenew:  false,
+				Autorenew:  true,
 				PostalInfo: [2]*RegistrarPostalInfo{
 					nil,
 					getValidRegistrarPostalInfo("loc"),
@@ -89,6 +89,7 @@ func TestNewRegistrar(t *testing.T) {
 				NickName:   "My Registrar",
 				Email:      "geoff@apex.domains",
 				GurID:      123,
+				Autorenew:  true,
 				Status:     RegistrarStatusReadonly,
 				IANAStatus: IANARegistrarStatusUnknown,
 				PostalInfo: [2]*RegistrarPostalInfo{

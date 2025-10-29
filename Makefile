@@ -71,6 +71,8 @@ test: test-unit ## Run unit tests (default)
 test-unit: ## Run unit tests with coverage
 	@echo "Starting test database..."
 	@docker volume rm domain-os_db 2>/dev/null || true
+	# Ensure any previous leftover test container is removed to avoid name conflicts
+	@docker rm -f testdb 2>/dev/null || true
 	@docker run --rm -d \
 		-e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
 		-e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
@@ -86,6 +88,8 @@ test-unit: ## Run unit tests with coverage
 	@go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 	@echo "Stopping test database..."
 	@docker stop testdb 2>/dev/null || true
+	# Extra safety: remove the container if it still exists for any reason
+	@docker rm -f testdb 2>/dev/null || true
 
 test-integration: ## Run integration tests (requires Postman API keys in Doppler)
 	@echo "Running integration tests with Postman/Newman..."
