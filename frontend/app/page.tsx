@@ -7,11 +7,13 @@ import Link from 'next/link';
 import { useRegistryOperatorsCount } from '@/lib/hooks/useRegistryOperators';
 import { useTLDsCount } from '@/lib/hooks/useTLDs';
 import { useRegistrarCount } from '@/lib/hooks/useRegistrars';
+import { useDomainCount } from '@/lib/hooks/useDomains';
 
 export default function Home() {
   const { data: countData, isLoading: isLoadingCount } = useRegistryOperatorsCount();
   const { data: tldCountData, isLoading: isLoadingTldCount } = useTLDsCount();
   const { data: registrarCountData, isLoading: isLoadingRegistrarCount } = useRegistrarCount();
+  const { data: domainCountData, isLoading: isLoadingDomainCount } = useDomainCount();
 
   const stats = [
     {
@@ -37,7 +39,7 @@ export default function Home() {
     },
     {
       name: 'Domains',
-      value: '0',
+      value: isLoadingDomainCount ? '...' : domainCountData?.Count?.toString() ?? '0',
       icon: Server,
       href: '/domains',
       description: 'Registered domains'
@@ -81,11 +83,29 @@ export default function Home() {
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
             <CardDescription>
-              Get started by creating your first registry operator
+              Create records quickly
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link 
+                href="/domains/create"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+              >
+                Create Domain
+              </Link>
+              <Link 
+                href="/tlds/create"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+              >
+                Create TLD
+              </Link>
+              <Link 
+                href="/registrars/create"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+              >
+                Create Registrar
+              </Link>
               <Link 
                 href="/registry-operators/create"
                 className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
