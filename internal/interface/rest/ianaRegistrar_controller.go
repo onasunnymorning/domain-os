@@ -80,10 +80,10 @@ func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
 		return
 	}
 
-	// Set the meta and data if there are results only
+	// Always set Data to avoid nulls; set Meta only when we have results (for pagination)
+	response.Data = ianaRegistrars
 	// TODO: FIXME: If we are using a search string, will the nextlink include the search?
 	if len(ianaRegistrars) > 0 {
-		response.Data = ianaRegistrars
 		response.SetMeta(ctx, fmt.Sprintf("%d", ianaRegistrars[len(ianaRegistrars)-1].GurID), len(ianaRegistrars), pageSize, query.Filter)
 	}
 	ctx.JSON(200, response)

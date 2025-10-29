@@ -6,9 +6,7 @@ package workflows
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -75,10 +73,11 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// If it is our first time syncing, launch the first import of registrars
 	if rarCount.Count == 0 {
-		// Get the ICANN registrars
-		csvRars, err := icannregistrars.GetICANNCSVRegistrarsFromFile("./initdata/icannRegistrarList.csv")
-		if err != nil {
-			logger.Error(fmt.Sprintf("failed to get ICANN registrars from file: %v", err))
+		// Get the ICANN registrars via activity (to keep workflow deterministic)
+		var csvRars []icannregistrars.CSVRegistrar
+		getIcannErr := workflow.ExecuteActivity(ctx, activities.GetICANNRegistrars, workflowID, "./initdata/icannRegistrarList.csv").Get(ctx, &csvRars)
+		if getIcannErr != nil {
+			logger.Error(fmt.Sprintf("failed to get ICANN registrars from file via activity: %v", getIcannErr))
 		}
 		// Get the IANA registrars
 		var ianaRars []entities.IANARegistrar
@@ -126,62 +125,46 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		return rarsErr
 	}
 
-	// Compare the two lists and update the platform as necessary
-	for _, ianaRar := range ianaRars {
-		// Create a ClID for the IANA registrar using our naming convention
-		clid, _ := ianaRar.CreateClID()
-		found := false
-		for _, rar := range rars {
-			if clid == rar.ClID {
-				// Found the registrar
-				found = true
-				// compare statuses
-				cmd := commands.CompareIANARegistrarStatusWithRarStatus(ianaRar, rar)
+	// Compute plan via activity
+	var plan activities.DiffPlanResult
+	planErr := workflow.ExecuteActivity(ctx, activities.DiffAndPlanRegistrars, workflowID, ianaRars, rars).Get(ctx, &plan)
+	if planErr != nil {
+		logger.Error(fmt.Sprintf("failed to diff and plan registrars: %v", planErr))
+		return planErr
+	}
 
-				// Exception for the 9995 and 9996 IANA Registrars
-				if ianaRar.GurID == 9995 || ianaRar.GurID == 9996 {
-					// Even though they are "Reserved" we need them to be "OK" for Pre-Delegation Testing transactions to happen
-					cmd.NewStatus = string(entities.RegistrarStatusOK)
-				}
+	// Apply creates in chunks
+	createdRarCounter := 0
+	for chunk := range commands.ChunkCreateRegistrarCommands(plan.Creates, 100) {
+		if err := activities.BulkCreateRegistrars(workflowID, chunk); err != nil {
+			return err
+		}
+		createdRarCounter += len(chunk)
+	}
+	if createdRarCounter > 0 {
+		logger.Info(fmt.Sprintf("created %d registrars", createdRarCounter))
+	}
 
-				if cmd != nil {
-					// update the registrar status
-					err := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, cmd.ClID, cmd.NewStatus).Get(ctx, nil)
-					if err != nil {
-						logger.Error(fmt.Sprintf("failed to set registrar status: %v", err))
-					}
+	// Apply updates
+	for _, upd := range plan.Updates {
+		if err := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, upd.ClID, upd.NewStatus).Get(ctx, nil); err != nil {
+			logger.Error(fmt.Sprintf("failed to set registrar status for %s: %v", upd.ClID, err))
+		}
+	}
 
-				}
-				// Only one match is expected
-				break
+	// Ensure IANA status is up-to-date on existing registrars
+	// Build a set of existing registrar ClIDs
+	existingClIDs := make(map[string]struct{}, len(rars))
+	for _, r := range rars {
+		existingClIDs[r.ClID.String()] = struct{}{}
+	}
+	for _, ir := range ianaRars {
+		clid, _ := ir.CreateClID()
+		if _, ok := existingClIDs[clid.String()]; ok {
+			if err := workflow.ExecuteActivity(ctx, activities.SetRegistrarIANAStatus, workflowID, clid.String(), ir.Status.String()).Get(ctx, nil); err != nil {
+				logger.Error(fmt.Sprintf("failed to set registrar IANA status for %s: %v", clid.String(), err))
 			}
 		}
-
-		if !found {
-
-			// Do not create reserved registrars, except the ones Reserved for Pre-Delegation Testing transactions (id's 9995 and 9996) Ref: https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml
-			if (strings.EqualFold(ianaRar.Status.String(), string(entities.IANARegistrarStatusReserved))) && !(ianaRar.GurID == 9995 || ianaRar.GurID == 9996) {
-				log.Printf("found new IANARegistrar: %s, but it is reserved, skipping\n", clid)
-				continue
-			}
-
-			log.Printf("found new IANARegistrar: %s, creating it\n", clid)
-
-			// Create our Create command
-			cmd, err := commands.CreateCreateRegistrarCommandFromIANARegistrar(ianaRar)
-			if err != nil {
-				return err
-			}
-
-			// create the registrar
-			createdRar := entities.Registrar{}
-			createErr := workflow.ExecuteActivity(ctx, activities.CreateRegistrar, workflowID, *cmd).Get(ctx, &createdRar)
-			if createErr != nil {
-				return createErr
-			}
-
-		}
-
 	}
 
 	return nil

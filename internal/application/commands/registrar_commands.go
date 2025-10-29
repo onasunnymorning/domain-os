@@ -18,6 +18,9 @@ type CreateRegistrarCommand struct {
 	URL         string                           `json:"URL"`
 	RdapBaseURL string                           `json:"RdapBaseURL"`
 	WhoisInfo   *entities.WhoisInfo              `json:"WhoisInfo"`
+	// Optional initial statuses; if omitted, defaults are applied in entity creation
+	Status     string                       `json:"Status,omitempty"`
+	IANAStatus entities.IANARegistrarStatus `json:"IANAStatus,omitempty"`
 }
 
 // UpdateRegistrarStatusCommand represents a command to update the status of a registrar.
@@ -104,6 +107,20 @@ func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistra
 		PostalInfo: [2]*entities.RegistrarPostalInfo{
 			pi,
 		},
+		// Carry IANA status
+		IANAStatus: ianaRar.Status,
+	}
+
+	// Map initial platform status from IANA status
+	switch ianaRar.Status {
+	case entities.IANARegistrarStatusAccredited:
+		cmd.Status = string(entities.RegistrarStatusOK)
+	case entities.IANARegistrarStatusTerminated:
+		cmd.Status = string(entities.RegistrarStatusTerminated)
+	case entities.IANARegistrarStatusReserved:
+		if ianaRar.GurID == 9995 || ianaRar.GurID == 9996 {
+			cmd.Status = string(entities.RegistrarStatusOK)
+		}
 	}
 
 	return &cmd, nil

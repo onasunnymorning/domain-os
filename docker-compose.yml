@@ -151,24 +151,6 @@ services:
       - ./grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
 
-# Event Stream Echo service
-  msg-stream-echo:
-    image: "geapex/streamclient"
-    restart: always
-    profiles: [full]
-    depends_on:
-      msg-broker:
-        condition: service_healthy
-    environment:
-      - RMQ_PASS=${RMQ_PASS}
-      - RMQ_USER=${RMQ_USER}
-      - RMQ_HOST=msg-broker
-      - RMQ_PORT=${RMQ_PORT}
-      - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
-    networks:
-      - dos
-
-
 # Core API container
   admin-api:
     build: .
@@ -216,9 +198,83 @@ services:
       - EVENT_STREAM_TOPIC=${EVENT_STREAM_TOPIC}
       - EVENT_STREAM_ENABLED=${EVENT_STREAM_ENABLED}
       - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED}
-
+      # Temporal Client (dev: temporalite, no TLS)
+      - TMPIO_HOST_PORT=temporal:7233
+      - TMPIO_NAME_SPACE=default
+      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_KEY=
+      - TMPIO_CERT=
     ports:
-      - ${API_PORT}:${API_PORT}
+      - ${API_PORT:-8080}:${API_PORT:-8080}
+    networks:
+      - dos
+
+  # Temporal stack (dev) - Postgres + Temporal Server + UI
+  temporal-postgres:
+    image: postgres:14
+    restart: unless-stopped
+    profiles: [essential, full]
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+    volumes:
+      - temporal_pgdata:/var/lib/postgresql/data
+    networks:
+      - dos
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    restart: unless-stopped
+    profiles: [essential, full]
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgres
+    ports:
+      - 7233:7233
+    depends_on:
+      - temporal-postgres
+    networks:
+      - dos
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    restart: unless-stopped
+    profiles: [full]
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - 8081:8080 # UI on host 8081 to avoid conflict with admin-api 8080
+    depends_on:
+      - temporal
+    networks:
+      - dos
+
+  # Domain Lifecycle Worker - runs Temporal workflows/activities
+  domain-lifecycle-worker:
+    build:
+      context: .
+      dockerfile: ./cmd/workers/domainLifecycle/Dockerfile
+    image: geapex/domain-lifecycle-worker:${BRANCH}
+    restart: unless-stopped
+    profiles: [essential, full]
+    depends_on:
+      admin-api:
+        condition: service_started
+      temporal:
+        condition: service_started
+    environment:
+      - TMPIO_HOST_PORT=temporal:7233
+      - TMPIO_NAME_SPACE=default
+      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_KEY=
+      - TMPIO_CERT=
+      - API_HOST=admin-api
+      - API_PORT=${API_PORT}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
     networks:
       - dos
 
@@ -276,4 +332,6 @@ volumes:
   prom_data:
     driver: local
   redis_data:
+    driver: local
+  temporal_pgdata:
     driver: local

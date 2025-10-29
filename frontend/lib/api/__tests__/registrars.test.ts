@@ -280,7 +280,7 @@ describe('System Registrar API Functions', () => {
 
       const result = await updateRegistrar('test-123', updates);
 
-      expect(apiClient.put).toHaveBeenCalledWith('/registrars/test-123', updates);
+      expect(apiClient.put).toHaveBeenCalledWith('/registrars/test-123', { ...updates, ClID: 'test-123' });
       expect(result).toEqual(mockResponse);
     });
   });

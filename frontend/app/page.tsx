@@ -6,10 +6,12 @@ import { Building2, Globe, Users, Server } from 'lucide-react';
 import Link from 'next/link';
 import { useRegistryOperatorsCount } from '@/lib/hooks/useRegistryOperators';
 import { useTLDsCount } from '@/lib/hooks/useTLDs';
+import { useRegistrarCount } from '@/lib/hooks/useRegistrars';
 
 export default function Home() {
   const { data: countData, isLoading: isLoadingCount } = useRegistryOperatorsCount();
   const { data: tldCountData, isLoading: isLoadingTldCount } = useTLDsCount();
+  const { data: registrarCountData, isLoading: isLoadingRegistrarCount } = useRegistrarCount();
 
   const stats = [
     {
@@ -28,7 +30,7 @@ export default function Home() {
     },
     {
       name: 'Registrars',
-      value: '0',
+      value: isLoadingRegistrarCount ? '...' : registrarCountData?.Count?.toString() ?? '0',
       icon: Users,
       href: '/registrars',
       description: 'Domain registrars'

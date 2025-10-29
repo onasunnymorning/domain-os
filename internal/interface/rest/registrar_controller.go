@@ -38,6 +38,8 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 		rarGroup.POST("/bulk", controller.BulkCreate)
 		rarGroup.PUT(":clid", controller.UpdateRegistrar)
 		rarGroup.PUT(":clid/status/:status", controller.SetRegistrarStatus)
+		// Set IANA status for a registrar
+		rarGroup.PUT(":clid/iana_status/:status", controller.SetRegistrarIANAStatus)
 		// REQUEST REMOVAL rarGroup.POST(":gurid", controller.CreateRegistrarByGurID)
 		rarGroup.DELETE(":clid", controller.DeleteRegistrarByClID)
 	}
@@ -319,6 +321,39 @@ func (ctrl *RegistrarController) SetRegistrarStatus(ctx *gin.Context) {
 	status := entities.RegistrarStatus(ctx.Param("status"))
 
 	err := ctrl.rarService.SetStatus(ctx, clid, status)
+	if err != nil {
+		if errors.Is(err, entities.ErrRegistrarNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(204, nil)
+}
+
+// SetRegistrarIANAStatus godoc
+// @Summary Set the IANA status of a Registrar
+// @Description Set the IANA status of a Registrar. Allowed values are: 'Accredited', 'Reserved', 'Terminated', 'Unknown'.
+// @Tags Registrars
+// @Produce json
+// @Param clid path string true "Registrar Client ID"
+// @Param status path string true "IANA Status"
+// @Success 200
+// @Failure 400
+// @Failure 500
+// @Router /registrars/{clid}/iana_status/{status} [put]
+func (ctrl *RegistrarController) SetRegistrarIANAStatus(ctx *gin.Context) {
+	clid := ctx.Param("clid")
+	status := entities.IANARegistrarStatus(ctx.Param("status"))
+
+	if !status.IsValid() {
+		ctx.JSON(400, gin.H{"error": entities.ErrInvalidRegistrarIANAStatus.Error()})
+		return
+	}
+
+	err := ctrl.rarService.SetIANAStatus(ctx, clid, status)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

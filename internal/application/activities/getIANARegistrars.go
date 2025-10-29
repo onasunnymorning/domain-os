@@ -101,15 +101,30 @@ func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, b
 		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Unmarshal into ListItemResult
-	var apiResponse response.ListItemResult
-	// Make sure apiResponse.Data is set to a pointer of the correct type so that
-	// JSON unmarshal knows where to put the data.
-	apiResponse.Data = &[]entities.IANARegistrar{}
-
-	if err := json.Unmarshal(body, &apiResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	// Unmarshal robustly: decode Meta directly and defer decoding Data to a typed slice.
+	// Some endpoints may return Data: null or omit Data entirely when empty; using a RawMessage
+	// prevents the interface{} field from being set to nil unexpectedly.
+	type pageEnvelope struct {
+		Meta response.PaginationMetaData `json:"Meta"`
+		Data json.RawMessage             `json:"Data"`
 	}
 
-	return &apiResponse, nil
+	var env pageEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON envelope: %w", err)
+	}
+
+	// Decode Data into a typed slice, treating null/missing as empty slice
+	registrars := []entities.IANARegistrar{}
+	if len(env.Data) > 0 && string(env.Data) != "null" {
+		if err := json.Unmarshal(env.Data, &registrars); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Data field: %w", err)
+		}
+	}
+
+	// Reconstruct a ListItemResult compatible with callers expecting a pointer to slice
+	result := &response.ListItemResult{Meta: env.Meta}
+	result.Data = &registrars
+
+	return result, nil
 }

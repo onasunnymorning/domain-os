@@ -346,6 +346,36 @@ describe('IANARegistrarsTab', () => {
       expect(screen.getByText(/Total.*IANA.*Registrars:/i)).toBeInTheDocument();
       expect(screen.getByText('3500')).toBeInTheDocument();
     });
+
+    it('should show "Last updated: Never" when count is 0', () => {
+      vi.mocked(registrarHooks.useIANARegistrars).mockReturnValue({
+        data: { Data: [] },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      // Backend may return a Timestamp even when Count is 0; UI should show Never instead
+      vi.mocked(registrarHooks.useIANARegistrarCount).mockReturnValue({
+        data: {
+          ObjectType: 'IANARegistrar',
+          Count: 0,
+          Timestamp: '2025-10-29T11:24:38Z',
+        },
+        isLoading: false,
+      } as any);
+
+      vi.mocked(registrarHooks.useSyncIANARegistrars).mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+      } as any);
+
+      render(<IANARegistrarsTab />, { wrapper: createWrapper() });
+
+      expect(screen.getByText(/Total.*IANA.*Registrars:/i)).toBeInTheDocument();
+      expect(screen.getByText('0')).toBeInTheDocument();
+      expect(screen.getByText(/Last updated: Never/i)).toBeInTheDocument();
+    });
   });
 
   describe('RDAP URLs', () => {

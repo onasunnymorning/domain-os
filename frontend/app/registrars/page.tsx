@@ -9,7 +9,9 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IANARegistrarsTab } from "@/components/registrars/iana-registrars-tab";
 import { SystemRegistrarsTab } from "@/components/registrars/system-registrars-tab";
-import { UserCheck } from "lucide-react";
+import { Plus, UserCheck } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function RegistrarsPage() {
   return (
@@ -25,6 +27,14 @@ export default function RegistrarsPage() {
             <p className="text-muted-foreground mt-2">
               Manage IANA registrars and system registrars
             </p>
+          </div>
+          <div>
+            <Button asChild>
+              <Link href="/registrars/create">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Registrar
+              </Link>
+            </Button>
           </div>
         </div>
 
