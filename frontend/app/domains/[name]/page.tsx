@@ -16,11 +16,42 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
 
 
+function formatUTCString(d: Date) {
+  // Example: 2025-10-29 14:32 UTC
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${min} UTC`;
+}
+
+function formatLocalString(d: Date) {
+  // Example: 2025-10-29 16:32 (local)
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
 function RelDate({ value }: { value?: string }) {
   if (!value) return <span className="text-muted-foreground">-</span>;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return <span className="text-muted-foreground">-</span>;
-  return <span title={d.toISOString()}>{formatDistanceToNow(d, { addSuffix: true })}</span>;
+  const abs = formatUTCString(d);
+  const local = formatLocalString(d);
+  const rel = formatDistanceToNow(d, { addSuffix: true });
+  return (
+    <span title={d.toISOString()} className="inline-flex flex-col leading-tight">
+      <span className="font-inherit">
+        {abs}
+        <span className="ml-2 text-xs text-muted-foreground">({local} local)</span>
+      </span>
+      <span className="text-xs text-muted-foreground font-normal">{rel}</span>
+    </span>
+  );
 }
 
 export default function DomainDetailPage() {
@@ -108,31 +139,118 @@ export default function DomainDetailPage() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">TLD</div>
-                  <div className="font-medium">{domain.TLDName || "-"}</div>
+                  <div className="font-medium">
+                    {domain.TLDName ? (
+                      <Link href={`/tlds/${encodeURIComponent(domain.TLDName)}`} title={`View TLD ${domain.TLDName}`} aria-label={`View TLD ${domain.TLDName}`} className="hover:underline">
+                        {domain.TLDName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">Registrar</div>
-                  <div className="font-medium"><Badge variant="outline">{domain.ClID}</Badge></div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Client (sponsor)</div>
-                  <div className="font-medium font-mono text-sm">{domain.ClID}</div>
+                  <div className="font-medium">
+                    {domain.ClID ? (
+                      <Link href={`/registrars/${encodeURIComponent(domain.ClID)}`} title={`View registrar ${domain.ClID}`} aria-label={`View registrar ${domain.ClID}`}>
+                        <Badge variant="outline">{domain.ClID}</Badge>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">RoID</div>
                   <div className="font-medium font-mono text-sm">{domain.RoID || '-'}</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Created</div>
-                  <div className="font-medium"><RelDate value={domain.CreatedAt} /></div>
+                  <div className="text-xs text-muted-foreground">
+                    {domain.CreatedAt ? (
+                      <>
+                        Created{" "}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(domain.CreatedAt), { addSuffix: true })}
+                        </span>
+                      </>
+                    ) : (
+                      <>Created</>
+                    )}
+                  </div>
+                  <div className="font-medium">
+                    {domain.CreatedAt ? (
+                      (() => {
+                        const d = new Date(domain.CreatedAt!);
+                        return (
+                          <span title={d.toISOString()}>
+                            {formatUTCString(d)}
+                            <span className="ml-2 text-xs text-muted-foreground">({formatLocalString(d)} local)</span>
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Updated</div>
-                  <div className="font-medium"><RelDate value={domain.UpdatedAt} /></div>
+                  <div className="text-xs text-muted-foreground">
+                    {domain.UpdatedAt ? (
+                      <>
+                        Updated{" "}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(domain.UpdatedAt), { addSuffix: true })}
+                        </span>
+                      </>
+                    ) : (
+                      <>Updated</>
+                    )}
+                  </div>
+                  <div className="font-medium">
+                    {domain.UpdatedAt ? (
+                      (() => {
+                        const d = new Date(domain.UpdatedAt!);
+                        return (
+                          <span title={d.toISOString()}>
+                            {formatUTCString(d)}
+                            <span className="ml-2 text-xs text-muted-foreground">({formatLocalString(d)} local)</span>
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Expires</div>
-                  <div className="font-medium"><RelDate value={domain.ExpiryDate} /></div>
+                  <div className="text-xs text-muted-foreground">
+                    {domain.ExpiryDate ? (
+                      <>
+                        Expires{" "}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(domain.ExpiryDate), { addSuffix: true })}
+                        </span>
+                      </>
+                    ) : (
+                      <>Expires</>
+                    )}
+                  </div>
+                  <div className="font-medium">
+                    {domain.ExpiryDate ? (
+                      (() => {
+                        const d = new Date(domain.ExpiryDate!);
+                        return (
+                          <span title={d.toISOString()}>
+                            {formatUTCString(d)}
+                            <span className="ml-2 text-xs text-muted-foreground">({formatLocalString(d)} local)</span>
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
