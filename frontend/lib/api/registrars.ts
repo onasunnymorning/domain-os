@@ -120,7 +120,10 @@ export async function updateRegistrar(
   clid: string,
   registrar: Partial<Registrar>
 ): Promise<Registrar> {
-  const { data } = await apiClient.put(`/registrars/${clid}`, registrar);
+  // Ensure ClID in body matches the path parameter for backends that require it
+  const incoming = (registrar as any) || {};
+  const body = { ...incoming, ClID: clid };
+  const { data } = await apiClient.put(`/registrars/${clid}`, body);
   return data;
 }
 

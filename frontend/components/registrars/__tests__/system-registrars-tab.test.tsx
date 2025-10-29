@@ -27,6 +27,13 @@ const createWrapper = () => {
 describe('SystemRegistrarsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Provide a safe default for start workflow mutation used by the component
+    vi.mocked(registrarHooks.useStartRegistrarSyncWorkflow).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      isError: false,
+    } as any);
   });
 
   describe('Loading State', () => {
@@ -45,7 +52,9 @@ describe('SystemRegistrarsTab', () => {
 
       render(<SystemRegistrarsTab />, { wrapper: createWrapper() });
 
-      expect(screen.getByText('Loading registrars...')).toBeInTheDocument();
+      // While loading, pagination buttons should be disabled
+      expect(screen.getByRole('button', { name: /Previous/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Next/i })).toBeDisabled();
     });
   });
 

@@ -115,6 +115,15 @@ export interface Registrar {
 export interface RegistrarListParams {
   pagesize?: number;
   cursor?: string;
+  // Filters (match backend query params)
+  clid_like?: string;
+  name_like?: string;
+  nick_name_like?: string;
+  gurid_equals?: number;
+  email_like?: string;
+  status_equals?: string;
+  iana_status_equals?: string;
+  autorenew_equals?: "true" | "false";
 }
 
 /**
@@ -123,10 +132,9 @@ export interface RegistrarListParams {
 export interface RegistrarListResponse {
   Data: RegistrarListItem[];
   Meta?: {
-    Cursor: string;
-    Count: number;
-    PageSize: number;
-    NextLink?: string;
+    PageCursor?: string; // Base64 cursor for next page
+    PageSize?: number;
+    NextLink?: string;   // Optional absolute URL for next page
   };
 }
 

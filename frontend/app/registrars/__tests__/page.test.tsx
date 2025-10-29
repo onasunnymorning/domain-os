@@ -69,6 +69,13 @@ describe('RegistrarsPage', () => {
       mutateAsync: vi.fn(),
       isPending: false,
     } as any);
+
+    // Provide a default mock for start workflow used by SystemRegistrarsTab
+    vi.mocked(registrarHooks.useStartRegistrarSyncWorkflow).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      isError: false,
+    } as any);
   });
 
   describe('Page Structure', () => {
@@ -165,8 +172,10 @@ describe('RegistrarsPage', () => {
       } as any);
 
       render(<RegistrarsPage />, { wrapper: createWrapper() });
-      
-      expect(screen.getByText('Loading registrars...')).toBeInTheDocument();
+
+      // Loading state shows disabled pagination controls in the nested tab
+      expect(screen.getByRole('button', { name: /Previous/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Next/i })).toBeDisabled();
     });
   });
 

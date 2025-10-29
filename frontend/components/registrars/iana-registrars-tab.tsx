@@ -107,11 +107,18 @@ export function IANARegistrarsTab() {
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
               Total IANA Registrars: <span className="font-semibold">{countData?.Count ?? "-"}</span>
-              {countData?.Timestamp && (
-                <span className="ml-4">
-                  Last updated: {new Date(countData.Timestamp).toLocaleString()}
-                </span>
-              )}
+              <span className="ml-4">
+                {(() => {
+                  // Show "Never" on a fresh system when no IANA registrars exist yet
+                  if (typeof countData?.Count === 'number' && countData.Count === 0) {
+                    return 'Last updated: Never';
+                  }
+                  if (countData?.Timestamp) {
+                    return `Last updated: ${new Date(countData.Timestamp).toLocaleString()}`;
+                  }
+                  return null;
+                })()}
+              </span>
             </div>
             <Button
               onClick={handleSync}

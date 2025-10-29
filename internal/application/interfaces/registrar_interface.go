@@ -19,4 +19,5 @@ type RegistrarService interface {
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error)
 	Count(ctx context.Context) (int64, error)
 	SetStatus(ctx context.Context, clid string, status entities.RegistrarStatus) error
+	SetIANAStatus(ctx context.Context, clid string, status entities.IANARegistrarStatus) error
 }

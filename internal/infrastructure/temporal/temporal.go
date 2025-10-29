@@ -16,15 +16,21 @@ type TemporalClientconfig struct {
 }
 
 func GetTemporalClient(cfg TemporalClientconfig) (client.Client, error) {
+	// If no cert/key provided, connect without TLS (useful for dev/temporalite)
+	if strings.TrimSpace(cfg.ClientCert) == "" || strings.TrimSpace(cfg.ClientKey) == "" {
+		return client.Dial(client.Options{
+			HostPort:  cfg.HostPort,
+			Namespace: cfg.Namespace,
+		})
+	}
 
-	// Create a tls.Certificate from the client cert and key
+	// Otherwise, use TLS with provided certs
 	cert, err := tls.X509KeyPair([]byte(strings.ReplaceAll(cfg.ClientCert, `\n`, "\n")), []byte(strings.ReplaceAll(cfg.ClientKey, `\n`, "\n")))
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the Temporal client object
-	c, err := client.Dial(client.Options{
+	return client.Dial(client.Options{
 		HostPort:  cfg.HostPort,
 		Namespace: cfg.Namespace,
 		ConnectionOptions: client.ConnectionOptions{
@@ -33,9 +39,4 @@ func GetTemporalClient(cfg TemporalClientconfig) (client.Client, error) {
 			},
 		},
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
 }

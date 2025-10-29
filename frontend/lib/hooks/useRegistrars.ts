@@ -21,6 +21,7 @@ import {
   deleteRegistrar,
   bulkCreateRegistrars,
 } from "@/lib/api/registrars";
+import { startRegistrarSyncWorkflow, WorkflowStartResponse } from "@/lib/api/workflows";
 import {
   IANARegistrarListParams,
   RegistrarListParams,
@@ -206,6 +207,23 @@ export function useBulkCreateRegistrars() {
     mutationFn: (data: Partial<Registrar>[]) => bulkCreateRegistrars(data),
     onSuccess: () => {
       // Invalidate registrar queries to refetch fresh data
+      queryClient.invalidateQueries({ queryKey: ["registrars"] });
+    },
+  });
+}
+
+/**
+ * Hook to start the registrar sync workflow
+ * Triggers the backend Temporal workflow to populate registrars
+ */
+export function useStartRegistrarSyncWorkflow() {
+  const queryClient = useQueryClient();
+
+  return useMutation<WorkflowStartResponse, unknown, { batchSize?: number } | undefined>({
+    mutationFn: (vars?: { batchSize?: number }) => startRegistrarSyncWorkflow(vars?.batchSize),
+    onSuccess: () => {
+      // Invalidate registrar list and count so UI refreshes when data is ready
+      queryClient.invalidateQueries({ queryKey: ["registrars", "count"] });
       queryClient.invalidateQueries({ queryKey: ["registrars"] });
     },
   });
