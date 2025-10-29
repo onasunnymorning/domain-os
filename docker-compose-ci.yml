@@ -153,7 +153,8 @@ services:
 
 networks:
   dos:
-    driver: bridge
+    name: domain-os_dos
+    external: true
 
 volumes:
   db:
