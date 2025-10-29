@@ -1,11 +1,13 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD, useDeleteTLD } from '@/lib/hooks/useTLDs';
+import { useTLDRegistrars, useAccreditForTLD, useDeaccreditForTLD } from '@/lib/hooks/useAccreditations';
+import { useRegistrars } from '@/lib/hooks/useRegistrars';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
@@ -23,6 +25,11 @@ import { ArrowLeft, Globe, Trash2, CheckCircle, XCircle, Calendar, Building2 } f
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useDebounce } from '@/lib/hooks/useDebounce';
+import type { RegistrarListItem, RegistrarListParams } from '@/lib/types/registrar';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -35,6 +42,34 @@ export default function TLDDetailPage({ params }: Props) {
   const phaseName = searchParams.get('phase');
   const { data: tld, isLoading, error } = useTLD(decodeURIComponent(name));
   const { mutate: deleteTLD, isPending: isDeleting } = useDeleteTLD();
+  const tldName = decodeURIComponent(name);
+  const { data: regAccData, isLoading: regAccLoading } = useTLDRegistrars(tldName, { pagesize: 100 });
+  const accreditForTLD = useAccreditForTLD(tldName);
+  const deaccreditForTLD = useDeaccreditForTLD(tldName);
+
+  // Add accreditation modal state (search registrars)
+  const [addOpen, setAddOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const debounced = useDebounce(search, 300);
+  const regParams: RegistrarListParams = useMemo(() => {
+    const p: RegistrarListParams = { pagesize: 20 };
+    const q = (debounced || '').trim();
+    if (q) {
+      // Always search by name and ClID for a consistent fuzzy experience
+      p.name_like = q;
+      p.clid_like = q;
+      // Avoid switching to gurid_equals-only on numeric input.
+    }
+    return p;
+  }, [debounced]);
+  const { data: registrarSearch, isLoading: regSearchLoading } = useRegistrars(regParams);
+
+  // De-accredit modal state
+  const [deaccOpen, setDeaccOpen] = useState(false);
+  const [selectedRegistrar, setSelectedRegistrar] = useState<RegistrarListItem | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [deaccError, setDeaccError] = useState<string | null>(null);
 
   // Scroll to top when the page loads
   useEffect(() => {
@@ -226,6 +261,194 @@ export default function TLDDetailPage({ params }: Props) {
             )}
           </CardContent>
         </Card>
+
+        {/* Registrars Accredited for this TLD */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Accredited Registrars</CardTitle>
+              <CardDescription>
+                {regAccLoading ? 'Loading accredited registrars…' : `${regAccData?.Data?.length ?? 0} registrar${(regAccData?.Data?.length ?? 0) !== 1 ? 's' : ''} accredited`}
+              </CardDescription>
+            </div>
+            <div className="pt-1">
+              <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {regAccLoading ? (
+              <div className="space-y-2">
+                {[1,2,3,4].map(i => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : (regAccData?.Data?.length ?? 0) === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No registrars accredited for this TLD</div>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ClID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[140px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {regAccData!.Data!.map((r: RegistrarListItem) => (
+                      <TableRow key={r.ClID}>
+                        <TableCell className="font-mono">
+                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.Name}</Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
+                            {r.Status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => {
+                              setSelectedRegistrar(r);
+                              setConfirmText('');
+                              setDeaccError(null);
+                              setDeaccOpen(true);
+                            }}
+                          >
+                            De-accredit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Add accreditation dialog */}
+        <Dialog open={addOpen} onOpenChange={(v) => { setAddOpen(v); if (!v) { setAddError(null); setSearch(''); } }}>
+          <DialogContent className="sm:max-w-3xl w-[min(95vw,1100px)]">
+            <DialogHeader>
+              <DialogTitle>Accredit registrar to .{tld?.Name}</DialogTitle>
+              <DialogDescription>Search for a registrar to accredit for this TLD.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input placeholder="Search registrars by name or ClID…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Only registrars with status <span className="font-medium">ok</span> can be accredited.</p>
+              {addError && (
+                <div className="text-sm text-red-600">{addError}</div>
+              )}
+              <div className="rounded-md border max-h-80 overflow-y-auto overflow-x-auto">
+                {regSearchLoading ? (
+                  <div className="p-4 text-sm text-muted-foreground">Searching…</div>
+                ) : (registrarSearch?.Data?.length ?? 0) === 0 ? (
+                  <div className="p-4 text-sm text-muted-foreground">No registrars found</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ClID</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="w-[120px] text-center">Status</TableHead>
+                        <TableHead className="w-[140px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {registrarSearch!.Data!.map((r: RegistrarListItem) => (
+                        <TableRow key={r.ClID}>
+                          <TableCell className="font-mono">{r.ClID}</TableCell>
+                          <TableCell>{r.Name}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
+                              {r.Status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              disabled={accreditForTLD.isPending || r.Status !== 'ok'}
+                              title={r.Status !== 'ok' ? `Registrar status is ${r.Status}` : undefined}
+                              onClick={async () => {
+                                setAddError(null);
+                                try {
+                                  await accreditForTLD.mutateAsync(r.ClID);
+                                  setAddOpen(false);
+                                  setSearch('');
+                                } catch (err) {
+                                  const e = err as { response?: { data?: { error?: string } } };
+                                  setAddError(e?.response?.data?.error || 'Failed to accredit');
+                                }
+                              }}
+                            >
+                              {r.Status !== 'ok' ? 'Not eligible' : (accreditForTLD.isPending ? 'Adding…' : 'Accredit')}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* De-accredit dialog */}
+        <Dialog open={deaccOpen} onOpenChange={(v) => { setDeaccOpen(v); if (!v) { setDeaccError(null); setConfirmText(''); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>De-accredit {selectedRegistrar?.Name}</DialogTitle>
+              <DialogDescription>
+                This will remove this registrar’s accreditation for .{tld?.Name}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                To confirm, type: <span className="font-mono">{"delete "}{selectedRegistrar?.ClID}</span>
+              </p>
+              <Input
+                autoFocus
+                placeholder={`delete ${selectedRegistrar?.ClID ?? ''}`}
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+              />
+              {deaccError && (
+                <div className="text-sm text-red-600">{deaccError}</div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setDeaccOpen(false)} disabled={deaccreditForTLD.isPending}>Cancel</Button>
+                <Button
+                  variant="destructive"
+                  disabled={
+                    deaccreditForTLD.isPending || !selectedRegistrar || confirmText.trim() !== `delete ${selectedRegistrar?.ClID}`
+                  }
+                  onClick={async () => {
+                    if (!selectedRegistrar) return;
+                    setDeaccError(null);
+                    try {
+                      await deaccreditForTLD.mutateAsync(selectedRegistrar.ClID);
+                      setDeaccOpen(false);
+                      setConfirmText('');
+                      setSelectedRegistrar(null);
+                    } catch (err) {
+                      const e = err as { response?: { data?: { error?: string } } };
+                      setDeaccError(e?.response?.data?.error || 'Failed to de-accredit');
+                    }
+                  }}
+                >
+                  {deaccreditForTLD.isPending ? 'Removing…' : 'Confirm de-accredit'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Phase Timeline */}
         {!isLoading && tld && (

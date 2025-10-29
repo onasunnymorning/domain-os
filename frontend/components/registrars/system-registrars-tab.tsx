@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRegistrars, useRegistrarCount, useStartRegistrarSyncWorkflow } from "@/lib/hooks/useRegistrars";
-import { RegistrarListParams, RegistrarStatus, IANARegistrarStatus } from "@/lib/types/registrar";
+import { RegistrarListParams, RegistrarStatus } from "@/lib/types/registrar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -47,7 +47,8 @@ export function SystemRegistrarsTab() {
   const debouncedQuery = useDebounce(searchQuery, 300);
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [ianaStatusFilter, setIanaStatusFilter] = useState<string>("all");
+  // New: dedicated IANA ID exact-match search input
+  const [ianaIdQuery, setIanaIdQuery] = useState<string>("");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const router = useRouter();
@@ -60,24 +61,23 @@ export function SystemRegistrarsTab() {
     };
     const q = (debouncedQuery || "").trim();
     if (q) {
-      // If query is a pure number, treat as IANA ID exact match, else name/ClID search
-      if (/^\d+$/.test(q)) {
-        params.gurid_equals = parseInt(q, 10);
-      } else {
-        params.name_like = q;
-        params.clid_like = q;
-      }
+      // Always perform fuzzy search by name and ClID for better UX
+      params.name_like = q;
+      params.clid_like = q;
+      // Note: We intentionally avoid switching to gurid_equals-only on numeric input
+      // to preserve fuzzy search behavior highlighted by product feedback.
     }
     if (statusFilter && statusFilter !== "all") {
       // Backend stores registrar status in lowercase (ok, readonly, terminated)
       params.status_equals = statusFilter.toLowerCase();
     }
-    if (ianaStatusFilter && ianaStatusFilter !== "all") {
-      // Backend expects IANA status in Title Case (Accredited, Reserved, Terminated, Unknown)
-      params.iana_status_equals = ianaStatusFilter;
+    // Apply exact IANA ID match when provided
+    const iid = (ianaIdQuery || "").trim();
+    if (iid && /^\d+$/.test(iid)) {
+      params.gurid_equals = parseInt(iid, 10);
     }
     return params;
-  }, [pageSize, cursor, debouncedQuery, statusFilter, ianaStatusFilter]);
+  }, [pageSize, cursor, debouncedQuery, statusFilter, ianaIdQuery]);
 
   // Fetch data
   const { data, isLoading, error } = useRegistrars(queryParams);
@@ -90,7 +90,7 @@ export function SystemRegistrarsTab() {
   useEffect(() => {
     setCursor(undefined);
     setCursorStack([]);
-  }, [debouncedQuery, statusFilter, ianaStatusFilter]);
+  }, [debouncedQuery, statusFilter, ianaIdQuery]);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status.toLowerCase()) {
@@ -213,19 +213,14 @@ export function SystemRegistrarsTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="w-56">
-                <Select value={ianaStatusFilter} onValueChange={setIanaStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All IANA Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All IANA Statuses</SelectItem>
-                    <SelectItem value={IANARegistrarStatus.Accredited}>Accredited</SelectItem>
-                    <SelectItem value={IANARegistrarStatus.Terminated}>Terminated</SelectItem>
-                    <SelectItem value={IANARegistrarStatus.Reserved}>Reserved</SelectItem>
-                    <SelectItem value={IANARegistrarStatus.Unknown}>Unknown</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* IANA ID exact match */}
+              <div className="w-28">
+                <Input
+                  placeholder="IANA ID"
+                  inputMode="numeric"
+                  value={ianaIdQuery}
+                  onChange={(e) => setIanaIdQuery(e.target.value)}
+                />
               </div>
             </div>
           </div>
