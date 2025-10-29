@@ -32,7 +32,9 @@ export default function RegistrarDetailPage() {
               <CardDescription className="flex items-center gap-2">
                 <span className="font-mono">{data?.ClID}</span>
                 {data?.Status && <Badge>{data.Status}</Badge>}
-                {data?.IANAStatus && <Badge variant="secondary">{data.IANAStatus}</Badge>}
+                {data?.IANAStatus && (
+                  <Badge variant="secondary">{`IANA ${data.IANAStatus}`}</Badge>
+                )}
               </CardDescription>
             )}
           </CardHeader>
