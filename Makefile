@@ -30,10 +30,6 @@ dev: ## Start essential services (db, redis, epp-server, admin-api) for developm
 	@echo "Starting essential services for development..."
 	@export BRANCH=$(BRANCH) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d
 
-dev-full: ## Start all services including workers and UI
-	@echo "Starting all services..."
-	@export BRANCH=$(BRANCH) && $(DOPPLER) $(DOCKER_COMPOSE) --profile full up -d
-
 dev-logs: ## Follow logs for all running services
 	$(DOPPLER) $(DOCKER_COMPOSE) logs -f
 
