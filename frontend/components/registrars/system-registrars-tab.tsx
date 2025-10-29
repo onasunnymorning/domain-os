@@ -7,10 +7,11 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRegistrars, useRegistrarCount, useStartRegistrarSyncWorkflow } from "@/lib/hooks/useRegistrars";
-import { RegistrarListParams } from "@/lib/types/registrar";
+import { RegistrarListParams, RegistrarStatus, IANARegistrarStatus } from "@/lib/types/registrar";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -28,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,15 +38,46 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { WorkflowStartResponse } from "@/lib/api/workflows";
+import { useDebounce } from "@/lib/hooks/useDebounce";
+import { useRouter } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function SystemRegistrarsTab() {
-  const [searchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedQuery = useDebounce(searchQuery, 300);
   const [pageSize] = useState(50);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [ianaStatusFilter, setIanaStatusFilter] = useState<string>("all");
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const router = useRouter();
 
   // Build query parameters
-  const queryParams: RegistrarListParams = {
-    pagesize: pageSize,
-  };
+  const queryParams: RegistrarListParams = useMemo(() => {
+    const params: RegistrarListParams = {
+      pagesize: pageSize,
+      cursor,
+    };
+    const q = (debouncedQuery || "").trim();
+    if (q) {
+      // If query is a pure number, treat as IANA ID exact match, else name/ClID search
+      if (/^\d+$/.test(q)) {
+        params.gurid_equals = parseInt(q, 10);
+      } else {
+        params.name_like = q;
+        params.clid_like = q;
+      }
+    }
+    if (statusFilter && statusFilter !== "all") {
+      // Backend stores registrar status in lowercase (ok, readonly, terminated)
+      params.status_equals = statusFilter.toLowerCase();
+    }
+    if (ianaStatusFilter && ianaStatusFilter !== "all") {
+      // Backend expects IANA status in Title Case (Accredited, Reserved, Terminated, Unknown)
+      params.iana_status_equals = ianaStatusFilter;
+    }
+    return params;
+  }, [pageSize, cursor, debouncedQuery, statusFilter, ianaStatusFilter]);
 
   // Fetch data
   const { data, isLoading, error } = useRegistrars(queryParams);
@@ -53,6 +85,12 @@ export function SystemRegistrarsTab() {
   const startWorkflow = useStartRegistrarSyncWorkflow();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [workflowInfo, setWorkflowInfo] = useState<WorkflowStartResponse | null>(null);
+
+  // Reset pagination when search changes
+  useEffect(() => {
+    setCursor(undefined);
+    setCursorStack([]);
+  }, [debouncedQuery, statusFilter, ianaStatusFilter]);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status.toLowerCase()) {
@@ -127,9 +165,67 @@ export function SystemRegistrarsTab() {
                 <Input
                   placeholder="Search registrars..."
                   value={searchQuery}
-                  disabled
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
                 />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (cursorStack.length > 0) {
+                    const prev = [...cursorStack];
+                    const c = prev.pop();
+                    setCursorStack(prev);
+                    setCursor(c);
+                  }
+                }}
+                disabled={isLoading || cursorStack.length === 0}
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const nextCursor = data?.Meta?.PageCursor;
+                  if (nextCursor) {
+                    setCursorStack((s) => (cursor ? [...s, cursor] : s));
+                    setCursor(nextCursor);
+                  }
+                }}
+                disabled={isLoading || !data?.Meta?.PageCursor}
+              >
+                Next <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+              <div className="w-48">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value={RegistrarStatus.OK}>OK</SelectItem>
+                    <SelectItem value={RegistrarStatus.Readonly}>Readonly</SelectItem>
+                    <SelectItem value={RegistrarStatus.Terminated}>Terminated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-56">
+                <Select value={ianaStatusFilter} onValueChange={setIanaStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All IANA Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All IANA Statuses</SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Accredited}>Accredited</SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Terminated}>Terminated</SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Reserved}>Reserved</SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Unknown}>Unknown</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -146,9 +242,31 @@ export function SystemRegistrarsTab() {
           )}
 
           {isLoading && (
-            <div className="text-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-              <p className="mt-2 text-muted-foreground">Loading registrars...</p>
+            <div className="py-4">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Client ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-24">IANA ID</TableHead>
+                      <TableHead className="w-32">Status</TableHead>
+                      <TableHead className="w-32">Auto-renew</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           )}
 
@@ -172,7 +290,11 @@ export function SystemRegistrarsTab() {
                     </TableHeader>
                     <TableBody>
                       {data.Data.map((registrar) => (
-                        <TableRow key={registrar.ClID}>
+                        <TableRow
+                          key={registrar.ClID}
+                          className="cursor-pointer hover:bg-muted/40"
+                          onClick={() => router.push(`/registrars/${registrar.ClID}`)}
+                        >
                           <TableCell className="font-mono">
                             {registrar.ClID}
                           </TableCell>

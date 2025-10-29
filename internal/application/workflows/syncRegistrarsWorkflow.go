@@ -152,5 +152,20 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		}
 	}
 
+	// Ensure IANA status is up-to-date on existing registrars
+	// Build a set of existing registrar ClIDs
+	existingClIDs := make(map[string]struct{}, len(rars))
+	for _, r := range rars {
+		existingClIDs[r.ClID.String()] = struct{}{}
+	}
+	for _, ir := range ianaRars {
+		clid, _ := ir.CreateClID()
+		if _, ok := existingClIDs[clid.String()]; ok {
+			if err := workflow.ExecuteActivity(ctx, activities.SetRegistrarIANAStatus, workflowID, clid.String(), ir.Status.String()).Get(ctx, nil); err != nil {
+				logger.Error(fmt.Sprintf("failed to set registrar IANA status for %s: %v", clid.String(), err))
+			}
+		}
+	}
+
 	return nil
 }

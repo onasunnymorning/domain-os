@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
@@ -160,6 +161,36 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 	return nil
 }
 
+// SetIANAStatus sets the IANA status of a registrar
+func (s *RegistrarService) SetIANAStatus(ctx context.Context, clid string, status entities.IANARegistrarStatus) error {
+	// get the registrar
+	registrar, err := s.registrarRepository.GetByClID(ctx, clid, false)
+	if err != nil {
+		return err
+	}
+
+	// make a copy of the original
+	previousRar := registrar.DeepCopy()
+
+	// set the IANA status if valid
+	if !status.IsValid() {
+		return entities.ErrInvalidRegistrarIANAStatus
+	}
+	registrar.IANAStatus = status
+
+	// save the registrar
+	updatedRar, err := s.registrarRepository.Update(ctx, registrar)
+	if err != nil {
+		return err
+	}
+
+	// Log the registrar lifecycle event
+	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeUpdate)
+	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s IANA status set to %s", clid, status), event, registrar, updatedRar, previousRar)
+
+	return nil
+}
+
 // bulkRarFromCmd creates a slice of registrars from a slice of Create Registrar Commands
 func bulkRarFromCmd(cmds []*commands.CreateRegistrarCommand) ([]*entities.Registrar, error) {
 	var rars []*entities.Registrar
@@ -215,6 +246,22 @@ func rarFromCmd(cmd *commands.CreateRegistrarCommand) (*entities.Registrar, erro
 			return nil, errors.Join(entities.ErrInvalidRegistrar, err)
 		}
 		newRar.WhoisInfo = *wi
+	}
+
+	// Optional: set initial statuses if provided
+	if cmd.Status != "" {
+		// normalize and validate
+		st := entities.RegistrarStatus(strings.ToLower(cmd.Status))
+		if !(&st).IsValid() {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, entities.ErrInvalidRegistrarStatus)
+		}
+		newRar.Status = st
+	}
+	if cmd.IANAStatus != "" {
+		if !cmd.IANAStatus.IsValid() {
+			return nil, errors.Join(entities.ErrInvalidRegistrar, entities.ErrInvalidRegistrarIANAStatus)
+		}
+		newRar.IANAStatus = cmd.IANAStatus
 	}
 
 	// Check if the registrar is valid
