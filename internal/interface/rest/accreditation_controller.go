@@ -103,7 +103,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 // @Tags Accreditations
 // @Produce json
 // @Param rarClID path string true "Registrar ClID"
-// @Success 200
+// @Success 200 {array} response.ListItemResult
 // @Failure 404
 // @Failure 400
 // @Failure 500
@@ -152,7 +152,7 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 // @Tags Accreditations
 // @Produce json
 // @Param tldName path string true "TLD Name"
-// @Success 200
+// @Success 200 {array} response.ListItemResult
 // @Failure 404
 // @Failure 400
 // @Failure 500
@@ -202,7 +202,7 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 // @Produce json
 // @Param tldName path string true "TLD Name"
 // @Param rarClID path string true "Registrar ClID"
-// @Success 200
+// @Success 200 {array} response.IsAccreditedResponse
 // @Failure 404
 // @Failure 400
 // @Failure 500
