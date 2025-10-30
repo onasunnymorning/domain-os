@@ -3,6 +3,7 @@ package rest
 import (
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +81,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 
 	// Construct a Temporal UI link if available
 	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
 	if temporalUIBase == "" {
 		// Fallback to local default where docker-compose maps Temporal UI to host 8081
 		temporalUIBase = "http://localhost:8081"

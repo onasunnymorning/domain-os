@@ -1,0 +1,27 @@
+.git
+.github
+.vscode
+.DS_Store
+**/.DS_Store
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/
+docs/
+deploy/
+# Keep initdata for workers that need seed CSVs
+# initdata/
+temporal-certs/
+test/
+testdata/
+scraps/
+bin/
+coverage*
+*.lcov
+*.log
+test-output
+.idea
+.fleet
+vendor/
+coverage.html
+agent-coverage.html
