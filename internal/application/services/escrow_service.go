@@ -1103,17 +1103,24 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	for _, rar := range svc.Registrars {
 
+		// Ensure we at least populate Name and GurID from the escrow registrar section,
+		// even if the API lookup fails later. This makes analysis.json informative.
+		pre := svc.RegistrarMapping[rar.ID]
+		pre.Name = rar.Name
+		pre.GurID = rar.GurID
+		svc.RegistrarMapping[rar.ID] = pre
+
 		var URL string
 
 		// Handle special cases of reserved GurIDs
 		if rar.GurID == 9997 {
-			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
+			URL = BASE_URL + "/registrars/gurid/9997"
 		} else if rar.GurID == 9995 {
-			URL = BASE_URL + "/registrars/9995-ICANN-RST"
+			URL = BASE_URL + "/registrars/gurid/9995"
 		} else if rar.GurID == 9998 {
-			URL = BASE_URL + "/registrars/9998" + "." + strings.ToLower(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9998" + "-" + strings.ToLower(svc.Header.TLD)
 		} else if rar.GurID == 9999 || rar.GurID == 119 || rar.GurID == 0 { // TODO: FIXME: 0 => 9999 mapping is okay for gTLDs since we can't have domains under these, but a bit dangerous, should be handled better
-			URL = BASE_URL + "/registrars/9999" + "." + strings.ToLower(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9999" + "-" + strings.ToLower(svc.Header.TLD)
 		} else {
 			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
 		}
@@ -1155,8 +1162,6 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 			}
 			// update mapping
 			rarMap := svc.RegistrarMapping[rar.ID]
-			rarMap.Name = rar.Name
-			rarMap.GurID = rar.GurID
 			rarMap.RegistrarClID = responseRar.ClID
 			svc.RegistrarMapping[rar.ID] = rarMap
 			found++
