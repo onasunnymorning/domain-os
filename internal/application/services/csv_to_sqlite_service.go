@@ -53,6 +53,19 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 	defer tx.Rollback()
 
 	// Import data from CSV files
+	// Contacts first so downstream steps (domains) can reference them
+	if err := svc.importContacts(tx); err != nil {
+		return fmt.Errorf("failed to import contacts: %w", err)
+	}
+
+	if err := svc.importContactPostalInfo(tx); err != nil {
+		return fmt.Errorf("failed to import contact postal info: %w", err)
+	}
+
+	if err := svc.importContactStatuses(tx); err != nil {
+		return fmt.Errorf("failed to import contact statuses: %w", err)
+	}
+
 	if err := svc.importDomains(tx); err != nil {
 		return fmt.Errorf("failed to import domains: %w", err)
 	}
@@ -215,6 +228,45 @@ func (svc *CSVToSQLiteService) createSchema() error {
 		gurid INTEGER,
 		registrar_clid TEXT
 	);
+
+	-- Contacts (linked contacts only are exported by the analyzer)
+	CREATE TABLE IF NOT EXISTS contacts (
+		id TEXT PRIMARY KEY,
+		roid TEXT,
+		voice TEXT,
+		fax TEXT,
+		email TEXT,
+		clid TEXT,
+		crrr TEXT,
+		crdate TEXT,
+		uprr TEXT,
+		"update" TEXT
+	);
+
+	-- Contact postal info (optional INT/LOC rows)
+	CREATE TABLE IF NOT EXISTS contact_postal_info (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		contact_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		name TEXT,
+		org TEXT,
+		street1 TEXT,
+		street2 TEXT,
+		street3 TEXT,
+		city TEXT,
+		state_province TEXT,
+		postal_code TEXT,
+		country_code TEXT,
+		FOREIGN KEY (contact_id) REFERENCES contacts(id)
+	);
+
+	-- Contact statuses
+	CREATE TABLE IF NOT EXISTS contact_statuses (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		contact_id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		FOREIGN KEY (contact_id) REFERENCES contacts(id)
+	);
 	`
 
 	_, err := svc.db.Exec(schema)
@@ -237,6 +289,10 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_registrars_name ON registrars(name)",
 		"CREATE INDEX IF NOT EXISTS idx_registrars_gurid ON registrars(gurid)",
 		"CREATE INDEX IF NOT EXISTS idx_registrar_mapping_clid ON registrar_mapping(registrar_clid)",
+		// Contacts
+		"CREATE INDEX IF NOT EXISTS idx_contacts_clid ON contacts(clid)",
+		"CREATE INDEX IF NOT EXISTS idx_contact_statuses_contact ON contact_statuses(contact_id)",
+		"CREATE INDEX IF NOT EXISTS idx_contact_postal_contact ON contact_postal_info(contact_id)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -547,6 +603,121 @@ func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
 }
 
 // Helper methods
+
+// importContacts imports contacts from CSV (linked contacts only)
+func (svc *CSVToSQLiteService) importContacts(tx *sql.Tx) error {
+	csvFile := svc.baseFilename + "-contacts.csv"
+	if !svc.fileExists(csvFile) {
+		log.Printf("⚠️  Skipping contacts: %s not found", csvFile)
+		return nil
+	}
+
+	records, err := svc.readCSV(csvFile)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO contacts (id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	count := 0
+	for i, record := range records {
+		if i == 0 {
+			continue // skip header
+		}
+		if len(record) < 10 {
+			continue
+		}
+		if _, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9]); err != nil {
+			log.Printf("Warning: failed to insert contact %s: %v", record[0], err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("✅ Imported %d contacts", count)
+	return nil
+}
+
+// importContactStatuses imports contact statuses from CSV
+func (svc *CSVToSQLiteService) importContactStatuses(tx *sql.Tx) error {
+	csvFile := svc.baseFilename + "-contactStatuses.csv"
+	if !svc.fileExists(csvFile) {
+		log.Printf("⚠️  Skipping contact statuses: %s not found", csvFile)
+		return nil
+	}
+
+	records, err := svc.readCSV(csvFile)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO contact_statuses (contact_id, status) VALUES (?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	count := 0
+	for i, record := range records {
+		if i == 0 {
+			continue // skip header
+		}
+		if len(record) < 2 {
+			continue
+		}
+		if _, err := stmt.Exec(record[0], record[1]); err != nil {
+			log.Printf("Warning: failed to insert contact status %s -> %s: %v", record[0], record[1], err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("✅ Imported %d contact statuses", count)
+	return nil
+}
+
+// importContactPostalInfo imports contact postal info from CSV
+func (svc *CSVToSQLiteService) importContactPostalInfo(tx *sql.Tx) error {
+	csvFile := svc.baseFilename + "-contactPostalInfo.csv"
+	if !svc.fileExists(csvFile) {
+		log.Printf("⚠️  Skipping contact postal info: %s not found", csvFile)
+		return nil
+	}
+
+	records, err := svc.readCSV(csvFile)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO contact_postal_info (contact_id, type, name, org, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	count := 0
+	for i, record := range records {
+		if i == 0 {
+			continue // skip header
+		}
+		// Expect either 11 fields (with contact_id) or skip if not present
+		if len(record) < 11 {
+			continue
+		}
+		if _, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9], record[10]); err != nil {
+			log.Printf("Warning: failed to insert contact postal info for %s: %v", record[0], err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("✅ Imported %d contact postal info records", count)
+	return nil
+}
 
 func (svc *CSVToSQLiteService) fileExists(filename string) bool {
 	_, err := os.Stat(filename)
