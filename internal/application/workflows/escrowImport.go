@@ -37,8 +37,8 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 
 	// Activity options for all steps
 	ao := workflow.ActivityOptions{
-		StartToCloseTimeout:    time.Minute * 2,
-		ScheduleToCloseTimeout: time.Minute * 5,
+		StartToCloseTimeout:    time.Minute * 20,
+		ScheduleToCloseTimeout: time.Minute * 25,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second * 2,
 			BackoffCoefficient: 2.0,
@@ -146,16 +146,17 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		return EscrowImportResult{}, err
 	}
 
-	// Persist run-report with detailed import events/tallies
+	// Persist run-report with tallies and a pointer to detailed events stored in S3
 	_ = workflow.ExecuteActivity(ctx, acts.PersistRunReport, activities.PersistRunReportArgs{
 		TLD:        params.TLD,
 		RunPrefix:  analysisOut.RunPrefix,
 		WorkflowID: wfID,
-		Events:     importOut.Events,
+		Events:     nil, // events stored out-of-band to avoid payload size limits
 		Tallies:    importOut.Tallies,
 		Extra: map[string]any{
 			"phase":                    "import",
 			"registrarMappingRowCount": sqliteOut.RegistrarMappingRowCount,
+			"eventsKey":                importOut.EventsKey,
 		},
 	}).Get(ctx, nil)
 
