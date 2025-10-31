@@ -49,6 +49,32 @@ type startEscrowImportResponse struct {
 	URL        string `json:"url"`
 }
 
+// EscrowRunItem represents a single escrow import run in the list response
+// swagger:model EscrowRunItem
+type EscrowRunItem struct {
+	TLD        string            `json:"tld"`
+	RunPrefix  string            `json:"runPrefix"`
+	Date       string            `json:"date"`
+	WorkflowID string            `json:"workflowId"`
+	SummaryKey string            `json:"summaryKey,omitempty"`
+	HasSummary bool              `json:"hasSummary"`
+	Artifacts  map[string]string `json:"artifacts,omitempty"`
+	URL        string            `json:"url"`
+	// Direct, clickable links to key artifacts (when MINIO_PUBLIC_ENDPOINT is set and bucket is public)
+	SummaryURL           string `json:"summaryUrl,omitempty"`
+	RunReportURL         string `json:"runReportUrl,omitempty"`
+	AnalysisURL          string `json:"analysisUrl,omitempty"`
+	RegistrarMappingURL  string `json:"registrarMappingUrl,omitempty"`
+	RegistrarMappingJSON string `json:"registrarMappingJsonUrl,omitempty"`
+}
+
+// EscrowImportListResponse is the envelope returned by ListImports
+// swagger:model EscrowImportListResponse
+type EscrowImportListResponse struct {
+	Items []EscrowRunItem `json:"items"`
+	Count int             `json:"count"`
+}
+
 func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc) *EscrowController {
 	controller := &EscrowController{}
 	grp := e.Group("/escrow", handler)
@@ -132,12 +158,22 @@ func (c *EscrowController) Upload(ctx *gin.Context) {
 	}
 	checksum := hex.EncodeToString(hasher.Sum(nil))
 
-	// ObjectKey is the absolute path for now (to be switched to S3 key later)
-	ctx.JSON(http.StatusCreated, uploadResponse{
-		ObjectKey: destPath,
-		Size:      size,
-		Checksum:  checksum,
-	})
+	// Attempt to upload to S3/MinIO and return the object key so workflow can use it directly
+	// Use path format similar to presign: escrow/YYYYMMDD/<unix>/<filename>
+	s3c, s3err := storage.NewS3ClientFromEnv()
+	if s3err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("s3 client error: %v", s3err)})
+		return
+	}
+	day := time.Now().UTC().Format("20060102")
+	s3Key := fmt.Sprintf("escrow/%s/%d/%s", day, time.Now().Unix(), safeName)
+	if upErr := s3c.UploadFile(ctx, s3Key, destPath, "application/octet-stream"); upErr != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("s3 upload failed: %v", upErr)})
+		return
+	}
+	// Remove local temp file after successful upload
+	_ = os.Remove(destPath)
+	ctx.JSON(http.StatusCreated, uploadResponse{ObjectKey: s3Key, Size: size, Checksum: checksum})
 }
 
 // StartImport triggers the Temporal EscrowImportWorkflow
@@ -207,7 +243,17 @@ func getEscrowQueue() string {
 }
 
 // ListImports returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes
-// GET /escrow/imports?tld=<tld>&limit=20
+// @Summary List recent escrow import runs
+// @Description Returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes. Includes deep links to key artifacts when a public endpoint is configured.
+// @Tags Escrow
+// @Accept json
+// @Produce json
+// @Param tld query string true "TLD to filter imports for (e.g. 'example')"
+// @Param limit query int false "Maximum number of runs to return" default(20)
+// @Success 200 {object} EscrowImportListResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /escrow/imports [get]
 func (c *EscrowController) ListImports(ctx *gin.Context) {
 	tld := strings.TrimSpace(ctx.Query("tld"))
 	if tld == "" {
@@ -235,22 +281,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		return
 	}
 
-	type runItem struct {
-		TLD        string            `json:"tld"`
-		RunPrefix  string            `json:"runPrefix"`
-		Date       string            `json:"date"`
-		WorkflowID string            `json:"workflowId"`
-		SummaryKey string            `json:"summaryKey,omitempty"`
-		HasSummary bool              `json:"hasSummary"`
-		Artifacts  map[string]string `json:"artifacts,omitempty"`
-		URL        string            `json:"url"`
-		// Direct, clickable links to key artifacts (when MINIO_PUBLIC_ENDPOINT is set and bucket is public)
-		SummaryURL            string `json:"summaryUrl,omitempty"`
-		AnalysisURL           string `json:"analysisUrl,omitempty"`
-		RegistrarMappingURL   string `json:"registrarMappingUrl,omitempty"`
-		RegistrarMappingJSON  string `json:"registrarMappingJsonUrl,omitempty"`
-	}
-	runs := make([]runItem, 0, 32)
+	runs := make([]EscrowRunItem, 0, 32)
 	seen := map[string]bool{}
 
 	// Helper to extract run prefix
@@ -309,7 +340,9 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		url := ui + "/namespaces/" + ns + "/workflows/" + wf
 
 		sumKey := rp + "/summary.json"
+		runReportKey := rp + "/run-report.json"
 		hasSummary, _ := s3c.Exists(ctx, sumKey)
+		hasRunReport, _ := s3c.Exists(ctx, runReportKey)
 
 		// Discover key artifacts under this run prefix
 		var analysisKey, regCsvKey, regJsonKey string
@@ -326,7 +359,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 			}
 		}
 
-		item := runItem{
+		item := EscrowRunItem{
 			TLD:        tld,
 			RunPrefix:  rp,
 			Date:       date,
@@ -343,6 +376,9 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		// Attach public URLs if we can build them
 		if hasSummary {
 			item.SummaryURL = joinURL(pub, bucket, sumKey)
+		}
+		if hasRunReport {
+			item.RunReportURL = joinURL(pub, bucket, runReportKey)
 		}
 		if analysisKey != "" {
 			item.AnalysisURL = joinURL(pub, bucket, analysisKey)
@@ -368,5 +404,5 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		return runs[i].Date > runs[j].Date
 	})
 
-	ctx.JSON(http.StatusOK, gin.H{"items": runs, "count": len(runs)})
+	ctx.JSON(http.StatusOK, EscrowImportListResponse{Items: runs, Count: len(runs)})
 }

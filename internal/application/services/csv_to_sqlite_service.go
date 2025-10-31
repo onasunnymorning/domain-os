@@ -3,12 +3,15 @@ package services
 import (
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 
+	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
@@ -84,6 +87,11 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 
 	if err := svc.importRegistrarPostalInfo(tx); err != nil {
 		return fmt.Errorf("failed to import registrar postal info: %w", err)
+	}
+
+	// Optionally import registrar mapping JSON so downstream import can map clids without extra files
+	if err := svc.importRegistrarMapping(tx); err != nil {
+		return fmt.Errorf("failed to import registrar mapping: %w", err)
 	}
 
 	// Commit transaction
@@ -199,6 +207,14 @@ func (svc *CSVToSQLiteService) createSchema() error {
 		country_code TEXT,
 		FOREIGN KEY (registrar_id) REFERENCES registrars(id)
 	);
+
+	-- Registrar mapping from escrow registrar IDs to mapped registrar clids in our system
+	CREATE TABLE IF NOT EXISTS registrar_mapping (
+		escrow_id TEXT PRIMARY KEY,
+		name TEXT,
+		gurid INTEGER,
+		registrar_clid TEXT
+	);
 	`
 
 	_, err := svc.db.Exec(schema)
@@ -220,6 +236,7 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_registrar_postal_info_registrar ON registrar_postal_info(registrar_id)",
 		"CREATE INDEX IF NOT EXISTS idx_registrars_name ON registrars(name)",
 		"CREATE INDEX IF NOT EXISTS idx_registrars_gurid ON registrars(gurid)",
+		"CREATE INDEX IF NOT EXISTS idx_registrar_mapping_clid ON registrar_mapping(registrar_clid)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -252,6 +269,7 @@ func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx) error {
 	if err != nil {
 		return err
 	}
+
 	defer stmt.Close()
 
 	count := 0
@@ -544,6 +562,101 @@ func (svc *CSVToSQLiteService) readCSV(filename string) ([][]string, error) {
 
 	reader := csv.NewReader(file)
 	return reader.ReadAll()
+}
+
+// importRegistrarMapping imports registrar mapping from JSON if present
+// Expected filename: baseFilename + "-registrarMapping.json" (or "-registrar-map.json" as a fallback)
+func (svc *CSVToSQLiteService) importRegistrarMapping(tx *sql.Tx) error {
+	// Determine candidate file names
+	primary := svc.baseFilename + "-registrarMapping.json"
+	fallback := svc.baseFilename + "-registrar-map.json"
+	analysis := svc.baseFilename + "-analysis.json"
+
+	var filePath string
+	if svc.fileExists(primary) {
+		filePath = primary
+	} else if svc.fileExists(fallback) {
+		filePath = fallback
+	} else if svc.fileExists(analysis) {
+		// Fallback: extract registrarMapping from the analysis JSON envelope
+		f, err := os.Open(analysis)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		// Minimal envelope to avoid depending on full struct
+		var envelope struct {
+			RegistrarMapping entities.RegistrarMapping `json:"registrarMapping"`
+		}
+		dec := json.NewDecoder(f)
+		if err := dec.Decode(&envelope); err != nil {
+			return fmt.Errorf("failed to parse analysis json for registrar mapping: %w", err)
+		}
+
+		if len(envelope.RegistrarMapping) == 0 {
+			// Nothing to import
+			return nil
+		}
+
+		// Prepare insert
+		stmt, err := tx.Prepare(`INSERT OR REPLACE INTO registrar_mapping (escrow_id, name, gurid, registrar_clid) VALUES (?, ?, ?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		inserted := 0
+		for escrowID, info := range envelope.RegistrarMapping {
+			gurid := int(info.GurID)
+			mapped := string(info.RegistrarClID)
+			if _, err := stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
+				log.Printf("Warning: failed to insert registrar mapping %s -> %s: %v", escrowID, mapped, err)
+				continue
+			}
+			inserted++
+		}
+
+		log.Printf("✅ Imported %d registrar mapping rows (from analysis.json)", inserted)
+		return nil
+	} else {
+		// Not present; it's optional
+		return nil
+	}
+
+	// Open and decode JSON
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	var mapping entities.RegistrarMapping
+	if err := dec.Decode(&mapping); err != nil {
+		return fmt.Errorf("failed to parse registrar mapping json (%s): %w", filepath.Base(filePath), err)
+	}
+
+	// Prepare insert
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO registrar_mapping (escrow_id, name, gurid, registrar_clid) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	inserted := 0
+	for escrowID, info := range mapping {
+		gurid := int(info.GurID)
+		mapped := string(info.RegistrarClID)
+		if _, err := stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
+			log.Printf("Warning: failed to insert registrar mapping %s -> %s: %v", escrowID, mapped, err)
+			continue
+		}
+		inserted++
+	}
+
+	log.Printf("✅ Imported %d registrar mapping rows", inserted)
+	return nil
 }
 
 // Query helper methods for easy lookups

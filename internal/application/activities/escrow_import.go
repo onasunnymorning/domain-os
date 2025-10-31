@@ -263,6 +263,8 @@ type ConvertToSQLiteResult struct {
 	DBKey        string
 	RunPrefix    string
 	BaseFilename string
+	// Best-effort metadata
+	RegistrarMappingRowCount int
 }
 
 // ConvertToSQLite downloads CSV artifacts, builds an SQLite DB, and uploads it to S3 under the runPrefix
@@ -330,13 +332,25 @@ func (a *EscrowImportActivities) ConvertToSQLite(ctx context.Context, args Conve
 		return ConvertToSQLiteResult{}, fmt.Errorf("csv to sqlite failed: %w", err)
 	}
 
+	// Count registrar mapping rows (optional table)
+	mappingRows := 0
+	if db, oerr := sql.Open("sqlite", dbPath); oerr == nil {
+		defer db.Close()
+		var c int64
+		if err := db.QueryRow(`SELECT COUNT(1) FROM registrar_mapping`).Scan(&c); err == nil {
+			if c > 0 {
+				mappingRows = int(c)
+			}
+		}
+	}
+
 	// Upload DB to S3 under runPrefix/base.db
 	dbKey := runPrefix + "/" + filepath.Base(dbPath)
 	if err := s3c.UploadFile(ctx, dbKey, dbPath, "application/octet-stream"); err != nil {
 		return ConvertToSQLiteResult{}, fmt.Errorf("upload db failed: %w", err)
 	}
 
-	return ConvertToSQLiteResult{DBKey: dbKey, RunPrefix: runPrefix, BaseFilename: base}, nil
+	return ConvertToSQLiteResult{DBKey: dbKey, RunPrefix: runPrefix, BaseFilename: base, RegistrarMappingRowCount: mappingRows}, nil
 }
 
 // ImportFromSQLiteArgs parameters
@@ -349,7 +363,23 @@ type ImportFromSQLiteArgs struct {
 type ImportFromSQLiteResult struct {
 	DBKey  string
 	Counts map[string]int64
+	// Run-time observability
+	Events  []ReportEvent
+	Tallies map[string]int64
 }
+
+// ReportEvent captures warnings/errors/skips during workflow activities
+type ReportEvent struct {
+	Level     string            `json:"level"`    // info|warn|error
+	Activity  string            `json:"activity"` // e.g., ImportFromSQLite.hosts
+	Code      string            `json:"code"`     // machine-readable code
+	Message   string            `json:"message"`
+	Object    string            `json:"object,omitempty"`
+	Context   map[string]string `json:"context,omitempty"`
+	Timestamp string            `json:"timestamp"`
+}
+
+func nowUTC() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // ImportFromSQLite currently inspects the SQLite DB and returns row counts as a sanity check.
 // In a later iteration, this will stream-import data into Postgres in chunks.
@@ -380,6 +410,22 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		return ImportFromSQLiteResult{}, fmt.Errorf("open sqlite failed: %w", err)
 	}
 	defer db.Close()
+
+	// Load registrar clid mapping from SQLite (if present)
+	clidMap := map[string]string{}
+	if rows, qerr := db.Query(`SELECT escrow_id, registrar_clid FROM registrar_mapping`); qerr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var escrowID, mapped sql.NullString
+			if err := rows.Scan(&escrowID, &mapped); err == nil {
+				if escrowID.Valid {
+					if mapped.Valid && strings.TrimSpace(mapped.String) != "" {
+						clidMap[escrowID.String] = mapped.String
+					}
+				}
+			}
+		}
+	}
 
 	// Connect to Postgres using env
 	pgCfg := pg.Config{
@@ -420,19 +466,21 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 	domSvc := services.NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premLabelRepo, fxRepo, rarRepo)
 
 	counts := map[string]int64{}
+	events := []ReportEvent{}
+	tallies := map[string]int64{}
 
 	// 1) Import hosts in chunks
-	if err := a.importHostsChunked(ctx, db, hostSvc, counts); err != nil {
+	if err := a.importHostsChunked(ctx, db, hostSvc, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("host import failed: %w", err)
 	}
 
 	// 2) Import domains in chunks (without host associations yet)
-	if err := a.importDomainsChunked(ctx, db, tld, domSvc, counts); err != nil {
+	if err := a.importDomainsChunked(ctx, db, tld, domSvc, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain import failed: %w", err)
 	}
 
 	// 3) Link domain nameservers → domain_hosts
-	if err := a.linkDomainHosts(ctx, db, domRepo, hostRepo, counts); err != nil {
+	if err := a.linkDomainHosts(ctx, db, domRepo, hostRepo, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain-host linking failed: %w", err)
 	}
 
@@ -445,7 +493,7 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		}
 	}
 
-	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts}, nil
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Events: events, Tallies: tallies}, nil
 }
 
 // FinalizeAndQAArgs parameters
@@ -620,6 +668,39 @@ func (a *EscrowImportActivities) FinalizeAndQA(ctx context.Context, args Finaliz
 	// Clean up local temp
 	_ = os.Remove(tmp.Name())
 
+	// Also persist a minimal run-report.json if one doesn't already exist
+	reportKey := runPrefix + "/run-report.json"
+	if exists, _ := s3c.Exists(ctx, reportKey); !exists {
+		report := map[string]any{
+			"tld":           tld,
+			"runPrefix":     runPrefix,
+			"completedAt":   time.Now().UTC().Format(time.RFC3339),
+			"analysis":      args.AnalysisCounts,
+			"sqlite":        args.SqliteCounts,
+			"postgres":      pgCounts,
+			"discrepancies": discrepancies,
+		}
+		if len(args.AnalysisErrors) > 0 || len(args.MissingContacts) > 0 {
+			report["analysisFindings"] = map[string]any{
+				"errors":          args.AnalysisErrors,
+				"missingContacts": args.MissingContacts,
+			}
+		}
+		tmp2, err := os.CreateTemp("", "escrow-run-report-*.json")
+		if err == nil {
+			enc2 := json.NewEncoder(tmp2)
+			enc2.SetIndent("", "  ")
+			if err := enc2.Encode(report); err == nil {
+				tmp2.Close()
+				_ = s3c.UploadFile(ctx, reportKey, tmp2.Name(), "application/json")
+				_ = os.Remove(tmp2.Name())
+			} else {
+				tmp2.Close()
+				_ = os.Remove(tmp2.Name())
+			}
+		}
+	}
+
 	return FinalizeAndQAResult{SummaryKey: key}, nil
 }
 
@@ -633,7 +714,7 @@ func defaultStr(s, def string) string {
 }
 
 // importHostsChunked reads hosts and addresses from SQLite and bulk-creates them in Postgres.
-func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *sql.DB, hostSvc *services.HostService, counts map[string]int64) error {
+func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *sql.DB, hostSvc *services.HostService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 1000
 	offset := 0
 	created := int64(0)
@@ -655,15 +736,26 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 				rows.Close()
 				return err
 			}
+			// map clids using registrar mapping if available
+			mapClid := func(raw string) string {
+				r := strings.TrimSpace(raw)
+				if r == "" {
+					return raw
+				}
+				if v, ok := clidMap[r]; ok && strings.TrimSpace(v) != "" {
+					return v
+				}
+				return raw
+			}
 			cmd := &commands.CreateHostCommand{
 				Name: name.String,
-				ClID: entities.ClIDType(clid.String),
+				ClID: entities.ClIDType(mapClid(clid.String)),
 			}
 			if crrr.Valid {
-				cmd.CrRr = entities.ClIDType(crrr.String)
+				cmd.CrRr = entities.ClIDType(mapClid(crrr.String))
 			}
 			if uprr.Valid {
-				cmd.UpRr = entities.ClIDType(uprr.String)
+				cmd.UpRr = entities.ClIDType(mapClid(uprr.String))
 			}
 			cmds = append(cmds, cmd)
 			names = append(names, name.String)
@@ -697,7 +789,17 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 			// If bulk fails (e.g., duplicates), try per-item create for idempotency
 			for _, c := range cmds {
 				if _, ierr := hostSvc.CreateHost(ctx, c); ierr != nil && !errors.Is(ierr, entities.ErrInvalidHost) {
-					// log and continue; keep import resilient
+					// collect error event and continue; keep import resilient
+					*events = append(*events, ReportEvent{
+						Level:     "error",
+						Activity:  "ImportFromSQLite.hosts",
+						Code:      "host_insert_failed",
+						Message:   ierr.Error(),
+						Object:    string(c.ClID),
+						Context:   map[string]string{"name": c.Name},
+						Timestamp: nowUTC(),
+					})
+					tallies["hosts_failed"]++
 					continue
 				}
 				created++
@@ -718,7 +820,7 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 }
 
 // importDomainsChunked reads domains from SQLite and bulk-creates them in Postgres.
-func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb *sql.DB, tld string, domSvc *services.DomainService, counts map[string]int64) error {
+func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb *sql.DB, tld string, domSvc *services.DomainService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 1000
 	offset := 0
 	created := int64(0)
@@ -747,14 +849,26 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 				OriginalName: original.String,
 				UName:        uname.String,
 			}
+			// map clids using registrar mapping if available
+			mapClid := func(raw string) string {
+				r := strings.TrimSpace(raw)
+				if r == "" {
+					return raw
+				}
+				if v, ok := clidMap[r]; ok && strings.TrimSpace(v) != "" {
+					return v
+				}
+				return raw
+			}
+			cmd.ClID = mapClid(cmd.ClID)
 			if registrant.Valid {
 				cmd.RegistrantID = registrant.String
 			}
 			if crrr.Valid {
-				cmd.CrRr = crrr.String
+				cmd.CrRr = mapClid(crrr.String)
 			}
 			if uprr.Valid {
-				cmd.UpRr = uprr.String
+				cmd.UpRr = mapClid(uprr.String)
 			}
 			if exdate.Valid {
 				if ts, perr := parseBestEffortTime(exdate.String); perr == nil {
@@ -779,7 +893,17 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			// On error (duplicates, etc.), try per-item to be idempotent
 			for _, c := range cmds {
 				if _, ierr := domSvc.Create(ctx, c); ierr != nil {
-					// tolerate duplicates
+					// collect error and continue
+					*events = append(*events, ReportEvent{
+						Level:     "error",
+						Activity:  "ImportFromSQLite.domains",
+						Code:      "domain_insert_failed",
+						Message:   ierr.Error(),
+						Object:    c.Name,
+						Context:   map[string]string{"clid": c.ClID},
+						Timestamp: nowUTC(),
+					})
+					tallies["domains_failed"]++
 					continue
 				}
 				created++
@@ -800,7 +924,7 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 }
 
 // linkDomainHosts links domains to hosts based on domain_nameservers table.
-func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, domRepo *pg.DomainRepository, hostRepo *pg.HostRepository, counts map[string]int64) error {
+func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, domRepo *pg.DomainRepository, hostRepo *pg.HostRepository, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 2000
 	offset := 0
 	linked := int64(0)
@@ -835,6 +959,8 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 			// find domain
 			d, derr := domRepo.GetDomainByName(ctx, p.dom, false)
 			if derr != nil || d == nil {
+				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "domain_not_found", Message: "domain not found for linking", Object: p.dom, Timestamp: nowUTC()})
+				tallies["links_skipped"]++
 				continue
 			}
 			droid, derr := d.RoID.Int64()
@@ -845,10 +971,19 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 			var clid sql.NullString
 			_ = sqldb.QueryRow(`SELECT clid FROM hosts WHERE name = ?`, p.ns).Scan(&clid)
 			if !clid.Valid {
+				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "host_clid_missing", Message: "no host clid in sqlite for nameserver", Object: p.ns, Timestamp: nowUTC()})
+				tallies["links_skipped"]++
 				continue
 			}
-			h, herr := hostRepo.GetHostByNameAndClID(ctx, p.ns, clid.String)
+			// map clid if a mapping exists
+			mapped := clid.String
+			if v, ok := clidMap[strings.TrimSpace(mapped)]; ok && strings.TrimSpace(v) != "" {
+				mapped = v
+			}
+			h, herr := hostRepo.GetHostByNameAndClID(ctx, p.ns, mapped)
 			if herr != nil || h == nil {
+				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "host_not_found", Message: "host not found in postgres for linking", Object: p.ns, Context: map[string]string{"clid": mapped}, Timestamp: nowUTC()})
+				tallies["links_skipped"]++
 				continue
 			}
 			hroid, herr := h.RoID.Int64()
@@ -857,6 +992,9 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 			}
 			if err := domRepo.AddHostToDomain(ctx, droid, hroid); err == nil {
 				linked++
+			} else {
+				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "link_failed", Message: err.Error(), Object: p.dom, Context: map[string]string{"host": p.ns}, Timestamp: nowUTC()})
+				tallies["links_skipped"]++
 			}
 		}
 
@@ -896,4 +1034,63 @@ func parseBestEffortTime(s string) (time.Time, error) {
 		return time.Unix(sec, 0).UTC(), nil
 	}
 	return time.Time{}, lastErr
+}
+
+// ---- run-report persistence ----
+
+// PersistRunReportArgs for uploading a run-report.json artifact
+type PersistRunReportArgs struct {
+	TLD             string           `json:"tld"`
+	RunPrefix       string           `json:"runPrefix"`
+	WorkflowID      string           `json:"workflowId"`
+	AnalysisErrors  []string         `json:"analysisErrors,omitempty"`
+	MissingContacts []string         `json:"missingContacts,omitempty"`
+	Events          []ReportEvent    `json:"events"`
+	Tallies         map[string]int64 `json:"tallies"`
+	Extra           map[string]any   `json:"extra,omitempty"`
+}
+
+type PersistRunReportResult struct{ Key string }
+
+// PersistRunReport uploads the aggregated report as run-report.json under the runPrefix
+func (a *EscrowImportActivities) PersistRunReport(ctx context.Context, args PersistRunReportArgs) (PersistRunReportResult, error) {
+	if strings.TrimSpace(args.TLD) == "" || strings.TrimSpace(args.RunPrefix) == "" {
+		return PersistRunReportResult{}, fmt.Errorf("tld and runPrefix are required")
+	}
+
+	payload := map[string]any{
+		"tld":        args.TLD,
+		"runPrefix":  args.RunPrefix,
+		"workflowId": args.WorkflowID,
+		"createdAt":  time.Now().UTC().Format(time.RFC3339),
+		"analysis":   map[string]any{"errors": args.AnalysisErrors, "missingContacts": args.MissingContacts},
+		"events":     args.Events,
+		"tallies":    args.Tallies,
+	}
+	for k, v := range args.Extra {
+		payload[k] = v
+	}
+
+	tmp, err := os.CreateTemp("", "escrow-run-report-*.json")
+	if err != nil {
+		return PersistRunReportResult{}, err
+	}
+	enc := json.NewEncoder(tmp)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(payload); err != nil {
+		tmp.Close()
+		return PersistRunReportResult{}, err
+	}
+	tmp.Close()
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return PersistRunReportResult{}, err
+	}
+	key := args.RunPrefix + "/run-report.json"
+	if err := s3c.UploadFile(ctx, key, tmp.Name(), "application/json"); err != nil {
+		return PersistRunReportResult{}, err
+	}
+	_ = os.Remove(tmp.Name())
+	return PersistRunReportResult{Key: key}, nil
 }

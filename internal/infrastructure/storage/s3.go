@@ -73,6 +73,25 @@ func (s *S3Client) PresignPut(ctx context.Context, key string, expiry time.Durat
 				u.Host = strings.TrimPrefix(pub.Path, "/")
 			}
 		}
+	} else {
+		// Dev-friendly fallback: if the SDK host points to an internal docker name like "minio",
+		// rewrite it to localhost:9000 so the browser can reach it directly.
+		// This avoids common misconfig where MINIO_PUBLIC_ENDPOINT isn't set in dev.
+		if strings.HasPrefix(strings.ToLower(u.Host), "minio") || strings.HasSuffix(u.Host, ":9000") {
+			u.Scheme = "http"
+			// Preserve port when present; default to 9000
+			host := u.Host
+			if strings.Contains(host, ":") {
+				parts := strings.Split(host, ":")
+				port := parts[len(parts)-1]
+				if port == "" {
+					port = "9000"
+				}
+				u.Host = "localhost:" + port
+			} else {
+				u.Host = "localhost:9000"
+			}
+		}
 	}
 	return u.String(), nil
 }
