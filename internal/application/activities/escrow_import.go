@@ -464,11 +464,18 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 
 	// Services
 	hostSvc := services.NewHostService(hostRepo, addrRepo, roidSvc)
+	contactRepo := pg.NewContactRepository(gdb)
+	contactSvc := services.NewContactService(contactRepo, *roidSvc)
 	domSvc := services.NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premLabelRepo, fxRepo, rarRepo)
 
 	counts := map[string]int64{}
 	events := []ReportEvent{}
 	tallies := map[string]int64{}
+
+	// 0) Import contacts in chunks (must exist before domains due to FK on registrant)
+	if err := a.importContactsChunked(ctx, db, contactSvc, counts, clidMap, &events, tallies); err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("contact import failed: %w", err)
+	}
 
 	// 1) Import hosts in chunks
 	if err := a.importHostsChunked(ctx, db, hostSvc, counts, clidMap, &events, tallies); err != nil {
@@ -480,8 +487,8 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain import failed: %w", err)
 	}
 
-	// 3) Link domain nameservers → domain_hosts
-	if err := a.linkDomainHosts(ctx, db, domRepo, hostRepo, counts, clidMap, &events, tallies); err != nil {
+	// 3) Link domain nameservers → domain_hosts via DomainService to ensure statuses update
+	if err := a.linkDomainHosts(ctx, db, domSvc, counts, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain-host linking failed: %w", err)
 	}
 
@@ -947,8 +954,8 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 	return nil
 }
 
-// linkDomainHosts links domains to hosts based on domain_nameservers table.
-func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, domRepo *pg.DomainRepository, hostRepo *pg.HostRepository, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
+// linkDomainHosts links domains to hosts based on domain_nameservers table using DomainService to enforce status updates.
+func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, domSvc *services.DomainService, counts map[string]int64, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 2000
 	offset := 0
 	linked := int64(0)
@@ -980,41 +987,8 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 		}
 
 		for _, p := range pairs {
-			// find domain
-			d, derr := domRepo.GetDomainByName(ctx, p.dom, false)
-			if derr != nil || d == nil {
-				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "domain_not_found", Message: "domain not found for linking", Object: p.dom, Timestamp: nowUTC()})
-				tallies["links_skipped"]++
-				continue
-			}
-			droid, derr := d.RoID.Int64()
-			if derr != nil {
-				continue
-			}
-			// find host clid from sqlite hosts
-			var clid sql.NullString
-			_ = sqldb.QueryRow(`SELECT clid FROM hosts WHERE name = ?`, p.ns).Scan(&clid)
-			if !clid.Valid {
-				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "host_clid_missing", Message: "no host clid in sqlite for nameserver", Object: p.ns, Timestamp: nowUTC()})
-				tallies["links_skipped"]++
-				continue
-			}
-			// map clid if a mapping exists
-			mapped := clid.String
-			if v, ok := clidMap[strings.TrimSpace(mapped)]; ok && strings.TrimSpace(v) != "" {
-				mapped = v
-			}
-			h, herr := hostRepo.GetHostByNameAndClID(ctx, p.ns, mapped)
-			if herr != nil || h == nil {
-				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "host_not_found", Message: "host not found in postgres for linking", Object: p.ns, Context: map[string]string{"clid": mapped}, Timestamp: nowUTC()})
-				tallies["links_skipped"]++
-				continue
-			}
-			hroid, herr := h.RoID.Int64()
-			if herr != nil {
-				continue
-			}
-			if err := domRepo.AddHostToDomain(ctx, droid, hroid); err == nil {
+			// Use DomainService to add host by name; force=true to ignore update prohibitions during escrow import.
+			if err := domSvc.AddHostToDomainByHostName(ctx, p.dom, p.ns, true); err == nil {
 				linked++
 			} else {
 				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "link_failed", Message: err.Error(), Object: p.dom, Context: map[string]string{"host": p.ns}, Timestamp: nowUTC()})
@@ -1026,6 +1000,227 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 		activity.RecordHeartbeat(ctx, fmt.Sprintf("domain-host links: %d", linked))
 
 		if len(pairs) < pageSize {
+			break
+		}
+		offset += pageSize
+	}
+	return nil
+}
+
+// importContactsChunked reads contacts from SQLite and creates them in Postgres before domains.
+func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqldb *sql.DB, contactSvc *services.ContactService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
+	const pageSize = 1000
+	offset := 0
+	created := int64(0)
+
+	for {
+		rows, err := sqldb.Query(`
+			SELECT id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update"
+			FROM contacts ORDER BY id LIMIT ? OFFSET ?
+		`, pageSize, offset)
+		if err != nil {
+			return err
+		}
+
+		cmds := make([]*commands.CreateContactCommand, 0, pageSize)
+		for rows.Next() {
+			var id, roid, voice, fax, email, clid, crrr, crdate, uprr, upDate sql.NullString
+			if err := rows.Scan(&id, &roid, &voice, &fax, &email, &clid, &crrr, &crdate, &uprr, &upDate); err != nil {
+				rows.Close()
+				return err
+			}
+
+			// map registrar clids using registrar mapping if available
+			mapClid := func(raw string) string {
+				r := strings.TrimSpace(raw)
+				if r == "" {
+					return raw
+				}
+				if v, ok := clidMap[r]; ok && strings.TrimSpace(v) != "" {
+					return v
+				}
+				return raw
+			}
+
+			cmd := &commands.CreateContactCommand{
+				ID:       id.String,
+				RoID:     roid.String,
+				Email:    email.String,
+				AuthInfo: "escr0W1mP*rt",
+				ClID:     mapClid(clid.String),
+			}
+			// If RoID is present but invalid or not a CONTACT RoID, clear it to auto-generate a valid one.
+			if strings.TrimSpace(cmd.RoID) != "" {
+				r := entities.RoidType(cmd.RoID)
+				if err := r.Validate(); err != nil || r.ObjectIdentifier() != entities.CONTACT_ROID_ID {
+					cmd.RoID = ""
+				}
+			}
+			if voice.Valid {
+				cmd.Voice = voice.String
+			}
+			if fax.Valid {
+				cmd.Fax = fax.String
+			}
+			if crrr.Valid {
+				cmd.CrRr = mapClid(crrr.String)
+			}
+			if uprr.Valid {
+				cmd.UpRr = mapClid(uprr.String)
+			}
+			if crdate.Valid {
+				if ts, perr := parseBestEffortTime(crdate.String); perr == nil {
+					cmd.CreatedAt = ts
+				}
+			}
+			if upDate.Valid {
+				if ts, perr := parseBestEffortTime(upDate.String); perr == nil {
+					cmd.UpdatedAt = ts
+				}
+			}
+
+			// Populate Status from contact_statuses
+			{
+				srows, serr := sqldb.Query(`SELECT status FROM contact_statuses WHERE contact_id = ?`, id.String)
+				if serr == nil {
+					st := entities.ContactStatus{}
+					for srows.Next() {
+						var stval sql.NullString
+						if err := srows.Scan(&stval); err == nil && stval.Valid {
+							switch strings.ToLower(strings.TrimSpace(stval.String)) {
+							case "ok":
+								st.OK = true
+							case "linked":
+								st.Linked = true
+							case "pendingcreate":
+								st.PendingCreate = true
+							case "pendingupdate":
+								st.PendingUpdate = true
+							case "pendingtransfer":
+								st.PendingTransfer = true
+							case "pendingdelete":
+								st.PendingDelete = true
+							case "clientdeleteprohibited":
+								st.ClientDeleteProhibited = true
+							case "clientupdateprohibited":
+								st.ClientUpdateProhibited = true
+							case "clienttransferprohibited":
+								st.ClientTransferProhibited = true
+							case "serverdeleteprohibited":
+								st.ServerDeleteProhibited = true
+							case "serverupdateprohibited":
+								st.ServerUpdateProhibited = true
+							case "servertransferprohibited":
+								st.ServerTransferProhibited = true
+							}
+						}
+					}
+					srows.Close()
+					cmd.Status = st
+				}
+			}
+
+			// Populate PostalInfo from contact_postal_info
+			{
+				piRows, piErr := sqldb.Query(`
+					SELECT type, name, org, street1, street2, street3, city, state_province, postal_code, country_code
+					FROM contact_postal_info WHERE contact_id = ?
+				`, id.String)
+				if piErr == nil {
+					// initialize array
+					var postalInt, postalLoc *entities.ContactPostalInfo
+					for piRows.Next() {
+						var t, name, org, street1, street2, street3, city, sp, pc, cc sql.NullString
+						if err := piRows.Scan(&t, &name, &org, &street1, &street2, &street3, &city, &sp, &pc, &cc); err != nil {
+							continue
+						}
+						tval := strings.ToLower(strings.TrimSpace(t.String))
+						// Build Address
+						if strings.TrimSpace(city.String) == "" || strings.TrimSpace(cc.String) == "" {
+							// invalid minimal address; skip
+							continue
+						}
+						addr, aerr := entities.NewAddress(city.String, cc.String)
+						if aerr != nil {
+							continue
+						}
+						if street1.Valid {
+							addr.Street1 = entities.OptPostalLineType(street1.String)
+						}
+						if street2.Valid {
+							addr.Street2 = entities.OptPostalLineType(street2.String)
+						}
+						if street3.Valid {
+							addr.Street3 = entities.OptPostalLineType(street3.String)
+						}
+						if sp.Valid {
+							addr.StateProvince = entities.OptPostalLineType(sp.String)
+						}
+						if pc.Valid {
+							if ppt, perr := entities.NewPCType(pc.String); perr == nil {
+								addr.PostalCode = *ppt
+							}
+						}
+						// Build ContactPostalInfo
+						nameStr := strings.TrimSpace(name.String)
+						if nameStr == "" {
+							// name required by entity validation
+							continue
+						}
+						cpi, perr := entities.NewContactPostalInfo(tval, nameStr, addr)
+						if perr != nil {
+							// best-effort: skip invalid postalinfo for this row
+							continue
+						}
+						if org.Valid {
+							cpi.Org = entities.OptPostalLineType(org.String)
+						}
+						if tval == string(entities.PostalInfoEnumTypeINT) {
+							postalInt = cpi
+						} else if tval == string(entities.PostalInfoEnumTypeLOC) {
+							postalLoc = cpi
+						}
+					}
+					piRows.Close()
+					// Assign into fixed array order: [0]=int, [1]=loc
+					cmd.PostalInfo[0] = postalInt
+					cmd.PostalInfo[1] = postalLoc
+				}
+			}
+			cmds = append(cmds, cmd)
+		}
+		rows.Close()
+
+		if len(cmds) == 0 {
+			break
+		}
+
+		if err := contactSvc.BulkCreate(ctx, cmds); err != nil {
+			// try per-item for idempotency
+			for _, c := range cmds {
+				if _, ierr := contactSvc.CreateContact(ctx, c); ierr != nil {
+					*events = append(*events, ReportEvent{
+						Level:     "error",
+						Activity:  "ImportFromSQLite.contacts",
+						Code:      "contact_insert_failed",
+						Message:   ierr.Error(),
+						Object:    c.ID,
+						Context:   map[string]string{"clid": c.ClID},
+						Timestamp: nowUTC(),
+					})
+					tallies["contacts_failed"]++
+					continue
+				}
+				created++
+			}
+		} else {
+			created += int64(len(cmds))
+		}
+
+		counts["contacts_imported"] = created
+		activity.RecordHeartbeat(ctx, fmt.Sprintf("contacts imported: %d", created))
+
+		if len(cmds) < pageSize {
 			break
 		}
 		offset += pageSize
