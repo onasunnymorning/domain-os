@@ -33,6 +33,7 @@ type EscrowImportResult struct {
 // EscrowImportWorkflow is a stub workflow to be expanded with activities
 func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (EscrowImportResult, error) {
 	started := workflow.Now(ctx)
+	wfID := workflow.GetInfo(ctx).WorkflowExecution.ID
 
 	// Activity options for all steps
 	ao := workflow.ActivityOptions{
@@ -71,6 +72,17 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 
 	// If analysis found issues, gracefully short-circuit: skip DB convert/import, finalize with analysis findings.
 	if analysisOut.HasIssues {
+		// persist a run-report capturing analysis-only findings
+		_ = workflow.ExecuteActivity(ctx, acts.PersistRunReport, activities.PersistRunReportArgs{
+			TLD:             params.TLD,
+			RunPrefix:       analysisOut.RunPrefix,
+			WorkflowID:      wfID,
+			AnalysisErrors:  analysisOut.AnalysisErrors,
+			MissingContacts: analysisOut.MissingContacts,
+			Events:          nil,
+			Tallies:         map[string]int64{},
+			Extra:           map[string]any{"phase": "analysis"},
+		}).Get(ctx, nil)
 		var finalizeOut activities.FinalizeAndQAResult
 		if err := workflow.ExecuteActivity(ctx, acts.FinalizeAndQA, activities.FinalizeAndQAArgs{
 			TLD:             params.TLD,
@@ -133,6 +145,19 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}).Get(ctx, &importOut); err != nil {
 		return EscrowImportResult{}, err
 	}
+
+	// Persist run-report with detailed import events/tallies
+	_ = workflow.ExecuteActivity(ctx, acts.PersistRunReport, activities.PersistRunReportArgs{
+		TLD:        params.TLD,
+		RunPrefix:  analysisOut.RunPrefix,
+		WorkflowID: wfID,
+		Events:     importOut.Events,
+		Tallies:    importOut.Tallies,
+		Extra: map[string]any{
+			"phase":                    "import",
+			"registrarMappingRowCount": sqliteOut.RegistrarMappingRowCount,
+		},
+	}).Get(ctx, nil)
 
 	// 5) Finalize and QA: produce a summary.json comparing counts
 	var finalizeOut activities.FinalizeAndQAResult
