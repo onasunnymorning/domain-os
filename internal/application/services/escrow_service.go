@@ -1138,13 +1138,23 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 		// not found
 		if resp.StatusCode == 404 {
-			// If the regsitrar is in the deposit but not found, we can skip it if it has no domains
-			if svc.RegistrarMapping[rar.ID].DomainCount == 0 {
-				if svc.RegistrarMapping[rar.ID].HostCount == 0 && svc.RegistrarMapping[rar.ID].ContactCount == 0 {
+			// If the registrar is in the deposit but not found:
+			// - If it has no domains: log as a WARNING so the import can continue
+			//   (still useful info if it has hosts/contacts attached)
+			// - If it has domains: log as an ERROR to block import until mapping is fixed
+			info := svc.RegistrarMapping[rar.ID]
+			if info.DomainCount == 0 {
+				if info.HostCount == 0 && info.ContactCount == 0 {
 					log.Printf("Registrar %s with GurID %d not found, but has no objects, skipping ...", rar.Name, rar.GurID)
 					continue
 				}
-				svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, svc.RegistrarMapping[rar.ID].HostCount, svc.RegistrarMapping[rar.ID].ContactCount))
+				// downgrade from error -> warning when no domains
+				msg := fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, info.HostCount, info.ContactCount)
+				svc.Analysis.Warnings = append(svc.Analysis.Warnings, msg)
+			} else {
+				// has domains: treat as blocking error
+				msg := fmt.Sprintf("Registrar %s with GurID %d not found. Has %d domains, %d hosts and %d contacts", rar.Name, rar.GurID, info.DomainCount, info.HostCount, info.ContactCount)
+				svc.Analysis.Errors = append(svc.Analysis.Errors, msg)
 			}
 			missing++
 			missingGurIDs = append(missingGurIDs, rar.GurID)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -363,9 +364,9 @@ type ImportFromSQLiteArgs struct {
 type ImportFromSQLiteResult struct {
 	DBKey  string
 	Counts map[string]int64
-	// Run-time observability
-	Events  []ReportEvent
-	Tallies map[string]int64
+	// Run-time observability (large payloads stored out-of-band)
+	EventsKey string           // S3 key where detailed events are stored (JSON)
+	Tallies   map[string]int64 // compact counters safe to return
 }
 
 // ReportEvent captures warnings/errors/skips during workflow activities
@@ -493,7 +494,30 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		}
 	}
 
-	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Events: events, Tallies: tallies}, nil
+	// Persist detailed events out-of-band to avoid exceeding payload limits
+	// Derive runPrefix from dbKey: runPrefix/base.db
+	runPrefix := path.Dir(dbKey)
+	if len(events) > 0 {
+		// Write events to a temp JSON and upload under runPrefix/import-events.json
+		tmp, _ := os.CreateTemp("", "escrow-import-events-*.json")
+		if tmp != nil {
+			enc := json.NewEncoder(tmp)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]any{
+				"tld":       tld,
+				"dbKey":     dbKey,
+				"createdAt": time.Now().UTC().Format(time.RFC3339),
+				"events":    events,
+			})
+			tmp.Close()
+			if s3c2, e2 := storage.NewS3ClientFromEnv(); e2 == nil {
+				_ = s3c2.UploadFile(ctx, runPrefix+"/import-events.json", tmp.Name(), "application/json")
+			}
+			_ = os.Remove(tmp.Name())
+		}
+	}
+
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
 }
 
 // FinalizeAndQAArgs parameters
