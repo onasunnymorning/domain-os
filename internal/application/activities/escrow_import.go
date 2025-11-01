@@ -814,6 +814,48 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 			}
 			addrRows.Close()
 			_ = clid // clid is already on the command
+
+			// gather statuses
+			stRows, err := sqldb.Query(`SELECT status FROM host_statuses WHERE host_name = ?`, hn)
+			if err == nil {
+				hs := entities.HostStatus{}
+				for stRows.Next() {
+					var st string
+					if err := stRows.Scan(&st); err == nil {
+						switch strings.ToLower(strings.TrimSpace(st)) {
+						case "ok":
+							hs.OK = true
+						case "linked":
+							hs.Linked = true
+						case "pendingcreate":
+							hs.PendingCreate = true
+						case "pendingdelete":
+							hs.PendingDelete = true
+						case "pendingupdate":
+							hs.PendingUpdate = true
+						case "pendingtransfer":
+							hs.PendingTransfer = true
+						case "clientdeleteprohibited":
+							hs.ClientDeleteProhibited = true
+						case "clientupdateprohibited":
+							hs.ClientUpdateProhibited = true
+						case "serverdeleteprohibited":
+							hs.ServerDeleteProhibited = true
+						case "serverupdateprohibited":
+							hs.ServerUpdateProhibited = true
+						}
+					}
+				}
+				stRows.Close()
+				// Ensure OK is set when no prohibitions/pending are present (per RFC and our validation rules)
+				if !hs.OK && !hs.PendingCreate && !hs.PendingDelete && !hs.PendingTransfer && !hs.PendingUpdate && !hs.ClientDeleteProhibited && !hs.ClientUpdateProhibited && !hs.ServerDeleteProhibited && !hs.ServerUpdateProhibited {
+					hs.OK = true
+				}
+				// Assign if any status was provided (or OK fallback applied)
+				if !hs.IsNil() {
+					cmds[i].Status = hs
+				}
+			}
 		}
 
 		if err := hostSvc.BulkCreate(ctx, cmds); err != nil {
@@ -911,6 +953,66 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 					cmd.CreatedAt = ts
 				}
 			}
+			// Map domain/host statuses from SQLite status tables
+			// Domain statuses
+			if name.Valid {
+				stRows, sErr := sqldb.Query(`SELECT status FROM domain_statuses WHERE domain_name = ?`, name.String)
+				if sErr == nil {
+					ds := entities.DomainStatus{}
+					for stRows.Next() {
+						var st string
+						if err := stRows.Scan(&st); err == nil {
+							switch strings.ToLower(strings.TrimSpace(st)) {
+							case entities.DomainStatusOK:
+								ds.OK = true
+							case entities.DomainStatusInactive:
+								ds.Inactive = true
+							case entities.DomainStatusClientTransferProhibited:
+								ds.ClientTransferProhibited = true
+							case entities.DomainStatusClientUpdateProhibited:
+								ds.ClientUpdateProhibited = true
+							case entities.DomainStatusClientDeleteProhibited:
+								ds.ClientDeleteProhibited = true
+							case entities.DomainStatusClientRenewProhibited:
+								ds.ClientRenewProhibited = true
+							case entities.DomainStatusClientHold:
+								ds.ClientHold = true
+							case entities.DomainStatusServerTransferProhibited:
+								ds.ServerTransferProhibited = true
+							case entities.DomainStatusServerUpdateProhibited:
+								ds.ServerUpdateProhibited = true
+							case entities.DomainStatusServerDeleteProhibited:
+								ds.ServerDeleteProhibited = true
+							case entities.DomainStatusServerRenewProhibited:
+								ds.ServerRenewProhibited = true
+							case entities.DomainStatusServerHold:
+								ds.ServerHold = true
+							case entities.DomainStatusPendingCreate:
+								ds.PendingCreate = true
+							case entities.DomainStatusPendingRenew:
+								ds.PendingRenew = true
+							case entities.DomainStatusPendingTransfer:
+								ds.PendingTransfer = true
+							case entities.DomainStatusPendingUpdate:
+								ds.PendingUpdate = true
+							case entities.DomainStatusPendingRestore:
+								ds.PendingRestore = true
+							case entities.DomainStatusPendingDelete:
+								ds.PendingDelete = true
+							}
+						}
+					}
+					stRows.Close()
+					// Ensure OK is set when no prohibitions/pending are present (allowed with Inactive)
+					if !ds.OK && !ds.HasProhibitions() && !ds.HasPendings() {
+						ds.OK = true
+					}
+					if !ds.IsNil() {
+						cmd.Status = ds
+					}
+				}
+			}
+
 			// TLD is computed from name in service; not set here
 			cmds = append(cmds, cmd)
 		}
