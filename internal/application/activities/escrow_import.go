@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	pg "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"go.temporal.io/sdk/activity"
 	_ "modernc.org/sqlite"
@@ -428,67 +426,30 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		}
 	}
 
-	// Connect to Postgres using env
-	pgCfg := pg.Config{
-		User:        os.Getenv("DB_USER"),
-		Pass:        os.Getenv("DB_PASS"),
-		Host:        os.Getenv("DB_HOST"),
-		Port:        os.Getenv("DB_PORT"),
-		DBName:      os.Getenv("DB_NAME"),
-		SSLmode:     defaultStr(os.Getenv("DB_SSLMODE"), "disable"),
-		AutoMigrate: false,
-	}
-	gdb, err := pg.NewConnection(pgCfg)
-	if err != nil {
-		return ImportFromSQLiteResult{}, fmt.Errorf("postgres connection failed: %w", err)
-	}
-
-	// Build services
-	idgen, err := snowflakeidgenerator.NewIDGenerator()
-	if err != nil {
-		return ImportFromSQLiteResult{}, fmt.Errorf("id generator failed: %w", err)
-	}
-	roidSvc := services.NewRoidService(idgen)
-
-	// Repositories
-	domRepo := pg.NewDomainRepository(gdb)
-	hostRepo := pg.NewGormHostRepository(gdb)
-	addrRepo := pg.NewGormHostAddressRepository(gdb)
-	// Repos required by DomainService constructor but unused in BulkCreate
-	nndnRepo := pg.NewGormNNDNRepository(gdb)
-	tldRepo := pg.NewGormTLDRepo(gdb)
-	phaseRepo := pg.NewGormPhaseRepository(gdb)
-	premLabelRepo := pg.NewGORMPremiumLabelRepository(gdb)
-	fxRepo := pg.NewFXRepository(gdb)
-	rarRepo := pg.NewGormRegistrarRepository(gdb)
-
-	// Services
-	hostSvc := services.NewHostService(hostRepo, addrRepo, roidSvc)
-	contactRepo := pg.NewContactRepository(gdb)
-	contactSvc := services.NewContactService(contactRepo, *roidSvc)
-	domSvc := services.NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premLabelRepo, fxRepo, rarRepo)
-
+	// Initialize compact counters and runtime events early
 	counts := map[string]int64{}
 	events := []ReportEvent{}
 	tallies := map[string]int64{}
 
+	// counts, events, tallies are initialized above
+
 	// 0) Import contacts in chunks (must exist before domains due to FK on registrant)
-	if err := a.importContactsChunked(ctx, db, contactSvc, counts, clidMap, &events, tallies); err != nil {
+	if err := a.importContactsChunked(ctx, db, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("contact import failed: %w", err)
 	}
 
 	// 1) Import hosts in chunks
-	if err := a.importHostsChunked(ctx, db, hostSvc, counts, clidMap, &events, tallies); err != nil {
+	if err := a.importHostsChunked(ctx, db, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("host import failed: %w", err)
 	}
 
 	// 2) Import domains in chunks (without host associations yet)
-	if err := a.importDomainsChunked(ctx, db, tld, domSvc, counts, clidMap, &events, tallies); err != nil {
+	if err := a.importDomainsChunked(ctx, db, tld, counts, clidMap, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain import failed: %w", err)
 	}
 
 	// 3) Link domain nameservers → domain_hosts via DomainService to ensure statuses update
-	if err := a.linkDomainHosts(ctx, db, domSvc, counts, &events, tallies); err != nil {
+	if err := a.linkDomainHosts(ctx, db, counts, &events, tallies); err != nil {
 		return ImportFromSQLiteResult{}, fmt.Errorf("domain-host linking failed: %w", err)
 	}
 
@@ -524,6 +485,269 @@ func (a *EscrowImportActivities) ImportFromSQLite(ctx context.Context, args Impo
 		}
 	}
 
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
+}
+
+// ImportContactsFromSQLite imports contacts only using the admin API bulk endpoint.
+func (a *EscrowImportActivities) ImportContactsFromSQLite(ctx context.Context, args ImportFromSQLiteArgs) (ImportFromSQLiteResult, error) {
+	tld := strings.TrimSpace(args.TLD)
+	if tld == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("tld is required")
+	}
+	dbKey := strings.TrimSpace(args.DBKey)
+	if dbKey == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("dbKey is required")
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return ImportFromSQLiteResult{}, err
+	}
+	dbPath, err := s3c.DownloadToFile(ctx, dbKey)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	// Load registrar clid mapping from SQLite (if present)
+	clidMap := map[string]string{}
+	if rows, qerr := db.Query(`SELECT escrow_id, registrar_clid FROM registrar_mapping`); qerr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var escrowID, mapped sql.NullString
+			if err := rows.Scan(&escrowID, &mapped); err == nil {
+				if escrowID.Valid {
+					if mapped.Valid && strings.TrimSpace(mapped.String) != "" {
+						clidMap[escrowID.String] = mapped.String
+					}
+				}
+			}
+		}
+	}
+
+	counts := map[string]int64{}
+	events := []ReportEvent{}
+	tallies := map[string]int64{}
+
+	if err := a.importContactsChunked(ctx, db, counts, clidMap, &events, tallies); err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("contact import failed: %w", err)
+	}
+
+	// Persist events JSON
+	runPrefix := path.Dir(dbKey)
+	if len(events) > 0 {
+		tmp, _ := os.CreateTemp("", "escrow-import-events-*.json")
+		if tmp != nil {
+			enc := json.NewEncoder(tmp)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]any{
+				"tld":       tld,
+				"dbKey":     dbKey,
+				"createdAt": time.Now().UTC().Format(time.RFC3339),
+				"events":    events,
+			})
+			tmp.Close()
+			if s3c2, e2 := storage.NewS3ClientFromEnv(); e2 == nil {
+				_ = s3c2.UploadFile(ctx, runPrefix+"/import-events.json", tmp.Name(), "application/json")
+			}
+			_ = os.Remove(tmp.Name())
+		}
+	}
+
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
+}
+
+// ImportHostsFromSQLite imports hosts only using the admin API bulk endpoint.
+func (a *EscrowImportActivities) ImportHostsFromSQLite(ctx context.Context, args ImportFromSQLiteArgs) (ImportFromSQLiteResult, error) {
+	tld := strings.TrimSpace(args.TLD)
+	if tld == "" { // keep arg signature uniform
+		return ImportFromSQLiteResult{}, fmt.Errorf("tld is required")
+	}
+	dbKey := strings.TrimSpace(args.DBKey)
+	if dbKey == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("dbKey is required")
+	}
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return ImportFromSQLiteResult{}, err
+	}
+	dbPath, err := s3c.DownloadToFile(ctx, dbKey)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	clidMap := map[string]string{}
+	if rows, qerr := db.Query(`SELECT escrow_id, registrar_clid FROM registrar_mapping`); qerr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var escrowID, mapped sql.NullString
+			if err := rows.Scan(&escrowID, &mapped); err == nil {
+				if escrowID.Valid {
+					if mapped.Valid && strings.TrimSpace(mapped.String) != "" {
+						clidMap[escrowID.String] = mapped.String
+					}
+				}
+			}
+		}
+	}
+
+	counts := map[string]int64{}
+	events := []ReportEvent{}
+	tallies := map[string]int64{}
+	if err := a.importHostsChunked(ctx, db, counts, clidMap, &events, tallies); err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("host import failed: %w", err)
+	}
+	runPrefix := path.Dir(dbKey)
+	if len(events) > 0 {
+		tmp, _ := os.CreateTemp("", "escrow-import-events-*.json")
+		if tmp != nil {
+			enc := json.NewEncoder(tmp)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]any{
+				"tld":       tld,
+				"dbKey":     dbKey,
+				"createdAt": time.Now().UTC().Format(time.RFC3339),
+				"events":    events,
+			})
+			tmp.Close()
+			if s3c2, e2 := storage.NewS3ClientFromEnv(); e2 == nil {
+				_ = s3c2.UploadFile(ctx, runPrefix+"/import-events.json", tmp.Name(), "application/json")
+			}
+			_ = os.Remove(tmp.Name())
+		}
+	}
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
+}
+
+// ImportDomainsFromSQLite imports domains only using the admin API bulk endpoint.
+func (a *EscrowImportActivities) ImportDomainsFromSQLite(ctx context.Context, args ImportFromSQLiteArgs) (ImportFromSQLiteResult, error) {
+	tld := strings.TrimSpace(args.TLD)
+	if tld == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("tld is required")
+	}
+	dbKey := strings.TrimSpace(args.DBKey)
+	if dbKey == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("dbKey is required")
+	}
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return ImportFromSQLiteResult{}, err
+	}
+	dbPath, err := s3c.DownloadToFile(ctx, dbKey)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	clidMap := map[string]string{}
+	if rows, qerr := db.Query(`SELECT escrow_id, registrar_clid FROM registrar_mapping`); qerr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var escrowID, mapped sql.NullString
+			if err := rows.Scan(&escrowID, &mapped); err == nil {
+				if escrowID.Valid {
+					if mapped.Valid && strings.TrimSpace(mapped.String) != "" {
+						clidMap[escrowID.String] = mapped.String
+					}
+				}
+			}
+		}
+	}
+
+	counts := map[string]int64{}
+	events := []ReportEvent{}
+	tallies := map[string]int64{}
+	if err := a.importDomainsChunked(ctx, db, tld, counts, clidMap, &events, tallies); err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("domain import failed: %w", err)
+	}
+	runPrefix := path.Dir(dbKey)
+	if len(events) > 0 {
+		tmp, _ := os.CreateTemp("", "escrow-import-events-*.json")
+		if tmp != nil {
+			enc := json.NewEncoder(tmp)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]any{
+				"tld":       tld,
+				"dbKey":     dbKey,
+				"createdAt": time.Now().UTC().Format(time.RFC3339),
+				"events":    events,
+			})
+			tmp.Close()
+			if s3c2, e2 := storage.NewS3ClientFromEnv(); e2 == nil {
+				_ = s3c2.UploadFile(ctx, runPrefix+"/import-events.json", tmp.Name(), "application/json")
+			}
+			_ = os.Remove(tmp.Name())
+		}
+	}
+	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
+}
+
+// LinkDomainHostsFromSQLite links domain NS from SQLite using admin API.
+func (a *EscrowImportActivities) LinkDomainHostsFromSQLite(ctx context.Context, args ImportFromSQLiteArgs) (ImportFromSQLiteResult, error) {
+	tld := strings.TrimSpace(args.TLD)
+	if tld == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("tld is required")
+	}
+	dbKey := strings.TrimSpace(args.DBKey)
+	if dbKey == "" {
+		return ImportFromSQLiteResult{}, fmt.Errorf("dbKey is required")
+	}
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return ImportFromSQLiteResult{}, err
+	}
+	dbPath, err := s3c.DownloadToFile(ctx, dbKey)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	counts := map[string]int64{}
+	events := []ReportEvent{}
+	tallies := map[string]int64{}
+	if err := a.linkDomainHosts(ctx, db, counts, &events, tallies); err != nil {
+		return ImportFromSQLiteResult{}, fmt.Errorf("domain-host linking failed: %w", err)
+	}
+	runPrefix := path.Dir(dbKey)
+	if len(events) > 0 {
+		tmp, _ := os.CreateTemp("", "escrow-import-events-*.json")
+		if tmp != nil {
+			enc := json.NewEncoder(tmp)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]any{
+				"tld":       tld,
+				"dbKey":     dbKey,
+				"createdAt": time.Now().UTC().Format(time.RFC3339),
+				"events":    events,
+			})
+			tmp.Close()
+			if s3c2, e2 := storage.NewS3ClientFromEnv(); e2 == nil {
+				_ = s3c2.UploadFile(ctx, runPrefix+"/import-events.json", tmp.Name(), "application/json")
+			}
+			_ = os.Remove(tmp.Name())
+		}
+	}
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, EventsKey: runPrefix + "/import-events.json", Tallies: tallies}, nil
 }
 
@@ -576,6 +800,22 @@ func (a *EscrowImportActivities) FinalizeAndQA(ctx context.Context, args Finaliz
 	// Domains for this TLD
 	if r := gdb.Raw("SELECT COUNT(1) AS cnt FROM domains WHERE tld_name = ?", tld).Scan(&row); r.Error == nil {
 		pgCounts["postgres_domains_for_tld"] = row.Cnt
+	}
+	// Domains for this TLD with any RGP field set (non-zero timestamps)
+	row = cRow{}
+	if r := gdb.Raw(`
+		SELECT COUNT(1) AS cnt
+		FROM domains
+		WHERE tld_name = ?
+		AND (
+			add_period_end > '0001-01-01' OR
+			renew_period_end > '0001-01-01' OR
+			auto_renew_period_end > '0001-01-01' OR
+			redemption_period_end > '0001-01-01' OR
+			purge_date > '0001-01-01'
+		)
+	`, tld).Scan(&row); r.Error == nil {
+		pgCounts["postgres_domains_with_rgp_for_tld"] = row.Cnt
 	}
 	// Domain↔Host links for this TLD
 	row = cRow{}
@@ -744,8 +984,8 @@ func defaultStr(s, def string) string {
 	return s
 }
 
-// importHostsChunked reads hosts and addresses from SQLite and bulk-creates them in Postgres.
-func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *sql.DB, hostSvc *services.HostService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
+// importHostsChunked reads hosts and addresses from SQLite and bulk-creates them via Admin API.
+func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *sql.DB, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 1000
 	offset := 0
 	created := int64(0)
@@ -858,10 +1098,15 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 			}
 		}
 
-		if err := hostSvc.BulkCreate(ctx, cmds); err != nil {
+		// Try bulk first via API, then per-item fallback for idempotency
+		createHostCmds := make([]commands.CreateHostCommand, 0, len(cmds))
+		for _, c := range cmds {
+			createHostCmds = append(createHostCmds, *c)
+		}
+		if err := BulkCreateHosts("escrow-import", createHostCmds); err != nil {
 			// If bulk fails (e.g., duplicates), try per-item create for idempotency
 			for _, c := range cmds {
-				if _, ierr := hostSvc.CreateHost(ctx, c); ierr != nil && !errors.Is(ierr, entities.ErrInvalidHost) {
+				if ierr := CreateHost("escrow-import", *c); ierr != nil {
 					// collect error event and continue; keep import resilient
 					*events = append(*events, ReportEvent{
 						Level:     "error",
@@ -892,8 +1137,8 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 	return nil
 }
 
-// importDomainsChunked reads domains from SQLite and bulk-creates them in Postgres.
-func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb *sql.DB, tld string, domSvc *services.DomainService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
+// importDomainsChunked reads domains from SQLite and bulk-creates them via Admin API.
+func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb *sql.DB, tld string, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 1000
 	offset := 0
 	created := int64(0)
@@ -1013,6 +1258,52 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 				}
 			}
 
+			// RGP statuses: compute end timestamps using current time + default grace periods
+			if name.Valid {
+				now := time.Now().UTC()
+				rgpRows, rErr := sqldb.Query(`SELECT rgp_status FROM domain_rgp_statuses WHERE domain_name = ?`, name.String)
+				if rErr == nil {
+					for rgpRows.Next() {
+						var st string
+						if err := rgpRows.Scan(&st); err == nil {
+							switch strings.ToLower(strings.TrimSpace(st)) {
+							case "addperiod":
+								// Use CreatedAt + 5 days when available, otherwise fallback to now + 5 days
+								base := cmd.CreatedAt
+								if base.IsZero() {
+									base = now
+								}
+								cmd.RGPStatus.AddPeriodEnd = base.AddDate(0, 0, 5)
+							case "renewperiod":
+								// Keep default of now + 5 days
+								cmd.RGPStatus.RenewPeriodEnd = now.AddDate(0, 0, 5)
+							case "autorenewperiod":
+								// Use the last past expiry anniversary + 45 days
+								base := cmd.ExpiryDate
+								if base.IsZero() {
+									base = now
+								}
+								// If base is not in the past, keep subtracting one year until it is
+								// guard with a sane max to avoid accidental infinite loops
+								safety := 0
+								for !base.Before(now) && safety < 100 {
+									base = base.AddDate(-1, 0, 0)
+									safety++
+								}
+								cmd.RGPStatus.AutoRenewPeriodEnd = base.AddDate(0, 0, 45)
+							case "redemptiongraceperiod":
+								// Now + 30 days
+								cmd.RGPStatus.RedemptionPeriodEnd = now.AddDate(0, 0, 30)
+							case "pendingdeletegraceperiod":
+								// Pending delete GP -> set purge date to now + 5 days
+								cmd.RGPStatus.PurgeDate = now.AddDate(0, 0, 5)
+							}
+						}
+					}
+					rgpRows.Close()
+				}
+			}
+
 			// TLD is computed from name in service; not set here
 			cmds = append(cmds, cmd)
 		}
@@ -1022,10 +1313,15 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			break
 		}
 
-		if err := domSvc.BulkCreate(ctx, cmds); err != nil {
+		// Bulk create via API, then fallback per-item
+		createDomCmds := make([]commands.CreateDomainCommand, 0, len(cmds))
+		for _, c := range cmds {
+			createDomCmds = append(createDomCmds, *c)
+		}
+		if err := BulkCreateDomains("escrow-import", createDomCmds); err != nil {
 			// On error (duplicates, etc.), try per-item to be idempotent
 			for _, c := range cmds {
-				if _, ierr := domSvc.Create(ctx, c); ierr != nil {
+				if ierr := CreateDomain("escrow-import", *c); ierr != nil {
 					// collect error and continue
 					*events = append(*events, ReportEvent{
 						Level:     "error",
@@ -1056,8 +1352,8 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 	return nil
 }
 
-// linkDomainHosts links domains to hosts based on domain_nameservers table using DomainService to enforce status updates.
-func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, domSvc *services.DomainService, counts map[string]int64, events *[]ReportEvent, tallies map[string]int64) error {
+// linkDomainHosts links domains to hosts based on domain_nameservers via Admin API.
+func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql.DB, counts map[string]int64, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 2000
 	offset := 0
 	linked := int64(0)
@@ -1089,8 +1385,7 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 		}
 
 		for _, p := range pairs {
-			// Use DomainService to add host by name; force=true to ignore update prohibitions during escrow import.
-			if err := domSvc.AddHostToDomainByHostName(ctx, p.dom, p.ns, true); err == nil {
+			if err := AddHostToDomainByHostname("escrow-import", p.dom, p.ns); err == nil {
 				linked++
 			} else {
 				*events = append(*events, ReportEvent{Level: "warn", Activity: "ImportFromSQLite.link", Code: "link_failed", Message: err.Error(), Object: p.dom, Context: map[string]string{"host": p.ns}, Timestamp: nowUTC()})
@@ -1109,8 +1404,8 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 	return nil
 }
 
-// importContactsChunked reads contacts from SQLite and creates them in Postgres before domains.
-func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqldb *sql.DB, contactSvc *services.ContactService, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
+// importContactsChunked reads contacts from SQLite and creates them via Admin API before domains.
+func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqldb *sql.DB, counts map[string]int64, clidMap map[string]string, events *[]ReportEvent, tallies map[string]int64) error {
 	const pageSize = 1000
 	offset := 0
 	created := int64(0)
@@ -1297,10 +1592,15 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 			break
 		}
 
-		if err := contactSvc.BulkCreate(ctx, cmds); err != nil {
+		// Bulk via API, fallback per-item
+		createContactCmds := make([]commands.CreateContactCommand, 0, len(cmds))
+		for _, c := range cmds {
+			createContactCmds = append(createContactCmds, *c)
+		}
+		if err := BulkCreateContacts("escrow-import", createContactCmds); err != nil {
 			// try per-item for idempotency
 			for _, c := range cmds {
-				if _, ierr := contactSvc.CreateContact(ctx, c); ierr != nil {
+				if ierr := CreateContact("escrow-import", *c); ierr != nil {
 					*events = append(*events, ReportEvent{
 						Level:     "error",
 						Activity:  "ImportFromSQLite.contacts",
