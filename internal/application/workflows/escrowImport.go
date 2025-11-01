@@ -125,7 +125,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		return EscrowImportResult{}, err
 	}
 
-	// 4) Import from SQLite (counts and linking)
+	// 4) Import from SQLite via admin API bulk endpoints (split by entity)
 	longAO := workflow.ActivityOptions{
 		StartToCloseTimeout:    time.Hour,
 		ScheduleToCloseTimeout: time.Hour * 2,
@@ -138,12 +138,55 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}
 	importCtx := workflow.WithActivityOptions(ctx, longAO)
 
-	var importOut activities.ImportFromSQLiteResult
-	if err := workflow.ExecuteActivity(importCtx, acts.ImportFromSQLite, activities.ImportFromSQLiteArgs{
-		TLD:   params.TLD,
-		DBKey: sqliteOut.DBKey,
-	}).Get(ctx, &importOut); err != nil {
+	aggCounts := map[string]int64{}
+	aggTallies := map[string]int64{}
+	var stepOut activities.ImportFromSQLiteResult
+
+	// 4a) Contacts
+	if err := workflow.ExecuteActivity(importCtx, acts.ImportContactsFromSQLite, activities.ImportFromSQLiteArgs{TLD: params.TLD, DBKey: sqliteOut.DBKey}).Get(ctx, &stepOut); err != nil {
 		return EscrowImportResult{}, err
+	}
+	for k, v := range stepOut.Counts {
+		aggCounts[k] += v
+	}
+	for k, v := range stepOut.Tallies {
+		aggTallies[k] += v
+	}
+
+	// 4b) Hosts
+	stepOut = activities.ImportFromSQLiteResult{}
+	if err := workflow.ExecuteActivity(importCtx, acts.ImportHostsFromSQLite, activities.ImportFromSQLiteArgs{TLD: params.TLD, DBKey: sqliteOut.DBKey}).Get(ctx, &stepOut); err != nil {
+		return EscrowImportResult{}, err
+	}
+	for k, v := range stepOut.Counts {
+		aggCounts[k] += v
+	}
+	for k, v := range stepOut.Tallies {
+		aggTallies[k] += v
+	}
+
+	// 4c) Domains
+	stepOut = activities.ImportFromSQLiteResult{}
+	if err := workflow.ExecuteActivity(importCtx, acts.ImportDomainsFromSQLite, activities.ImportFromSQLiteArgs{TLD: params.TLD, DBKey: sqliteOut.DBKey}).Get(ctx, &stepOut); err != nil {
+		return EscrowImportResult{}, err
+	}
+	for k, v := range stepOut.Counts {
+		aggCounts[k] += v
+	}
+	for k, v := range stepOut.Tallies {
+		aggTallies[k] += v
+	}
+
+	// 4d) Link domain-host associations
+	stepOut = activities.ImportFromSQLiteResult{}
+	if err := workflow.ExecuteActivity(importCtx, acts.LinkDomainHostsFromSQLite, activities.ImportFromSQLiteArgs{TLD: params.TLD, DBKey: sqliteOut.DBKey}).Get(ctx, &stepOut); err != nil {
+		return EscrowImportResult{}, err
+	}
+	for k, v := range stepOut.Counts {
+		aggCounts[k] += v
+	}
+	for k, v := range stepOut.Tallies {
+		aggTallies[k] += v
 	}
 
 	// Persist run-report with tallies and a pointer to detailed events stored in S3
@@ -152,11 +195,11 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		RunPrefix:  analysisOut.RunPrefix,
 		WorkflowID: wfID,
 		Events:     nil, // events stored out-of-band to avoid payload size limits
-		Tallies:    importOut.Tallies,
+		Tallies:    aggTallies,
 		Extra: map[string]any{
 			"phase":                    "import",
 			"registrarMappingRowCount": sqliteOut.RegistrarMappingRowCount,
-			"eventsKey":                importOut.EventsKey,
+			"eventsKey":                stepOut.EventsKey,
 		},
 	}).Get(ctx, nil)
 
@@ -166,7 +209,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		TLD:            params.TLD,
 		RunPrefix:      analysisOut.RunPrefix,
 		AnalysisCounts: analysisOut.Counts,
-		SqliteCounts:   importOut.Counts,
+		SqliteCounts:   aggCounts,
 	}).Get(ctx, &finalizeOut); err != nil {
 		return EscrowImportResult{}, err
 	}
@@ -176,7 +219,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		ObjectKey:   params.ObjectKey,
 		StartedAt:   started,
 		CompletedAt: workflow.Now(ctx),
-		Counts:      importOut.Counts,
+		Counts:      aggCounts,
 		Notes:       []string{"Validated input", "Streaming analysis complete", "SQLite created", "Finalize summary written"},
 		RunPrefix:   analysisOut.RunPrefix,
 		DBKey:       sqliteOut.DBKey,
