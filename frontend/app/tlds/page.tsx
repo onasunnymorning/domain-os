@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
@@ -30,11 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Globe, Plus, Trash2, Eye, Search, X } from 'lucide-react';
-import Link from 'next/link';
+import { Globe, Plus, Trash2, Search, X } from 'lucide-react';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 
 export default function TLDsPage() {
+  return (
+    <Suspense fallback={<div />}> 
+      <TLDsPageInner />
+    </Suspense>
+  );
+}
+
+function TLDsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
