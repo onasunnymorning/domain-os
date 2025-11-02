@@ -3,6 +3,7 @@ package rest
 import (
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,7 @@ type startWorkflowResponse struct {
 	WorkflowID string `json:"workflowId"`
 	RunID      string `json:"runId"`
 	Status     string `json:"status"`
+	URL        string `json:"url"`
 }
 
 func NewWorkflowController(e *gin.Engine, handler gin.HandlerFunc) *WorkflowController {
@@ -77,9 +79,19 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		return
 	}
 
+	// Construct a Temporal UI link if available
+	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
+	if temporalUIBase == "" {
+		// Fallback to local default where docker-compose maps Temporal UI to host 8081
+		temporalUIBase = "http://localhost:8081"
+	}
+	workflowLink := temporalUIBase + "/namespaces/" + cfg.Namespace + "/workflows/" + we.GetID() + "/" + we.GetRunID()
+
 	ctx.JSON(http.StatusAccepted, startWorkflowResponse{
 		WorkflowID: we.GetID(),
 		RunID:      we.GetRunID(),
 		Status:     "started",
+		URL:        workflowLink,
 	})
 }

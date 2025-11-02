@@ -105,7 +105,7 @@ export interface DomainListResponse {
     PageCursor?: string;
     PageSize?: number;
     NextLink?: string;
-    Filter?: any;
+    Filter?: Record<string, unknown>;
   };
 }
 
@@ -113,7 +113,7 @@ export interface DomainCountResponse {
   ObjectType: string;
   Count: number;
   Timestamp: string;
-  Filter?: any;
+  Filter?: Record<string, unknown>;
 }
 
 // Payload aligned with commands.CreateDomainCommand (admin/import create)

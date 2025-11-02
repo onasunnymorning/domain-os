@@ -506,6 +506,10 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 
 // AddHostToDomainByHostName adds a host to a domain by host name
 func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, ignoreUpdateProhibitions bool) error {
+	// Normalize: trim trailing dots and whitespace for robustness
+	domainName = strings.TrimRight(strings.TrimSpace(domainName), ".")
+	hostName = strings.TrimRight(strings.TrimSpace(hostName), ".")
+
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, domainName, true)
 	if err != nil {

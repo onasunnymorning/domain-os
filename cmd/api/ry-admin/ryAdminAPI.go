@@ -292,6 +292,9 @@ func main() {
 	// Use ginzap middleware to log requests with Zap
 	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
 
+	// Keep multipart memory small so large uploads spill to disk
+	r.MaxMultipartMemory = 8 << 20 // 8 MiB
+
 	// Use ginzap recovery middleware to catch panics and log with Zap
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 
@@ -337,6 +340,8 @@ func main() {
 	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
 	// Workflows
 	rest.NewWorkflowController(r, TokenAuthMiddleware())
+	// Escrow
+	rest.NewEscrowController(r, TokenAuthMiddleware())
 
 	// Agent Controller (AI Assistant)
 	if agentService != nil {

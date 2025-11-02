@@ -189,7 +189,7 @@ services:
       - API_PORT=${API_PORT}
       - API_HOST=${API_HOST}
       - API_NAME=${API_NAME}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
       - API_VERSION=${API_VERSION}
       - RMQ_HOST=${RMQ_HOST}
       - RMQ_PORT=${RMQ_PORT}
@@ -204,6 +204,14 @@ services:
       - TMPIO_QUEUE=domain-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
+      # S3/MinIO settings for escrow
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT="http://localhost:9000"
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_USE_SSL=false
+      - ESCROW_BUCKET=escrow
+      - TMPIO_UI_URL=http://localhost:8081
     ports:
       - ${API_PORT:-8080}:${API_PORT:-8080}
     networks:
@@ -243,7 +251,7 @@ services:
   temporal-ui:
     image: temporalio/ui:latest
     restart: unless-stopped
-    profiles: [full]
+    profiles: [essential, full]
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
@@ -274,7 +282,78 @@ services:
       - TMPIO_CERT=
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
+    networks:
+      - dos
+
+  # Escrow Import Worker - runs escrow import workflow
+  escrow-import-worker:
+    build:
+      context: .
+      dockerfile: ./cmd/workers/escrowImport/Dockerfile
+    image: geapex/escrow-import-worker:${BRANCH}
+    restart: unless-stopped
+    profiles: [essential, full]
+    depends_on:
+      admin-api:
+        condition: service_started
+      temporal:
+        condition: service_started
+    environment:
+      - TMPIO_HOST_PORT=temporal:7233
+      - TMPIO_NAME_SPACE=default
+      - TMPIO_QUEUE=domain-lifecycle
+      - ESCROW_QUEUE=escrow-import
+      - TMPIO_KEY=
+      - TMPIO_CERT=
+      # S3/MinIO settings for escrow
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_USE_SSL=false
+      - ESCROW_BUCKET=escrow
+      # Postgres settings (match admin-api)
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+      - API_HOST=admin-api
+      - API_PORT=${API_PORT}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
+    networks:
+      - dos
+
+  # MinIO (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    profiles: [essential, full]
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - 9000:9000
+      - 9001:9001
+    volumes:
+      - minio_data:/data
+    networks:
+      - dos
+
+  # MinIO client to create the bucket
+  minio-setup:
+    image: minio/mc:latest
+    restart: "no"
+    profiles: [essential, full]
+    depends_on:
+      - minio
+    environment:
+      - MC_HOST_minio=http://minioadmin:minioadmin@minio:9000
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true"
     networks:
       - dos
 
@@ -334,4 +413,6 @@ volumes:
   redis_data:
     driver: local
   temporal_pgdata:
+    driver: local
+  minio_data:
     driver: local

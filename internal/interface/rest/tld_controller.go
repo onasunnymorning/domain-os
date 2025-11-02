@@ -35,7 +35,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss inte
 		tldRoutes.POST("", controller.CreateTLD)
 		tldRoutes.DELETE(":tldName", controller.DeleteTLDByName)
 		tldRoutes.POST(":tldName/status/:status", controller.SetTLDStatus)
-		tldRoutes.DELETE(":tldName/status", controller.DeleteTLDStatus)
+		tldRoutes.DELETE(":tldName/status/:status", controller.DeleteTLDStatus)
 		tldRoutes.GET(":tldName/dns/resource-records", controller.GetTLDHeader)
 		tldRoutes.GET(":tldName/dns/domain-delegations", controller.GetNSRecordsPerTLD)
 		tldRoutes.GET(":tldName/dns/glue-records", controller.GetGlueRecordsPerTLD)
@@ -396,7 +396,7 @@ func (ctrl *TLDController) SetTLDStatus(ctx *gin.Context) {
 // @Failure 400
 // @Failure 409
 // @Failure 500
-// @Router /tlds/{tldName}/status/:status [delete]
+// @Router /tlds/{tldName}/status/{status} [delete]
 func (ctrl *TLDController) DeleteTLDStatus(ctx *gin.Context) {
 	// check if the status string is valid
 	status := ctx.Param("status")

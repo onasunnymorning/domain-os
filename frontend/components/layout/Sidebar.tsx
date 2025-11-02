@@ -9,7 +9,8 @@ import {
   Users, 
   Globe, 
   Server,
-  ChevronLeft
+  ChevronLeft,
+  Archive
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'TLDs', href: '/tlds', icon: Globe },
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
+  { name: 'Escrow Imports', href: '/escrow', icon: Archive },
 ];
 
 interface SidebarProps {

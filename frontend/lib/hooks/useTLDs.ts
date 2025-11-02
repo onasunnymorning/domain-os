@@ -70,3 +70,24 @@ export function useDeleteTLD() {
     },
   });
 }
+
+// Update TLD
+export function useUpdateTLD() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: Partial<{ AllowEscrowImport: boolean; EnableDNS: boolean; RyID: string; UName: string }>}) =>
+      tldsApi.update(name, data as any),
+    onSuccess: (res, vars) => {
+      // Refresh list and the specific TLD
+      queryClient.invalidateQueries({ queryKey: ['tlds'] });
+      queryClient.invalidateQueries({ queryKey: ['tlds-count'] });
+      queryClient.invalidateQueries({ queryKey: ['tld', vars.name] });
+      toast.success('TLD updated successfully');
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.error || 'Failed to update TLD';
+      toast.error(message);
+    },
+  });
+}

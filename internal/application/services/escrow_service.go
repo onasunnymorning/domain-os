@@ -1103,17 +1103,24 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	for _, rar := range svc.Registrars {
 
+		// Ensure we at least populate Name and GurID from the escrow registrar section,
+		// even if the API lookup fails later. This makes analysis.json informative.
+		pre := svc.RegistrarMapping[rar.ID]
+		pre.Name = rar.Name
+		pre.GurID = rar.GurID
+		svc.RegistrarMapping[rar.ID] = pre
+
 		var URL string
 
 		// Handle special cases of reserved GurIDs
 		if rar.GurID == 9997 {
-			URL = BASE_URL + "/registrars/9997-ICANN-SLAM"
+			URL = BASE_URL + "/registrars/gurid/9997"
 		} else if rar.GurID == 9995 {
-			URL = BASE_URL + "/registrars/9995-ICANN-RST"
+			URL = BASE_URL + "/registrars/gurid/9995"
 		} else if rar.GurID == 9998 {
-			URL = BASE_URL + "/registrars/9998" + "." + strings.ToLower(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9998" + "-" + strings.ToLower(svc.Header.TLD)
 		} else if rar.GurID == 9999 || rar.GurID == 119 || rar.GurID == 0 { // TODO: FIXME: 0 => 9999 mapping is okay for gTLDs since we can't have domains under these, but a bit dangerous, should be handled better
-			URL = BASE_URL + "/registrars/9999" + "." + strings.ToLower(svc.Header.TLD)
+			URL = BASE_URL + "/registrars/9999" + "-" + strings.ToLower(svc.Header.TLD)
 		} else {
 			URL = BASE_URL + "/registrars/gurid/" + strconv.Itoa((rar.GurID))
 		}
@@ -1131,13 +1138,23 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 		// not found
 		if resp.StatusCode == 404 {
-			// If the regsitrar is in the deposit but not found, we can skip it if it has no domains
-			if svc.RegistrarMapping[rar.ID].DomainCount == 0 {
-				if svc.RegistrarMapping[rar.ID].HostCount == 0 && svc.RegistrarMapping[rar.ID].ContactCount == 0 {
+			// If the registrar is in the deposit but not found:
+			// - If it has no domains: log as a WARNING so the import can continue
+			//   (still useful info if it has hosts/contacts attached)
+			// - If it has domains: log as an ERROR to block import until mapping is fixed
+			info := svc.RegistrarMapping[rar.ID]
+			if info.DomainCount == 0 {
+				if info.HostCount == 0 && info.ContactCount == 0 {
 					log.Printf("Registrar %s with GurID %d not found, but has no objects, skipping ...", rar.Name, rar.GurID)
 					continue
 				}
-				svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, svc.RegistrarMapping[rar.ID].HostCount, svc.RegistrarMapping[rar.ID].ContactCount))
+				// downgrade from error -> warning when no domains
+				msg := fmt.Sprintf("Registrar %s with GurID %d not found. Has no domains, but %d hosts and %d contacts", rar.Name, rar.GurID, info.HostCount, info.ContactCount)
+				svc.Analysis.Warnings = append(svc.Analysis.Warnings, msg)
+			} else {
+				// has domains: treat as blocking error
+				msg := fmt.Sprintf("Registrar %s with GurID %d not found. Has %d domains, %d hosts and %d contacts", rar.Name, rar.GurID, info.DomainCount, info.HostCount, info.ContactCount)
+				svc.Analysis.Errors = append(svc.Analysis.Errors, msg)
 			}
 			missing++
 			missingGurIDs = append(missingGurIDs, rar.GurID)
@@ -1155,8 +1172,6 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 			}
 			// update mapping
 			rarMap := svc.RegistrarMapping[rar.ID]
-			rarMap.Name = rar.Name
-			rarMap.GurID = rar.GurID
 			rarMap.RegistrarClID = responseRar.ClID
 			svc.RegistrarMapping[rar.ID] = rarMap
 			found++
