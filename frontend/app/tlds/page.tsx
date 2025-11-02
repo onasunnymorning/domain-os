@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
+import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
 import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
 import { Button } from '@/components/ui/button';
@@ -90,6 +91,19 @@ export default function TLDsPage() {
   };
 
   const tlds = data?.Data || [];
+
+  // Lightweight, per-row async cell for domain count
+  function DomainCountCell({ tldName }: { tldName: string }) {
+    const { data, isLoading, isError } = useDomainCount({ tld_equals: tldName });
+    if (isLoading) return <Skeleton className="h-4 w-10 inline-block" />;
+    if (isError) return <span className="text-muted-foreground">—</span>;
+    const count = data?.Count;
+    return (
+      <span title={data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : undefined}>
+        {typeof count === 'number' ? count.toString() : '—'}
+      </span>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -254,7 +268,7 @@ export default function TLDsPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Unicode Name</TableHead>
+                      <TableHead>Domains</TableHead>
                       <TableHead>Registry Operator</TableHead>
                       <TableHead>DNS</TableHead>
                       <TableHead>Escrow Import</TableHead>
@@ -269,7 +283,7 @@ export default function TLDsPage() {
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
                         onClick={() => router.push(`/tlds/${tld.Name}`)}
                       >
-                        <TableCell className="font-medium">{tld.Name}</TableCell>
+                        <TableCell className="font-medium" title={tld.UName || undefined}>{tld.Name}</TableCell>
                         <TableCell>
                           <Badge variant={getTypeBadgeVariant(tld.Type)}>
                             {tld.Type === 'generic' && 'gTLD'}
@@ -278,11 +292,7 @@ export default function TLDsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {tld.UName ? (
-                            <span className="text-muted-foreground">{tld.UName}</span>
-                          ) : (
-                            <span className="text-muted-foreground italic">-</span>
-                          )}
+                          <DomainCountCell tldName={tld.Name} />
                         </TableCell>
                         <TableCell>{tld.RyID}</TableCell>
                         <TableCell>
