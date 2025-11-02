@@ -27,6 +27,8 @@ export interface EscrowRunItem {
   analysisUrl?: string;
   registrarMappingUrl?: string;
   registrarMappingJsonUrl?: string;
+  sqliteDbUrl?: string;
+  importEventsUrl?: string;
   artifacts?: Record<string, string>;
 }
 
