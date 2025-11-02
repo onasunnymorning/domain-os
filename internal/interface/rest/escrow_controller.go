@@ -66,6 +66,8 @@ type EscrowRunItem struct {
 	AnalysisURL          string `json:"analysisUrl,omitempty"`
 	RegistrarMappingURL  string `json:"registrarMappingUrl,omitempty"`
 	RegistrarMappingJSON string `json:"registrarMappingJsonUrl,omitempty"`
+	SQLiteDbURL          string `json:"sqliteDbUrl,omitempty"`
+	ImportEventsURL      string `json:"importEventsUrl,omitempty"`
 }
 
 // EscrowImportListResponse is the envelope returned by ListImports
@@ -346,6 +348,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 
 		// Discover key artifacts under this run prefix
 		var analysisKey, regCsvKey, regJsonKey string
+		var sqliteDbKey, importEventsKey string
 		for _, kk := range keys {
 			if strings.HasPrefix(kk, rp+"/") {
 				lower := strings.ToLower(kk)
@@ -355,6 +358,11 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 					regCsvKey = kk
 				} else if strings.HasSuffix(lower, "-registrarmapping.json") || strings.HasSuffix(lower, "-registrar-map.json") {
 					regJsonKey = kk
+				} else if strings.HasSuffix(lower, ".db") && sqliteDbKey == "" {
+					// capture the first .db under this run prefix (expected: <base>.db)
+					sqliteDbKey = kk
+				} else if strings.HasSuffix(lower, "/import-events.json") {
+					importEventsKey = kk
 				}
 			}
 		}
@@ -388,6 +396,12 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		}
 		if regJsonKey != "" {
 			item.RegistrarMappingJSON = joinURL(pub, bucket, regJsonKey)
+		}
+		if sqliteDbKey != "" {
+			item.SQLiteDbURL = joinURL(pub, bucket, sqliteDbKey)
+		}
+		if importEventsKey != "" {
+			item.ImportEventsURL = joinURL(pub, bucket, importEventsKey)
 		}
 
 		runs = append(runs, item)

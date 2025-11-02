@@ -11,12 +11,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, CheckCircle2, XCircle, Info } from 'lucide-react';
 import { presignUpload, startEscrowImport, listEscrowImports, EscrowRunItem } from '@/lib/api/escrow';
 import { apiClient } from '@/lib/api/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tldsApi, TLD } from '@/lib/api/tlds';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useTLD } from '@/lib/hooks/useTLDs';
+import { useRegistrar, useCreateRegistrar } from '@/lib/hooks/useRegistrars';
+import { useRegistryOperator } from '@/lib/hooks/useRegistryOperators';
+import { toast } from 'sonner';
+import { getRegistrarByClID } from '@/lib/api/registrars';
 
 export default function EscrowPage() {
   // Upload & start state
@@ -30,8 +35,10 @@ export default function EscrowPage() {
   const [tldOpen, setTldOpen] = useState(false);
   const [tldQuery, setTldQuery] = useState('');
 
-  // Runs state
-  const [filterTld, setFilterTld] = useState<string>('example');
+  // Runs filter state (no URL syncing to avoid confusion between tabs)
+  const [filterTld, setFilterTld] = useState<string>('');
+  const [runsTldOpen, setRunsTldOpen] = useState(false);
+  const [runsTldQuery, setRunsTldQuery] = useState('');
   const [runs, setRuns] = useState<EscrowRunItem[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState<string>('');
@@ -56,6 +63,8 @@ export default function EscrowPage() {
       cancelled = true;
     };
   }, [filterTld]);
+
+  // Intentionally no URL syncing for runs filter to keep page URL stable across tabs.
 
   // (optional) objectKey validation could go here if needed
 
@@ -120,6 +129,110 @@ export default function EscrowPage() {
   }
 
   // No manual start; workflow auto-starts after upload completes
+  // Readiness checks for Upload & Start: require escrow imports enabled and two registrars
+  const { data: tldInfo, isLoading: tldInfoLoading } = useTLD(tld || '');
+  const clid9999 = tld ? `9999-${tld}` : '';
+  const clid9998 = tld ? `9998-${tld}` : '';
+  const { data: reg9999, isLoading: reg9999Loading, isError: reg9999Error } = useRegistrar(clid9999, !!tld);
+  const { data: reg9998, isLoading: reg9998Loading, isError: reg9998Error } = useRegistrar(clid9998, !!tld);
+  const escrowEnabled = !!tld && !!tldInfo?.AllowEscrowImport;
+  const has9999 = !!tld && !!reg9999 && !reg9999Error && reg9999?.ClID === clid9999;
+  const has9998 = !!tld && !!reg9998 && !reg9998Error && reg9998?.ClID === clid9998;
+  const checksLoading = !!tld && (tldInfoLoading || reg9999Loading || reg9998Loading);
+  const readyToUpload = !!tld && escrowEnabled && has9999 && has9998 && !checksLoading;
+
+  // Registry Operator for selected TLD (for email)
+  const ryid = tldInfo?.RyID || '';
+  const { data: registryOperator, isLoading: roLoading } = useRegistryOperator(ryid);
+  const { mutateAsync: createRegistrarMutate, isPending: creatingRegistrar } = useCreateRegistrar();
+  const queryClient = useQueryClient();
+
+  async function handleCreateMissingRegistrars() {
+    if (!tld) return;
+    const email = registryOperator?.Email;
+    if (!email) {
+      toast.error('Registry Operator email not available');
+      return;
+    }
+    const payloads: any[] = [];
+    if (!has9999) {
+      payloads.push({
+        ClID: clid9999,
+        Name: `${tld.toUpperCase()} NoBill RO Registrar`,
+        NickName: `${tld.toUpperCase()} NoBill RO Registrar`,
+        Email: email,
+        Status: 'ok',
+        IANAStatus: 'Reserved',
+        PostalInfo: [
+          {
+            Type: 'int',
+            Address: { City: 'Mancora', CC: 'PE' },
+          },
+        ],
+      });
+    }
+    if (!has9998) {
+      payloads.push({
+        ClID: clid9998,
+        Name: `${tld.toUpperCase()} Bill RO Registrar`,
+        NickName: `${tld.toUpperCase()} Bill RO Registrar`,
+        Email: email,
+        Status: 'ok',
+        IANAStatus: 'Reserved',
+        PostalInfo: [
+          {
+            Type: 'int',
+            Address: { City: 'Mancora', CC: 'PE' },
+          },
+        ],
+      });
+    }
+    if (payloads.length === 0) return;
+
+    try {
+      for (const p of payloads) {
+        await createRegistrarMutate(p);
+      }
+      // Explicitly verify creations (up to 3 quick retries for eventual consistency)
+      const verify = async (clid: string) => {
+        for (let i = 0; i < 3; i++) {
+          try {
+            const r = await getRegistrarByClID(clid);
+            if (r?.ClID === clid) return true;
+          } catch {}
+          await new Promise((res) => setTimeout(res, 250));
+        }
+        return false;
+      };
+
+      let ok9999 = true;
+      let ok9998 = true;
+      if (!has9999) ok9999 = await verify(clid9999);
+      if (!has9998) ok9998 = await verify(clid9998);
+
+      // Refresh per-registrar queries used by readiness checks
+      if (!has9999) {
+        await queryClient.invalidateQueries({ queryKey: ['registrar', clid9999] });
+        await queryClient.refetchQueries({ queryKey: ['registrar', clid9999] });
+      }
+      if (!has9998) {
+        await queryClient.invalidateQueries({ queryKey: ['registrar', clid9998] });
+        await queryClient.refetchQueries({ queryKey: ['registrar', clid9998] });
+      }
+
+      if (ok9999 && ok9998) {
+        toast.success('Created missing registrars');
+      } else {
+        const missing: string[] = [];
+        if (!ok9999) missing.push(clid9999);
+        if (!ok9998) missing.push(clid9998);
+        toast.error(`Creation verification failed for: ${missing.join(', ')}`);
+      }
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || 'Failed to create registrars';
+      toast.error(msg);
+    }
+  }
 
   return (
     <DashboardLayout>
@@ -162,6 +275,69 @@ export default function EscrowPage() {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  {/* Readiness checks appear once a TLD is selected */}
+                  {tld && (
+                    <div className="mt-2 space-y-2">
+                      <div className="text-sm text-muted-foreground">Readiness checks</div>
+                      <ul className="space-y-1">
+                        <li className="flex items-center gap-2 text-sm">
+                          {checksLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : escrowEnabled ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span>Escrow import enabled for .{tld}</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm">
+                          {checksLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : has9999 ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span>Registrar {clid9999} exists</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm">
+                          {checksLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : has9998 ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span>Registrar {clid9998} exists</span>
+                        </li>
+                      </ul>
+                      {!readyToUpload && !checksLoading && (
+                        <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                          <Info className="h-4 w-4 mt-0.5" />
+                          <div>
+                            Upload is disabled until all checks pass. Ensure escrow import is enabled and both system registrars exist.
+                          </div>
+                        </div>
+                      )}
+                      {/* Helper to create missing registrars */}
+                      {!!tld && ( !has9999 || !has9998 ) && (
+                        <div className="pt-1">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleCreateMissingRegistrars}
+                            disabled={creatingRegistrar || roLoading}
+                          >
+                            {creatingRegistrar || roLoading ? (
+                              <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Creating missing registrars…</span>
+                            ) : (
+                              `Create missing registrars`
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -171,9 +347,9 @@ export default function EscrowPage() {
                   <CardDescription>Upload the escrow artifact; we’ll start the workflow automatically</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} disabled={!tld} />
+                  <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} disabled={!tld || !readyToUpload} />
                   <div className="flex items-center gap-3">
-                    <Button onClick={handleUpload} disabled={!file || uploading || !tld}>
+                    <Button onClick={handleUpload} disabled={!file || uploading || !tld || !readyToUpload}>
                       {uploading ? (
                         <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</span>
                       ) : (
@@ -202,14 +378,26 @@ export default function EscrowPage() {
                 <CardDescription>Filtered by TLD</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-end gap-3">
-                  <div className="grid gap-2">
-                    <Label htmlFor="filter-tld">TLD</Label>
-                    <Input id="filter-tld" value={filterTld} onChange={(e) => setFilterTld(e.target.value)} placeholder="example" />
-                  </div>
-                  <Button variant="outline" onClick={() => setFilterTld(filterTld)} disabled={!filterTld.trim()}>
-                    Refresh
-                  </Button>
+                <div className="grid gap-2">
+                  <Label>TLD</Label>
+                  <Popover open={runsTldOpen} onOpenChange={setRunsTldOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-72 justify-between">
+                        {filterTld || 'Select TLD'}
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-96" align="start">
+                      <div className="space-y-2">
+                        <Input placeholder="Search tld..." value={runsTldQuery} onChange={(e) => setRunsTldQuery(e.target.value)} />
+                        <ScrollArea className="h-60">
+                          <div className="space-y-1">
+                            <TLDSearchList query={runsTldQuery} onSelect={(name) => { setFilterTld(name); setRunsTldOpen(false); }} />
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
@@ -222,17 +410,21 @@ export default function EscrowPage() {
                         <TableHead>Summary</TableHead>
                         <TableHead>Run Report</TableHead>
                         <TableHead>Analysis</TableHead>
+                        <TableHead>SQLite DB</TableHead>
+                        <TableHead>Import Events</TableHead>
                         <TableHead>Mapping</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loadingRuns ? (
                         <TableRow>
-                          <TableCell colSpan={6}>Loading…</TableCell>
+                          <TableCell colSpan={8}>Loading…</TableCell>
                         </TableRow>
+                      ) : !filterTld.trim() ? (
+                        null
                       ) : runs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6}>No runs</TableCell>
+                          <TableCell colSpan={8}>No runs</TableCell>
                         </TableRow>
                       ) : (
                         runs.map((r) => (
@@ -260,6 +452,20 @@ export default function EscrowPage() {
                             <TableCell>
                               {r.analysisUrl ? (
                                 <a className="text-primary underline" href={r.analysisUrl} target="_blank" rel="noreferrer">analysis.json</a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {r.sqliteDbUrl ? (
+                                <a className="text-primary underline" href={r.sqliteDbUrl} target="_blank" rel="noreferrer">sqlite.db</a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {r.importEventsUrl ? (
+                                <a className="text-primary underline" href={r.importEventsUrl} target="_blank" rel="noreferrer">import-events.json</a>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}

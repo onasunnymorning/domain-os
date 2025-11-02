@@ -62,6 +62,31 @@ export const tldsApi = {
     const { data } = await apiClient.post('/tlds', tld);
     return data;
   },
+
+  // Note: Backend doesn't expose a generic PUT /tlds/{name} endpoint.
+  // For now, we support toggling AllowEscrowImport via status endpoints
+  // and then refetch the TLD to return the latest state.
+  update: async (name: string, body: Partial<Pick<TLD, 'AllowEscrowImport' | 'EnableDNS' | 'RyID' | 'UName'>>) => {
+    const encoded = encodeURIComponent(name);
+
+    // Handle AllowEscrowImport toggle via status endpoints
+    if (typeof body.AllowEscrowImport === 'boolean') {
+      const statusPath = `/tlds/${encoded}/status/AllowEscrowImport`;
+      if (body.AllowEscrowImport) {
+        await apiClient.post(statusPath);
+      } else {
+        await apiClient.delete(statusPath);
+      }
+    }
+
+    // Currently there is no REST endpoint to update EnableDNS/RyID/UName.
+    // We ignore these fields for now to avoid sending unsupported requests.
+    // When backend adds endpoints, wire them here.
+
+    // Always return the latest TLD after any operation above
+    const { data } = await apiClient.get(`/tlds/${encoded}`);
+    return data as TLD;
+  },
   
   delete: async (name: string) => {
     const { data } = await apiClient.delete(`/tlds/${name}`);

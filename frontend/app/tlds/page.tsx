@@ -257,6 +257,7 @@ export default function TLDsPage() {
                       <TableHead>Unicode Name</TableHead>
                       <TableHead>Registry Operator</TableHead>
                       <TableHead>DNS</TableHead>
+                      <TableHead>Escrow Import</TableHead>
                       <TableHead>Active Phases</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -286,6 +287,15 @@ export default function TLDsPage() {
                         <TableCell>{tld.RyID}</TableCell>
                         <TableCell>
                           {tld.EnableDNS ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Enabled
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Disabled</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {tld.AllowEscrowImport ? (
                             <Badge variant="secondary" className="bg-green-100 text-green-800">
                               Enabled
                             </Badge>
