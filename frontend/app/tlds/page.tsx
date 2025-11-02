@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
+import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
 import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
 import { Button } from '@/components/ui/button';
@@ -29,11 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Globe, Plus, Trash2, Eye, Search, X } from 'lucide-react';
-import Link from 'next/link';
+import { Globe, Plus, Trash2, Search, X } from 'lucide-react';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 
 export default function TLDsPage() {
+  return (
+    <Suspense fallback={<div />}> 
+      <TLDsPageInner />
+    </Suspense>
+  );
+}
+
+function TLDsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
@@ -90,6 +98,19 @@ export default function TLDsPage() {
   };
 
   const tlds = data?.Data || [];
+
+  // Lightweight, per-row async cell for domain count
+  function DomainCountCell({ tldName }: { tldName: string }) {
+    const { data, isLoading, isError } = useDomainCount({ tld_equals: tldName });
+    if (isLoading) return <Skeleton className="h-4 w-10 inline-block" />;
+    if (isError) return <span className="text-muted-foreground">—</span>;
+    const count = data?.Count;
+    return (
+      <span title={data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : undefined}>
+        {typeof count === 'number' ? count.toString() : '—'}
+      </span>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -254,9 +275,10 @@ export default function TLDsPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Unicode Name</TableHead>
+                      <TableHead>Domains</TableHead>
                       <TableHead>Registry Operator</TableHead>
                       <TableHead>DNS</TableHead>
+                      <TableHead>Escrow Import</TableHead>
                       <TableHead>Active Phases</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -268,7 +290,7 @@ export default function TLDsPage() {
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
                         onClick={() => router.push(`/tlds/${tld.Name}`)}
                       >
-                        <TableCell className="font-medium">{tld.Name}</TableCell>
+                        <TableCell className="font-medium" title={tld.UName || undefined}>{tld.Name}</TableCell>
                         <TableCell>
                           <Badge variant={getTypeBadgeVariant(tld.Type)}>
                             {tld.Type === 'generic' && 'gTLD'}
@@ -277,15 +299,20 @@ export default function TLDsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {tld.UName ? (
-                            <span className="text-muted-foreground">{tld.UName}</span>
-                          ) : (
-                            <span className="text-muted-foreground italic">-</span>
-                          )}
+                          <DomainCountCell tldName={tld.Name} />
                         </TableCell>
                         <TableCell>{tld.RyID}</TableCell>
                         <TableCell>
                           {tld.EnableDNS ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Enabled
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Disabled</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {tld.AllowEscrowImport ? (
                             <Badge variant="secondary" className="bg-green-100 text-green-800">
                               Enabled
                             </Badge>

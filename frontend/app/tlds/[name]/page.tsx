@@ -164,6 +164,11 @@ export default function TLDDetailPage({ params }: Props) {
               </AlertDialogContent>
             </AlertDialog>
           )}
+          {!isLoading && tld && (
+            <Button size="sm" asChild className="ml-2">
+              <Link href={`/tlds/${encodeURIComponent(tld.Name)}/edit`}>Edit</Link>
+            </Button>
+          )}
         </div>
 
         {/* Hero Section */}
@@ -216,17 +221,15 @@ export default function TLDDetailPage({ params }: Props) {
                 {/* Status Grid */}
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS Enabled</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS</p>
                     <div>
                       {tld?.EnableDNS ? (
                         <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          <CheckCircle className="mr-1 h-3 w-3" />
-                          Yes
+                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
                         </Badge>
                       ) : (
                         <Badge variant="outline">
-                          <XCircle className="mr-1 h-3 w-3" />
-                          No
+                          <XCircle className="mr-1 h-3 w-3" /> Disabled
                         </Badge>
                       )}
                     </div>
@@ -236,9 +239,13 @@ export default function TLDDetailPage({ params }: Props) {
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
                     <div>
                       {tld?.AllowEscrowImport ? (
-                        <Badge variant="secondary">Allowed</Badge>
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
+                        </Badge>
                       ) : (
-                        <Badge variant="outline">Not Allowed</Badge>
+                        <Badge variant="outline">
+                          <XCircle className="mr-1 h-3 w-3" /> Disabled
+                        </Badge>
                       )}
                     </div>
                   </div>

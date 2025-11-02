@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -38,6 +38,14 @@ import Link from "next/link";
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
 
 export default function DomainsPage() {
+  return (
+    <Suspense fallback={<div />}> 
+      <DomainsPageInner />
+    </Suspense>
+  );
+}
+
+function DomainsPageInner() {
   // Routing & query syncing
   const router = useRouter();
   const pathname = usePathname();

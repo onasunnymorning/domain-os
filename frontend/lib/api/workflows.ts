@@ -9,6 +9,7 @@ export interface WorkflowStartResponse {
   workflowId: string;
   runId: string;
   status: string; // e.g., "started"
+  url?: string;   // deep link to Temporal UI for this run (if provided by backend)
 }
 
 /**
