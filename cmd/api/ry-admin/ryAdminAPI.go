@@ -307,7 +307,10 @@ func main() {
 
 	// Configure CORS middleware
 	config := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"}, // Add your frontend URL here
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3002"}, // Add your frontend URLs here
+		AllowOriginFunc: func(origin string) bool {
+			return true // Allow all origins for local development
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
