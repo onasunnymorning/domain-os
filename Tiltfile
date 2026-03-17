@@ -54,6 +54,9 @@ dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 # Start Next.js frontend native development server
 local_resource(
     'frontend',
-    serve_cmd='cd frontend && PORT=3002 npm run dev',
+    serve_cmd='cd frontend && ' +
+              'NEXT_PUBLIC_API_URL="http://localhost:${API_PORT:-8080}" ' +
+              'NEXT_PUBLIC_API_TOKEN="${ADMIN_TOKEN:-devtoken}" ' +
+              'PORT=3002 npm run dev',
     labels=["frontend"]
 )
