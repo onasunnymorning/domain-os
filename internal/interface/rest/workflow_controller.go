@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -31,6 +32,7 @@ func NewWorkflowController(e *gin.Engine, handler gin.HandlerFunc) *WorkflowCont
 	grp := e.Group("/workflows", handler)
 	{
 		grp.POST("/registrars/sync", controller.StartRegistrarSync)
+		grp.POST("/tlds/:tldName/cleanup", controller.StartTLDCleanup)
 	}
 	return controller
 }
@@ -93,5 +95,79 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		RunID:      we.GetRunID(),
 		Status:     "started",
 		URL:        workflowLink,
+	})
+}
+type startTLDCleanupRequest struct {
+	KeepTLDAndPhases bool `json:"keepTLDAndPhases"`
+}
+
+// StartTLDCleanup starts the TLDCleanupWorkflow in Temporal
+// @Summary Start TLD cleanup workflow
+// @Description Triggers a background Temporal workflow to safely delete a TLD and its assets
+// @Tags Workflows
+// @Produce json
+// @Param tldName path string true "TLD Name"
+// @Param request body startTLDCleanupRequest true "Options"
+// @Success 202 {object} startWorkflowResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /workflows/tlds/{tldName}/cleanup [post]
+func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
+	name := ctx.Param("tldName")
+
+	var req startTLDCleanupRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		// If empty body is sent, default should be false anyway
+		req.KeepTLDAndPhases = false
+	}
+
+	cfg := temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		// TLD cleanup is heavy and similar to escrow, run it on the escrow queue
+		WorkerQueue: os.Getenv("ESCROW_QUEUE"), 
+	}
+	if cfg.WorkerQueue == "" {
+		cfg.WorkerQueue = "escrow-import"
+	}
+
+	cli, err := temporal.GetTemporalClient(cfg)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to workflow service: " + err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	wfID := fmt.Sprintf("tld-cleanup-%s-%s", name, time.Now().Format("20060102-150405"))
+
+	params := workflows.TLDCleanupParams{
+		TLD:              name,
+		KeepTLDAndPhases: req.KeepTLDAndPhases,
+	}
+
+	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        wfID,
+		TaskQueue: cfg.WorkerQueue,
+	}, workflows.TLDCleanupWorkflow, params)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start cleanup workflow: " + err.Error()})
+		return
+	}
+
+	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
+	if temporalUIBase == "" {
+		temporalUIBase = "http://localhost:8081"
+	}
+	link := temporalUIBase + "/namespaces/" + cfg.Namespace + "/workflows/" + we.GetID() + "/" + we.GetRunID()
+
+	ctx.JSON(http.StatusAccepted, startWorkflowResponse{
+		WorkflowID: we.GetID(),
+		RunID:      we.GetRunID(),
+		Status:     "started",
+		URL:        link,
 	})
 }
