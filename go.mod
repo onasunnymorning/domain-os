@@ -7,6 +7,7 @@ require (
 	github.com/THREATINT/go-net v1.2.37
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/apex/gateway v1.1.2
+	github.com/auth0/go-jwt-middleware/v2 v2.3.1
 	github.com/beevik/etree v1.5.0
 	github.com/biter777/countries v1.7.2
 	github.com/brianvoe/gofakeit/v7 v7.2.1
@@ -16,6 +17,7 @@ require (
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-contrib/zap v1.1.4
 	github.com/gin-gonic/gin v1.10.0
+	github.com/go-pg/pg/v10 v10.15.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lib/pq v1.10.9
@@ -41,10 +43,12 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/zsais/go-gin-prometheus v0.1.0
 	gitlab.com/internetstiftelsen-oss/epp-lib v0.3.0
+	go.temporal.io/api v1.43.0
 	go.temporal.io/sdk v1.31.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.47.0
 	gorm.io/driver/postgres v1.5.4
+	gorm.io/driver/sqlite v1.5.4
 	gorm.io/gorm v1.25.5
 	modernc.org/sqlite v1.39.0
 )
@@ -54,7 +58,6 @@ require (
 	github.com/PuerkitoBio/purell v1.2.1 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/auth0/go-jwt-middleware/v2 v2.3.1 // indirect
 	github.com/aws/aws-lambda-go v1.17.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/sonic v1.12.1 // indirect
@@ -78,7 +81,6 @@ require (
 	github.com/go-openapi/jsonreference v0.20.4 // indirect
 	github.com/go-openapi/spec v0.20.14 // indirect
 	github.com/go-openapi/swag v0.22.9 // indirect
-	github.com/go-pg/pg/v10 v10.15.0 // indirect
 	github.com/go-pg/zerochecker v0.2.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -107,6 +109,7 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
@@ -143,7 +146,6 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.59.0 // indirect
 	go.opentelemetry.io/otel v1.34.0 // indirect
-	go.temporal.io/api v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.9.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect

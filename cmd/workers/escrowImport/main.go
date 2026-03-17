@@ -26,11 +26,20 @@ func main() {
 
 	w := worker.New(cli, cfg.WorkerQueue, worker.Options{})
 
-	// Register escrow import workflow and activities
-	// Register escrow import workflow and activities
+	tldActs, err := activities.NewTLDCleanupActivities()
+	if err != nil {
+		log.Fatalln("unable to initialize TLD cleanup activities", err)
+	}
+
 	w.RegisterWorkflow(workflows.EscrowStagingWorkflow)
 	w.RegisterWorkflow(workflows.EscrowIngestionWorkflow)
+	w.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+
 	w.RegisterActivity(&activities.EscrowImportActivities{})
+	w.RegisterActivity(tldActs.CheckTLDCanBeDeleted)
+	w.RegisterActivity(tldActs.PlanTLDCleanup)
+	w.RegisterActivity(tldActs.BackupTLDAssets)
+	w.RegisterActivity(tldActs.DeleteTLDAssets)
 
 	if err := w.Run(worker.InterruptCh()); err != nil {
 		log.Fatalln("unable to start Worker", err)

@@ -169,3 +169,25 @@ func (s *S3Client) UploadString(ctx context.Context, key, content string) error 
 	_, err := s.client.PutObject(ctx, s.bucket, key, reader, int64(reader.Len()), minio.PutObjectOptions{ContentType: "text/plain"})
 	return err
 }
+
+// UploadStream uploads an io.Reader stream to the bucket at the given key.
+// It uses multipart upload since the size is unknown (-1).
+func (s *S3Client) UploadStream(ctx context.Context, key string, reader io.Reader, contentType string) error {
+	// minio-go requires part size when total size is -1
+	opts := minio.PutObjectOptions{
+		ContentType: contentType,
+		PartSize:    10 * 1024 * 1024, // 10MB parts
+	}
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, -1, opts)
+	return err
+}
+
+// DownloadStream returns an io.ReadCloser for the given key's object data.
+func (s *S3Client) DownloadStream(ctx context.Context, key string) (io.ReadCloser, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Note: It's the caller's responsibility to close the returned io.ReadCloser
+	return obj, nil
+}

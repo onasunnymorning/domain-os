@@ -10,26 +10,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+
 import { ArrowLeft, Globe, Trash2, CheckCircle, XCircle, Calendar, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import type { RegistrarListItem, RegistrarListParams } from '@/lib/types/registrar';
+import { toast } from 'sonner';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -69,14 +61,49 @@ export default function TLDDetailPage({ params }: Props) {
   const [confirmText, setConfirmText] = useState('');
   const [deaccError, setDeaccError] = useState<string | null>(null);
 
+  // Delete TLD Modal state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [keepTLDAndPhases, setKeepTLDAndPhases] = useState(false);
+
+  const hasActiveOrFuturePhases = useMemo(() => {
+    if (!tld?.Phases || !Array.isArray(tld.Phases)) return false;
+    const now = new Date();
+    return tld.Phases.some((phase: any) => {
+      if (!phase.startDate) return false;
+      const start = new Date(phase.startDate);
+      // Future Phase
+      if (start > now) return true;
+      // Active Phase (started, has no end or end is in future)
+      if (!phase.endDate) return true;
+      const end = new Date(phase.endDate);
+      if (end >= now) return true;
+      return false; // Past phase
+    });
+  }, [tld]);
+
   // Scroll to top when the page loads
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [name]);
 
   const handleDelete = () => {
-    deleteTLD(name, {
-      onSuccess: () => {
+    deleteTLD({ name, keepTLDAndPhases }, {
+      onSuccess: (data: any) => {
+        setDeleteOpen(false);
+        setDeleteConfirmText('');
+        setKeepTLDAndPhases(false);
+        if (data?.url) {
+          toast.success(`Cleanup workflow started for ${tldName}`, {
+            action: {
+              label: 'View in Temporal',
+              onClick: () => window.open(data.url, '_blank'),
+            },
+            duration: 10000,
+          });
+        } else {
+          toast.success(`Cleanup workflow started for ${tldName}`);
+        }
         router.push('/tlds');
       },
     });
@@ -135,37 +162,65 @@ export default function TLDDetailPage({ params }: Props) {
               Back
             </Link>
           </Button>
-          {!isLoading && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" disabled={isDeleting}>
+          {!isLoading && tld && (
+            <>
+              <Dialog open={deleteOpen} onOpenChange={(val) => { setDeleteOpen(val); if (!val) setDeleteConfirmText(''); }}>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  disabled={isDeleting || hasActiveOrFuturePhases}
+                  title={hasActiveOrFuturePhases ? "TLDs with active or future phases cannot be deleted." : "Delete TLD"}
+                  onClick={() => setDeleteOpen(true)}
+                >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete TLD
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete the TLD &quot;{tld?.Name}&quot; and all associated data.
-                    This action cannot be undone.
-                    <br /><br />
-                    <strong>Note:</strong> TLDs with active phases cannot be deleted.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          {!isLoading && tld && (
-            <Button size="sm" asChild className="ml-2">
-              <Link href={`/tlds/${encodeURIComponent(tld.Name)}/edit`}>Edit</Link>
-            </Button>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete TLD {tld.Name}</DialogTitle>
+                    <DialogDescription>
+                      This will cleanly orchestrate the deletion of TLD &quot;{tld.Name}&quot; and all of its associated orphaned metadata, domains, contacts, and hosts by starting a background Temporal workflow. This action is carefully executed but cannot be undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="flex items-center space-x-2 border rounded-md p-3 bg-muted/30">
+                      <Checkbox 
+                        id="keep-tld" 
+                        checked={keepTLDAndPhases}
+                        onCheckedChange={(c) => setKeepTLDAndPhases(!!c)}
+                      />
+                      <label htmlFor="keep-tld" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        Keep TLD and Phases (preserve base metadata for import retry)
+                      </label>
+                    </div>
+                    <p className="text-sm font-medium">
+                      Please type <span className="font-mono text-destructive select-all">delete {tld.Name}</span> to confirm.
+                    </p>
+                    <Input
+                      autoFocus
+                      placeholder={`delete ${tld.Name}`}
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={isDeleting}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={handleDelete} 
+                      disabled={isDeleting || deleteConfirmText !== `delete ${tld.Name}`}
+                    >
+                      {isDeleting ? 'Starting workflow...' : 'Confirm Deletion'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button size="sm" asChild className="ml-2">
+                <Link href={`/tlds/${encodeURIComponent(tld.Name)}/edit`}>Edit</Link>
+              </Button>
+            </>
           )}
         </div>
 

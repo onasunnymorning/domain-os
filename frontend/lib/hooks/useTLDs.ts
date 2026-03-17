@@ -53,19 +53,18 @@ export function useCreateTLD() {
   });
 }
 
-// Delete TLD
+// Delete TLD triggers the deletion workflow
 export function useDeleteTLD() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (name: string) => tldsApi.delete(name),
+    mutationFn: ({ name, keepTLDAndPhases }: { name: string, keepTLDAndPhases: boolean }) => tldsApi.triggerCleanup(name, keepTLDAndPhases),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tlds'] });
       queryClient.invalidateQueries({ queryKey: ['tlds-count'] });
-      toast.success('TLD deleted successfully');
     },
     onError: (error: any) => {
-      const message = error.response?.data?.error || 'Failed to delete TLD';
+      const message = error.response?.data?.error || 'Failed to trigger TLD deletion workflow';
       toast.error(message);
     },
   });
