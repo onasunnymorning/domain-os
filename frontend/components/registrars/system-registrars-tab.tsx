@@ -61,11 +61,8 @@ export function SystemRegistrarsTab() {
     };
     const q = (debouncedQuery || "").trim();
     if (q) {
-      // Always perform fuzzy search by name and ClID for better UX
+      // Filter by name only as requested to avoid overly restrictive AND filtering in backend
       params.name_like = q;
-      params.clid_like = q;
-      // Note: We intentionally avoid switching to gurid_equals-only on numeric input
-      // to preserve fuzzy search behavior highlighted by product feedback.
     }
     if (statusFilter && statusFilter !== "all") {
       // Backend stores registrar status in lowercase (ok, readonly, terminated)

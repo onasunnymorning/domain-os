@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -56,10 +56,8 @@ export default function TLDDetailPage({ params }: Props) {
     const p: RegistrarListParams = { pagesize: 20 };
     const q = (debounced || '').trim();
     if (q) {
-      // Always search by name and ClID for a consistent fuzzy experience
+      // Filter by name only as requested to avoid overly restrictive AND filtering in backend
       p.name_like = q;
-      p.clid_like = q;
-      // Avoid switching to gurid_equals-only on numeric input.
     }
     return p;
   }, [debounced]);
@@ -210,8 +208,8 @@ export default function TLDDetailPage({ params }: Props) {
                     <Building2 className="h-3 w-3" />
                     Registry Operator
                   </p>
-                  <Link 
-                    href={`/registry-operators/${tld?.RyID}`} 
+                  <Link
+                    href={`/registry-operators/${tld?.RyID}`}
                     className="text-lg font-medium text-primary hover:underline inline-block"
                   >
                     {tld?.RyID}
@@ -285,7 +283,7 @@ export default function TLDDetailPage({ params }: Props) {
           <CardContent>
             {regAccLoading ? (
               <div className="space-y-2">
-                {[1,2,3,4].map(i => (
+                {[1, 2, 3, 4].map(i => (
                   <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
@@ -459,8 +457,8 @@ export default function TLDDetailPage({ params }: Props) {
 
         {/* Phase Timeline */}
         {!isLoading && tld && (
-          <PhaseTimeline 
-            tldName={tld.Name} 
+          <PhaseTimeline
+            tldName={tld.Name}
             initialPhaseName={phaseName || undefined}
           />
         )}

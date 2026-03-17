@@ -50,7 +50,7 @@ RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/internal/domain
 # build binary
 WORKDIR /
 ARG GIT_SHA
-RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI /cmd/api/ry-admin/ryAdminAPI.go
+RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI ./cmd/api/ry-admin
 # RUN upx --brute /ryAdminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 

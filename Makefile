@@ -40,7 +40,7 @@ dev-build: ## Rebuild and start essential services
 
 dev-frontend: ## Start the Next.js frontend development server
 	@echo "Starting frontend development server..."
-	@cd frontend && npm run dev
+	@cd frontend && $(DOPPLER) npm run dev
 
 stop: ## Stop all running services
 	@echo "Stopping all services..."

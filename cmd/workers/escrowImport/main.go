@@ -27,7 +27,9 @@ func main() {
 	w := worker.New(cli, cfg.WorkerQueue, worker.Options{})
 
 	// Register escrow import workflow and activities
-	w.RegisterWorkflow(workflows.EscrowImportWorkflow)
+	// Register escrow import workflow and activities
+	w.RegisterWorkflow(workflows.EscrowStagingWorkflow)
+	w.RegisterWorkflow(workflows.EscrowIngestionWorkflow)
 	w.RegisterActivity(&activities.EscrowImportActivities{})
 
 	if err := w.Run(worker.InterruptCh()); err != nil {

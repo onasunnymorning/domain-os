@@ -6,7 +6,6 @@ package workflows
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -25,11 +24,10 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 	// Set envars
-	apiHost := os.Getenv("API_HOST")
-	apiPort := os.Getenv("API_PORT")
-	bearerToken := "Bearer " + os.Getenv("ADMIN_TOKEN")
-	baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
-	logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
+	// apiHost := os.Getenv("API_HOST")
+	// apiPort := os.Getenv("API_PORT")
+	// baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
+	// logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
 
 	// Get the workflow ID
 	workflowID := getWorkflowID(ctx)
@@ -81,7 +79,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 		}
 		// Get the IANA registrars
 		var ianaRars []entities.IANARegistrar
-		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &ianaRars)
+		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchsize).Get(ctx, &ianaRars)
 		if ianaRarErr != nil {
 			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		}
@@ -111,7 +109,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// First get the IANA registrars
 	var ianaRars []entities.IANARegistrar
-	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &ianaRars)
+	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchsize).Get(ctx, &ianaRars)
 	if ianaRarErr != nil {
 		logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
 		return ianaRarErr
@@ -119,7 +117,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 
 	// Get our existing registrars
 	var rars []entities.RegistrarListItem
-	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID, baseURL, bearerToken, batchsize).Get(ctx, &rars)
+	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID, batchsize).Get(ctx, &rars)
 	if rarsErr != nil {
 		logger.Error(fmt.Sprintf("failed to get registrar list items: %v", rarsErr))
 		return rarsErr

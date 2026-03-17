@@ -106,30 +106,14 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 	}
 
 	// Add filters
+	var err error
 	if params.Filter != nil {
 		// cast interface to ListDomainsQueryFilter
 		if f, ok := params.Filter.(queries.ListHostsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
-			if f.RoidGreaterThan != "" {
-				roidInt, err := getInt64RoidFromHostRoidString(f.RoidGreaterThan)
-				if err != nil {
-					return nil, "", err
-				}
-				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
-			}
-			if f.RoidLessThan != "" {
-				roidInt, err := getInt64RoidFromHostRoidString(f.RoidLessThan)
-				if err != nil {
-					return nil, "", err
-				}
-				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
-			}
-			if f.ClidEquals != "" {
-				dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
-			}
-			if f.NameLike != "" {
-				dbQuery = dbQuery.Where("name ILIKE ?", "%"+f.NameLike+"%")
+			if dbQuery, err = setHostFilters(dbQuery, f); err != nil {
+				return nil, "", err
 			}
 		}
 	}
@@ -139,7 +123,7 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 
 	// Execute the query
 	dbHosts := []*Host{}
-	err := dbQuery.Find(&dbHosts).Error
+	err = dbQuery.Find(&dbHosts).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -164,6 +148,44 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 	}
 
 	return hosts, newCursor, nil
+}
+
+func (r *HostRepository) Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error) {
+	var count int64
+
+	dbQuery := r.db.WithContext(ctx).Model(&Host{})
+
+	var err error
+	if dbQuery, err = setHostFilters(dbQuery, filter); err != nil {
+		return 0, err
+	}
+
+	err = dbQuery.Count(&count).Error
+	return count, err
+}
+
+func setHostFilters(dbQuery *gorm.DB, f queries.ListHostsFilter) (*gorm.DB, error) {
+	if f.RoidGreaterThan != "" {
+		roidInt, err := getInt64RoidFromHostRoidString(f.RoidGreaterThan)
+		if err != nil {
+			return nil, err
+		}
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+	}
+	if f.RoidLessThan != "" {
+		roidInt, err := getInt64RoidFromHostRoidString(f.RoidLessThan)
+		if err != nil {
+			return nil, err
+		}
+		dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+	}
+	if f.ClidEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+	}
+	if f.NameLike != "" {
+		dbQuery = dbQuery.Where("name ILIKE ?", "%"+f.NameLike+"%")
+	}
+	return dbQuery, nil
 }
 
 // GetHostAssociationCount returns the number of domains a host is associated with. This can be used to determine if a host needs the linked flag to be unset

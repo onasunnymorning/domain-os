@@ -15,14 +15,14 @@ import (
 )
 
 // GetIANARegistrars queries an API for all IANA registrars, following pagination links until there are no more.
-func GetIANARegistrars(correlationID, baseURL, bearerToken string, batchsize int) ([]entities.IANARegistrar, error) {
+func GetIANARegistrars(correlationID string, batchsize int) ([]entities.IANARegistrar, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	// Build the initial URL with query parameters (correlationID)
-	ENDPOINT := fmt.Sprintf("%s/ianaregistrars", baseURL)
+	ENDPOINT := fmt.Sprintf("%s/ianaregistrars", BASEURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
 		"pagesize":      strconv.Itoa(batchsize),
@@ -37,7 +37,7 @@ func GetIANARegistrars(correlationID, baseURL, bearerToken string, batchsize int
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchIANARegistrarsPage(context.Background(), client, currentURL, bearerToken)
+		apiResponse, err := fetchIANARegistrarsPage(context.Background(), client, currentURL, GetBearerToken())
 		if err != nil {
 			return nil, err
 		}
@@ -104,9 +104,19 @@ func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, b
 	// Unmarshal robustly: decode Meta directly and defer decoding Data to a typed slice.
 	// Some endpoints may return Data: null or omit Data entirely when empty; using a RawMessage
 	// prevents the interface{} field from being set to nil unexpectedly.
+	// Unmarshal robustly: decode Meta directly and defer decoding Data to a typed slice.
+	// Some endpoints may return Data: null or omit Data entirely when empty; using a RawMessage
+	// prevents the interface{} field from being set to nil unexpectedly.
+	// Also use localMeta to avoid interface unmarshal errors on Filter.
+	type localMeta struct {
+		PageSize   int         `json:"PageSize"`
+		PageCursor string      `json:"PageCursor"`
+		NextLink   string      `json:"NextLink"`
+		Filter     interface{} `json:"Filter"`
+	}
 	type pageEnvelope struct {
-		Meta response.PaginationMetaData `json:"Meta"`
-		Data json.RawMessage             `json:"Data"`
+		Meta localMeta       `json:"Meta"`
+		Data json.RawMessage `json:"Data"`
 	}
 
 	var env pageEnvelope
@@ -123,7 +133,14 @@ func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, b
 	}
 
 	// Reconstruct a ListItemResult compatible with callers expecting a pointer to slice
-	result := &response.ListItemResult{Meta: env.Meta}
+	result := &response.ListItemResult{
+		Meta: response.PaginationMetaData{
+			PageSize:   env.Meta.PageSize,
+			PageCursor: env.Meta.PageCursor,
+			NextLink:   env.Meta.NextLink,
+			// Filter ignored
+		},
+	}
 	result.Data = &registrars
 
 	return result, nil

@@ -24,7 +24,7 @@ func SyncIanaRegistrars(correlationID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Set("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

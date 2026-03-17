@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -145,4 +146,26 @@ func (s *S3Client) ListObjectKeys(ctx context.Context, prefix string, recursive 
 		}
 	}
 	return keys, nil
+}
+
+// DownloadToString downloads an object's content and returns it as a string
+func (s *S3Client) DownloadToString(ctx context.Context, key string) (string, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer obj.Close()
+
+	buf := new(strings.Builder)
+	if _, err := io.Copy(buf, obj); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// UploadString uploads a string content to the bucket at the given key
+func (s *S3Client) UploadString(ctx context.Context, key, content string) error {
+	reader := strings.NewReader(content)
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, int64(reader.Len()), minio.PutObjectOptions{ContentType: "text/plain"})
+	return err
 }
