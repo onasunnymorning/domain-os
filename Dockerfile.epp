@@ -2,7 +2,7 @@
 # Multi-stage build to keep the final image small
 
 # Stage 1: Build the EPP server binary
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.1-alpine3.21 AS builder
 
 WORKDIR /build
 
@@ -63,7 +63,7 @@ EXPOSE 700
 
 # Health check - verify EPP port is listening
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD nc -z localhost 700 || exit 1
+    CMD nc -z localhost 700 || exit 1
 
 # Run the EPP server
 CMD ["/app/epp-server"]

@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, Loader2, CheckCircle2, XCircle, Info } from 'lucide-react';
-import { presignUpload, startEscrowImport, listEscrowImports, EscrowRunItem } from '@/lib/api/escrow';
+import { presignUpload, startEscrowImport, listEscrowImports, startEscrowIngestion, EscrowRunItem } from '@/lib/api/escrow';
 import { apiClient } from '@/lib/api/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tldsApi, TLD } from '@/lib/api/tlds';
@@ -23,12 +23,18 @@ import { useRegistryOperator } from '@/lib/hooks/useRegistryOperators';
 import { toast } from 'sonner';
 import { getRegistrarByClID } from '@/lib/api/registrars';
 
+import { RegistrarOverrideForm } from '@/components/escrow/RegistrarOverrideForm';
+
+import { Switch } from '@/components/ui/switch';
+
 export default function EscrowPage() {
   // Upload & start state
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [objectKey, setObjectKey] = useState<string>('');
   const [tld, setTld] = useState<string>('');
+  const [registrarOverrides, setRegistrarOverrides] = useState<Record<string, string>>({});
+  const [importMode, setImportMode] = useState<'api' | 'direct_db'>('api');
   const [startStatus, setStartStatus] = useState<string>('');
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [workflowLink, setWorkflowLink] = useState<{ id: string; url?: string } | null>(null);
@@ -80,6 +86,13 @@ export default function EscrowPage() {
     if (!file) return;
     setUploading(true);
     setUploadStatus('');
+    // Prepare options
+    const options = {
+      mapRegistrars: true, // Legacy flag, mostly ignored by backend now but harmless
+      registrarOverrides,
+      importMode,
+    };
+
     try {
       const presign = await presignUpload(file.name);
       const putRes = await fetch(presign.url, {
@@ -93,7 +106,7 @@ export default function EscrowPage() {
       setObjectKey(presign.objectKey);
       // Auto start workflow on success
       try {
-        const res = await startEscrowImport({ tld, objectKey: presign.objectKey, options: { mapRegistrars: true } });
+        const res = await startEscrowImport({ tld, objectKey: presign.objectKey, options });
         setWorkflowLink({ id: res.workflowId, url: res.url });
         setStartStatus(`Started workflow ${res.workflowId}`);
       } catch (e: any) {
@@ -111,7 +124,7 @@ export default function EscrowPage() {
           setObjectKey(data.objectKey);
           setUploadStatus('Uploaded via proxy');
           try {
-            const res = await startEscrowImport({ tld, objectKey: data.objectKey, options: { mapRegistrars: true } });
+            const res = await startEscrowImport({ tld, objectKey: data.objectKey, options });
             setWorkflowLink({ id: res.workflowId, url: res.url });
             setStartStatus(`Started workflow ${res.workflowId}`);
           } catch (werr: any) {
@@ -160,6 +173,7 @@ export default function EscrowPage() {
         ClID: clid9999,
         Name: `${tld.toUpperCase()} NoBill RO Registrar`,
         NickName: `${tld.toUpperCase()} NoBill RO Registrar`,
+        GurID: 9999,
         Email: email,
         Status: 'ok',
         IANAStatus: 'Reserved',
@@ -176,6 +190,7 @@ export default function EscrowPage() {
         ClID: clid9998,
         Name: `${tld.toUpperCase()} Bill RO Registrar`,
         NickName: `${tld.toUpperCase()} Bill RO Registrar`,
+        GurID: 9998,
         Email: email,
         Status: 'ok',
         IANAStatus: 'Reserved',
@@ -199,7 +214,7 @@ export default function EscrowPage() {
           try {
             const r = await getRegistrarByClID(clid);
             if (r?.ClID === clid) return true;
-          } catch {}
+          } catch { }
           await new Promise((res) => setTimeout(res, 250));
         }
         return false;
@@ -320,7 +335,7 @@ export default function EscrowPage() {
                         </div>
                       )}
                       {/* Helper to create missing registrars */}
-                      {!!tld && ( !has9999 || !has9998 ) && (
+                      {!!tld && (!has9999 || !has9998) && (
                         <div className="pt-1">
                           <Button
                             variant="secondary"
@@ -341,12 +356,51 @@ export default function EscrowPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Optional: Registrar Overrides</CardTitle>
+                  <CardDescription>
+                    Map unknown registrars from the escrow file to system registrars manually.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RegistrarOverrideForm value={registrarOverrides} onChange={setRegistrarOverrides} disabled={uploading || !readyToUpload} />
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2">
                 <CardHeader>
                   <CardTitle>2) Upload Escrow File</CardTitle>
                   <CardDescription>Upload the escrow artifact; we’ll start the workflow automatically</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-2 border rounded-md bg-slate-50 dark:bg-slate-900/50">
+                    <div className="flex items-center space-x-2">
+                      <Switch id="import-mode" checked={importMode === 'direct_db'} onCheckedChange={(c) => setImportMode(c ? 'direct_db' : 'api')} />
+                      <Label htmlFor="import-mode" className="cursor-pointer">Direct DB Import</Label>
+                    </div>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="end">
+                        <div className="space-y-3">
+                          <h4 className="font-medium leading-none">Import Mode Selection</h4>
+                          <div className="text-sm text-muted-foreground space-y-2">
+                            <p>
+                              <span className="font-semibold text-foreground">Direct DB:</span> High-speed import that streams data directly to the database using bulk operations. Recommended for large initial migrations.
+                            </p>
+                            <p>
+                              <span className="font-semibold text-foreground">API (Standard):</span> Imports via the Admin API. Slower (approx 50x) but strictly validates all logic through the application layer.
+                            </p>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
                   <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} disabled={!tld || !readyToUpload} />
                   <div className="flex items-center gap-3">
                     <Button onClick={handleUpload} disabled={!file || uploading || !tld || !readyToUpload}>
@@ -407,84 +461,92 @@ export default function EscrowPage() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Workflow ID</TableHead>
-                        <TableHead>Summary</TableHead>
-                        <TableHead>Run Report</TableHead>
+                        <TableHead>Stage</TableHead>
                         <TableHead>Analysis</TableHead>
-                        <TableHead>SQLite DB</TableHead>
-                        <TableHead>Import Events</TableHead>
-                        <TableHead>Mapping</TableHead>
+                        <TableHead>DBs</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loadingRuns ? (
                         <TableRow>
-                          <TableCell colSpan={8}>Loading…</TableCell>
+                          <TableCell colSpan={5}>Loading…</TableCell>
                         </TableRow>
                       ) : !filterTld.trim() ? (
                         null
                       ) : runs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8}>No runs</TableCell>
+                          <TableCell colSpan={5}>No runs</TableCell>
                         </TableRow>
                       ) : (
-                        runs.map((r) => (
-                          <TableRow key={r.runPrefix}>
-                            <TableCell className="whitespace-nowrap">{r.date}</TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              <a className="text-primary underline" href={r.url} target="_blank" rel="noreferrer">
-                                {r.workflowId}
-                              </a>
-                            </TableCell>
-                            <TableCell>
-                              {r.summaryUrl ? (
-                                <a className="text-primary underline" href={r.summaryUrl} target="_blank" rel="noreferrer">summary.json</a>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {r.runReportUrl ? (
-                                <a className="text-primary underline" href={r.runReportUrl} target="_blank" rel="noreferrer">run-report.json</a>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {r.analysisUrl ? (
-                                <a className="text-primary underline" href={r.analysisUrl} target="_blank" rel="noreferrer">analysis.json</a>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {r.sqliteDbUrl ? (
-                                <a className="text-primary underline" href={r.sqliteDbUrl} target="_blank" rel="noreferrer">sqlite.db</a>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {r.importEventsUrl ? (
-                                <a className="text-primary underline" href={r.importEventsUrl} target="_blank" rel="noreferrer">import-events.json</a>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {r.registrarMappingUrl ? (
-                                <a className="text-primary underline" href={r.registrarMappingUrl} target="_blank" rel="noreferrer">CSV</a>
-                              ) : (
-                                <span className="text-muted-foreground">CSV —</span>
-                              )}
-                              {' '}
-                              {r.registrarMappingJsonUrl ? (
-                                <a className="text-primary underline" href={r.registrarMappingJsonUrl} target="_blank" rel="noreferrer">JSON</a>
-                              ) : (
-                                <span className="text-muted-foreground">JSON —</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        runs.map((r) => {
+                          // Calculate Stage
+                          let stage = 0;
+                          if (r.importEventsUrl) stage = 5;
+                          else if (r.stagedDbUrl) stage = 4;
+                          else if (r.registrarMappingJsonUrl) stage = 3;
+                          else if (r.sqliteDbUrl) stage = 2;
+                          else if (r.analysisUrl) stage = 1;
+
+                          return (
+                            <TableRow key={r.runPrefix}>
+                              <TableCell className="whitespace-nowrap text-xs">{r.date}</TableCell>
+                              <TableCell className="whitespace-nowrap text-xs font-mono">
+                                <a className="text-primary underline" href={r.url} target="_blank" rel="noreferrer">
+                                  {r.workflowId}
+                                </a>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={stage === 5 ? "default" : "outline"} className={stage === 5 ? "bg-green-600 hover:bg-green-700" : ""}>
+                                    {stage === 5 ? "Ingested (5/5)" : stage === 4 ? "Staged (4/5)" : `Stage ${stage}/5`}
+                                  </Badge>
+                                  {stage === 4 && r.stagedDbKey && (
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="h-6 text-xs"
+                                      onClick={async () => {
+                                        try {
+                                          toast.info('Triggering ingestion...');
+                                          const res = await startEscrowIngestion(r.tld, r.stagedDbKey!);
+                                          toast.success('Ingestion started', {
+                                            action: {
+                                              label: 'View Workflow',
+                                              onClick: () => window.open(res.url, '_blank'),
+                                            },
+                                            duration: 10000,
+                                          });
+                                          // Optionally trigger refresh
+                                          // load(); // requires un-scoping load function or relying on S3 eventual consistency (delay needed)
+                                        } catch (e: any) {
+                                          toast.error(e?.message || 'Failed to start ingestion');
+                                        }
+                                      }}
+                                    >
+                                      Run Ingestion
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {r.analysisUrl ? (
+                                  <a className="text-primary underline text-xs" href={r.analysisUrl} target="_blank" rel="noreferrer">Analysis</a>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="space-x-2">
+                                {r.sqliteDbUrl ? (
+                                  <a className="text-primary underline text-xs" href={r.sqliteDbUrl} target="_blank" rel="noreferrer">Ryde</a>
+                                ) : null}
+                                {r.stagedDbUrl ? (
+                                  <a className="text-primary underline text-xs" href={r.stagedDbUrl} target="_blank" rel="noreferrer">Staged</a>
+                                ) : null}
+                                {!r.sqliteDbUrl && !r.stagedDbUrl && <span className="text-muted-foreground text-xs">—</span>}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -506,7 +568,7 @@ function TLDSearchList({ query, onSelect }: { query: string; onSelect: (name: st
     try {
       const raw = localStorage.getItem('recent_tlds');
       if (raw) setRecent(JSON.parse(raw));
-    } catch {}
+    } catch { }
   }, []);
 
   const { data, isLoading, isError } = useQuery({
@@ -520,7 +582,7 @@ function TLDSearchList({ query, onSelect }: { query: string; onSelect: (name: st
       const next = [name, ...recent.filter((r) => r !== name)].slice(0, 10);
       setRecent(next);
       localStorage.setItem('recent_tlds', JSON.stringify(next));
-    } catch {}
+    } catch { }
     onSelect(name);
   }
 

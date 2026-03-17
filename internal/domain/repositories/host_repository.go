@@ -21,6 +21,7 @@ type HostRepository interface {
 	// BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well
 	// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
 	BulkCreate(ctx context.Context, hosts []*entities.Host) error
+	Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
 }
 
 // MochHostRepository is the mock implementation of the HostRepository
@@ -33,6 +34,7 @@ type MockHostRepository struct {
 	DeleteHostByRoidFunc        func(ctx context.Context, roid int64) error
 	ListHostsFunc               func(ctx context.Context, paramas queries.ListItemsQuery) ([]*entities.Host, string, error)
 	BulkCreateFunc              func(ctx context.Context, hosts []*entities.Host) error
+	CountFunc                   func(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
 }
 
 // CreateHost creates a host
@@ -75,6 +77,11 @@ func (m *MockHostRepository) BulkCreate(ctx context.Context, hosts []*entities.H
 	return m.BulkCreateFunc(ctx, hosts)
 }
 
+// Count counts hosts
+func (m *MockHostRepository) Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error) {
+	return m.CountFunc(ctx, filter)
+}
+
 // NewMockHostRepository creates a new MockHostRepository
 func NewMockHostRepository() *MockHostRepository {
 	return &MockHostRepository{
@@ -88,5 +95,6 @@ func NewMockHostRepository() *MockHostRepository {
 			return nil, "", nil
 		},
 		BulkCreateFunc: func(ctx context.Context, hosts []*entities.Host) error { return nil },
+		CountFunc:      func(ctx context.Context, filter queries.ListHostsFilter) (int64, error) { return 0, nil },
 	}
 }

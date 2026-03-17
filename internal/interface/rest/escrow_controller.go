@@ -52,14 +52,16 @@ type startEscrowImportResponse struct {
 // EscrowRunItem represents a single escrow import run in the list response
 // swagger:model EscrowRunItem
 type EscrowRunItem struct {
-	TLD        string            `json:"tld"`
-	RunPrefix  string            `json:"runPrefix"`
-	Date       string            `json:"date"`
-	WorkflowID string            `json:"workflowId"`
-	SummaryKey string            `json:"summaryKey,omitempty"`
-	HasSummary bool              `json:"hasSummary"`
-	Artifacts  map[string]string `json:"artifacts,omitempty"`
-	URL        string            `json:"url"`
+	TLD         string            `json:"tld"`
+	RunPrefix   string            `json:"runPrefix"`
+	Date        string            `json:"date"`
+	WorkflowID  string            `json:"workflowId"`
+	SummaryKey  string            `json:"summaryKey,omitempty"`
+	HasSummary  bool              `json:"hasSummary"`
+	StagedDbKey string            `json:"stagedDbKey,omitempty"`
+	StagedDbURL string            `json:"stagedDbUrl,omitempty"`
+	Artifacts   map[string]string `json:"artifacts,omitempty"`
+	URL         string            `json:"url"`
 	// Direct, clickable links to key artifacts (when MINIO_PUBLIC_ENDPOINT is set and bucket is public)
 	SummaryURL           string `json:"summaryUrl,omitempty"`
 	RunReportURL         string `json:"runReportUrl,omitempty"`
@@ -84,6 +86,7 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc) *EscrowControll
 		grp.POST("/uploads/presign", controller.Presign)
 		grp.POST("/uploads", controller.Upload)
 		grp.POST("/imports", controller.StartImport)
+		grp.POST("/ingest", controller.StartIngestion)
 		grp.GET("/imports", controller.ListImports)
 	}
 	return controller
@@ -205,12 +208,12 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 	}
 	defer cli.Close()
 
-	wfID := fmt.Sprintf("escrow-import-%s-%s", req.TLD, time.Now().Format("20060102-150405"))
+	wfID := fmt.Sprintf("escrow-staging-%s-%s", req.TLD, time.Now().Format("20060102-150405"))
 
 	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.EscrowImportWorkflow, workflows.EscrowImportParams{
+	}, workflows.EscrowStagingWorkflow, workflows.EscrowImportParams{
 		TLD:       req.TLD,
 		ObjectKey: req.ObjectKey,
 		Options:   req.Options,
@@ -236,6 +239,70 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 	})
 }
 
+// StartIngestion triggers the EscrowIngestionWorkflow for a specific staged DB
+func (c *EscrowController) StartIngestion(ctx *gin.Context) {
+	var req struct {
+		TLD         string `json:"tld"`
+		StagedDBKey string `json:"stagedDbKey"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if req.TLD == "" || req.StagedDBKey == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and stagedDbKey are required"})
+		return
+	}
+
+	cfg := temporal.TemporalClientconfig{
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		WorkerQueue: getEscrowQueue(),
+	}
+
+	cli, err := temporal.GetTemporalClient(cfg)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	// Use a deterministic ID for ingestion based on the staged key to avoid duplicates?
+	// Or just a standard prefix.
+	// StagedDBKey usually contains timestamp and previous workflow ID components.
+	// Let's use "ingest-" + ...
+	safeKey := strings.ReplaceAll(filepath.Base(req.StagedDBKey), ".db", "")
+	wfID := fmt.Sprintf("ingest-%s-%s", req.TLD, safeKey)
+
+	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        wfID,
+		TaskQueue: cfg.WorkerQueue,
+	}, workflows.EscrowIngestionWorkflow, workflows.EscrowIngestionParams{
+		TLD:         req.TLD,
+		StagedDBKey: req.StagedDBKey,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
+	if temporalUIBase == "" {
+		temporalUIBase = "http://localhost:8081"
+	}
+	link := temporalUIBase + "/namespaces/" + cfg.Namespace + "/workflows/" + we.GetID() + "/" + we.GetRunID()
+
+	ctx.JSON(http.StatusAccepted, startEscrowImportResponse{
+		WorkflowID: we.GetID(),
+		RunID:      we.GetRunID(),
+		Status:     "started",
+		URL:        link,
+	})
+}
+
 func getEscrowQueue() string {
 	q := strings.TrimSpace(os.Getenv("ESCROW_QUEUE"))
 	if q == "" {
@@ -245,18 +312,8 @@ func getEscrowQueue() string {
 }
 
 // ListImports returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes
-// @Summary List recent escrow import runs
-// @Description Returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes. Includes deep links to key artifacts when a public endpoint is configured.
-// @Tags Escrow
-// @Accept json
-// @Produce json
-// @Param tld query string true "TLD to filter imports for (e.g. 'example')"
-// @Param limit query int false "Maximum number of runs to return" default(20)
-// @Success 200 {object} EscrowImportListResponse
-// @Failure 400 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /escrow/imports [get]
 func (c *EscrowController) ListImports(ctx *gin.Context) {
+	// ... (Parsing params and S3 listing unchanged)
 	tld := strings.TrimSpace(ctx.Query("tld"))
 	if tld == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld query parameter is required"})
@@ -275,7 +332,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		return
 	}
 
-	// List objects under escrow/<tld>/ recursively and derive run prefixes: escrow/<tld>/<yyyyMMdd>/<workflowId>
+	// List objects under escrow/<tld>/ recursively
 	prefix := fmt.Sprintf("escrow/%s/", tld)
 	keys, err := s3c.ListObjectKeys(ctx, prefix, true, 5000)
 	if err != nil {
@@ -311,21 +368,16 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		pub = "http://localhost:9000"
 	}
 	joinURL := func(base, bucket, key string) string {
-		// Expect base like http://localhost:9000
 		if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
 			base = "http://" + base
 		}
-		// Avoid duplicate slashes
 		return strings.TrimRight(base, "/") + "/" + bucket + "/" + strings.TrimLeft(key, "/")
 	}
 
-	// Iterate keys to collect unique runs
+	// Iterate keys to collect runs
 	for _, k := range keys {
 		rp, date, wf, ok := parseRunPrefix(k)
-		if !ok {
-			continue
-		}
-		if seen[rp] {
+		if !ok || seen[rp] {
 			continue
 		}
 		seen[rp] = true
@@ -348,7 +400,8 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 
 		// Discover key artifacts under this run prefix
 		var analysisKey, regCsvKey, regJsonKey string
-		var sqliteDbKey, importEventsKey string
+		var sqliteDbKey, stagedDbKey, importEventsKey string
+
 		for _, kk := range keys {
 			if strings.HasPrefix(kk, rp+"/") {
 				lower := strings.ToLower(kk)
@@ -358,9 +411,12 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 					regCsvKey = kk
 				} else if strings.HasSuffix(lower, "-registrarmapping.json") || strings.HasSuffix(lower, "-registrar-map.json") {
 					regJsonKey = kk
-				} else if strings.HasSuffix(lower, ".db") && sqliteDbKey == "" {
-					// capture the first .db under this run prefix (expected: <base>.db)
-					sqliteDbKey = kk
+				} else if strings.HasSuffix(lower, ".db") {
+					if strings.Contains(filepath.Base(lower), "staged-") {
+						stagedDbKey = kk
+					} else if sqliteDbKey == "" {
+						sqliteDbKey = kk
+					}
 				} else if strings.HasSuffix(lower, "/import-events.json") {
 					importEventsKey = kk
 				}
@@ -378,10 +434,10 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 				}
 				return ""
 			}(),
-			HasSummary: hasSummary,
-			URL:        url,
+			HasSummary:  hasSummary,
+			URL:         url,
+			StagedDbKey: stagedDbKey,
 		}
-		// Attach public URLs if we can build them
 		if hasSummary {
 			item.SummaryURL = joinURL(pub, bucket, sumKey)
 		}
@@ -399,6 +455,9 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		}
 		if sqliteDbKey != "" {
 			item.SQLiteDbURL = joinURL(pub, bucket, sqliteDbKey)
+		}
+		if stagedDbKey != "" {
+			item.StagedDbURL = joinURL(pub, bucket, stagedDbKey)
 		}
 		if importEventsKey != "" {
 			item.ImportEventsURL = joinURL(pub, bucket, importEventsKey)

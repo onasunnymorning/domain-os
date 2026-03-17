@@ -35,7 +35,7 @@ func UpdateDomain(correlationID string, domain entities.Domain) (*entities.Domai
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -13,7 +14,7 @@ import (
 
 func TestCreateRegistrar(t *testing.T) {
 	BASEURL = "http://example.com"
-	BEARER_TOKEN = "test-token"
+	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	tests := []struct {
 		name           string

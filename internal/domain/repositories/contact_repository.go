@@ -14,5 +14,6 @@ type ContactRepository interface {
 	UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error)
 	DeleteContactByID(ctx context.Context, id string) error
 	ListContacts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Contact, string, error)
+	Count(ctx context.Context, filter queries.ListContactsFilter) (int64, error)
 	BulkCreate(ctx context.Context, contacts []*entities.Contact) error
 }

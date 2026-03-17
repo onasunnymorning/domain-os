@@ -73,7 +73,7 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 // @Success      200     {object}  response.CountResult "Count of NNDNs"
 // @Failure      400     {object}  gin.H "Error message when client fails to provide the correct filter"
 // @Failure      500     {object}  gin.H "Error message when server fails to process the count"
-// @Router       /nndn/count [get]
+// @Router       /nndns/count [get]
 func (ctrl *NNDNController) Count(ctx *gin.Context) {
 	result := response.CountResult{}
 

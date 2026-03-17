@@ -32,7 +32,7 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -49,7 +49,18 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	}
 
 	// Parse the result
-	listResponse := &ListExpiredDomainsResult{}
+	// robust unmarshal to avoid interface errors
+	type localMeta struct {
+		PageSize   int         `json:"PageSize"`
+		PageCursor string      `json:"PageCursor"`
+		NextLink   string      `json:"NextLink"`
+		Filter     interface{} `json:"Filter"`
+	}
+	type localResult struct {
+		Meta localMeta                   `json:"meta"`
+		Data []response.DomainExpiryItem `json:"data"`
+	}
+	listResponse := &localResult{}
 	err = json.Unmarshal(body, &listResponse)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to unmarshal response"), err)

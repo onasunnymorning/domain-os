@@ -1,0 +1,129 @@
+[
+  {
+    "description": null,
+    "archived": false,
+    "view_count": 7,
+    "collection_position": null,
+    "dependency_analysis_version": 0,
+    "creator": {
+      "email": "admin@domain-os.local",
+      "first_name": "Admin",
+      "last_login": "2025-12-30T20:09:55.657707Z",
+      "is_qbnewb": true,
+      "is_superuser": true,
+      "id": 1,
+      "last_name": "User",
+      "tenant_id": null,
+      "date_joined": "2025-12-30T18:25:29.299147Z",
+      "common_name": "Admin User"
+    },
+    "initially_published_at": null,
+    "enable_embedding": false,
+    "collection_id": 5,
+    "show_in_getting_started": false,
+    "name": "DOS Overview",
+    "width": "fixed",
+    "caveats": null,
+    "creator_id": 1,
+    "updated_at": "2025-12-30T18:48:34.806654Z",
+    "made_public_by_id": null,
+    "embedding_params": null,
+    "cache_ttl": null,
+    "id": 2,
+    "last_viewed_at": "2025-12-30T20:07:47.031383Z",
+    "position": null,
+    "archived_directly": false,
+    "entity_id": "om3_r6eIJP8H8kfiYXEFK",
+    "last-edit-info": {
+      "id": 1,
+      "email": "admin@domain-os.local",
+      "first_name": "Admin",
+      "last_name": "User",
+      "timestamp": "2025-12-30T19:57:01.568346Z"
+    },
+    "parameters": [],
+    "auto_apply_filters": true,
+    "created_at": "2025-12-30T18:48:34.806654Z",
+    "public_uuid": null,
+    "points_of_interest": null
+  },
+  {
+    "description": "Overview of sample data and hypothetical sales",
+    "archived": false,
+    "view_count": 0,
+    "collection_position": 2,
+    "dependency_analysis_version": 0,
+    "creator": {
+      "email": "internal@metabase.com",
+      "first_name": "Metabase",
+      "last_login": null,
+      "is_qbnewb": true,
+      "is_superuser": false,
+      "id": 13371338,
+      "last_name": "Internal",
+      "tenant_id": null,
+      "date_joined": "2025-12-30T18:25:23.852253Z",
+      "common_name": "Metabase Internal"
+    },
+    "initially_published_at": null,
+    "enable_embedding": false,
+    "collection_id": 2,
+    "show_in_getting_started": false,
+    "name": "E-commerce Insights",
+    "width": "fixed",
+    "caveats": null,
+    "creator_id": 13371338,
+    "updated_at": "2025-12-30T18:25:24.067858Z",
+    "made_public_by_id": null,
+    "embedding_params": null,
+    "cache_ttl": null,
+    "id": 1,
+    "last_viewed_at": "2025-12-30T18:25:24.067858Z",
+    "position": null,
+    "archived_directly": false,
+    "entity_id": "xBLdW9FsgRuB2HGhWiBa_",
+    "parameters": [
+      {
+        "id": "81cd957",
+        "name": "Date Range",
+        "required": false,
+        "sectionId": "date",
+        "slug": "date_range",
+        "type": "date/all-options"
+      },
+      {
+        "id": "efd919c7",
+        "name": "Date Grouping",
+        "sectionId": "temporal-unit",
+        "slug": "date_grouping",
+        "type": "temporal-unit"
+      },
+      {
+        "default": [
+          "Doohickey",
+          "Gizmo",
+          "Gadget",
+          "Widget"
+        ],
+        "id": "9d9cddd4",
+        "name": "Product Category",
+        "required": true,
+        "sectionId": "string",
+        "slug": "product_category",
+        "type": "string/="
+      },
+      {
+        "id": "1ebab259",
+        "isMultiSelect": false,
+        "name": "Vendor",
+        "sectionId": "string",
+        "slug": "vendor",
+        "type": "string/="
+      }
+    ],
+    "auto_apply_filters": true,
+    "created_at": "2025-12-30T18:25:24.067858Z",
+    "public_uuid": null,
+    "points_of_interest": null
+  }
+]

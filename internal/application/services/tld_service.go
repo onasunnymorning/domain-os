@@ -104,37 +104,37 @@ func (s *TLDService) GetTLDHeader(ctx context.Context, name string) (*entities.T
 		case "SOA":
 			s, ok := rr.(*dns.SOA)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a SOA record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a SOA record: %s", rr.String())
 			}
 			tldHeader.Soa = *s
 		case "NS":
 			ns, ok := rr.(*dns.NS)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a NS record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a NS record: %s", rr.String())
 			}
 			tldHeader.Ns = append(tldHeader.Ns, *ns)
 		case "A":
 			_, ok := rr.(*dns.A)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an A record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an A record: %s", rr.String())
 			}
 			tldHeader.Glue = append(tldHeader.Glue, rr)
 		case "AAAA":
 			_, ok := rr.(*dns.AAAA)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an AAAA record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not an AAAA record: %s", rr.String())
 			}
 			tldHeader.Glue = append(tldHeader.Glue, rr)
 		case "DS":
 			ds, ok := rr.(*dns.DS)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DS record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DS record: %s", rr.String())
 			}
 			tldHeader.Ds = append(tldHeader.Ds, *ds)
 		case "DNSKEY":
 			dnskey, ok := rr.(*dns.DNSKEY)
 			if !ok {
-				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DNSKEY record: %s" + rr.String())
+				return nil, fmt.Errorf("error converting TLDHeader to string: RR is not a DNSKEY record: %s", rr.String())
 			}
 			tldHeader.DNSKey = append(tldHeader.DNSKey, *dnskey)
 		}

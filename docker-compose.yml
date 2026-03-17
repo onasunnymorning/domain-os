@@ -1,11 +1,11 @@
 services:
-# Database container
+  # Database container
   db:
     image: postgres:16.1
     restart: always
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 3s
       retries: 5
       start_period: 30s
@@ -16,9 +16,7 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
     command: >
-      -c ssl=on
-      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
-      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
 
     # expose:
     #   - 5432
@@ -27,16 +25,16 @@ services:
       - 55432:55432
     networks:
       - dos
-    volumes: 
-      - db:/var/lib/postgresql/data 
+    volumes:
+      - db:/var/lib/postgresql/data
 
-# RabbitMQ Broker container
+  # RabbitMQ Broker container
   msg-broker:
     image: rabbitmq:3.13
     restart: unless-stopped
-    profiles: [full]
+    profiles: [ full ]
     healthcheck:
-      test: ["CMD-SHELL", "rabbitmqctl node_health_check"]
+      test: [ "CMD-SHELL", "rabbitmqctl node_health_check" ]
       interval: 15s
       retries: 3
     ports:
@@ -54,13 +52,13 @@ services:
     volumes:
       - ./.rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
 
-# Redis container for session management and rate limiting
+  # Redis container for session management and rate limiting
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       retries: 5
       start_period: 10s
@@ -69,27 +67,23 @@ services:
     networks:
       - dos
     command: >
-      redis-server
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
 
-# EPP Server container
+  # EPP Server container
   epp-server:
     build:
       context: .
       dockerfile: Dockerfile.epp
     image: geapex/epp-server:${BRANCH:-latest}
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "700"]
+      test: [ "CMD", "nc", "-z", "localhost", "700" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -111,11 +105,11 @@ services:
         - action: rebuild
           path: ./internal/infrastructure/epp
 
-# Prometheus container
+  # Prometheus container
   prometheus:
     image: prom/prometheus
     container_name: prometheus
-    profiles: [full]
+    profiles: [ full ]
     command:
       - "--config.file=/etc/prometheus/prometheus.yaml"
     ports:
@@ -130,10 +124,10 @@ services:
       - ./prometheus:/etc/prometheus
       - prom_data:/prometheus
 
-# Grafana container
+  # Grafana container
   grafana:
     image: grafana/grafana
-    profiles: [full]
+    profiles: [ full ]
     container_name: grafana
     ports:
       - 3000:3000
@@ -151,17 +145,17 @@ services:
       - ./grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
 
-# Core API container
+  # Core API container
   admin-api:
     build: .
     image: "geapex/domain-os:${BRANCH}"
     restart: always
-    profiles: [essential, full]
-    # healthcheck:
-    #   test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]
-    #   interval: 3s
-    #   retries: 5
-    #   start_period: 10s
+    profiles: [ essential, full ]
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit 1" ]
+      interval: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       db:
         condition: service_healthy
@@ -191,6 +185,9 @@ services:
       - API_NAME=${API_NAME}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
       - API_VERSION=${API_VERSION}
+      - AUTH0_ENABLED=${AUTH0_ENABLED:-false}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
       - RMQ_HOST=${RMQ_HOST}
       - RMQ_PORT=${RMQ_PORT}
       - RMQ_USER=${RMQ_USER}
@@ -217,11 +214,41 @@ services:
     networks:
       - dos
 
+  # Admin Init (One-off task to sync registrars on startup)
+  admin-init:
+    image: "geapex/domain-os:${BRANCH}"
+    restart: "no" # Run once and stop
+    profiles: [ essential, full ]
+    depends_on:
+      db:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      admin-api:
+        condition: service_healthy # Wait for migrations / full startup 
+    command: [ "/ryAdminAPI", "init-registrars" ]
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+      - TMPIO_HOST_PORT=temporal:7233
+      - TMPIO_NAME_SPACE=default
+      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_KEY=
+      - TMPIO_CERT=
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
+      # Minimal envs needed for DB/Temporal
+    networks:
+      - dos
+
   # Temporal stack (dev) - Postgres + Temporal Server + UI
   temporal-postgres:
     image: postgres:14
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     environment:
       - POSTGRES_USER=temporal
       - POSTGRES_PASSWORD=temporal
@@ -234,7 +261,7 @@ services:
   temporal:
     image: temporalio/auto-setup:latest
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     environment:
       - DB=postgres12
       - DB_PORT=5432
@@ -243,6 +270,11 @@ services:
       - POSTGRES_SEEDS=temporal-postgres
     ports:
       - 7233:7233
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z $(hostname -i) 7233" ]
+      interval: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       - temporal-postgres
     networks:
@@ -251,7 +283,7 @@ services:
   temporal-ui:
     image: temporalio/ui:latest
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
@@ -268,7 +300,7 @@ services:
       dockerfile: ./cmd/workers/domainLifecycle/Dockerfile
     image: geapex/domain-lifecycle-worker:${BRANCH}
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     depends_on:
       admin-api:
         condition: service_started
@@ -283,6 +315,11 @@ services:
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
+      - AUTH0_ENABLED=${AUTH0_ENABLED:-false}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_WORKER_CLIENT_ID=${AUTH0_WORKER_CLIENT_ID}
+      - AUTH0_WORKER_CLIENT_SECRET=${AUTH0_WORKER_CLIENT_SECRET}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
     networks:
       - dos
 
@@ -293,7 +330,7 @@ services:
       dockerfile: ./cmd/workers/escrowImport/Dockerfile
     image: geapex/escrow-import-worker:${BRANCH}
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     depends_on:
       admin-api:
         condition: service_started
@@ -322,6 +359,11 @@ services:
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
+      - AUTH0_ENABLED=${AUTH0_ENABLED:-false}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_WORKER_CLIENT_ID=${AUTH0_WORKER_CLIENT_ID}
+      - AUTH0_WORKER_CLIENT_SECRET=${AUTH0_WORKER_CLIENT_SECRET}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
     networks:
       - dos
 
@@ -329,7 +371,7 @@ services:
   minio:
     image: minio/minio:latest
     restart: unless-stopped
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
@@ -337,6 +379,11 @@ services:
     ports:
       - 9000:9000
       - 9001:9001
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
     volumes:
       - minio_data:/data
     networks:
@@ -346,22 +393,23 @@ services:
   minio-setup:
     image: minio/mc:latest
     restart: "no"
-    profiles: [essential, full]
+    profiles: [ essential, full ]
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     environment:
       - MC_HOST_minio=http://minioadmin:minioadmin@minio:9000
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: [ "/bin/sh", "-c" ]
     command: |
       "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true"
     networks:
       - dos
 
-# Whois container
+  # Whois container
   whois:
     image: "geapex/whois:${BRANCH}"
     restart: always
-    profiles: [full]
+    profiles: [ full ]
     depends_on:
       db:
         condition: service_healthy
@@ -377,12 +425,11 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
-    ports: 
+    ports:
       - 43:43
     networks:
       - dos
-
-# Frontend Admin Container
+  # Frontend Admin Container
   # admin-frontend:
   #   image: "admin-dash:delete"
   #   restart: always
@@ -399,7 +446,45 @@ services:
   #     - API_PORT=8080
   #   networks:
   #     - dos
-    
+
+
+  # Metabase container
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    profiles: [ essential, full ]
+    restart: unless-stopped
+    ports:
+      - 3001:3000
+    environment:
+      - MB_DB_FILE=/metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    networks:
+      - dos
+
+  # Metabase Initializer (Sidecar)
+  metabase-init:
+    image: python:3.9-slim
+    profiles: [ essential, full ]
+    depends_on:
+      - metabase
+    volumes:
+      - ./scripts/metabase:/app
+    working_dir: /app
+    environment:
+      - METABASE_URL=http://metabase:3000
+      - MB_ADMIN_EMAIL=admin@domain-os.local
+      - MB_ADMIN_PASS=admin1234
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    command: >
+      sh -c "pip install requests && python metabase_control.py"
+    networks:
+      - dos
 
 networks:
   dos:
@@ -413,6 +498,8 @@ volumes:
   redis_data:
     driver: local
   temporal_pgdata:
+    driver: local
+  metabase_data:
     driver: local
   minio_data:
     driver: local

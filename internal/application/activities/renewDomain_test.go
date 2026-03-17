@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -18,7 +19,7 @@ func TestRenewDomain(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 
 		// Validate authorization header
-		assert.Equal(t, BEARER_TOKEN, r.Header.Get("Authorization"))
+		assert.Equal(t, "Bearer "+os.Getenv("ADMIN_TOKEN"), r.Header.Get("Authorization"))
 
 		// Validate query params
 		assert.Equal(t, "test-correlation-id", r.URL.Query().Get("correlation_id"))
@@ -43,6 +44,9 @@ func TestRenewDomain(t *testing.T) {
 	testCommand := commands.RenewDomainCommand{
 		Name: "example.com",
 	}
+
+	// Set ADMIN_TOKEN for test
+	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	// Call the function under test
 	err := RenewDomain("test-correlation-id", testCommand, false)
@@ -58,7 +62,7 @@ func TestRenewDomain_Force(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 
 		// Validate authorization header
-		assert.Equal(t, BEARER_TOKEN, r.Header.Get("Authorization"))
+		assert.Equal(t, "Bearer "+os.Getenv("ADMIN_TOKEN"), r.Header.Get("Authorization"))
 
 		// Validate query params
 		assert.Equal(t, "test-correlation-id", r.URL.Query().Get("correlation_id"))
@@ -83,6 +87,9 @@ func TestRenewDomain_Force(t *testing.T) {
 	testCommand := commands.RenewDomainCommand{
 		Name: "example.com",
 	}
+
+	// Set ADMIN_TOKEN for test
+	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	// Call the function under test
 	err := RenewDomain("test-correlation-id", testCommand, true)

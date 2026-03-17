@@ -1,0 +1,10 @@
+# Project Context & Rules
+
+You must ALWAYS consult the following files to understand the system architecture and technology choices:
+1. `architecture.md` - For DDD structure, repository patterns, and enforcement of rules (e.g., testing).
+2. `stack.md` - For the technology stack and specific library choices.
+
+## Enforcement
+- **DDD**: strictly adhere to the separation of concerns.
+- **Repository Pattern**: ALL data access must go through repositories.
+- **Testing**: Enforce the testing strategy defined in architecture.md.

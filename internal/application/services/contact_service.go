@@ -81,6 +81,10 @@ func (s *ContactService) ListContacts(ctx context.Context, params queries.ListIt
 	return s.contactRepository.ListContacts(ctx, params)
 }
 
+func (s *ContactService) Count(ctx context.Context, filter queries.ListContactsFilter) (int64, error) {
+	return s.contactRepository.Count(ctx, filter)
+}
+
 // contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact
 func (s *ContactService) contactFromCreateContactCommand(cmd *commands.CreateContactCommand) (*entities.Contact, error) {
 	var roid entities.RoidType

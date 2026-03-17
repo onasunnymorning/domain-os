@@ -3,6 +3,7 @@ package activities
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -62,10 +63,10 @@ func TestSyncIanaRegistrars(t *testing.T) {
 			}()
 
 			// Override the BEARER_TOKEN if needed
-			originalBearerToken := BEARER_TOKEN
-			BEARER_TOKEN = "test-token" // a placeholder token
+			originalAdminToken := os.Getenv("ADMIN_TOKEN")
+			os.Setenv("ADMIN_TOKEN", "test-token") // a placeholder token
 			defer func() {
-				BEARER_TOKEN = originalBearerToken
+				os.Setenv("ADMIN_TOKEN", originalAdminToken)
 			}()
 
 			// Call the function under test

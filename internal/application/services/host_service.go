@@ -126,6 +126,10 @@ func (s *HostService) ListHosts(ctx context.Context, params queries.ListItemsQue
 	return s.hostRepository.ListHosts(ctx, params)
 }
 
+func (s *HostService) Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error) {
+	return s.hostRepository.Count(ctx, filter)
+}
+
 // AddHostAddress adds an ip address to an existing host
 func (s *HostService) AddHostAddress(ctx context.Context, roidString, ip string) (*entities.Host, error) {
 	roid := entities.RoidType(roidString)
