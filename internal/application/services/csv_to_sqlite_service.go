@@ -108,6 +108,10 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string, heartbeat Heartbea
 		return fmt.Errorf("failed to import registrar mapping: %w", err)
 	}
 
+	if err := svc.importNNDNs(tx); err != nil {
+		return fmt.Errorf("failed to import NNDNs: %w", err)
+	}
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -267,6 +271,16 @@ func (svc *CSVToSQLiteService) createSchema() error {
 		contact_id TEXT NOT NULL,
 		status TEXT NOT NULL,
 		FOREIGN KEY (contact_id) REFERENCES contacts(id)
+	);
+
+	-- NNDNs
+	CREATE TABLE IF NOT EXISTS nndns (
+		aname TEXT PRIMARY KEY,
+		uname TEXT,
+		idntableid TEXT,
+		originalname TEXT,
+		namestate TEXT,
+		crdate TEXT
 	);
 	`
 
@@ -1355,6 +1369,53 @@ func (svc *CSVToSQLiteService) importRegistrarPostalInfo(tx *sql.Tx) error {
 	}
 
 	log.Printf("✅ Imported %d registrar postal info records", len(records))
+	return nil
+}
+
+// importNNDNs imports NNDN data from CSV
+func (svc *CSVToSQLiteService) importNNDNs(tx *sql.Tx) error {
+	fileName := svc.baseFilename + "-nndns.csv"
+	if !svc.fileExists(fileName) {
+		log.Printf("⚠️  NNDNs file not found: %s", fileName)
+		return nil
+	}
+
+	file, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	stmt, err := tx.Prepare("INSERT INTO nndns (aname, uname, idntableid, originalname, namestate, crdate) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	records, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if len(record) >= 6 {
+			_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5])
+			if err != nil {
+				log.Printf("Error inserting NNDN %s: %v", record[0], err)
+			}
+		}
+	}
+
+	log.Printf("✅ Imported %d NNDNs", len(records))
 	return nil
 }
 

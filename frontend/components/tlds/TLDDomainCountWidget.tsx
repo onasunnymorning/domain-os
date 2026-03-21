@@ -2,16 +2,21 @@ import { useDomainCount } from "@/lib/hooks/useDomains";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Globe } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Props {
   tldName: string;
 }
 
 export function TLDDomainCountWidget({ tldName }: Props) {
+  const router = useRouter();
   const { data, isLoading, error } = useDomainCount({ tld_equals: tldName });
 
   return (
-    <Card>
+    <Card 
+      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      onClick={() => router.push(`/domains?tld=${encodeURIComponent(tldName)}`)}
+    >
       <CardContent className="flex items-center gap-4 p-6">
         <div className="p-3 bg-primary/10 text-primary rounded-full">
           <Globe className="h-6 w-6" />

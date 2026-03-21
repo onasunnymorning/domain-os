@@ -753,3 +753,102 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 
 	return total, nil
 }
+
+// --- Import NNDNs ---
+
+func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+	const batchSize = 2500
+	var total int64
+	var skipped int64
+
+	// Count total
+	var totalRows int64
+	if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM nndns").Scan(&totalRows); err != nil {
+		log.Printf("IngestNNDNs: Failed to count total rows: %v", err)
+	}
+	// Count already processed if resuming
+	var processedSoFar int64
+	if lastKey != "" {
+		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM nndns WHERE aname <= ?", lastKey).Scan(&processedSoFar); err != nil {
+			log.Printf("IngestNNDNs: Failed to count processed rows: %v", err)
+		}
+	}
+
+	total = processedSoFar
+
+	for {
+		rows, err := sqliteDB.Query(`SELECT aname, uname, idntableid, originalname, namestate, crdate FROM nndns WHERE aname > ? ORDER BY aname LIMIT ?`, lastKey, batchSize)
+		if err != nil {
+			log.Printf("IngestNNDNs: Query failed: %v", err)
+			return total, skipped, err
+		}
+
+		var rawNNDNs []struct {
+			AName, UName, IDNTableID, OriginalName, NameState, CrDate string
+		}
+		currentBatchMaxKey := ""
+
+		for rows.Next() {
+			var r struct {
+				AName, UName, IDNTableID, OriginalName, NameState, CrDate sql.NullString
+			}
+			if err := rows.Scan(&r.AName, &r.UName, &r.IDNTableID, &r.OriginalName, &r.NameState, &r.CrDate); err != nil {
+				rows.Close()
+				log.Printf("IngestNNDNs: Scan failed: %v", err)
+				return total, skipped, err
+			}
+			rawNNDNs = append(rawNNDNs, struct{ AName, UName, IDNTableID, OriginalName, NameState, CrDate string }{
+				r.AName.String, r.UName.String, r.IDNTableID.String, r.OriginalName.String, r.NameState.String, r.CrDate.String,
+			})
+			currentBatchMaxKey = r.AName.String
+		}
+		rows.Close()
+
+		if len(rawNNDNs) == 0 {
+			break
+		}
+
+		var entitiesBatch []*dbModels.NNDN
+
+		for _, r := range rawNNDNs {
+			createdAt := time.Now().UTC()
+			if t, err := parseJiscTime(r.CrDate); err == nil && !t.IsZero() {
+				createdAt = t
+			}
+
+			n := &dbModels.NNDN{
+				Name:      strings.ToLower(r.AName),
+				UName:     r.UName,
+				TLDName:   strings.ToLower(tld),
+				NameState: r.NameState,
+				Reason:    "", // Not mapped from escrow directly
+				CreatedAt: createdAt,
+				UpdatedAt: time.Now().UTC(),
+			}
+
+			entitiesBatch = append(entitiesBatch, n)
+		}
+
+		if len(entitiesBatch) > 0 {
+			batchLen := len(entitiesBatch)
+
+			if _, err := s.PG.Model(&entitiesBatch).
+				ExcludeColumn("tld").
+				OnConflict("DO NOTHING").Insert(); err != nil {
+				return total, skipped, fmt.Errorf("bulk insert NNDNs failed: %w", err)
+			}
+			total += int64(batchLen)
+		}
+
+		if (total+skipped)%10000 == 0 {
+			log.Printf("IngestNNDNs: Processed %d / %d records (Skipped: %d)", total, totalRows, skipped)
+		}
+
+		lastKey = currentBatchMaxKey
+
+		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		heartbeat(payload)
+	}
+	log.Printf("IngestNNDNs: Finished. Total: %d, Skipped: %d", total, skipped)
+	return total, skipped, nil
+}

@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { formatPhaseDateLong, formatRelativeDate, isPhaseFuture, isPhaseCurrent } from '@/lib/utils/dateUtils';
 import { Calendar, DollarSign, Settings, Tag, Trash2, GitCompare, CalendarX, Info, Clock } from 'lucide-react';
@@ -1225,30 +1226,54 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
             </AlertDialogDescription>
           </AlertDialogHeader>
           
-          <div className="py-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-left font-normal"
-                >
-                  <CalendarX className="mr-2 h-4 w-4" />
-                  {endDate ? format(endDate, 'PPP') : 'Pick an end date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={endDate}
-                  onSelect={setEndDate}
-                  disabled={(date) => date < new Date(phaseData.starts) || date < new Date()}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-            <p className="text-xs text-muted-foreground mt-2">
-              End date must be after the start date ({formatPhaseDateLong(phaseData.starts)}) and in the future.
-            </p>
+          <div className="py-4 space-y-4">
+            <Button
+              variant="secondary"
+              className="w-full flex justify-center text-orange-600 bg-orange-50 hover:bg-orange-100 hover:text-orange-700 border border-orange-200"
+              onClick={() => {
+                const now = new Date();
+                now.setSeconds(now.getSeconds() + 1);
+                
+                endPhase({
+                  phaseName: phaseData.name,
+                  endDate: now.toISOString(),
+                }, {
+                  onSuccess: () => {
+                    setShowEndPhaseDialog(false);
+                    setEndDate(undefined);
+                    onClose();
+                  },
+                });
+              }}
+              disabled={isEnding}
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              {isEnding ? 'Ending Phase...' : 'End Now (in 1 second)'}
+            </Button>
+
+            <div className="relative flex items-center py-2">
+              <div className="flex-grow border-t border-border"></div>
+              <span className="flex-shrink-0 mx-4 text-muted-foreground text-xs uppercase">Or specify date & time</span>
+              <div className="flex-grow border-t border-border"></div>
+            </div>
+
+            <div className="space-y-2">
+              <Input
+                type="datetime-local"
+                value={endDate ? format(endDate, "yyyy-MM-dd'T'HH:mm") : ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (e.target.value) {
+                    setEndDate(new Date(e.target.value));
+                  } else {
+                    setEndDate(undefined);
+                  }
+                }}
+                className="w-full flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p className="text-xs text-muted-foreground">
+                End date must be after the start date ({formatPhaseDateLong(phaseData.starts)}).
+              </p>
+            </div>
           </div>
 
           <AlertDialogFooter>
