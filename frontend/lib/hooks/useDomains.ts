@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createDomain, getDomains, getDomainCount, getDomainByName } from "@/lib/api/domains";
+import { createDomain, getDomains, getDomainCount, getDomainByName, getDomainDNS } from "@/lib/api/domains";
 import { DomainListParams, DomainCreateRequest } from "@/lib/types/domain";
 
 export function useDomains(params?: DomainListParams) {
@@ -37,5 +37,14 @@ export function useCreateDomain() {
         qc.invalidateQueries({ queryKey: ["domains", "count"] }),
       ]);
     },
+  });
+}
+
+export function useDomainDNS(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["domain", "dns", name],
+    queryFn: () => getDomainDNS(name),
+    enabled: enabled && !!name,
+    retry: false, // DNS lookups shouldn't keep retrying if they fail (e.g. non-existent domain)
   });
 }

@@ -50,11 +50,14 @@ export function DomainLifecycleWidget({ domain }: Props) {
     let progress = totalMs > 0 ? (elapsedMs / totalMs) * 100 : 0;
     progress = Math.max(0, Math.min(100, progress));
 
+    const additionalYears = Math.round((expiry.getTime() - endYearDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+
     return {
       start: startYearDate,
       end: endYearDate,
       progress,
       isExpired: now > expiry,
+      additionalYears: additionalYears > 0 ? additionalYears : 0,
     };
   }, [domain.CreatedAt, domain.ExpiryDate]);
 
@@ -100,15 +103,43 @@ export function DomainLifecycleWidget({ domain }: Props) {
   return (
     <Card>
       <CardContent className="space-y-6">
-        {/* Domain Age */}
-        {domain.CreatedAt && (
-          <div className="flex items-center gap-2 pb-2">
-            <div className="text-lg font-semibold text-primary">
-              {formatDistanceToNowStrict(new Date(domain.CreatedAt))} old
-            </div>
-            <div className="text-sm text-muted-foreground mt-0.5">
-              ({format(new Date(domain.CreatedAt), "MMM d, yyyy")})
-            </div>
+        {/* Domain Age / Expiry */}
+        {(domain.CreatedAt || domain.ExpiryDate) && (
+          <div className="flex items-center gap-2 pb-2 flex-wrap">
+            {domain.CreatedAt && (
+              <>
+                <div className="text-lg font-semibold text-primary">
+                  {formatDistanceToNowStrict(new Date(domain.CreatedAt))} old
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  ({format(new Date(domain.CreatedAt), "MMM d, yyyy")})
+                </div>
+              </>
+            )}
+            
+            {domain.CreatedAt && domain.ExpiryDate && (
+              <div className="text-muted-foreground text-sm mx-1">•</div>
+            )}
+            
+            {domain.ExpiryDate && new Date(domain.ExpiryDate) > new Date() ? (
+              <>
+                <div className="text-sm font-medium">
+                  expires in {formatDistanceToNowStrict(new Date(domain.ExpiryDate))}
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  ({format(new Date(domain.ExpiryDate), "MMM d, yyyy")})
+                </div>
+              </>
+            ) : domain.ExpiryDate && new Date(domain.ExpiryDate) <= new Date() ? (
+              <>
+                <div className="text-sm font-medium text-destructive">
+                  expired {formatDistanceToNowStrict(new Date(domain.ExpiryDate))} ago
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  ({format(new Date(domain.ExpiryDate), "MMM d, yyyy")})
+                </div>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -118,6 +149,11 @@ export function DomainLifecycleWidget({ domain }: Props) {
             <div className="flex justify-between items-center text-sm">
               <span className="font-medium">
                 Current Registration Year
+                {registrationPeriod.additionalYears > 0 && (
+                  <span className="text-muted-foreground font-normal ml-2">
+                    (+ {registrationPeriod.additionalYears} year{registrationPeriod.additionalYears !== 1 ? 's' : ''} registered)
+                  </span>
+                )}
                 {registrationPeriod.isExpired && <Badge variant="destructive" className="ml-2 py-0 h-5">Expired</Badge>}
               </span>
               <span className="text-muted-foreground">{Math.round(registrationPeriod.progress)}%</span>
