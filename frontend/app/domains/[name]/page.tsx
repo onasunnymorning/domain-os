@@ -14,6 +14,7 @@ import { HelpCircle, Copy, Eye, EyeOff, Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
+import { DomainLifecycleWidget } from "@/components/domains/DomainLifecycleWidget";
 
 
 function formatUTCString(d: Date) {
@@ -106,6 +107,11 @@ export default function DomainDetailPage() {
             </Button>
           </div>
         </div>
+
+        {/* Lifecycle Visualizer */}
+        {!isLoading && !error && domain && (
+          <DomainLifecycleWidget domain={domain} />
+        )}
 
         <Card>
           <CardHeader>
