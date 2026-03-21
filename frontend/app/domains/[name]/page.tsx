@@ -84,8 +84,46 @@ export default function DomainDetailPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{name || "Domain"}</h1>
-            <p className="text-muted-foreground mt-2">Domain detail</p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold tracking-tight font-mono">{name || "Domain"}</h1>
+              {name && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Copy domain name"
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(name); } catch {}
+                  }}
+                  title="Copy domain name"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              {isLoading ? (
+                <Skeleton className="h-5 w-32" />
+              ) : (
+                <>
+                  {domain?.ClID ? (
+                    <Link href={`/registrars/${encodeURIComponent(domain.ClID)}`} title="Current registrar" aria-label="Current registrar">
+                      <Badge variant="outline" className="cursor-pointer hover:bg-muted">{domain.ClID}</Badge>
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  )}
+                  {domain?.CrRr && domain.CrRr !== domain.ClID && (
+                    <div className="flex items-center">
+                      <span className="text-muted-foreground text-sm mx-2">←</span>
+                      <Link href={`/registrars/${encodeURIComponent(domain.CrRr)}`} title="Created at registrar" aria-label="Created at registrar">
+                        <Badge variant="secondary" className="cursor-pointer opacity-80 hover:opacity-100 transition-opacity">{domain.CrRr}</Badge>
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -136,7 +174,7 @@ export default function DomainDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">Domain</div>
-                  <div className="font-medium flex items-center gap-2">
+                  <div className="font-medium flex items-center gap-2 font-mono">
                     {domain.Name}
                     {domain.UName && domain.UName !== domain.Name && (
                       <Badge variant="secondary" title="IDN Unicode label">{domain.UName}</Badge>

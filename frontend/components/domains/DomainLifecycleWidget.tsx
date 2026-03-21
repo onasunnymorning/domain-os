@@ -1,6 +1,6 @@
 import { DomainDetail } from "@/lib/types/domain";
 import { useCategorizedPhases } from "@/lib/hooks/usePhases";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useMemo } from "react";
 import { format, differenceInMilliseconds, formatDistanceToNowStrict } from "date-fns";
@@ -99,17 +99,15 @@ export function DomainLifecycleWidget({ domain }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Lifecycle & Registration Period</CardTitle>
-        <CardDescription>Visual timeline of the domain&apos;s current lifecycle</CardDescription>
-      </CardHeader>
       <CardContent className="space-y-6">
         {/* Domain Age */}
         {domain.CreatedAt && (
-          <div className="flex items-center justify-between pb-4 border-b">
-            <div className="text-sm font-medium">Domain Age</div>
+          <div className="flex items-center gap-2 pb-2">
             <div className="text-lg font-semibold text-primary">
-              {formatDistanceToNowStrict(new Date(domain.CreatedAt))}
+              {formatDistanceToNowStrict(new Date(domain.CreatedAt))} old
+            </div>
+            <div className="text-sm text-muted-foreground mt-0.5">
+              ({format(new Date(domain.CreatedAt), "MMM d, yyyy")})
             </div>
           </div>
         )}
