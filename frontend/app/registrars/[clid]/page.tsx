@@ -16,6 +16,9 @@ import Link from "next/link";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useTLDs } from "@/lib/hooks/useTLDs";
 import type { TLD } from "@/lib/api/tlds";
+import { RegistrarDomainCountWidget } from "@/components/registrars/RegistrarDomainCountWidget";
+import { RegistrarLifecycleWidget } from "@/components/registrars/RegistrarLifecycleWidget";
+import { RegistrarTLDCountWidget } from "@/components/registrars/RegistrarTLDCountWidget";
 
 export default function RegistrarDetailPage() {
   const params = useParams();
@@ -42,10 +45,10 @@ export default function RegistrarDetailPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Registrar Detail</h1>
-            <p className="text-sm text-muted-foreground mt-1">Read-only view of registrar {clid}</p>
+            <h1 className="text-2xl font-semibold">{isLoading ? <Skeleton className="h-8 w-48" /> : data?.Name ?? clid}</h1>
+            <Badge variant="outline" className="font-mono mt-2">{clid}</Badge>
           </div>
           <div className="flex gap-2">
             <Button variant="default" onClick={() => router.push(`/registrars/${encodeURIComponent(clid)}/edit`)}>
@@ -57,28 +60,34 @@ export default function RegistrarDetailPage() {
           </div>
         </div>
 
+        {data && (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div className="md:col-span-2">
+              <RegistrarLifecycleWidget data={data} />
+            </div>
+            <RegistrarDomainCountWidget clid={clid} />
+            <RegistrarTLDCountWidget 
+              count={accData?.Data?.length ?? 0} 
+              isLoading={accLoading} 
+              onClick={() => {
+                const el = document.getElementById("accreditations");
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: y, behavior: "smooth" });
+                }
+              }} 
+            />
+          </div>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>{isLoading ? <Skeleton className="h-6 w-48" /> : data?.Name ?? clid}</CardTitle>
-            {!isLoading && (
-              <CardDescription className="flex items-center gap-2">
-                <span className="font-mono">{data?.ClID}</span>
-                {data?.Status && <Badge>{data.Status}</Badge>}
-                {data?.IANAStatus && (
-                  <Badge variant="secondary">{`IANA ${data.IANAStatus}`}</Badge>
-                )}
-                {typeof data?.Autorenew === 'boolean' && (
-                  <Badge variant={data.Autorenew ? 'default' : 'outline'}>
-                    {data.Autorenew ? 'Autorenew on' : 'Autorenew off'}
-                  </Badge>
-                )}
-              </CardDescription>
-            )}
+            <CardTitle>Details</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             {isLoading ? (
               <>
-                {Array.from({ length: 8 }).map((_, i) => (
+                {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="space-y-1">
                     <Skeleton className="h-4 w-32" />
                     <Skeleton className="h-5 w-64" />
@@ -92,21 +101,16 @@ export default function RegistrarDetailPage() {
                 <Field label="Name" value={data?.Name} />
                 <Field label="Client ID" value={data?.ClID} mono />
                 <Field label="IANA ID" value={data?.GurID?.toString()} mono />
-                <Field label="IANA Status" value={data?.IANAStatus} />
-                <Field label="Status" value={data?.Status} />
                 <Field label="Email" value={data?.Email} />
                 <Field label="URL" value={data?.URL} />
                 <Field label="RDAP Base URL" value={data?.RdapBaseURL} />
-                <Field label="Auto-renew" value={data?.Autorenew ? "Enabled" : "Disabled"} />
-                <Field label="Created" value={data?.CreatedAt} />
-                <Field label="Updated" value={data?.UpdatedAt} />
               </>
             )}
           </CardContent>
         </Card>
       </div>
       {/* Accreditations */}
-      <Card>
+      <Card id="accreditations" className="mt-8">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle>Accreditations</CardTitle>

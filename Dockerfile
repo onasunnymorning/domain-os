@@ -57,6 +57,10 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdmin
 # Create API release image
 FROM alpine:3.21.3 AS admin-api
 
+# Install dnsviz and dependencies
+RUN apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography && \
+    pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
+
 # Copy librdkafka from the build image
 # COPY --from=build-admin-api /usr/lib/librdkafka* /usr/lib/
 

@@ -281,6 +281,9 @@ func main() {
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
+	// Dnssec
+	dnssecService := services.NewDnssecService()
+
 	// Agent Service (AI Assistant)
 	var agentService *service.AgentService
 	if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
@@ -355,6 +358,7 @@ func main() {
 	rest.NewFXController(r, fxService, authMiddleware)
 	// rest.NewQuoteController(r, quoteService, authMiddleware)
 	rest.NewWhoisController(r, whoisService, authMiddleware)
+	rest.NewDnssecController(r, dnssecService, authMiddleware)
 	// Workflows
 	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow

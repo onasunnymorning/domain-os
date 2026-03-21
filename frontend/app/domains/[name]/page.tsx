@@ -196,12 +196,21 @@ export default function DomainDetailPage() {
                   <DnsLookupModal 
                     domainName={domain.Name} 
                     trigger={
-                      <Button variant="outline" size="sm" className="h-[34px] border-dashed text-muted-foreground hover:text-foreground bg-muted/30">
+                      <Button variant="default" size="sm" className="h-[34px]">
                         DNS Lookup
                       </Button>
                     } 
                   />
-                  <Button variant="outline" size="sm" className="h-[34px] border-dashed text-muted-foreground bg-muted/30 pointer-events-none" tabIndex={-1}>DNSSEC</Button>
+                  <Button asChild variant="default" size="sm" className="h-[34px]">
+                    <Link href={`/dnssec?domain=${encodeURIComponent(domain.Name)}`} target="_blank" rel="noopener noreferrer">
+                      DNSSEC
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="sm" className="h-[34px]" title="Open dnsviz.net analysis in new tab">
+                    <a href={`https://dnsviz.net/d/${encodeURIComponent(domain.Name)}/dnssec/`} target="_blank" rel="noopener noreferrer">
+                      DNSVIZ
+                    </a>
+                  </Button>
                 </div>
                 {!domain.Hosts || domain.Hosts.length === 0 ? (
                   <div className="text-muted-foreground text-sm">No hosts associated</div>
