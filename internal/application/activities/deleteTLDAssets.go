@@ -50,6 +50,12 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 
 	flushDomains := func() error {
 		if len(domainIDs) == 0 { return nil }
+
+		// Delete dependent table records first to avoid foreign key constraints
+		if err := db.Exec("DELETE FROM domain_hosts WHERE domain_ro_id IN ?", domainIDs).Error; err != nil {
+			return err
+		}
+
 		if err := db.Exec("DELETE FROM domains WHERE ro_id IN ?", domainIDs).Error; err != nil {
 			return err
 		}
@@ -61,6 +67,7 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 
 	flushContacts := func() error {
 		if len(contactIDs) == 0 { return nil }
+
 		if err := db.Exec("DELETE FROM contacts WHERE id IN ?", contactIDs).Error; err != nil {
 			return err
 		}
@@ -72,6 +79,12 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 
 	flushHosts := func() error {
 		if len(hostIDs) == 0 { return nil }
+		
+		// Delete from host dependent tables first
+		if err := db.Exec("DELETE FROM host_addresses WHERE host_ro_id IN ?", hostIDs).Error; err != nil {
+			return err
+		}
+
 		if err := db.Exec("DELETE FROM hosts WHERE ro_id IN ?", hostIDs).Error; err != nil {
 			return err
 		}

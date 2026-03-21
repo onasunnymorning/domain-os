@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
@@ -351,7 +352,7 @@ func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx, heartbeat HeartbeatFunc
 			continue // Skip malformed records
 		}
 
-		_, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5],
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5],
 			record[6], record[7], record[8], record[9], record[10], record[11])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain %s: %v", record[0], err)
@@ -410,7 +411,7 @@ func (svc *CSVToSQLiteService) importDomainNameservers(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), strings.ToLower(record[1]))
 		if err != nil {
 			log.Printf("Warning: failed to insert domain nameserver %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -464,7 +465,7 @@ func (svc *CSVToSQLiteService) importDomainStatuses(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain status %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -516,7 +517,7 @@ func (svc *CSVToSQLiteService) importDomainRgpStatuses(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain RGP status %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -570,7 +571,7 @@ func (svc *CSVToSQLiteService) importHosts(tx *sql.Tx, heartbeat HeartbeatFunc) 
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5], record[6])
 		if err != nil {
 			log.Printf("Warning: failed to insert host %s: %v", record[0], err)
 			continue
@@ -628,7 +629,7 @@ func (svc *CSVToSQLiteService) importHostAddresses(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1], record[2])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2])
 		if err != nil {
 			log.Printf("Warning: failed to insert host address %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -682,7 +683,7 @@ func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert host status %s -> %s: %v", record[0], record[1], err)
 			continue

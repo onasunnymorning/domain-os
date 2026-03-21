@@ -237,14 +237,10 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 		rows.Close()
 
-		log.Printf("DEBUG: Iterated %d rows. Batch size: %d. currentBatchMaxKey='%s'", rowCount, len(batch), currentBatchMaxKey)
-
 		if len(batch) == 0 {
 			if currentBatchMaxKey == "" {
-				log.Printf("DEBUG: Break condition met. Empty batch and empty maxKey.")
 				break
 			}
-			log.Printf("DEBUG: Empty batch but maxKey='%s'. Proceeding (Skipping all?).", currentBatchMaxKey)
 		}
 
 		if len(batch) > 0 {
@@ -518,6 +514,65 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			break
 		}
 
+		first := rawDomains[0].Name
+		last := rawDomains[len(rawDomains)-1].Name
+
+		statusMap := make(map[string]entities.DomainStatus)
+		if sRows, err := sqliteDB.Query(`SELECT domain_name, status FROM domain_statuses WHERE domain_name >= ? AND domain_name <= ?`, first, last); err == nil {
+			for sRows.Next() {
+				var dn, st sql.NullString
+				if err := sRows.Scan(&dn, &st); err == nil && dn.Valid && st.Valid {
+					ds := statusMap[dn.String]
+					
+					// Normalize status string fully to handle case, snake_case, or kebab-case
+					normalizedStatus := strings.ToLower(st.String)
+					normalizedStatus = strings.ReplaceAll(normalizedStatus, "_", "")
+					normalizedStatus = strings.ReplaceAll(normalizedStatus, "-", "")
+					
+					switch normalizedStatus {
+					case "ok":
+						ds.OK = true
+					case "inactive":
+						ds.Inactive = true
+					case "clienttransferprohibited":
+						ds.ClientTransferProhibited = true
+					case "clientupdateprohibited":
+						ds.ClientUpdateProhibited = true
+					case "clientdeleteprohibited":
+						ds.ClientDeleteProhibited = true
+					case "clientrenewprohibited":
+						ds.ClientRenewProhibited = true
+					case "clienthold":
+						ds.ClientHold = true
+					case "servertransferprohibited":
+						ds.ServerTransferProhibited = true
+					case "serverupdateprohibited":
+						ds.ServerUpdateProhibited = true
+					case "serverdeleteprohibited":
+						ds.ServerDeleteProhibited = true
+					case "serverrenewprohibited":
+						ds.ServerRenewProhibited = true
+					case "serverhold":
+						ds.ServerHold = true
+					case "pendingcreate":
+						ds.PendingCreate = true
+					case "pendingrenew":
+						ds.PendingRenew = true
+					case "pendingtransfer":
+						ds.PendingTransfer = true
+					case "pendingupdate":
+						ds.PendingUpdate = true
+					case "pendingrestore":
+						ds.PendingRestore = true
+					case "pendingdelete":
+						ds.PendingDelete = true
+					}
+					statusMap[dn.String] = ds
+				}
+			}
+			sRows.Close()
+		}
+
 		var entitiesBatch []*entities.Domain
 
 		for _, r := range rawDomains {
@@ -560,6 +615,11 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				RoID:         roid,
 				UpdatedAt:    time.Now().UTC(),
 			}
+			
+			if st, ok := statusMap[r.Name]; ok {
+				d.Status = st
+			}
+
 			if t, err := parseJiscTime(r.CrDate); err == nil {
 				d.CreatedAt = t
 			} else {
