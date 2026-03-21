@@ -30,8 +30,9 @@ import { useRegistrars } from "@/lib/hooks/useRegistrars";
 import { useTLDs } from "@/lib/hooks/useTLDs";
 import { DomainListParams } from "@/lib/types/domain";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser } from "lucide-react";
+import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser, SlidersHorizontal } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 
 // Shared labels and help text
@@ -53,24 +54,50 @@ function DomainsPageInner() {
   // Search and filters
   const [nameQuery, setNameQuery] = useState(() => urlSearch.get("q") || "");
   const debouncedName = useDebounce(nameQuery, 300);
-  const [exactMatch, setExactMatch] = useState(() => urlSearch.get("exact") === "1");
+  const [exactMatch, setExactMatch] = useState(() => {
+    const urlVal = urlSearch.get("exact");
+    if (urlVal !== null) return urlVal === "1";
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("domainExactMatch") === "1";
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("domainExactMatch", exactMatch ? "1" : "0");
+    }
+  }, [exactMatch]);
+
   const [clidFilter, setClidFilter] = useState<string | undefined>(() => urlSearch.get("clid") || undefined);
   const [tldFilter, setTldFilter] = useState<string | undefined>(() => urlSearch.get("tld") || undefined);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [roidMin, setRoidMin] = useState(() => urlSearch.get("roidMin") || "");
+  const [roidMax, setRoidMax] = useState(() => urlSearch.get("roidMax") || "");
+  const [createdAfter, setCreatedAfter] = useState(() => urlSearch.get("createdAfter") || "");
+  const [createdBefore, setCreatedBefore] = useState(() => urlSearch.get("createdBefore") || "");
+  const [expiresAfter, setExpiresAfter] = useState(() => urlSearch.get("expiresAfter") || "");
+  const [expiresBefore, setExpiresBefore] = useState(() => urlSearch.get("expiresBefore") || "");
   const [pageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
 
-  // Keep URL query in sync so Back restores filters
   useEffect(() => {
     const sp = new URLSearchParams();
     if (nameQuery) sp.set("q", nameQuery);
     if (exactMatch) sp.set("exact", "1");
     if (clidFilter) sp.set("clid", clidFilter);
     if (tldFilter) sp.set("tld", tldFilter);
+    if (roidMin) sp.set("roidMin", roidMin);
+    if (roidMax) sp.set("roidMax", roidMax);
+    if (createdAfter) sp.set("createdAfter", createdAfter);
+    if (createdBefore) sp.set("createdBefore", createdBefore);
+    if (expiresAfter) sp.set("expiresAfter", expiresAfter);
+    if (expiresBefore) sp.set("expiresBefore", expiresBefore);
     const q = sp.toString();
     // Replace to avoid stacking history entries while typing/filtering
     router.replace(`${pathname}${q ? `?${q}` : ""}`, { scroll: false });
-  }, [nameQuery, exactMatch, clidFilter, tldFilter, pathname, router]);
+  }, [nameQuery, exactMatch, clidFilter, tldFilter, roidMin, roidMax, createdAfter, createdBefore, expiresAfter, expiresBefore, pathname, router]);
 
   // Build domain query params
   const params: DomainListParams = useMemo(() => {
@@ -85,8 +112,14 @@ function DomainsPageInner() {
     }
     if (clidFilter) p.clid_equals = clidFilter;
     if (tldFilter) p.tld_equals = tldFilter;
+    if (roidMin) p.roid_greater_than = roidMin;
+    if (roidMax) p.roid_less_than = roidMax;
+    if (createdAfter) p.created_after = `${createdAfter}T00:00:00Z`;
+    if (createdBefore) p.created_before = `${createdBefore}T23:59:59Z`;
+    if (expiresAfter) p.expires_after = `${expiresAfter}T00:00:00Z`;
+    if (expiresBefore) p.expires_before = `${expiresBefore}T23:59:59Z`;
     return p;
-  }, [pageSize, cursor, debouncedName, exactMatch, clidFilter, tldFilter]);
+  }, [pageSize, cursor, debouncedName, exactMatch, clidFilter, tldFilter, roidMin, roidMax, createdAfter, createdBefore, expiresAfter, expiresBefore]);
 
   // Data queries
   const { data, isLoading, error } = useDomains(params);
@@ -94,36 +127,47 @@ function DomainsPageInner() {
   const { data: registrarData } = useRegistrars({ pagesize: 200 });
   const { data: tldData } = useTLDs({ pagesize: 200 });
 
-  // Reset pagination on filter changes
   useEffect(() => {
     setCursor(undefined);
     setCursorStack([]);
-  }, [debouncedName, exactMatch, clidFilter, tldFilter]);
+  }, [debouncedName, exactMatch, clidFilter, tldFilter, roidMin, roidMax, createdAfter, createdBefore, expiresAfter, expiresBefore]);
 
   // Derived option lists
   const registrarOptions = (registrarData?.Data ?? []).map((r) => ({
     value: r.ClID,
     label: r.Name ? `${r.Name} (${r.ClID})` : r.ClID,
+    nameTerm: r.Name ? r.Name : r.ClID,
   }));
   const tldOptions = (tldData?.Data ?? []).map((t) => ({ value: t.Name, label: t.Name }));
 
   // Simple client-side search text for dropdowns
+  const [searchRegistrarByClid, setSearchRegistrarByClid] = useState(false);
   const [clidSearch, setClidSearch] = useState("");
   const [tldSearch, setTldSearch] = useState("");
 
-  const filteredRegistrarOptions = registrarOptions.filter((o) =>
-    o.label.toLowerCase().includes(clidSearch.toLowerCase())
-  );
+  const filteredRegistrarOptions = registrarOptions.filter((o) => {
+    if (!clidSearch) return true;
+    const term = clidSearch.toLowerCase();
+    if (searchRegistrarByClid) {
+      return o.value.toLowerCase().includes(term);
+    }
+    return o.nameTerm.toLowerCase().includes(term);
+  });
   const filteredTldOptions = tldOptions.filter((o) =>
     o.label.toLowerCase().includes(tldSearch.toLowerCase())
   );
 
-  // Reset all filters and URL query
   const resetFilters = () => {
     setNameQuery("");
     setExactMatch(false);
     setClidFilter(undefined);
     setTldFilter(undefined);
+    setRoidMin("");
+    setRoidMax("");
+    setCreatedAfter("");
+    setCreatedBefore("");
+    setExpiresAfter("");
+    setExpiresBefore("");
     setClidSearch("");
     setTldSearch("");
     setCursor(undefined);
@@ -172,40 +216,60 @@ function DomainsPageInner() {
         {/* Filters */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end">
               {/* Name search */}
-              <div className="flex-1">
+              <div className="flex-1 flex flex-col gap-2">
+                <div className="flex items-center justify-between px-1 h-6">
+                  <span className="text-sm font-medium text-muted-foreground">Domain Name</span>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="exact-match" className="text-xs text-muted-foreground cursor-pointer">
+                      Exact match
+                    </label>
+                    <Switch
+                      id="exact-match"
+                      checked={exactMatch}
+                      onCheckedChange={setExactMatch}
+                    />
+                  </div>
+                </div>
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search domains..."
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
-                    className="pl-10"
+                    className="pl-9 h-9"
                   />
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Checkbox
-                    checked={exactMatch}
-                    onCheckedChange={(v) => setExactMatch(Boolean(v))}
-                    id="exact"
-                  />
-                  <span>Exact match</span>
-                </label>
               </div>
 
               {/* Registrar combobox */}
-              <div className="w-full md:w-72">
+              <div className="w-full md:w-72 flex flex-col gap-2">
+                <div className="h-6"></div> {/* Spacer to align with Search input label */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                    <Button variant="outline" role="combobox" className="w-full justify-between h-9">
                       {clidFilter ? registrarOptions.find((o) => o.value === clidFilter)?.label : "Filter by Registrar"}
                       <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-2" align="start">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <span className="text-xs font-medium text-muted-foreground">Search by {searchRegistrarByClid ? "ClID" : "Name"}</span>
+                      <div className="flex items-center gap-1.5">
+                        <label htmlFor="search-clid" className="text-[10px] text-muted-foreground cursor-pointer uppercase tracking-wider">
+                          Use ClID
+                        </label>
+                        <Switch
+                          id="search-clid"
+                          checked={searchRegistrarByClid}
+                          onCheckedChange={setSearchRegistrarByClid}
+                          className="scale-75 origin-right"
+                        />
+                      </div>
+                    </div>
                     <Input
-                      placeholder="Search registrar..."
+                      placeholder={searchRegistrarByClid ? "Search ClID..." : "Search name..."}
                       value={clidSearch}
                       onChange={(e) => setClidSearch(e.target.value)}
                       className="mb-2"
@@ -239,10 +303,11 @@ function DomainsPageInner() {
               </div>
 
               {/* TLD combobox */}
-              <div className="w-full md:w-56">
+              <div className="w-full md:w-56 flex flex-col gap-2">
+                <div className="h-6"></div> {/* Spacer to align */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                    <Button variant="outline" role="combobox" className="w-full justify-between h-9">
                       {tldFilter || "Filter by TLD"}
                       <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
@@ -316,7 +381,16 @@ function DomainsPageInner() {
               </div>
 
               {/* Reset filters */}
-              <div className="w-full md:w-auto md:ml-auto">
+              <div className="w-full md:w-auto md:ml-auto flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className={showAdvanced ? "bg-muted" : ""}
+                >
+                  <SlidersHorizontal className="h-4 w-4 mr-2" />
+                  Advanced Filters
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -329,6 +403,75 @@ function DomainsPageInner() {
                 </Button>
               </div>
             </div>
+
+            {/* Advanced Filters */}
+            {showAdvanced && (
+              <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Created Range */}
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-muted-foreground">Created Date</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={createdAfter}
+                      onChange={(e) => setCreatedAfter(e.target.value)}
+                      className="text-sm h-9"
+                      title="Created After"
+                    />
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <Input
+                      type="date"
+                      value={createdBefore}
+                      onChange={(e) => setCreatedBefore(e.target.value)}
+                      className="text-sm h-9"
+                      title="Created Before"
+                    />
+                  </div>
+                </div>
+                
+                {/* Expires Range */}
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-muted-foreground">Expiry Date</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={expiresAfter}
+                      onChange={(e) => setExpiresAfter(e.target.value)}
+                      className="text-sm h-9"
+                      title="Expires After"
+                    />
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <Input
+                      type="date"
+                      value={expiresBefore}
+                      onChange={(e) => setExpiresBefore(e.target.value)}
+                      className="text-sm h-9"
+                      title="Expires Before"
+                    />
+                  </div>
+                </div>
+
+                {/* RoID Range */}
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-muted-foreground">RoID Range</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Min RoID"
+                      value={roidMin}
+                      onChange={(e) => setRoidMin(e.target.value)}
+                      className="text-sm h-9"
+                    />
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <Input
+                      placeholder="Max RoID"
+                      value={roidMax}
+                      onChange={(e) => setRoidMax(e.target.value)}
+                      className="text-sm h-9"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

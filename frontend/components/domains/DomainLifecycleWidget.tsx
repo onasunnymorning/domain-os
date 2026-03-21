@@ -66,7 +66,7 @@ export function DomainLifecycleWidget({ domain }: Props) {
     if (!domain.RGPStatus) return [];
     const now = new Date();
 
-    const activePeriods: { name: string; end: Date; start: Date; progress: number }[] = [];
+    const activePeriods: { name: string; end: Date; start: Date; progress: number; daysLeft: number }[] = [];
 
     const addPeriod = (endDateStr: string | undefined, name: string, durationDays: number | undefined, defaultDays: number) => {
       if (!endDateStr) return;
@@ -81,7 +81,10 @@ export function DomainLifecycleWidget({ domain }: Props) {
         let progress = totalMs > 0 ? (elapsedMs / totalMs) * 100 : 0;
         progress = Math.max(0, Math.min(100, progress));
 
-        activePeriods.push({ name, end, start, progress });
+        const msLeft = differenceInMilliseconds(end, now);
+        const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+
+        activePeriods.push({ name, end, start, progress, daysLeft });
       }
     };
 
@@ -103,8 +106,8 @@ export function DomainLifecycleWidget({ domain }: Props) {
   return (
     <Card>
       <CardContent className="space-y-6">
-        {/* Domain Age / Expiry */}
-        {(domain.CreatedAt || domain.ExpiryDate) && (
+        {/* Domain Age / Expiry / Updated */}
+        {(domain.CreatedAt || domain.ExpiryDate || domain.UpdatedAt) && (
           <div className="flex items-center gap-2 pb-2 flex-wrap">
             {domain.CreatedAt && (
               <>
@@ -140,6 +143,18 @@ export function DomainLifecycleWidget({ domain }: Props) {
                 </div>
               </>
             ) : null}
+
+            {domain.UpdatedAt && (
+              <>
+                <div className="text-muted-foreground text-sm mx-1">•</div>
+                <div className="text-sm font-medium">
+                  last updated {formatDistanceToNowStrict(new Date(domain.UpdatedAt))} ago
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  ({format(new Date(domain.UpdatedAt), "MMM d, yyyy")})
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -173,13 +188,15 @@ export function DomainLifecycleWidget({ domain }: Props) {
             {gracePeriods.map((gp, idx) => (
               <div key={idx} className="space-y-2">
                 <div className="flex justify-between items-center text-sm">
-                  <span>{gp.name}</span>
+                  <span>
+                    {gp.name} <span className="text-muted-foreground ml-1">({gp.daysLeft} day{gp.daysLeft !== 1 ? 's' : ''} left)</span>
+                  </span>
                   <span className="text-muted-foreground">{Math.round(gp.progress)}%</span>
                 </div>
                 <Progress value={gp.progress} className="h-2" />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Started: {format(gp.start, "MMM d")}</span>
-                  <span>Ends: {format(gp.end, "MMM d, yyyy HH:mm")}</span>
+                  <span>{format(gp.start, "MMM d")}</span>
+                  <span>{format(gp.end, "MMM d, yyyy HH:mm")}</span>
                 </div>
               </div>
             ))}

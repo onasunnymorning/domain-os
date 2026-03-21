@@ -20,6 +20,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import type { RegistrarListItem, RegistrarListParams } from '@/lib/types/registrar';
+import { TLDAccreditedRegistrarCountWidget } from '@/components/tlds/TLDAccreditedRegistrarCountWidget';
+import { TLDDomainCountWidget } from '@/components/tlds/TLDDomainCountWidget';
+import { TLDReservedInventoryWidget } from '@/components/tlds/TLDReservedInventoryWidget';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -132,96 +135,42 @@ export default function TLDDetailPage({ params }: Props) {
               <h1 className="text-5xl font-bold tracking-tight">{tld?.Name}</h1>
             )}
           </div>
-          <p className="text-sm text-muted-foreground ml-[52px]">TLD Details</p>
+          {tld?.RyID && (
+            <div className="ml-[52px]">
+              <Badge variant="outline" className="font-mono mt-1 text-sm">{tld.RyID}</Badge>
+            </div>
+          )}
         </div>
 
-        {/* TLD Information Card */}
-        <Card>
-          <CardContent className="pt-6">
-            {isLoading ? (
-              <div className="space-y-6">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="space-y-2">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-6 w-full max-w-md" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {/* Type */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
-                  <div>{tld && getTypeBadge(tld.Type)}</div>
-                </div>
+        {/* Count Widgets */}
+        {tld && (
+          <div className="grid gap-6 md:grid-cols-3">
+            <TLDDomainCountWidget tldName={tld.Name} />
+            <TLDReservedInventoryWidget tldName={tld.Name} />
+            <TLDAccreditedRegistrarCountWidget 
+              count={regAccData?.Data?.length ?? 0} 
+              isLoading={regAccLoading} 
+              onClick={() => {
+                const el = document.getElementById("accredited-registrars");
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: y, behavior: "smooth" });
+                }
+              }} 
+            />
+          </div>
+        )}
 
-                {/* Registry Operator */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                    <Building2 className="h-3 w-3" />
-                    Registry Operator
-                  </p>
-                  <Link
-                    href={`/registry-operators/${tld?.RyID}`}
-                    className="text-lg font-medium text-primary hover:underline inline-block"
-                  >
-                    {tld?.RyID}
-                  </Link>
-                </div>
-
-                {/* Status Grid */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS</p>
-                    <div>
-                      {tld?.EnableDNS ? (
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <XCircle className="mr-1 h-3 w-3" /> Disabled
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
-                    <div>
-                      {tld?.AllowEscrowImport ? (
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <XCircle className="mr-1 h-3 w-3" /> Disabled
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metadata */}
-                <div className="pt-6 border-t">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Phase Timeline */}
+        {!isLoading && tld && (
+          <PhaseTimeline
+            tldName={tld.Name}
+            initialPhaseName={phaseName || undefined}
+          />
+        )}
 
         {/* Registrars Accredited for this TLD */}
-        <Card>
+        <Card id="accredited-registrars">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Accredited Registrars</CardTitle>
@@ -285,6 +234,80 @@ export default function TLDDetailPage({ params }: Props) {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* TLD Information Card (Details) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-6 w-full max-w-md" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {/* Type */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
+                  <div>{tld && getTypeBadge(tld.Type)}</div>
+                </div>
+
+                {/* Status Grid */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS</p>
+                    <div>
+                      {tld?.EnableDNS ? (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          <XCircle className="mr-1 h-3 w-3" /> Disabled
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
+                    <div>
+                      {tld?.AllowEscrowImport ? (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          <XCircle className="mr-1 h-3 w-3" /> Disabled
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metadata */}
+                <div className="pt-6 border-t">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
@@ -408,13 +431,6 @@ export default function TLDDetailPage({ params }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Phase Timeline */}
-        {!isLoading && tld && (
-          <PhaseTimeline
-            tldName={tld.Name}
-            initialPhaseName={phaseName || undefined}
-          />
-        )}
       </div>
     </DashboardLayout>
   );

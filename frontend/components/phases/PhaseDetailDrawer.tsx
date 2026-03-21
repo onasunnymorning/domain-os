@@ -1,6 +1,6 @@
 'use client';
 
-import { Phase } from '@/lib/types/phase';
+import { Phase, ContactDataPolicyType } from '@/lib/types/phase';
 import { useState } from 'react';
 import { useDeletePhase, useEndPhase, useUpdatePhasePolicy, useAddPrice, useDeletePrice, useAddFee, useDeleteFee } from '@/lib/hooks/usePhases';
 import { useQuery } from '@tanstack/react-query';
@@ -1045,6 +1045,92 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                           </div>
                         </>
                       )}
+                    </div>
+
+                    {/* Contact Data Policy Section */}
+                    <div className="space-y-3 pt-2">
+                      <div className="text-sm font-medium text-orange-700">Contact Data Policy</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                        {!isEditingPolicy ? (
+                          <>
+                            {phaseData.policy.registrantContactDataPolicy && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground uppercase tracking-wide">Registrant</div>
+                                <div className="font-semibold capitalize">{phaseData.policy.registrantContactDataPolicy}</div>
+                              </div>
+                            )}
+                            {phaseData.policy.techContactDataPolicy && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground uppercase tracking-wide">Tech</div>
+                                <div className="font-semibold capitalize">{phaseData.policy.techContactDataPolicy}</div>
+                              </div>
+                            )}
+                            {phaseData.policy.adminContactDataPolicy && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground uppercase tracking-wide">Admin</div>
+                                <div className="font-semibold capitalize">{phaseData.policy.adminContactDataPolicy}</div>
+                              </div>
+                            )}
+                            {phaseData.policy.billingContactDataPolicy && (
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground uppercase tracking-wide">Billing</div>
+                                <div className="font-semibold capitalize">{phaseData.policy.billingContactDataPolicy}</div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="text-xs text-muted-foreground uppercase tracking-wide">Registrant</label>
+                              <select
+                                value={editedPolicy?.registrantContactDataPolicy || 'mandatory'}
+                                onChange={(e) => handlePolicyChange('registrantContactDataPolicy', e.target.value as ContactDataPolicyType)}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm bg-background"
+                              >
+                                <option value="mandatory">Mandatory</option>
+                                <option value="optional">Optional</option>
+                                <option value="prohibited">Prohibited</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground uppercase tracking-wide">Tech</label>
+                              <select
+                                value={editedPolicy?.techContactDataPolicy || 'mandatory'}
+                                onChange={(e) => handlePolicyChange('techContactDataPolicy', e.target.value as ContactDataPolicyType)}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm bg-background"
+                              >
+                                <option value="mandatory">Mandatory</option>
+                                <option value="optional">Optional</option>
+                                <option value="prohibited">Prohibited</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground uppercase tracking-wide">Admin</label>
+                              <select
+                                value={editedPolicy?.adminContactDataPolicy || 'optional'}
+                                onChange={(e) => handlePolicyChange('adminContactDataPolicy', e.target.value as ContactDataPolicyType)}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm bg-background"
+                              >
+                                <option value="mandatory">Mandatory</option>
+                                <option value="optional">Optional</option>
+                                <option value="prohibited">Prohibited</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground uppercase tracking-wide">Billing</label>
+                              <select
+                                value={editedPolicy?.billingContactDataPolicy || 'optional'}
+                                onChange={(e) => handlePolicyChange('billingContactDataPolicy', e.target.value as ContactDataPolicyType)}
+                                className="mt-1 w-full px-3 py-2 border rounded-md text-sm bg-background"
+                              >
+                                <option value="mandatory">Mandatory</option>
+                                <option value="optional">Optional</option>
+                                <option value="prohibited">Prohibited</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Save/Cancel Buttons */}

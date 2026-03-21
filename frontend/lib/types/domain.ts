@@ -97,6 +97,12 @@ export interface DomainListParams {
   tld_equals?: string;
   name_equals?: string;
   name_like?: string;
+  roid_greater_than?: string;
+  roid_less_than?: string;
+  created_after?: string;
+  created_before?: string;
+  expires_after?: string;
+  expires_before?: string;
 }
 
 export interface DomainListResponse {
