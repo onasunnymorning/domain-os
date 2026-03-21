@@ -1,8 +1,10 @@
 package rest
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -163,7 +165,11 @@ func (ctrl *DomainController) BulkCreate(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
+	if len(req) > 0 {
+		importStatusStr, _ := json.Marshal(req[0].Status)
+		log.Printf("DEBUG BulkCreate Received: domain %s with status %s", req[0].Name, string(importStatusStr))
+	}
+	
 	err := ctrl.domainService.BulkCreate(ctx, req)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})

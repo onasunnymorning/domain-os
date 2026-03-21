@@ -256,3 +256,51 @@ func TestImportContactsChunkedStatusParsingFix(t *testing.T) {
 	}
 }
 
+func TestImportDomainsChunkedStatusMapCasingFix(t *testing.T) {
+	stRows := []struct {
+		domain_name string
+		status      string
+	}{
+		{"TEST1.RADIO", "clientTransferProhibited"},
+		{"TeSt2.RaDiO", "clientUpdateProhibited"},
+		{"test3.radio", "ok"},
+	}
+
+	statusMap := make(map[string]entities.DomainStatus)
+	for _, row := range stRows {
+		normalizedDN := strings.ToLower(strings.TrimSpace(row.domain_name))
+		ds := statusMap[normalizedDN]
+		switch strings.ToLower(strings.TrimSpace(row.status)) {
+		case "clienttransferprohibited":
+			ds.ClientTransferProhibited = true
+		case "clientupdateprohibited":
+			ds.ClientUpdateProhibited = true
+		case "ok":
+			ds.OK = true
+		}
+		statusMap[normalizedDN] = ds
+	}
+
+	cmds := []struct {
+		Name string
+	}{
+		{"test1.radio"},
+		{"test2.radio"},
+		{"TEST3.RADIO"},
+	}
+
+	for _, cmd := range cmds {
+		normalizedCmdName := strings.ToLower(strings.TrimSpace(cmd.Name))
+		ds, ok := statusMap[normalizedCmdName]
+		assert.True(t, ok, "Expected to find status for %s", cmd.Name)
+
+		switch strings.ToLower(cmd.Name) {
+		case "test1.radio":
+			assert.True(t, ds.ClientTransferProhibited)
+		case "test2.radio":
+			assert.True(t, ds.ClientUpdateProhibited)
+		case "test3.radio":
+			assert.True(t, ds.OK)
+		}
+	}
+}

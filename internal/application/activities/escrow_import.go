@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	reqUrl "net/url"
 	"os"
@@ -1704,18 +1705,39 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 		}
 
 		// Batch fetch associations
-		firstName := cmds[0].Name
-		lastName := cmds[len(cmds)-1].Name
 
-		// 1. Domain Statuses
+		// Since case differences between `domains` and `domain_statuses` can cause ASCII range queries (>= and <=) 
+		// to miss rows, we build a query using an IN clause.
+		// We chunk the IN clause to avoid SQLite parameter limits.
 		statusMap := make(map[string]entities.DomainStatus)
-		{
-			stRows, sErr := sqldb.Query(`SELECT domain_name, status FROM domain_statuses WHERE domain_name >= ? AND domain_name <= ?`, firstName, lastName)
+		rgpMap := make(map[string][]string)
+		
+		var names []interface{}
+		var placeholders []string
+		for _, cmd := range cmds {
+			names = append(names, strings.ToLower(cmd.Name))
+			placeholders = append(placeholders, "?")
+		}
+
+		// Process in chunks of 500 to be safe with SQLite limits
+		chunkSize := 500
+		for i := 0; i < len(names); i += chunkSize {
+			end := i + chunkSize
+			if end > len(names) {
+				end = len(names)
+			}
+			chunkNames := names[i:end]
+			chunkPlaceholders := strings.Join(placeholders[i:end], ",")
+
+			// 1. Domain Statuses
+			stQuery := fmt.Sprintf(`SELECT domain_name, status FROM domain_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders)
+			stRows, sErr := sqldb.Query(stQuery, chunkNames...)
 			if sErr == nil {
 				for stRows.Next() {
 					var dn, stval sql.NullString
 					if err := stRows.Scan(&dn, &stval); err == nil && dn.Valid && stval.Valid {
-						ds := statusMap[dn.String]
+						normalizedDN := strings.ToLower(strings.TrimSpace(dn.String))
+						ds := statusMap[normalizedDN]
 						switch strings.ToLower(strings.TrimSpace(stval.String)) {
 						case "ok":
 							ds.OK = true
@@ -1754,33 +1776,35 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 						case "pendingdelete":
 							ds.PendingDelete = true
 						}
-						statusMap[dn.String] = ds
+						statusMap[normalizedDN] = ds
 					}
 				}
 				stRows.Close()
 			}
-		}
 
-		// 2. RGP Statuses
-		rgpMap := make(map[string][]string)
-		{
-			rgpRows, rErr := sqldb.Query(`SELECT domain_name, rgp_status FROM domain_rgp_statuses WHERE domain_name >= ? AND domain_name <= ?`, firstName, lastName)
+			// 2. RGP Statuses
+			rgpQuery := fmt.Sprintf(`SELECT domain_name, rgp_status FROM domain_rgp_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders)
+			rgpRows, rErr := sqldb.Query(rgpQuery, chunkNames...)
 			if rErr == nil {
 				for rgpRows.Next() {
 					var dn, st sql.NullString
 					if err := rgpRows.Scan(&dn, &st); err == nil && dn.Valid && st.Valid {
-						rgpMap[dn.String] = append(rgpMap[dn.String], st.String)
+						normalizedDN := strings.ToLower(strings.TrimSpace(dn.String))
+						rgpMap[normalizedDN] = append(rgpMap[normalizedDN], st.String)
 					}
 				}
 				rgpRows.Close()
 			}
 		}
 
+		log.Printf("DEBUG importDomainsChunked: fetched %d statuses and %d RGP statuses from SQLite chunk", len(statusMap), len(rgpMap))
+
 		// Fill commands
 		now := time.Now().UTC()
 		for _, cmd := range cmds {
+			normalizedCmdName := strings.ToLower(strings.TrimSpace(cmd.Name))
 			// Status
-			if ds, ok := statusMap[cmd.Name]; ok {
+			if ds, ok := statusMap[normalizedCmdName]; ok {
 				// Ensure OK is set when no prohibitions/pending are present (allowed with Inactive)
 				if !ds.OK && !ds.HasProhibitions() && !ds.HasPendings() {
 					ds.OK = true
@@ -1790,7 +1814,7 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 				}
 			}
 			// RGP
-			if rgps, ok := rgpMap[cmd.Name]; ok {
+			if rgps, ok := rgpMap[normalizedCmdName]; ok {
 				for _, st := range rgps {
 					switch strings.ToLower(strings.TrimSpace(st)) {
 					case "addperiod":
