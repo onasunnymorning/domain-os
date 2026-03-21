@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"net"
 	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
@@ -41,6 +43,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("", controller.ListDomains)
 		domainGroup.GET("count", controller.CountDomains)
 		domainGroup.POST("quote", controller.GetQuote)
+		domainGroup.GET(":name/dns", controller.GetDomainDNS)
 		// Add and remove hosts
 		domainGroup.POST(":name/hosts/:roid", controller.AddHostToDomain)
 		domainGroup.POST(":name/hostname/:hostName", controller.AddHostToDomainByHostName)
@@ -285,6 +288,39 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 
 	// Return the Response
 	ctx.JSON(200, response)
+}
+
+// GetDomainDNS godoc
+// @Summary Get a domain's live DNS nameservers
+// @Description Uses the Go net standard library to natively query the live NS records of the domain
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Success 200 {array} string
+// @Failure 500
+// @Router /domains/{name}/dns [get]
+func (ctrl *DomainController) GetDomainDNS(ctx *gin.Context) {
+	name := ctx.Param("name")
+
+	nss, err := net.LookupNS(name)
+	if err != nil {
+		// Log the error but return empty array if domain doesn't resolve to avoid 500 crashes
+		log.Printf("LookupNS error for %s: %v", name, err)
+		ctx.JSON(200, []string{})
+		return
+	}
+
+	var nsList []string
+	for _, ns := range nss {
+		// strip trailing dots from NS hostnames for output
+		host := ns.Host
+		if len(host) > 0 && host[len(host)-1] == '.' {
+			host = host[:len(host)-1]
+		}
+		nsList = append(nsList, host)
+	}
+
+	ctx.JSON(200, nsList)
 }
 
 // UpdateDomain godoc

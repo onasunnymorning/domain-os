@@ -20,3 +20,7 @@ export async function createDomain(payload: DomainCreateRequest): Promise<Domain
   const { data } = await apiClient.post('/domains', payload);
   return data;
 }
+export async function getDomainDNS(name: string): Promise<string[]> {
+  const { data } = await apiClient.get(`/domains/${encodeURIComponent(name)}/dns`);
+  return data;
+}
