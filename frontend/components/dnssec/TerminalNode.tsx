@@ -32,12 +32,14 @@ export function TerminalNode({ data }: TerminalNodeProps) {
   // Extract algorithm string if available in the description (e.g. "algorithm 8 (RSA/SHA-256)")
   let algoStr = '';
   if (raw.description) {
-    const match = raw.description.match(/algorithm \d+ \((.*?)\)/);
+    const match = raw.description.match(/algorithm (\d+) \((.*?)\)/);
     if (match) {
-      algoStr = match[1];
-    } else if (raw.algorithm) {
+      algoStr = `${match[2]} (${match[1]})`;
+    } else if (raw.algorithm !== undefined) {
       algoStr = `Type ${raw.algorithm}`;
     }
+  } else if (raw.algorithm !== undefined) {
+    algoStr = `Type ${raw.algorithm}`;
   }
 
   return (

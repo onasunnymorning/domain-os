@@ -116,7 +116,7 @@ func (s *S3Client) DownloadToFile(ctx context.Context, key string) (string, erro
 	if base == "." || base == "/" || base == "" {
 		base = "escrow"
 	}
-	dstPath := filepath.Join(os.TempDir(), base)
+	dstPath := filepath.Join(os.TempDir(), strconv.FormatInt(time.Now().UnixNano(), 10)+"-"+base)
 	err := s.client.FGetObject(ctx, s.bucket, key, dstPath, minio.GetObjectOptions{})
 	if err != nil {
 		return "", err

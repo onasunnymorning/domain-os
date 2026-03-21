@@ -62,7 +62,7 @@ export function mapDNSVizToReactFlow(data: DnsVizData): { nodes: Node[]; edges: 
           rfNodes.push({
             id: dsId,
             position: { x: X_CENTER - ((dsList.length - 1) * 220) / 2 + dsIdx * 220, y: Y_BLOCK },
-            data: { label: `[DS] ${ds.id}`, status: dsStatus, raw: ds },
+            data: { label: `[DS] ${ds.id.split('/').slice(1).join('/')}`, status: dsStatus, raw: ds },
             type: 'terminalNode'
           });
 
@@ -95,7 +95,7 @@ export function mapDNSVizToReactFlow(data: DnsVizData): { nodes: Node[]; edges: 
       rfNodes.push({
         id: kskId,
         position: { x: X_CENTER - ((kskList.length - 1) * 220) / 2 + kskIdx * 220, y: Y_BLOCK + 150 },
-        data: { label: `[KSK] ${ksk.id}`, status: mapStatus(ksk.status || 'secure'), raw: ksk },
+        data: { label: `[KSK] ${ksk.id.split('/').slice(1).join('/')}`, status: mapStatus(ksk.status || 'secure'), raw: ksk },
         type: 'terminalNode'
       });
 
@@ -115,7 +115,7 @@ export function mapDNSVizToReactFlow(data: DnsVizData): { nodes: Node[]; edges: 
       rfNodes.push({
         id: zskId,
         position: { x: X_CENTER - ((zskList.length - 1) * 220) / 2 + zskIdx * 220, y: Y_BLOCK + 300 },
-        data: { label: `[ZSK] ${zsk.id}`, status: mapStatus(zsk.status || 'secure'), raw: zsk },
+        data: { label: `[ZSK] ${zsk.id.split('/').slice(1).join('/')}`, status: mapStatus(zsk.status || 'secure'), raw: zsk },
         type: 'terminalNode'
       });
 

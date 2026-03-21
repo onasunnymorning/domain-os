@@ -3081,10 +3081,15 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 		return StageImportResult{}, fmt.Errorf("download db failed: %w", err)
 	}
 	defer os.Remove(srcPath)
+	defer os.Remove(srcPath + "-wal")
+	defer os.Remove(srcPath + "-shm")
 
 	// Create Staging DB path
 	workDir := filepath.Dir(srcPath)
 	stagedPath := filepath.Join(workDir, stagedBase)
+	
+	// Ensure we start fresh, especially if local storage emulator keeps stale files
+	_ = os.Remove(stagedPath)
 
 	db, err := sql.Open("sqlite", stagedPath)
 	if err != nil {
@@ -3169,9 +3174,15 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 	updateNullable("domains", "crRr", "upRr")
 
 	// Copy auxiliary tables without updates
-	knownTables := []string{"host_addresses", "domain_hosts", "domain_statuses", "contact_statuses", "host_statuses", "domain_nameservers", "domain_rgp_statuses"}
+	knownTables := []string{"host_addresses", "domain_hosts", "domain_statuses", "contact_statuses", "host_statuses", "domain_nameservers", "domain_rgp_statuses", "nndns"}
 	for _, t := range knownTables {
-		db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM src.%s", t, t))
+		if _, err := db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM src.%s", t, t)); err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				activity.GetLogger(ctx).Warn("⚠️ StageImport: missing aux table in source, skipping", "table", t)
+				continue
+			}
+			return StageImportResult{}, fmt.Errorf("stage aux table %s failed: %w", t, err)
+		}
 	}
 
 	// Detach
@@ -3335,6 +3346,8 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 		return IngestDomainsResult{}, err
 	}
 	defer os.Remove(dbPath)
+	defer os.Remove(dbPath + "-wal")
+	defer os.Remove(dbPath + "-shm")
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -3360,6 +3373,65 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 
 	return IngestDomainsResult{Total: total, Skipped: skipped}, nil
+}
+
+// IngestNNDNsArgs parameters
+type IngestNNDNsArgs struct {
+	StagedDBKey string
+	TLD         string
+}
+
+// IngestNNDNsResult outcome
+type IngestNNDNsResult struct {
+	Total   int64
+	Skipped int64
+}
+
+// IngestNNDNs imports NNDNs from the staged DB into the registry
+func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNNDNsArgs) (IngestNNDNsResult, error) {
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return IngestNNDNsResult{}, err
+	}
+
+	var lastKey string
+	if activity.HasHeartbeatDetails(ctx) {
+		var d string
+		if err := activity.GetHeartbeatDetails(ctx, &d); err == nil {
+			lastKey = d
+		}
+	}
+
+	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
+	if err != nil {
+		return IngestNNDNsResult{}, err
+	}
+	defer os.Remove(dbPath)
+	defer os.Remove(dbPath + "-wal")
+	defer os.Remove(dbPath + "-shm")
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return IngestNNDNsResult{}, err
+	}
+	defer db.Close()
+
+	destImporter, err := services.NewDirectDBImporter()
+	if err != nil {
+		return IngestNNDNsResult{}, err
+	}
+	defer destImporter.PG.Close()
+
+	heartbeat := func(processed string) {
+		activity.RecordHeartbeat(ctx, processed)
+	}
+
+	total, skipped, err := destImporter.ImportNNDNs(ctx, db, args.TLD, lastKey, heartbeat)
+	if err != nil {
+		return IngestNNDNsResult{Total: total, Skipped: skipped}, err
+	}
+
+	return IngestNNDNsResult{Total: total, Skipped: skipped}, nil
 }
 
 // LinkDomainHostsArgs parameters
@@ -3392,6 +3464,8 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 		return LinkDomainHostsResult{}, err
 	}
 	defer os.Remove(dbPath)
+	defer os.Remove(dbPath + "-wal")
+	defer os.Remove(dbPath + "-shm")
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {

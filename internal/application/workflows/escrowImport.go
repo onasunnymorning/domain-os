@@ -243,7 +243,18 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 	counts["domains_total"] = dRes.Total
 	counts["domains_skipped"] = dRes.Skipped
 
-	// 4. Link Domain Hosts
+	// 4. Ingest NNDNs
+	var nRes activities.IngestNNDNsResult
+	if err := workflow.ExecuteActivity(ctx, acts.IngestNNDNs, activities.IngestNNDNsArgs{
+		StagedDBKey: params.StagedDBKey,
+		TLD:         params.TLD,
+	}).Get(ctx, &nRes); err != nil {
+		return EscrowIngestionResult{}, err
+	}
+	counts["nndns_total"] = nRes.Total
+	counts["nndns_skipped"] = nRes.Skipped
+
+	// 5. Link Domain Hosts
 	var lRes activities.LinkDomainHostsResult
 	if err := workflow.ExecuteActivity(ctx, acts.LinkDomainHosts, activities.LinkDomainHostsArgs{
 		StagedDBKey: params.StagedDBKey,
