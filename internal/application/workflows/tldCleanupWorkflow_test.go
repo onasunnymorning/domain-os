@@ -96,7 +96,7 @@ func (s *TLDCleanupWorkflowTestSuite) seedTestData() {
 	// Seed contacts
 	sharedContact := postgres.Contact{ID: "C1", RoID: 100}
 	s.db.Create(&sharedContact)
-	
+
 	// Create an orphaned contact with explicitly NULL name_int to test the scanning bugfix
 	s.db.Exec(`INSERT INTO contacts (id, ro_id, name_int, auth_info) VALUES ('C2', 101, NULL, 'test-auth')`)
 	orphanContactID := "C2"
@@ -113,7 +113,7 @@ func (s *TLDCleanupWorkflowTestSuite) seedTestData() {
 		Name:         "test.example1",
 		TLDName:      "example1",
 		RegistrantID: &sharedContact.ID, // Shared contact
-		AdminID:      &orphanContactID, // Orphaned on example1 with NULL name_int
+		AdminID:      &orphanContactID,  // Orphaned on example1 with NULL name_int
 	}
 	d2 := postgres.Domain{
 		RoID:         301,

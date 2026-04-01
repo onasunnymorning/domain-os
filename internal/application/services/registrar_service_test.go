@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 type MockRegistrarRepository struct {
-	Registrars map[string]*entities.Registrar
+	Registrars   map[string]*entities.Registrar
 	UpdateCalled bool
 }
 
@@ -72,20 +72,20 @@ func TestRegistrarService_Update_PreservesCreatedAt(t *testing.T) {
 
 	// 1. Create a dummy registrar with a specific created at date in the mock repository
 	originalCreatedAt := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-	
+
 	clid := "test-registrar"
 	rar := &entities.Registrar{
 		ClID:      entities.ClIDType(clid),
 		Name:      "Test Registrar",
 		CreatedAt: originalCreatedAt,
 	}
-	
+
 	repo := &MockRegistrarRepository{
 		Registrars: map[string]*entities.Registrar{
 			clid: rar,
 		},
 	}
-	
+
 	service := NewRegistrarService(repo)
 
 	// 2. Simulate an incoming update payload where CreatedAt is zero
@@ -109,7 +109,7 @@ func TestRegistrarService_Update_PreservesCreatedAt(t *testing.T) {
 	if !updatedRar.CreatedAt.Equal(originalCreatedAt) {
 		t.Errorf("expected CreatedAt to equal %v, got %v", originalCreatedAt, updatedRar.CreatedAt)
 	}
-	
+
 	if !repo.UpdateCalled {
 		t.Errorf("expected Update to be called on repository")
 	}

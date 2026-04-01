@@ -11,13 +11,13 @@ import (
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/agent/service"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.uber.org/zap"
 
 	"os"
@@ -310,7 +310,7 @@ func main() {
 
 	// Configure CORS middleware
 	config := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3002"}, // Add your frontend URLs here
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3002"}, // Add your frontend URLs here
 		AllowOriginFunc: func(origin string) bool {
 			return true // Allow all origins for local development
 		},

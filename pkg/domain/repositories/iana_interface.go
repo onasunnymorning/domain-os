@@ -1,6 +1,6 @@
 package repositories
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // IANARepository is the interface for the IANARepository
 type IANARepository interface {

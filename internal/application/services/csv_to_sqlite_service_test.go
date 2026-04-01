@@ -13,7 +13,7 @@ import (
 func TestCSVToSQLiteService_NNDNs(t *testing.T) {
 	// Initialize the service with a non-existent base filename to skip actual inserts
 	svc := services.NewCSVToSQLiteService("testbase")
-	
+
 	// Create a temporary database
 	tmpDir := t.TempDir()
 	dbPath := tmpDir + "/test_staged.db"

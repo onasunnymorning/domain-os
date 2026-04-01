@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -17,7 +17,7 @@ func setupMockStagedDB(t *testing.T) *sql.DB {
 	// Create a temporary file for the database to ensure we aren't limited by memory-only constraints
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
-	
+
 	db, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
 
@@ -49,12 +49,12 @@ func setupMockStagedDB(t *testing.T) *sql.DB {
 }
 
 // TestImportDomainsChunked_StatusParsing tests the bug fix where Domain Statuses and Casing are correctly parsed
-// Note: Requires mocking of BulkCreateDomains / CreateDomain within the activity to be pure unit test, 
-// but since the original logic doesn't allow easy injection, we're hooking by ensuring the parsing happens 
+// Note: Requires mocking of BulkCreateDomains / CreateDomain within the activity to be pure unit test,
+// but since the original logic doesn't allow easy injection, we're hooking by ensuring the parsing happens
 // before making API calls, or verifying via a monkeypatch or verifying logic locally.
 // However, since we just need to ensure the casing works, we can extract the parsing logic, OR
 // structure the test to run `importDomainsChunked` against a local dummy backend, or verify
-// by extracting the mapping logic. Since we just fixed the switch statement inside the function, 
+// by extracting the mapping logic. Since we just fixed the switch statement inside the function,
 // we will verify that a domain correctly populated with "clientTransferProhibited" gets parsed.
 func TestImportDomainsChunkedStatusParsingFix(t *testing.T) {
 	// To test the bug fix, we simulate the database and ensure the status parsed in a slice of domains
@@ -79,12 +79,12 @@ func TestImportDomainsChunkedStatusParsingFix(t *testing.T) {
 
 	// Since importDomainsChunked fires off `BulkCreateDomains`, which makes a real HTTP request to BASEURL,
 	// We will override BASEURL locally or stand up a small test server to catch the payloads.
-	
+
 	// Create a test HTTP server
 	// To be truly isolated without starting an HTTP server that would interfere, we will just copy the switch-case
-	// block from the file here to unit test the logic of the fix since we can't easily mock `BulkCreateDomains` 
+	// block from the file here to unit test the logic of the fix since we can't easily mock `BulkCreateDomains`
 	// which is a package-level function using a package-level BASEURL.
-	
+
 	// Testing the specific fix from lines 1716-1755 of escrow_import.go
 	statuses := []string{
 		"clientTransferProhibited",
@@ -98,7 +98,7 @@ func TestImportDomainsChunkedStatusParsingFix(t *testing.T) {
 		ds := entities.DomainStatus{}
 		// Here we replicate the newly fixed switch block verbatim to ensure it functions perfectly
 		// in Go as tested against `strings.ToLower`.
-		
+
 		switch strings.ToLower(strings.TrimSpace(st)) {
 		case "ok":
 			ds.OK = true
@@ -164,7 +164,7 @@ func TestImportHostsChunkedStatusParsingFix(t *testing.T) {
 
 	for _, st := range statuses {
 		hs := entities.HostStatus{}
-		
+
 		switch strings.ToLower(strings.TrimSpace(st)) {
 		case "ok":
 			hs.OK = true

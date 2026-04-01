@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 

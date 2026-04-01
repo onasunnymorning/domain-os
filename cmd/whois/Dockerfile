@@ -12,6 +12,7 @@ RUN go mod download
 
 # Copy source code
 COPY ./internal ./internal
+COPY ./pkg ./pkg
 COPY ./cmd/whois/ ./cmd/whois/
 
 FROM build AS build-whois

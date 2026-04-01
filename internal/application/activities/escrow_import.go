@@ -18,9 +18,9 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	pg "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	_ "modernc.org/sqlite"
@@ -1706,12 +1706,12 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 
 		// Batch fetch associations
 
-		// Since case differences between `domains` and `domain_statuses` can cause ASCII range queries (>= and <=) 
+		// Since case differences between `domains` and `domain_statuses` can cause ASCII range queries (>= and <=)
 		// to miss rows, we build a query using an IN clause.
 		// We chunk the IN clause to avoid SQLite parameter limits.
 		statusMap := make(map[string]entities.DomainStatus)
 		rgpMap := make(map[string][]string)
-		
+
 		var names []interface{}
 		var placeholders []string
 		for _, cmd := range cmds {
@@ -3092,7 +3092,7 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 	// Create Staging DB path
 	workDir := filepath.Dir(srcPath)
 	stagedPath := filepath.Join(workDir, stagedBase)
-	
+
 	// Ensure we start fresh, especially if local storage emulator keeps stale files
 	_ = os.Remove(stagedPath)
 
@@ -3519,7 +3519,7 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 
 	// Resumability: Check if we have a heartbeat detail to resume from
 	// actually we don't have lastKey logic in the new importer method, it just retries all because it's idempotent
-	
+
 	// Download Staged DB
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // GetIANARegistrars queries an API for all IANA registrars, following pagination links until there are no more.

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities/jisc"
 	"github.com/onasunnymorning/domain-os/internal/interface/api"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities/jisc"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 

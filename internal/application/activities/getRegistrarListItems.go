@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // GetRegistrarListItems queries an API for all Registrar List Items, following pagination links until there are no more.

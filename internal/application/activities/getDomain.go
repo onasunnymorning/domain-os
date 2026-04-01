@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // GetDomain retrieves a domain entity based on the provided domain name.

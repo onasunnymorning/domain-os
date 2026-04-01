@@ -1,7 +1,7 @@
 package icannspec5
 
 import (
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // FromIcannXmlSpec5RegistryToSpec5Label is a struct representing the ICANN XML Spec5 Registry

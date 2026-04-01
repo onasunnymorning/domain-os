@@ -39,6 +39,7 @@ RUN go mod download
 
 # Copy source code
 COPY ./internal ./internal
+COPY ./pkg ./pkg
 COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
 
 
@@ -46,7 +47,7 @@ COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
 FROM build AS build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/api/ry-admin
-RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
+RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/pkg/domain/entities,/internal/application/commands,/internal/interface/rest
 # build binary
 WORKDIR /
 ARG GIT_SHA
