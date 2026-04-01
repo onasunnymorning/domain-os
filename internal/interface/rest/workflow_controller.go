@@ -97,6 +97,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		URL:        workflowLink,
 	})
 }
+
 type startTLDCleanupRequest struct {
 	KeepTLDAndPhases bool `json:"keepTLDAndPhases"`
 }
@@ -122,12 +123,12 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 	}
 
 	cfg := temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
+		HostPort:   os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:  os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:  os.Getenv("TMPIO_KEY"),
+		ClientCert: os.Getenv("TMPIO_CERT"),
 		// TLD cleanup is heavy and similar to escrow, run it on the escrow queue
-		WorkerQueue: os.Getenv("ESCROW_QUEUE"), 
+		WorkerQueue: os.Getenv("ESCROW_QUEUE"),
 	}
 	if cfg.WorkerQueue == "" {
 		cfg.WorkerQueue = "escrow-import"

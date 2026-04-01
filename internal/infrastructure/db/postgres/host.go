@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // Host is the GORM model for the host table

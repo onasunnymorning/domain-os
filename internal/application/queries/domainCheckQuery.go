@@ -3,7 +3,7 @@ package queries
 import (
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // DomainCheckQuery represents a query to check the availability of a domain name.

@@ -8,9 +8,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -210,14 +210,14 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	originalCreatedAt := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	existingDomain := &entities.Domain{
-		RoID:           "123_DOM-APEX",
-		Name:           "example.com",
-		ClID:           "client123",
-		AuthInfo:       "sTr0N5p@zzWqRD",
-		ExpiryDate:     time.Now().AddDate(1, 0, 0),
-		CreatedAt:      originalCreatedAt,
-		UpdatedAt:      time.Now(),
-		Status:         entities.DomainStatus{OK: true},
+		RoID:       "123_DOM-APEX",
+		Name:       "example.com",
+		ClID:       "client123",
+		AuthInfo:   "sTr0N5p@zzWqRD",
+		ExpiryDate: time.Now().AddDate(1, 0, 0),
+		CreatedAt:  originalCreatedAt,
+		UpdatedAt:  time.Now(),
+		Status:     entities.DomainStatus{OK: true},
 	}
 
 	repo := new(repositories.MockDomainRepository)

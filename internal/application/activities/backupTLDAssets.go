@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 )
 

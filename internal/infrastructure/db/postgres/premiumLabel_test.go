@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func TestPremiumLabel_ToEntity(t *testing.T) {

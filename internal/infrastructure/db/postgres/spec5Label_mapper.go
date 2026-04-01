@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // ToDBSpec5Label converts a Spec5Label struct to a DBSpec5Label struct

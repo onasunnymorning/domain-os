@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
 )
 

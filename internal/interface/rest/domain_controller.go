@@ -15,9 +15,9 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"net"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"net"
 )
 
 // DomainController
@@ -172,7 +172,7 @@ func (ctrl *DomainController) BulkCreate(ctx *gin.Context) {
 		importStatusStr, _ := json.Marshal(req[0].Status)
 		log.Printf("DEBUG BulkCreate Received: domain %s with status %s", req[0].Name, string(importStatusStr))
 	}
-	
+
 	err := ctrl.domainService.BulkCreate(ctx, req)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})

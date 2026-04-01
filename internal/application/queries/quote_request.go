@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Rhymond/go-money"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // QuoteRequest represents a query to get a quote for a domain name.

@@ -1,6 +1,6 @@
 package repositories
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // EventRepository is the interface that defines the methods that the event repository should implement
 type EventRepository interface {

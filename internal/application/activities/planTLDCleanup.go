@@ -20,9 +20,9 @@ type PlanTLDCleanupArgs struct {
 }
 
 type PlanTLDCleanupResult struct {
-	ManifestKey string // The S3 key for the returned manifest CSV
-	DomainCount int64
-	HostCount   int64
+	ManifestKey  string // The S3 key for the returned manifest CSV
+	DomainCount  int64
+	HostCount    int64
 	ContactCount int64
 }
 
@@ -32,7 +32,7 @@ type StorageAPI interface {
 	DownloadStream(ctx context.Context, key string) (io.ReadCloser, error)
 }
 
-type TLDCleanupActivities struct{
+type TLDCleanupActivities struct {
 	DB       *gorm.DB
 	S3Client StorageAPI
 }
@@ -203,7 +203,10 @@ func (a *TLDCleanupActivities) PlanTLDCleanup(ctx context.Context, args PlanTLDC
 		// 6. Write Phases & TLD (If not kept)
 		if !args.KeepTLDAndPhases {
 			// Write Phases
-			var phases []struct{ ID int64; Name string }
+			var phases []struct {
+				ID   int64
+				Name string
+			}
 			db.Raw("SELECT id, name FROM phases WHERE tld_name = ?", args.TLD).Scan(&phases)
 			for _, p := range phases {
 				if err := writeLine(fmt.Sprintf("Phase,%d,%s", p.ID, p.Name)); err != nil {
@@ -217,7 +220,6 @@ func (a *TLDCleanupActivities) PlanTLDCleanup(ctx context.Context, args PlanTLDC
 				return
 			}
 		}
-
 
 	}()
 

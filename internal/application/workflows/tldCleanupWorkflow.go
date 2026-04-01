@@ -24,7 +24,7 @@ type TLDCleanupResponse struct {
 // associated with a given TLD after receiving explicit user confirmation.
 func TLDCleanupWorkflow(ctx workflow.Context, params TLDCleanupParams) (TLDCleanupResponse, error) {
 	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: 12 * time.Hour,       // These can take a long time for 5M domains
+		StartToCloseTimeout: 12 * time.Hour, // These can take a long time for 5M domains
 		HeartbeatTimeout:    5 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 3,
@@ -59,7 +59,7 @@ func TLDCleanupWorkflow(ctx workflow.Context, params TLDCleanupParams) (TLDClean
 		return TLDCleanupResponse{}, fmt.Errorf("planning phase failed: %w", err)
 	}
 
-	workflow.GetLogger(ctx).Info("Planning complete. Manifest uploaded.", 
+	workflow.GetLogger(ctx).Info("Planning complete. Manifest uploaded.",
 		"ManifestKey", planResult.ManifestKey,
 		"Domains", planResult.DomainCount,
 		"Contacts", planResult.ContactCount,
@@ -69,7 +69,7 @@ func TLDCleanupWorkflow(ctx workflow.Context, params TLDCleanupParams) (TLDClean
 	// 3. Await User Confirmation via Signal
 	confirmationSignalChan := workflow.GetSignalChannel(ctx, "ConfirmTLDCleanup")
 	var confirmed bool
-	
+
 	// Wait on the signal channel
 	// We use a selector to safely block
 	selector := workflow.NewSelector(ctx)

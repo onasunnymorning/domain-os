@@ -10,9 +10,9 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"

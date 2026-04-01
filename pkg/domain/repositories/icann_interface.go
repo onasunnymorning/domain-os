@@ -1,6 +1,6 @@
 package repositories
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // ICANNRepository is the interface for the ICANNRepository
 type ICANNRepository interface {

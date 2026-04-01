@@ -11,10 +11,10 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

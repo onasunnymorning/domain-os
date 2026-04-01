@@ -3,7 +3,7 @@ package repositories
 import (
 	"context"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // PriceRepository is the interface for the PriceRepository

@@ -1,6 +1,6 @@
 package postgres
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // PremiumLabel represents a premium label in our repository
 type PremiumLabel struct {

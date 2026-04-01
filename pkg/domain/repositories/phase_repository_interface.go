@@ -3,7 +3,7 @@ package repositories
 import (
 	"context"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // PhaseRepository is the interface that wraps the basic Phase repository methods

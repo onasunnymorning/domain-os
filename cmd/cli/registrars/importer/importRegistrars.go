@@ -17,8 +17,8 @@ import (
 
 	"github.com/biter777/countries"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/schollz/progressbar/v3"
 )
 

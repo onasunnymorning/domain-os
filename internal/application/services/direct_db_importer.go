@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	dbModels "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // RunReport collects details about the import execution
@@ -523,12 +523,12 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				var dn, st sql.NullString
 				if err := sRows.Scan(&dn, &st); err == nil && dn.Valid && st.Valid {
 					ds := statusMap[dn.String]
-					
+
 					// Normalize status string fully to handle case, snake_case, or kebab-case
 					normalizedStatus := strings.ToLower(st.String)
 					normalizedStatus = strings.ReplaceAll(normalizedStatus, "_", "")
 					normalizedStatus = strings.ReplaceAll(normalizedStatus, "-", "")
-					
+
 					switch normalizedStatus {
 					case "ok":
 						ds.OK = true
@@ -615,7 +615,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				RoID:         roid,
 				UpdatedAt:    time.Now().UTC(),
 			}
-			
+
 			if st, ok := statusMap[r.Name]; ok {
 				d.Status = st
 			}

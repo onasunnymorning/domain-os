@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // AdminClient is a client for the Domain OS Admin API

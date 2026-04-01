@@ -3,7 +3,7 @@ package commands
 import (
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // CreatePhaseCommand is a command for creating a phase
