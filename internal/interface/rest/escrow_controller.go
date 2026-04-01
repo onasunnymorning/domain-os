@@ -374,13 +374,43 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		return strings.TrimRight(base, "/") + "/" + bucket + "/" + strings.TrimLeft(key, "/")
 	}
 
-	// Iterate keys to collect runs
+	type rawRun struct {
+		rp   string
+		date string
+		wf   string
+	}
+	var allRuns []rawRun
+	keyMap := make(map[string]bool, len(keys))
+
+	// Collect unique runs and build a fast lookup map for keys
 	for _, k := range keys {
+		keyMap[k] = true
 		rp, date, wf, ok := parseRunPrefix(k)
 		if !ok || seen[rp] {
 			continue
 		}
 		seen[rp] = true
+		allRuns = append(allRuns, rawRun{rp: rp, date: date, wf: wf})
+	}
+
+	// Sort newest first by date if possible (YYYYMMDD lexically sorts)
+	sort.Slice(allRuns, func(i, j int) bool {
+		if allRuns[i].date == allRuns[j].date {
+			return allRuns[i].wf > allRuns[j].wf
+		}
+		return allRuns[i].date > allRuns[j].date
+	})
+
+	// Apply limit
+	if len(allRuns) > limit {
+		allRuns = allRuns[:limit]
+	}
+
+	// Iterate limited keys to build items
+	for _, rr := range allRuns {
+		rp := rr.rp
+		date := rr.date
+		wf := rr.wf
 
 		// Build Temporal UI link
 		ns := strings.TrimSpace(os.Getenv("TMPIO_NAME_SPACE"))
@@ -395,8 +425,8 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 
 		sumKey := rp + "/summary.json"
 		runReportKey := rp + "/run-report.json"
-		hasSummary, _ := s3c.Exists(ctx, sumKey)
-		hasRunReport, _ := s3c.Exists(ctx, runReportKey)
+		hasSummary := keyMap[sumKey]
+		hasRunReport := keyMap[runReportKey]
 
 		// Discover key artifacts under this run prefix
 		var analysisKey, regCsvKey, regJsonKey string
@@ -464,18 +494,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		}
 
 		runs = append(runs, item)
-		if len(runs) >= limit {
-			break
-		}
 	}
-
-	// Sort newest first by date if possible (YYYYMMDD lexically sorts)
-	sort.Slice(runs, func(i, j int) bool {
-		if runs[i].Date == runs[j].Date {
-			return runs[i].WorkflowID > runs[j].WorkflowID
-		}
-		return runs[i].Date > runs[j].Date
-	})
 
 	ctx.JSON(http.StatusOK, EscrowImportListResponse{Items: runs, Count: len(runs)})
 }

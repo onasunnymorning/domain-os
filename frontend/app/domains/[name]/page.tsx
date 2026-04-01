@@ -7,16 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { useDomain } from "@/lib/hooks/useDomains";
+import { useDomain, useDomainQuote } from "@/lib/hooks/useDomains";
 import { formatDistanceToNow } from "date-fns";
 import type { DomainDetail } from "@/lib/types/domain";
-import { HelpCircle, Copy, Eye, EyeOff, Server, Repeat } from "lucide-react";
+import { HelpCircle, Copy, Eye, EyeOff, Server, Repeat, RefreshCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
 import { DomainLifecycleWidget } from "@/components/domains/DomainLifecycleWidget";
 import { DomainStatusWidget } from "@/components/domains/DomainStatusWidget";
 import { DnsLookupModal } from "@/components/domains/DnsLookupModal";
+import { DomainSettingsControls } from "@/components/domains/DomainSettingsControls";
+import { DomainQuotesWidget } from "@/components/domains/DomainQuotesWidget";
 
 
 function formatUTCString(d: Date) {
@@ -65,6 +67,20 @@ export default function DomainDetailPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [showRawHosts, setShowRawHosts] = useState(false);
   const domain = (data || {}) as DomainDetail;
+
+  const renewalQuoteReq = useMemo(() => {
+    if (!domain?.Name || !domain?.ClID) return null;
+    return {
+      DomainName: domain.Name,
+      TransactionType: "renewal",
+      Currency: "USD",
+      Years: 1,
+      ClID: domain.ClID,
+    };
+  }, [domain?.Name, domain?.ClID]);
+
+  const { data: renewalQuote, isLoading: isQuoteLoading } = useDomainQuote(renewalQuoteReq);
+
   const activeRGPLabels = useMemo(() => {
     const r: any = domain?.RGPStatus || {};
     const inFuture = (v?: string) => {
@@ -109,6 +125,16 @@ export default function DomainDetailPage() {
                 <Skeleton className="h-5 w-32" />
               ) : (
                 <>
+                  {renewalQuote && (
+                    <Badge 
+                      variant="secondary" 
+                      className="cursor-pointer hover:bg-muted font-medium bg-amber-50 text-amber-900 border-amber-200 transition-colors"
+                      title="Scroll to Price configuration"
+                      onClick={() => document.getElementById("price-configuration")?.scrollIntoView({ behavior: "smooth" })}
+                    >
+                      Will renew at: {new Intl.NumberFormat('en-US', { style: 'currency', currency: renewalQuote.Price?.currency || 'USD' }).format((renewalQuote.Price?.amount || 0) / 100)}
+                    </Badge>
+                  )}
                   {domain?.ClID ? (
                     <Link href={`/registrars/${encodeURIComponent(domain.ClID)}`} title="Current registrar" aria-label="Current registrar">
                       <Badge variant="outline" className="cursor-pointer hover:bg-muted">{domain.ClID}</Badge>
@@ -129,6 +155,9 @@ export default function DomainDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isLoading && !error && domain && (
+              <DomainSettingsControls domain={domain} />
+            )}
             <Button
               variant="outline"
               onClick={() => {
@@ -149,9 +178,24 @@ export default function DomainDetailPage() {
           </div>
         </div>
 
-        {/* Lifecycle Visualizer */}
+        {/* Lifecycle & Pricing container */}
         {!isLoading && !error && domain && (
-          <DomainLifecycleWidget domain={domain} />
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <DomainLifecycleWidget domain={domain} />
+            </div>
+            <div className="lg:col-span-1">
+              <Card id="price-configuration" className="h-full scroll-mt-20 flex flex-col">
+                <CardHeader className="pb-3">
+                  <CardTitle>Price Auth</CardTitle>
+                  <CardDescription className="text-xs">Select registrar to view pricing</CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1 flex flex-col">
+                  <DomainQuotesWidget domain={domain} />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         )}
 
         {/* Status & Grace Periods */}
@@ -287,6 +331,8 @@ export default function DomainDetailPage() {
             </CardContent>
           </Card>
         )}
+
+
 
         {/* Overview */}
         <Card>
@@ -523,11 +569,16 @@ export default function DomainDetailPage() {
                 <div className="font-medium">{typeof domain.RenewedYears === 'number' ? domain.RenewedYears : '-'}</div>
               </div>
               <div className="col-span-2">
-                <div className="text-xs text-muted-foreground">Grandfathering</div>
+                <div className="text-xs text-muted-foreground">Fixed Renewal Price</div>
                 {domain.GrandFathering ? (
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <Badge variant="secondary">{domain.GrandFathering.Amount} {domain.GrandFathering.Currency}</Badge>
-                    <Badge variant="outline">{domain.GrandFathering.ExpiryCondition || 'n/a'}</Badge>
+                    <Badge variant="outline">
+                      {domain.GrandFathering.ExpiryCondition === 'transfer' ? 'Valid until transferred' :
+                       domain.GrandFathering.ExpiryCondition === 'delete' ? 'Valid until deleted' :
+                       domain.GrandFathering.ExpiryCondition === 'date' ? 'Valid until date' :
+                       domain.GrandFathering.ExpiryCondition || 'n/a'}
+                    </Badge>
                     <span className="text-sm text-muted-foreground">
                       {domain.GrandFathering.VoidDate ? `voids ${formatDistanceToNow(new Date(domain.GrandFathering.VoidDate), { addSuffix: true })}` : 'no void date'}
                     </span>

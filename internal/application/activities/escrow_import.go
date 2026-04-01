@@ -2943,9 +2943,14 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 		)
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return RegistrarMapResult{}, fmt.Errorf("commit failed: %w", err)
+	}
 
 	activity.GetLogger(ctx).Info("Mapped registrars", "total", len(registrars), "mapped", mappedCount)
+
+	// Close the db to ensure WAL is checkpointed and flushed to the main db file before uploading
+	db.Close()
 
 	// Upload Updated DB
 	if err := s3c.UploadFile(ctx, args.DBKey, dbPath, "application/octet-stream"); err != nil {
@@ -3174,7 +3179,7 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 	updateNullable("domains", "crRr", "upRr")
 
 	// Copy auxiliary tables without updates
-	knownTables := []string{"host_addresses", "domain_hosts", "domain_statuses", "contact_statuses", "host_statuses", "domain_nameservers", "domain_rgp_statuses", "nndns"}
+	knownTables := []string{"host_addresses", "domain_hosts", "domain_statuses", "contact_statuses", "host_statuses", "domain_nameservers", "domain_rgp_statuses", "nndns", "registrars", "registrar_mapping", "registrar_postal_info"}
 	for _, t := range knownTables {
 		if _, err := db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM src.%s", t, t)); err != nil {
 			if strings.Contains(err.Error(), "no such table") {
@@ -3187,6 +3192,9 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 
 	// Detach
 	db.Exec("DETACH DATABASE src")
+
+	// Close the DB to ensure WAL is flushed to the main file
+	db.Close()
 
 	// Upload Staged DB
 	if err := s3c.UploadFile(ctx, stagedKey, stagedPath, "application/octet-stream"); err != nil {
@@ -3489,4 +3497,56 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 	}
 
 	return LinkDomainHostsResult{Total: total}, nil
+}
+
+// AccreditRegistrarsArgs parameters
+type AccreditRegistrarsArgs struct {
+	StagedDBKey string
+	TLD         string
+}
+
+// AccreditRegistrarsResult outcome
+type AccreditRegistrarsResult struct {
+	Total int64
+}
+
+// AccreditRegistrars accredits registrars based on the escrow file
+func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args AccreditRegistrarsArgs) (AccreditRegistrarsResult, error) {
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return AccreditRegistrarsResult{}, err
+	}
+
+	// Resumability: Check if we have a heartbeat detail to resume from
+	// actually we don't have lastKey logic in the new importer method, it just retries all because it's idempotent
+	
+	// Download Staged DB
+	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
+	if err != nil {
+		return AccreditRegistrarsResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return AccreditRegistrarsResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	destImporter, err := services.NewDirectDBImporter()
+	if err != nil {
+		return AccreditRegistrarsResult{}, fmt.Errorf("failed to init importer: %w", err)
+	}
+	defer destImporter.PG.Close()
+
+	heartbeat := func(processed string) {
+		activity.RecordHeartbeat(ctx, processed)
+	}
+
+	total, err := destImporter.AccreditRegistrars(ctx, db, args.TLD, heartbeat)
+	if err != nil {
+		return AccreditRegistrarsResult{Total: total}, err
+	}
+
+	return AccreditRegistrarsResult{Total: total}, nil
 }

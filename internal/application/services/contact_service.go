@@ -70,6 +70,14 @@ func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entiti
 }
 
 func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	previousC, err := s.contactRepository.GetContactByID(ctx, c.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// preserve read-only metadata fields from the previous state
+	c.CreatedAt = previousC.CreatedAt
+
 	return s.contactRepository.UpdateContact(ctx, c)
 }
 

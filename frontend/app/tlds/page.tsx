@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
 import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
+import { formatCompactNumber } from '@/lib/utils/numberUtils';
 import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,9 +39,13 @@ function DomainCountCell({ tldName }: { tldName: string }) {
   if (isLoading) return <Skeleton className="h-4 w-10 inline-block" />;
   if (isError) return <span className="text-muted-foreground">—</span>;
   const count = data?.Count;
+  const formattedTime = data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : '';
+  const exactCount = typeof count === 'number' ? count.toLocaleString() : '';
+  const titleText = [exactCount, formattedTime].filter(Boolean).join(' | ');
+
   return (
-    <span title={data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : undefined}>
-      {typeof count === 'number' ? count.toString() : '—'}
+    <span className="cursor-help border-b border-dotted border-muted-foreground/50 pb-0.5" title={titleText || undefined}>
+      {typeof count === 'number' ? formatCompactNumber(count) : '—'}
     </span>
   );
 }

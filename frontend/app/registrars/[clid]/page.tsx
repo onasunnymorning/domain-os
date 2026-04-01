@@ -67,7 +67,7 @@ export default function RegistrarDetailPage() {
             </div>
             <RegistrarDomainCountWidget clid={clid} />
             <RegistrarTLDCountWidget 
-              count={accData?.Data?.length ?? 0} 
+              tlds={accData?.Data?.map((t: TLD) => t.Name) ?? []} 
               isLoading={accLoading} 
               onClick={() => {
                 const el = document.getElementById("accreditations");

@@ -11,7 +11,8 @@ import {
   Server,
   ChevronLeft,
   Archive,
-  BarChart
+  BarChart,
+  ServerOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'TLDs', href: '/tlds', icon: Globe },
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
+  { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Escrow Imports', href: '/escrow', icon: Archive },
   { name: 'Analytics', href: 'http://localhost:3001', icon: BarChart, target: '_blank' },
 ];

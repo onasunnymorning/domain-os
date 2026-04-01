@@ -150,3 +150,30 @@ export interface DomainCreateRequest {
   UpdatedAt?: string;
   // Status and RGPStatus types are complex; omit from UI for now.
 }
+
+export interface QuoteRequest {
+  DomainName: string;
+  TransactionType: string;
+  Currency: string;
+  Years: number;
+  ClID: string;
+  PhaseName?: string;
+}
+
+export interface QuoteFee {
+  name?: string;
+  amount?: number;
+  currency?: string;
+  refundable?: boolean;
+}
+
+export interface Quote {
+  TimeStamp: string;
+  DomainName: string;
+  TransactionType: string;
+  Clid: string;
+  Years: number;
+  Price: any; // e.g. from go-money struct
+  Class: string;
+  Fees: QuoteFee[];
+}

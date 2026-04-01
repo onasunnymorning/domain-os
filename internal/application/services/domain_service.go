@@ -242,8 +242,13 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	prevDom := dom.DeepCopy()
 
 	// Make the changes
-	dom.OriginalName = entities.DomainName(upDom.OriginalName)
-	dom.UName = entities.DomainName(upDom.UName)
+	if isIDN, _ := dom.Name.IsIDN(); isIDN {
+		dom.OriginalName = entities.DomainName(upDom.OriginalName)
+		dom.UName = entities.DomainName(upDom.UName)
+	} else {
+		dom.OriginalName = ""
+		dom.UName = ""
+	}
 	dom.RegistrantID = entities.ClIDType(upDom.RegistrantID)
 	dom.AdminID = entities.ClIDType(upDom.AdminID)
 	dom.TechID = entities.ClIDType(upDom.TechID)
@@ -252,7 +257,9 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	dom.UpRr = entities.ClIDType(upDom.UpRr)
 	dom.ExpiryDate = upDom.ExpiryDate
 	dom.AuthInfo = entities.AuthInfoType(upDom.AuthInfo)
-	dom.CreatedAt = upDom.CreatedAt
+	if !upDom.CreatedAt.IsZero() {
+		dom.CreatedAt = upDom.CreatedAt
+	}
 	dom.UpdatedAt = upDom.UpdatedAt
 	dom.Status = upDom.Status
 	dom.RGPStatus = upDom.RGPStatus
