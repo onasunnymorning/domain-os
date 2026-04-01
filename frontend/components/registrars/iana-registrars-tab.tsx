@@ -86,62 +86,6 @@ export function IANARegistrarsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>IANA Registrars</CardTitle>
-          <CardDescription>
-            This is the official IANA registrar list synchronized from{" "}
-            <a
-              href="https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              IANA's registry
-            </a>
-            . These registrars are managed externally by ICANN/IANA.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              Total IANA Registrars: <span className="font-semibold">{countData?.Count ?? "-"}</span>
-              <span className="ml-4">
-                {(() => {
-                  // Show "Never" on a fresh system when no IANA registrars exist yet
-                  if (typeof countData?.Count === 'number' && countData.Count === 0) {
-                    return 'Last updated: Never';
-                  }
-                  if (countData?.Timestamp) {
-                    return `Last updated: ${new Date(countData.Timestamp).toLocaleString()}`;
-                  }
-                  return null;
-                })()}
-              </span>
-            </div>
-            <Button
-              onClick={handleSync}
-              disabled={syncMutation.isPending}
-              variant="outline"
-              size="sm"
-            >
-              {syncMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sync from IANA
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -179,6 +123,24 @@ export function IANARegistrarsTab() {
                 </SelectContent>
               </Select>
             </div>
+            <Button
+              onClick={handleSync}
+              disabled={syncMutation.isPending}
+              variant="outline"
+              className="shrink-0"
+            >
+              {syncMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sync from IANA
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>

@@ -6,6 +6,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD } from '@/lib/hooks/useTLDs';
 import { useTLDRegistrars, useAccreditForTLD, useDeaccreditForTLD } from '@/lib/hooks/useAccreditations';
 import { useRegistrars } from '@/lib/hooks/useRegistrars';
+import { useDomainCountsForRegistrars } from '@/lib/hooks/useDomains';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import type { RegistrarListItem, RegistrarListParams } from '@/lib/types/registr
 import { TLDAccreditedRegistrarCountWidget } from '@/components/tlds/TLDAccreditedRegistrarCountWidget';
 import { TLDDomainCountWidget } from '@/components/tlds/TLDDomainCountWidget';
 import { TLDReservedInventoryWidget } from '@/components/tlds/TLDReservedInventoryWidget';
+import { TLDDUMsPieChartCard } from '@/components/tlds/TLDDUMsPieChartCard';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -37,6 +39,27 @@ export default function TLDDetailPage({ params }: Props) {
   const { data: regAccData, isLoading: regAccLoading } = useTLDRegistrars(tldName, { pagesize: 100 });
   const accreditForTLD = useAccreditForTLD(tldName);
   const deaccreditForTLD = useDeaccreditForTLD(tldName);
+
+  // Fetch DUMs for accredited registrars
+  const regAccClIDs = useMemo(() => regAccData?.Data?.map(r => r.ClID) || [], [regAccData]);
+  const domainCountsQueries = useDomainCountsForRegistrars(tldName, regAccClIDs);
+  
+  const domainCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    regAccClIDs.forEach((clid, index) => {
+      counts[clid] = domainCountsQueries[index]?.data?.Count ?? 0;
+    });
+    return counts;
+  }, [regAccClIDs, domainCountsQueries]);
+
+  const sortedRegistrars = useMemo(() => {
+    if (!regAccData?.Data) return [];
+    return [...regAccData.Data].sort((a, b) => {
+      const countA = domainCounts[a.ClID] || 0;
+      const countB = domainCounts[b.ClID] || 0;
+      return countB - countA;
+    });
+  }, [regAccData, domainCounts]);
 
   // Add accreditation modal state (search registrars)
   const [addOpen, setAddOpen] = useState(false);
@@ -144,7 +167,7 @@ export default function TLDDetailPage({ params }: Props) {
 
         {/* Count Widgets */}
         {tld && (
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-4">
             <TLDDomainCountWidget tldName={tld.Name} />
             <TLDReservedInventoryWidget tldName={tld.Name} />
             <TLDAccreditedRegistrarCountWidget 
@@ -157,6 +180,16 @@ export default function TLDDetailPage({ params }: Props) {
                   window.scrollTo({ top: y, behavior: "smooth" });
                 }
               }} 
+            />
+            <TLDDUMsPieChartCard 
+              data={sortedRegistrars.map(r => ({ name: r.Name, clid: r.ClID, value: domainCounts[r.ClID] || 0 }))} 
+              onClick={() => {
+                const el = document.getElementById("accredited-registrars");
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: y, behavior: "smooth" });
+                }
+              }}
             />
           </div>
         )}
@@ -196,6 +229,7 @@ export default function TLDDetailPage({ params }: Props) {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="text-right">DUMs</TableHead>
                       <TableHead>ClID</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Status</TableHead>
@@ -203,8 +237,14 @@ export default function TLDDetailPage({ params }: Props) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {regAccData!.Data!.map((r: RegistrarListItem) => (
+                    {sortedRegistrars.map((r: RegistrarListItem) => {
+                      const clidIndex = regAccClIDs.indexOf(r.ClID);
+                      const isCountLoading = clidIndex >= 0 ? domainCountsQueries[clidIndex]?.isLoading : false;
+                      return (
                       <TableRow key={r.ClID}>
+                        <TableCell className="text-right whitespace-nowrap font-mono text-muted-foreground">
+                          {isCountLoading ? <Skeleton className="h-4 w-8 inline-block" /> : (domainCounts[r.ClID] || 0).toLocaleString()}
+                        </TableCell>
                         <TableCell className="font-mono">
                           <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
                         </TableCell>
@@ -231,7 +271,7 @@ export default function TLDDetailPage({ params }: Props) {
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );})}
                   </TableBody>
                 </Table>
               </div>

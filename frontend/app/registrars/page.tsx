@@ -9,11 +9,17 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IANARegistrarsTab } from "@/components/registrars/iana-registrars-tab";
 import { SystemRegistrarsTab } from "@/components/registrars/system-registrars-tab";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRegistrarCount, useIANARegistrarCount } from "@/lib/hooks/useRegistrars";
 import { Plus, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { formatCompactNumber } from "@/lib/utils/numberUtils";
 
 export default function RegistrarsPage() {
+  const { data: systemCount } = useRegistrarCount();
+  const { data: ianaCount } = useIANARegistrarCount();
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -41,8 +47,31 @@ export default function RegistrarsPage() {
         {/* Tabs */}
         <Tabs defaultValue="system" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="system">System Registrars</TabsTrigger>
-            <TabsTrigger value="iana">IANA Registrars</TabsTrigger>
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <TabsTrigger value="system">
+                    System Registrars {systemCount?.Count !== undefined ? `(${formatCompactNumber(systemCount.Count)})` : ''}
+                  </TabsTrigger>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px]" side="bottom" sideOffset={8}>
+                  <p>System registrars are the registrar accounts to transact on the system.</p>
+                  {systemCount?.Count !== undefined && <p className="mt-2 text-xs font-medium border-t pt-2 border-border/50 text-muted-foreground mr-1">{systemCount.Count.toLocaleString()}</p>}
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <TabsTrigger value="iana">
+                    IANA Registrars {ianaCount?.Count !== undefined ? `(${formatCompactNumber(ianaCount.Count)})` : ''}
+                  </TabsTrigger>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[350px]" side="bottom" sideOffset={8}>
+                  <p>Data taken from ICANN accredited registrars as they appear in the IANA Registrar ID repository (https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml). Their only purpose is to keep the accreditation status synced with the ICANN/IANA repo.</p>
+                  {ianaCount?.Count !== undefined && <p className="mt-2 text-xs font-medium border-t pt-2 border-border/50 text-muted-foreground mr-1">{ianaCount.Count.toLocaleString()}</p>}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </TabsList>
 
           <TabsContent value="system" className="mt-6">

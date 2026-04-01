@@ -92,6 +92,9 @@ func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) 
 	// make a copy of the original
 	previousRar := registrar.DeepCopy()
 
+	// preserve read-only metadata fields from the previous state
+	rar.CreatedAt = previousRar.CreatedAt
+
 	// update the registrar
 	updatedRar, err := s.registrarRepository.Update(ctx, rar)
 	if err != nil {

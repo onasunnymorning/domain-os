@@ -15,7 +15,7 @@ export function RegistrarLifecycleWidget({ data }: Props) {
           {data.CreatedAt && (
             <>
               <div className="text-lg font-semibold text-primary">
-                {formatDistanceToNowStrict(new Date(data.CreatedAt))} old
+                created {formatDistanceToNowStrict(new Date(data.CreatedAt))} ago
               </div>
               <div className="text-sm text-muted-foreground mt-0.5">
                 ({format(new Date(data.CreatedAt), "MMM d, yyyy")})

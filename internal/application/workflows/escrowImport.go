@@ -263,6 +263,16 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 	}
 	counts["links_total"] = lRes.Total
 
+	// 6. Accredit Registrars
+	var aRes activities.AccreditRegistrarsResult
+	if err := workflow.ExecuteActivity(ctx, acts.AccreditRegistrars, activities.AccreditRegistrarsArgs{
+		StagedDBKey: params.StagedDBKey,
+		TLD:         params.TLD,
+	}).Get(ctx, &aRes); err != nil {
+		return EscrowIngestionResult{}, err
+	}
+	counts["accreditations_total"] = aRes.Total
+
 	return EscrowIngestionResult{
 		Success: true,
 		Counts:  counts,

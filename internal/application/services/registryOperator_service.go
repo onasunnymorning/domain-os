@@ -63,6 +63,15 @@ func (s *RegistryOperatorService) GetByRyID(ctx context.Context, ryid string) (*
 
 // Update updates a RegistryOperator
 func (s *RegistryOperatorService) Update(ctx context.Context, ry *entities.RegistryOperator) (*entities.RegistryOperator, error) {
+	// get the registry operator
+	previousRy, err := s.ryRepo.GetByRyID(ctx, ry.RyID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// preserve read-only metadata fields from the previous state
+	ry.CreatedAt = previousRy.CreatedAt
+
 	return s.ryRepo.Update(ctx, ry)
 }
 

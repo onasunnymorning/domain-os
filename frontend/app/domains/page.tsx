@@ -157,6 +157,40 @@ function DomainsPageInner() {
     o.label.toLowerCase().includes(tldSearch.toLowerCase())
   );
 
+  const PaginationButtons = () => (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          if (cursorStack.length > 0) {
+            const prev = [...cursorStack];
+            const c = prev.pop();
+            setCursorStack(prev);
+            setCursor(c);
+          }
+        }}
+        disabled={isLoading || cursorStack.length === 0}
+      >
+        <ChevronLeft className="h-4 w-4" /> Previous
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const nextCursor = data?.Meta?.PageCursor;
+          if (nextCursor) {
+            setCursorStack((s) => (cursor ? [...s, cursor] : s));
+            setCursor(nextCursor);
+          }
+        }}
+        disabled={isLoading || !data?.Meta?.PageCursor}
+      >
+        Next <ChevronRight className="h-4 w-4 ml-1" />
+      </Button>
+    </div>
+  );
+
   const resetFilters = () => {
     setNameQuery("");
     setExactMatch(false);
@@ -185,8 +219,10 @@ function DomainsPageInner() {
               <Server className="h-8 w-8" />
               Domains
             </h1>
-            <p className="text-muted-foreground mt-2">
-              Browse and search domains by name, registrar, and TLD
+            <p className="text-muted-foreground mt-2 font-medium">
+              {countData?.Count 
+                ? `${Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(countData.Count)} total` 
+                : "- total"}
             </p>
           </div>
           <div>
@@ -197,21 +233,6 @@ function DomainsPageInner() {
             </Link>
           </div>
         </div>
-
-        {/* Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Domain Directory</CardTitle>
-            <CardDescription>
-              Use the filters below to narrow results. Toggle exact match to search by full domain name.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">
-              Total Domains: <span className="font-semibold">{countData?.Count ?? "-"}</span>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Filters */}
         <Card>
@@ -347,38 +368,7 @@ function DomainsPageInner() {
                 </Popover>
               </div>
 
-              {/* Pagination controls */}
-              <div className="flex items-center gap-2 ml-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (cursorStack.length > 0) {
-                      const prev = [...cursorStack];
-                      const c = prev.pop();
-                      setCursorStack(prev);
-                      setCursor(c);
-                    }
-                  }}
-                  disabled={isLoading || cursorStack.length === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" /> Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const nextCursor = data?.Meta?.PageCursor;
-                    if (nextCursor) {
-                      setCursorStack((s) => (cursor ? [...s, cursor] : s));
-                      setCursor(nextCursor);
-                    }
-                  }}
-                  disabled={isLoading || !data?.Meta?.PageCursor}
-                >
-                  Next <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
+
 
               {/* Reset filters */}
               <div className="w-full md:w-auto md:ml-auto flex flex-wrap items-center gap-2">
@@ -485,8 +475,14 @@ function DomainsPageInner() {
             )}
 
             {!error && (
-              <div className="rounded-md border">
-                <Table>
+              <>
+                {data?.Meta && data?.Data && data.Data.length > 0 && (
+                  <div className="mb-4 flex justify-end">
+                    <PaginationButtons />
+                  </div>
+                )}
+                <div className="rounded-md border">
+                  <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Domain</TableHead>
@@ -668,11 +664,15 @@ function DomainsPageInner() {
                   </TableBody>
                 </Table>
               </div>
+            </>
             )}
 
             {data?.Meta && data?.Data && data.Data.length > 0 && (
-              <div className="mt-4 text-sm text-muted-foreground text-center">
-                Showing {data.Data.length} domain{data.Data.length !== 1 ? "s" : ""}
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing {data.Data.length} domain{data.Data.length !== 1 ? "s" : ""}
+                </div>
+                <PaginationButtons />
               </div>
             )}
           </CardContent>

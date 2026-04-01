@@ -852,3 +852,70 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 	log.Printf("IngestNNDNs: Finished. Total: %d, Skipped: %d", total, skipped)
 	return total, skipped, nil
 }
+
+// --- Accredit Registrars ---
+
+// AccreditRegistrars accredits all unique registrars mapped in the staging DB for the given TLD
+func (s *DirectDBImporter) AccreditRegistrars(ctx context.Context, sqliteDB *sql.DB, tld string, heartbeat func(processed string)) (int64, error) {
+	var total int64
+
+	// We MUST query registrar_mapping to get the actual Postgres registrar_cl_id.
+	// Querying the registrars table directly might return the escrow ID, violating the FK constraint.
+	rows, err := sqliteDB.Query(`SELECT DISTINCT registrar_clid FROM registrar_mapping WHERE registrar_clid IS NOT NULL AND registrar_clid != ''`)
+	if err != nil {
+		log.Printf("AccreditRegistrars: Query failed: %v", err)
+		return 0, nil // Graceful exit to not block ingestion if registrar_mapping table is missing
+	}
+	defer rows.Close()
+
+	var clIDs []string
+	for rows.Next() {
+		var clid sql.NullString
+		if err := rows.Scan(&clid); err != nil {
+			log.Printf("AccreditRegistrars: Scan failed: %v", err)
+			return total, err
+		}
+		if clid.Valid && strings.TrimSpace(clid.String) != "" {
+			clIDs = append(clIDs, strings.TrimSpace(clid.String))
+		}
+	}
+
+	if len(clIDs) == 0 {
+		log.Printf("AccreditRegistrars: Finished. No registrars found to accredit.")
+		return 0, nil
+	}
+
+	const batchSize = 1000
+	for i := 0; i < len(clIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(clIDs) {
+			end = len(clIDs)
+		}
+
+		batch := clIDs[i:end]
+		var valueStrings []string
+		var args []interface{}
+
+		for _, clid := range batch {
+			valueStrings = append(valueStrings, "(?, ?)")
+			args = append(args, strings.ToLower(tld), clid)
+		}
+
+		q := fmt.Sprintf(`
+			INSERT INTO accreditations (tld_name, registrar_cl_id) 
+			VALUES %s 
+			ON CONFLICT DO NOTHING
+		`, strings.Join(valueStrings, ","))
+
+		res, err := s.PG.Exec(q, args...)
+		if err != nil {
+			return total, fmt.Errorf("bulk insert accreditations failed: %w", err)
+		}
+
+		total += int64(res.RowsAffected())
+		heartbeat(fmt.Sprintf("%d/%d", i+len(batch), len(clIDs)))
+	}
+
+	log.Printf("AccreditRegistrars: Finished. Total new accreditations: %d", total)
+	return total, nil
+}
