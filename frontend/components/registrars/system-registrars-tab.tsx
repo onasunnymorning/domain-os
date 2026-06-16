@@ -61,11 +61,8 @@ export function SystemRegistrarsTab() {
     };
     const q = (debouncedQuery || "").trim();
     if (q) {
-      // Always perform fuzzy search by name and ClID for better UX
+      // Filter by name only as requested to avoid overly restrictive AND filtering in backend
       params.name_like = q;
-      params.clid_like = q;
-      // Note: We intentionally avoid switching to gurid_equals-only on numeric input
-      // to preserve fuzzy search behavior highlighted by product feedback.
     }
     if (statusFilter && statusFilter !== "all") {
       // Backend stores registrar status in lowercase (ok, readonly, terminated)
@@ -105,56 +102,42 @@ export function SystemRegistrarsTab() {
     }
   };
 
+  const PaginationButtons = () => (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          if (cursorStack.length > 0) {
+            const prev = [...cursorStack];
+            const c = prev.pop();
+            setCursorStack(prev);
+            setCursor(c);
+          }
+        }}
+        disabled={isLoading || cursorStack.length === 0}
+      >
+        <ChevronLeft className="h-4 w-4" /> Previous
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const nextCursor = data?.Meta?.PageCursor;
+          if (nextCursor) {
+            setCursorStack((s) => (cursor ? [...s, cursor] : s));
+            setCursor(nextCursor);
+          }
+        }}
+        disabled={isLoading || !data?.Meta?.PageCursor}
+      >
+        Next <ChevronRight className="h-4 w-4 ml-1" />
+      </Button>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      {/* Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>System Registrars</CardTitle>
-          <CardDescription>
-            System registrars are configured in your registry. These can be created,
-            updated, and managed directly through this interface.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between gap-4">
-            <div className="text-sm text-muted-foreground">
-              Total System Registrars: <span className="font-semibold">{countData?.Count ?? "-"}</span>
-            </div>
-
-            {countData?.Count === 0 && (
-              <Button
-                variant="default"
-                onClick={() => {
-                  startWorkflow.mutate(undefined, {
-                    onSuccess: (data) => {
-                      setWorkflowInfo(data);
-                      setDialogOpen(true);
-                    },
-                  });
-                }}
-                disabled={startWorkflow.isPending}
-              >
-                {startWorkflow.isPending ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Starting…
-                  </span>
-                ) : (
-                  "Pre-populate registrars"
-                )}
-              </Button>
-            )}
-          </div>
-
-          {startWorkflow.isError && (
-            <div className="text-sm text-red-600 mt-2">
-              Failed to trigger workflow. Please try again.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -171,35 +154,7 @@ export function SystemRegistrarsTab() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (cursorStack.length > 0) {
-                    const prev = [...cursorStack];
-                    const c = prev.pop();
-                    setCursorStack(prev);
-                    setCursor(c);
-                  }
-                }}
-                disabled={isLoading || cursorStack.length === 0}
-              >
-                <ChevronLeft className="h-4 w-4" /> Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const nextCursor = data?.Meta?.PageCursor;
-                  if (nextCursor) {
-                    setCursorStack((s) => (cursor ? [...s, cursor] : s));
-                    setCursor(nextCursor);
-                  }
-                }}
-                disabled={isLoading || !data?.Meta?.PageCursor}
-              >
-                Next <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
+
               <div className="w-48">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
@@ -222,6 +177,29 @@ export function SystemRegistrarsTab() {
                   onChange={(e) => setIanaIdQuery(e.target.value)}
                 />
               </div>
+              {countData?.Count === 0 && (
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    startWorkflow.mutate(undefined, {
+                      onSuccess: (data) => {
+                        setWorkflowInfo(data);
+                        setDialogOpen(true);
+                      },
+                    });
+                  }}
+                  disabled={startWorkflow.isPending}
+                  className="shrink-0"
+                >
+                  {startWorkflow.isPending ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </span>
+                  ) : (
+                    "Pre-populate registrars"
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -272,8 +250,12 @@ export function SystemRegistrarsTab() {
                   No system registrars found
                 </div>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
+                <>
+                  <div className="mb-4 flex justify-end">
+                    <PaginationButtons />
+                  </div>
+                  <div className="rounded-md border">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Client ID</TableHead>
@@ -314,11 +296,15 @@ export function SystemRegistrarsTab() {
                     </TableBody>
                   </Table>
                 </div>
+              </>
               )}
 
               {data.Meta && data.Data && data.Data.length > 0 && (
-                <div className="mt-4 text-sm text-muted-foreground text-center">
-                  Showing {data.Data.length} registrar{data.Data.length !== 1 ? "s" : ""}
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {data.Data.length} registrar{data.Data.length !== 1 ? "s" : ""}
+                  </div>
+                  <PaginationButtons />
                 </div>
               )}
             </>

@@ -3,7 +3,7 @@ package postgres
 import (
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // Domain is the GORM model for the Domain entity

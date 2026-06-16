@@ -17,6 +17,9 @@ type AdminApiConfig struct {
 	ApiName            string
 	ApiHost            string
 	ApiPort            string
+	Auth0Domain        string
+	Auth0Audience      string
+	Auth0Enabled       bool
 }
 
 func LoadConfig(GitSHA string) *AdminApiConfig {
@@ -32,5 +35,8 @@ func LoadConfig(GitSHA string) *AdminApiConfig {
 		Version:            os.Getenv("API_VERSION"),
 		ApiHost:            os.Getenv("API_HOST"),
 		ApiPort:            os.Getenv("API_PORT"),
+		Auth0Domain:        os.Getenv("AUTH0_DOMAIN"),
+		Auth0Audience:      os.Getenv("AUTH0_AUDIENCE"),
+		Auth0Enabled:       os.Getenv("AUTH0_ENABLED") == "true",
 	}
 }

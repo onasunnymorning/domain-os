@@ -1,6 +1,6 @@
 package commands
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // CreateNNDNCommand is the command to create a NNDN
 type CreateNNDNCommand struct {

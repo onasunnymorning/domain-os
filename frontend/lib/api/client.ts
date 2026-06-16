@@ -18,15 +18,23 @@ export const apiClient = axios.create({
   },
 });
 
+let dynamicToken: string | null = null;
+
+/**
+ * Sets the authentication token to be used for all subsequent API requests.
+ * This is used to dynamically update the token when it's refreshed by Auth0.
+ */
+export const setAuthToken = (token: string | null) => {
+  dynamicToken = token;
+};
+
 // Request interceptor for auth
 apiClient.interceptors.request.use(
   (config) => {
-    // Get token from localStorage if available (for dynamic auth later)
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('auth_token') || API_TOKEN;
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+    // Priority: 1. Dynamically set token, 2. localStorage, 3. Environment variable
+    const token = dynamicToken || (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) || API_TOKEN;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -48,7 +56,7 @@ apiClient.interceptors.response.use(
         data: error.response.data,
         headers: error.response.headers,
       });
-      
+
       // Log the actual error message from the API if available
       if (error.response.data?.message) {
         console.error('API Error Message:', error.response.data.message);
@@ -69,10 +77,8 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status === 401) {
-      // Redirect to login (will implement later)
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+      // Unauthorized - handled by ProtectedRoute in the UI
+      console.warn('Unauthorized request detected');
     }
     return Promise.reject(error);
   }

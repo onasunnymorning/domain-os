@@ -92,4 +92,9 @@ export const tldsApi = {
     const { data } = await apiClient.delete(`/tlds/${name}`);
     return data;
   },
+
+  triggerCleanup: async (name: string, keepTLDAndPhases: boolean = false) => {
+    const { data } = await apiClient.post(`/workflows/tlds/${name}/cleanup`, { keepTLDAndPhases });
+    return data;
+  },
 };

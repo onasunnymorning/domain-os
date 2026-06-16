@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
 )
 
@@ -108,28 +108,8 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 		if f, ok := params.Filter.(queries.ListContactsFilter); !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
-			if f.RoidGreaterThan != "" {
-				roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
-				if err != nil {
-					return nil, "", err
-				}
-				dbQuery = dbQuery.Where("ro_id > ?", roidInt)
-			}
-			if f.RoidLessThan != "" {
-				roidInt, err := getInt64RoidFromContactRoidString(f.RoidLessThan)
-				if err != nil {
-					return nil, "", err
-				}
-				dbQuery = dbQuery.Where("ro_id < ?", roidInt)
-			}
-			if f.IdLike != "" {
-				dbQuery = dbQuery.Where("id ILIKE ?", "%"+f.IdLike+"%")
-			}
-			if f.EmailLike != "" {
-				dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
-			}
-			if f.ClidEquals != "" {
-				dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+			if dbQuery, err = setContactFilters(dbQuery, f); err != nil {
+				return nil, "", err
 			}
 		}
 	}
@@ -164,6 +144,47 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 	}
 
 	return contacts, nextPageCursor, nil
+}
+
+func (r *ContactRepository) Count(ctx context.Context, filter queries.ListContactsFilter) (int64, error) {
+	var count int64
+
+	dbQuery := r.db.WithContext(ctx).Model(&Contact{})
+
+	var err error
+	if dbQuery, err = setContactFilters(dbQuery, filter); err != nil {
+		return 0, err
+	}
+
+	err = dbQuery.Count(&count).Error
+	return count, err
+}
+
+func setContactFilters(dbQuery *gorm.DB, f queries.ListContactsFilter) (*gorm.DB, error) {
+	if f.RoidGreaterThan != "" {
+		roidInt, err := getInt64RoidFromContactRoidString(f.RoidGreaterThan)
+		if err != nil {
+			return nil, err
+		}
+		dbQuery = dbQuery.Where("ro_id > ?", roidInt)
+	}
+	if f.RoidLessThan != "" {
+		roidInt, err := getInt64RoidFromContactRoidString(f.RoidLessThan)
+		if err != nil {
+			return nil, err
+		}
+		dbQuery = dbQuery.Where("ro_id < ?", roidInt)
+	}
+	if f.IdLike != "" {
+		dbQuery = dbQuery.Where("id ILIKE ?", "%"+f.IdLike+"%")
+	}
+	if f.EmailLike != "" {
+		dbQuery = dbQuery.Where("email ILIKE ?", "%"+f.EmailLike+"%")
+	}
+	if f.ClidEquals != "" {
+		dbQuery = dbQuery.Where("cl_id = ?", f.ClidEquals)
+	}
+	return dbQuery, nil
 }
 
 func getInt64RoidFromContactRoidString(roidString string) (int64, error) {

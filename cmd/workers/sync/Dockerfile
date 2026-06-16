@@ -12,6 +12,7 @@ RUN go mod download
 
 # Copy source code
 COPY ./internal ./internal
+COPY ./pkg ./pkg
 COPY ./cmd/workers/sync/ ./cmd/workers/sync/
 
 FROM build AS build-sync

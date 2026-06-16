@@ -10,8 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
@@ -29,7 +30,7 @@ func NewCSVToSQLiteService(baseFilename string) *CSVToSQLiteService {
 }
 
 // ConvertToSQLite creates an SQLite database from the CSV files
-func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
+func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string, heartbeat HeartbeatFunc) error {
 	log.Printf("Converting CSV files to SQLite database: %s", dbPath)
 
 	// Open/create SQLite database
@@ -54,7 +55,7 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 
 	// Import data from CSV files
 	// Contacts first so downstream steps (domains) can reference them
-	if err := svc.importContacts(tx); err != nil {
+	if err := svc.importContacts(tx, heartbeat); err != nil {
 		return fmt.Errorf("failed to import contacts: %w", err)
 	}
 
@@ -66,7 +67,7 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 		return fmt.Errorf("failed to import contact statuses: %w", err)
 	}
 
-	if err := svc.importDomains(tx); err != nil {
+	if err := svc.importDomains(tx, heartbeat); err != nil {
 		return fmt.Errorf("failed to import domains: %w", err)
 	}
 
@@ -74,7 +75,7 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 		return fmt.Errorf("failed to import domain nameservers: %w", err)
 	}
 
-	if err := svc.importHosts(tx); err != nil {
+	if err := svc.importHosts(tx, heartbeat); err != nil {
 		return fmt.Errorf("failed to import hosts: %w", err)
 	}
 
@@ -105,6 +106,10 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string) error {
 	// Optionally import registrar mapping JSON so downstream import can map clids without extra files
 	if err := svc.importRegistrarMapping(tx); err != nil {
 		return fmt.Errorf("failed to import registrar mapping: %w", err)
+	}
+
+	if err := svc.importNNDNs(tx); err != nil {
+		return fmt.Errorf("failed to import NNDNs: %w", err)
 	}
 
 	// Commit transaction
@@ -267,6 +272,16 @@ func (svc *CSVToSQLiteService) createSchema() error {
 		status TEXT NOT NULL,
 		FOREIGN KEY (contact_id) REFERENCES contacts(id)
 	);
+
+	-- NNDNs
+	CREATE TABLE IF NOT EXISTS nndns (
+		aname TEXT PRIMARY KEY,
+		uname TEXT,
+		idntableid TEXT,
+		originalname TEXT,
+		namestate TEXT,
+		crdate TEXT
+	);
 	`
 
 	_, err := svc.db.Exec(schema)
@@ -306,17 +321,18 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 }
 
 // importDomains imports domain data from CSV
-func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx) error {
+func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx, heartbeat HeartbeatFunc) error {
 	csvFile := svc.baseFilename + "-domains.csv"
 	if !svc.fileExists(csvFile) {
 		log.Printf("⚠️  Skipping domains: %s not found", csvFile)
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO domains (name, roid, uname, idntableid, originalname, registrant, clid, crrr, crdate, exdate, uprr, "update")
@@ -325,25 +341,42 @@ func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx) error {
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
 
-	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
 		}
+		return err
+	}
+
+	count := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
 		if len(record) < 12 {
 			continue // Skip malformed records
 		}
 
-		_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5],
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5],
 			record[6], record[7], record[8], record[9], record[10], record[11])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain %s: %v", record[0], err)
 			continue
 		}
 		count++
+
+		if count%5000 == 0 && heartbeat != nil {
+			heartbeat("importing domains", count)
+		}
 	}
 
 	log.Printf("✅ Imported %d domains", count)
@@ -358,10 +391,11 @@ func (svc *CSVToSQLiteService) importDomainNameservers(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare("INSERT INTO domain_nameservers (domain_name, nameserver) VALUES (?, ?)")
 	if err != nil {
@@ -369,16 +403,29 @@ func (svc *CSVToSQLiteService) importDomainNameservers(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 2 {
 			continue
 		}
 
-		_, err := stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), strings.ToLower(record[1]))
 		if err != nil {
 			log.Printf("Warning: failed to insert domain nameserver %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -398,10 +445,11 @@ func (svc *CSVToSQLiteService) importDomainStatuses(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare("INSERT INTO domain_statuses (domain_name, status) VALUES (?, ?)")
 	if err != nil {
@@ -409,16 +457,29 @@ func (svc *CSVToSQLiteService) importDomainStatuses(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 2 {
 			continue
 		}
 
-		_, err := stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain status %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -444,13 +505,13 @@ func (svc *CSVToSQLiteService) importDomainRgpStatuses(tx *sql.Tx) error {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
 	stmt, err := tx.Prepare("INSERT INTO domain_rgp_statuses (domain_name, rgp_status) VALUES (?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
 	count := 0
 	isFirst := true
 	for {
@@ -470,7 +531,7 @@ func (svc *CSVToSQLiteService) importDomainRgpStatuses(tx *sql.Tx) error {
 			continue
 		}
 
-		_, err = stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert domain RGP status %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -483,17 +544,18 @@ func (svc *CSVToSQLiteService) importDomainRgpStatuses(tx *sql.Tx) error {
 }
 
 // importHosts imports host data from CSV
-func (svc *CSVToSQLiteService) importHosts(tx *sql.Tx) error {
+func (svc *CSVToSQLiteService) importHosts(tx *sql.Tx, heartbeat HeartbeatFunc) error {
 	csvFile := svc.baseFilename + "-hosts.csv"
 	if !svc.fileExists(csvFile) {
 		log.Printf("⚠️  Skipping hosts: %s not found", csvFile)
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare("INSERT INTO hosts (name, roid, clid, crrr, crdate, uprr, \"update\") VALUES (?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
@@ -501,21 +563,38 @@ func (svc *CSVToSQLiteService) importHosts(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 7 {
 			continue
 		}
 
-		_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5], record[6])
 		if err != nil {
 			log.Printf("Warning: failed to insert host %s: %v", record[0], err)
 			continue
 		}
 		count++
+
+		if count%5000 == 0 && heartbeat != nil {
+			heartbeat("importing hosts", count)
+		}
 	}
 
 	log.Printf("✅ Imported %d hosts", count)
@@ -530,10 +609,11 @@ func (svc *CSVToSQLiteService) importHostAddresses(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare("INSERT INTO host_addresses (host_name, ip_address, ip_version) VALUES (?, ?, ?)")
 	if err != nil {
@@ -541,16 +621,29 @@ func (svc *CSVToSQLiteService) importHostAddresses(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 3 {
 			continue
 		}
 
-		_, err := stmt.Exec(record[0], record[1], record[2])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2])
 		if err != nil {
 			log.Printf("Warning: failed to insert host address %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -570,10 +663,11 @@ func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare("INSERT INTO host_statuses (host_name, status) VALUES (?, ?)")
 	if err != nil {
@@ -581,16 +675,29 @@ func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 2 {
 			continue
 		}
 
-		_, err := stmt.Exec(record[0], record[1])
+		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
 		if err != nil {
 			log.Printf("Warning: failed to insert host status %s -> %s: %v", record[0], record[1], err)
 			continue
@@ -605,17 +712,18 @@ func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
 // Helper methods
 
 // importContacts imports contacts from CSV (linked contacts only)
-func (svc *CSVToSQLiteService) importContacts(tx *sql.Tx) error {
+func (svc *CSVToSQLiteService) importContacts(tx *sql.Tx, heartbeat HeartbeatFunc) error {
 	csvFile := svc.baseFilename + "-contacts.csv"
 	if !svc.fileExists(csvFile) {
 		log.Printf("⚠️  Skipping contacts: %s not found", csvFile)
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare(`INSERT INTO contacts (id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -623,19 +731,37 @@ func (svc *CSVToSQLiteService) importContacts(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
-	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // skip header
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
 		}
+		return err
+	}
+
+	count := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
 		if len(record) < 10 {
 			continue
 		}
-		if _, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9]); err != nil {
+		if _, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9]); err != nil {
 			log.Printf("Warning: failed to insert contact %s: %v", record[0], err)
 			continue
 		}
 		count++
+
+		if count%5000 == 0 && heartbeat != nil {
+			heartbeat("importing contacts", count)
+		}
 	}
 
 	log.Printf("✅ Imported %d contacts", count)
@@ -650,10 +776,11 @@ func (svc *CSVToSQLiteService) importContactStatuses(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare(`INSERT INTO contact_statuses (contact_id, status) VALUES (?, ?)`)
 	if err != nil {
@@ -661,15 +788,28 @@ func (svc *CSVToSQLiteService) importContactStatuses(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
 	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // skip header
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 		if len(record) < 2 {
 			continue
 		}
-		if _, err := stmt.Exec(record[0], record[1]); err != nil {
+		if _, err = stmt.Exec(record[0], record[1]); err != nil {
 			log.Printf("Warning: failed to insert contact status %s -> %s: %v", record[0], record[1], err)
 			continue
 		}
@@ -688,10 +828,11 @@ func (svc *CSVToSQLiteService) importContactPostalInfo(tx *sql.Tx) error {
 		return nil
 	}
 
-	records, err := svc.readCSV(csvFile)
+	file, err := os.Open(csvFile)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	stmt, err := tx.Prepare(`INSERT INTO contact_postal_info (contact_id, type, name, org, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -699,16 +840,30 @@ func (svc *CSVToSQLiteService) importContactPostalInfo(tx *sql.Tx) error {
 	}
 	defer stmt.Close()
 
-	count := 0
-	for i, record := range records {
-		if i == 0 {
-			continue // skip header
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
 		}
+		return err
+	}
+
+	count := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
 		// Expect either 11 fields (with contact_id) or skip if not present
 		if len(record) < 11 {
 			continue
 		}
-		if _, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9], record[10]); err != nil {
+		if _, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9], record[10]); err != nil {
 			log.Printf("Warning: failed to insert contact postal info for %s: %v", record[0], err)
 			continue
 		}
@@ -781,7 +936,7 @@ func (svc *CSVToSQLiteService) importRegistrarMapping(tx *sql.Tx) error {
 		for escrowID, info := range envelope.RegistrarMapping {
 			gurid := int(info.GurID)
 			mapped := string(info.RegistrarClID)
-			if _, err := stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
+			if _, err = stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
 				log.Printf("Warning: failed to insert registrar mapping %s -> %s: %v", escrowID, mapped, err)
 				continue
 			}
@@ -819,7 +974,7 @@ func (svc *CSVToSQLiteService) importRegistrarMapping(tx *sql.Tx) error {
 	for escrowID, info := range mapping {
 		gurid := int(info.GurID)
 		mapped := string(info.RegistrarClID)
-		if _, err := stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
+		if _, err = stmt.Exec(escrowID, info.Name, gurid, mapped); err != nil {
 			log.Printf("Warning: failed to insert registrar mapping %s -> %s: %v", escrowID, mapped, err)
 			continue
 		}
@@ -1131,25 +1286,27 @@ func (svc *CSVToSQLiteService) importRegistrars(tx *sql.Tx) error {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
-
-	if len(records) == 0 {
-		return nil
-	}
-
 	stmt, err := tx.Prepare("INSERT INTO registrars (id, name, gurid, status, voice, fax, email, url, crdate, \"update\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	// Skip header row
-	for i := 1; i < len(records); i++ {
-		record := records[i]
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	records, err := reader.ReadAll() // Still using ReadAll for registrars as they are small
+	if err != nil {
+		return err
+	}
+
+	for _, record := range records {
 		if len(record) >= 10 {
 			gurid := 0
 			if record[2] != "" {
@@ -1164,7 +1321,7 @@ func (svc *CSVToSQLiteService) importRegistrars(tx *sql.Tx) error {
 		}
 	}
 
-	log.Printf("✅ Imported %d registrars", len(records)-1)
+	log.Printf("✅ Imported %d registrars", len(records))
 	return nil
 }
 
@@ -1182,25 +1339,27 @@ func (svc *CSVToSQLiteService) importRegistrarPostalInfo(tx *sql.Tx) error {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
-
-	if len(records) == 0 {
-		return nil
-	}
-
 	stmt, err := tx.Prepare("INSERT INTO registrar_postal_info (registrar_id, type, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	// Skip header row
-	for i := 1; i < len(records); i++ {
-		record := records[i]
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	records, err := reader.ReadAll() // Small file
+	if err != nil {
+		return err
+	}
+
+	for _, record := range records {
 		if len(record) >= 9 {
 			_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8])
 			if err != nil {
@@ -1209,7 +1368,54 @@ func (svc *CSVToSQLiteService) importRegistrarPostalInfo(tx *sql.Tx) error {
 		}
 	}
 
-	log.Printf("✅ Imported %d registrar postal info records", len(records)-1)
+	log.Printf("✅ Imported %d registrar postal info records", len(records))
+	return nil
+}
+
+// importNNDNs imports NNDN data from CSV
+func (svc *CSVToSQLiteService) importNNDNs(tx *sql.Tx) error {
+	fileName := svc.baseFilename + "-nndns.csv"
+	if !svc.fileExists(fileName) {
+		log.Printf("⚠️  NNDNs file not found: %s", fileName)
+		return nil
+	}
+
+	file, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	stmt, err := tx.Prepare("INSERT INTO nndns (aname, uname, idntableid, originalname, namestate, crdate) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	reader := csv.NewReader(file)
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	records, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if len(record) >= 6 {
+			_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5])
+			if err != nil {
+				log.Printf("Error inserting NNDN %s: %v", record[0], err)
+			}
+		}
+	}
+
+	log.Printf("✅ Imported %d NNDNs", len(records))
 	return nil
 }
 

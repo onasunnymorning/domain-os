@@ -48,21 +48,33 @@ func main() {
 
 	fmt.Printf("WHOIS server running on port %d\n", WHOIS_PORT)
 
-	for {
-		// Accept incoming connections.
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Error accepting connection:", err)
-			continue
+	// Accept connections in a goroutine so we can select on ctx.Done().
+	connChan := make(chan net.Conn)
+	errChan := make(chan error)
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			connChan <- conn
 		}
+	}()
 
-		// Handle each connection in a new goroutine to allow concurrent clients.
-		go handleConnection(ctx, conn, WhoisSvc)
+	for {
+		select {
+		case conn := <-connChan:
+			// Handle each connection in a new goroutine to allow concurrent clients.
+			go handleConnection(ctx, conn, WhoisSvc)
+		case err := <-errChan:
+			fmt.Println("Error accepting connection:", err)
+		case <-ctx.Done():
+			fmt.Println("Shutting down gracefully...")
+			return
+		}
 	}
-
-	<-ctx.Done()
-	fmt.Println("Shutting down gracefully...")
-	stop()
 }
 
 func handleConnection(ctx context.Context, conn net.Conn, svc *services.WhoisService) {

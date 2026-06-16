@@ -34,7 +34,7 @@ func BulkCreateContacts(correlationID string, cmds []commands.CreateContactComma
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

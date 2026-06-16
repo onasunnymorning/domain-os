@@ -5,8 +5,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"golang.org/x/net/context"
 )
 
@@ -70,6 +70,14 @@ func (s *ContactService) GetContactByID(ctx context.Context, id string) (*entiti
 }
 
 func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	previousC, err := s.contactRepository.GetContactByID(ctx, c.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// preserve read-only metadata fields from the previous state
+	c.CreatedAt = previousC.CreatedAt
+
 	return s.contactRepository.UpdateContact(ctx, c)
 }
 
@@ -79,6 +87,10 @@ func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error
 
 func (s *ContactService) ListContacts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Contact, string, error) {
 	return s.contactRepository.ListContacts(ctx, params)
+}
+
+func (s *ContactService) Count(ctx context.Context, filter queries.ListContactsFilter) (int64, error) {
+	return s.contactRepository.Count(ctx, filter)
 }
 
 // contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact

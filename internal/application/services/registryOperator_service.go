@@ -6,8 +6,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 // RegistryOperatorService implements the RegistryOperatorService interface
@@ -63,6 +63,15 @@ func (s *RegistryOperatorService) GetByRyID(ctx context.Context, ryid string) (*
 
 // Update updates a RegistryOperator
 func (s *RegistryOperatorService) Update(ctx context.Context, ry *entities.RegistryOperator) (*entities.RegistryOperator, error) {
+	// get the registry operator
+	previousRy, err := s.ryRepo.GetByRyID(ctx, ry.RyID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// preserve read-only metadata fields from the previous state
+	ry.CreatedAt = previousRy.CreatedAt
+
 	return s.ryRepo.Update(ctx, ry)
 }
 

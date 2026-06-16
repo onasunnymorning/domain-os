@@ -8,8 +8,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // HostController is the controller for the HostService
@@ -28,6 +28,7 @@ func NewHostController(e *gin.Engine, hostService interfaces.HostService, handle
 	{
 		hostGroup.GET(":roid", c.GetHostByRoID)
 		hostGroup.GET("", c.ListHosts)
+		hostGroup.GET("count", c.CountHosts)
 		hostGroup.DELETE(":roid", c.DeleteHostByRoID)
 		hostGroup.POST("", c.CreateHost)
 		hostGroup.POST("/bulk", c.BulkCreate)
@@ -320,4 +321,36 @@ func (ctrl *HostController) BulkCreate(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusCreated, nil)
+}
+
+// CountHosts godoc
+// @Summary Count hosts
+// @Description Count hosts
+// @Tags Hosts
+// @Produce json
+// @Param name_like query string false "Name Like"
+// @Param clid_equals query string false "Clid Equals"
+// @Param roid_greater_than query string false "ROID Greater Than"
+// @Param roid_less_than query string false "ROID Less Than"
+// @Success 200 {object} response.CountResult
+// @Failure 400
+// @Failure 500
+// @Router /hosts/count [get]
+func (ctrl *HostController) CountHosts(ctx *gin.Context) {
+	filter := queries.ListHostsFilter{
+		NameLike:        ctx.Query("name_like"),
+		ClidEquals:      ctx.Query("clid_equals"),
+		RoidGreaterThan: ctx.Query("roid_greater_than"),
+		RoidLessThan:    ctx.Query("roid_less_than"),
+	}
+
+	count, err := ctrl.hostService.Count(ctx, filter)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.CountResult{
+		Count: count,
+	})
 }

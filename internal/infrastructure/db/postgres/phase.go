@@ -3,7 +3,7 @@ package postgres
 import (
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // Phase GORM entity. ID is the primary key and we add a composite unique index ond tldname+name to facilitate human friendly queries

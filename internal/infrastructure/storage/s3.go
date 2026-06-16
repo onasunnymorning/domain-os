@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -115,7 +116,7 @@ func (s *S3Client) DownloadToFile(ctx context.Context, key string) (string, erro
 	if base == "." || base == "/" || base == "" {
 		base = "escrow"
 	}
-	dstPath := filepath.Join(os.TempDir(), base)
+	dstPath := filepath.Join(os.TempDir(), strconv.FormatInt(time.Now().UnixNano(), 10)+"-"+base)
 	err := s.client.FGetObject(ctx, s.bucket, key, dstPath, minio.GetObjectOptions{})
 	if err != nil {
 		return "", err
@@ -145,4 +146,48 @@ func (s *S3Client) ListObjectKeys(ctx context.Context, prefix string, recursive 
 		}
 	}
 	return keys, nil
+}
+
+// DownloadToString downloads an object's content and returns it as a string
+func (s *S3Client) DownloadToString(ctx context.Context, key string) (string, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer obj.Close()
+
+	buf := new(strings.Builder)
+	if _, err := io.Copy(buf, obj); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// UploadString uploads a string content to the bucket at the given key
+func (s *S3Client) UploadString(ctx context.Context, key, content string) error {
+	reader := strings.NewReader(content)
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, int64(reader.Len()), minio.PutObjectOptions{ContentType: "text/plain"})
+	return err
+}
+
+// UploadStream uploads an io.Reader stream to the bucket at the given key.
+// It uses multipart upload since the size is unknown (-1).
+func (s *S3Client) UploadStream(ctx context.Context, key string, reader io.Reader, contentType string) error {
+	// minio-go requires part size when total size is -1
+	opts := minio.PutObjectOptions{
+		ContentType: contentType,
+		PartSize:    10 * 1024 * 1024, // 10MB parts
+	}
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, -1, opts)
+	return err
+}
+
+// DownloadStream returns an io.ReadCloser for the given key's object data.
+func (s *S3Client) DownloadStream(ctx context.Context, key string) (io.ReadCloser, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Note: It's the caller's responsibility to close the returned io.ReadCloser
+	return obj, nil
 }

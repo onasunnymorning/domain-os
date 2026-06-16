@@ -11,13 +11,13 @@ import (
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/agent/service"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.uber.org/zap"
 
 	"os"
@@ -125,6 +125,12 @@ func main() {
 	cfg := config.LoadConfig(GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
 
+	// Check for init-registrars command
+	if len(os.Args) > 1 && os.Args[1] == "init-registrars" {
+		runInitRegistrars(cfg, logger)
+		return
+	}
+
 	// Try and determine the runtime environment
 	if !runningInDocker() {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
@@ -184,19 +190,20 @@ func main() {
 		})
 		if err != nil {
 			logger.Error("Failed to create Event Repository", zap.Error(err))
-		}
-		eventSvc = services.NewEventService(eventRepo)
-		err = eventSvc.SendStream(&entities.Event{
-			Source: APP_NAME,
-			User:   "system",
-			Action: "startup",
-			Details: entities.EventDetails{
-				Result: entities.EventResultSuccess,
-			},
-			Timestamp: time.Now().UTC(),
-		})
-		if err != nil {
-			logger.Error("Failed to send startup event", zap.Error(err))
+		} else {
+			eventSvc = services.NewEventService(eventRepo)
+			err = eventSvc.SendStream(&entities.Event{
+				Source: APP_NAME,
+				User:   "system",
+				Action: "startup",
+				Details: entities.EventDetails{
+					Result: entities.EventResultSuccess,
+				},
+				Timestamp: time.Now().UTC(),
+			})
+			if err != nil {
+				logger.Error("Failed to send startup event", zap.Error(err))
+			}
 		}
 	}
 
@@ -274,6 +281,9 @@ func main() {
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
+	// Dnssec
+	dnssecService := services.NewDnssecService()
+
 	// Agent Service (AI Assistant)
 	var agentService *service.AgentService
 	if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
@@ -300,7 +310,10 @@ func main() {
 
 	// Configure CORS middleware
 	config := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"}, // Add your frontend URL here
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3002"}, // Add your frontend URLs here
+		AllowOriginFunc: func(origin string) bool {
+			return true // Allow all origins for local development
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -319,34 +332,42 @@ func main() {
 		initPrometheusMetrics(r)
 	}
 
+	// Determine the authentication middleware (Hybrid: Auth0 + Legacy Token)
+	logger.Info("Initializing Hybrid authentication",
+		zap.Bool("auth0_enabled", cfg.Auth0Enabled),
+		zap.String("auth0_domain", cfg.Auth0Domain))
+
+	authMiddleware := rest.Auth0Middleware(cfg.Auth0Domain, cfg.Auth0Audience, JWT_TOKEN, cfg.Auth0Enabled)
+
 	rest.NewPingController(r)
-	rest.NewRegistryOperatorController(r, registryOperatorService, TokenAuthMiddleware())
-	rest.NewTLDController(r, tldService, domainService, TokenAuthMiddleware())
-	rest.NewNNDNController(r, nndnService, TokenAuthMiddleware())
-	rest.NewSyncController(r, syncService, TokenAuthMiddleware())
-	rest.NewSpec5Controller(r, spec5Service, TokenAuthMiddleware())
-	rest.NewIANARegistrarController(r, ianaRegistrarService, TokenAuthMiddleware())
-	rest.NewRegistrarController(r, registrarService, ianaRegistrarService, TokenAuthMiddleware())
-	rest.NewContactController(r, contactService, TokenAuthMiddleware())
-	rest.NewHostController(r, hostService, TokenAuthMiddleware())
-	rest.NewDomainController(r, domainService, TokenAuthMiddleware())
-	rest.NewPhaseController(r, phaseService, TokenAuthMiddleware())
-	rest.NewFeeController(r, feeService, TokenAuthMiddleware())
-	rest.NewPriceController(r, priceService, TokenAuthMiddleware())
-	rest.NewAccreditationController(r, accreditationService, TokenAuthMiddleware())
-	rest.NewPremiumController(r, premiumListService, premiumLabelService, TokenAuthMiddleware())
-	rest.NewFXController(r, fxService, TokenAuthMiddleware())
-	// rest.NewQuoteController(r, quoteService, TokenAuthMiddleware())
-	rest.NewWhoisController(r, whoisService, TokenAuthMiddleware())
+	rest.NewRegistryOperatorController(r, registryOperatorService, authMiddleware)
+	rest.NewTLDController(r, tldService, domainService, authMiddleware)
+	rest.NewNNDNController(r, nndnService, authMiddleware)
+	rest.NewSyncController(r, syncService, authMiddleware)
+	rest.NewSpec5Controller(r, spec5Service, authMiddleware)
+	rest.NewIANARegistrarController(r, ianaRegistrarService, authMiddleware)
+	rest.NewRegistrarController(r, registrarService, ianaRegistrarService, authMiddleware)
+	rest.NewContactController(r, contactService, authMiddleware)
+	rest.NewHostController(r, hostService, authMiddleware)
+	rest.NewDomainController(r, domainService, authMiddleware)
+	rest.NewPhaseController(r, phaseService, authMiddleware)
+	rest.NewFeeController(r, feeService, authMiddleware)
+	rest.NewPriceController(r, priceService, authMiddleware)
+	rest.NewAccreditationController(r, accreditationService, authMiddleware)
+	rest.NewPremiumController(r, premiumListService, premiumLabelService, authMiddleware)
+	rest.NewFXController(r, fxService, authMiddleware)
+	// rest.NewQuoteController(r, quoteService, authMiddleware)
+	rest.NewWhoisController(r, whoisService, authMiddleware)
+	rest.NewDnssecController(r, dnssecService, authMiddleware)
 	// Workflows
-	rest.NewWorkflowController(r, TokenAuthMiddleware())
+	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow
-	rest.NewEscrowController(r, TokenAuthMiddleware())
+	rest.NewEscrowController(r, authMiddleware)
 
 	// Agent Controller (AI Assistant)
 	if agentService != nil {
 		agentController := rest.NewAgentController(agentService, logger)
-		agentController.RegisterRoutes(r.Group("/api/v1", TokenAuthMiddleware()))
+		agentController.RegisterRoutes(r.Group("/api/v1", authMiddleware))
 		logger.Info("Agent routes registered at /api/v1/agent")
 	}
 

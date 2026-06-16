@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -15,8 +16,8 @@ type UpdateDomainTestSuite struct {
 	suite.Suite
 
 	// We'll store the original values of these globals so we can restore them after tests
-	originalBaseURL     string
-	originalBearerToken string
+	originalBaseURL    string
+	originalAdminToken string
 
 	// Test server to mock responses
 	testServer *httptest.Server
@@ -26,7 +27,7 @@ type UpdateDomainTestSuite struct {
 func (suite *UpdateDomainTestSuite) SetupSuite() {
 	// Save original values so we can restore them in TearDownSuite
 	suite.originalBaseURL = BASEURL
-	suite.originalBearerToken = BEARER_TOKEN
+	suite.originalAdminToken = os.Getenv("ADMIN_TOKEN")
 
 	// Create a test server to mock the remote endpoint
 	suite.testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +42,8 @@ func (suite *UpdateDomainTestSuite) SetupSuite() {
 
 			// Optionally, check for Authorization header
 			authHeader := r.Header.Get("Authorization")
-			if authHeader != suite.originalBearerToken {
+			// We expect the token to be "Bearer test-bearer-token" as set below
+			if authHeader != "Bearer test-bearer-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				w.Write([]byte(`{"error":"invalid token"}`))
 				return
@@ -70,14 +72,14 @@ func (suite *UpdateDomainTestSuite) SetupSuite() {
 
 	// Override the global BASEURL and BEARER_TOKEN to point to the test server
 	BASEURL = suite.testServer.URL
-	BEARER_TOKEN = "test-bearer-token"
+	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 }
 
 // TearDownSuite runs once after the entire suite finishes.
 func (suite *UpdateDomainTestSuite) TearDownSuite() {
 	// Restore original values
 	BASEURL = suite.originalBaseURL
-	BEARER_TOKEN = suite.originalBearerToken
+	os.Setenv("ADMIN_TOKEN", suite.originalAdminToken)
 
 	// Close the test server
 	suite.testServer.Close()
@@ -91,7 +93,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_Success() {
 	}
 
 	// Make sure we use the same bearer token that the server expects
-	BEARER_TOKEN = suite.originalBearerToken
+	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 
@@ -110,7 +112,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_AuthFail() {
 	}
 
 	// Provide a mismatched token that triggers a 401 in the test server
-	BEARER_TOKEN = "wrong-token"
+	os.Setenv("ADMIN_TOKEN", "wrong-token")
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)
@@ -126,7 +128,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_ServerError() {
 	}
 
 	// Correct token so the server goes to the 500 branch
-	BEARER_TOKEN = suite.originalBearerToken
+	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)
@@ -142,7 +144,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_NotFound() {
 	}
 
 	// Use correct token
-	BEARER_TOKEN = suite.originalBearerToken
+	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)

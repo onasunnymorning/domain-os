@@ -9,8 +9,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 type ContactController struct {
@@ -25,6 +25,7 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 	contactGroup := e.Group("/contacts", handler)
 	{
 		contactGroup.GET("", controller.ListContacts)
+		contactGroup.GET("count", controller.CountContacts)
 		contactGroup.GET(":id", controller.GetContactByID)
 		contactGroup.POST("", controller.CreateContact)
 		contactGroup.POST("/bulk", controller.BulkCreateContacts)
@@ -298,4 +299,33 @@ func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
 	// Return the response
 	ctx.JSON(200, response)
 
+}
+
+// CountContacts godoc
+// @Summary Count contacts
+// @Description Count contacts
+// @Tags Contacts
+// @Produce json
+// @Param id_like query string false "ID Like"
+// @Param email_like query string false "Email Like"
+// @Param clid_equals query string false "Clid Equals"
+// @Success 200 {object} response.CountResult
+// @Failure 400
+// @Failure 500
+// @Router /contacts/count [get]
+func (ctrl *ContactController) CountContacts(ctx *gin.Context) {
+	filter := queries.ListContactsFilter{}
+	filter.IdLike = ctx.Query("id_like")
+	filter.EmailLike = ctx.Query("email_like")
+	filter.ClidEquals = ctx.Query("clid_equals")
+
+	count, err := ctrl.contactService.Count(ctx, filter)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.CountResult{
+		Count: count,
+	})
 }

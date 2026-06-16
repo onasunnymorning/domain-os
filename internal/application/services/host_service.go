@@ -9,8 +9,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 // HostService is the implementation of the HostService interface
@@ -124,6 +124,10 @@ func (s *HostService) DeleteHostByRoID(ctx context.Context, roidString string) e
 // ListHosts lists hosts
 func (s *HostService) ListHosts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error) {
 	return s.hostRepository.ListHosts(ctx, params)
+}
+
+func (s *HostService) Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error) {
+	return s.hostRepository.Count(ctx, filter)
 }
 
 // AddHostAddress adds an ip address to an existing host

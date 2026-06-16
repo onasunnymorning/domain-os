@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // ExpiringDomainsQuery represents a query to get a list of expiring domains.

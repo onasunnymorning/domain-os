@@ -3,7 +3,7 @@ package queries
 import (
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // parseTimeDefault parses a date string in RFC3339 or yyyy-mm-dd format and returns a time.Time object. In case the date is empty, it will return the current time.

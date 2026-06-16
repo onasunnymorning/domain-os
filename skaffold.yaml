@@ -1,0 +1,79 @@
+apiVersion: skaffold/v4beta10
+kind: Config
+metadata:
+  name: domain-os-dev
+build:
+  local:
+    push: false
+  artifacts:
+    - image: geapex/domain-os
+      context: .
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: 'internal/**/*.go'
+            dest: .
+          - src: 'cmd/api/**/*.go'
+            dest: .
+    - image: geapex/domain-lifecycle-worker
+      context: .
+      docker:
+        dockerfile: cmd/workers/domainLifecycle/Dockerfile
+      sync:
+        manual:
+          - src: 'internal/**/*.go'
+            dest: .
+          - src: 'cmd/workers/domainLifecycle/**/*.go'
+            dest: .
+    - image: geapex/escrow-import-worker
+      context: .
+      docker:
+        dockerfile: cmd/workers/escrowImport/Dockerfile
+      sync:
+        manual:
+          - src: 'internal/**/*.go'
+            dest: .
+          - src: 'cmd/workers/escrowImport/**/*.go'
+            dest: .
+    - image: geapex/whois
+      context: .
+      docker:
+        dockerfile: cmd/whois/Dockerfile
+      sync:
+        manual:
+          - src: 'internal/**/*.go'
+            dest: .
+          - src: 'cmd/whois/**/*.go'
+            dest: .
+manifests:
+  helm:
+    releases:
+      - name: dos
+        chartPath: deploy/helm/dos
+        valuesFiles:
+          - deploy/helm/dos/values-local.yaml
+        setValues:
+          api.image: geapex/domain-os
+          domainlifecycleworker.image: geapex/domain-lifecycle-worker
+          syncworker.image: geapex/escrow-import-worker
+      - name: rabbitmq
+        chartPath: deploy/helm/rabbitmq
+        setValues:
+          name: rabbitmq
+      - name: metabase
+        chartPath: deploy/helm/metabase
+        setValues:
+          metabase.service.type: ClusterIP
+          metabase.service.port: 3000
+
+
+portForward:
+  - resourceType: deployment
+    resourceName: dos-api
+    port: 8080
+    localPort: 8080
+  - resourceType: deployment
+    resourceName: dos-api
+    port: 8081
+    localPort: 8081

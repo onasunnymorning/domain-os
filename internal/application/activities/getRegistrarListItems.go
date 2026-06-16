@@ -8,19 +8,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // GetRegistrarListItems queries an API for all Registrar List Items, following pagination links until there are no more.
-func GetRegistrarListItems(correlationID, baseURL, bearerToken string, batchsize int) ([]entities.RegistrarListItem, error) {
+func GetRegistrarListItems(correlationID string, batchsize int) ([]entities.RegistrarListItem, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	// Build the initial URL with query parameters (correlationID)
-	ENDPOINT := fmt.Sprintf("%s/registrars", baseURL)
+	ENDPOINT := fmt.Sprintf("%s/registrars", BASEURL)
 	initialURL, err := getURLAndSetQueryParams(ENDPOINT, map[string]string{
 		"correlationID": correlationID,
 		"pagesize":      fmt.Sprintf("%d", batchsize),
@@ -35,7 +35,7 @@ func GetRegistrarListItems(correlationID, baseURL, bearerToken string, batchsize
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchRegistrarsPage(context.Background(), client, currentURL, bearerToken)
+		apiResponse, err := fetchRegistrarsPage(context.Background(), client, currentURL, GetBearerToken())
 		if err != nil {
 			return nil, err
 		}
@@ -98,15 +98,41 @@ func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, beare
 		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Unmarshal into ListItemResult
-	var apiResponse response.ListItemResult
-	// Make sure apiResponse.Data is set to a pointer of the correct type so that
-	// JSON unmarshal knows where to put the data.
-	apiResponse.Data = &[]entities.RegistrarListItem{}
+	// Unmarshal into a local struct to avoid interface unmarshalling errors for Filter
+	type localMeta struct {
+		PageSize   int         `json:"PageSize"`
+		PageCursor string      `json:"PageCursor"`
+		NextLink   string      `json:"NextLink"`
+		Filter     interface{} `json:"Filter"` // Unmarshal filter as generic interface (ignored)
+	}
+	type localResult struct {
+		Meta localMeta       `json:"Meta"`
+		Data json.RawMessage `json:"Data"`
+	}
 
-	if err := json.Unmarshal(body, &apiResponse); err != nil {
+	var localRes localResult
+	if err := json.Unmarshal(body, &localRes); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
+
+	// Prepare the final response object
+	apiResponse := response.ListItemResult{
+		Meta: response.PaginationMetaData{
+			PageSize:   localRes.Meta.PageSize,
+			PageCursor: localRes.Meta.PageCursor,
+			NextLink:   localRes.Meta.NextLink,
+			// Filter is left nil as it's not needed by the worker
+		},
+	}
+
+	// Unmarshal Data if present
+	registrars := []entities.RegistrarListItem{}
+	if len(localRes.Data) > 0 && string(localRes.Data) != "null" {
+		if err := json.Unmarshal(localRes.Data, &registrars); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Data field: %w", err)
+		}
+	}
+	apiResponse.Data = &registrars
 
 	return &apiResponse, nil
 }

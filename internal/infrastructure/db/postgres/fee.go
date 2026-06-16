@@ -1,6 +1,6 @@
 package postgres
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // Fee is the GORM model for the phase_fee table. Uses a composite primary key to ensure that a fee with the same currency and name is not inserted twice in a phase
 type Fee struct {

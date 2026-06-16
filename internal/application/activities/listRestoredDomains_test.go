@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
@@ -14,7 +15,7 @@ import (
 
 func TestListRestoredDomains(t *testing.T) {
 	BASEURL = "http://example.com"
-	BEARER_TOKEN = "test-token"
+	os.Setenv("ADMIN_TOKEN", "test-token")
 	BATCHSIZE = 10
 
 	tests := []struct {

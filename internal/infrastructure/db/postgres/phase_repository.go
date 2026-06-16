@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
 )
 

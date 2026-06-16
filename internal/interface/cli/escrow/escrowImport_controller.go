@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // EscrowImportController is a controller for escrow analysis
@@ -41,7 +41,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	}
 
 	// Check the TLD is in a state allowing import
-	tld, err := c.svc.GetTLDFromAPI(c.svc.Header.TLD)
+	tld, err := c.svc.GetTLDFromAPI(c.svc.Header.TLD, "")
 	if err != nil || tld == nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 			c.svc.SaveImportResult()
 			return err
 		}
-		err = c.svc.CreateContacts(contactCmds)
+		err = c.svc.CreateContacts(contactCmds, "")
 		if err != nil {
 			c.svc.SaveImportResult()
 			return err
@@ -70,7 +70,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 			c.svc.SaveImportResult()
 			return err
 		}
-		err = c.svc.CreateNNDNs(nndnCmds)
+		err = c.svc.CreateNNDNs(nndnCmds, "")
 		if err != nil {
 			c.svc.SaveImportResult()
 			return err
@@ -95,7 +95,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 			c.svc.SaveImportResult()
 			return err
 		}
-		err = c.svc.CreateHosts(hostCmds)
+		err = c.svc.CreateHosts(hostCmds, "")
 		if err != nil {
 			c.svc.SaveImportResult()
 			return err
@@ -111,7 +111,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 			c.svc.SaveImportResult()
 			return err
 		}
-		err = c.svc.CreateDomains(domainCmds)
+		err = c.svc.CreateDomains(domainCmds, "")
 		if err != nil {
 			c.svc.SaveImportResult()
 			return err
@@ -125,7 +125,7 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 		// TODO: Set all domains to inactive
 		log.Println("No Hosts to link to Domains")
 	} else {
-		err = c.svc.LinkHostsToDomains()
+		err = c.svc.LinkHostsToDomains("")
 		if err != nil {
 			c.svc.SaveImportResult()
 			return err

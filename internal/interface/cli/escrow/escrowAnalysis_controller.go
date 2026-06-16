@@ -61,7 +61,7 @@ func (c *EscrowAnalysisController) Analyze(mapregistrars bool) error {
 	}
 
 	if mapregistrars {
-		if err := c.svc.MapRegistrars(); err != nil {
+		if err := c.svc.MapRegistrars("", nil); err != nil {
 			return err
 		}
 	}

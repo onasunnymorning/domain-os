@@ -3,6 +3,7 @@ package activities
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	// Make sure to import your "response" package or wherever CountResult is defined
 	// For example:
@@ -73,11 +74,11 @@ func TestCountRegistrars(t *testing.T) {
 				BASEURL = originalBaseURL
 			}()
 
-			// Override BEARER_TOKEN if needed
-			originalBearerToken := BEARER_TOKEN
-			BEARER_TOKEN = "test-token"
+			// Override ADMIN_TOKEN env var (used by GetBearerToken)
+			originalAdminToken := os.Getenv("ADMIN_TOKEN")
+			os.Setenv("ADMIN_TOKEN", "test-token")
 			defer func() {
-				BEARER_TOKEN = originalBearerToken
+				os.Setenv("ADMIN_TOKEN", originalAdminToken)
 			}()
 
 			// Invoke the function under test
