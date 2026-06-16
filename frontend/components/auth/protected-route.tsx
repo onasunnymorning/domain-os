@@ -21,6 +21,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     useEffect(() => {
         if (!authEnabled) return;
 
+        // Don't redirect if we're mid-Auth0 callback (code + state in URL).
+        // The Auth0Provider needs time to exchange the code for a session;
+        // redirecting here would cause an infinite login loop.
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('code') && params.has('state')) return;
+
         // If not authenticated and no longer loading, redirect to login
         if (!isLoading && !isAuthenticated) {
             loginWithRedirect();
