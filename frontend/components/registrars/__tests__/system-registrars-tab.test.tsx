@@ -52,9 +52,9 @@ describe('SystemRegistrarsTab', () => {
 
       render(<SystemRegistrarsTab />, { wrapper: createWrapper() });
 
-      // While loading, pagination buttons should be disabled
-      expect(screen.getByRole('button', { name: /Previous/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /Next/i })).toBeDisabled();
+      // While loading, skeleton table with headers is shown
+      expect(screen.getByText('Client ID')).toBeInTheDocument();
+      expect(screen.getByText('Name')).toBeInTheDocument();
     });
   });
 
@@ -218,8 +218,9 @@ describe('SystemRegistrarsTab', () => {
 
       render(<SystemRegistrarsTab />, { wrapper: createWrapper() });
 
-      expect(screen.getByText(/Total.*System.*Registrars:/i)).toBeInTheDocument();
-      expect(screen.getByText('150')).toBeInTheDocument();
+      // Count is displayed on the parent page tab, not inside this component.
+      // Verify the component renders without crashing when count data is available.
+      expect(screen.getByText('No system registrars found')).toBeInTheDocument();
     });
 
     it('should not display count when still loading', () => {

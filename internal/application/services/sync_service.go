@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/openfx"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 var (

@@ -1,0 +1,48 @@
+[
+    {
+        "domain_id": 1001,
+        "domain_name": "test-import-1.ac.uk",
+        "registered_date": "2023-01-01",
+        "registerexpire_date": "2024-01-01",
+        "status": "ACTIVE",
+        "dns1": "ns1.test.ac.uk",
+        "dns2": "ns2.test.ac.uk",
+        "registrant": {
+            "contact_id": 101,
+            "name": "Test Registrant 1",
+            "company_name": "Test Corp 1",
+            "address": "123 Test St",
+            "city": "Test City",
+            "pcode": "TE1 1ST",
+            "country": "GB",
+            "phone": "+44.123456789",
+            "email": "test1@example.com"
+        },
+        "registrar": {
+            "joid": 999,
+            "name": "Test Registrar"
+        }
+    },
+    {
+        "domain_id": 1002,
+        "domain_name": "test-import-2.ac.uk",
+        "registered_date": "2023-01-02",
+        "registerexpire_date": "2024-01-02",
+        "status": "ACTIVE",
+        "dns1": "ns1.test.ac.uk",
+        "registrant": {
+            "contact_id": 102,
+            "name": "Test Registrant 2",
+            "company_name": "Test Corp 2",
+            "address": "456 Test Ave",
+            "city": "Test Town",
+            "pcode": "TE2 2ND",
+            "country": "GB",
+            "email": "test2@example.com"
+        },
+        "registrar": {
+            "joid": 999,
+            "name": "Test Registrar"
+        }
+    }
+]

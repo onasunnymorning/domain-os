@@ -3,6 +3,7 @@ package activities
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -46,8 +47,17 @@ func TestGetIANARegistrars(t *testing.T) {
 			}))
 			defer srv.Close()
 
+			// Override BASEURL to point to mock server
+			originalBaseURL := BASEURL
+			BASEURL = srv.URL
+			defer func() { BASEURL = originalBaseURL }()
+
+			// Override ADMIN_TOKEN for fallback
+			os.Setenv("ADMIN_TOKEN", "test-token")
+			os.Setenv("AUTH0_ENABLED", "false") // Ensure we use fallback
+
 			// Call the activity
-			got, err := GetIANARegistrars("corr-xyz", srv.URL, "Bearer test", 100)
+			got, err := GetIANARegistrars("corr-xyz", 100)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("GetIANARegistrars() error = %v, wantErr=%v", err, tc.wantErr)
 			}

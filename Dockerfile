@@ -39,6 +39,7 @@ RUN go mod download
 
 # Copy source code
 COPY ./internal ./internal
+COPY ./pkg ./pkg
 COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
 
 
@@ -46,16 +47,20 @@ COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
 FROM build AS build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/api/ry-admin
-RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/internal/domain/entities,/internal/application/commands,/internal/interface/rest
+RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/pkg/domain/entities,/internal/application/commands,/internal/interface/rest
 # build binary
 WORKDIR /
 ARG GIT_SHA
-RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI /cmd/api/ry-admin/ryAdminAPI.go
+RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI ./cmd/api/ry-admin
 # RUN upx --brute /ryAdminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 
 # Create API release image
 FROM alpine:3.21.3 AS admin-api
+
+# Install dnsviz and dependencies
+RUN apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography && \
+    pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image
 # COPY --from=build-admin-api /usr/lib/librdkafka* /usr/lib/

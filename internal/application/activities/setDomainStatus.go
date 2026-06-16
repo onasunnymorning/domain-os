@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func SetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain, error) {
@@ -34,7 +34,7 @@ func SetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

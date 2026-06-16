@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -10,7 +9,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/urfave/cli/v2"
 )
 
@@ -99,18 +98,16 @@ func syncRegistrars(c *cli.Context) error {
 
 	// Get the IANA registrars
 	log.Println("Getting IANA registrars...")
-	baseURL := fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
-	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("ADMIN_TOKEN"))
 
 	// TODO: add command flag for batchsize instead of hard coding
-	ianaRars, err := activities.GetIANARegistrars(correlationID, baseURL, bearerToken, 100)
+	ianaRars, err := activities.GetIANARegistrars(correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the registrars currently in the platform
 	log.Println("Getting existing Registrars...")
-	rars, err := activities.GetRegistrarListItems(correlationID, baseURL, bearerToken, 100)
+	rars, err := activities.GetRegistrarListItems(correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}

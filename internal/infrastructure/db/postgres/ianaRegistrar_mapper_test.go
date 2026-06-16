@@ -3,7 +3,7 @@ package postgres
 import (
 	"testing"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func TestIANARegistrar_ToIANARegistrar(t *testing.T) {

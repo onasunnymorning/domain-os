@@ -2,8 +2,8 @@ package activities
 
 import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // MakeCreateRegistrarCommands generates a list of CreateRegistrarCommand based on the provided ICANN and IANA registrars.

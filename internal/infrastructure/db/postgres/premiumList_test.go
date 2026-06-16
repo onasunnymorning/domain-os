@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func TestPremiumList_ToEntity(t *testing.T) {

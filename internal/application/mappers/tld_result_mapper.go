@@ -2,7 +2,7 @@ package mappers
 
 import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // NewTLDResultFromTLD converts an entity TLD to a command TLDResult

@@ -2,14 +2,13 @@ package rest
 
 import (
 	"errors"
-	"log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 type NNDNController struct {
@@ -73,7 +72,7 @@ func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 // @Success      200     {object}  response.CountResult "Count of NNDNs"
 // @Failure      400     {object}  gin.H "Error message when client fails to provide the correct filter"
 // @Failure      500     {object}  gin.H "Error message when server fails to process the count"
-// @Router       /nndn/count [get]
+// @Router       /nndns/count [get]
 func (ctrl *NNDNController) Count(ctx *gin.Context) {
 	result := response.CountResult{}
 
@@ -160,12 +159,10 @@ func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(204, nil)
-	e, ok := ctx.Get("event")
-
-	if !ok {
-		log.Println("Event not found in context")
+	event := GetEvent(ctx)
+	if event == nil {
+		return
 	}
-	event := e.(*entities.Event)
 	event.Details.Result = entities.EventResultSuccess
 	event.Action = entities.EventTypeDelete
 	event.ObjectType = entities.ObjectTypeNNDN

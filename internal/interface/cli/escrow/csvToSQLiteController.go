@@ -27,7 +27,7 @@ func (ctrl *ConvertToSQLiteController) ConvertCSVsToSQLite(baseFilename, outputD
 	service := services.NewCSVToSQLiteService(baseFilename)
 
 	// Convert CSV files to SQLite
-	if err := service.ConvertToSQLite(outputDB); err != nil {
+	if err := service.ConvertToSQLite(outputDB, nil); err != nil {
 		return fmt.Errorf("conversion failed: %w", err)
 	}
 

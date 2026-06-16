@@ -1,0 +1,56 @@
+# Local development overrides for domain-os
+
+api:
+  replicaCount: 1
+  image: geapex/domain-os
+  tag: latest
+  imagePullPolicy: IfNotPresent
+
+domainlifecycleworker:
+  replicaCount: 1
+  image: geapex/domain-lifecycle-worker
+  tag: latest
+  imagePullPolicy: IfNotPresent
+
+syncworker:
+  replicaCount: 1
+  image: geapex/escrow-import-worker
+  tag: latest
+  imagePullPolicy: IfNotPresent
+
+service:
+  port: 8080
+
+# Environment Configuration
+gin:
+  GIN_MODE: debug
+
+newrelic:
+  enabled: "false"
+
+rabbitmq:
+  enabled: "false" # Set to true if deploying rabbitmq
+  topic: "domain.events"
+  host: "rabbitmq" # hostname if deployed in k8s
+  port: "5672"
+
+db:
+  DB_HOST: "host.docker.internal" # Assume local postgres or change to 'postgres' service name
+  DB_PORT: "5432"
+  DB_NAME: "domain-os"
+  AUTO_MIGRATE: "true"
+
+app:
+  API_PORT: "8080"
+  API_HOST: "0.0.0.0"
+  API_VERSION: "v1"
+  API_NAME: "domain-os"
+
+temporal:
+  TMPIO_HOST_PORT: "temporal:7233" # Assume temporal running in docker desktop or k8s
+  TMPIO_NAME_SPACE: "default"
+  TMPIO_QUEUE: "domain-lifecycle"
+  TMPIO_SYNC_QUEUE: "escrow-import"
+
+prometheus:
+  enabled: "false"

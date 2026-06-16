@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) (*entities.Registrar, error) {
@@ -35,7 +35,7 @@ func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

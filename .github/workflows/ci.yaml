@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
-    branches:    
+    branches:
       - main
   workflow_dispatch:
     inputs:
@@ -17,6 +20,32 @@ on:
         - debug
 
 jobs:
+  scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --issues-exit-code=0
+
   unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -30,12 +59,13 @@ jobs:
 
       - name: Start test Database server
         run: |
-          docker run --rm -d -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 -e POSTGRES_PASSWORD=unittest -e POSTGRES_USER=postgres -p 5432:5432 postgres:16.1 -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-        id: testdb
+          chmod +x .github/scripts/setup-test-db.sh
+          .github/scripts/setup-test-db.sh testdb
 
       - name: Run All Tests
         run: |
-          go test -v ./...
+          go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func=coverage.out | tail -1
 
       - name: Run Agent Navigation Tests
         run: |
@@ -58,6 +88,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
         run: |
@@ -83,10 +115,13 @@ jobs:
   build-images:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [unit-tests, frontend-tests]
+    needs: [unit-tests, frontend-tests, lint]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        if: github.ref == 'refs/heads/main'
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -94,32 +129,48 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Determine platforms: multi-platform on main, amd64-only on PRs for speed
+      - name: Set platforms
+        id: platforms
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          else
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and push AdminAPI
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: ${{ steps.platforms.outputs.platforms }}
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: geapex/domain-os:${{ github.sha }}
           cache-from: type=registry,ref=geapex/domain-os:buildcache
           cache-to: type=registry,ref=geapex/domain-os:buildcache,mode=max
+
       - name: Build and push Domain Lifecycle Worker
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/workers/domainLifecycle/Dockerfile
+          platforms: ${{ steps.platforms.outputs.platforms }}
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: geapex/domain-lifecycle-worker:${{ github.sha }}
           cache-from: type=registry,ref=geapex/domain-lifecycle-worker:buildcache
           cache-to: type=registry,ref=geapex/domain-lifecycle-worker:buildcache,mode=max
+
       - name: Build and push Sync Worker
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./cmd/workers/sync/Dockerfile
+          platforms: ${{ steps.platforms.outputs.platforms }}
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
@@ -136,7 +187,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Integration Tests
-        run: docker compose --profile essential -f docker-compose-ci.yml up --abort-on-container-exit --exit-code-from test
+        run: docker compose --profile essential -f docker-compose-ci.yml up --remove-orphans --abort-on-container-exit --exit-code-from test
         env:
           OPENEXCHANGERATES_APP_ID: ${{ secrets.OPENEXCHANGERATES_APP_ID }}
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
@@ -151,7 +202,7 @@ jobs:
           API_HOST: domain-os-admin-api-1
           API_NAME: ${{ secrets.API_NAME }}
           API_VERSION: ${{ secrets.API_VERSION }}
-          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          # ADMIN_TOKEN is hardcoded in docker-compose-ci.yml (cicdtoken) to match Postman CI environment
           BRANCH: ${{ github.sha }}
           GIN_MODE: debug
           AUTO_MIGRATE: true
@@ -164,21 +215,31 @@ jobs:
           EVENT_STREAM_TOPIC: ${{ secrets.EVENT_STREAM_TOPIC }}
           EVENT_STREAM_ENABLED: true
 
-      # Ran into some issues with this in the pipeline, 
-      # disabled and logged here https://github.com/onasunnymorning/domain-os/issues/185
-      # - name: Docker Scout
-      #   id: docker-scout
-      #   if: ${{ github.event_name == 'pull_request' }}
-      #   uses: docker/scout-action@v1
-      #   with:
-      #     dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
-      #     command: compare
-      #     image: geapex/epp-client-api:${{ github.sha }}
-      #     to: geapex/epp-client-api:latest
-      #     # image: ${{ steps.meta.outputs.tags }}
-      #     # to: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMPARE_TAG }}
-      #     ignore-unchanged: true
-      #     only-severities: critical,high
-      #     write-comment: true
-      #     github-token: ${{ secrets.PAT_TOKEN_DOCKER_SCOUT }} # to be able to write the commen
+      - name: Cleanup Integration Test Containers
+        if: always()
+        run: docker compose --profile essential -f docker-compose-ci.yml down -v --remove-orphans 2>/dev/null || true
+
+  retag:
+    name: Retag images as latest
+    runs-on: ubuntu-latest
+    needs: integrationtests
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install crane
+        run: |
+          VERSION=0.20.2
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz crane
+          chmod +x crane
+
+      - name: Retag all images as latest
+        run: |
+          for img in domain-os domain-lifecycle-worker sync-worker; do
+            echo "Retagging geapex/${img}:${{ github.sha }} → :latest"
+            ./crane tag "geapex/${img}:${{ github.sha }}" latest
+          done

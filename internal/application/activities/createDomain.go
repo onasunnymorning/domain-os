@@ -26,7 +26,7 @@ func CreateDomain(correlationID string, cmd commands.CreateDomainCommand) error 
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to create domain: %w", err)

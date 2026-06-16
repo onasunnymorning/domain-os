@@ -1,6 +1,6 @@
 package interfaces
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 type RoidService interface {
 	GenerateRoid(objectType string) (entities.RoidType, error)

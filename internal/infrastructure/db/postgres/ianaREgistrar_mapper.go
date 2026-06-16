@@ -1,6 +1,6 @@
 package postgres
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // ToIanaRegistrar converts a DB IANARegistrar to a domain IANARegistrar
 func ToIanaRegistrar(dbRegistrar *IANARegistrar) *entities.IANARegistrar {

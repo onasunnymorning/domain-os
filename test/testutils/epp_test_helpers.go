@@ -19,7 +19,7 @@ type TestEPPServer struct {
 }
 
 // NewTestEPPServer creates a new test EPP server on a random available port
-func NewTestEPPServer(commandMux *epp.CommandMux, tlsConfig tls.Config) (*TestEPPServer, error) {
+func NewTestEPPServer(commandMux *epp.CommandMux, tlsConfig *tls.Config) (*TestEPPServer, error) {
 	// Listen on random available port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -31,7 +31,7 @@ func NewTestEPPServer(commandMux *epp.CommandMux, tlsConfig tls.Config) (*TestEP
 	server := &epp.Server{
 		HandleCommand:  commandMux.Handle,
 		Greeting:       commandMux.GetGreeting,
-		TLSConfig:      tlsConfig,
+		TLSConfig:      *tlsConfig.Clone(),
 		Timeout:        30 * time.Second,
 		IdleTimeout:    10 * time.Second,
 		WriteTimeout:   5 * time.Second,

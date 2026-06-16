@@ -1,27 +1,18 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { useTLD, useDeleteTLD } from '@/lib/hooks/useTLDs';
+import { useTLD } from '@/lib/hooks/useTLDs';
 import { useTLDRegistrars, useAccreditForTLD, useDeaccreditForTLD } from '@/lib/hooks/useAccreditations';
 import { useRegistrars } from '@/lib/hooks/useRegistrars';
+import { useDomainCountsForRegistrars } from '@/lib/hooks/useDomains';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { ArrowLeft, Globe, Trash2, CheckCircle, XCircle, Calendar, Building2 } from 'lucide-react';
+
+import { ArrowLeft, Globe, CheckCircle, XCircle, Calendar, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
@@ -30,6 +21,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import type { RegistrarListItem, RegistrarListParams } from '@/lib/types/registrar';
+import { TLDAccreditedRegistrarCountWidget } from '@/components/tlds/TLDAccreditedRegistrarCountWidget';
+import { TLDDomainCountWidget } from '@/components/tlds/TLDDomainCountWidget';
+import { TLDReservedInventoryWidget } from '@/components/tlds/TLDReservedInventoryWidget';
+import { TLDDUMsPieChartCard } from '@/components/tlds/TLDDUMsPieChartCard';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -37,15 +32,34 @@ interface Props {
 
 export default function TLDDetailPage({ params }: Props) {
   const { name } = use(params);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const phaseName = searchParams.get('phase');
   const { data: tld, isLoading, error } = useTLD(decodeURIComponent(name));
-  const { mutate: deleteTLD, isPending: isDeleting } = useDeleteTLD();
   const tldName = decodeURIComponent(name);
   const { data: regAccData, isLoading: regAccLoading } = useTLDRegistrars(tldName, { pagesize: 100 });
   const accreditForTLD = useAccreditForTLD(tldName);
   const deaccreditForTLD = useDeaccreditForTLD(tldName);
+
+  // Fetch DUMs for accredited registrars
+  const regAccClIDs = useMemo(() => regAccData?.Data?.map(r => r.ClID) || [], [regAccData]);
+  const domainCountsQueries = useDomainCountsForRegistrars(tldName, regAccClIDs);
+  
+  const domainCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    regAccClIDs.forEach((clid, index) => {
+      counts[clid] = domainCountsQueries[index]?.data?.Count ?? 0;
+    });
+    return counts;
+  }, [regAccClIDs, domainCountsQueries]);
+
+  const sortedRegistrars = useMemo(() => {
+    if (!regAccData?.Data) return [];
+    return [...regAccData.Data].sort((a, b) => {
+      const countA = domainCounts[a.ClID] || 0;
+      const countB = domainCounts[b.ClID] || 0;
+      return countB - countA;
+    });
+  }, [regAccData, domainCounts]);
 
   // Add accreditation modal state (search registrars)
   const [addOpen, setAddOpen] = useState(false);
@@ -56,10 +70,8 @@ export default function TLDDetailPage({ params }: Props) {
     const p: RegistrarListParams = { pagesize: 20 };
     const q = (debounced || '').trim();
     if (q) {
-      // Always search by name and ClID for a consistent fuzzy experience
+      // Filter by name only as requested to avoid overly restrictive AND filtering in backend
       p.name_like = q;
-      p.clid_like = q;
-      // Avoid switching to gurid_equals-only on numeric input.
     }
     return p;
   }, [debounced]);
@@ -75,14 +87,6 @@ export default function TLDDetailPage({ params }: Props) {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [name]);
-
-  const handleDelete = () => {
-    deleteTLD(name, {
-      onSuccess: () => {
-        router.push('/tlds');
-      },
-    });
-  };
 
   const getTypeBadge = (type: string) => {
     switch (type) {
@@ -137,33 +141,6 @@ export default function TLDDetailPage({ params }: Props) {
               Back
             </Link>
           </Button>
-          {!isLoading && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" disabled={isDeleting}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete TLD
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete the TLD &quot;{tld?.Name}&quot; and all associated data.
-                    This action cannot be undone.
-                    <br /><br />
-                    <strong>Note:</strong> TLDs with active phases cannot be deleted.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
           {!isLoading && tld && (
             <Button size="sm" asChild className="ml-2">
               <Link href={`/tlds/${encodeURIComponent(tld.Name)}/edit`}>Edit</Link>
@@ -181,12 +158,133 @@ export default function TLDDetailPage({ params }: Props) {
               <h1 className="text-5xl font-bold tracking-tight">{tld?.Name}</h1>
             )}
           </div>
-          <p className="text-sm text-muted-foreground ml-[52px]">TLD Details</p>
+          {tld?.RyID && (
+            <div className="ml-[52px]">
+              <Badge variant="outline" className="font-mono mt-1 text-sm">{tld.RyID}</Badge>
+            </div>
+          )}
         </div>
 
-        {/* TLD Information Card */}
+        {/* Count Widgets */}
+        {tld && (
+          <div className="grid gap-6 md:grid-cols-4">
+            <TLDDomainCountWidget tldName={tld.Name} />
+            <TLDReservedInventoryWidget tldName={tld.Name} />
+            <TLDAccreditedRegistrarCountWidget 
+              count={regAccData?.Data?.length ?? 0} 
+              isLoading={regAccLoading} 
+              onClick={() => {
+                const el = document.getElementById("accredited-registrars");
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: y, behavior: "smooth" });
+                }
+              }} 
+            />
+            <TLDDUMsPieChartCard 
+              data={sortedRegistrars.map(r => ({ name: r.Name, clid: r.ClID, value: domainCounts[r.ClID] || 0 }))} 
+              onClick={() => {
+                const el = document.getElementById("accredited-registrars");
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: y, behavior: "smooth" });
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Phase Timeline */}
+        {!isLoading && tld && (
+          <PhaseTimeline
+            tldName={tld.Name}
+            initialPhaseName={phaseName || undefined}
+          />
+        )}
+
+        {/* Registrars Accredited for this TLD */}
+        <Card id="accredited-registrars">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Accredited Registrars</CardTitle>
+              <CardDescription>
+                {regAccLoading ? 'Loading accredited registrars…' : `${regAccData?.Data?.length ?? 0} registrar${(regAccData?.Data?.length ?? 0) !== 1 ? 's' : ''} accredited`}
+              </CardDescription>
+            </div>
+            <div className="pt-1">
+              <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {regAccLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map(i => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : (regAccData?.Data?.length ?? 0) === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No registrars accredited for this TLD</div>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">DUMs</TableHead>
+                      <TableHead>ClID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[140px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedRegistrars.map((r: RegistrarListItem) => {
+                      const clidIndex = regAccClIDs.indexOf(r.ClID);
+                      const isCountLoading = clidIndex >= 0 ? domainCountsQueries[clidIndex]?.isLoading : false;
+                      return (
+                      <TableRow key={r.ClID}>
+                        <TableCell className="text-right whitespace-nowrap font-mono text-muted-foreground">
+                          {isCountLoading ? <Skeleton className="h-4 w-8 inline-block" /> : (domainCounts[r.ClID] || 0).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.Name}</Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
+                            {r.Status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => {
+                              setSelectedRegistrar(r);
+                              setConfirmText('');
+                              setDeaccError(null);
+                              setDeaccOpen(true);
+                            }}
+                          >
+                            De-accredit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );})}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* TLD Information Card (Details) */}
         <Card>
-          <CardContent className="pt-6">
+          <CardHeader>
+            <CardTitle>Details</CardTitle>
+          </CardHeader>
+          <CardContent>
             {isLoading ? (
               <div className="space-y-6">
                 {[1, 2, 3, 4].map((i) => (
@@ -202,20 +300,6 @@ export default function TLDDetailPage({ params }: Props) {
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
                   <div>{tld && getTypeBadge(tld.Type)}</div>
-                </div>
-
-                {/* Registry Operator */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                    <Building2 className="h-3 w-3" />
-                    Registry Operator
-                  </p>
-                  <Link 
-                    href={`/registry-operators/${tld?.RyID}`} 
-                    className="text-lg font-medium text-primary hover:underline inline-block"
-                  >
-                    {tld?.RyID}
-                  </Link>
                 </div>
 
                 {/* Status Grid */}
@@ -264,76 +348,6 @@ export default function TLDDetailPage({ params }: Props) {
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Registrars Accredited for this TLD */}
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Accredited Registrars</CardTitle>
-              <CardDescription>
-                {regAccLoading ? 'Loading accredited registrars…' : `${regAccData?.Data?.length ?? 0} registrar${(regAccData?.Data?.length ?? 0) !== 1 ? 's' : ''} accredited`}
-              </CardDescription>
-            </div>
-            <div className="pt-1">
-              <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {regAccLoading ? (
-              <div className="space-y-2">
-                {[1,2,3,4].map(i => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : (regAccData?.Data?.length ?? 0) === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No registrars accredited for this TLD</div>
-            ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ClID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[140px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {regAccData!.Data!.map((r: RegistrarListItem) => (
-                      <TableRow key={r.ClID}>
-                        <TableCell className="font-mono">
-                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.Name}</Link>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
-                            {r.Status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setSelectedRegistrar(r);
-                              setConfirmText('');
-                              setDeaccError(null);
-                              setDeaccOpen(true);
-                            }}
-                          >
-                            De-accredit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
               </div>
             )}
           </CardContent>
@@ -457,13 +471,6 @@ export default function TLDDetailPage({ params }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Phase Timeline */}
-        {!isLoading && tld && (
-          <PhaseTimeline 
-            tldName={tld.Name} 
-            initialPhaseName={phaseName || undefined}
-          />
-        )}
       </div>
     </DashboardLayout>
   );

@@ -2,7 +2,7 @@ services:
 # Database container
   db:
     image: postgres:16.1
-    restart: always
+    restart: "no"
     profiles: [essential, full]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -23,17 +23,15 @@ services:
     #   - 5432
     ports:
       - 5432:5432
-      - 55432:55432
     networks:
       - dos
-    volumes: 
-      - db:/var/lib/postgresql/data 
-
+    volumes:
+      - db:/var/lib/postgresql/data
 
 # Core API container
   admin-api:
     image: "geapex/domain-os:${BRANCH}"
-    restart: always
+    restart: "no"
     profiles: [essential, full]
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ping || exit"]
@@ -58,7 +56,7 @@ services:
       - API_PORT=${API_PORT}
       - API_HOST=${API_HOST}
       - API_NAME=${API_NAME}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_TOKEN=cicdtoken  # Must match Postman CI environment 'token' variable
       - API_VERSION=${API_VERSION}
       - RMQ_HOST=${RMQ_HOST}
       - RMQ_PORT=${RMQ_PORT}
@@ -81,8 +79,13 @@ services:
   # Temporal stack (CI) - Postgres + Temporal Server
   temporal-postgres:
     image: postgres:14
-    restart: unless-stopped
+    restart: "no"
     profiles: [essential, full]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 3s
+      retries: 5
+      start_period: 10s
     environment:
       - POSTGRES_USER=temporal
       - POSTGRES_PASSWORD=temporal
@@ -93,9 +96,14 @@ services:
       - dos
 
   temporal:
-    image: temporalio/auto-setup:latest
-    restart: unless-stopped
+    image: temporalio/auto-setup:1.25.2
+    restart: "no"
     profiles: [essential, full]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z $(hostname -i) 7233"]
+      interval: 10s
+      retries: 5
+      start_period: 60s
     environment:
       - DB=postgres12
       - DB_PORT=5432
@@ -105,7 +113,8 @@ services:
     ports:
       - 7233:7233
     depends_on:
-      - temporal-postgres
+      temporal-postgres:
+        condition: service_healthy
     networks:
       - dos
 
@@ -115,13 +124,13 @@ services:
       context: .
       dockerfile: ./cmd/workers/domainLifecycle/Dockerfile
     image: geapex/domain-lifecycle-worker:${BRANCH}
-    restart: unless-stopped
+    restart: "no"
     profiles: [essential, full]
     depends_on:
       admin-api:
-        condition: service_started
+        condition: service_healthy
       temporal:
-        condition: service_started
+        condition: service_healthy
     environment:
       - TMPIO_HOST_PORT=temporal:7233
       - TMPIO_NAME_SPACE=default
@@ -130,15 +139,15 @@ services:
       - TMPIO_CERT=
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above
     networks:
-      - dos  
+      - dos
 # TEST container from wich we will be running integration tests based on a postman collection
   test:
-    image: postman/newman
+    image: postman/newman:6-alpine
     profiles: [essential, full]
     command:
-      run "https://api.getpostman.com/collections/"${POSTMAN_COLLECTION_ID}"?apikey="${POSTMAN_API_KEY} -e "https://api.getpostman.com/environments/"${POSTMAN_ENVIRONMENT_ID}"?apikey="${POSTMAN_API_KEY} 
+      run "https://api.getpostman.com/collections/"${POSTMAN_COLLECTION_ID}"?apikey="${POSTMAN_API_KEY} -e "https://api.getpostman.com/environments/"${POSTMAN_ENVIRONMENT_ID}"?apikey="${POSTMAN_API_KEY}
     environment:
       - apikey=${POSTMAN_API_KEY}
       - collection=${POSTMAN_COLLECTION_ID}
@@ -148,12 +157,14 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      domain-lifecycle-worker:
+        condition: service_started
     networks:
-      - dos  
+      - dos
 
 networks:
   dos:
-    name: domain-os_dos
+    driver: bridge
 
 volumes:
   db:

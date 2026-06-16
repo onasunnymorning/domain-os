@@ -1,6 +1,6 @@
 package queries
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // RestoredDomainsQuery represents a query to get a list of restored domains.
 type RestoredDomainsQuery struct {

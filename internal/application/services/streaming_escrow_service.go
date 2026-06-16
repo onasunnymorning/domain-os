@@ -1,14 +1,17 @@
 package services
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/csv"
 	"encoding/xml"
 	"errors"
 	"io"
 	"log"
 	"os"
+	"runtime"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // StreamingCSVWriters holds all CSV writers for concurrent writing during streaming
@@ -93,11 +96,14 @@ func NewStreamingXMLEscrowService(xmlFilename string) (*StreamingXMLEscrowServic
 	return service, nil
 }
 
+// HeartbeatFunc is a callback to report progress/liveness
+type HeartbeatFunc func(details ...interface{})
+
 // StreamAnalyze performs single-pass analysis of the XML file
-func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool) error {
+func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool, token string, heartbeat HeartbeatFunc) error {
 
 	// Perform single-pass streaming
-	if err := svc.streamXML(); err != nil {
+	if err := svc.streamXML(heartbeat); err != nil {
 		return err
 	}
 
@@ -107,10 +113,12 @@ func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool) error {
 		return err
 	}
 
+	// MapRegistrars logic has been moved to a separate activity (MapRegistrars)
+	// We no longer call it here inline.
+	// But we keep the argument for backward compatibility or if we want to restore it later
+	// (though the signature of MapRegistrars changed to require overrides, so we can't call it easily without them)
 	if mapRegistrars {
-		if err := svc.MapRegistrars(); err != nil {
-			return err
-		}
+		log.Println("⚠️ MapRegistrars argument is true, but inline mapping is deprecated/disabled in favor of MapRegistrars activity.")
 	}
 
 	// Save analysis results
@@ -125,7 +133,7 @@ func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool) error {
 // Removed complex handler system in favor of simple direct processing
 
 // streamXML performs the single-pass streaming through the XML file
-func (svc *StreamingXMLEscrowService) streamXML() error {
+func (svc *StreamingXMLEscrowService) streamXML(heartbeat HeartbeatFunc) error {
 	file, err := os.Open(svc.Deposit.FileName)
 	if err != nil {
 		return err
@@ -189,6 +197,10 @@ func (svc *StreamingXMLEscrowService) streamXML() error {
 						if domainCount%100000 == 0 {
 							log.Printf("Processed %d domains so far...", domainCount)
 						}
+						// Heartbeat every 1,000 domains to keep Temporal happy
+						if domainCount%1000 == 0 && heartbeat != nil {
+							heartbeat("processing domains", domainCount)
+						}
 					}
 				}
 
@@ -201,6 +213,10 @@ func (svc *StreamingXMLEscrowService) streamXML() error {
 						// Log progress every 100,000 contacts
 						if contactCount%100000 == 0 {
 							log.Printf("Processed %d contacts so far...", contactCount)
+						}
+						// Heartbeat every 1,000 contacts
+						if contactCount%1000 == 0 && heartbeat != nil {
+							heartbeat("processing contacts", contactCount)
 						}
 					}
 				}
@@ -473,6 +489,11 @@ func (svc *StreamingXMLEscrowService) closeCSVWriters() error {
 	writers.uniqueContactIDFile.Close()
 
 	log.Printf("✅ Closed all CSV files and wrote %d unique contact IDs", len(svc.uniqueContactIDs))
+
+	// Free up memory before validation
+	svc.uniqueContactIDs = nil
+	runtime.GC()
+
 	return nil
 }
 
@@ -537,19 +558,17 @@ func (svc *StreamingXMLEscrowService) validateCSVCounts() error {
 		}
 	}
 
-	// Check unique contact IDs file
-	uniqueContactFile := baseFilename + "-uniqueDomainContactIDs.csv"
-	if lines, err := svc.countCSVLines(uniqueContactFile); err != nil {
-		log.Printf("⚠️  Could not validate unique contact IDs: %v", err)
-	} else {
-		actual := lines - 1 // Subtract 1 for header
-		expected := len(svc.uniqueContactIDs)
-		if actual != expected {
-			log.Printf("⚠️  Unique contact IDs CSV validation: file has %d records (expected %d)", actual, expected)
+	// Check unique contact IDs file - Skipped as map is cleared for memory optimization
+	/*
+		uniqueContactFile := baseFilename + "-uniqueDomainContactIDs.csv"
+		if lines, err := svc.countCSVLines(uniqueContactFile); err != nil {
+			log.Printf("⚠️  Could not validate unique contact IDs: %v", err)
 		} else {
-			log.Printf("✅ Unique contact IDs CSV validation: %d records match expectation", actual)
+			// Log count for info only
+			actual := lines - 1
+			log.Printf("ℹ️  Unique contact IDs CSV contains %d records", actual)
 		}
-	}
+	*/
 
 	return nil
 }
@@ -561,13 +580,24 @@ func (svc *StreamingXMLEscrowService) countCSVLines(filename string) (int, error
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return 0, err
-	}
+	// Use buffered reader to count lines efficiently
+	reader := bufio.NewReader(file)
+	count := 0
+	buf := make([]byte, 32*1024)
+	lineSep := []byte{'\n'}
 
-	return len(records), nil
+	for {
+		c, err := reader.Read(buf)
+		count += bytes.Count(buf[:c], lineSep)
+
+		switch {
+		case err == io.EOF:
+			return count, nil
+
+		case err != nil:
+			return count, err
+		}
+	}
 }
 
 // Cleaned up - removed unused handler structs since we're using direct processing

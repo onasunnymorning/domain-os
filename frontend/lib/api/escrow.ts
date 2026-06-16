@@ -28,6 +28,8 @@ export interface EscrowRunItem {
   registrarMappingUrl?: string;
   registrarMappingJsonUrl?: string;
   sqliteDbUrl?: string;
+  stagedDbKey?: string;
+  stagedDbUrl?: string;
   importEventsUrl?: string;
   artifacts?: Record<string, string>;
 }
@@ -56,4 +58,9 @@ export async function startEscrowImport(params: { tld: string; objectKey: string
 export async function listEscrowImports(tld: string, limit = 20): Promise<EscrowImportListResponse> {
   const { data } = await apiClient.get('/escrow/imports', { params: { tld, limit } });
   return data as EscrowImportListResponse;
+}
+
+export async function startEscrowIngestion(tld: string, stagedDbKey: string): Promise<StartEscrowImportResponse> {
+  const { data } = await apiClient.post('/escrow/ingest', { tld, stagedDbKey });
+  return data as StartEscrowImportResponse;
 }

@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -36,7 +36,6 @@ var (
 	ErrImportFailed                       = errors.New("import failed, at least one object could not be imported")
 
 	BASE_URL = "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
-	BEARER   = "Bearer " + os.Getenv("ADMIN_TOKEN")
 )
 
 // XMLEscrowService implements XMLEscrowService interface
@@ -1080,7 +1079,8 @@ func (svc *XMLEscrowService) SaveImportResult() error {
 }
 
 // MapRegistrars Tries to find all registrars from the deposit in the repository through the registrars API and link their IDs
-func (svc *XMLEscrowService) MapRegistrars() error {
+// MapRegistrars Tries to find all registrars from the deposit in the repository through the registrars API and link their IDs
+func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]string) error {
 	log.Println("Mapping Registrars ...")
 	if svc.Registrars == nil {
 		return errors.New("no registrars to map, have you analyzed registrar-section of the escrow file?")
@@ -1094,8 +1094,6 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 
 	writer := csv.NewWriter(outFile)
 	defer writer.Flush()
-
-	bearer := "Bearer " + os.Getenv("ADMIN_TOKEN")
 
 	var found = 0
 	var missing = 0
@@ -1111,6 +1109,48 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		svc.RegistrarMapping[rar.ID] = pre
 
 		var URL string
+		var overrideID string = ""
+		// Check for overrides first
+		if overrides != nil {
+			if val, ok := overrides[rar.Name]; ok {
+				overrideID = val
+			} else if val, ok := overrides[strconv.Itoa(rar.GurID)]; ok {
+				overrideID = val
+			}
+		}
+
+		if overrideID != "" {
+			// Verify that the registrar exists
+			verifyURL := BASE_URL + "/registrars/" + overrideID
+			vReq, err := http.NewRequest("GET", verifyURL, nil)
+			if err != nil {
+				return err
+			}
+			vReq.Header.Set("Authorization", token)
+
+			vClient := &http.Client{}
+			vResp, err := vClient.Do(vReq)
+			if err != nil {
+				return err
+			}
+			defer vResp.Body.Close()
+
+			if vResp.StatusCode == http.StatusOK {
+				// If we have an override, and it exists, we trust it and update the mapping
+				rarMap := svc.RegistrarMapping[rar.ID]
+				rarMap.RegistrarClID = entities.ClIDType(overrideID)
+				svc.RegistrarMapping[rar.ID] = rarMap
+				found++
+				log.Printf("✅ Overriding registrar %s (GurID %d) with %s (Verified)", rar.Name, rar.GurID, overrideID)
+				continue
+			} else {
+				// If override does not exist, log error to analysis and proceed with regular lookup
+				msg := fmt.Sprintf("Override registrar %s for %s (GurID %d) not found in system. Ignoring override.", overrideID, rar.Name, rar.GurID)
+				log.Printf("❌ %s", msg)
+				svc.Analysis.Errors = append(svc.Analysis.Errors, msg)
+				// Proceed to regular lookup below
+			}
+		}
 
 		// Handle special cases of reserved GurIDs
 		if rar.GurID == 9997 {
@@ -1129,7 +1169,7 @@ func (svc *XMLEscrowService) MapRegistrars() error {
 		if err != nil {
 			return err
 		}
-		req.Header.Add("Authorization", bearer)
+		req.Header.Add("Authorization", token)
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -1252,7 +1292,7 @@ type ErrorResponse struct {
 }
 
 // CreateContacts Creates the contacts in the repository through the Admin API
-func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand) error {
+func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand, token string) error {
 	// Create a re-usable client optimized for tcp connections
 	client := getHTTPClient()
 
@@ -1269,7 +1309,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createContact(client, cmd)
+				svc.createContact(client, cmd, token)
 				pbar.Add(1)
 			}
 		}()
@@ -1299,7 +1339,7 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 }
 
 // createContact handles the actual creation of a contact through an API request. If a contact already exists, that is not an error.
-func (svc *XMLEscrowService) createContact(client *http.Client, cmd commands.CreateContactCommand) error {
+func (svc *XMLEscrowService) createContact(client *http.Client, cmd commands.CreateContactCommand, token string) error {
 
 	URL := BASE_URL + "/contacts"
 
@@ -1341,7 +1381,7 @@ func (svc *XMLEscrowService) createContact(client *http.Client, cmd commands.Cre
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1379,7 +1419,7 @@ func (svc *XMLEscrowService) createContact(client *http.Client, cmd commands.Cre
 }
 
 // CreateHosts Creates the hosts in the repository through the Admin API
-func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) error {
+func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand, token string) error {
 	// Create a re-usable client optimized for tcp connections
 	client := getHTTPClient()
 
@@ -1396,7 +1436,7 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) erro
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createHost(*client, cmd)
+				svc.createHost(*client, cmd, token)
 				pbar.Add(1)
 			}
 		}()
@@ -1424,7 +1464,7 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand) erro
 }
 
 // createHost handles the actual creation of a host through an API request. If a host already exists, that is not an error.
-func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateHostCommand) error {
+func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateHostCommand, token string) error {
 
 	URL := BASE_URL + "/hosts"
 
@@ -1466,7 +1506,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1510,7 +1550,7 @@ func (svc *XMLEscrowService) createHost(client http.Client, cmd commands.CreateH
 }
 
 // CreateDomains Creates the contacts in the repository through the Admin API
-func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) error {
+func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand, token string) error {
 	// Create a re-usable client
 	client := getHTTPClient()
 
@@ -1527,7 +1567,7 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createDomain(*client, cmd)
+				svc.createDomain(*client, cmd, token)
 				pbar.Add(1)
 			}
 		}()
@@ -1555,7 +1595,7 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand) 
 }
 
 // createDomain handles the actual creation of a domain through an API request. If a domain already exists, that is not an error.
-func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.CreateDomainCommand) error {
+func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.CreateDomainCommand, token string) error {
 
 	URL := BASE_URL + "/domains"
 
@@ -1597,7 +1637,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	resp, err := client.Do(req)
 	if err != nil {
 		svc.Import.Domains.Failed++
@@ -1642,7 +1682,7 @@ func (svc *XMLEscrowService) createDomain(client http.Client, cmd commands.Creat
 }
 
 // LinkHostsToDomains Links the hosts to the domains in the repository through the Admin API. It requires the domain and host objects to be created first
-func (svc *XMLEscrowService) LinkHostsToDomains() error {
+func (svc *XMLEscrowService) LinkHostsToDomains(token string) error {
 	client := getHTTPClient()
 
 	// Read the CSV file that contains the mapping [domainname, hostname]
@@ -1668,7 +1708,7 @@ func (svc *XMLEscrowService) LinkHostsToDomains() error {
 		go func() {
 			defer wg.Done()
 			for record := range cmdChan {
-				svc.linkHostToDomain(*client, record[0], strings.Trim(record[1], "."))
+				svc.linkHostToDomain(*client, record[0], strings.Trim(record[1], "."), token)
 				pbar.Add(1)
 			}
 		}()
@@ -1696,7 +1736,7 @@ func (svc *XMLEscrowService) LinkHostsToDomains() error {
 }
 
 // linkHostToDomain links a host to a domain through the API. If the link already exists, that is not an error
-func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, hostName string) error {
+func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, hostName string, token string) error {
 
 	// Create the request
 	requestURL := BASE_URL + "/domains/" + domainName + "/hostname/" + hostName + "?force=true" // use force to override the domain's possible update prohibition
@@ -1704,7 +1744,7 @@ func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, ho
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	// Send it
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1731,7 +1771,7 @@ func (svc *XMLEscrowService) linkHostToDomain(client http.Client, domainName, ho
 }
 
 // CreateNNDNs Creates the NNDNs in the repository through the Admin API
-func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand) error {
+func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand, token string) error {
 	// Create a re-usable client
 	client := getHTTPClient()
 
@@ -1748,7 +1788,7 @@ func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand) erro
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createNNDN(*client, cmd)
+				svc.createNNDN(*client, cmd, token)
 				pbar.Add(1)
 			}
 		}()
@@ -1776,7 +1816,7 @@ func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand) erro
 }
 
 // creaetNNDN creaetes an NNDN through the API endpoint. If it already exists, that is not an error
-func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateNNDNCommand) error {
+func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateNNDNCommand, token string) error {
 	URL := BASE_URL + "/nndns"
 
 	// UnMarshal the command into a JSON object
@@ -1790,7 +1830,7 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	// Send it
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1842,7 +1882,7 @@ func (svc *XMLEscrowService) createNNDN(client http.Client, cmd commands.CreateN
 }
 
 // GetTLDFromAPI fetches the TLD from the API
-func (svc *XMLEscrowService) GetTLDFromAPI(tldName string) (*entities.TLD, error) {
+func (svc *XMLEscrowService) GetTLDFromAPI(tldName string, token string) (*entities.TLD, error) {
 	URL := BASE_URL + "/tlds/" + tldName
 	// Create a re-usable client
 	client := getHTTPClient()
@@ -1855,7 +1895,7 @@ func (svc *XMLEscrowService) GetTLDFromAPI(tldName string) (*entities.TLD, error
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Authorization", BEARER)
+	req.Header.Add("Authorization", token)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

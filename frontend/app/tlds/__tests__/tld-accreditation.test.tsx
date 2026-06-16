@@ -20,10 +20,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as tldHooks from '@/lib/hooks/useTLDs';
 import * as accHooks from '@/lib/hooks/useAccreditations';
 import * as regHooks from '@/lib/hooks/useRegistrars';
+import * as domainHooks from '@/lib/hooks/useDomains';
 
 vi.mock('@/lib/hooks/useTLDs');
 vi.mock('@/lib/hooks/useAccreditations');
 vi.mock('@/lib/hooks/useRegistrars');
+vi.mock('@/lib/hooks/useDomains');
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -96,6 +98,14 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     } as any);
+    
+    // Default domains mock
+    vi.mocked(domainHooks.useDomainCountsForRegistrars).mockReturnValue([] as any);
+    vi.mocked(domainHooks.useDomainCount).mockReturnValue({
+      data: { ObjectType: 'Domain', Count: 0, Timestamp: '2024-01-01T00:00:00Z' },
+      isLoading: false,
+      error: null,
+    } as any);
   });
 
   it('opens accredit modal, enforces eligibility, and accredits successfully', async () => {
@@ -116,7 +126,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
 
     // Ineligible registrar shows Not eligible and is disabled
     const notEligibleButtons = screen.getAllByRole('button', { name: /Not eligible/i });
-    notEligibleButtons.forEach((b) => expect(b).toBeDisabled());
+    notEligibleButtons.forEach((b: HTMLElement) => expect(b).toBeDisabled());
 
     // Click Accredit and expect mutateAsync called and modal closed
     fireEvent.click(okRowButton);

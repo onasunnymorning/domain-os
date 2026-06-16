@@ -1,6 +1,6 @@
 package postgres
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // Price is the GORM model for the phase_price table. We use a composite primary key to ensure that a price with the same currency is not inserted twice in the same phase
 type Price struct {

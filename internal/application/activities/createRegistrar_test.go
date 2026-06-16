@@ -4,16 +4,17 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateRegistrar(t *testing.T) {
 	BASEURL = "http://example.com"
-	BEARER_TOKEN = "test-token"
+	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	tests := []struct {
 		name           string

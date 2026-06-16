@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestUnSetDomainStatus(t *testing.T) {
 	BASEURL = "http://example.com"
-	BEARER_TOKEN = "test-token"
+	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	tests := []struct {
 		name           string
@@ -72,7 +73,7 @@ func TestUnSetDomainStatus(t *testing.T) {
 			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "DELETE", r.Method)
 				assert.Equal(t, fmt.Sprintf("/domains/%s/status/%s", tt.cmd.DomainName, tt.cmd.Status), r.URL.Path)
-				assert.Equal(t, BEARER_TOKEN, r.Header.Get("Authorization"))
+				assert.Equal(t, "Bearer "+os.Getenv("ADMIN_TOKEN"), r.Header.Get("Authorization"))
 				assert.Equal(t, tt.cmd.CorrelationID, r.URL.Query().Get("correlation_id"))
 
 				w.WriteHeader(tt.mockStatusCode)

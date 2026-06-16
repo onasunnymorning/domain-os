@@ -1,7 +1,9 @@
 package escrow
 
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 )
@@ -26,7 +28,8 @@ func NewStreamingEscrowAnalysisController(xmlFilename string) (*StreamingEscrowA
 // AnalyzeStreaming performs optimized single-pass analysis of the escrow file
 func (c *StreamingEscrowAnalysisController) AnalyzeStreaming(mapRegistrars bool) error {
 	// Perform single-pass streaming analysis
-	if err := c.svc.StreamAnalyze(mapRegistrars); err != nil {
+	token := fmt.Sprintf("Bearer %s", os.Getenv("ADMIN_TOKEN"))
+	if err := c.svc.StreamAnalyze(mapRegistrars, token, nil); err != nil {
 		return err
 	}
 

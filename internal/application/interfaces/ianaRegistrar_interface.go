@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // IANARegistrarService is a service for managing IANA & ICANN Accredited Registrars

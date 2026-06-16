@@ -12,6 +12,7 @@ RUN go mod download
 
 # Copy source code
 COPY ./internal ./internal
+COPY ./pkg ./pkg
 COPY ./cmd/workers/domainLifecycle/ ./cmd/workers/domainLifecycle/
 
 FROM build AS build-domain-lifecycle

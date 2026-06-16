@@ -8,8 +8,8 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
-	"github.com/onasunnymorning/domain-os/internal/domain/repositories"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"go.uber.org/zap"
 )
 
@@ -91,6 +91,9 @@ func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) 
 
 	// make a copy of the original
 	previousRar := registrar.DeepCopy()
+
+	// preserve read-only metadata fields from the previous state
+	rar.CreatedAt = previousRar.CreatedAt
 
 	// update the registrar
 	updatedRar, err := s.registrarRepository.Update(ctx, rar)

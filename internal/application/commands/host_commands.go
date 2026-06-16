@@ -1,6 +1,6 @@
 package commands
 
-import "github.com/onasunnymorning/domain-os/internal/domain/entities"
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 // CreateHostCommand is the command to create a Host
 type CreateHostCommand struct {

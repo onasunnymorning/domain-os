@@ -3,6 +3,8 @@ export type PhaseType = 'GA' | 'Launch';
 
 export type PhaseStatus = 'past' | 'current' | 'future';
 
+export type ContactDataPolicyType = 'mandatory' | 'optional' | 'prohibited';
+
 export interface PhasePolicy {
   minLabelLength?: number;
   maxLabelLength?: number;
@@ -17,6 +19,10 @@ export interface PhasePolicy {
   allowAutorenew?: boolean;
   requiresValidation?: boolean;
   baseCurrency?: string;
+  registrantContactDataPolicy?: ContactDataPolicyType;
+  techContactDataPolicy?: ContactDataPolicyType;
+  adminContactDataPolicy?: ContactDataPolicyType;
+  billingContactDataPolicy?: ContactDataPolicyType;
 }
 
 export interface Price {

@@ -38,7 +38,7 @@ func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bo
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", BEARER_TOKEN)
+	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

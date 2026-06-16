@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { 
-  Building2, 
-  Home, 
-  Users, 
-  Globe, 
+import {
+  Building2,
+  Home,
+  Users,
+  Globe,
   Server,
   ChevronLeft,
-  Archive
+  Archive,
+  BarChart,
+  ServerOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -20,7 +22,9 @@ const navigation = [
   { name: 'TLDs', href: '/tlds', icon: Globe },
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
+  { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Escrow Imports', href: '/escrow', icon: Archive },
+  { name: 'Analytics', href: 'http://localhost:3001', icon: BarChart, target: '_blank' },
 ];
 
 interface SidebarProps {
@@ -57,6 +61,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                   key={item.name}
                   href={item.href}
                   onClick={onClose}
+                  target={(item as any).target}
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     isActive

@@ -6,7 +6,7 @@ import (
 
 	"github.com/biter777/countries"
 
-	"github.com/onasunnymorning/domain-os/internal/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // CSVRegistrar represents a registrar in the CSV file from ICANN
