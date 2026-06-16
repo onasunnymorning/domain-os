@@ -10,7 +10,7 @@ WORKDIR /
 # RUN apk add pkgconfig
 
 # Install swag
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN go install github.com/swaggo/swag/cmd/swag@v1.16.3
 
 # Install UPX for binary compression
 RUN apk add upx
