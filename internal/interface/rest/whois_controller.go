@@ -38,7 +38,7 @@ func NewWhoisController(e *gin.Engine, whoisService interfaces.WhoisService, han
 func (ctrl *WhoisController) GetWhois(ctx *gin.Context) {
 	domainName := ctx.Param("domainName")
 
-	whois, err := ctrl.whoisService.GetDomainWhois(ctx, domainName)
+	whois, err := ctrl.whoisService.GetDomainWhois(ctx.Request.Context(), domainName)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

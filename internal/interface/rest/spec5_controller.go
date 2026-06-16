@@ -64,7 +64,7 @@ func (ctrl *Spec5Controller) List(ctx *gin.Context) {
 	}
 	query.Filter = filter
 	// Get the list of Spec5Labels
-	spec5Labels, cursor, err := ctrl.Spec5Service.List(ctx, query)
+	spec5Labels, cursor, err := ctrl.Spec5Service.List(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

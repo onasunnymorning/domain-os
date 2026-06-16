@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.24.1-alpine3.21 AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /
 
@@ -19,7 +19,7 @@ COPY ./cmd/api/epp-client ./cmd/api/epp-client
 
 
 # Just build API
-FROM build as build-epp-client-api
+FROM build AS build-epp-client-api
 # Generate swagger docs
 WORKDIR /cmd/api/epp-client
 RUN swag init -g eppClientApi.go -o /docs --parseDependency
@@ -31,7 +31,7 @@ RUN go build -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api
 
 
 # Create API release image
-FROM alpine:3.21.3 as epp-client-api
+FROM alpine:3.21.3 AS epp-client-api
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
