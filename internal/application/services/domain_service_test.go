@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -227,7 +225,7 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 
 	service := &DomainService{
 		domainRepository: repo,
-		logger:           zap.NewNop(),
+		eventPublisher:   &noopPublisher{},
 	}
 
 	upDomCmd := &commands.UpdateDomainCommand{
@@ -256,4 +254,10 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	if !updatedDom.CreatedAt.Equal(originalCreatedAt) {
 		t.Errorf("expected CreatedAt to equal %v, got %v", originalCreatedAt, updatedDom.CreatedAt)
 	}
+}
+
+type noopPublisher struct{}
+
+func (n *noopPublisher) Publish(ctx context.Context, events ...entities.DomainEvent) error {
+	return nil
 }

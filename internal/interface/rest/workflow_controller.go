@@ -72,7 +72,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	}
 	defer cli.Close()
 
-	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        "sync-registrars-" + time.Now().Format("20060102-150405"),
 		TaskQueue: cfg.WorkerQueue,
 	}, workflows.SyncRegistrarsWorkflow, req.BatchSize)
@@ -148,7 +148,7 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 		KeepTLDAndPhases: req.KeepTLDAndPhases,
 	}
 
-	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
 	}, workflows.TLDCleanupWorkflow, params)

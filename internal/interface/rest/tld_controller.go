@@ -242,7 +242,7 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 
 	// Check if the TLD exists
 	tldName := strings.ToLower(ctx.Param("tldName"))
-	_, err = c.tldService.GetTLDByName(ctx, tldName, false)
+	_, err = c.tldService.GetTLDByName(ctx.Request.Context(), tldName, false)
 	if err != nil {
 		ctx.JSON(404, gin.H{"error": "TLD not found"})
 		return
@@ -261,7 +261,7 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 		return
 	}
 
-	rrs, err := c.domService.GetNSRecordsPerTLD(ctx, query)
+	rrs, err := c.domService.GetNSRecordsPerTLD(ctx.Request.Context(), query)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": "Error getting NS records"})
@@ -295,13 +295,13 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 	// Check if the TLD exists
 	tldName := ctx.Param("tldName")
-	_, err := c.tldService.GetTLDByName(ctx, tldName, false)
+	_, err := c.tldService.GetTLDByName(ctx.Request.Context(), tldName, false)
 	if err != nil {
 		ctx.JSON(404, gin.H{"error": "TLD not found"})
 		return
 	}
 
-	rrs, err := c.domService.GetGlueRecordsPerTLD(ctx, tldName)
+	rrs, err := c.domService.GetGlueRecordsPerTLD(ctx.Request.Context(), tldName)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Error getting Glue records: %s", err.Error())})

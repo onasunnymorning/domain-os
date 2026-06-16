@@ -30,6 +30,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&PremiumLabel{},
 		&FX{},
 		&TLDDNSRecord{},
+		&DomainEventRecord{},
 	)
 	if err != nil {
 		return err
