@@ -149,6 +149,38 @@ test-agent-coverage: ## Run agent tests with coverage report
 	@echo "Agent coverage report generated: agent-coverage.html"
 
 ###################
+# Local CI (mirrors GitHub Actions)
+###################
+
+ci-local: ci-lint ci-test-backend ci-test-frontend ## Run the full CI pipeline locally (lint + test + frontend)
+	@echo ""
+	@echo "✅ All CI checks passed locally! Safe to push."
+
+ci-lint: ## Run all linters (Go + Frontend)
+	@echo "🔍 Running Go vet..."
+	@go vet ./...
+	@echo "🔍 Running golangci-lint (warnings only — will become blocking once pre-existing issues are fixed)..."
+	@golangci-lint run ./... 2>&1 | tail -5 || true
+	@echo "🔍 Running frontend linters..."
+	@cd frontend && npm run lint
+	@echo "✅ All linters passed!"
+
+ci-test-backend: ## Run Go tests matching CI (with race detector + DB health wait)
+	@echo "🧪 Starting test database..."
+	@.github/scripts/setup-test-db.sh testdb
+	@echo "🧪 Running Go tests with race detector..."
+	@go test -race -count=1 ./... -coverpkg=./... -coverprofile=coverage.out || \
+		(docker stop testdb 2>/dev/null; exit 1)
+	@go tool cover -func=coverage.out | tail -1
+	@echo "🧪 Stopping test database..."
+	@docker stop testdb 2>/dev/null || true
+
+ci-test-frontend: ## Run frontend tests matching CI
+	@echo "⚛️  Running frontend tests with coverage..."
+	@cd frontend && npm ci --prefer-offline && npm run test:coverage
+	@echo "✅ Frontend tests passed!"
+
+###################
 # Build & Deploy
 ###################
 

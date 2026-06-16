@@ -48,8 +48,8 @@ export function TLDDUMsPieChartCard({ data, onClick }: Props) {
   }
 
   // Aggregate anything beyond the Top 10 into "Other"
-  let processedData = chartData.slice(0, 10);
-  let otherValue = chartData.slice(10).reduce((acc, curr) => acc + curr.value, 0);
+  const processedData = chartData.slice(0, 10);
+  const otherValue = chartData.slice(10).reduce((acc, curr) => acc + curr.value, 0);
 
   if (otherValue > 0) {
     processedData.push({ name: "Other", clid: "other", value: otherValue });
