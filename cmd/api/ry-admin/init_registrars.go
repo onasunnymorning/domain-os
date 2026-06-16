@@ -34,7 +34,8 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 
 	// Count Registrars
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
-	registrarService := services.NewRegistrarService(registrarRepo)
+	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
+	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 
 	count, err := registrarService.Count(context.Background())
 	if err != nil {

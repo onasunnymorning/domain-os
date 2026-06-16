@@ -86,7 +86,7 @@ func TestRegistrarService_Update_PreservesCreatedAt(t *testing.T) {
 		},
 	}
 
-	service := NewRegistrarService(repo)
+	service := NewRegistrarService(repo, &noopPublisher{})
 
 	// 2. Simulate an incoming update payload where CreatedAt is zero
 	incomingUpdate := &entities.Registrar{
