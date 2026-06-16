@@ -22,12 +22,6 @@ gin:
 newrelic:
   enabled: "false"
 
-rabbitmq:
-  enabled: "false" # Set to true if deploying rabbitmq
-  topic: "domain.events"
-  host: "rabbitmq" # hostname if deployed in k8s
-  port: "5672"
-
 db:
   DB_HOST: "host.docker.internal" # Assume local postgres or change to 'postgres' service name
   DB_PORT: "5432"
