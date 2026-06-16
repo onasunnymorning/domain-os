@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/agent/service"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/broker/rabbitmq"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
@@ -171,41 +169,8 @@ func main() {
 		logger.Panic("Failed to connect to the database", zap.Error(err))
 	}
 
-	// Set up Eventservice if enabled
-	var eventSvc *services.EventService
-	if cfg.EventStreamEnabled {
-		logger.Debug("Setting up Event Stream")
-		portStr := os.Getenv("RMQ_PORT")
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			logger.Error("Failed to convert envar RMQ_PORT to int", zap.Error(err))
-		}
-
-		eventRepo, err := rabbitmq.NewEventRepository(&rabbitmq.RabbitConfig{
-			Host:     os.Getenv("RMQ_HOST"),
-			Port:     port,
-			Username: os.Getenv("RMQ_USER"),
-			Password: os.Getenv("RMQ_PASS"),
-			Topic:    os.Getenv("EVENT_STREAM_TOPIC"),
-		})
-		if err != nil {
-			logger.Error("Failed to create Event Repository", zap.Error(err))
-		} else {
-			eventSvc = services.NewEventService(eventRepo)
-			err = eventSvc.SendStream(&entities.Event{
-				Source: APP_NAME,
-				User:   "system",
-				Action: "startup",
-				Details: entities.EventDetails{
-					Result: entities.EventResultSuccess,
-				},
-				Timestamp: time.Now().UTC(),
-			})
-			if err != nil {
-				logger.Error("Failed to send startup event", zap.Error(err))
-			}
-		}
-	}
+	// Set up EventPublisher (PostgreSQL outbox)
+	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
 
 	// SET UP SERVICES
 	// Roid
@@ -256,7 +221,7 @@ func main() {
 	ianaRegistrarService := services.NewIANARegistrarService(iregistrarRepo)
 	// Registrars
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
-	registrarService := services.NewRegistrarService(registrarRepo)
+	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	// Accreditations
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo)
@@ -269,7 +234,7 @@ func main() {
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 
 	// REMOVEME:
 	// Quotes
@@ -322,10 +287,8 @@ func main() {
 	}
 	r.Use(cors.New(config))
 
-	// Attach the Stream Middleware
-	if cfg.EventStreamEnabled && eventSvc != nil {
-		r.Use(rest.StreamMiddleWare(eventSvc))
-	}
+	// Attach context propagation middleware
+	r.Use(rest.ContextMiddleware())
 
 	// Attach the Prometheus Middleware
 	if cfg.PrometheusEnabled {

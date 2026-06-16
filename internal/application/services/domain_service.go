@@ -14,7 +14,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )
 
@@ -52,7 +51,7 @@ type DomainService struct {
 	premiumLabelRepo repositories.PremiumLabelRepository
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
-	logger           *zap.Logger
+	eventPublisher   repositories.EventPublisher
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -66,8 +65,8 @@ func NewDomainService(
 	plr repositories.PremiumLabelRepository,
 	fxr repositories.FXRepository,
 	rRepo repositories.RegistrarRepository,
+	ep repositories.EventPublisher,
 ) *DomainService {
-	logger, _ := zap.NewProduction()
 	return &DomainService{
 		domainRepository: dRepo,
 		hostRepository:   hRepo,
@@ -78,7 +77,7 @@ func NewDomainService(
 		premiumLabelRepo: plr,
 		fxRepo:           fxr,
 		rarRepo:          rRepo,
-		logger:           logger,
+		eventPublisher:   ep,
 	}
 }
 
@@ -197,7 +196,7 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 		return nil, err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain %s ADMIN created", createdDomain.Name), event, cmd, createdDomain, nil)
+	s.publishDomainEvent(ctx, "domain.admin_created", fmt.Sprintf("Domain %s ADMIN created", createdDomain.Name), event, cmd, createdDomain, nil)
 
 	return createdDomain, nil
 }
@@ -223,7 +222,7 @@ func (s *DomainService) BulkCreate(ctx context.Context, cmds []*commands.CreateD
 	if err != nil {
 		return err
 	}
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("bulk created %d domains", len(cmds)), event, nil, nil, nil)
+	s.publishDomainEvent(ctx, "domain.bulk_created", fmt.Sprintf("bulk created %d domains", len(cmds)), event, nil, nil, nil)
 
 	return nil
 }
@@ -309,7 +308,7 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 		return nil, err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain %s updated", updatedDomain.Name), event, upDom, updatedDomain, prevDom)
+	s.publishDomainEvent(ctx, "domain.updated", fmt.Sprintf("Domain %s updated", updatedDomain.Name), event, upDom, updatedDomain, prevDom)
 
 	return updatedDomain, nil
 }
@@ -354,7 +353,7 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 	}
 
 	msg := fmt.Sprintf("Domain %s ADMIN deleted", name)
-	s.logDomainLifecycleEvent(ctx, msg, event, nil, nil, prevState)
+	s.publishDomainEvent(ctx, "domain.admin_deleted", msg, event, nil, nil, prevState)
 
 	return nil
 }
@@ -432,7 +431,7 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 	event.DomainRoID = dom.RoID.String()
 
 	msg := fmt.Sprintf("Domain %s purged", name)
-	s.logDomainLifecycleEvent(ctx, msg, event, nil, createdNNDN, dom)
+	s.publishDomainEvent(ctx, "domain.purged", msg, event, nil, createdNNDN, dom)
 
 	return nil
 
@@ -506,7 +505,7 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+	s.publishDomainEvent(ctx, "domain.host_added", fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
 
 	return nil
 }
@@ -566,7 +565,7 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+	s.publishDomainEvent(ctx, "domain.host_added", fmt.Sprintf("Host %s added to domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
 
 	return nil
 }
@@ -621,7 +620,7 @@ func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) e
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("All hosts removed from domain %s", dom.Name), event, nil, dom, prevDom)
+	s.publishDomainEvent(ctx, "domain.hosts_cleared", fmt.Sprintf("All hosts removed from domain %s", dom.Name), event, nil, dom, prevDom)
 
 	return nil
 }
@@ -711,7 +710,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+	s.publishDomainEvent(ctx, "domain.host_removed", fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
 
 	return nil
 }
@@ -793,7 +792,7 @@ func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, doma
 		return err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
+	s.publishDomainEvent(ctx, "domain.host_removed", fmt.Sprintf("Host %s removed from domain %s", host.Name, dom.Name), event, nil, dom, prevDom)
 
 	return nil
 }
@@ -1087,7 +1086,7 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 
 	// Log the domain registration
 	msg := fmt.Sprintf("Domain %s registered by %s for %d years", cmd.Name, cmd.ClID, cmd.Years)
-	svc.logDomainLifecycleEvent(ctx, msg, event, cmd, createdDomain, nil)
+	svc.publishDomainEvent(ctx, "domain.registered", msg, event, cmd, createdDomain, nil)
 
 	// return
 	return createdDomain, nil
@@ -1190,7 +1189,7 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	event.DomainRoID = updatedDomain.RoID.String()
 	// Log the domain renewal
 	msg := fmt.Sprintf("Domain %s renewed by %s for %d years", cmd.Name, cmd.ClID, cmd.Years)
-	svc.logDomainLifecycleEvent(ctx, msg, event, cmd, updatedDomain, prevState)
+	svc.publishDomainEvent(ctx, "domain.renewed", msg, event, cmd, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1326,7 +1325,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 
 	// Log the domain auto renewal
 	msg := fmt.Sprintf("Domain %s auto-renewed for %d years", name, years)
-	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
+	svc.publishDomainEvent(ctx, "domain.auto_renewed", msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1386,7 +1385,7 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 
 	// Log the domain deletion
 	msg := fmt.Sprintf("Domain %s marked for deletion (starting EOL cycle)", domainName)
-	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
+	svc.publishDomainEvent(ctx, "domain.marked_for_deletion", msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1444,7 +1443,7 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 
 	// Log the domain expiration
 	msg := fmt.Sprintf("Domain %s expired", domainName)
-	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
+	svc.publishDomainEvent(ctx, "domain.expired", msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1513,7 +1512,7 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 
 	// Log the domain restoration
 	msg := fmt.Sprintf("Domain %s restored by %s", domainName, dom.ClID)
-	svc.logDomainLifecycleEvent(ctx, msg, event, nil, updatedDomain, prevState)
+	svc.publishDomainEvent(ctx, "domain.restored", msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
 }
@@ -1555,7 +1554,7 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 		return err
 	}
 
-	svc.logDomainLifecycleEvent(ctx, fmt.Sprintf("DropCatch flag set to %t for domain %s", dropcatch, domainName), event, nil, updatedDom, previousDom)
+	svc.publishDomainEvent(ctx, "domain.dropcatch_updated", fmt.Sprintf("DropCatch flag set to %t for domain %s", dropcatch, domainName), event, nil, updatedDom, previousDom)
 
 	return nil
 }
@@ -1699,33 +1698,40 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 	return calc.GetQuote(*q.ToEntity())
 }
 
-// logDomainLifecycleEvent logs a domain lifecycle event with the provided context, event, command, and result.
+// publishDomainEvent publishes a domain lifecycle event to the event publisher.
 // It extracts trace_id and correlation_id from the context if they exist and includes them in the event.
-
-func (s *DomainService) logDomainLifecycleEvent(
+func (s *DomainService) publishDomainEvent(
 	ctx context.Context,
+	eventType string,
 	msg string,
 	event *entities.DomainLifeCycleEvent,
 	command interface{},
 	newState interface{},
 	previousState interface{},
 ) {
+	if event == nil {
+		return
+	}
 	// Populate trace_id and correlation_id if they exist
-	if trace_id, ok := ctx.Value("trace_id").(string); ok {
-		event.TraceID = trace_id
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		event.TraceID = traceID
 	}
-	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
-		event.CorrelationID = correlation_id
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		event.CorrelationID = correlationID
 	}
-	// Log the domain lifecycle event
-	s.logger.Info(
-		msg,
-		zap.String("event_type", "domain_lifecycle_event"),
-		zap.Any("domain_lifecycle_event", event),
-		zap.Any("command", command),
-		zap.Any("new_state", newState),
-		zap.Any("previous_state", previousState),
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		event.DomainName,
+		event,
 	)
+	domainEvent.TraceID = event.TraceID
+	domainEvent.CorrelationID = event.CorrelationID
+
+	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		log.Printf("failed to publish event %s: %v", eventType, err)
+	}
 }
 
 // SetStatus sets the provided status value on the Domain.Status struct to true
@@ -1768,7 +1774,7 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 		return nil, err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain status %s set to true", status), event, nil, updatedDomain, previousDom)
+	s.publishDomainEvent(ctx, "domain.status_set", fmt.Sprintf("Domain status %s set to true", status), event, nil, updatedDomain, previousDom)
 
 	return updatedDomain, nil
 }
@@ -1813,7 +1819,7 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 		return nil, err
 	}
 
-	s.logDomainLifecycleEvent(ctx, fmt.Sprintf("Domain status %s set to false", status), event, nil, updatedDomain, previousDom)
+	s.publishDomainEvent(ctx, "domain.status_unset", fmt.Sprintf("Domain status %s set to false", status), event, nil, updatedDomain, previousDom)
 
 	return updatedDomain, nil
 }
