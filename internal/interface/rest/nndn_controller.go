@@ -45,7 +45,7 @@ func NewNNDNController(e *gin.Engine, nndnService interfaces.NNDNService, handle
 func (ctrl *NNDNController) GetNNDNByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	nndn, err := ctrl.nndnService.GetNNDNByName(ctx, name)
+	nndn, err := ctrl.nndnService.GetNNDNByName(ctx.Request.Context(), name)
 	if err != nil {
 		if errors.Is(err, entities.ErrNNDNNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -83,7 +83,7 @@ func (ctrl *NNDNController) Count(ctx *gin.Context) {
 	}
 	result.Filter = filter
 
-	result.Count, err = ctrl.nndnService.Count(ctx, filter)
+	result.Count, err = ctrl.nndnService.Count(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -129,7 +129,7 @@ func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
 		return
 	}
 
-	nndns, cursor, err := ctrl.nndnService.ListNNDNs(ctx, query)
+	nndns, cursor, err := ctrl.nndnService.ListNNDNs(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -153,7 +153,7 @@ func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
 func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	err := ctrl.nndnService.DeleteNNDNByName(ctx, name)
+	err := ctrl.nndnService.DeleteNNDNByName(ctx.Request.Context(), name)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -197,7 +197,7 @@ func (ctrl *NNDNController) CreateNNDN(ctx *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.nndnService.CreateNNDN(ctx, cmd)
+	result, err := ctrl.nndnService.CreateNNDN(ctx.Request.Context(), cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidNNDN) {
 			ctx.JSON(400, gin.H{"error": err.Error()})

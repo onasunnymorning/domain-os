@@ -66,7 +66,7 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 	cmd.TLDName = ctx.Param("tldName")
 
 	// Create the phase
-	phase, err := ctrl.phaseService.CreatePhase(ctx, &cmd)
+	phase, err := ctrl.phaseService.CreatePhase(ctx.Request.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -96,7 +96,7 @@ func (ctrl *PhaseController) CreatePhase(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName} [get]
 func (ctrl *PhaseController) GetPhase(ctx *gin.Context) {
-	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPhaseNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -141,7 +141,7 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 	cmd.PhaseName = ctx.Param("phaseName")
 
 	// Pass the new enddate through our entity
-	phase, err := ctrl.phaseService.EndPhase(ctx, &cmd)
+	phase, err := ctrl.phaseService.EndPhase(ctx.Request.Context(), &cmd)
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -162,7 +162,7 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName} [delete]
 func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
-	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDeleteCurrentPhase) || errors.Is(err, entities.ErrDeleteHistoricPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -202,7 +202,7 @@ func (ctrl *PhaseController) ListPhases(ctx *gin.Context) {
 		return
 	}
 
-	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx, ctx.Param("tldName"), pageSize, pageCursor)
+	phases, err := ctrl.phaseService.ListPhasesByTLD(ctx.Request.Context(), ctx.Param("tldName"), pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -244,7 +244,7 @@ func (ctrl *PhaseController) ListActivePhasesPerTLD(ctx *gin.Context) {
 		return
 	}
 
-	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx, ctx.Param("tldName"), pageSize, pageCursor)
+	phases, err := ctrl.phaseService.ListActivePhasesByTLD(ctx.Request.Context(), ctx.Param("tldName"), pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -285,7 +285,7 @@ func (ctrl *PhaseController) ListActiveGAPhases(ctx *gin.Context) {
 		return
 	}
 
-	phases, err := ctrl.phaseService.ListActiveGAPhases(ctx, pageSize, pageCursor)
+	phases, err := ctrl.phaseService.ListActiveGAPhases(ctx.Request.Context(), pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -314,7 +314,7 @@ func (ctrl *PhaseController) ListActiveGAPhases(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName}/premium-list/{premiumListName} [put]
 func (ctrl *PhaseController) SetPremiumList(ctx *gin.Context) {
-	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPhaseNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -327,7 +327,7 @@ func (ctrl *PhaseController) SetPremiumList(ctx *gin.Context) {
 	plist := ctx.Param("premiumListName")
 	phase.PremiumListName = &plist
 
-	phase, err = ctrl.phaseService.UpdatePhase(ctx, phase)
+	phase, err = ctrl.phaseService.UpdatePhase(ctx.Request.Context(), phase)
 
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
@@ -351,7 +351,7 @@ func (ctrl *PhaseController) SetPremiumList(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName}/premium-list/{premiumListName} [delete]
 func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
-	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPhaseNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -363,7 +363,7 @@ func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
 
 	phase.PremiumListName = nil
 
-	phase, err = ctrl.phaseService.UpdatePhase(ctx, phase)
+	phase, err = ctrl.phaseService.UpdatePhase(ctx.Request.Context(), phase)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -399,7 +399,7 @@ func (ctrl *PhaseController) UpdatePhasePolicy(ctx *gin.Context) {
 	}
 
 	// get the phase
-	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx, ctx.Param("tldName"), ctx.Param("phaseName"))
+	phase, err := ctrl.phaseService.GetPhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPhaseNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -421,7 +421,7 @@ func (ctrl *PhaseController) UpdatePhasePolicy(ctx *gin.Context) {
 	}
 
 	// Update the phase
-	updatedPhase, err := ctrl.phaseService.UpdatePhase(ctx, phase)
+	updatedPhase, err := ctrl.phaseService.UpdatePhase(ctx.Request.Context(), phase)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

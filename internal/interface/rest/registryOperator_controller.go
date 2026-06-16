@@ -58,7 +58,7 @@ func (ctrl *RegistryOperatorController) Create(ctx *gin.Context) {
 		return
 	}
 
-	ry, err := ctrl.ryService.Create(ctx, &cmd)
+	ry, err := ctrl.ryService.Create(ctx.Request.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRegistryOperator) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -85,7 +85,7 @@ func (ctrl *RegistryOperatorController) Create(ctx *gin.Context) {
 func (ctrl *RegistryOperatorController) GetByRyID(ctx *gin.Context) {
 	ryid := ctx.Param("ryid")
 
-	ry, err := ctrl.ryService.GetByRyID(ctx, ryid)
+	ry, err := ctrl.ryService.GetByRyID(ctx.Request.Context(), ryid)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistryOperatorNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -129,7 +129,7 @@ func (ctrl *RegistryOperatorController) Update(ctx *gin.Context) {
 		return
 	}
 
-	ry, err := ctrl.ryService.Update(ctx, &cmd)
+	ry, err := ctrl.ryService.Update(ctx.Request.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistryOperatorNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -155,7 +155,7 @@ func (ctrl *RegistryOperatorController) Update(ctx *gin.Context) {
 func (ctrl *RegistryOperatorController) DeleteByRyID(ctx *gin.Context) {
 	ryid := ctx.Param("ryid")
 
-	err := ctrl.ryService.DeleteByRyID(ctx, ryid)
+	err := ctrl.ryService.DeleteByRyID(ctx.Request.Context(), ryid)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -201,7 +201,7 @@ func (ctrl *RegistryOperatorController) List(ctx *gin.Context) {
 	query.Filter = filter
 
 	// List the Registry Operators
-	ros, cursor, err := ctrl.ryService.List(ctx, query)
+	ros, cursor, err := ctrl.ryService.List(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -232,7 +232,7 @@ func (ctrl *RegistryOperatorController) Count(ctx *gin.Context) {
 	filter.EmailLike = ctx.Query("email_like")
 	filter.NameLike = ctx.Query("name_like")
 
-	count, err := ctrl.ryService.Count(ctx, filter)
+	count, err := ctrl.ryService.Count(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

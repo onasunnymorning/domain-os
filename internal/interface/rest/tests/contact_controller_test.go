@@ -1,180 +1,104 @@
 package tests
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-
-	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// MockGinHandler checks for the constant JWT token in the Authorization header
-func MockGinHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Token is valid; proceed to the next handler
-		c.Next()
+var _ = Describe("ContactController", Ordered, func() {
+	registrarClid := "contTestRar"
+
+	testAddress, _ := entities.NewAddress("El Cuyo", "MX")
+	testPostalInfo, _ := entities.NewContactPostalInfo("int", "my pinfo", testAddress)
+
+	testContact := &commands.CreateContactCommand{
+		ID:       "contactID101",
+		RoID:     "12345_CONT-APEX",
+		Email:    "jon@doe.com",
+		AuthInfo: "str0NGP@ZZw0rd",
+		ClID:     registrarClid,
+		PostalInfo: [2]*entities.ContactPostalInfo{
+			testPostalInfo,
+		},
 	}
-}
 
-var _ = Describe("ContactController", func() {
-	Describe("Managing contacts", func() {
-		// Initialize your router
-		gin.SetMode(gin.TestMode)
-		router := gin.New()
+	var createdContact entities.Contact
 
-		// Initialize your database connection
-		db, err := getTestDB()
+	// Create prerequisite registrar
+	BeforeAll(func() {
+		registrarPayload := testRegistrar(registrarClid, "Registrar for Contact Tests", 10002)
+		resp := api.POST("/registrars", registrarPayload)
+		Expect(resp.Code).To(Equal(http.StatusCreated))
+	})
+
+	It("should successfully create a contact", func() {
+		resp := api.POST("/contacts", testContact)
+		Expect(resp.Code).To(Equal(http.StatusCreated))
+
+		err := DecodeJSON(resp, &createdContact)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(createdContact.ID.String()).To(Equal(testContact.ID))
+		Expect(createdContact.RoID.String()).To(Equal(testContact.RoID))
+		Expect(createdContact.Email).To(Equal(testContact.Email))
+		Expect(createdContact.AuthInfo.String()).To(Equal(testContact.AuthInfo))
+	})
 
-		// Roid
-		idGenerator, err := snowflakeidgenerator.NewIDGenerator()
-		if err != nil {
-			panic(err)
-		}
-		roidService := services.NewRoidService(idGenerator)
+	It("should not create a contact with an existing ID", func() {
+		resp := api.POST("/contacts", testContact)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
 
-		// Initialize your repository and service
-		registrarRepo := postgres.NewGormRegistrarRepository(db)
-		registrarService := services.NewRegistrarService(registrarRepo)
-
-		// Initialize your repository and service
-		contactRepo := postgres.NewContactRepository(db)
-		contactService := services.NewContactService(contactRepo, *roidService)
-
-		// Initialize and register your controller with the router
-		contactController := rest.NewContactController(router, contactService, MockGinHandler())
-		Expect(contactController).NotTo(BeNil())
-
-		registrarClid := "myRegistrar1234"
-
-		It("should successfully create a registrar", func() {
-			registrarPayload := testRegistrar(registrarClid, "My Registrar for Contact Controller Test")
-			_, _ = registrarService.Create(context.Background(), registrarPayload)
-			// Don't assert as registrar might already exist
-		})
-
-		testAddress, _ := entities.NewAddress("El Cuyo", "MX")
-		testPostaInfo, _ := entities.NewContactPostalInfo("int", "my pinfo", testAddress)
-
-		testContact := &commands.CreateContactCommand{
-			ID:       "contactID101",
+	It("should not create a contact with an invalid email", func() {
+		invalidContact := &commands.CreateContactCommand{
+			ID:       "contactID102",
 			RoID:     "12345_CONT-APEX",
-			Email:    "jon@doe.com",
+			Email:    "invalid-email",
 			AuthInfo: "str0NGP@ZZw0rd",
-			ClID:     registrarClid,
-			PostalInfo: [2]*entities.ContactPostalInfo{
-				testPostaInfo,
-			},
 		}
+		resp := api.POST("/contacts", invalidContact)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
 
-		var createdContact entities.Contact
+	It("should retrieve a contact by ID", func() {
+		resp := api.GET(fmt.Sprintf("/contacts/%s", testContact.ID))
+		Expect(resp.Code).To(Equal(http.StatusOK))
 
-		It("should successfully create a contact", func() {
-			payloadBytes, _ := json.Marshal(testContact)
+		var retrievedContact entities.Contact
+		err := DecodeJSON(resp, &retrievedContact)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(retrievedContact.ID.String()).To(Equal(testContact.ID))
+	})
 
-			req, _ := http.NewRequest(http.MethodPost, "/contacts", bytes.NewReader(payloadBytes))
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+	It("should not find a non-existent contact", func() {
+		resp := api.GET("/contacts/nonexistent")
+		Expect(resp.Code).To(Equal(http.StatusNotFound))
+	})
 
-			err := json.NewDecoder(resp.Body).Decode(&createdContact)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(createdContact.ID.String()).To(Equal(testContact.ID))
-			Expect(createdContact.RoID.String()).To(Equal(testContact.RoID))
-			Expect(createdContact.Email).To(Equal(testContact.Email))
-			Expect(createdContact.AuthInfo.String()).To(Equal(testContact.AuthInfo))
-		})
+	It("should update a contact", func() {
+		updatedContactPayload := createdContact
+		updatedContactPayload.Email = "mike@doe.com"
 
-		It("should not create a contact with an existing ID", func() {
-			payloadBytes, _ := json.Marshal(testContact)
+		resp := api.PUT(fmt.Sprintf("/contacts/%s", createdContact.ID.String()), updatedContactPayload)
+		Expect(resp.Code).To(Equal(http.StatusOK))
 
-			req, _ := http.NewRequest(http.MethodPost, "/contacts", bytes.NewReader(payloadBytes))
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
+		var updatedContact entities.Contact
+		err := DecodeJSON(resp, &updatedContact)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updatedContact.Email).To(Equal(updatedContactPayload.Email))
+	})
 
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-		})
+	It("should delete a contact by ID", func() {
+		resp := api.DELETE(fmt.Sprintf("/contacts/%s", testContact.ID))
+		Expect(resp.Code).To(Equal(http.StatusNoContent))
+	})
 
-		It("should not create a contact with an invalid email", func() {
-			invalidContact := &commands.CreateContactCommand{
-				ID:       "contactID102",
-				RoID:     "12345_CONT-APEX",
-				Email:    "invalid-email",
-				AuthInfo: "str0NGP@ZZw0rd",
-			}
-			payloadBytes, _ := json.Marshal(invalidContact)
-
-			req, _ := http.NewRequest(http.MethodPost, "/contacts", bytes.NewReader(payloadBytes))
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-		})
-
-		It("should retrieve a contact by ID", func() {
-			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/contacts/%s", testContact.ID), nil)
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusOK))
-
-			var retrievedContact entities.Contact
-			err := json.NewDecoder(resp.Body).Decode(&retrievedContact)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(retrievedContact.ID.String()).To(Equal(testContact.ID))
-		})
-
-		It("should not find a non-existent contact", func() {
-			req, _ := http.NewRequest(http.MethodGet, "/contacts/nonexistent", nil)
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusNotFound))
-		})
-
-		It("should update a contact", func() {
-			updatedContactPayload := createdContact
-			updatedContactPayload.Email = "mike@doe.com"
-			payloadBytes, _ := json.Marshal(updatedContactPayload)
-
-			req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("/contacts/%s", createdContact.ID.String()), bytes.NewReader(payloadBytes))
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusOK))
-
-			var updatedContact entities.Contact
-			err := json.NewDecoder(resp.Body).Decode(&updatedContact)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedContact.Email).To(Equal(updatedContactPayload.Email))
-		})
-
-		It("should delete a contact by ID", func() {
-			req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/contacts/%s", testContact.ID), nil)
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusNoContent))
-		})
-
-		It("should not find the deleted contact", func() {
-			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/contacts/%s", testContact.ID), nil)
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-
-			Expect(resp.Code).To(Equal(http.StatusNotFound))
-		})
+	It("should not find the deleted contact", func() {
+		resp := api.GET(fmt.Sprintf("/contacts/%s", testContact.ID))
+		Expect(resp.Code).To(Equal(http.StatusNotFound))
 	})
 })

@@ -54,7 +54,7 @@ func NewHostController(e *gin.Engine, hostService interfaces.HostService, handle
 func (ctrl *HostController) GetHostByRoID(ctx *gin.Context) {
 	roidString := ctx.Param("roid")
 
-	host, err := ctrl.hostService.GetHostByRoID(ctx, roidString)
+	host, err := ctrl.hostService.GetHostByRoID(ctx.Request.Context(), roidString)
 	if err != nil {
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -81,7 +81,7 @@ func (ctrl *HostController) DeleteHostByRoID(ctx *gin.Context) {
 	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host", ctx.Param("roid"), ctx.Request.URL.RequestURI())
 	roidString := ctx.Param("roid")
 
-	err := ctrl.hostService.DeleteHostByRoID(ctx, roidString)
+	err := ctrl.hostService.DeleteHostByRoID(ctx.Request.Context(), roidString)
 	if err != nil {
 		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidRoid) {
@@ -117,7 +117,7 @@ func (ctrl *HostController) CreateHost(ctx *gin.Context) {
 		return
 	}
 
-	host, err := ctrl.hostService.CreateHost(ctx, &req)
+	host, err := ctrl.hostService.CreateHost(ctx.Request.Context(), &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidHost) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -168,7 +168,7 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 	query.Filter = filter
 
 	// Get the contacts from the service
-	hosts, cursor, err := ctrl.hostService.ListHosts(ctx, query)
+	hosts, cursor, err := ctrl.hostService.ListHosts(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -199,7 +199,7 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 	// Temporarily disable this to overcome infra issues with message broker
 	event := entities.NewEvent("domain-os", "admin", "CREATE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
 	// Try and add the address
-	updatedHost, err := ctrl.hostService.AddHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
+	updatedHost, err := ctrl.hostService.AddHostAddress(ctx.Request.Context(), ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
 		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
@@ -241,7 +241,7 @@ func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
 	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
 
 	// Try and remove the address
-	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx, ctx.Param("roid"), ctx.Param("ip"))
+	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx.Request.Context(), ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
 		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
@@ -275,7 +275,7 @@ func (ctrl *HostController) GetHostByNameAndClid(ctx *gin.Context) {
 	name := ctx.Param("name")
 	clid := ctx.Param("clid")
 
-	host, err := ctrl.hostService.GetHostByNameAndClID(ctx, name, clid)
+	host, err := ctrl.hostService.GetHostByNameAndClID(ctx.Request.Context(), name, clid)
 	if err != nil {
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -310,7 +310,7 @@ func (ctrl *HostController) BulkCreate(ctx *gin.Context) {
 		return
 	}
 
-	err := ctrl.hostService.BulkCreate(ctx, req)
+	err := ctrl.hostService.BulkCreate(ctx.Request.Context(), req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidHost) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -344,7 +344,7 @@ func (ctrl *HostController) CountHosts(ctx *gin.Context) {
 		RoidLessThan:    ctx.Query("roid_less_than"),
 	}
 
-	count, err := ctrl.hostService.Count(ctx, filter)
+	count, err := ctrl.hostService.Count(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
