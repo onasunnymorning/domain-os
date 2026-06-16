@@ -2,7 +2,6 @@ package rest
 
 import (
 	"errors"
-	"log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -160,12 +159,10 @@ func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(204, nil)
-	e, ok := ctx.Get("event")
-
-	if !ok {
-		log.Println("Event not found in context")
+	event := GetEvent(ctx)
+	if event == nil {
+		return
 	}
-	event := e.(*entities.Event)
 	event.Details.Result = entities.EventResultSuccess
 	event.Action = entities.EventTypeDelete
 	event.ObjectType = entities.ObjectTypeNNDN

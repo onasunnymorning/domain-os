@@ -1,7 +1,7 @@
 # Makefile for Domain OS
 # Consolidated commands for development, testing, and deployment
 
-.PHONY: help
+.PHONY: help clean-docker
 
 # Default target
 .DEFAULT_GOAL := help
@@ -58,6 +58,18 @@ clean: ## Clean up containers, volumes, and build artifacts
 	@rm -f coverage.out coverage.html
 	@go clean -testcache
 
+clean-docker: ## Nuclear cleanup of all domain-os Docker resources
+	@echo "Removing all domain-os containers, networks, and volumes..."
+	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_FILE) --profile full down -v --remove-orphans 2>/dev/null || true
+	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) -p domain-os down -v --remove-orphans 2>/dev/null || true
+	@docker ps -aq --filter label=com.docker.compose.project=domain-os \
+		| xargs docker rm -f 2>/dev/null || true
+	@docker network ls -q --filter name=domain-os \
+		| xargs docker network rm 2>/dev/null || true
+	@docker volume ls -q --filter name=domain-os \
+		| xargs docker volume rm 2>/dev/null || true
+	@echo "Done. All domain-os Docker resources removed."
+
 ###################
 # Testing
 ###################
@@ -91,21 +103,26 @@ test-integration: ## Run integration tests (requires Postman API keys in Doppler
 	@echo "Running integration tests with Postman/Newman..."
 	@echo "NOTE: This requires POSTMAN_COLLECTION_ID, POSTMAN_ENVIRONMENT_ID, and POSTMAN_API_KEY in Doppler"
 	@echo "Cleaning up previous test environment..."
-	@COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) -p domain-os -f $(COMPOSE_CI_FILE) down -v 2>/dev/null || true
-	# Hard cleanup in case compose left any containers behind with old network IDs
-	@docker ps -aq --filter label=com.docker.compose.project=domain-os | xargs -r docker rm -f 2>/dev/null || true
-	@docker volume rm domain-os_db 2>/dev/null || true
-	@docker network rm domain-os_dos 2>/dev/null || true
+	@COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) \
+		-p domain-os -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true
+	@docker ps -aq --filter label=com.docker.compose.project=domain-os \
+		| xargs docker rm -f 2>/dev/null || true
+	@docker network ls -q --filter name=domain-os_dos \
+		| xargs docker network rm 2>/dev/null || true
+	@docker volume rm domain-os_db domain-os_temporal_pgdata 2>/dev/null || true
 	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
 	@docker build -t geapex/domain-os:$(BRANCH) --build-arg GIT_SHA=$(BRANCH) .
 	@echo "Starting integration test containers (will run Postman tests via Newman)..."
-	@docker network create domain-os_dos 2>/dev/null || true
-	@export BRANCH=$(BRANCH) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) -p domain-os --profile essential -f $(COMPOSE_CI_FILE) up --remove-orphans --abort-on-container-exit
-	@echo "Cleaning up integration test containers..."
-	@COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) -p domain-os -f $(COMPOSE_CI_FILE) down -v 2>/dev/null || true
-	@docker container rm -f domain-os-db-1 2>/dev/null || true
-	@docker volume rm domain-os_db 2>/dev/null || true
-	@docker network rm domain-os_dos 2>/dev/null || true
+	@export BRANCH=$(BRANCH) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) \
+		$(DOCKER_COMPOSE) -p domain-os --profile essential -f $(COMPOSE_CI_FILE) \
+		up --remove-orphans --abort-on-container-exit --exit-code-from test; \
+	EXIT_CODE=$$?; \
+	echo "Cleaning up integration test containers..."; \
+	COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) \
+		-p domain-os -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true; \
+	docker network ls -q --filter name=domain-os_dos \
+		| xargs docker network rm 2>/dev/null || true; \
+	exit $$EXIT_CODE
 	@echo "Integration tests complete!"
 
 test-coverage: ## Generate detailed coverage report
