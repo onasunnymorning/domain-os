@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-unifiedworker
+spec:
+  replicas: {{ .Values.unifiedworker.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-unifiedworker
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-unifiedworker
+    spec:
+      containers:
+        - name: {{ .Release.Name }}-unifiedworker
+          image: {{ .Values.unifiedworker.image }}:{{ .Values.unifiedworker.tag }}
+          imagePullPolicy: {{ .Values.unifiedworker.imagePullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: {{ .Release.Name }}-config
+          - secretRef:
+              name: {{ .Release.Name }}-secrets
