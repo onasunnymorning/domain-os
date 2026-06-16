@@ -118,12 +118,12 @@ services:
     networks:
       - dos
 
-  # Domain Lifecycle Worker - runs Temporal workflows/activities in CI
-  domain-lifecycle-worker:
+  # Unified Worker - runs all Temporal workflows/activities in CI
+  unified-worker:
     build:
       context: .
-      dockerfile: ./cmd/workers/domainLifecycle/Dockerfile
-    image: geapex/domain-lifecycle-worker:${BRANCH}
+      dockerfile: ./cmd/workers/unified/Dockerfile
+    image: geapex/unified-worker:${BRANCH}
     restart: "no"
     profiles: [essential, full]
     depends_on:
@@ -134,9 +134,11 @@ services:
     environment:
       - TMPIO_HOST_PORT=temporal:7233
       - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
+      - TMPIO_QUEUE=domain-lifecycle
+      - ESCROW_QUEUE=escrow-import
+      - TMPIO_SYNC_QUEUE=sync
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above
@@ -157,7 +159,7 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-      domain-lifecycle-worker:
+      unified-worker:
         condition: service_started
     networks:
       - dos

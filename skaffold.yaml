@@ -16,25 +16,15 @@ build:
             dest: .
           - src: 'cmd/api/**/*.go'
             dest: .
-    - image: geapex/domain-lifecycle-worker
+    - image: geapex/unified-worker
       context: .
       docker:
-        dockerfile: cmd/workers/domainLifecycle/Dockerfile
+        dockerfile: cmd/workers/unified/Dockerfile
       sync:
         manual:
           - src: 'internal/**/*.go'
             dest: .
-          - src: 'cmd/workers/domainLifecycle/**/*.go'
-            dest: .
-    - image: geapex/escrow-import-worker
-      context: .
-      docker:
-        dockerfile: cmd/workers/escrowImport/Dockerfile
-      sync:
-        manual:
-          - src: 'internal/**/*.go'
-            dest: .
-          - src: 'cmd/workers/escrowImport/**/*.go'
+          - src: 'cmd/workers/unified/**/*.go'
             dest: .
     - image: geapex/whois
       context: .
@@ -55,8 +45,7 @@ manifests:
           - deploy/helm/dos/values-local.yaml
         setValues:
           api.image: geapex/domain-os
-          domainlifecycleworker.image: geapex/domain-lifecycle-worker
-          syncworker.image: geapex/escrow-import-worker
+          unifiedworker.image: geapex/unified-worker
       - name: rabbitmq
         chartPath: deploy/helm/rabbitmq
         setValues:
