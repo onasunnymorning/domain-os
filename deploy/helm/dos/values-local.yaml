@@ -6,15 +6,9 @@ api:
   tag: latest
   imagePullPolicy: IfNotPresent
 
-domainlifecycleworker:
+unifiedworker:
   replicaCount: 1
-  image: geapex/domain-lifecycle-worker
-  tag: latest
-  imagePullPolicy: IfNotPresent
-
-syncworker:
-  replicaCount: 1
-  image: geapex/escrow-import-worker
+  image: geapex/unified-worker
   tag: latest
   imagePullPolicy: IfNotPresent
 
@@ -51,6 +45,7 @@ temporal:
   TMPIO_NAME_SPACE: "default"
   TMPIO_QUEUE: "domain-lifecycle"
   TMPIO_SYNC_QUEUE: "escrow-import"
+  ESCROW_QUEUE: "escrow-import"
 
 prometheus:
   enabled: "false"
