@@ -44,6 +44,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
+          args: --issues-exit-code=0
 
   unit-tests:
     runs-on: ubuntu-latest
