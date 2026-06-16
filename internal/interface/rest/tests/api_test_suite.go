@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"context"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -98,9 +100,9 @@ func NewTestAPI() (*TestAPI, error) {
 	// --- Services ---
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
 	tldService := services.NewTLDService(tldRepo, dnsRecordRepo)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, &noopPublisher{})
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService)
-	registrarService := services.NewRegistrarService(registrarRepo)
+	registrarService := services.NewRegistrarService(registrarRepo, &noopPublisher{})
 	contactService := services.NewContactService(contactRepo, *roidService)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
 	ianaRegistrarService := services.NewIANARegistrarService(ianaRegistrarRepo)
@@ -282,4 +284,10 @@ func (a *TestAPI) POSTNoBody(path string) *httptest.ResponseRecorder {
 // DecodeJSON decodes the JSON response body into the given target.
 func DecodeJSON(resp *httptest.ResponseRecorder, target interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+type noopPublisher struct{}
+
+func (n *noopPublisher) Publish(ctx context.Context, events ...entities.DomainEvent) error {
+	return nil
 }

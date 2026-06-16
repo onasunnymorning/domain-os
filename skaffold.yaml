@@ -46,10 +46,6 @@ manifests:
         setValues:
           api.image: geapex/domain-os
           unifiedworker.image: geapex/unified-worker
-      - name: rabbitmq
-        chartPath: deploy/helm/rabbitmq
-        setValues:
-          name: rabbitmq
       - name: metabase
         chartPath: deploy/helm/metabase
         setValues:

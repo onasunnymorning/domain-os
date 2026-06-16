@@ -375,7 +375,7 @@ func (ctrl *RegistrarController) SetRegistrarIANAStatus(ctx *gin.Context) {
 // @Failure 500
 // @Router /registrars/count [get]
 func (ctrl *RegistrarController) GetRegistrarCount(ctx *gin.Context) {
-	count, err := ctrl.rarService.Count(ctx)
+	count, err := ctrl.rarService.Count(ctx.Request.Context())
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

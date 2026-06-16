@@ -129,7 +129,7 @@ func (ctrl *IANARegistrarController) GetByGurID(ctx *gin.Context) {
 // @Router /ianaregistrars/count [get]
 func (ctrl *IANARegistrarController) Count(ctx *gin.Context) {
 	// Get the count of IANARegistrars
-	count, err := ctrl.IanaRegistrarService.Count(ctx)
+	count, err := ctrl.IanaRegistrarService.Count(ctx.Request.Context())
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

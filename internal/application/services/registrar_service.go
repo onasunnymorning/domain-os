@@ -10,21 +10,19 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"go.uber.org/zap"
 )
 
 // RegistrarService implements the RegistrarService interface
 type RegistrarService struct {
 	registrarRepository repositories.RegistrarRepository
-	logger              *zap.Logger
+	eventPublisher      repositories.EventPublisher
 }
 
 // NewRegistrarService creates a new RegistrarService
-func NewRegistrarService(registrarRepository repositories.RegistrarRepository) *RegistrarService {
-	logger, _ := zap.NewProduction()
+func NewRegistrarService(registrarRepository repositories.RegistrarRepository, ep repositories.EventPublisher) *RegistrarService {
 	return &RegistrarService{
 		registrarRepository: registrarRepository,
-		logger:              logger,
+		eventPublisher:      ep,
 	}
 }
 
@@ -42,7 +40,7 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 
 	// Log the registrar lifecycle event
 	event := entities.NewRegistrarLifecycleEvent(createdRar.ClID.String(), entities.RegistrarEventTypeCreate)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s created", cmd.ClID), event, cmd, createdRar, nil)
+	s.publishRegistrarEvent(ctx, "registrar.created", fmt.Sprintf("registrar %s created", cmd.ClID), event, cmd, createdRar, nil)
 
 	return createdRar, nil
 }
@@ -61,7 +59,7 @@ func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.Crea
 
 	// Log the registrar lifecycle events
 	event := entities.NewRegistrarLifecycleEvent("", entities.RegistrarEventTypeCreate)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("bulk created %d registrars", len(cmds)), event, cmds, rars, nil)
+	s.publishRegistrarEvent(ctx, "registrar.bulk_created", fmt.Sprintf("bulk created %d registrars", len(cmds)), event, cmds, rars, nil)
 
 	return nil
 }
@@ -103,7 +101,7 @@ func (s *RegistrarService) Update(ctx context.Context, rar *entities.Registrar) 
 
 	// Log the registrar lifecycle event
 	event := entities.NewRegistrarLifecycleEvent(rar.ClID.String(), entities.RegistrarEventTypeUpdate)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s updated", rar.ClID), event, rar, updatedRar, previousRar)
+	s.publishRegistrarEvent(ctx, "registrar.updated", fmt.Sprintf("registrar %s updated", rar.ClID), event, rar, updatedRar, previousRar)
 
 	return updatedRar, nil
 }
@@ -124,7 +122,7 @@ func (s *RegistrarService) Delete(ctx context.Context, clid string) error {
 
 	// Log the registrar lifecycle event
 	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeDelete)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s deleted", clid), event, nil, nil, previousRar)
+	s.publishRegistrarEvent(ctx, "registrar.deleted", fmt.Sprintf("registrar %s deleted", clid), event, nil, nil, previousRar)
 
 	return nil
 }
@@ -159,7 +157,7 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 
 	// Log the registrar lifecycle event
 	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeUpdate)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s status set to %s", clid, status), event, registrar, updatedRar, previousRar)
+	s.publishRegistrarEvent(ctx, "registrar.status_updated", fmt.Sprintf("registrar %s status set to %s", clid, status), event, registrar, updatedRar, previousRar)
 
 	return nil
 }
@@ -189,7 +187,7 @@ func (s *RegistrarService) SetIANAStatus(ctx context.Context, clid string, statu
 
 	// Log the registrar lifecycle event
 	event := entities.NewRegistrarLifecycleEvent(clid, entities.RegistrarEventTypeUpdate)
-	s.logLifecycleEvent(ctx, fmt.Sprintf("registrar %s IANA status set to %s", clid, status), event, registrar, updatedRar, previousRar)
+	s.publishRegistrarEvent(ctx, "registrar.iana_status_updated", fmt.Sprintf("registrar %s IANA status set to %s", clid, status), event, registrar, updatedRar, previousRar)
 
 	return nil
 }
@@ -275,28 +273,40 @@ func rarFromCmd(cmd *commands.CreateRegistrarCommand) (*entities.Registrar, erro
 	return newRar, nil
 }
 
-func (s *RegistrarService) logLifecycleEvent(
+func (s *RegistrarService) publishRegistrarEvent(
 	ctx context.Context,
+	eventType string,
 	msg string,
 	event *entities.RegistrarLifecycleEvent,
 	command interface{},
 	newState interface{},
 	previousState interface{},
 ) {
+	if event == nil {
+		return
+	}
 	// Populate trace_id and correlation_id if they exist
-	if trace_id, ok := ctx.Value("trace_id").(string); ok {
-		event.TraceID = trace_id
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		event.TraceID = traceID
 	}
-	if correlation_id, ok := ctx.Value("correlation_id").(string); ok {
-		event.CorrelationID = correlation_id
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		event.CorrelationID = correlationID
 	}
-	// Log the domain lifecycle event
-	s.logger.Info(
-		msg,
-		zap.String("event_type", "registrar_lifecycle_event"),
-		zap.Any("registrar_lifecycle_event", event),
-		zap.Any("command", command),
-		zap.Any("new_state", newState),
-		zap.Any("previous_state", previousState),
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		event.ClientID,
+		event,
 	)
+	domainEvent.TraceID = event.TraceID
+	domainEvent.CorrelationID = event.CorrelationID
+
+	if domainEvent.Subject == "" {
+		domainEvent.Subject = "bulk"
+	}
+
+	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		fmt.Printf("failed to publish registrar event %s: %v\n", eventType, err)
+	}
 }
