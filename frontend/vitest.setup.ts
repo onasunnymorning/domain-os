@@ -17,6 +17,19 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
+// Mock Auth0 globally so ProtectedRoute renders children instead of a spinner
+vi.mock('@auth0/auth0-react', () => ({
+  useAuth0: vi.fn(() => ({
+    isAuthenticated: true,
+    isLoading: false,
+    user: { sub: 'test-user', name: 'Test User', email: 'test@example.com' },
+    loginWithRedirect: vi.fn(),
+    logout: vi.fn(),
+    getAccessTokenSilently: vi.fn(),
+  })),
+  Auth0Provider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // Mock Next.js app router hooks globally for component tests
 vi.mock('next/navigation', () => {
   // Expose mock functions so tests can override return values if needed

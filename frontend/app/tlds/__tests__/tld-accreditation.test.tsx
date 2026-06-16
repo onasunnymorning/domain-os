@@ -101,6 +101,11 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
     
     // Default domains mock
     vi.mocked(domainHooks.useDomainCountsForRegistrars).mockReturnValue([] as any);
+    vi.mocked(domainHooks.useDomainCount).mockReturnValue({
+      data: { ObjectType: 'Domain', Count: 0, Timestamp: '2024-01-01T00:00:00Z' },
+      isLoading: false,
+      error: null,
+    } as any);
   });
 
   it('opens accredit modal, enforces eligibility, and accredits successfully', async () => {

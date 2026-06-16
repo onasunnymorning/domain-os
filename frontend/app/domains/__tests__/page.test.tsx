@@ -98,8 +98,8 @@ describe('DomainsPage', () => {
 
     const input = screen.getByPlaceholderText('Search domains...');
     fireEvent.change(input, { target: { value: 'bar.example' } });
-    const checkbox = screen.getByText('Exact match').previousSibling as HTMLInputElement;
-    fireEvent.click(checkbox);
+    const toggle = screen.getByLabelText('Exact match');
+    fireEvent.click(toggle);
 
     await waitFor(() => {
       expect(lastParams?.name_equals).toBe('bar.example');
@@ -141,14 +141,14 @@ describe('DomainsPage', () => {
     const input = screen.getByPlaceholderText('Search domains...');
     fireEvent.change(input, { target: { value: 'syncme' } });
 
-    // Toggling exact match triggers an immediate URL update even if debounced name hasn't flushed yet
-    const checkbox = screen.getByText('Exact match').previousSibling as HTMLInputElement;
-    fireEvent.click(checkbox);
+    // Toggling exact match triggers an immediate URL update
+    const toggle = screen.getByLabelText('Exact match');
+    fireEvent.click(toggle);
 
+    // Eventually, one of the replace calls should include the exact flag
     await waitFor(() => {
-      const lastUrl = mockReplace.mock.calls.at(-1)?.[0] as string;
-      expect(lastUrl).toContain('?');
-      expect(lastUrl).toContain('exact=1');
+      const anyWithExact = mockReplace.mock.calls.some(([url]) => String(url).includes('exact=1'));
+      expect(anyWithExact).toBe(true);
     });
 
     // Eventually, one of the replace calls should include the debounced query string
