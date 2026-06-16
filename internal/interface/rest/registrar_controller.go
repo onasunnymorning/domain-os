@@ -63,7 +63,7 @@ func NewRegistrarController(e *gin.Engine, rarService interfaces.RegistrarServic
 func (ctrl *RegistrarController) GetByClID(ctx *gin.Context) {
 	clid := ctx.Param("clid")
 
-	rar, err := ctrl.rarService.GetByClID(ctx, clid, true)
+	rar, err := ctrl.rarService.GetByClID(ctx.Request.Context(), clid, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -95,7 +95,7 @@ func (ctrl *RegistrarController) GetByGurID(ctx *gin.Context) {
 		return
 	}
 
-	rar, err := ctrl.rarService.GetByGurID(ctx, gurid)
+	rar, err := ctrl.rarService.GetByGurID(ctx.Request.Context(), gurid)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -154,7 +154,7 @@ func (ctrl *RegistrarController) List(ctx *gin.Context) {
 	query.Filter = *filter
 
 	// List the Registrars
-	rars, cursor, err := ctrl.rarService.List(ctx, query)
+	rars, cursor, err := ctrl.rarService.List(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -192,7 +192,7 @@ func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.rarService.Create(ctx, &cmd)
+	result, err := ctrl.rarService.Create(ctx.Request.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRegistrar) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -228,7 +228,7 @@ func (ctrl *RegistrarController) BulkCreate(ctx *gin.Context) {
 		return
 	}
 
-	err := ctrl.rarService.BulkCreate(ctx, cmd)
+	err := ctrl.rarService.BulkCreate(ctx.Request.Context(), cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRegistrar) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -255,7 +255,7 @@ func (ctrl *RegistrarController) BulkCreate(ctx *gin.Context) {
 func (ctrl *RegistrarController) DeleteRegistrarByClID(ctx *gin.Context) {
 	clid := ctx.Param("clid")
 
-	err := ctrl.rarService.Delete(ctx, clid)
+	err := ctrl.rarService.Delete(ctx.Request.Context(), clid)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -295,7 +295,7 @@ func (ctrl *RegistrarController) UpdateRegistrar(ctx *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.rarService.Update(ctx, &rar)
+	result, err := ctrl.rarService.Update(ctx.Request.Context(), &rar)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -320,7 +320,7 @@ func (ctrl *RegistrarController) SetRegistrarStatus(ctx *gin.Context) {
 	clid := ctx.Param("clid")
 	status := entities.RegistrarStatus(ctx.Param("status"))
 
-	err := ctrl.rarService.SetStatus(ctx, clid, status)
+	err := ctrl.rarService.SetStatus(ctx.Request.Context(), clid, status)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -353,7 +353,7 @@ func (ctrl *RegistrarController) SetRegistrarIANAStatus(ctx *gin.Context) {
 		return
 	}
 
-	err := ctrl.rarService.SetIANAStatus(ctx, clid, status)
+	err := ctrl.rarService.SetIANAStatus(ctx.Request.Context(), clid, status)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

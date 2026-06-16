@@ -3,37 +3,26 @@ package tests
 import (
 	"testing"
 
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
-	"gorm.io/gorm"
-
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
+
+// api is the shared test harness available to all test files in this package.
+var api *TestAPI
 
 func TestController(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Integration Tests Suite")
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "API Integration Tests Suite")
 }
 
-const (
-	// make sure the following values are set to match your environment
-	dbUser = "postgres"
-	dbPass = "unittest"
-	dbHost = "127.0.0.1"
-	dbPort = "5432"
-	dbName = "dos_integration_tests"
-)
+var _ = BeforeSuite(func() {
+	var err error
+	api, err = NewTestAPI()
+	Expect(err).NotTo(HaveOccurred(), "Failed to initialize test API harness")
+})
 
-func getTestDB() (*gorm.DB, error) {
-	return postgres.NewConnection(
-		postgres.Config{
-			User:        dbUser,
-			Pass:        dbPass,
-			Host:        dbHost,
-			Port:        dbPort,
-			DBName:      dbName,
-			SSLmode:     "require",
-			AutoMigrate: true,
-		},
-	)
-}
+var _ = AfterSuite(func() {
+	if api != nil && api.Server != nil {
+		api.Server.Close()
+	}
+})

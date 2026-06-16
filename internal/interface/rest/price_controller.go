@@ -59,7 +59,7 @@ func (ctrl *PriceController) CreatePrice(ctx *gin.Context) {
 	cmd.PhaseName = ctx.Param("phaseName")
 
 	// Call the service to create the fee
-	price, err := ctrl.priceService.CreatePrice(ctx, &cmd)
+	price, err := ctrl.priceService.CreatePrice(ctx.Request.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidPrice) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -86,7 +86,7 @@ func (ctrl *PriceController) CreatePrice(ctx *gin.Context) {
 // @Router /tlds/{tldName}/phases/{phaseName}/prices [get]
 func (ctrl *PriceController) ListPrices(ctx *gin.Context) {
 	// Call the service to list the Prices
-	prices, err := ctrl.priceService.ListPrices(ctx, ctx.Param("phaseName"), ctx.Param("tldName"))
+	prices, err := ctrl.priceService.ListPrices(ctx.Request.Context(), ctx.Param("phaseName"), ctx.Param("tldName"))
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -110,7 +110,7 @@ func (ctrl *PriceController) ListPrices(ctx *gin.Context) {
 // @Router /tlds/{tldName}/phases/{phaseName}/prices/{currency} [delete]
 func (ctrl *PriceController) DeletePrice(ctx *gin.Context) {
 	// Call the service to delete the fee
-	err := ctrl.priceService.DeletePrice(ctx, ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("currency"))
+	err := ctrl.priceService.DeletePrice(ctx.Request.Context(), ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("currency"))
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

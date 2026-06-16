@@ -74,7 +74,7 @@ func (ctrl *IANARegistrarController) List(ctx *gin.Context) {
 	status := ctx.Query("status")
 
 	// Get the list of IANARegistrars
-	ianaRegistrars, err := ctrl.IanaRegistrarService.List(ctx, pageSize, pageCursor, nameSearchString, status)
+	ianaRegistrars, err := ctrl.IanaRegistrarService.List(ctx.Request.Context(), pageSize, pageCursor, nameSearchString, status)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -110,7 +110,7 @@ func (ctrl *IANARegistrarController) GetByGurID(ctx *gin.Context) {
 	}
 
 	// Get the IANARegistrar
-	ianaRegistrar, err := ctrl.IanaRegistrarService.GetByGurID(ctx, gurIDInt)
+	ianaRegistrar, err := ctrl.IanaRegistrarService.GetByGurID(ctx.Request.Context(), gurIDInt)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
