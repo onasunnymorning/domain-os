@@ -95,7 +95,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 func (ctrl *DomainController) GetDomainByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	domain, err := ctrl.domainService.GetDomainByName(ctx, name, true)
+	domain, err := ctrl.domainService.GetDomainByName(ctx.Request.Context(), name, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -131,7 +131,7 @@ func (ctrl *DomainController) CreateDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.Create(ctx, &req)
+	domain, err := ctrl.domainService.Create(ctx.Request.Context(), &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -173,7 +173,7 @@ func (ctrl *DomainController) BulkCreate(ctx *gin.Context) {
 		log.Printf("DEBUG BulkCreate Received: domain %s with status %s", req[0].Name, string(importStatusStr))
 	}
 
-	err := ctrl.domainService.BulkCreate(ctx, req)
+	err := ctrl.domainService.BulkCreate(ctx.Request.Context(), req)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -197,7 +197,7 @@ func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 
 	if ctx.Query("drophosts") == "true" {
 
-		err := ctrl.domainService.RemoveAllDomainHosts(ctx, name)
+		err := ctrl.domainService.RemoveAllDomainHosts(ctx.Request.Context(), name)
 		if err != nil {
 			if errors.Is(err, entities.ErrDomainNotFound) {
 				ctx.JSON(404, gin.H{"error": err.Error()})
@@ -208,7 +208,7 @@ func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 		}
 	}
 
-	err := ctrl.domainService.DeleteDomainByName(ctx, name)
+	err := ctrl.domainService.DeleteDomainByName(ctx.Request.Context(), name)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			// Return 204 if the domain was not found to make idempotent
@@ -272,7 +272,7 @@ func (ctrl *DomainController) ListDomains(ctx *gin.Context) {
 	query.Filter = *filter
 
 	// Get the list of domains
-	domains, cursor, err := ctrl.domainService.ListDomains(ctx, query)
+	domains, cursor, err := ctrl.domainService.ListDomains(ctx.Request.Context(), query)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRoid) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -349,7 +349,7 @@ func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.UpdateDomain(ctx, name, &req)
+	domain, err := ctrl.domainService.UpdateDomain(ctx.Request.Context(), name, &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidDomain) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -385,7 +385,7 @@ func (ctrl *DomainController) AddHostToDomain(ctx *gin.Context) {
 		force = true
 	}
 	// Use the service to add the host to the domain
-	err := ctrl.domainService.AddHostToDomain(ctx, ctx.Param("name"), ctx.Param("roid"), force)
+	err := ctrl.domainService.AddHostToDomain(ctx.Request.Context(), ctx.Param("name"), ctx.Param("roid"), force)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -421,7 +421,7 @@ func (ctrl *DomainController) AddHostToDomainByHostName(ctx *gin.Context) {
 		force = true
 	}
 	// Use the service to add the host to the domain
-	err := ctrl.domainService.AddHostToDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"), force)
+	err := ctrl.domainService.AddHostToDomainByHostName(ctx.Request.Context(), ctx.Param("name"), ctx.Param("hostName"), force)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -452,7 +452,7 @@ func (ctrl *DomainController) AddHostToDomainByHostName(ctx *gin.Context) {
 // @Router /domains/{name}/hosts/{roid} [delete]
 func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 	// Use the service to remove the host from the domain
-	err := ctrl.domainService.RemoveHostFromDomain(ctx, ctx.Param("name"), ctx.Param("roid"))
+	err := ctrl.domainService.RemoveHostFromDomain(ctx.Request.Context(), ctx.Param("name"), ctx.Param("roid"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -480,7 +480,7 @@ func (ctrl *DomainController) RemoveHostFromDomain(ctx *gin.Context) {
 // @Router /domains/{name}/hostname/{hostName} [delete]
 func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 	// Use the service to remove the host from the domain
-	err := ctrl.domainService.RemoveHostFromDomainByHostName(ctx, ctx.Param("name"), ctx.Param("hostName"))
+	err := ctrl.domainService.RemoveHostFromDomainByHostName(ctx.Request.Context(), ctx.Param("name"), ctx.Param("hostName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -526,7 +526,7 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.RegisterDomain(ctx, &req)
+	domain, err := ctrl.domainService.RegisterDomain(ctx.Request.Context(), &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidDomain) ||
 			errors.Is(err, entities.ErrContactDataPolicyViolation) {
@@ -563,7 +563,7 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 // @Router /domains/{name}/available [get]
 func (ctrl *DomainController) CheckDomainAvailability(ctx *gin.Context) {
 	// Call the service to check the domain
-	result, err := ctrl.domainService.CheckDomainAvailability(ctx, ctx.Param("name"), ctx.Query("phase"))
+	result, err := ctrl.domainService.CheckDomainAvailability(ctx.Request.Context(), ctx.Param("name"), ctx.Query("phase"))
 	if err != nil {
 		// Return 400 if we encounter missing configuration to make a decision
 		if errors.Is(
@@ -611,7 +611,7 @@ func (ctrl *DomainController) RenewDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.RenewDomain(ctx, &req, false)
+	domain, err := ctrl.domainService.RenewDomain(ctx.Request.Context(), &req, false)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRenewal) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -650,7 +650,7 @@ func (ctrl *DomainController) ForceRenew(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.RenewDomain(ctx, &req, true)
+	domain, err := ctrl.domainService.RenewDomain(ctx.Request.Context(), &req, true)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRenewal) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -684,7 +684,7 @@ func (ctrl *DomainController) CanAutoRenew(ctx *gin.Context) {
 		return
 	}
 
-	canAutoRenew, err := ctrl.domainService.CanAutoRenew(ctx, domainName)
+	canAutoRenew, err := ctrl.domainService.CanAutoRenew(ctx.Request.Context(), domainName)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -727,7 +727,7 @@ func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
 		return
 	}
 
-	domain, err := ctrl.domainService.AutoRenewDomain(ctx, ctx.Param("name"), years)
+	domain, err := ctrl.domainService.AutoRenewDomain(ctx.Request.Context(), ctx.Param("name"), years)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -756,7 +756,7 @@ func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/markdelete [delete]
 func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
-	dom, err := ctrl.domainService.MarkDomainForDeletion(ctx, ctx.Param("name"))
+	dom, err := ctrl.domainService.MarkDomainForDeletion(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -794,7 +794,7 @@ func (ctrl *DomainController) MarkDomainForDeletion(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/expire [post]
 func (ctrl *DomainController) Expire(ctx *gin.Context) {
-	domain, err := ctrl.domainService.ExpireDomain(ctx, ctx.Param("name"))
+	domain, err := ctrl.domainService.ExpireDomain(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -829,7 +829,7 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/restore [post]
 func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
-	dom, err := ctrl.domainService.RestoreDomain(ctx, ctx.Param("name"))
+	dom, err := ctrl.domainService.RestoreDomain(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -859,7 +859,7 @@ func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
 // @Router /domains/{name}/dropcatch [post]
 func (ctrl *DomainController) SetDropCatch(ctx *gin.Context) {
 	// use the service to set the domain.DropCatch flag
-	err := ctrl.domainService.DropCatchDomain(ctx, ctx.Param("name"), true)
+	err := ctrl.domainService.DropCatchDomain(ctx.Request.Context(), ctx.Param("name"), true)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -885,7 +885,7 @@ func (ctrl *DomainController) SetDropCatch(ctx *gin.Context) {
 // @Router /domains/{name}/dropcatch [delete]
 func (ctrl *DomainController) UnSetDropCatch(ctx *gin.Context) {
 	// use the service to un set the domain.DropCatch flag
-	err := ctrl.domainService.DropCatchDomain(ctx, ctx.Param("name"), false)
+	err := ctrl.domainService.DropCatchDomain(ctx.Request.Context(), ctx.Param("name"), false)
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -924,7 +924,7 @@ func (ctrl *DomainController) CountDomains(ctx *gin.Context) {
 		return
 	}
 
-	count, err := ctrl.domainService.Count(ctx, *filter)
+	count, err := ctrl.domainService.Count(ctx.Request.Context(), *filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -977,7 +977,7 @@ func (ctrl *DomainController) ListExpiringDomains(ctx *gin.Context) {
 	}
 
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListExpiringDomains(ctx, q, pageSize, pageCursor)
+	domains, err := ctrl.domainService.ListExpiringDomains(ctx.Request.Context(), q, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1023,7 +1023,7 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 		return
 	}
 
-	count, err := ctrl.domainService.CountExpiringDomains(ctx, q)
+	count, err := ctrl.domainService.CountExpiringDomains(ctx.Request.Context(), q)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1055,7 +1055,7 @@ func (ctrl *DomainController) CountPurgeableDomains(ctx *gin.Context) {
 		return
 	}
 
-	count, err := ctrl.domainService.CountPurgeableDomains(ctx, q)
+	count, err := ctrl.domainService.CountPurgeableDomains(ctx.Request.Context(), q)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1084,7 +1084,7 @@ func (ctrl *DomainController) CountRestoredDomains(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	count, err := ctrl.domainService.CountRestoredDomains(ctx, q)
+	count, err := ctrl.domainService.CountRestoredDomains(ctx.Request.Context(), q)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1136,7 +1136,7 @@ func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
 	}
 
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListRestoredDomains(ctx, q, pageSize, pageCursor)
+	domains, err := ctrl.domainService.ListRestoredDomains(ctx.Request.Context(), q, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1201,7 +1201,7 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 	}
 
 	// Get the list of domains
-	domains, err := ctrl.domainService.ListPurgeableDomains(ctx, q, pageSize, pageCursor)
+	domains, err := ctrl.domainService.ListPurgeableDomains(ctx.Request.Context(), q, pageSize, pageCursor)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1251,7 +1251,7 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 		return
 	}
 
-	quote, err := ctrl.domainService.GetQuote(ctx, &qr)
+	quote, err := ctrl.domainService.GetQuote(ctx.Request.Context(), &qr)
 	if err != nil {
 		if errors.Is(err, entities.ErrPhaseNotFound) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -1276,7 +1276,7 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/purge [delete]
 func (ctrl *DomainController) Purge(ctx *gin.Context) {
-	err := ctrl.domainService.PurgeDomain(ctx, ctx.Param("name"))
+	err := ctrl.domainService.PurgeDomain(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
 			ctx.JSON(425, gin.H{"error": err.Error()})
@@ -1304,7 +1304,7 @@ func (ctrl *DomainController) Purge(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/status/{status} [post]
 func (ctrl *DomainController) SetStatus(ctx *gin.Context) {
-	dom, err := ctrl.domainService.SetStatus(ctx, ctx.Param("name"), ctx.Param("status"))
+	dom, err := ctrl.domainService.SetStatus(ctx.Request.Context(), ctx.Param("name"), ctx.Param("status"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -1336,7 +1336,7 @@ func (ctrl *DomainController) SetStatus(ctx *gin.Context) {
 // @Failure 500
 // @Router /domains/{name}/status/{status} [delete]
 func (ctrl *DomainController) UnSetStatus(ctx *gin.Context) {
-	dom, err := ctrl.domainService.UnSetStatus(ctx, ctx.Param("name"), ctx.Param("status"))
+	dom, err := ctrl.domainService.UnSetStatus(ctx.Request.Context(), ctx.Param("name"), ctx.Param("status"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) || errors.Is(err, entities.ErrInvalidDomainStatus) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

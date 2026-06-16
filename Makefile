@@ -99,7 +99,7 @@ test-unit: ## Run unit tests with coverage
 	# Extra safety: remove the container if it still exists for any reason
 	@docker rm -f testdb 2>/dev/null || true
 
-test-integration: ## Run integration tests (requires Postman API keys in Doppler)
+test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (requires Doppler + API keys)
 	@echo "Running integration tests with Postman/Newman..."
 	@echo "NOTE: This requires POSTMAN_COLLECTION_ID, POSTMAN_ENVIRONMENT_ID, and POSTMAN_API_KEY in Doppler"
 	@echo "Cleaning up previous test environment..."
@@ -125,11 +125,58 @@ test-integration: ## Run integration tests (requires Postman API keys in Doppler
 	exit $$EXIT_CODE
 	@echo "Integration tests complete!"
 
-test-coverage: ## Generate detailed coverage report
+test-api: ## Run Go-native API integration tests (replaces Newman/Postman)
+	@echo "Starting API integration test database..."
+	@docker rm -f testdb-api 2>/dev/null || true
+	@docker run --rm -d \
+		-e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
+		-e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
+		-e POSTGRES_PASSWORD=unittest \
+		-e POSTGRES_USER=postgres \
+		-e POSTGRES_DB=dos_integration_tests \
+		--name testdb-api \
+		-p 5433:5432 \
+		postgres:16.1 \
+		-c ssl=on \
+		-c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem \
+		-c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+	@echo "Waiting for database to be ready..."
+	@sleep 3
+	@echo "Running API integration tests..."
+	@TEST_DB_PORT=5433 TEST_DB_SSLMODE=require \
+		go test ./internal/interface/rest/tests/... -v -count=1; \
+	EXIT_CODE=$$?; \
+	echo "Stopping API integration test database..."; \
+	docker stop testdb-api 2>/dev/null || true; \
+	docker rm -f testdb-api 2>/dev/null || true; \
+	exit $$EXIT_CODE
+
+test-coverage: ## Generate detailed coverage report (unit tests)
 	@echo "Running tests with coverage..."
 	@go test ./... -coverprofile=coverage.out -covermode=atomic
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+test-api-coverage: ## Generate API integration test coverage report (HTML)
+	@echo "🧪 Starting test database for coverage..."
+	@docker rm -f testdb-cov 2>/dev/null || true
+	@docker run --rm -d --name testdb-cov -p 5433:5432 \
+		-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=unittest \
+		-e POSTGRES_DB=dos_integration_tests postgres:16.1
+	@echo "Waiting for database to be ready..."
+	@sleep 3
+	@echo "Running API integration tests with coverage..."
+	@TEST_DB_PORT=5433 go test -count=1 \
+		-coverprofile=api-coverage.out \
+		-coverpkg=./internal/interface/rest/...,./internal/application/...,./pkg/domain/... \
+		./internal/interface/rest/tests/... && \
+		go tool cover -html=api-coverage.out -o api-coverage.html && \
+		echo "" && \
+		go tool cover -func=api-coverage.out | tail -1 && \
+		echo "API coverage report generated: api-coverage.html" ; \
+	EXIT_CODE=$$?; \
+	docker stop testdb-cov 2>/dev/null || true; \
+	exit $$EXIT_CODE
 
 test-epp: ## Run EPP-specific tests
 	@echo "Running EPP tests..."
@@ -152,7 +199,7 @@ test-agent-coverage: ## Run agent tests with coverage report
 # Local CI (mirrors GitHub Actions)
 ###################
 
-ci-local: ci-lint ci-test-backend ci-test-frontend ## Run the full CI pipeline locally (lint + test + frontend)
+ci-local: ci-lint ci-test-backend ci-test-frontend test-api ## Run the full CI pipeline locally (lint + test + frontend + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
 

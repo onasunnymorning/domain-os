@@ -48,7 +48,7 @@ func NewContactController(e *gin.Engine, contactService interfaces.ContactServic
 func (ctrl *ContactController) GetContactByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 
-	contact, err := ctrl.contactService.GetContactByID(ctx, id)
+	contact, err := ctrl.contactService.GetContactByID(ctx.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, entities.ErrContactNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -91,7 +91,7 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 	event.Details.Command = req
 
 	// Create the contact
-	contact, err := ctrl.contactService.CreateContact(ctx, &req)
+	contact, err := ctrl.contactService.CreateContact(ctx.Request.Context(), &req)
 	if err != nil {
 		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidContact) ||
@@ -129,7 +129,7 @@ func (ctrl *ContactController) BulkCreateContacts(ctx *gin.Context) {
 	}
 
 	// Create the contacts
-	err := ctrl.contactService.BulkCreate(ctx, req)
+	err := ctrl.contactService.BulkCreate(ctx.Request.Context(), req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
@@ -170,7 +170,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	e.Details.Command = req
 
 	// Look up the contact
-	c, err := ctrl.contactService.GetContactByID(ctx, ctx.Param("id"))
+	c, err := ctrl.contactService.GetContactByID(ctx.Request.Context(), ctx.Param("id"))
 	if err != nil {
 		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -203,7 +203,7 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 		return
 	}
 
-	contact, err := ctrl.contactService.UpdateContact(ctx, c)
+	contact, err := ctrl.contactService.UpdateContact(ctx.Request.Context(), c)
 	if err != nil {
 		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -231,7 +231,7 @@ func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	// Temporarily disable this to overcome infra issues with message broker
 	e := entities.NewEvent("domain-os", "admin", "DELETE", "Contact", id, ctx.Request.URL.RequestURI())
 
-	err := ctrl.contactService.DeleteContactByID(ctx, id)
+	err := ctrl.contactService.DeleteContactByID(ctx.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, entities.ErrContactNotFound) {
 			ctx.JSON(http.StatusNoContent, nil)
@@ -286,7 +286,7 @@ func (ctrl *ContactController) ListContacts(ctx *gin.Context) {
 	query.Filter = filter
 
 	// Get the contacts from the service
-	contacts, cursor, err := ctrl.contactService.ListContacts(ctx, query)
+	contacts, cursor, err := ctrl.contactService.ListContacts(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -319,7 +319,7 @@ func (ctrl *ContactController) CountContacts(ctx *gin.Context) {
 	filter.EmailLike = ctx.Query("email_like")
 	filter.ClidEquals = ctx.Query("clid_equals")
 
-	count, err := ctrl.contactService.Count(ctx, filter)
+	count, err := ctrl.contactService.Count(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

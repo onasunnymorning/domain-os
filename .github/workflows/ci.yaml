@@ -79,6 +79,19 @@ jobs:
           go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
           go tool cover -func=agent-coverage.out
 
+      - name: Coverage Summary
+        if: always()
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $NF}')
+          echo "## 🧪 Unit Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out | grep -E 'controller\.go|service\.go|total:' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "UNIT_COVERAGE=${TOTAL}" >> $GITHUB_ENV
+
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
@@ -165,51 +178,69 @@ jobs:
           cache-from: type=registry,ref=geapex/unified-worker:buildcache
           cache-to: type=registry,ref=geapex/unified-worker:buildcache,mode=max
 
-  integrationtests:
-    name: Integration tests
+
+
+  api-tests:
+    name: API integration tests (Go-native)
     runs-on: ubuntu-latest
-    needs: build-images
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v4
-
-      - name: Run Integration Tests
-        run: docker compose --profile essential -f docker-compose-ci.yml up --remove-orphans --abort-on-container-exit --exit-code-from test
+    needs: [unit-tests, lint]
+    services:
+      postgres:
+        image: postgres:16.1
         env:
-          OPENEXCHANGERATES_APP_ID: ${{ secrets.OPENEXCHANGERATES_APP_ID }}
-          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-          POSTMAN_COLLECTION_ID: ${{ vars.POSTMAN_COLLECTION_ID }}
-          POSTMAN_ENVIRONMENT_ID: ${{ vars.POSTMAN_ENVIRONMENT_ID }}
-          DB_HOST: domain-os-db-1
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASS: unittest
-          DB_NAME: integrationtests
-          API_PORT: 8080
-          API_HOST: domain-os-admin-api-1
-          API_NAME: ${{ secrets.API_NAME }}
-          API_VERSION: ${{ secrets.API_VERSION }}
-          # ADMIN_TOKEN is hardcoded in docker-compose-ci.yml (cicdtoken) to match Postman CI environment
-          BRANCH: ${{ github.sha }}
-          GIN_MODE: debug
-          AUTO_MIGRATE: true
-          NEW_RELIC_ENABLED: false
-          PROMETHEUS_ENABLED: false
-          RMQ_HOST: domain-os-msg-broker-1
-          RMQ_PORT: ${{ secrets.RMQ_PORT }}
-          RMQ_USER: ${{ secrets.RMQ_USER }}
-          RMQ_PASS: ${{ secrets.RMQ_PASS }}
-          EVENT_STREAM_TOPIC: ${{ secrets.EVENT_STREAM_TOPIC }}
-          EVENT_STREAM_ENABLED: true
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: unittest
+          POSTGRES_DB: dos_integration_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Cleanup Integration Test Containers
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Run API Integration Tests
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: "5432"
+          TEST_DB_USER: postgres
+          TEST_DB_PASS: unittest
+          TEST_DB_NAME: dos_integration_tests
+          TEST_DB_SSLMODE: disable
+        run: |
+          go test -count=1 -v \
+            -coverprofile=api-coverage.out \
+            -coverpkg=./internal/interface/rest/...,./internal/application/...,./pkg/domain/... \
+            ./internal/interface/rest/tests/...
+
+      - name: API Coverage Summary
         if: always()
-        run: docker compose --profile essential -f docker-compose-ci.yml down -v --remove-orphans 2>/dev/null || true
+        run: |
+          if [ -f api-coverage.out ]; then
+            TOTAL=$(go tool cover -func=api-coverage.out | grep total | awk '{print $NF}')
+            echo "## 🔌 API Integration Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Total: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Per Controller" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            go tool cover -func=api-coverage.out | grep '_controller\.go' | awk -F: '{file=$1} {printf "%-45s %s\n", file, $NF}' | sort -u >> $GITHUB_STEP_SUMMARY
+            echo '' >> $GITHUB_STEP_SUMMARY
+            go tool cover -func=api-coverage.out | grep total >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
 
   retag:
     name: Retag images as latest
     runs-on: ubuntu-latest
-    needs: integrationtests
+    needs: [api-tests]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Login to Docker Hub

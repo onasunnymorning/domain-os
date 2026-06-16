@@ -57,7 +57,7 @@ func NewTLDController(e *gin.Engine, tldService interfaces.TLDService, dnss inte
 func (ctrl *TLDController) GetTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	tld, err := ctrl.tldService.GetTLDByName(ctx, name, false)
+	tld, err := ctrl.tldService.GetTLDByName(ctx.Request.Context(), name, false)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -110,7 +110,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 	query.Filter = getTldListFilterFromContext(ctx)
 
 	// Get the tlds from the service
-	tlds, cursor, err := ctrl.tldService.ListTLDs(ctx, query)
+	tlds, cursor, err := ctrl.tldService.ListTLDs(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -137,7 +137,7 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	err := ctrl.tldService.DeleteTLDByName(ctx, name)
+	err := ctrl.tldService.DeleteTLDByName(ctx.Request.Context(), name)
 	if err != nil {
 		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -178,7 +178,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.tldService.CreateTLD(ctx, cmd)
+	result, err := ctrl.tldService.CreateTLD(ctx.Request.Context(), cmd)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidCreateTLDCommand) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -206,7 +206,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 func (ctrl *TLDController) GetTLDHeader(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	tldHeader, err := ctrl.tldService.GetTLDHeader(ctx, name)
+	tldHeader, err := ctrl.tldService.GetTLDHeader(ctx.Request.Context(), name)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -334,7 +334,7 @@ func (c *TLDController) GetGlueRecordsPerTLD(ctx *gin.Context) {
 // @Router /tlds/count [get]
 func (ctrl *TLDController) GetTLDCount(ctx *gin.Context) {
 	filter := getTldListFilterFromContext(ctx)
-	count, err := ctrl.tldService.CountTLDs(ctx, filter)
+	count, err := ctrl.tldService.CountTLDs(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -371,7 +371,7 @@ func (ctrl *TLDController) SetTLDStatus(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 
 	// Use the service to set the status
-	_, err := ctrl.tldService.SetAllowEscrowImport(ctx, tldName, true)
+	_, err := ctrl.tldService.SetAllowEscrowImport(ctx.Request.Context(), tldName, true)
 	if err != nil {
 		// Return 409 conflict if the error is ErrCannotSetEscrowImportWithActivePhases
 		if errors.Is(err, entities.ErrCannotSetEscrowImportWithActivePhases) {
@@ -408,7 +408,7 @@ func (ctrl *TLDController) DeleteTLDStatus(ctx *gin.Context) {
 	tldName := ctx.Param("tldName")
 
 	// Use the service to set the status
-	_, err := ctrl.tldService.SetAllowEscrowImport(ctx, tldName, false)
+	_, err := ctrl.tldService.SetAllowEscrowImport(ctx.Request.Context(), tldName, false)
 	if err != nil {
 		// Return 409 conflict if the error is ErrCannotSetEscrowImportWithActivePhases
 		if errors.Is(err, entities.ErrCannotSetEscrowImportWithActivePhases) {

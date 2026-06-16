@@ -93,7 +93,7 @@ func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
 // @Router /sync/fx/{currency} [put]
 func (ctrl *SyncController) SyncFX(ctx *gin.Context) {
 	baseCurrency := ctx.Param("currency")
-	err := ctrl.syncService.RefreshFXRates(ctx, baseCurrency)
+	err := ctrl.syncService.RefreshFXRates(ctx.Request.Context(), baseCurrency)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

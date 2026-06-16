@@ -51,7 +51,7 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	// Temporarily disable this to overcome infra issues with message broker
 	e := entities.NewEvent("domain-os", "admin", "CREATE", "Accreditation", tldName+"-"+rarClID, ctx.Request.URL.RequestURI())
 
-	err := ctrl.accService.CreateAccreditation(ctx, tldName, rarClID)
+	err := ctrl.accService.CreateAccreditation(ctx.Request.Context(), tldName, rarClID)
 	if err != nil {
 		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
@@ -83,7 +83,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	// Temporarily disable this to overcome infra issues with message broker
 	e := entities.NewEvent("domain-os", "admin", "DELETE", "Accreditation", tldName+"-"+rarClID, ctx.Request.URL.RequestURI())
 
-	err := ctrl.accService.DeleteAccreditation(ctx, tldName, rarClID)
+	err := ctrl.accService.DeleteAccreditation(ctx.Request.Context(), tldName, rarClID)
 	if err != nil {
 		e.Details.Error = err.Error()
 		if errors.Is(err, services.ErrInvalidAccreditation) {
@@ -127,7 +127,7 @@ func (ctrl *AccreditationController) ListRegistarAccreditations(ctx *gin.Context
 		return
 	}
 
-	tlds, err := ctrl.accService.ListRegistrarTLDs(ctx, pageSize, pageCursor, rarClID)
+	tlds, err := ctrl.accService.ListRegistrarTLDs(ctx.Request.Context(), pageSize, pageCursor, rarClID)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -176,7 +176,7 @@ func (ctrl *AccreditationController) ListTLDRegistrars(ctx *gin.Context) {
 		return
 	}
 
-	rars, err := ctrl.accService.ListTLDRegistrars(ctx, pageSize, pageCursor, tldName)
+	rars, err := ctrl.accService.ListTLDRegistrars(ctx.Request.Context(), pageSize, pageCursor, tldName)
 	if err != nil {
 		if errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -214,7 +214,7 @@ func (ctrl *AccreditationController) IsAccredited(ctx *gin.Context) {
 	response := response.NewIsAccreditedResponse(rarClID, tldName)
 	// Get the accreditation status
 	var err error
-	response.IsAccredited, err = ctrl.accService.IsRegistrarAccreditedForTLD(ctx, tldName, rarClID)
+	response.IsAccredited, err = ctrl.accService.IsRegistrarAccreditedForTLD(ctx.Request.Context(), tldName, rarClID)
 	if err != nil {
 		if errors.Is(err, entities.ErrRegistrarNotFound) || errors.Is(err, entities.ErrTLDNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})

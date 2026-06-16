@@ -62,7 +62,7 @@ func (ctrl *PremiumController) CreateList(ctx *gin.Context) {
 	}
 
 	// Call the service to create the list
-	list, err := ctrl.listService.CreateList(ctx, cmd)
+	list, err := ctrl.listService.CreateList(ctx.Request.Context(), cmd)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -84,7 +84,7 @@ func (ctrl *PremiumController) CreateList(ctx *gin.Context) {
 // @Router /premium/lists/{name} [get]
 func (ctrl *PremiumController) GetListByName(ctx *gin.Context) {
 	// Call the service to get the list
-	list, err := ctrl.listService.GetListByName(ctx, ctx.Param("name"))
+	list, err := ctrl.listService.GetListByName(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPremiumListNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -139,7 +139,7 @@ func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 	}
 	query.Filter = filter
 
-	lists, cursor, err := ctrl.listService.List(ctx, query)
+	lists, cursor, err := ctrl.listService.List(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -164,7 +164,7 @@ func (ctrl *PremiumController) ListPremiumLists(ctx *gin.Context) {
 func (ctrl *PremiumController) DeleteListByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	err := ctrl.listService.DeleteListByName(ctx, name)
+	err := ctrl.listService.DeleteListByName(ctx.Request.Context(), name)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -198,7 +198,7 @@ func (ctrl *PremiumController) CreateLabel(ctx *gin.Context) {
 	}
 
 	// Call the service to create the label
-	label, err := ctrl.labelService.CreateLabel(ctx, cmd)
+	label, err := ctrl.labelService.CreateLabel(ctx.Request.Context(), cmd)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -222,7 +222,7 @@ func (ctrl *PremiumController) CreateLabel(ctx *gin.Context) {
 // @Router /premium/lists/{name}/labels/{label}/{currency} [get]
 func (ctrl *PremiumController) GetLabelByLabelListAndCurrency(ctx *gin.Context) {
 	// Call the service to get the label
-	label, err := ctrl.labelService.GetLabelByLabelListAndCurrency(ctx, ctx.Param("label"), ctx.Param("name"), ctx.Param("currency"))
+	label, err := ctrl.labelService.GetLabelByLabelListAndCurrency(ctx.Request.Context(), ctx.Param("label"), ctx.Param("name"), ctx.Param("currency"))
 	if err != nil {
 		if errors.Is(err, entities.ErrPremiumLabelNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
@@ -248,7 +248,7 @@ func (ctrl *PremiumController) GetLabelByLabelListAndCurrency(ctx *gin.Context) 
 // @Failure 500
 // @Router /premium/lists/{name}/labels/{label}/{currency} [delete]
 func (ctrl *PremiumController) DeleteLabelByLabelListAndCurrency(ctx *gin.Context) {
-	err := ctrl.labelService.DeleteLabelByLabelListAndCurrency(ctx, ctx.Param("label"), ctx.Param("name"), ctx.Param("currency"))
+	err := ctrl.labelService.DeleteLabelByLabelListAndCurrency(ctx.Request.Context(), ctx.Param("label"), ctx.Param("name"), ctx.Param("currency"))
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -302,7 +302,7 @@ func (ctrl *PremiumController) ListPremiumLabels(ctx *gin.Context) {
 	}
 	query.Filter = filter
 
-	labels, cursor, err := ctrl.labelService.ListLabels(ctx, query)
+	labels, cursor, err := ctrl.labelService.ListLabels(ctx.Request.Context(), query)
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return

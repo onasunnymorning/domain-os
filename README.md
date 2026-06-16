@@ -1,9 +1,11 @@
-# domain-os# domain-os
+# domain-os
 
+[![CI](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml/badge.svg)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
+[![Unit Tests](https://img.shields.io/badge/unit_tests-passing-brightgreen?logo=go)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
+[![API Tests](https://img.shields.io/badge/API_integration_tests-passing-brightgreen?logo=go)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/onasunnymorning/domain-os)](https://goreportcard.com/report/github.com/onasunnymorning/domain-os)
 
-
-Domain (Registry for now) Operating System (DOS)Domain (Registry for now) Operating System (DOS)
-
+Domain (Registry for now) Operating System (DOS)
 
 
 ## Why? # Why?
