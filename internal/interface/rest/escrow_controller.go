@@ -111,7 +111,7 @@ func (c *EscrowController) Presign(ctx *gin.Context) {
 	safe := strings.ReplaceAll(filename, " ", "_")
 	key := fmt.Sprintf("escrow/%s/%d/%s", ts, time.Now().Unix(), safe)
 
-	url, err := s3c.PresignPut(ctx, key, 15*time.Minute)
+	url, err := s3c.PresignPut(ctx.Request.Context(), key, 15*time.Minute)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -172,7 +172,7 @@ func (c *EscrowController) Upload(ctx *gin.Context) {
 	}
 	day := time.Now().UTC().Format("20060102")
 	s3Key := fmt.Sprintf("escrow/%s/%d/%s", day, time.Now().Unix(), safeName)
-	if upErr := s3c.UploadFile(ctx, s3Key, destPath, "application/octet-stream"); upErr != nil {
+	if upErr := s3c.UploadFile(ctx.Request.Context(), s3Key, destPath, "application/octet-stream"); upErr != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("s3 upload failed: %v", upErr)})
 		return
 	}
@@ -210,7 +210,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 
 	wfID := fmt.Sprintf("escrow-staging-%s-%s", req.TLD, time.Now().Format("20060102-150405"))
 
-	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
 	}, workflows.EscrowStagingWorkflow, workflows.EscrowImportParams{
@@ -276,7 +276,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 	safeKey := strings.ReplaceAll(filepath.Base(req.StagedDBKey), ".db", "")
 	wfID := fmt.Sprintf("ingest-%s-%s", req.TLD, safeKey)
 
-	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
 	}, workflows.EscrowIngestionWorkflow, workflows.EscrowIngestionParams{
@@ -334,7 +334,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 
 	// List objects under escrow/<tld>/ recursively
 	prefix := fmt.Sprintf("escrow/%s/", tld)
-	keys, err := s3c.ListObjectKeys(ctx, prefix, true, 5000)
+	keys, err := s3c.ListObjectKeys(ctx.Request.Context(), prefix, true, 5000)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

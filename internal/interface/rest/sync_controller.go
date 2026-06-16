@@ -45,7 +45,7 @@ func NewSyncController(e *gin.Engine, syncService interfaces.SyncService, handle
 // @Failure 500
 // @Router /sync/icann-spec5 [put]
 func (ctrl *SyncController) SyncSpec5(ctx *gin.Context) {
-	err := ctrl.syncService.RefreshSpec5Labels(ctx)
+	err := ctrl.syncService.RefreshSpec5Labels(ctx.Request.Context())
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -68,7 +68,7 @@ func (ctrl *SyncController) SyncSpec5(ctx *gin.Context) {
 // @Failure 500
 // @Router /sync/iana-registrars [put]
 func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
-	err := ctrl.syncService.RefreshIANARegistrars(ctx)
+	err := ctrl.syncService.RefreshIANARegistrars(ctx.Request.Context())
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
