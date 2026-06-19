@@ -13,42 +13,35 @@ docker_compose("./docker-compose.yml", profiles=['full'], env_file='.env.tilt')
 docker_build('geapex/domain-os:' + branch, '.', dockerfile='Dockerfile')
 docker_build('geapex/whois:' + branch, '.', dockerfile='./cmd/whois/Dockerfile')
 docker_build('geapex/epp-server:' + branch, '.', dockerfile='Dockerfile.epp')
-docker_build('geapex/domain-lifecycle-worker:' + branch, '.', dockerfile='./cmd/workers/domainLifecycle/Dockerfile')
-docker_build('geapex/escrow-import-worker:' + branch, '.', dockerfile='./cmd/workers/escrowImport/Dockerfile')
+docker_build('geapex/unified-worker:' + branch, '.', dockerfile='./cmd/workers/unified/Dockerfile')
 
-# Group backend database and cache resources
-dc_resource('db', labels=["backend"])
-dc_resource('redis', labels=["backend"])
+# Group database and cache resources
+dc_resource('db', labels=["infrastructure"])
+dc_resource('redis', labels=["infrastructure"])
 
-# Core API
-dc_resource('admin-api', labels=["api"])
-# Init container for admin DB setup
+# Endpoints
+dc_resource('admin-api', labels=["endpoints"])
+dc_resource('epp-server', labels=["endpoints"])
+dc_resource('whois', labels=["endpoints"])
+
+# Init containers
 dc_resource('admin-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 
-# Event broker
-dc_resource('msg-broker', labels=["events"])
-
-# EPP and Whois services
-dc_resource('epp-server', labels=["epp"])
-dc_resource('whois', labels=["whois"])
-
-# Temporal Workflow stack
-dc_resource('temporal-postgres', labels=["temporal"])
-dc_resource('temporal', labels=["temporal"])
-dc_resource('temporal-ui', labels=["temporal"])
+# Infrastructure
+dc_resource('temporal-postgres', labels=["infrastructure"])
+dc_resource('temporal', labels=["infrastructure"])
+dc_resource('temporal-ui', labels=["infrastructure"])
 
 # Workers
-dc_resource('domain-lifecycle-worker', labels=["workers"])
-dc_resource('escrow-import-worker', labels=["workers"])
+dc_resource('unified-worker', labels=["workers"])
 
 # Object Storage
-dc_resource('minio', labels=["storage"])
+dc_resource('minio', labels=["infrastructure"])
 dc_resource('minio-setup', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 
-# Observability and Data Platforms
-dc_resource('prometheus', labels=["observability"])
-dc_resource('grafana', labels=["observability"])
-dc_resource('metabase', labels=["observability"])
+dc_resource('prometheus', labels=["infrastructure"])
+dc_resource('grafana', labels=["infrastructure"])
+dc_resource('metabase', labels=["infrastructure"])
 dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 
 # Start Next.js frontend native development server
@@ -58,5 +51,5 @@ local_resource(
               'NEXT_PUBLIC_API_URL="http://localhost:${API_PORT:-8080}" ' +
               'NEXT_PUBLIC_API_TOKEN="${ADMIN_TOKEN:-devtoken}" ' +
               'PORT=3002 npm run dev',
-    labels=["frontend"]
+    labels=["endpoints"]
 )

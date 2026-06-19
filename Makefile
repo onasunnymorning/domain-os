@@ -1,7 +1,7 @@
 # Makefile for Domain OS
 # Consolidated commands for development, testing, and deployment
 
-.PHONY: help clean-docker
+.PHONY: help clean-docker local
 
 # Default target
 .DEFAULT_GOAL := help
@@ -41,6 +41,10 @@ dev-build: ## Rebuild and start essential services
 dev-frontend: ## Start the Next.js frontend development server
 	@echo "Starting frontend development server..."
 	@cd frontend && $(DOPPLER) npm run dev
+
+local: ## Start local development with Tilt (includes all services + live rebuild)
+	@echo "Starting Tilt local development environment..."
+	@$(DOPPLER) tilt up
 
 stop: ## Stop all running services
 	@echo "Stopping all services..."
