@@ -309,3 +309,41 @@ func TestTLDService_SetAllowEscrowImport(t *testing.T) {
 		t.Errorf("Expected AllowEscrowImport to be false, got %v", updatedTLD.AllowEscrowImport)
 	}
 }
+
+// capturingTLDRepository records the preloadAll argument for verification.
+type capturingTLDRepository struct {
+	MocktldRepository
+	capturedPreloadAll bool
+}
+
+func (r *capturingTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
+	r.capturedPreloadAll = preloadAll
+	return r.MocktldRepository.GetByName(ctx, name, preloadAll)
+}
+
+func TestTLDService_GetTLDByName_ForwardsPreloadAll(t *testing.T) {
+	tests := []struct {
+		name       string
+		preloadAll bool
+	}{
+		{"preloadAll true is forwarded to repository", true},
+		{"preloadAll false is forwarded to repository", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tld, _ := entities.NewTLD("best", "apex")
+			repo := &capturingTLDRepository{
+				MocktldRepository: MocktldRepository{Tlds: []*entities.TLD{tld}},
+			}
+			svc := NewTLDService(repo, &MockDNSRecordRepository{})
+
+			_, err := svc.GetTLDByName(context.Background(), "BEST", tt.preloadAll)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if repo.capturedPreloadAll != tt.preloadAll {
+				t.Errorf("expected preloadAll=%v to be forwarded, got %v", tt.preloadAll, repo.capturedPreloadAll)
+			}
+		})
+	}
+}
