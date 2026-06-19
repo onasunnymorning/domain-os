@@ -1,339 +1,261 @@
 # domain-os
 
 [![CI](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml/badge.svg)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
-[![Unit Tests](https://img.shields.io/badge/unit_tests-passing-brightgreen?logo=go)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
-[![API Tests](https://img.shields.io/badge/API_integration_tests-passing-brightgreen?logo=go)](https://github.com/onasunnymorning/domain-os/actions/workflows/ci.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/onasunnymorning/domain-os)](https://goreportcard.com/report/github.com/onasunnymorning/domain-os)
 
-Domain (Registry for now) Operating System (DOS)
-
-
-## Why? # Why?
-
-  
-
-The registry backend business operates in a high-volume low-margin setup, therefore a highly automated, robust, adaptable system that is cost efficient to operate is required. The current legacy systems are often monolithic, hard to maintain, and difficult to adapt to new requirements. They are often built on outdated technology stacks that are not well suited for the current and future needs of the industry. It should be flexible in terms of policy, infrastructure and quick to evolve and integrate.  The registry backend business operates in a high-volume low-margin setup, therefore a highly automated, robust, adaptable system that is cost efficient to operate is required. 
-
- The current legacy systems are often monolithic, hard to maintain, and difficult to adapt to new requirements.
-
-## How? They are often built on outdated technology stacks that are not well suited for the current and future needs of the industry.
-
- It should be flexible in terms of policy, infrastructure and quick to evolve and integrate. 
-
-By taking the accumulated knowledge of working in the industry and building a system that is modular, flexible, and easy to operate.
-
- # How?
-
-Offer clear context, a blazing fast developer experience and feedback loop and lots of automated testing for safety. I've tried to focus on making this system easy to operate with a low overhead. While it is not yet optimized, it has testing, automation, visibility, and an open architecture and documentation. This way, when optimization is needed, it will be straightforward as we will have data and visibility to evolve the system quickly in the desired direction. The data model aligns with the RFCs and can easily be evolved, optimized or even be implemented with a different database because its de-coupled from the business logic.
-
-By taking the accumulated knowledge of working in the industry and building a system that is modular, flexible, and easy to operate.
-
-## What?
-
-
-
-A registry system with core functionality that you can easily integrate into your existing service stack or build on top of. Offer clear context, a blazing fast developer experience and feedback loop and lots of automated testing for safety.
-
- I've tried to focus on making this system easy to operate with a low overhead. While it is not yet optimized, it has testing, automation, visibility, and an open architecture and documentation.
-
---- This way, when optimization is needed, it will be staightforward as we will have data and visibility to evolve the system quickly in the desired direction.
-
- The data model aligns with the RFCs and can easily be evolved, optimized or even be implemented with a different database because its de-coupled from the business logic.
-
-# Running the app
-
-  # What?
-
-## Requirements  A registry system with core functionality that you can easily integrate into your existing service stack or build on top of
-
-
-
-* Docker Desktop installed# Running the app
-
-* [Doppler CLI](https://docs.doppler.com/docs/install-cli) for secrets management (development)
-
-* Go 1.21+ (for local development)## Requirements
-
-* Node.js 18+ (for frontend development)
-
-* An API client (Postman, Insomnia, or use the Swagger UI)* You do need docker desktop installed 
-
-* An API client, I’m using Postman in this video
-
-## Quick Start
-
-## Running the app
-
-### Using Makefile (Recommended)
-
-### Docker Compose using pre-built images
-
-The project includes a comprehensive Makefile that simplifies all common tasks. View all available commands:
-
-Video walkthrough: https://youtu.be/pobt7sm7ixw
-
-```bash
-
-make help* Download this zip file containing a docker-compose file and a basic .env file: https://drive.google.com/file/d/1dbsusOJ2g1FPLJ0rUBkYc3Av8PABgNab/view?usp=sharing
-
-```* Unzip the file and open a terminal in the folder
-
-* Run `BRANCH=latest docker compose --profile essential up`
-
-**Start development environment:**
-
-```bash* Open http://localhost:8080/swagger/index.html and download the Postman collection (doc.json)
-
-# Start essential services (db, redis, epp-server, admin-api)* Import the Postman collection into your Postman client
-
-make dev* Configure the environment variables in Postman (baseUrl and token) to match the .env file 
-
-* Send your first request to the API
-
-# Start all services including workers
-
-make dev-fullIf you want to populate the system, start by creating a Registry Operator, then a TLD, Setup a Phase to enable the TLD, create Registrars, and then create Domains...
-
-
-
-# Start frontend development server (in a separate terminal)
-
-make dev-frontend
-
-
-# Stop all services
-make stop
-```
-
-**Running tests:**
-```bash
-# Run unit tests
-make test
-
-# Run integration tests
-make test-integration
-
-# Generate coverage report
-make test-coverage
-```
-
-**Building and deploying:**
-```bash
-# Build all Docker images
-make build-all
-
-# Push images to Docker Hub
-make push-all
-```
-
-**Other useful commands:**
-```bash
-# View logs
-make dev-logs
-
-# Restart services
-make restart
-
-# Clean up containers and volumes
-make clean
-
-# Access database shell
-make shell-db
-```
-
-### Docker Compose (Manual)
-
-If you prefer to use Docker Compose directly:
-
-```bash
-# Start essential services
-export BRANCH=$(git branch --show-current)
-doppler run -- docker compose --profile essential up -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-doppler run -- docker compose --profile essential down
-```
-
-### Using Pre-built Images
-
-Video walkthrough: https://youtu.be/pobt7sm7ixw
-
-1. Download [this zip file](https://drive.google.com/file/d/1dbsusOJ2g1FPLJ0rUBkYc3Av8PABgNab/view?usp=sharing) containing a docker-compose file and a basic .env file
-2. Unzip the file and open a terminal in the folder
-3. Run: `BRANCH=latest docker compose --profile essential up`
+A domain name registry backend — the system that manages the lifecycle of domain names, registrars, TLDs, and all the RFC-compliant operations a registry needs to run.
 
 ---
 
-## Using the API
+## Why does this exist?
 
-1. Open http://localhost:8080/swagger/index.html to view the API documentation
-2. Download the Postman collection (doc.json) from the Swagger UI
-3. Import the collection into Postman
-4. Configure the environment variables in Postman (baseUrl and token) to match your .env file
-5. Send your first request!
+Registry backends operate in a high-volume, low-margin environment. The legacy systems we've worked with tend to be monolithic, hard to adapt, and built on technology stacks that make change expensive. Policy changes, new TLD launches, infrastructure migrations — each of these becomes a project in itself.
 
-**Recommended workflow for populating the system:**
-1. Create a Registry Operator
-2. Create a TLD
-3. Set up a Phase to enable the TLD
-4. Create Registrars
-5. Create Domains
+**domain-os** is built from the accumulated experience of working in this industry, with a few goals:
+
+- **Modular** — swap infrastructure, add features, or change policy without rewriting the core
+- **Automated** — domain lifecycle, registrar sync, escrow import — these run as durable workflows, not manual processes
+- **RFC-aligned** — the data model mirrors the standards (EPP, RDE, IANA), so concepts map directly to the specs
+- **Observable** — testing, metrics, and visibility are built in from the start, not bolted on later
+- **Cost-efficient to operate** — designed for the economics of the registry business
+
+> It's not finished. It's not yet optimized for peak load. But it has the architecture, the test coverage, and the visibility to evolve quickly when the time comes.
 
 ---
 
-## Frontend Admin Dashboard
+## What you get
 
-The project includes a Next.js-based admin dashboard for managing registry operators and other entities.
+| Capability | Description |
+|---|---|
+| **Admin REST API** | Full CRUD for domains, TLDs, registrars, contacts, hosts, pricing, DNSSEC, and more. Swagger docs included. |
+| **EPP Server** | RFC 5730-compliant EPP on port 700 with TLS. Redis-backed session and rate limiting. |
+| **WHOIS Server** | Standard port 43 WHOIS. |
+| **Temporal Workflows** | Durable, automated lifecycle management — expiry, purge, restore, registrar sync, escrow import, FX updates. |
+| **Admin Dashboard** | Next.js web UI for registry operators, TLDs, registrars, domains, and escrow imports. |
+| **CLI Tools** | Command-line utilities for EPP testing, escrow operations, data import, lifecycle management, and more. |
+| **Multi-TLD Support** | Registry operators, TLD phases, pricing engines with premium labels and FX conversion. |
 
-```bash
-# Install dependencies
-cd frontend && npm install
+---
 
-# Start development server
-npm run dev
-# or from root: make dev-frontend
+## The big idea: Workflows & Activities
 
-# Access at http://localhost:3000
+The most important architectural decision in domain-os is how it handles **processes that span time**. Domain expiry, escrow imports, registrar synchronization — these aren't simple request/response operations. They're multi-step processes that can take minutes or hours, need to survive restarts, and must handle partial failures gracefully.
+
+We use [Temporal](https://temporal.io) to make this work. If you're not familiar with it, here's the short version:
+
+- A **Workflow** is the orchestration logic — it defines *what* steps to execute and in *what order*
+- An **Activity** is a single unit of work — it talks to the database, calls an API, writes a file
+- Temporal guarantees that if a workflow is interrupted (server crash, deploy, network issue), it **picks up exactly where it left off**
+
+This means we write business logic as straightforward Go code, and Temporal handles retries, timeouts, and crash recovery.
+
+### How it looks in practice
+
+Take the **Expiry Loop** — the workflow that handles expired domains:
+
+```
+ExpiryLoop (runs hourly via Temporal Schedule)
+│
+├─ GetExpiredDomainCount     → Any domains past their expiry date?
+├─ ListExpiringDomains       → Get the list
+│
+└─ For each domain:
+   ├─ CheckDomainCanAutoRenew → Is auto-renew enabled and billable?
+   │
+   ├─ YES → AutoRenewDomain   → Extend registration, bill registrar
+   └─ NO  → ExpireDomain      → Set status to expired, begin grace period
 ```
 
-**Features:**
-- Registry Operator CRUD operations
-- Dashboard with statistics
-- Modern UI with Tailwind CSS and shadcn/ui components
-- Type-safe API client with React Query
+Each box is an **Activity** — a single Go function that does one thing. The **Workflow** is just the control flow. If `AutoRenewDomain` fails for one domain, Temporal retries it automatically. If the whole server goes down mid-loop, Temporal resumes from the exact domain it was processing.
+
+### All workflows at a glance
+
+| Workflow | What it does | When it runs |
+|---|---|---|
+| **ExpiryLoop** | Scans for expired domains, auto-renews or expires them | Hourly (scheduled) |
+| **PurgeLoop** | Removes domains past their redemption grace period | Periodic (scheduled) |
+| **RestoreWorkflow** | Processes domains pending restore — clears status, force-renews | Periodic (scheduled) |
+| **SyncRegistrarsWorkflow** | Syncs local registrars with IANA/ICANN registry data, creates new ones, updates status | Periodic (scheduled) |
+| **UpdateFX** | Refreshes exchange rates for USD, EUR, GBP, PEN, RUB, CAD, AUD | Periodic (scheduled) |
+| **EscrowStagingWorkflow** | Multi-step escrow import: validate → parse → collate → map registrars → stage | On demand (via API) |
+| **EscrowIngestionWorkflow** | Bulk-ingests staged escrow data: contacts → hosts → domains → NNDNs → link hosts → accredit registrars | Triggered by staging (child workflow) |
+| **TLDCleanupWorkflow** | Safely removes all assets for a TLD. Plans the cleanup, waits for human confirmation signal, backs up to S3, then deletes. | On demand (via API) |
+
+### Activities — the building blocks
+
+There are **65+ activity implementations** across the codebase. Each is a focused function: `AutoRenewDomain`, `PurgeDomain`, `IngestContacts`, `BackupTLDAssets`, `ValidateInput`, `UpdateFX`, etc.
+
+Activities are grouped by concern:
+
+| Group | Activities | Examples |
+|---|---|---|
+| **Domain Lifecycle** | ~15 | `AutoRenewDomain`, `ExpireDomain`, `PurgeDomain`, `RenewDomain`, `SetDomainStatus` |
+| **Escrow Import** | ~10 | `ValidateInput`, `ParseAndAssetize`, `CollateAssets`, `RegistrarMap`, `StageImport`, `IngestDomains`, `IngestContacts` |
+| **Registrar Sync** | ~8 | `SyncIanaRegistrars`, `GetICANNRegistrars`, `DiffAndPlanRegistrars`, `CreateRegistrar`, `SetRegistrarStatus` |
+| **TLD Cleanup** | ~5 | `CheckTLDCanBeDeleted`, `PlanTLDCleanup`, `BackupTLDAssets`, `DeleteTLDAssets` |
+| **FX** | 1 | `UpdateFX` |
+
+### Temporal Schedules
+
+Recurring workflows are managed as Temporal Schedules — not cron jobs, not timers in application code. The Temporal UI provides full visibility into schedule history, next run times, and execution logs.
 
 ---
 
-## Development Workflow
+## Architecture
 
-### Common Tasks
+domain-os follows a **Hexagonal (Ports & Adapters)** architecture with **Domain-Driven Design**:
 
-**Start everything for development:**
+```
+pkg/domain/
+├── entities/           120+ domain entities — pure Go, zero dependencies
+└── repositories/       22 repository interfaces — the contracts
+
+internal/
+├── application/        Use-case orchestration
+│   ├── workflows/      Temporal workflow definitions
+│   ├── activities/     Temporal activity implementations
+│   ├── schedules/      Temporal scheduled workflows
+│   └── services/       Business logic services
+├── infrastructure/     Adapters (Postgres, Redis, Temporal, S3, Auth0)
+└── interface/          Entry points (REST API, CLI, EPP)
+```
+
+**The key rule**: the domain layer has no imports of database drivers, HTTP frameworks, or external services. Business logic is decoupled from infrastructure. You can swap Postgres for something else without touching a single entity.
+
+For the full architecture document, see [architecture.md](architecture.md).
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| **Language** | Go |
+| **API Framework** | Gin |
+| **Database** | PostgreSQL (via GORM) |
+| **Workflow Engine** | Temporal |
+| **Cache** | Redis |
+| **Object Storage** | MinIO (S3-compatible) |
+| **EPP Protocol** | Custom TLS server on port 700 |
+| **Frontend** | Next.js 15, React 19, TypeScript, Tailwind CSS, Radix UI |
+| **Auth** | Auth0 |
+| **Observability** | Prometheus, Grafana, Temporal UI, Metabase |
+| **Secrets** | Doppler (or .env) |
+| **CI** | GitHub Actions |
+
+Full stack details in [stack.md](stack.md).
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- Docker Desktop
+- Go 1.21+ (for local development)
+- Node.js 18+ (for frontend development)
+- [Doppler CLI](https://docs.doppler.com/docs/install-cli) for secrets (or use a `.env` file)
+
+### Quick start with pre-built images
+
 ```bash
+BRANCH=latest docker compose --profile essential up
+```
+
+This starts: PostgreSQL, Redis, Admin API, EPP Server, Temporal (server + UI), Unified Worker, MinIO, and Metabase.
+
+### Development setup
+
+```bash
+# Copy the example env file
+cp example.env .env
+
 # Terminal 1: Start backend services
 make dev
 
-# Terminal 2: Start frontend
+# Terminal 2: Start the frontend
 make dev-frontend
 ```
 
-**Run tests before committing:**
+### Useful commands
+
 ```bash
-make test
-make test-integration
+make help              # See all available commands
+make test              # Unit tests
+make test-integration  # Integration tests (requires running services)
+make dev-logs          # Tail service logs
+make stop              # Stop everything
+make clean             # Remove containers and volumes
+make shell-db          # PostgreSQL shell
 ```
 
-**Build and test locally:**
-```bash
-make build
-make dev-build  # Rebuild and restart services
-```
+### Using the API
 
-### Project Structure
+1. Open **http://localhost:8080/swagger/index.html** for interactive API docs
+2. Grab the Postman collection from the Swagger UI
+3. Set `baseUrl` and `token` environment variables in Postman
+4. Start creating resources:
+   - Registry Operator → TLD → Phase → Registrars → Domains
 
-```
-domain-os/
-├── cmd/              # Application entry points
-│   ├── api/         # API servers (admin, whois)
-│   ├── cli/         # CLI tools
-│   ├── epp/         # EPP server
-│   └── workers/     # Background workers
-├── internal/        # Internal packages
-│   ├── application/ # Application layer (services, commands, queries)
-│   ├── domain/      # Domain layer (entities, repositories)
-│   ├── infrastructure/ # Infrastructure layer (db, messaging)
-│   └── interface/   # Interface layer (REST controllers)
-├── frontend/        # Next.js admin dashboard
-├── deploy/          # Deployment configurations
-├── docs/            # Documentation
-└── test/            # Integration and E2E tests
-```
+---
 
-### Environment Variables
+## Services
 
-The project uses [Doppler](https://www.doppler.com/) for secrets management. For local development without Doppler, create a `.env` file based on `example.env`.
+| Service | Port | Docker Image |
+|---|---|---|
+| Admin API | 8080 | `geapex/domain-os` |
+| EPP Server | 700 | `geapex/epp-server` |
+| WHOIS / EPP Client API | 8081 | `geapex/epp-client-api` |
+| Unified Temporal Worker | — | `geapex/unified-worker` |
+| Frontend Dashboard | 3000 | (dev server) |
 
 ---
 
 ## Testing
 
-The project includes comprehensive testing at multiple levels:
+The project has tests at multiple levels:
 
-- **Unit Tests**: `make test` - Fast, isolated tests with mocked dependencies
-- **Integration Tests**: `make test-integration` - Tests with real database and services
-- **Coverage Reports**: `make test-coverage` - Generate HTML coverage reports
-- **EPP Tests**: `make test-epp` - EPP-specific functionality tests
-
----
-
-## Building and Deployment
-
-### Docker Images
-
-The project builds several Docker images:
-
-- `geapex/domain-os` - Main admin API
-- `geapex/epp-server` - EPP server
-- `geapex/epp-client-api` - WHOIS/EPP client API
-
-**Build locally:**
-```bash
-make build-all
-```
-
-**Build and push to registry:**
-```bash
-make push-all
-```
-
-### CI/CD
-
-Integration tests run automatically in CI using `docker-compose-ci.yml`. The Makefile provides `test-integration` target that replicates this locally.
+- **Unit tests** — `make test` — fast, isolated, mocked dependencies
+- **Integration tests** — `make test-integration` — real database and services
+- **EPP tests** — `make test-epp` — EPP protocol-specific tests
+- **Coverage** — `make test-coverage` — generates HTML coverage report
 
 ---
 
-## Troubleshooting
+## Project structure
 
-**Port conflicts:**
-```bash
-# Check what's using ports
-lsof -ti:8080  # Admin API
-lsof -ti:3000  # Frontend
-lsof -ti:5432  # PostgreSQL
-
-# Kill processes if needed
-make stop
+```
+domain-os/
+├── cmd/                    Application entry points
+│   ├── api/ry-admin/       Admin REST API
+│   ├── api/epp-client/     WHOIS / EPP client API
+│   ├── epp/                EPP server
+│   ├── whois/              WHOIS server
+│   ├── workers/unified/    Temporal worker (all workflows)
+│   └── cli/                CLI tools
+├── pkg/domain/             Domain entities & repository interfaces
+├── internal/
+│   ├── application/        Workflows, activities, services
+│   ├── infrastructure/     Database, Temporal, S3, auth adapters
+│   └── interface/          REST controllers, CLI handlers
+├── frontend/               Next.js admin dashboard
+├── docs/                   Extended documentation
+└── deploy/                 Deployment configs
 ```
 
-**Database issues:**
-```bash
-# Reset database
-make db-reset
+---
 
-# Access database shell
-make shell-db
-```
+## Documentation
 
-**Container issues:**
-```bash
-# Clean everything and start fresh
-make clean
-make dev
-```
+Extended documentation lives in [`/docs`](docs/):
 
-**View logs:**
-```bash
-# All services
-make dev-logs
-
-# Specific service
-make logs-api
-make logs-epp
-make logs-db
-```
+- [Architecture](architecture.md) — hexagonal design, layer responsibilities
+- [Tech Stack](stack.md) — full technology inventory
+- [Temporal Integration](docs/temporal-integration.md) — workflow patterns and setup
+- [EPP Architecture](docs/epp-production-architecture.md) — EPP server design
+- [Escrow Import Walkthrough](docs/escrow-import-walkthrough.md) — step-by-step import guide
+- [Domain Status Overview](docs/domain-status-overview.md) — status model reference
+- [API Integration Testing](docs/api-integration-testing-guide.md) — testing against the real API
 
 ---
 
@@ -345,8 +267,10 @@ make logs-db
 4. Format code: `make fmt`
 5. Submit a pull request
 
+> **Rule**: PRs without tests will be rejected. See [architecture.md](architecture.md) for the full testing strategy.
+
 ---
 
 ## License
 
-See LICENSE file for details.
+See [LICENSE](LICENSE) for details.
