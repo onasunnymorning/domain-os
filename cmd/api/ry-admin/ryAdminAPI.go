@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
-	"github.com/onasunnymorning/domain-os/internal/agent/service"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -249,16 +248,7 @@ func main() {
 	// Dnssec
 	dnssecService := services.NewDnssecService()
 
-	// Agent Service (AI Assistant)
-	var agentService *service.AgentService
-	if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
-		// Use localhost for internal API calls since agent runs in the same container
-		adminAPIURL := fmt.Sprintf("http://localhost:%s", os.Getenv("API_PORT"))
-		agentService = service.NewAgentService(openaiKey, adminAPIURL, os.Getenv("ADMIN_TOKEN"), logger)
-		logger.Info("Agent service initialized", zap.String("admin_api_url", adminAPIURL))
-	} else {
-		logger.Warn("OPENAI_API_KEY not set - agent service disabled")
-	}
+
 
 	// Create Gin Engine/Router
 	// r := gin.Default()
@@ -327,12 +317,6 @@ func main() {
 	// Escrow
 	rest.NewEscrowController(r, authMiddleware)
 
-	// Agent Controller (AI Assistant)
-	if agentService != nil {
-		agentController := rest.NewAgentController(agentService, logger)
-		agentController.RegisterRoutes(r.Group("/api/v1", authMiddleware))
-		logger.Info("Agent routes registered at /api/v1/agent")
-	}
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
