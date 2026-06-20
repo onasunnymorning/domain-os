@@ -1,7 +1,7 @@
 # Makefile for Domain OS
 # Consolidated commands for development, testing, and deployment
 
-.PHONY: help clean-docker local
+.PHONY: help clean-docker local askg test-askg test-askg-eval
 
 # Default target
 .DEFAULT_GOAL := help
@@ -45,6 +45,9 @@ dev-frontend: ## Start the Next.js frontend development server
 local: ## Start local development with Tilt (includes all services + live rebuild)
 	@echo "Starting Tilt local development environment..."
 	@$(DOPPLER) tilt up
+
+askg: ## Run Ask G support agent (usage: make askg Q="What is the status of example.best?")
+	@$(DOPPLER) sh -c 'DB_HOST=localhost go run ./cmd/askg "$(Q)"'
 
 stop: ## Stop all running services
 	@echo "Stopping all services..."
@@ -187,17 +190,13 @@ test-epp: ## Run EPP-specific tests
 	@go test ./cmd/epp/... -v -race -short
 	@go test ./cmd/cli/epp/... -v -race -short
 
-test-agent: ## Run agent navigation tests
-	@echo "Running agent navigation tests..."
-	@go test ./internal/agent/service/... -v -run TestAddNavigationActions
-	@go test ./internal/agent/service/... -v -run TestNavigationActionStruct
-	@go test ./internal/agent/service/... -v -run TestChatResponse
+test-askg: ## Run Ask G orchestrator tests
+	@echo "Running Ask G tests..."
+	@go test ./internal/askg/... -v -count=1
 
-test-agent-coverage: ## Run agent tests with coverage report
-	@echo "Running agent navigation tests with coverage..."
-	@go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
-	@go tool cover -html=agent-coverage.out -o agent-coverage.html
-	@echo "Agent coverage report generated: agent-coverage.html"
+test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY via Doppler)
+	@echo "Running Ask G evals (live model)..."
+	@$(DOPPLER) go test ./internal/askg/eval/... -tags eval -v -count=1 -timeout 600s -run TestEvalSuite_AllCategories
 
 ###################
 # Local CI (mirrors GitHub Actions)
