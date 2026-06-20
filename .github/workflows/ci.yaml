@@ -63,6 +63,9 @@ jobs:
           .github/scripts/setup-test-db.sh testdb
 
       - name: Go Vulnerability Check
+        # TODO: remove continue-on-error once govulncheck ships an x/tools
+        # version that doesn't panic on Go 1.26 type params (ForEachElement).
+        continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
@@ -76,6 +79,12 @@ jobs:
       - name: Coverage Summary
         if: always()
         run: |
+          if [ ! -f coverage.out ]; then
+            echo "## 🧪 Unit Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No coverage report — tests may have failed before generating output." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $NF}')
           echo "## 🧪 Unit Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
