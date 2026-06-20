@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.4-alpine AS build
 
 WORKDIR /
 
@@ -58,8 +58,9 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdmin
 # Create API release image
 FROM alpine:3.21.3 AS admin-api
 
-# Install dnsviz and dependencies
-RUN apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography && \
+## Install security patches and dnsviz dependencies
+RUN apk upgrade --no-cache && \
+    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography && \
     pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image
