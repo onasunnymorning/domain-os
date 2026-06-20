@@ -62,26 +62,30 @@ jobs:
           chmod +x .github/scripts/setup-test-db.sh
           .github/scripts/setup-test-db.sh testdb
 
+      - name: Go Vulnerability Check
+        # govulncheck v1.4.0 (latest) panics on Go 1.26 due to an x/tools
+        # bug in ForEachElement with *types.TypeParam. Non-blocking until
+        # upstream ships a fix. Trivy image scan provides backup coverage.
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
       - name: Run All Tests
         run: |
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out | tail -1
 
-      - name: Run Agent Navigation Tests
-        run: |
-          echo "Running agent navigation feature tests..."
-          go test ./internal/agent/service/... -v -run TestAddNavigationActions
-          go test ./internal/agent/service/... -v -run TestNavigationActionStruct
-          go test ./internal/agent/service/... -v -run TestChatResponse
-
-      - name: Generate Agent Coverage Report
-        run: |
-          go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
-          go tool cover -func=agent-coverage.out
 
       - name: Coverage Summary
         if: always()
         run: |
+          if [ ! -f coverage.out ]; then
+            echo "## 🧪 Unit Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No coverage report — tests may have failed before generating output." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $NF}')
           echo "## 🧪 Unit Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -100,7 +104,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -124,6 +128,11 @@ jobs:
         run: |
           cd frontend
           npm run test:coverage
+
+      - name: npm audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high
 
   build-images:
     name: Build ${{ matrix.image.name }}
@@ -175,6 +184,23 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 
+  security-scan:
+    name: Trivy Image Scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    strategy:
+      matrix:
+        image:
+          - domain-os
+          - unified-worker
+    steps:
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: geapex/${{ matrix.image }}:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
 
 
   api-tests:

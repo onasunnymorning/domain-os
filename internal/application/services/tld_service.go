@@ -57,7 +57,7 @@ func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCom
 // GetTLDByName gets a TLD by name
 func (svc *TLDService) GetTLDByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	// domain names are case insensitive and we always store them as lowercase
-	return svc.tldRepository.GetByName(ctx, strings.ToLower(name), false)
+	return svc.tldRepository.GetByName(ctx, strings.ToLower(name), preloadAll)
 }
 
 // ListTLDs lists all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
