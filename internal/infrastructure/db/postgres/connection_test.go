@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"testing"
 
 	"gorm.io/driver/postgres"
@@ -25,9 +26,8 @@ func setupTestDB() *gorm.DB {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPortString, dbName, sslmode)
 	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
-		errMsg := err.Error()
 		// If the database does not exist, create it and retry
-		if errMsg == fmt.Sprintf("failed to connect to `host=%s user=%s database=%s`: server error (FATAL: database \"%s\" does not exist (SQLSTATE 3D000))", dbHost, dbUser, dbName, dbName) {
+		if strings.Contains(err.Error(), "3D000") {
 			log.Println("Database does not exist. Creating...")
 			createTestDB()
 			gormDB, err := gorm.Open(postgres.Open(dsn))
@@ -36,10 +36,9 @@ func setupTestDB() *gorm.DB {
 			}
 			log.Printf("Connected to Database %s", dbName)
 			return gormDB
-		} else {
-			// Otherwise, log the error and exit
-			log.Fatal(err)
 		}
+		// Otherwise, log the error and exit
+		log.Fatal(err)
 	}
 	log.Printf("Connected to Database %s", dbName)
 	return gormDB

@@ -202,7 +202,7 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 # Local CI (mirrors GitHub Actions)
 ###################
 
-ci-local: ci-lint ci-test-backend ci-test-frontend test-api ## Run the full CI pipeline locally (lint + test + frontend + API integration)
+ci-local: ci-lint ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + test + frontend + security + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
 
@@ -229,6 +229,16 @@ ci-test-frontend: ## Run frontend tests matching CI
 	@echo "⚛️  Running frontend tests with coverage..."
 	@cd frontend && npm ci --prefer-offline && npm run test:coverage
 	@echo "✅ Frontend tests passed!"
+
+ci-security: ## Run security scans (govulncheck + npm audit + Trivy)
+	@echo "🔒 Running Go vulnerability check..."
+	@govulncheck ./...
+	@echo "🔒 Running npm audit..."
+	@cd frontend && npm audit --audit-level=high
+	@echo "🔒 Running Trivy image scan..."
+	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/domain-os:latest
+	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/unified-worker:latest
+	@echo "✅ Security scans passed!"
 
 ###################
 # Build & Deploy

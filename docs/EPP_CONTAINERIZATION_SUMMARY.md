@@ -358,7 +358,7 @@ The containerized EPP server uses these environment variables:
 ⏳ Certificate-based authentication
 ⏳ Secret management (for production)
 ⏳ Resource limits (memory/CPU)
-⏳ Security scanning (Trivy/Snyk)
+⏳ Security scanning (Trivy, govulncheck, npm audit)
 
 ## References
 
