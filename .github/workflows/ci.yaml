@@ -67,17 +67,6 @@ jobs:
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out | tail -1
 
-      - name: Run Agent Navigation Tests
-        run: |
-          echo "Running agent navigation feature tests..."
-          go test ./internal/agent/service/... -v -run TestAddNavigationActions
-          go test ./internal/agent/service/... -v -run TestNavigationActionStruct
-          go test ./internal/agent/service/... -v -run TestChatResponse
-
-      - name: Generate Agent Coverage Report
-        run: |
-          go test ./internal/agent/service/... -coverprofile=agent-coverage.out -covermode=atomic
-          go tool cover -func=agent-coverage.out
 
       - name: Coverage Summary
         if: always()
