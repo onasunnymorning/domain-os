@@ -101,3 +101,25 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 
 	return gormDB, nil
 }
+
+// NewConnectionFromURL opens a GORM connection using a single database URL
+// (e.g. postgres://user:pass@host:5432/dbname?sslmode=require).
+// This is useful for managed database providers like Neon that provide a
+// single connection string.
+func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error) {
+	gormDB, err := gorm.Open(postgres.Open(databaseURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	if autoMigrate {
+		log.Println("Auto migrating database")
+		if err = AutoMigrate(gormDB); err != nil {
+			return gormDB, fmt.Errorf("failed to migrate database: %w", err)
+		}
+	} else {
+		log.Println("Skipping auto migration")
+	}
+
+	return gormDB, nil
+}
