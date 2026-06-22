@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   // Ensure Next/Turbopack uses this folder as the project root
   // This avoids the multiple lockfiles mis-detection when running from a monorepo
   // See warning: "Next.js inferred your workspace root, but it may not be correct."

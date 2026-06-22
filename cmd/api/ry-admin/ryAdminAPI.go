@@ -16,6 +16,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"os"
 
@@ -152,18 +153,26 @@ func main() {
 	// Initialize variables for the Swagger API documentation
 	setSwaggerInfo(cfg)
 
-	// Set up the GORM DB connection
-	gormDB, err := postgres.NewConnection(
-		postgres.Config{
-			User:        os.Getenv("DB_USER"),
-			Pass:        os.Getenv("DB_PASS"),
-			Host:        os.Getenv("DB_HOST"),
-			Port:        os.Getenv("DB_PORT"),
-			DBName:      os.Getenv("DB_NAME"),
-			SSLmode:     os.Getenv("DB_SSLMODE"),
-			AutoMigrate: cfg.AutoMigrate,
-		},
-	)
+	// Set up the GORM DB connection.
+	// Prefer DATABASE_URL (single connection string, e.g. from Neon) over individual vars.
+	var gormDB *gorm.DB
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		logger.Info("Connecting to database using DATABASE_URL")
+		gormDB, err = postgres.NewConnectionFromURL(dbURL, cfg.AutoMigrate)
+	} else {
+		logger.Info("Connecting to database using individual DB_* env vars")
+		gormDB, err = postgres.NewConnection(
+			postgres.Config{
+				User:        os.Getenv("DB_USER"),
+				Pass:        os.Getenv("DB_PASS"),
+				Host:        os.Getenv("DB_HOST"),
+				Port:        os.Getenv("DB_PORT"),
+				DBName:      os.Getenv("DB_NAME"),
+				SSLmode:     os.Getenv("DB_SSLMODE"),
+				AutoMigrate: cfg.AutoMigrate,
+			},
+		)
+	}
 	if err != nil {
 		logger.Panic("Failed to connect to the database", zap.Error(err))
 	}
@@ -263,19 +272,20 @@ func main() {
 	// Use ginzap recovery middleware to catch panics and log with Zap
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 
-	// Configure CORS middleware
-	config := cors.Config{
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3002"}, // Add your frontend URLs here
-		AllowOriginFunc: func(origin string) bool {
-			return true // Allow all origins for local development
-		},
+	// Configure CORS middleware from CORS_ALLOWED_ORIGINS env var (comma-separated).
+	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000"
+	}
+	corsConfig := cors.Config{
+		AllowOrigins:     strings.Split(allowedOrigins, ","),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}
-	r.Use(cors.New(config))
+	r.Use(cors.New(corsConfig))
 
 	// Attach context propagation middleware
 	r.Use(rest.ContextMiddleware())
