@@ -28,8 +28,9 @@ ENV NEXT_PUBLIC_AUTH0_CLIENT_ID=$NEXT_PUBLIC_AUTH0_CLIENT_ID
 ENV NEXT_PUBLIC_AUTH0_AUDIENCE=$NEXT_PUBLIC_AUTH0_AUDIENCE
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 
-# next build (standalone output set in next.config.ts)
-RUN npm run build
+# Build without --turbopack (unsupported in production for Next.js 15.5.x)
+ENV __NEXT_CONTINUE_EXPERIMENTAL=1
+RUN npx next build
 
 # --- Stage 3: Production runner ---
 FROM node:18-alpine AS runner
