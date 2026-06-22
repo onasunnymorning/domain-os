@@ -1,0 +1,71 @@
+# Render Blueprint — AlpacaNames TEST environment
+# https://docs.render.com/blueprint-spec
+#
+# Usage:
+#   1. Push this file to the repo
+#   2. In Render dashboard → Blueprints → New Blueprint Instance
+#   3. Connect this repo, Render will read this file
+#   4. Set the secrets (DATABASE_URL, ADMIN_TOKEN) in the Render dashboard
+#
+# Region: Oregon (us-west-2) — match your Neon project region.
+
+services:
+  # ── Go API ──────────────────────────────────────────────
+  - type: web
+    name: alp-api-test
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    healthCheckPath: /ping
+    envVars:
+      # Database — set manually from Neon connection string
+      - key: DATABASE_URL
+        sync: false
+      # API server
+      - key: API_PORT
+        value: "8080"
+      - key: API_HOST
+        value: "0.0.0.0"
+      - key: API_NAME
+        value: "AlpacaNames TEST API"
+      - key: API_VERSION
+        value: "0.1.0-test"
+      - key: GIN_MODE
+        value: "release"
+      # DB migration on startup
+      - key: AUTO_MIGRATE
+        value: "true"
+      # CORS — must match the frontend URL
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://alp-ui-test.onrender.com"
+      # Auth — disabled for initial TEST
+      - key: AUTH0_ENABLED
+        value: "false"
+      - key: ADMIN_TOKEN
+        sync: false
+      # Observability — disabled for TEST
+      - key: NEW_RELIC_ENABLED
+        value: "false"
+      - key: PROMETHEUS_ENABLED
+        value: "false"
+
+  # ── Next.js Frontend ────────────────────────────────────
+  - type: web
+    name: alp-ui-test
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    region: oregon
+    plan: starter
+    envVars:
+      # API URL — baked at build time (NEXT_PUBLIC_* are inlined by Next.js)
+      - key: NEXT_PUBLIC_API_URL
+        value: "https://alp-api-test.onrender.com"
+      # Auth — disabled for initial TEST
+      - key: NEXT_PUBLIC_AUTH0_ENABLED
+        value: "false"
+      # Version
+      - key: NEXT_PUBLIC_APP_VERSION
+        value: "0.1.0-test"
