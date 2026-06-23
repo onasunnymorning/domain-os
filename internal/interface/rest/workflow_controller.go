@@ -65,6 +65,9 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		APIKey:      os.Getenv("TMPIO_API_KEY"),
 		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
 	}
+	if cfg.WorkerQueue == "" {
+		cfg.WorkerQueue = "domain-lifecycle"
+	}
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {

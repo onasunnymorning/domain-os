@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Menu, Search, ExternalLink, Clock, Database } from 'lucide-react';
+import { Menu, Search, ExternalLink, Activity, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { UserMenu } from '@/components/auth/user-menu';
@@ -73,7 +73,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Temporal UI"
               >
-                <Clock className="h-3.5 w-3.5" />
+                <Activity className="h-3.5 w-3.5" />
                 <span className="hidden lg:inline">Temporal</span>
                 <ExternalLink className="h-3 w-3 opacity-50" />
               </a>

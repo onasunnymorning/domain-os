@@ -57,6 +57,8 @@ services:
         value: "alp-test.fclnj"
       - key: TMPIO_API_KEY
         sync: false
+      - key: TMPIO_QUEUE
+        value: "domain-lifecycle"
 
   # ── Next.js Frontend ────────────────────────────────────
   - type: web
