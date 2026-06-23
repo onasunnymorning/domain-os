@@ -1,7 +1,9 @@
 # Get the current branch
 branch = str(local('git branch --show-current', quiet=True)).strip()
+# Sanitize branch name for use as a Docker image tag (replace '/' with '-')
+tag = branch.replace('/', '-')
 # Write the env var to a temporary .env.tilt file for docker-compose to read
-local('echo "BRANCH=' + branch + '" > .env.tilt')
+local('echo "BRANCH=' + tag + '" > .env.tilt')
 
 # Clean up dangling images and containers
 docker_prune_settings(disable=False, max_age_mins=360, num_builds=0, interval_hrs=1, keep_recent=2)
@@ -10,10 +12,10 @@ docker_prune_settings(disable=False, max_age_mins=360, num_builds=0, interval_hr
 docker_compose("./docker-compose.yml", profiles=['full'], env_file='.env.tilt')
 
 # Explicitly build local Docker images that docker-compose lacks local builds for
-docker_build('geapex/domain-os:' + branch, '.', dockerfile='Dockerfile')
-docker_build('geapex/whois:' + branch, '.', dockerfile='./cmd/whois/Dockerfile')
-docker_build('geapex/epp-server:' + branch, '.', dockerfile='Dockerfile.epp')
-docker_build('geapex/unified-worker:' + branch, '.', dockerfile='./cmd/workers/unified/Dockerfile')
+docker_build('geapex/domain-os:' + tag, '.', dockerfile='Dockerfile')
+docker_build('geapex/whois:' + tag, '.', dockerfile='./cmd/whois/Dockerfile')
+docker_build('geapex/epp-server:' + tag, '.', dockerfile='Dockerfile.epp')
+docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
 
 # Group database and cache resources
 dc_resource('db', labels=["infrastructure"])
