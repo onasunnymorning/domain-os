@@ -85,9 +85,16 @@ services:
       # API connection
       - key: API_URL
         value: "https://alp-api-test.onrender.com"
+      # Auth0 M2M (worker → API)
       - key: AUTH0_ENABLED
-        value: "false"
-      - key: ADMIN_TOKEN
+        value: "true"
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_AUDIENCE
+        sync: false
+      - key: AUTH0_WORKER_CLIENT_ID
+        sync: false
+      - key: AUTH0_WORKER_CLIENT_SECRET
         sync: false
       # Temporal Cloud
       - key: TMPIO_HOST_PORT
