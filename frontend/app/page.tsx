@@ -189,7 +189,7 @@ export default function Home() {
       icon: BarChart,
       description: 'Grafana dashboards',
     },
-  ];
+  ].filter((r) => r.href);
 
   return (
     <DashboardLayout>
@@ -353,34 +353,36 @@ export default function Home() {
         {/* ---------------------------------------------------------------- */}
         {/* Resources                                                         */}
         {/* ---------------------------------------------------------------- */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Resources</CardTitle>
-            <CardDescription>External tools &amp; services</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {resources.map((res) => (
-                <a
-                  key={res.name}
-                  href={res.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 transition-colors hover:bg-accent"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <res.icon className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium leading-tight">{res.name}</p>
-                    <p className="text-xs text-muted-foreground">{res.description}</p>
-                  </div>
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                </a>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {resources.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Resources</CardTitle>
+              <CardDescription>External tools &amp; services</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {resources.map((res) => (
+                  <a
+                    key={res.name}
+                    href={res.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <res.icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-tight">{res.name}</p>
+                      <p className="text-xs text-muted-foreground">{res.description}</p>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </a>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardLayout>
   );

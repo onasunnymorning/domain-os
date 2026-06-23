@@ -72,6 +72,11 @@ services:
       # API auth token — baked at build time into client JS
       - key: NEXT_PUBLIC_API_TOKEN
         sync: false
+      # External tool URLs — baked at build time
+      - key: NEXT_PUBLIC_TEMPORAL_UI_URL
+        value: "https://cloud.temporal.io/namespaces/alp-test.fclnj/workflows"
+      - key: NEXT_PUBLIC_GRAFANA_URL
+        value: ""
 
   # ── Unified Worker (Temporal) ──────────────────────────
   - type: worker
