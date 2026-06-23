@@ -69,3 +69,6 @@ services:
       # Version
       - key: NEXT_PUBLIC_APP_VERSION
         value: "0.1.0-test"
+      # API auth token — baked at build time into client JS
+      - key: NEXT_PUBLIC_API_TOKEN
+        sync: false
