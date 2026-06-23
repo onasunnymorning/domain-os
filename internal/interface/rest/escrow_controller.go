@@ -198,6 +198,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
 		WorkerQueue: getEscrowQueue(),
 	}
 
@@ -259,6 +260,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
 		WorkerQueue: getEscrowQueue(),
 	}
 

@@ -57,6 +57,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
 		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
 	}
 
