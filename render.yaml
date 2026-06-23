@@ -50,6 +50,13 @@ services:
         value: "false"
       - key: PROMETHEUS_ENABLED
         value: "false"
+      # Temporal Cloud (for starting workflows)
+      - key: TMPIO_HOST_PORT
+        sync: false
+      - key: TMPIO_NAME_SPACE
+        value: "alp-test.fclnj"
+      - key: TMPIO_API_KEY
+        sync: false
 
   # ── Next.js Frontend ────────────────────────────────────
   - type: web
