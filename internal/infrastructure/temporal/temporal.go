@@ -23,6 +23,9 @@ func GetTemporalClient(cfg TemporalClientconfig) (client.Client, error) {
 			HostPort:    cfg.HostPort,
 			Namespace:   cfg.Namespace,
 			Credentials: client.NewAPIKeyStaticCredentials(cfg.APIKey),
+			ConnectionOptions: client.ConnectionOptions{
+				TLS: &tls.Config{},
+			},
 		})
 	}
 
