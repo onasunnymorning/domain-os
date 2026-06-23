@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { UserMenu } from '@/components/auth/user-menu';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
+import { TEMPORAL_UI_URL, STORAGE_UI_URL } from '@/lib/constants/external-urls';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -66,7 +67,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             {/* External tool links */}
             <div className="hidden items-center gap-1 sm:flex">
               <a
-                href="http://localhost:8081"
+                href={TEMPORAL_UI_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -77,7 +78,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <ExternalLink className="h-3 w-3 opacity-50" />
               </a>
               <a
-                href="http://localhost:9001"
+                href={STORAGE_UI_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

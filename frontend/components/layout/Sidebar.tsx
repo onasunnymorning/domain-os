@@ -15,6 +15,7 @@ import {
   ServerOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GRAFANA_URL } from '@/lib/constants/external-urls';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
@@ -24,7 +25,7 @@ const navigation = [
   { name: 'Domains', href: '/domains', icon: Server },
   { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Escrow Imports', href: '/escrow', icon: Archive },
-  { name: 'Analytics', href: 'http://localhost:3001', icon: BarChart, target: '_blank' },
+  { name: 'Analytics', href: GRAFANA_URL, icon: BarChart, target: '_blank' },
 ];
 
 interface SidebarProps {

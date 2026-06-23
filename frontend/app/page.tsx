@@ -33,6 +33,7 @@ import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useContactCount } from '@/lib/hooks/useContacts';
 import { useHostCount } from '@/lib/hooks/useHosts';
 import { format } from 'date-fns';
+import { TEMPORAL_UI_URL, STORAGE_UI_URL, GRAFANA_URL } from '@/lib/constants/external-urls';
 import {
   PieChart,
   Pie,
@@ -172,19 +173,19 @@ export default function Home() {
   const resources = [
     {
       name: 'Temporal UI',
-      href: 'http://localhost:8081',
+      href: TEMPORAL_UI_URL,
       icon: Clock,
       description: 'Workflow orchestration',
     },
     {
       name: 'Object Storage',
-      href: 'http://localhost:9001',
+      href: STORAGE_UI_URL,
       icon: Database,
       description: 'MinIO console',
     },
     {
       name: 'Analytics',
-      href: 'http://localhost:3001',
+      href: GRAFANA_URL,
       icon: BarChart,
       description: 'Grafana dashboards',
     },
