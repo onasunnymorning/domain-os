@@ -21,7 +21,7 @@ import {
   Plus,
   ArrowRight,
   ExternalLink,
-  Clock,
+  Activity,
   Database,
   BarChart,
 } from 'lucide-react';
@@ -174,7 +174,7 @@ export default function Home() {
     {
       name: 'Temporal UI',
       href: TEMPORAL_UI_URL,
-      icon: Clock,
+      icon: Activity,
       description: 'Workflow orchestration',
     },
     {
