@@ -105,7 +105,7 @@ services:
       - key: TMPIO_HOST_PORT
         sync: false
       - key: TMPIO_NAME_SPACE
-        value: "alp-test"
+        value: "alp-test.fclnj"
       - key: TMPIO_API_KEY
         sync: false
       # Direct DB (Neon)
