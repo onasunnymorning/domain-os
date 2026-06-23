@@ -14,7 +14,10 @@ var (
 )
 
 func init() {
-	BASEURL = fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
+	BASEURL = os.Getenv("API_URL")
+	if BASEURL == "" {
+		BASEURL = fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
+	}
 
 	// Initialize Token Manager for system authentication
 	// We prioritize separate worker credentials if available, otherwise fall back to generic ones (or fail in strict mode)
