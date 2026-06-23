@@ -23,6 +23,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
+	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
 
@@ -1173,16 +1174,22 @@ func (a *EscrowImportActivities) FinalizeAndQA(ctx context.Context, args Finaliz
 	}
 
 	// Derive Postgres counts for this TLD (and a couple of global-ish numbers)
-	pgCfg := pg.Config{
-		User:        os.Getenv("DB_USER"),
-		Pass:        os.Getenv("DB_PASS"),
-		Host:        os.Getenv("DB_HOST"),
-		Port:        os.Getenv("DB_PORT"),
-		DBName:      os.Getenv("DB_NAME"),
-		SSLmode:     defaultStr(os.Getenv("DB_SSLMODE"), "disable"),
-		AutoMigrate: false,
+	var gdb *gorm.DB
+	var err error
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		gdb, err = pg.NewConnectionFromURL(dbURL, false)
+	} else {
+		pgCfg := pg.Config{
+			User:        os.Getenv("DB_USER"),
+			Pass:        os.Getenv("DB_PASS"),
+			Host:        os.Getenv("DB_HOST"),
+			Port:        os.Getenv("DB_PORT"),
+			DBName:      os.Getenv("DB_NAME"),
+			SSLmode:     defaultStr(os.Getenv("DB_SSLMODE"), "disable"),
+			AutoMigrate: false,
+		}
+		gdb, err = pg.NewConnection(pgCfg)
 	}
-	gdb, err := pg.NewConnection(pgCfg)
 	if err != nil {
 		return FinalizeAndQAResult{}, fmt.Errorf("postgres connection failed: %w", err)
 	}

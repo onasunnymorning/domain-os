@@ -72,3 +72,41 @@ services:
       # API auth token — baked at build time into client JS
       - key: NEXT_PUBLIC_API_TOKEN
         sync: false
+
+  # ── Unified Worker (Temporal) ──────────────────────────
+  - type: worker
+    name: alp-worker-test
+    runtime: docker
+    dockerfilePath: ./cmd/workers/unified/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    envVars:
+      # API connection
+      - key: API_URL
+        value: "https://alp-api-test.onrender.com"
+      - key: AUTH0_ENABLED
+        value: "false"
+      - key: ADMIN_TOKEN
+        sync: false
+      # Temporal Cloud
+      - key: TMPIO_HOST_PORT
+        sync: false
+      - key: TMPIO_NAME_SPACE
+        value: "alp-test"
+      - key: TMPIO_API_KEY
+        sync: false
+      # Direct DB (Neon)
+      - key: DATABASE_URL
+        sync: false
+      # S3 (Backblaze B2)
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_USE_SSL
+        value: "true"
+      - key: ESCROW_BUCKET
+        sync: false

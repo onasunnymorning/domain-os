@@ -17,6 +17,7 @@ func main() {
 		Namespace:  os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:  os.Getenv("TMPIO_KEY"),
 		ClientCert: os.Getenv("TMPIO_CERT"),
+		APIKey:     os.Getenv("TMPIO_API_KEY"),
 	}
 
 	client, err := temporal.GetTemporalClient(cfg)
