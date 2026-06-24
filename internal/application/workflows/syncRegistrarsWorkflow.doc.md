@@ -12,7 +12,7 @@
 
 ## Overview
 
-The Sync Registrars Workflow keeps the system's registrar data in sync with IANA and ICANN sources. It operates in two distinct modes: **Bootstrap** (when zero registrars exist in the system) imports registrars from a local ICANN CSV file merged with IANA data, while **Sync** (when registrars already exist) computes a diff between current IANA data and the existing registrar records, then applies creates, status updates, and IANA status refreshes. The workflow runs daily on a schedule and can also be triggered manually via API.
+The Sync Registrars Workflow keeps the system's registrar data in sync with IANA and ICANN sources. It operates in two distinct modes: **Bootstrap** (when zero registrars exist in the system) imports registrars from a local ICANN CSV file merged with IANA data, while **Sync** (when registrars already exist) computes a diff between current IANA data and the existing registrar records, then applies creates, status updates, and IANA status refreshes. The workflow applies creates in chunked activities and updates in parallel with bounded concurrency.
 
 ## Flow Diagram
 
@@ -24,145 +24,116 @@ graph TD
     C -- "Yes (Bootstrap)" --> D["Get ICANN Registrars from CSV"]
     D --> E["Get IANA Registrars"]
     E --> F["Merge into Create Commands"]
-    F --> G["Bulk Create Registrars (chunked, 100/batch)"]
-    G --> DONE1["✅ Bootstrap Complete"]
+    F --> G{"Dry Run?"}
+    G -- Yes --> DONE1["✅ Dry Run Complete"]
+    G -- No --> H["Bulk Create Registrars (chunked Activity, 100/batch)"]
+    H --> DONE2["✅ Bootstrap Complete"]
 
-    C -- "No (Sync)" --> H["Get IANA Registrars"]
-    H --> I["Get Existing Registrar List Items"]
-    I --> J["Diff & Plan (creates + updates)"]
-    J --> K["Bulk Create New Registrars (chunked, 100/batch)"]
-    K --> L["Apply Status Updates"]
-    L --> M["Refresh IANA Status on Existing Registrars"]
-    M --> DONE2["✅ Sync Complete"]
+    C -- "No (Sync)" --> I["Get IANA Registrars"]
+    I --> J["Get Existing Registrar List Items"]
+    J --> K["Diff & Plan (creates + updates)"]
+    K --> L{"Dry Run?"}
+    L -- Yes --> DONE3["✅ Dry Run Complete"]
+    L -- No --> M["Bulk Create New Registrars (chunked Activity, 100/batch)"]
+    M --> N["Apply Updates in Parallel (Bounded Concurrency)"]
+    N --> O["Set Registrar Status (Parallel)"]
+    N --> P["Set Registrar IANA Status (Parallel)"]
+    O --> DONE4["✅ Sync Complete"]
+    P --> DONE4
 
     style C fill:#d5f5e3,stroke:#27ae60,stroke-width:2px
+    style N fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
 ```
 
 ## Input
 
 ```go
-func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error
-```
+func SyncRegistrarsWorkflow(ctx workflow.Context, params SyncRegistrarsParams) (SyncRegistrarsResult, error)
 
-- `batchsize` (`int`): Controls how many registrars to fetch per batch from IANA/internal APIs.
-
-**Example JSON:**
-```json
-{
-  "batchsize": 500
+type SyncRegistrarsParams struct {
+    BatchSize        int  `json:"batchSize,omitempty"`
+    ConcurrencyLimit int  `json:"concurrencyLimit,omitempty"`
+    DryRun           bool `json:"dryRun,omitempty"`
 }
 ```
 
 ## Output
 
-No output struct — returns `error` only. Success is indicated by a `nil` return.
+```go
+type SyncRegistrarsResult struct {
+    StartedAt      time.Time               `json:"startedAt"`
+    CompletedAt    time.Time               `json:"completedAt"`
+    TotalProcessed int                     `json:"totalProcessed"`
+    Created        int                     `json:"created"`
+    Updated        int                     `json:"updated"`
+    Failed         int                     `json:"failed"`
+    Notes          []string                `json:"notes"`
+    Failures       []SyncRegistrarsFailure `json:"failures,omitempty"`
+}
+
+type SyncRegistrarsFailure struct {
+    ClID      string `json:"clId"`
+    Operation string `json:"operation"` // "create", "update-status", "update-iana-status"
+    Error     string `json:"error"`
+}
+```
+
+## Query Handler
+
+The workflow exposes a `progress` query handler that returns the current `SyncRegistrarsResult` in real-time, allowing operators to monitor the status of creates and parallel updates.
 
 ## Steps
 
 ### 1. Sync IANA Registrars
 - **Activity**: `activities.SyncIanaRegistrars`
-- **Timeout**: Start-to-close 1min
-- **Retry**: Max 3 attempts, initial interval 1s, backoff coefficient 2.0, max interval 10min
-- **Description**: Downloads and syncs the latest IANA registrar data into the local IANA registrar store.
+- **Description**: Downloads and syncs the latest IANA registrar data into the local store.
 
 ### 2. Count Existing Registrars
 - **Activity**: `activities.CountRegistrars`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Counts the number of registrars currently in the system. Determines which path (Bootstrap or Sync) to follow.
+- **Description**: Counts registrars in the database. Determines if bootstrap is required.
 
 ### Bootstrap Path (Count = 0)
 
-#### 3a. Get ICANN Registrars from CSV
+#### 3a. Get ICANN Registrars
 - **Activity**: `activities.GetICANNRegistrars`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Reads ICANN registrar data from the local CSV file (`./initdata/icannRegistrarList.csv`).
+- **Description**: Reads ICANN seed data from the local CSV list.
 
 #### 4a. Get IANA Registrars
 - **Activity**: `activities.GetIANARegistrars`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Fetches all IANA registrar records from the local store in batches.
+- **Description**: Fetches current IANA registrar records.
 
 #### 5a. Merge into Create Commands
 - **Activity**: `activities.MakeCreateRegistrarCommands`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Merges ICANN CSV data with IANA data to produce a list of `CreateRegistrarCommand` objects.
+- **Description**: Compiles CSV and IANA data into create instructions.
 
 #### 6a. Bulk Create Registrars
-- **Function**: `activities.BulkCreateRegistrars` (called directly, chunked in batches of 100)
-- **Description**: Creates all registrars in the system. Processes commands in chunks of 100.
+- **Activity**: `activities.BulkCreateRegistrars` (called via `ExecuteActivity`, chunked 100/batch)
+- **Description**: Performs database inserts for the bootstrap batch.
 
 ### Sync Path (Count > 0)
 
-#### 3b. Get IANA Registrars
-- **Activity**: `activities.GetIANARegistrars`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Fetches all current IANA registrar records.
-
-#### 4b. Get Existing Registrar List Items
-- **Activity**: `activities.GetRegistrarListItems`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Fetches all existing registrar records from the system for comparison.
-
-#### 5b. Diff & Plan
+#### 3b. Diff & Plan
 - **Activity**: `activities.DiffAndPlanRegistrars`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Computes the difference between IANA data and existing registrars. Produces a plan with creates (new registrars) and updates (status changes).
+- **Description**: Compiles a plan of creates and updates comparing cached IANA data with the system's registrars.
 
-#### 6b. Apply Creates
-- **Function**: `activities.BulkCreateRegistrars` (chunked in batches of 100)
-- **Description**: Creates newly discovered registrars.
+#### 4b. Apply Creates
+- **Activity**: `activities.BulkCreateRegistrars` (chunked 100/batch)
+- **Description**: Creates newly accredited registrars.
 
-#### 7b. Apply Status Updates
-- **Activity**: `activities.SetRegistrarStatus` (per registrar)
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Updates the status of registrars whose IANA status has changed.
-
-#### 8b. Refresh IANA Status
-- **Activity**: `activities.SetRegistrarIANAStatus` (per registrar)
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Ensures the IANA status field is current on all existing registrars that have a match in the IANA data.
+#### 5b. Parallel Updates
+- **Activities**: `activities.SetRegistrarStatus` and `activities.SetRegistrarIANAStatus`
+- **Description**: Updates statuses concurrently using a semaphore pattern (buffered channel) inside the workflow up to `ConcurrencyLimit` (default: 20).
 
 ## Failure Modes
 
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
-| IANA sync failure | Network error fetching IANA data | Workflow fails immediately | Check network, retry on next schedule |
-| Count query failure | DB connection issue | Workflow fails | Check DB health, retry manually |
-| Bulk create partial failure | DB constraint or timeout | Fails mid-chunk; prior chunks committed | Re-run workflow — bootstrap is not fully idempotent |
-| Status update failure | Individual registrar not found | Logs error, continues to next registrar | Review logs, fix data manually |
-
-## Artifacts
-
-| Artifact | Storage | Purpose |
-|----------|---------|---------|
-| IANA registrar data | Local IANA store (DB) | Cached IANA data for diff/sync |
-| ICANN CSV | `./initdata/icannRegistrarList.csv` | Bootstrap seed data |
-
-## Operational Notes
-
-### Scheduling
-Runs daily on a schedule. Also triggerable via API for immediate sync.
-
-### Monitoring
-- Monitor for bootstrap vs. sync path — if the system unexpectedly has zero registrars, investigate before the next scheduled run.
-- Watch for status update errors in logs — these may indicate data inconsistencies.
-- The 1-minute start-to-close timeout is tight for large batch operations; monitor for timeout-related retries.
-
-### Manual Intervention
-- To force a full re-sync: trigger the workflow manually via API.
-- Bootstrap only runs once (when count is zero). After initial setup, the workflow always takes the sync path.
-- If the ICANN CSV file needs updating, replace `./initdata/icannRegistrarList.csv` before running bootstrap.
+| IANA sync failure | Network error fetching IANA data | Workflow fails immediately | Check connectivity, retry run |
+| Count query failure | DB connection issue | Workflow fails | Check DB health, retry run |
+| Bulk create failure | DB constraint or timeout | Fails chunk; returns error | Re-run workflow (creates are idempotent) |
+| Update failure | DB lock or individual error | Records failure, continues | Review failures table, fix registrar state |
 
 ---
 
-> **Last updated**: 2025-06-23
-> **Updated by**: Agent (initial documentation)
+> **Last updated**: 2026-06-24
+> **Updated by**: Agent (redesigned with parallel updates, progress queries, and direct call bugfix)
