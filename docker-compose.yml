@@ -126,8 +126,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # msg-broker:
-      #   condition: service_healthy
+      redis:
+        condition: service_healthy
     develop:
       watch:
         - action: rebuild
@@ -140,7 +140,6 @@ services:
       - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
       - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
       - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
@@ -158,11 +157,11 @@ services:
       - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002}
       # Temporal Client (dev: temporalite, no TLS)
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=object-lifecycle
-      - TMPIO_KEY=
-      - TMPIO_CERT=
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_QUEUE=object-lifecycle
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
       # S3/MinIO settings for escrow
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT="http://localhost:9000"
@@ -170,7 +169,11 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_USE_SSL=false
       - ESCROW_BUCKET=escrow
-      - TMPIO_UI_URL=http://localhost:8081
+      - TEMPORAL_UI_URL=http://localhost:8081
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
     ports:
       - ${API_PORT:-8080}:${API_PORT:-8080}
     networks:
@@ -196,11 +199,11 @@ services:
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=object-lifecycle
-      - TMPIO_KEY=
-      - TMPIO_CERT=
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_QUEUE=object-lifecycle
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
       # Minimal envs needed for DB/Temporal
     networks:
@@ -276,13 +279,13 @@ services:
         condition: service_started
     environment:
       # Temporal client
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_KEY=
-      - TMPIO_CERT=
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
       # Task queues
-      - TMPIO_QUEUE=object-lifecycle
-      - ESCROW_QUEUE=data-pipeline
+      - TEMPORAL_QUEUE=object-lifecycle
+      - TEMPORAL_ESCROW_QUEUE=data-pipeline
       # API connection
       - API_HOST=admin-api
       - API_PORT=${API_PORT}

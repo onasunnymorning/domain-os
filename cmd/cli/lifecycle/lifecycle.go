@@ -278,14 +278,8 @@ func createTemporalSchedules(c *cli.Context) error {
 	}
 
 	// Create a temporal client config
-	cfg := &temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: temporal.QueueObjectLifecycle,
-	}
+	newCfg := temporal.NewClientConfigFromEnv(temporal.QueueObjectLifecycle)
+	cfg := &newCfg
 
 	switch c.Args().First() {
 	case "expiry":

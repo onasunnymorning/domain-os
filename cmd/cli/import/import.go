@@ -184,13 +184,5 @@ func importSchedule(c *cli.Context) error {
 }
 
 func getTemporalClientConfig() temporal.TemporalClientconfig {
-	// Create a temporal client config
-	return temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: temporal.QueueObjectLifecycle,
-	}
+	return temporal.NewClientConfigFromEnv(temporal.QueueObjectLifecycle)
 }

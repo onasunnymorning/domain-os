@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   Building2,
+  FileText,
   Home,
   Users,
   Globe,
@@ -12,7 +13,8 @@ import {
   ChevronLeft,
   Archive,
   BarChart,
-  ServerOff
+  ServerOff,
+  Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GRAFANA_URL } from '@/lib/constants/external-urls';
@@ -24,6 +26,8 @@ const navigation = [
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
   { name: 'NNDNs', href: '/nndns', icon: ServerOff },
+  { name: 'Workflows', href: '/workflows', icon: Zap },
+  { name: 'Documentation', href: '/docs', icon: FileText },
   { name: 'Escrow Imports', href: '/escrow', icon: Archive },
   { name: 'Analytics', href: GRAFANA_URL, icon: BarChart, target: '_blank' },
 ];
@@ -56,7 +60,9 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         <div className="flex h-full flex-col gap-2 p-4">
           <nav className="flex-1 space-y-1">
             {navigation.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = item.href === '/'
+                ? pathname === '/'
+                : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.name}

@@ -13,11 +13,11 @@ import (
 
 func TestStartRegistrarSync_Returns500WhenTemporalConfigInvalid(t *testing.T) {
 	// Ensure env vars are empty or invalid so Temporal client creation fails fast
-	_ = os.Unsetenv("TMPIO_HOST_PORT")
-	_ = os.Unsetenv("TMPIO_NAME_SPACE")
-	_ = os.Unsetenv("TMPIO_KEY")
-	_ = os.Unsetenv("TMPIO_CERT")
-	_ = os.Unsetenv("TMPIO_QUEUE")
+	_ = os.Unsetenv("TEMPORAL_HOST_PORT")
+	_ = os.Unsetenv("TEMPORAL_NAMESPACE")
+	_ = os.Unsetenv("TEMPORAL_CLIENT_KEY")
+	_ = os.Unsetenv("TEMPORAL_CLIENT_CERT")
+	_ = os.Unsetenv("TEMPORAL_QUEUE")
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

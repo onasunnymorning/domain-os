@@ -26,6 +26,7 @@ func CreateRestoreScheduleDaily(cfg temporal.TemporalClientconfig) (string, erro
 	if err != nil {
 		return "", err
 	}
+	defer temporalClient.Close()
 
 	// Create the schedule.
 	scheduleHandle, err := temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{

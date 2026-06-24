@@ -4,12 +4,14 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
+  FileText,
   Globe,
   Loader2,
   Search,
   Server,
   ServerOff,
   Users,
+  Zap,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -21,7 +23,7 @@ import {
   CommandSeparator,
 } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
-import { searchAll, type SearchResults } from '@/lib/api/search';
+import { searchAll, type SearchResults, type DocSearchResult } from '@/lib/api/search';
 
 interface GlobalSearchProps {
   open: boolean;
@@ -90,19 +92,35 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       results.tlds.length > 0 ||
       results.registrars.length > 0 ||
       results.nndns.length > 0 ||
-      results.registryOperators.length > 0);
+      results.registryOperators.length > 0 ||
+      results.workflows.length > 0 ||
+      results.documentation.length > 0);
 
   const showEmpty = query.trim() && !isLoading && results && !hasResults;
+
+  // Track which groups have results for separator logic
+  const hasPreviousGroup = (index: number) => {
+    const groups = [
+      results?.workflows.length ?? 0,
+      results?.documentation.length ?? 0,
+      results?.domains.length ?? 0,
+      results?.tlds.length ?? 0,
+      results?.registrars.length ?? 0,
+      results?.nndns.length ?? 0,
+      results?.registryOperators.length ?? 0,
+    ];
+    return groups.slice(0, index).some((count) => count > 0);
+  };
 
   return (
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Global Search"
-      description="Search across domains, TLDs, registrars, NNDNs, and registry operators"
+      description="Search across domains, TLDs, registrars, NNDNs, registry operators, and workflows"
     >
       <CommandInput
-        placeholder="Search domains, TLDs, registrars, NNDNs..."
+        placeholder="Search domains, TLDs, registrars, workflows..."
         value={query}
         onValueChange={handleSearch}
       />
@@ -126,22 +144,30 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           </div>
         )}
 
-        {/* Domains */}
-        {results && results.domains.length > 0 && (
-          <CommandGroup heading="Domains">
-            {results.domains.map((domain) => (
+        {/* Workflows */}
+        {results && results.workflows.length > 0 && (
+          <CommandGroup heading="Workflows">
+            {results.workflows.map((wf) => (
               <CommandItem
-                key={`domain-${domain.Name}`}
-                value={`domain-${domain.Name}`}
+                key={`workflow-${wf.key}`}
+                value={`workflow-${wf.key}-${wf.name}-${wf.tags.join('-')}`}
                 onSelect={() =>
-                  handleSelect(`/domains/${encodeURIComponent(domain.Name)}`)
+                  handleSelect(`/workflows?highlight=${encodeURIComponent(wf.key)}`)
                 }
               >
-                <Server className="h-4 w-4 text-muted-foreground" />
-                <span className="flex-1 truncate">{domain.Name}</span>
-                {domain.ClID && (
-                  <Badge variant="outline" className="ml-2 text-xs font-normal">
-                    {domain.ClID}
+                <Zap className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1 truncate">{wf.name}</span>
+                <span className="ml-1 hidden text-xs text-muted-foreground sm:inline">
+                  {wf.description}
+                </span>
+                {wf.scheduled && (
+                  <Badge variant="secondary" className="ml-2 text-xs font-normal">
+                    Scheduled
+                  </Badge>
+                )}
+                {wf.hasSignal && (
+                  <Badge variant="outline" className="ml-1 text-xs font-normal">
+                    HITL
                   </Badge>
                 )}
               </CommandItem>
@@ -149,10 +175,60 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           </CommandGroup>
         )}
 
+        {/* Documentation */}
+        {results && results.documentation.length > 0 && (
+          <>
+            {hasPreviousGroup(1) && <CommandSeparator />}
+            <CommandGroup heading="Documentation">
+              {results.documentation.map((doc, i) => (
+                <CommandItem
+                  key={`doc-${doc.workflowKey}-${i}`}
+                  value={`doc-${doc.workflowKey}-${doc.heading}`}
+                  onSelect={() =>
+                    handleSelect(`/docs/${encodeURIComponent(doc.workflowKey)}`)
+                  }
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1 truncate">{doc.heading}</span>
+                  <Badge variant="outline" className="ml-2 shrink-0 text-xs font-normal">
+                    {doc.workflowName}
+                  </Badge>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
+        {/* Domains */}
+        {results && results.domains.length > 0 && (
+          <>
+            {hasPreviousGroup(2) && <CommandSeparator />}
+            <CommandGroup heading="Domains">
+              {results.domains.map((domain) => (
+                <CommandItem
+                  key={`domain-${domain.Name}`}
+                  value={`domain-${domain.Name}`}
+                  onSelect={() =>
+                    handleSelect(`/domains/${encodeURIComponent(domain.Name)}`)
+                  }
+                >
+                  <Server className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1 truncate">{domain.Name}</span>
+                  {domain.ClID && (
+                    <Badge variant="outline" className="ml-2 text-xs font-normal">
+                      {domain.ClID}
+                    </Badge>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
         {/* TLDs */}
         {results && results.tlds.length > 0 && (
           <>
-            {results.domains.length > 0 && <CommandSeparator />}
+            {hasPreviousGroup(3) && <CommandSeparator />}
             <CommandGroup heading="TLDs">
               {results.tlds.map((tld) => (
                 <CommandItem
@@ -181,9 +257,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         {/* Registrars */}
         {results && results.registrars.length > 0 && (
           <>
-            {(results.domains.length > 0 || results.tlds.length > 0) && (
-              <CommandSeparator />
-            )}
+            {hasPreviousGroup(4) && <CommandSeparator />}
             <CommandGroup heading="Registrars">
               {results.registrars.map((registrar) => (
                 <CommandItem
@@ -212,9 +286,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         {/* NNDNs */}
         {results && results.nndns.length > 0 && (
           <>
-            {(results.domains.length > 0 ||
-              results.tlds.length > 0 ||
-              results.registrars.length > 0) && <CommandSeparator />}
+            {hasPreviousGroup(5) && <CommandSeparator />}
             <CommandGroup heading="NNDNs">
               {results.nndns.map((nndn) => (
                 <CommandItem
@@ -241,10 +313,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         {/* Registry Operators */}
         {results && results.registryOperators.length > 0 && (
           <>
-            {(results.domains.length > 0 ||
-              results.tlds.length > 0 ||
-              results.registrars.length > 0 ||
-              results.nndns.length > 0) && <CommandSeparator />}
+            {hasPreviousGroup(6) && <CommandSeparator />}
             <CommandGroup heading="Registry Operators">
               {results.registryOperators.map((ro) => (
                 <CommandItem

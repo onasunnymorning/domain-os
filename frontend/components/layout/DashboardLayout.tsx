@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { ProtectedRoute } from '../auth/protected-route';
+import { WorkflowControlCenter } from '../workflows/WorkflowControlCenter';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -23,6 +24,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {children}
           </div>
         </main>
+
+        <WorkflowControlCenter />
       </div>
     </ProtectedRoute>
   );

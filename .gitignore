@@ -16,6 +16,7 @@
 
 # ENV
 .env
+.env.tilt
 .env.backup
 
 # Terraform

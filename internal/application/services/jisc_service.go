@@ -380,27 +380,27 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	noopHeartbeat := func(s string) {} // CLI doesn't need heartbeat callbacks
 
 	log.Println("Importing Contacts...")
-	cTotal, cSkip, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	cTotal, cInserted, cUpdated, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportContacts failed: %w", err)
 	}
-	log.Printf("Contacts: %d imported, %d skipped", cTotal, cSkip)
+	log.Printf("Contacts: %d total, %d inserted, %d updated", cTotal, cInserted, cUpdated)
 
 	log.Println("Importing Hosts...")
-	hTotal, hSkip, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	hTotal, hInserted, hUpdated, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportHosts failed: %w", err)
 	}
-	log.Printf("Hosts: %d imported, %d skipped", hTotal, hSkip)
+	log.Printf("Hosts: %d total, %d inserted, %d updated", hTotal, hInserted, hUpdated)
 
 	log.Println("Importing Domains...")
 	// TLD is assumed ac.uk from context, but maybe verify/pass?
 	// The importer needs tld arg.
-	dTotal, dSkip, err := importer.ImportDomains(ctx, sqliteDB, "ac.uk", clidMap, "", noopHeartbeat)
+	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, "ac.uk", clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportDomains failed: %w", err)
 	}
-	log.Printf("Domains: %d imported, %d skipped", dTotal, dSkip)
+	log.Printf("Domains: %d total, %d inserted, %d updated", dTotal, dInserted, dUpdated)
 
 	log.Println("Linking Domain Hosts...")
 	lTotal, err := importer.LinkDomainHosts(ctx, sqliteDB, "", noopHeartbeat)

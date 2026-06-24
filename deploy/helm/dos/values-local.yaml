@@ -35,11 +35,11 @@ app:
   API_NAME: "domain-os"
 
 temporal:
-  TMPIO_HOST_PORT: "temporal:7233" # Assume temporal running in docker desktop or k8s
-  TMPIO_NAME_SPACE: "default"
-  TMPIO_QUEUE: "domain-lifecycle"
-  TMPIO_SYNC_QUEUE: "escrow-import"
-  ESCROW_QUEUE: "escrow-import"
+  TEMPORAL_HOST_PORT: "temporal:7233"
+  TEMPORAL_NAMESPACE: "default"
+  TEMPORAL_QUEUE: "object-lifecycle"
+  TEMPORAL_ESCROW_QUEUE: "data-pipeline"
+  TEMPORAL_API_KEY: ""
 
 prometheus:
   enabled: "false"

@@ -121,10 +121,11 @@ func parseJiscTime(s string) (time.Time, error) {
 
 // --- Import Contacts ---
 
-func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 1000
 	var total int64
-	var skipped int64
+	var inserted int64
+	var updated int64
 
 	// Count total
 	var totalRows int64
@@ -139,14 +140,14 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 	}
 
-	total = processedSoFar // Start total from where we really are relative to source
+	total = processedSoFar
 
 	for {
 		log.Printf("DEBUG: ImportContacts Loop Start. lastKey='%s'", lastKey)
 		rows, err := sqliteDB.Query(`SELECT id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update" FROM contacts WHERE id > ? ORDER BY id LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestContacts: Query failed: %v", err)
-			return total, skipped, err
+			return total, inserted, updated, err
 		}
 
 		var batch []*dbModels.Contact
@@ -159,7 +160,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 			if err := rows.Scan(&id, &roid, &voice, &fax, &email, &clid, &crrr, &crdate, &uprr, &upDate); err != nil {
 				rows.Close()
 				log.Printf("IngestContacts: Scan failed: %v", err)
-				return total, skipped, err
+				return total, inserted, updated, err
 			}
 			currentBatchMaxKey = id.String
 
@@ -180,7 +181,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 
 			mappedClID, ok := mapClid(clid.String)
 			if !ok {
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -229,7 +230,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 				c.RoID = r
 			} else {
 				// Should not happen, but safeguard
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -244,19 +245,36 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		if len(batch) > 0 {
-			// Direct Insert with Conflict Ignore
-			// We must exclude relation slices
+			// Count existing records to track inserts vs updates
+			var existingCount int64
+			var ids []string
+			for _, c := range batch {
+				ids = append(ids, c.ID)
+			}
+			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM contacts WHERE id IN (?)", pg.In(ids)); err != nil {
+				log.Printf("IngestContacts: pre-count query failed: %v", err)
+			}
+
+			// Upsert: insert new, update existing (preserve ro_id, auth_info, created_at)
 			batchLen := len(batch)
 			if _, err := s.PG.Model(&batch).
 				ExcludeColumn("doms_where_registrant", "doms_where_admin", "doms_where_tech", "doms_where_billing").
-				OnConflict("DO NOTHING").Insert(); err != nil {
-				return total, skipped, fmt.Errorf("bulk insert contacts failed: %w", err)
+				OnConflict("(id) DO UPDATE").
+				Set("voice = EXCLUDED.voice, fax = EXCLUDED.fax, email = EXCLUDED.email, cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at").
+				Insert(); err != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert contacts failed: %w", err)
 			}
+			newInserts := int64(batchLen) - existingCount
+			if newInserts < 0 {
+				newInserts = 0
+			}
+			inserted += newInserts
+			updated += existingCount
 			total += int64(batchLen)
 		}
 
-		if (total+skipped)%10000 == 0 {
-			log.Printf("IngestContacts: Processed %d / %d records (Skipped: %d)", total, totalRows, skipped)
+		if (total)%10000 == 0 {
+			log.Printf("IngestContacts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
 		lastKey = currentBatchMaxKey
@@ -268,16 +286,17 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
-	log.Printf("IngestContacts: Finished. Total: %d, Skipped: %d", total, skipped)
-	return total, skipped, nil
+	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
+	return total, inserted, updated, nil
 }
 
 // --- Import Hosts ---
 
-func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 2500
 	var total int64
-	var skipped int64
+	var inserted int64
+	var updated int64
 
 	// Count total
 	var totalRows int64
@@ -298,7 +317,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		rows, err := sqliteDB.Query(`SELECT name, clid, crrr, uprr FROM hosts WHERE name > ? ORDER BY name LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestHosts: Query failed: %v", err)
-			return total, skipped, err
+			return total, inserted, updated, err
 		}
 
 		var entitiesBatch []*entities.Host
@@ -314,7 +333,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			if err := rows.Scan(&name, &clid, &crrr, &uprr); err != nil {
 				rows.Close()
 				log.Printf("IngestHosts: Scan failed: %v", err)
-				return total, skipped, err
+				return total, inserted, updated, err
 			}
 			rawHosts = append(rawHosts, rawHost{name.String, clid.String, crrr.String, uprr.String})
 			currentBatchMaxKey = name.String
@@ -375,7 +394,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 
 			mClID, ok := mapClid(r.ClID)
 			if !ok {
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -384,7 +403,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				msg := fmt.Sprintf("Invalid name (ClID: %s)", r.ClID)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
 				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 			newID := s.IDGen.GenerateID()
@@ -393,7 +412,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				msg := fmt.Sprintf("Failed to generate RoID: %v", err)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
 				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -436,19 +455,39 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				}
 			}
 
-			if _, err := s.PG.Model(&dbHosts).ExcludeColumn("addresses").OnConflict("DO NOTHING").Insert(); err != nil {
-				return total, skipped, fmt.Errorf("bulk insert hosts failed: %w", err)
+			// Count existing records to track inserts vs updates
+			var existingCount int64
+			var names []string
+			for _, h := range dbHosts {
+				names = append(names, h.Name)
+			}
+			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM hosts WHERE name IN (?)", pg.In(names)); err != nil {
+				log.Printf("IngestHosts: pre-count query failed: %v", err)
+			}
+
+			// Upsert: insert new, update existing (preserve ro_id, in_bailiwick, created_at)
+			if _, err := s.PG.Model(&dbHosts).ExcludeColumn("addresses").
+				OnConflict("ON CONSTRAINT idx_uniq_name_clid DO UPDATE").
+				Set("cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, linked = EXCLUDED.linked, pending_create = EXCLUDED.pending_create, pending_delete = EXCLUDED.pending_delete, pending_update = EXCLUDED.pending_update, pending_transfer = EXCLUDED.pending_transfer, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited").
+				Insert(); err != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert hosts failed: %w", err)
 			}
 			if len(dbAddrs) > 0 {
 				if _, err := s.PG.Model(&dbAddrs).OnConflict("DO NOTHING").Insert(); err != nil {
-					return total, skipped, fmt.Errorf("bulk insert host addresses failed: %w", err)
+					return total, inserted, updated, fmt.Errorf("bulk insert host addresses failed: %w", err)
 				}
 			}
+			newInserts := int64(batchLen) - existingCount
+			if newInserts < 0 {
+				newInserts = 0
+			}
+			inserted += newInserts
+			updated += existingCount
 			total += int64(batchLen)
 		}
 
-		if (total+skipped)%10000 == 0 {
-			log.Printf("IngestHosts: Processed %d / %d records (Skipped: %d)", total, totalRows, skipped)
+		if (total)%10000 == 0 {
+			log.Printf("IngestHosts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
 		lastKey = currentBatchMaxKey
@@ -456,16 +495,17 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
-	log.Printf("IngestHosts: Finished. Total: %d, Skipped: %d", total, skipped)
-	return total, skipped, nil
+	log.Printf("IngestHosts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
+	return total, inserted, updated, nil
 }
 
 // --- Import Domains ---
 
-func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 2500
 	var total int64
-	var skipped int64
+	var inserted int64
+	var updated int64
 
 	// Count total
 	var totalRows int64
@@ -486,7 +526,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 		rows, err := sqliteDB.Query(`SELECT name, registrant, clid, crrr, crdate, exdate, uprr, uname, originalname FROM domains WHERE name > ? ORDER BY name LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestDomains: Query failed: %v", err)
-			return total, skipped, err
+			return total, inserted, updated, err
 		}
 
 		var rawDomains []struct {
@@ -501,7 +541,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			if err := rows.Scan(&r.Name, &r.Reg, &r.ClID, &r.CrRr, &r.CrDate, &r.ExDate, &r.UpRr, &r.UName, &r.Org); err != nil {
 				rows.Close()
 				log.Printf("IngestDomains: Scan failed: %v", err)
-				return total, skipped, err
+				return total, inserted, updated, err
 			}
 			rawDomains = append(rawDomains, struct{ Name, Reg, ClID, CrRr, CrDate, ExDate, UpRr, UName, Org string }{
 				r.Name.String, r.Reg.String, r.ClID.String, r.CrRr.String, r.CrDate.String, r.ExDate.String, r.UpRr.String, r.UName.String, r.Org.String,
@@ -591,7 +631,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			}
 			mClID, ok := mapClid(r.ClID)
 			if !ok {
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -601,7 +641,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			newID := s.IDGen.GenerateID()
 			roid, err := entities.NewRoidType(newID, entities.RoidTypeDomain)
 			if err != nil {
-				skipped++
+				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
 
@@ -657,16 +697,35 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				dbBatch = append(dbBatch, dbModels.ToDBDomain(ent))
 			}
 
+			// Count existing records to track inserts vs updates
+			var existingCount int64
+			var names []string
+			for _, d := range dbBatch {
+				names = append(names, d.Name)
+			}
+			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM domains WHERE name IN (?)", pg.In(names)); err != nil {
+				log.Printf("IngestDomains: pre-count query failed: %v", err)
+			}
+
+			// Upsert: insert new, update existing (preserve ro_id, auth_info, created_at)
 			if _, err := s.PG.Model(&dbBatch).
 				ExcludeColumn("hosts", "tld").
-				OnConflict("DO NOTHING").Insert(); err != nil {
-				return total, skipped, fmt.Errorf("bulk insert domains failed: %w", err)
+				OnConflict("(name) DO UPDATE").
+				Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, tld_name = EXCLUDED.tld_name, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
+				Insert(); err != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", err)
 			}
+			newInserts := int64(batchLen) - existingCount
+			if newInserts < 0 {
+				newInserts = 0
+			}
+			inserted += newInserts
+			updated += existingCount
 			total += int64(batchLen)
 		}
 
-		if (total+skipped)%10000 == 0 {
-			log.Printf("IngestDomains: Processed %d / %d records (Skipped: %d)", total, totalRows, skipped)
+		if (total)%10000 == 0 {
+			log.Printf("IngestDomains: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
 		lastKey = currentBatchMaxKey
@@ -678,8 +737,8 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
-	log.Printf("IngestDomains: Finished. Total: %d, Skipped: %d", total, skipped)
-	return total, skipped, nil
+	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
+	return total, inserted, updated, nil
 }
 
 // --- Link Domain Hosts ---
@@ -756,10 +815,11 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 
 // --- Import NNDNs ---
 
-func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 2500
 	var total int64
-	var skipped int64
+	var inserted int64
+	var updated int64
 
 	// Count total
 	var totalRows int64
@@ -780,7 +840,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 		rows, err := sqliteDB.Query(`SELECT aname, uname, idntableid, originalname, namestate, crdate FROM nndns WHERE aname > ? ORDER BY aname LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestNNDNs: Query failed: %v", err)
-			return total, skipped, err
+			return total, inserted, updated, err
 		}
 
 		var rawNNDNs []struct {
@@ -795,7 +855,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 			if err := rows.Scan(&r.AName, &r.UName, &r.IDNTableID, &r.OriginalName, &r.NameState, &r.CrDate); err != nil {
 				rows.Close()
 				log.Printf("IngestNNDNs: Scan failed: %v", err)
-				return total, skipped, err
+				return total, inserted, updated, err
 			}
 			rawNNDNs = append(rawNNDNs, struct{ AName, UName, IDNTableID, OriginalName, NameState, CrDate string }{
 				r.AName.String, r.UName.String, r.IDNTableID.String, r.OriginalName.String, r.NameState.String, r.CrDate.String,
@@ -832,16 +892,35 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 		if len(entitiesBatch) > 0 {
 			batchLen := len(entitiesBatch)
 
+			// Count existing records to track inserts vs updates
+			var existingCount int64
+			var names []string
+			for _, n := range entitiesBatch {
+				names = append(names, n.Name)
+			}
+			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM nndns WHERE name IN (?)", pg.In(names)); err != nil {
+				log.Printf("IngestNNDNs: pre-count query failed: %v", err)
+			}
+
+			// Upsert: insert new, update existing (preserve created_at)
 			if _, err := s.PG.Model(&entitiesBatch).
 				ExcludeColumn("tld").
-				OnConflict("DO NOTHING").Insert(); err != nil {
-				return total, skipped, fmt.Errorf("bulk insert NNDNs failed: %w", err)
+				OnConflict("(name) DO UPDATE").
+				Set("name_state = EXCLUDED.name_state, u_name = EXCLUDED.u_name, updated_at = EXCLUDED.updated_at").
+				Insert(); err != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert NNDNs failed: %w", err)
 			}
+			newInserts := int64(batchLen) - existingCount
+			if newInserts < 0 {
+				newInserts = 0
+			}
+			inserted += newInserts
+			updated += existingCount
 			total += int64(batchLen)
 		}
 
-		if (total+skipped)%10000 == 0 {
-			log.Printf("IngestNNDNs: Processed %d / %d records (Skipped: %d)", total, totalRows, skipped)
+		if (total)%10000 == 0 {
+			log.Printf("IngestNNDNs: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
 		lastKey = currentBatchMaxKey
@@ -849,8 +928,8 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
-	log.Printf("IngestNNDNs: Finished. Total: %d, Skipped: %d", total, skipped)
-	return total, skipped, nil
+	log.Printf("IngestNNDNs: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
+	return total, inserted, updated, nil
 }
 
 // --- Accredit Registrars ---

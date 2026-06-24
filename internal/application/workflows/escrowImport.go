@@ -30,6 +30,9 @@ type EscrowStagingResult struct {
 	StagedDBKey string            `json:"stagedDbKey"`
 	Artifacts   map[string]string `json:"artifacts"`
 	Notes       []string          `json:"notes"`
+	// QA results
+	QAPassed    bool   `json:"qaPassed"`
+	QAReportKey string `json:"qaReportKey,omitempty"`
 	// Ingestion trigger result
 	IngestionRunID string `json:"ingestionRunId,omitempty"`
 }
@@ -53,9 +56,9 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 
 	var acts *activities.EscrowImportActivities
 
-	// 0. Base Validation
-	var validateOut activities.ValidateInputResult
-	if err := workflow.ExecuteActivity(ctx, acts.ValidateInput, activities.ValidateInputArgs{
+	// 0. Validate Escrow Source
+	var validateOut activities.ValidateEscrowSourceResult
+	if err := workflow.ExecuteActivity(ctx, acts.ValidateEscrowSource, activities.ValidateEscrowSourceArgs{
 		TLD:       params.TLD,
 		ObjectKey: params.ObjectKey,
 	}).Get(ctx, &validateOut); err != nil {
@@ -65,7 +68,7 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		return EscrowStagingResult{}, fmt.Errorf("object %s does not exist", params.ObjectKey)
 	}
 
-	// 1. Validate & Generate Assets (ParseAndAssetize)
+	// 1. Parse & Extract Assets
 	// Construct canonical RunPrefix: escrow/<tld>/<date>/<workflowID>
 	// This matches what ListImports expects for UI linking.
 	tld := params.TLD
@@ -73,8 +76,8 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 	date := workflow.GetInfo(ctx).WorkflowStartTime.Format("20060102")
 	runPrefix := fmt.Sprintf("escrow/%s/%s/%s", tld, date, wID)
 
-	var assetsOut activities.ParseAndAssetizeResult
-	if err := workflow.ExecuteActivity(ctx, acts.ParseAndAssetize, activities.ParseAndAssetizeArgs{
+	var assetsOut activities.ParseAndExtractAssetsResult
+	if err := workflow.ExecuteActivity(ctx, acts.ParseAndExtractAssets, activities.ParseAndExtractAssetsArgs{
 		TLD:       params.TLD,
 		ObjectKey: params.ObjectKey,
 		RunPrefix: runPrefix,
@@ -86,19 +89,17 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		return EscrowStagingResult{
 			TLD:         params.TLD,
 			ObjectKey:   params.ObjectKey,
-			Notes:       append(assetsOut.AnalysisErrors, "ParseAndAssetize completed with issues"),
+			Notes:       append(assetsOut.AnalysisErrors, "ParseAndExtractAssets completed with issues"),
 			CompletedAt: workflow.Now(ctx),
 		}, nil
 	}
 
-	// 2. Collate Assets to Ryde.db
-	// Check Parse output to get accurate base, or derive it.
-	// ParseAndAssetize creates assets named like <Base>-domains.csv.
-	// We should pass this base to Collate logic.
+	// 2. Build Staging Database (Ryde.db)
+	// Parse output determines the base filename for the CSV assets.
 	base := strings.TrimSuffix(filepath.Base(params.ObjectKey), filepath.Ext(params.ObjectKey))
 
-	var collateOut activities.CollateAssetsResult
-	if err := workflow.ExecuteActivity(ctx, acts.CollateAssets, activities.CollateAssetsArgs{
+	var collateOut activities.BuildStagingDatabaseResult
+	if err := workflow.ExecuteActivity(ctx, acts.BuildStagingDatabase, activities.BuildStagingDatabaseArgs{
 		TLD:          params.TLD,
 		RunPrefix:    assetsOut.RunPrefix,
 		AssetKeys:    assetsOut.AssetKeys,
@@ -107,7 +108,7 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		return EscrowStagingResult{}, err
 	}
 
-	// 3. Registrar Mapping
+	// 3. Resolve Registrars
 	overrides := make(map[string]string)
 	if val, ok := params.Options["registrarOverrides"]; ok {
 		if mapVal, ok := val.(map[string]interface{}); ok {
@@ -117,8 +118,8 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		}
 	}
 
-	var mapOut activities.RegistrarMapResult
-	if err := workflow.ExecuteActivity(ctx, acts.RegistrarMap, activities.RegistrarMapArgs{
+	var mapOut activities.ResolveRegistrarsResult
+	if err := workflow.ExecuteActivity(ctx, acts.ResolveRegistrars, activities.ResolveRegistrarsArgs{
 		TLD:       params.TLD,
 		DBKey:     collateOut.DBKey,
 		RunPrefix: assetsOut.RunPrefix,
@@ -127,12 +128,22 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		return EscrowStagingResult{}, err
 	}
 
-	// 4. Stage Import
-	var stageOut activities.StageImportResult
-	if err := workflow.ExecuteActivity(ctx, acts.StageImport, activities.StageImportArgs{
+	// 4. Finalize Staging
+	var stageOut activities.FinalizeStagingResult
+	if err := workflow.ExecuteActivity(ctx, acts.FinalizeStaging, activities.FinalizeStagingArgs{
 		TLD:   params.TLD,
 		DBKey: mapOut.DBKey,
 	}).Get(ctx, &stageOut); err != nil {
+		return EscrowStagingResult{}, err
+	}
+
+	// 5. QA Staged Database
+	var qaOut activities.QAStagedDatabaseResult
+	if err := workflow.ExecuteActivity(ctx, acts.QAStagedDatabase, activities.QAStagedDatabaseArgs{
+		TLD:         params.TLD,
+		StagedDBKey: stageOut.StagedDBKey,
+		RunPrefix:   assetsOut.RunPrefix,
+	}).Get(ctx, &qaOut); err != nil {
 		return EscrowStagingResult{}, err
 	}
 
@@ -145,7 +156,15 @@ func EscrowStagingWorkflow(ctx workflow.Context, params EscrowImportParams) (Esc
 		DBKey:       collateOut.DBKey,
 		StagedDBKey: stageOut.StagedDBKey,
 		Artifacts:   assetsOut.AssetKeys,
+		QAPassed:    qaOut.Passed,
+		QAReportKey: qaOut.QAReportKey,
 		Notes:       []string{"Staging Completed"},
+	}
+
+	// If QA failed, return result with QA info but don't trigger ingestion
+	if !qaOut.Passed {
+		res.Notes = append(res.Notes, "QA Failed — ingestion blocked. See QA report: "+qaOut.QAReportKey)
+		return res, nil
 	}
 
 	// Trigger Ingestion if requested (autoIngest: true)
@@ -220,7 +239,8 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 		return EscrowIngestionResult{}, err
 	}
 	counts["contacts_total"] = cRes.Total
-	counts["contacts_skipped"] = cRes.Skipped
+	counts["contacts_inserted"] = cRes.Inserted
+	counts["contacts_updated"] = cRes.Updated
 
 	// 2. Ingest Hosts
 	var hRes activities.IngestHostsResult
@@ -230,7 +250,8 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 		return EscrowIngestionResult{}, err
 	}
 	counts["hosts_total"] = hRes.Total
-	counts["hosts_skipped"] = hRes.Skipped
+	counts["hosts_inserted"] = hRes.Inserted
+	counts["hosts_updated"] = hRes.Updated
 
 	// 3. Ingest Domains
 	var dRes activities.IngestDomainsResult
@@ -241,7 +262,8 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 		return EscrowIngestionResult{}, err
 	}
 	counts["domains_total"] = dRes.Total
-	counts["domains_skipped"] = dRes.Skipped
+	counts["domains_inserted"] = dRes.Inserted
+	counts["domains_updated"] = dRes.Updated
 
 	// 4. Ingest NNDNs
 	var nRes activities.IngestNNDNsResult
@@ -252,7 +274,8 @@ func EscrowIngestionWorkflow(ctx workflow.Context, params EscrowIngestionParams)
 		return EscrowIngestionResult{}, err
 	}
 	counts["nndns_total"] = nRes.Total
-	counts["nndns_skipped"] = nRes.Skipped
+	counts["nndns_inserted"] = nRes.Inserted
+	counts["nndns_updated"] = nRes.Updated
 
 	// 5. Link Domain Hosts
 	var lRes activities.LinkDomainHostsResult
