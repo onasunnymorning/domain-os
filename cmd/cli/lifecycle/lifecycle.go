@@ -278,7 +278,7 @@ func createTemporalSchedules(c *cli.Context) error {
 	}
 
 	// Create a temporal client config
-	newCfg := temporal.NewClientConfigFromEnv(temporal.QueueObjectLifecycle)
+	newCfg := temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
 	cfg := &newCfg
 
 	switch c.Args().First() {
@@ -287,7 +287,7 @@ func createTemporalSchedules(c *cli.Context) error {
 	case "purge":
 		return createTemporalPurgeSchedule(cfg)
 	case "updatefx":
-		cfg.WorkerQueue = temporal.QueueDataPipeline
+		cfg.WorkerQueue = temporal.QueueData
 		return createTemporalUpdateFXSchedule(cfg)
 	case "restore":
 		return createTemporalRestoreSchedule(cfg)

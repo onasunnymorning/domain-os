@@ -32,28 +32,28 @@ func desiredSchedules() []scheduleSpec {
 		{
 			ID:       "dominos-expiry-loop",
 			Workflow: workflows.ExpiryLoop,
-			Queue:    temporal.QueueObjectLifecycle,
+			Queue:    temporal.QueueLifecycle,
 			Interval: time.Hour,
 			Offset:   0,
 		},
 		{
 			ID:       "dominos-purge-loop",
 			Workflow: workflows.PurgeLoop,
-			Queue:    temporal.QueueObjectLifecycle,
+			Queue:    temporal.QueueLifecycle,
 			Interval: time.Hour,
 			Offset:   30 * time.Minute,
 		},
 		{
 			ID:       "dominos-restore-workflow",
 			Workflow: workflows.RestoreWorkflow,
-			Queue:    temporal.QueueObjectLifecycle,
+			Queue:    temporal.QueueLifecycle,
 			Interval: time.Hour,
 			Offset:   15 * time.Minute,
 		},
 		{
 			ID:       "dominos-sync-registrars",
 			Workflow: workflows.SyncRegistrarsWorkflow,
-			Queue:    temporal.QueueObjectLifecycle,
+			Queue:    temporal.QueueLifecycle,
 			Interval: 24 * time.Hour,
 			Offset:   2 * time.Hour,
 			Args:     []interface{}{100}, // batchSize
@@ -61,7 +61,7 @@ func desiredSchedules() []scheduleSpec {
 		{
 			ID:       "dominos-update-fx",
 			Workflow: workflows.UpdateFX,
-			Queue:    temporal.QueueDataPipeline,
+			Queue:    temporal.QueueData,
 			Interval: time.Hour,
 			Offset:   30 * time.Minute,
 		},

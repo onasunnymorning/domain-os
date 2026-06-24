@@ -77,7 +77,7 @@ The workflow registry is the **single source of truth** for all workflow metadat
     Key:         "my-new-workflow",
     Name:        "My New Workflow",
     Description: "One-liner description for the card",
-    Queue:       temporal.QueueDataPipeline,
+    Queue:       temporal.QueueData,
     Category:    "operations",
     Tags:        []string{"operations", "my-domain"},
     HasSignal:   false,
@@ -131,7 +131,7 @@ Edit `desiredSchedules()` in `internal/infrastructure/bootstrap/ensure.go`:
 {
     ID:       "dominos-my-new-schedule",
     Workflow: workflows.MyNewWorkflow,
-    Queue:    temporal.QueueDataPipeline,
+    Queue:    temporal.QueueData,
     Interval: 6 * time.Hour,
     Offset:   0,
     Args:     nil, // or []interface{}{arg1, arg2}

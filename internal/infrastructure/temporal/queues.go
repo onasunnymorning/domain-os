@@ -2,11 +2,11 @@ package temporal
 
 // Task queue names — the single source of truth for all producers and consumers.
 const (
-	// QueueObjectLifecycle handles domain lifecycle state-machine transitions:
+	// QueueLifecycle handles domain lifecycle state-machine transitions:
 	// expiry, purge, restore, and registrar synchronization.
-	QueueObjectLifecycle = "object-lifecycle"
+	QueueLifecycle = "object-lifecycle"
 
-	// QueueDataPipeline handles external data ingestion and transformation:
+	// QueueData handles external data ingestion and transformation:
 	// escrow staging/ingestion, TLD cleanup, and FX rate updates.
-	QueueDataPipeline = "data-pipeline"
+	QueueData = "data-pipeline"
 )
