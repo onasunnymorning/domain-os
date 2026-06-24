@@ -51,14 +51,14 @@ services:
       - key: PROMETHEUS_ENABLED
         value: "false"
       # Temporal Cloud (for starting workflows)
-      - key: TMPIO_HOST_PORT
+      - key: TEMPORAL_HOST_PORT
         sync: false
-      - key: TMPIO_NAME_SPACE
+      - key: TEMPORAL_NAMESPACE
         value: "alp-test.fclnj"
-      - key: TMPIO_API_KEY
+      - key: TEMPORAL_API_KEY
         sync: false
-      - key: TMPIO_QUEUE
-        value: "domain-lifecycle"
+      - key: TEMPORAL_QUEUE
+        value: "object-lifecycle"
 
   # ── Next.js Frontend ────────────────────────────────────
   - type: web
@@ -111,11 +111,11 @@ services:
       - key: AUTH0_WORKER_CLIENT_SECRET
         sync: false
       # Temporal Cloud
-      - key: TMPIO_HOST_PORT
+      - key: TEMPORAL_HOST_PORT
         sync: false
-      - key: TMPIO_NAME_SPACE
+      - key: TEMPORAL_NAMESPACE
         value: "alp-test.fclnj"
-      - key: TMPIO_API_KEY
+      - key: TEMPORAL_API_KEY
         sync: false
       # Direct DB (Neon)
       - key: DATABASE_URL

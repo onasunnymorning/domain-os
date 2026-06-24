@@ -2,29 +2,27 @@ package main
 
 import (
 	"log"
-	"os"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/worker"
 )
 
 func main() {
 	// Create a shared Temporal client
-	cfg := temporal.TemporalClientconfig{
-		HostPort:   os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:  os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:  os.Getenv("TMPIO_KEY"),
-		ClientCert: os.Getenv("TMPIO_CERT"),
-		APIKey:     os.Getenv("TMPIO_API_KEY"),
-	}
+	cfg := temporal.NewClientConfigFromEnv("")
 
 	client, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
 		log.Fatalln("unable to create Temporal client", err)
 	}
 	defer client.Close()
+
+	// Self-healing infrastructure: ensure all schedules exist.
+	// Idempotent — safe to run on every startup/deploy.
+	bootstrap.EnsureTemporalInfrastructure(client)
 
 	// --- Object Lifecycle Worker (queue: object-lifecycle) ---
 	lifecycleWorker := worker.New(client, temporal.QueueObjectLifecycle, worker.Options{})

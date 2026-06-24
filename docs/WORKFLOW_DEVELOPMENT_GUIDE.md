@@ -11,9 +11,8 @@
 
 | Queue | Env Var | Workflows | Purpose |
 |---|---|---|---|
-| `domain-lifecycle` | `TMPIO_QUEUE` | ExpiryLoop, PurgeLoop, RestoreWorkflow, SyncRegistrarsWorkflow | Domain lifecycle operations |
-| `escrow-import` | `ESCROW_QUEUE` | EscrowStagingWorkflow, EscrowIngestionWorkflow, TLDCleanupWorkflow | Escrow and heavy data operations |
-| `sync` | `TMPIO_SYNC_QUEUE` | UpdateFX | Lightweight periodic sync |
+| `object-lifecycle` | `TEMPORAL_QUEUE` | ExpiryLoop, PurgeLoop, RestoreWorkflow, SyncRegistrarsWorkflow | Domain lifecycle operations |
+| `data-pipeline` | `TEMPORAL_ESCROW_QUEUE` | EscrowStagingWorkflow, EscrowIngestionWorkflow, TLDCleanupWorkflow, UpdateFX | Data import, escrow, and sync operations |
 
 ### Directory Layout
 
@@ -248,7 +247,7 @@ Use `workflow.GetVersion()` to branch between old and new logic:
 v := workflow.GetVersion(ctx, "add-validation-step", workflow.DefaultVersion, 1)
 if v == 1 {
     // New path: validate before proceeding
-    err = workflow.ExecuteActivity(ctx, ValidateInput, params).Get(ctx, &validationResult)
+    err = workflow.ExecuteActivity(ctx, ValidateEscrowSource, params).Get(ctx, &validationResult)
     if err != nil {
         return err
     }
@@ -422,9 +421,8 @@ The current 3-queue setup is appropriate. When adding new workflows, assign to q
 
 | Queue | Use When |
 |---|---|
-| `domain-lifecycle` | Domain CRUD, registrar management, anything that interacts with the core domain model |
-| `escrow-import` | Heavy data operations, imports, exports, cleanup — things that may run for hours |
-| `sync` | Lightweight periodic sync tasks (FX rates, external data pulls) |
+| `object-lifecycle` | Domain CRUD, registrar management, anything that interacts with the core domain model |
+| `data-pipeline` | Heavy data operations, imports, exports, cleanup, and periodic sync tasks (FX rates, external data pulls) |
 
 > **IMPORTANT:** If you add a workflow that doesn't fit these categories (e.g., a reporting or analytics workflow), prefer adding a new task queue over overloading an existing one. Define the queue name as a constant, never hardcode strings in multiple places.
 
@@ -434,15 +432,14 @@ All Temporal client configuration uses **environment variables managed by Dopple
 
 | Env Var | Purpose | Default |
 |---|---|---|
-| `TMPIO_HOST_PORT` | Temporal server address | `temporal:7233` |
-| `TMPIO_NAME_SPACE` | Temporal namespace | `default` |
-| `TMPIO_QUEUE` | Lifecycle task queue | `domain-lifecycle` |
-| `ESCROW_QUEUE` | Escrow task queue | `escrow-import` |
-| `TMPIO_SYNC_QUEUE` | Sync task queue | `sync` |
-| `TMPIO_API_KEY` | API key auth (Temporal Cloud) | — |
-| `TMPIO_CERT` | mTLS certificate (PEM) | — |
-| `TMPIO_KEY` | mTLS private key (PEM) | — |
-| `TMPIO_UI_URL` | Temporal UI base URL | `http://localhost:8081` |
+| `TEMPORAL_HOST_PORT` | Temporal server address | `temporal:7233` |
+| `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
+| `TEMPORAL_QUEUE` | Lifecycle task queue | `object-lifecycle` |
+| `TEMPORAL_ESCROW_QUEUE` | Data pipeline task queue | `data-pipeline` |
+| `TEMPORAL_API_KEY` | API key auth (Temporal Cloud) | — |
+| `TEMPORAL_CLIENT_CERT` | mTLS certificate (PEM) | — |
+| `TEMPORAL_CLIENT_KEY` | mTLS private key (PEM) | — |
+| `TEMPORAL_UI_URL` | Temporal UI base URL | `http://localhost:8081` |
 
 **Rules:**
 - Never read secrets directly — always via Doppler (`doppler run --`)

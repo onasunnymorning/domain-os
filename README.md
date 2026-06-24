@@ -83,14 +83,14 @@ Each box is an **Activity** — a single Go function that does one thing. The **
 
 ### Activities — the building blocks
 
-There are **65+ activity implementations** across the codebase. Each is a focused function: `AutoRenewDomain`, `PurgeDomain`, `IngestContacts`, `BackupTLDAssets`, `ValidateInput`, `UpdateFX`, etc.
+There are **65+ activity implementations** across the codebase. Each is a focused function: `AutoRenewDomain`, `PurgeDomain`, `IngestContacts`, `BackupTLDAssets`, `ValidateEscrowSource`, `UpdateFX`, etc.
 
 Activities are grouped by concern:
 
 | Group | Activities | Examples |
 |---|---|---|
 | **Domain Lifecycle** | ~15 | `AutoRenewDomain`, `ExpireDomain`, `PurgeDomain`, `RenewDomain`, `SetDomainStatus` |
-| **Escrow Import** | ~10 | `ValidateInput`, `ParseAndAssetize`, `CollateAssets`, `RegistrarMap`, `StageImport`, `IngestDomains`, `IngestContacts` |
+| **Escrow Import** | ~10 | `ValidateEscrowSource`, `ParseAndExtractAssets`, `BuildStagingDatabase`, `ResolveRegistrars`, `FinalizeStaging`, `IngestDomains`, `IngestContacts` |
 | **Registrar Sync** | ~8 | `SyncIanaRegistrars`, `GetICANNRegistrars`, `DiffAndPlanRegistrars`, `CreateRegistrar`, `SetRegistrarStatus` |
 | **TLD Cleanup** | ~5 | `CheckTLDCanBeDeleted`, `PlanTLDCleanup`, `BackupTLDAssets`, `DeleteTLDAssets` |
 | **FX** | 1 | `UpdateFX` |

@@ -193,14 +193,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		return
 	}
 
-	cfg := temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: temporal.QueueDataPipeline,
-	}
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueDataPipeline)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -224,7 +217,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		return
 	}
 
-	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase := os.Getenv("TEMPORAL_UI_URL")
 	// Be defensive: strip accidental surrounding quotes from env values
 	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
 	if temporalUIBase == "" {
@@ -255,14 +248,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 		return
 	}
 
-	cfg := temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: temporal.QueueDataPipeline,
-	}
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueDataPipeline)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -290,7 +276,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 		return
 	}
 
-	temporalUIBase := os.Getenv("TMPIO_UI_URL")
+	temporalUIBase := os.Getenv("TEMPORAL_UI_URL")
 	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
 	if temporalUIBase == "" {
 		temporalUIBase = "http://localhost:8081"
@@ -409,11 +395,11 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		wf := rr.wf
 
 		// Build Temporal UI link
-		ns := strings.TrimSpace(os.Getenv("TMPIO_NAME_SPACE"))
+		ns := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
 		if ns == "" {
 			ns = "default"
 		}
-		ui := strings.TrimSpace(os.Getenv("TMPIO_UI_URL"))
+		ui := strings.TrimSpace(os.Getenv("TEMPORAL_UI_URL"))
 		if ui == "" {
 			ui = "http://localhost:8081"
 		}

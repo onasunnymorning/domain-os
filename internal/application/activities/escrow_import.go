@@ -27,14 +27,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// ValidateInputArgs represents the basic input validation parameters
-type ValidateInputArgs struct {
+// ValidateEscrowSourceArgs represents the basic input validation parameters
+type ValidateEscrowSourceArgs struct {
 	TLD       string
 	ObjectKey string
 }
 
-// ValidateInputResult returns the outcome of basic validation
-type ValidateInputResult struct {
+// ValidateEscrowSourceResult returns the outcome of basic validation
+type ValidateEscrowSourceResult struct {
 	TLD       string
 	ObjectKey string
 	Exists    bool
@@ -43,27 +43,27 @@ type ValidateInputResult struct {
 // EscrowImportActivities groups escrow-related activity methods
 type EscrowImportActivities struct{}
 
-// ValidateInput checks that required inputs are present and object exists in S3/MinIO
-func (a *EscrowImportActivities) ValidateInput(ctx context.Context, args ValidateInputArgs) (ValidateInputResult, error) {
+// ValidateEscrowSource checks that required inputs are present and object exists in S3/MinIO
+func (a *EscrowImportActivities) ValidateEscrowSource(ctx context.Context, args ValidateEscrowSourceArgs) (ValidateEscrowSourceResult, error) {
 	tld := strings.TrimSpace(args.TLD)
 	if tld == "" {
-		return ValidateInputResult{}, fmt.Errorf("tld is required")
+		return ValidateEscrowSourceResult{}, fmt.Errorf("tld is required")
 	}
 	key := strings.TrimSpace(args.ObjectKey)
 	if key == "" {
-		return ValidateInputResult{}, fmt.Errorf("objectKey is required")
+		return ValidateEscrowSourceResult{}, fmt.Errorf("objectKey is required")
 	}
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return ValidateInputResult{}, err
+		return ValidateEscrowSourceResult{}, err
 	}
 	exists, err := s3c.Exists(ctx, key)
 	if err != nil {
-		return ValidateInputResult{}, err
+		return ValidateEscrowSourceResult{}, err
 	}
 
-	return ValidateInputResult{TLD: tld, ObjectKey: key, Exists: exists}, nil
+	return ValidateEscrowSourceResult{TLD: tld, ObjectKey: key, Exists: exists}, nil
 }
 
 // StreamingAnalysisArgs parameters
@@ -767,13 +767,14 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 		_ = s3c.UploadString(ctx, cursorKey, k)
 	}
 
-	total, skipped, err := importer.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := importer.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
 
 	counts["contacts_imported"] = total
-	tallies["contacts_skipped_unmapped"] = skipped
+	counts["contacts_inserted"] = inserted
+	counts["contacts_updated"] = updated
 
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Tallies: tallies}, nil
 }
@@ -911,14 +912,15 @@ func (a *EscrowImportActivities) ImportHostsDirect(ctx context.Context, args Imp
 		_ = s3c.UploadString(ctx, cursorKey, k)
 	}
 
-	total, skipped, err := importer.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := importer.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
 		activity.GetLogger(ctx).Error("Direct host import failed", "error", err)
 		return ImportFromSQLiteResult{}, err
 	}
 
 	counts["hosts_imported"] = total
-	tallies["hosts_skipped_unmapped"] = skipped
+	counts["hosts_inserted"] = inserted
+	counts["hosts_updated"] = updated
 
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Tallies: tallies}, nil
 }
@@ -969,13 +971,14 @@ func (a *EscrowImportActivities) ImportDomainsDirect(ctx context.Context, args I
 		_ = s3c.UploadString(ctx, cursorKey, k)
 	}
 
-	total, skipped, err := importer.ImportDomains(ctx, db, tld, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := importer.ImportDomains(ctx, db, tld, clidMap, lastKey, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
 
 	counts["domains_imported"] = total
-	tallies["domains_skipped_unmapped"] = skipped
+	counts["domains_inserted"] = inserted
+	counts["domains_updated"] = updated
 
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Tallies: tallies}, nil
 }
@@ -2394,48 +2397,48 @@ func (a *EscrowImportActivities) PersistRunReport(ctx context.Context, args Pers
 
 // --- Refactored 5-Stage Pipeline Structs ---
 
-type ParseAndAssetizeArgs struct {
+type ParseAndExtractAssetsArgs struct {
 	TLD       string
 	ObjectKey string
 	RunPrefix string
 }
 
-type ParseAndAssetizeResult struct {
+type ParseAndExtractAssetsResult struct {
 	RunPrefix      string
 	AssetKeys      map[string]string // filename -> s3 key
 	HasIssues      bool
 	AnalysisErrors []string
 }
 
-type CollateAssetsArgs struct {
+type BuildStagingDatabaseArgs struct {
 	TLD          string
 	RunPrefix    string
 	AssetKeys    map[string]string
 	BaseFilename string
 }
 
-type CollateAssetsResult struct {
+type BuildStagingDatabaseResult struct {
 	DBKey string
 }
 
-type RegistrarMapArgs struct {
+type ResolveRegistrarsArgs struct {
 	TLD       string
 	DBKey     string
 	RunPrefix string
 	Overrides map[string]string
 }
 
-type RegistrarMapResult struct {
+type ResolveRegistrarsResult struct {
 	DBKey     string // Updated db key
 	HasIssues bool
 }
 
-type StageImportArgs struct {
+type FinalizeStagingArgs struct {
 	TLD   string
 	DBKey string
 }
 
-type StageImportResult struct {
+type FinalizeStagingResult struct {
 	StagedDBKey string
 }
 
@@ -2451,19 +2454,19 @@ type ExecuteImportResult struct {
 
 // --- Refactored Activity Stubs ---
 
-func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args ParseAndAssetizeArgs) (ParseAndAssetizeResult, error) {
+func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args ParseAndExtractAssetsArgs) (ParseAndExtractAssetsResult, error) {
 	tld := strings.TrimSpace(args.TLD)
 	if tld == "" {
-		return ParseAndAssetizeResult{}, fmt.Errorf("tld is required")
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("tld is required")
 	}
 	key := strings.TrimSpace(args.ObjectKey)
 	if key == "" {
-		return ParseAndAssetizeResult{}, fmt.Errorf("objectKey is required")
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("objectKey is required")
 	}
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return ParseAndAssetizeResult{}, err
+		return ParseAndExtractAssetsResult{}, err
 	}
 
 	base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
@@ -2522,7 +2525,7 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 			}
 		}
 
-		return ParseAndAssetizeResult{
+		return ParseAndExtractAssetsResult{
 			RunPrefix:      runPrefix,
 			AssetKeys:      assets,
 			HasIssues:      len(envelope.Analysis.Errors) > 0 || len(envelope.Analysis.MissingContacts) > 0,
@@ -2533,13 +2536,13 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 	// Download and Process
 	xmlPath, err := s3c.DownloadToFile(ctx, key)
 	if err != nil {
-		return ParseAndAssetizeResult{}, fmt.Errorf("download failed: %w", err)
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("download failed: %w", err)
 	}
 	defer os.Remove(xmlPath)
 
 	svc, err := services.NewStreamingXMLEscrowService(xmlPath)
 	if err != nil {
-		return ParseAndAssetizeResult{}, fmt.Errorf("service init failed: %w", err)
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("service init failed: %w", err)
 	}
 
 	heartbeat := func(details ...interface{}) {
@@ -2549,7 +2552,7 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 	// Run analysis (generates local CSVs)
 	// We pass false for mapRegistrars as that is now a separate step
 	if err := svc.StreamAnalyze(false, GetBearerToken(), heartbeat); err != nil {
-		return ParseAndAssetizeResult{}, fmt.Errorf("stream analyze failed: %w", err)
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("stream analyze failed: %w", err)
 	}
 
 	// Upload Artifacts
@@ -2574,7 +2577,7 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 				ctype = "application/json"
 			}
 			if err := s3c.UploadFile(ctx, objKey, localFile, ctype); err != nil {
-				return ParseAndAssetizeResult{}, fmt.Errorf("upload %s failed: %w", targetName, err)
+				return ParseAndExtractAssetsResult{}, fmt.Errorf("upload %s failed: %w", targetName, err)
 			}
 			assets[targetName] = objKey
 			os.Remove(localFile)
@@ -2604,7 +2607,7 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 		}
 	}
 
-	return ParseAndAssetizeResult{
+	return ParseAndExtractAssetsResult{
 		RunPrefix:      runPrefix,
 		AssetKeys:      assets,
 		HasIssues:      hasIssues,
@@ -2612,14 +2615,14 @@ func (a *EscrowImportActivities) ParseAndAssetize(ctx context.Context, args Pars
 	}, nil
 }
 
-func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args CollateAssetsArgs) (CollateAssetsResult, error) {
+func (a *EscrowImportActivities) BuildStagingDatabase(ctx context.Context, args BuildStagingDatabaseArgs) (BuildStagingDatabaseResult, error) {
 	tld := strings.TrimSpace(args.TLD)
 	if tld == "" {
-		return CollateAssetsResult{}, fmt.Errorf("tld is required")
+		return BuildStagingDatabaseResult{}, fmt.Errorf("tld is required")
 	}
 	runPrefix := strings.TrimSpace(args.RunPrefix)
 	if runPrefix == "" {
-		return CollateAssetsResult{}, fmt.Errorf("runPrefix is required")
+		return BuildStagingDatabaseResult{}, fmt.Errorf("runPrefix is required")
 	}
 	base := strings.TrimSpace(args.BaseFilename)
 	if base == "" {
@@ -2635,7 +2638,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return CollateAssetsResult{}, err
+		return BuildStagingDatabaseResult{}, err
 	}
 
 	manifestKey := runPrefix + "/" + base + ".db.manifest.json"
@@ -2648,7 +2651,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 			if data, rerr := os.ReadFile(tmp); rerr == nil {
 				if jerr := json.Unmarshal(data, &manifest); jerr == nil {
 					_ = os.Remove(tmp)
-					return CollateAssetsResult{DBKey: manifest.DBKey}, nil
+					return BuildStagingDatabaseResult{DBKey: manifest.DBKey}, nil
 				}
 			}
 			_ = os.Remove(tmp)
@@ -2657,7 +2660,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 
 	workDir, err := os.MkdirTemp("", "escrow-sqlite-*")
 	if err != nil {
-		return CollateAssetsResult{}, err
+		return BuildStagingDatabaseResult{}, err
 	}
 	defer os.RemoveAll(workDir)
 
@@ -2665,13 +2668,13 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 		dst := filepath.Join(workDir, filename)
 		tmpPath, err := s3c.DownloadToFile(ctx, key)
 		if err != nil {
-			return CollateAssetsResult{}, fmt.Errorf("download asset %s failed: %w", filename, err)
+			return BuildStagingDatabaseResult{}, fmt.Errorf("download asset %s failed: %w", filename, err)
 		}
 		os.Rename(tmpPath, dst)
 	}
 
 	// Validate Critical Assets
-	// ParseAndAssetize should have produced these. If not, we must fail.
+	// ParseAndExtractAssets should have produced these. If not, we must fail.
 	requiredAssets := []string{
 		base + "-contacts.csv",
 		base + "-hosts.csv",
@@ -2682,7 +2685,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 		if _, ok := args.AssetKeys[req]; !ok {
 			// Also check if file exists on disk (maybe it wasn't in keys but somehow got there? Unlikely)
 			if _, err := os.Stat(filepath.Join(workDir, req)); os.IsNotExist(err) {
-				return CollateAssetsResult{}, fmt.Errorf("critical asset missing: %s", req)
+				return BuildStagingDatabaseResult{}, fmt.Errorf("critical asset missing: %s", req)
 			}
 		}
 	}
@@ -2697,7 +2700,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 
 	// This converts all CSVs found in basePath* to the SQLite DB
 	if err := svc.ConvertToSQLite(dbPath, heartbeat); err != nil {
-		return CollateAssetsResult{}, fmt.Errorf("csv to sqlite failed for base %s: %w", base, err)
+		return BuildStagingDatabaseResult{}, fmt.Errorf("csv to sqlite failed for base %s: %w", base, err)
 	}
 
 	// Data Enrichment: Ingest domain counts from analysis.json
@@ -2747,7 +2750,7 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 
 	dbKey := runPrefix + "/" + filepath.Base(dbPath)
 	if err := s3c.UploadFile(ctx, dbKey, dbPath, "application/octet-stream"); err != nil {
-		return CollateAssetsResult{}, fmt.Errorf("upload db failed: %w", err)
+		return BuildStagingDatabaseResult{}, fmt.Errorf("upload db failed: %w", err)
 	}
 
 	// Write Manifest
@@ -2762,17 +2765,17 @@ func (a *EscrowImportActivities) CollateAssets(ctx context.Context, args Collate
 		os.Remove(tmp.Name())
 	}
 
-	return CollateAssetsResult{DBKey: dbKey}, nil
+	return BuildStagingDatabaseResult{DBKey: dbKey}, nil
 }
 
-func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args RegistrarMapArgs) (RegistrarMapResult, error) {
+func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args ResolveRegistrarsArgs) (ResolveRegistrarsResult, error) {
 	if args.DBKey == "" {
-		return RegistrarMapResult{}, fmt.Errorf("dbKey is required")
+		return ResolveRegistrarsResult{}, fmt.Errorf("dbKey is required")
 	}
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return RegistrarMapResult{}, err
+		return ResolveRegistrarsResult{}, err
 	}
 
 	// Idempotency Check
@@ -2782,20 +2785,20 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 		activity.GetLogger(ctx).Info("Resuming: Registrar mapping manifest found", "manifestKey", manifestKey)
 		// We assume if manifest exists, the DB at args.DBKey is already mapped.
 		// We could verify content, but for now trust the artifact.
-		return RegistrarMapResult{DBKey: args.DBKey, HasIssues: false}, nil
+		return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: false}, nil
 	}
 
 	// Download DB
 	dbPath, err := s3c.DownloadToFile(ctx, args.DBKey)
 	if err != nil {
-		return RegistrarMapResult{}, fmt.Errorf("download db failed: %w", err)
+		return ResolveRegistrarsResult{}, fmt.Errorf("download db failed: %w", err)
 	}
 	defer os.Remove(dbPath)
 
 	// Open SQLite
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return RegistrarMapResult{}, fmt.Errorf("open sqlite failed: %w", err)
+		return ResolveRegistrarsResult{}, fmt.Errorf("open sqlite failed: %w", err)
 	}
 	defer db.Close()
 
@@ -2807,7 +2810,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 		gurid INTEGER
 	)`)
 	if err != nil {
-		return RegistrarMapResult{}, fmt.Errorf("create mapping table failed: %w", err)
+		return ResolveRegistrarsResult{}, fmt.Errorf("create mapping table failed: %w", err)
 	}
 
 	// Read Registrars
@@ -2842,7 +2845,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 
 	if err != nil {
 		activity.GetLogger(ctx).Warn("Could not query registrars table", "error", err)
-		return RegistrarMapResult{}, temporal.NewNonRetryableApplicationError(
+		return ResolveRegistrarsResult{}, temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("failed to query registrars table: %v", err),
 			"RegistrarQueryFailed",
 			nil,
@@ -2871,7 +2874,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 
 	tx, err := db.Begin()
 	if err != nil {
-		return RegistrarMapResult{}, err
+		return ResolveRegistrarsResult{}, err
 	}
 
 	mappedCount := 0
@@ -2926,7 +2929,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 				r.ClID, mappedID, r.Name, r.GurID)
 			if err != nil {
 				activity.GetLogger(ctx).Error("Failed to insert mapping", "err", err)
-				return RegistrarMapResult{}, fmt.Errorf("failed to insert mapping: %w", err)
+				return ResolveRegistrarsResult{}, fmt.Errorf("failed to insert mapping: %w", err)
 			}
 			mappedCount++
 		} else {
@@ -2943,7 +2946,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 	if len(missing) > 0 {
 		tx.Rollback()
 		activity.GetLogger(ctx).Error("Registrar mapping incomplete", "missing_count", len(missing), "missing", missing)
-		return RegistrarMapResult{DBKey: args.DBKey, HasIssues: true}, temporal.NewNonRetryableApplicationError(
+		return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: true}, temporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("mapping failed: %d registrars unmapped. Please provide overrides for: %s", len(missing), strings.Join(missing, ", ")),
 			"RegistrarMappingIncomplete",
 			nil,
@@ -2951,7 +2954,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 	}
 
 	if err := tx.Commit(); err != nil {
-		return RegistrarMapResult{}, fmt.Errorf("commit failed: %w", err)
+		return ResolveRegistrarsResult{}, fmt.Errorf("commit failed: %w", err)
 	}
 
 	activity.GetLogger(ctx).Info("Mapped registrars", "total", len(registrars), "mapped", mappedCount)
@@ -2961,7 +2964,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 
 	// Upload Updated DB
 	if err := s3c.UploadFile(ctx, args.DBKey, dbPath, "application/octet-stream"); err != nil {
-		return RegistrarMapResult{}, fmt.Errorf("upload db failed: %w", err)
+		return ResolveRegistrarsResult{}, fmt.Errorf("upload db failed: %w", err)
 	}
 
 	// Write Manifest to mark completion
@@ -2977,7 +2980,7 @@ func (a *EscrowImportActivities) RegistrarMap(ctx context.Context, args Registra
 		os.Remove(tmp.Name())
 	}
 
-	return RegistrarMapResult{DBKey: args.DBKey, HasIssues: false}, nil
+	return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: false}, nil
 }
 
 func verifyRegistrarExists(client *http.Client, baseURL, token, id string) bool {
@@ -3065,14 +3068,14 @@ func fetchRegistrarByNameLike(client *http.Client, baseURL, token, name string) 
 	return "", nil
 }
 
-func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImportArgs) (StageImportResult, error) {
+func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args FinalizeStagingArgs) (FinalizeStagingResult, error) {
 	if args.DBKey == "" {
-		return StageImportResult{}, fmt.Errorf("dbKey is required")
+		return FinalizeStagingResult{}, fmt.Errorf("dbKey is required")
 	}
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return StageImportResult{}, err
+		return FinalizeStagingResult{}, err
 	}
 
 	// Idempotency: Check if staged DB already exists
@@ -3084,13 +3087,13 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 
 	if exists, _ := s3c.Exists(ctx, stagedKey); exists {
 		activity.GetLogger(ctx).Info("Resuming: Staged DB found", "key", stagedKey)
-		return StageImportResult{StagedDBKey: stagedKey}, nil
+		return FinalizeStagingResult{StagedDBKey: stagedKey}, nil
 	}
 
 	// Download Source DB
 	srcPath, err := s3c.DownloadToFile(ctx, args.DBKey)
 	if err != nil {
-		return StageImportResult{}, fmt.Errorf("download db failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("download db failed: %w", err)
 	}
 	defer os.Remove(srcPath)
 	defer os.Remove(srcPath + "-wal")
@@ -3105,13 +3108,13 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 
 	db, err := sql.Open("sqlite", stagedPath)
 	if err != nil {
-		return StageImportResult{}, fmt.Errorf("open staged db failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("open staged db failed: %w", err)
 	}
 	defer db.Close()
 
 	// Attach Source DB
 	if _, err := db.Exec(fmt.Sprintf("ATTACH DATABASE '%s' AS src", srcPath)); err != nil {
-		return StageImportResult{}, fmt.Errorf("attach failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("attach failed: %w", err)
 	}
 
 	// Helper to copy and update (Strict: Preserves original if unmapped)
@@ -3169,19 +3172,19 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 
 	// Contacts
 	if err := copyAndUpdate("contacts", "clID"); err != nil {
-		return StageImportResult{}, fmt.Errorf("stage contacts failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("stage contacts failed: %w", err)
 	}
 	updateNullable("contacts", "crRr", "upRr")
 
 	// Hosts
 	if err := copyAndUpdate("hosts", "clID"); err != nil {
-		return StageImportResult{}, fmt.Errorf("stage hosts failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("stage hosts failed: %w", err)
 	}
 	updateNullable("hosts", "crRr", "upRr")
 
 	// Domains
 	if err := copyAndUpdate("domains", "clID"); err != nil {
-		return StageImportResult{}, fmt.Errorf("stage domains failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("stage domains failed: %w", err)
 	}
 	updateNullable("domains", "crRr", "upRr")
 
@@ -3190,10 +3193,10 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 	for _, t := range knownTables {
 		if _, err := db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM src.%s", t, t)); err != nil {
 			if strings.Contains(err.Error(), "no such table") {
-				activity.GetLogger(ctx).Warn("⚠️ StageImport: missing aux table in source, skipping", "table", t)
+				activity.GetLogger(ctx).Warn("⚠️ FinalizeStaging: missing aux table in source, skipping", "table", t)
 				continue
 			}
-			return StageImportResult{}, fmt.Errorf("stage aux table %s failed: %w", t, err)
+			return FinalizeStagingResult{}, fmt.Errorf("stage aux table %s failed: %w", t, err)
 		}
 	}
 
@@ -3205,10 +3208,10 @@ func (a *EscrowImportActivities) StageImport(ctx context.Context, args StageImpo
 
 	// Upload Staged DB
 	if err := s3c.UploadFile(ctx, stagedKey, stagedPath, "application/octet-stream"); err != nil {
-		return StageImportResult{}, fmt.Errorf("upload staged db failed: %w", err)
+		return FinalizeStagingResult{}, fmt.Errorf("upload staged db failed: %w", err)
 	}
 
-	return StageImportResult{StagedDBKey: stagedKey}, nil
+	return FinalizeStagingResult{StagedDBKey: stagedKey}, nil
 }
 
 // IngestContactsArgs parameters
@@ -3218,8 +3221,9 @@ type IngestContactsArgs struct {
 
 // IngestContactsResult outcome
 type IngestContactsResult struct {
-	Total   int64
-	Skipped int64
+	Total    int64
+	Inserted int64
+	Updated  int64
 }
 
 // IngestContacts imports contacts from the staged DB into the registry
@@ -3265,12 +3269,12 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 		activity.RecordHeartbeat(ctx, processed)
 	}
 
-	total, skipped, err := destImporter.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := destImporter.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
-		return IngestContactsResult{Total: total, Skipped: skipped}, err
+		return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated}, err
 	}
 
-	return IngestContactsResult{Total: total, Skipped: skipped}, nil
+	return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated}, nil
 }
 
 // IngestHostsArgs parameters
@@ -3279,8 +3283,9 @@ type IngestHostsArgs struct {
 }
 
 type IngestHostsResult struct {
-	Total   int64
-	Skipped int64
+	Total    int64
+	Inserted int64
+	Updated  int64
 }
 
 // IngestHosts imports hosts
@@ -3322,12 +3327,12 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
-	total, skipped, err := destImporter.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := destImporter.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
-		return IngestHostsResult{Total: total, Skipped: skipped}, err
+		return IngestHostsResult{Total: total, Inserted: inserted, Updated: updated}, err
 	}
 
-	return IngestHostsResult{Total: total, Skipped: skipped}, nil
+	return IngestHostsResult{Total: total, Inserted: inserted, Updated: updated}, nil
 }
 
 // IngestDomainsArgs parameters
@@ -3337,8 +3342,9 @@ type IngestDomainsArgs struct {
 }
 
 type IngestDomainsResult struct {
-	Total   int64
-	Skipped int64
+	Total    int64
+	Inserted int64
+	Updated  int64
 }
 
 // IngestDomains imports domains
@@ -3382,12 +3388,12 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
-	total, skipped, err := destImporter.ImportDomains(ctx, db, args.TLD, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := destImporter.ImportDomains(ctx, db, args.TLD, clidMap, lastKey, heartbeat)
 	if err != nil {
-		return IngestDomainsResult{Total: total, Skipped: skipped}, err
+		return IngestDomainsResult{Total: total, Inserted: inserted, Updated: updated}, err
 	}
 
-	return IngestDomainsResult{Total: total, Skipped: skipped}, nil
+	return IngestDomainsResult{Total: total, Inserted: inserted, Updated: updated}, nil
 }
 
 // IngestNNDNsArgs parameters
@@ -3398,8 +3404,9 @@ type IngestNNDNsArgs struct {
 
 // IngestNNDNsResult outcome
 type IngestNNDNsResult struct {
-	Total   int64
-	Skipped int64
+	Total    int64
+	Inserted int64
+	Updated  int64
 }
 
 // IngestNNDNs imports NNDNs from the staged DB into the registry
@@ -3441,12 +3448,12 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 		activity.RecordHeartbeat(ctx, processed)
 	}
 
-	total, skipped, err := destImporter.ImportNNDNs(ctx, db, args.TLD, lastKey, heartbeat)
+	total, inserted, updated, err := destImporter.ImportNNDNs(ctx, db, args.TLD, lastKey, heartbeat)
 	if err != nil {
-		return IngestNNDNsResult{Total: total, Skipped: skipped}, err
+		return IngestNNDNsResult{Total: total, Inserted: inserted, Updated: updated}, err
 	}
 
-	return IngestNNDNsResult{Total: total, Skipped: skipped}, nil
+	return IngestNNDNsResult{Total: total, Inserted: inserted, Updated: updated}, nil
 }
 
 // LinkDomainHostsArgs parameters
@@ -3556,4 +3563,416 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 	}
 
 	return AccreditRegistrarsResult{Total: total}, nil
+}
+
+// --- QA Staged Database ---
+
+// QACheck represents a single quality check result
+type QACheck struct {
+	Rule          string      `json:"rule"`
+	Description   string      `json:"description"`
+	Severity      string      `json:"severity"` // "error", "warning", "info"
+	Passed        bool        `json:"passed"`
+	AffectedCount int         `json:"affectedCount"`
+	Message       string      `json:"message"`
+	Detail        interface{} `json:"detail,omitempty"`
+	SampledItems  interface{} `json:"sampledItems,omitempty"`
+}
+
+// QAReport is the structured QA report for a staged database
+type QAReport struct {
+	Version   string            `json:"version"`
+	Timestamp time.Time         `json:"timestamp"`
+	Pipeline  string            `json:"pipeline"`
+	Context   map[string]string `json:"context"`
+	SourceKey string            `json:"sourceKey"`
+	Passed    bool              `json:"passed"`
+	Summary   map[string]int64  `json:"summary"`
+	Checks    []QACheck         `json:"checks"`
+}
+
+// AddCheck adds a check to the report and updates the overall passed status
+func (r *QAReport) AddCheck(check QACheck) {
+	r.Checks = append(r.Checks, check)
+	if !check.Passed && check.Severity == "error" {
+		r.Passed = false
+	}
+}
+
+// QAStagedDatabaseArgs input for the QA activity
+type QAStagedDatabaseArgs struct {
+	TLD         string
+	StagedDBKey string
+	RunPrefix   string
+}
+
+// QAStagedDatabaseResult output of the QA activity
+type QAStagedDatabaseResult struct {
+	Passed      bool   `json:"passed"`
+	QAReportKey string `json:"qaReportKey"`
+}
+
+// QAStagedDatabase validates the staged database and produces a QA report
+func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QAStagedDatabaseArgs) (QAStagedDatabaseResult, error) {
+	if args.StagedDBKey == "" {
+		return QAStagedDatabaseResult{}, fmt.Errorf("stagedDBKey is required")
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return QAStagedDatabaseResult{}, err
+	}
+
+	// Download Staged DB
+	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
+	if err != nil {
+		return QAStagedDatabaseResult{}, fmt.Errorf("download staged db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+	defer os.Remove(dbPath + "-wal")
+	defer os.Remove(dbPath + "-shm")
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return QAStagedDatabaseResult{}, fmt.Errorf("open sqlite failed: %w", err)
+	}
+	defer db.Close()
+
+	report := &QAReport{
+		Version:   "1.0",
+		Timestamp: time.Now().UTC(),
+		Pipeline:  "escrow-staging",
+		Context: map[string]string{
+			"tld":       args.TLD,
+			"runPrefix": args.RunPrefix,
+		},
+		SourceKey: args.StagedDBKey,
+		Passed:    true, // Optimistic — AddCheck flips to false on error-severity failures
+		Summary:   make(map[string]int64),
+		Checks:    []QACheck{},
+	}
+
+	// --- Collect counts for summary ---
+	countTable := func(table string) int64 {
+		var c int64
+		if err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&c); err != nil {
+			return 0
+		}
+		return c
+	}
+
+	report.Summary["contacts"] = countTable("contacts")
+	report.Summary["hosts"] = countTable("hosts")
+	report.Summary["domains"] = countTable("domains")
+	report.Summary["nndns"] = countTable("nndns")
+	report.Summary["domain_hosts"] = countTable("domain_nameservers")
+	report.Summary["registrar_mappings"] = countTable("registrar_mapping")
+
+	// --- Check 1: Unmapped primary CLIDs ---
+	// Any clID in contacts/hosts/domains that doesn't match a registrar_clid in registrar_mapping
+	{
+		query := `
+			SELECT COUNT(*) FROM (
+				SELECT clID FROM contacts WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				UNION ALL
+				SELECT clID FROM hosts WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				UNION ALL
+				SELECT clID FROM domains WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+			)`
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			activity.GetLogger(ctx).Warn("QA: unmapped_primary_clids query failed", "error", err)
+			count = -1
+		}
+
+		check := QACheck{
+			Rule:          "unmapped_primary_clids",
+			Description:   "Every clID in contacts, hosts, and domains must resolve to a registrar_mapping entry",
+			Severity:      "error",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			total := report.Summary["contacts"] + report.Summary["hosts"] + report.Summary["domains"]
+			check.Message = fmt.Sprintf("All %d primary CLIDs are mapped", total)
+		} else if count < 0 {
+			check.Message = "Query failed — unable to verify"
+			check.Passed = false
+		} else {
+			check.Message = fmt.Sprintf("%d primary CLIDs are not mapped to any registrar", count)
+			// Sample up to 50
+			sampleQuery := `
+				SELECT 'contacts' as entity, clID FROM contacts WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				UNION ALL
+				SELECT 'hosts', clID FROM hosts WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				UNION ALL
+				SELECT 'domains', clID FROM domains WHERE clID IS NOT NULL AND clID != '' AND TRIM(clID) NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				LIMIT 50`
+			if rows, err := db.Query(sampleQuery); err == nil {
+				var samples []map[string]string
+				for rows.Next() {
+					var entity, clid string
+					if rows.Scan(&entity, &clid) == nil {
+						samples = append(samples, map[string]string{"entity": entity, "clid": clid})
+					}
+				}
+				rows.Close()
+				check.SampledItems = samples
+			}
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 2: NULL primary CLIDs ---
+	{
+		query := `
+			SELECT COUNT(*) FROM (
+				SELECT 1 FROM contacts WHERE clID IS NULL OR TRIM(clID) = ''
+				UNION ALL
+				SELECT 1 FROM hosts WHERE clID IS NULL OR TRIM(clID) = ''
+				UNION ALL
+				SELECT 1 FROM domains WHERE clID IS NULL OR TRIM(clID) = ''
+			)`
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = -1
+		}
+		check := QACheck{
+			Rule:          "null_primary_clids",
+			Description:   "No contact, host, or domain should have a NULL or empty clID after staging",
+			Severity:      "error",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = "0 NULL primary CLIDs"
+		} else if count < 0 {
+			check.Message = "Query failed — unable to verify"
+			check.Passed = false
+		} else {
+			check.Message = fmt.Sprintf("%d records have NULL or empty clID", count)
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 3: Registrar mapping completeness ---
+	// Every distinct CLID value across all tables exists in registrar_mapping
+	{
+		query := `
+			SELECT COUNT(DISTINCT clid) FROM (
+				SELECT TRIM(clID) as clid FROM contacts WHERE clID IS NOT NULL AND clID != ''
+				UNION
+				SELECT TRIM(clID) FROM hosts WHERE clID IS NOT NULL AND clID != ''
+				UNION
+				SELECT TRIM(clID) FROM domains WHERE clID IS NOT NULL AND clID != ''
+			) WHERE clid NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)`
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = -1
+		}
+		// Count total distinct CLIDs
+		var totalDistinct int
+		db.QueryRow(`SELECT COUNT(DISTINCT clid) FROM (
+			SELECT TRIM(clID) as clid FROM contacts WHERE clID IS NOT NULL AND clID != ''
+			UNION
+			SELECT TRIM(clID) FROM hosts WHERE clID IS NOT NULL AND clID != ''
+			UNION
+			SELECT TRIM(clID) FROM domains WHERE clID IS NOT NULL AND clID != ''
+		)`).Scan(&totalDistinct)
+
+		check := QACheck{
+			Rule:          "registrar_mapping_completeness",
+			Description:   "Every distinct CLID value appearing anywhere in the staged data exists in registrar_mapping",
+			Severity:      "error",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = fmt.Sprintf("All %d distinct CLIDs are mapped", totalDistinct)
+		} else {
+			check.Message = fmt.Sprintf("%d distinct CLIDs are unmapped (of %d total)", count, totalDistinct)
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 4: Entity count consistency ---
+	// Cross-check staged counts with registrar_mapping domain_count sums
+	{
+		var mappingDomainSum int64
+		db.QueryRow(`SELECT COALESCE(SUM(domain_count), 0) FROM registrars WHERE domain_count IS NOT NULL`).Scan(&mappingDomainSum)
+
+		stagedDomains := report.Summary["domains"]
+		delta := stagedDomains - mappingDomainSum
+		if delta < 0 {
+			delta = -delta
+		}
+
+		// Tolerance: within 1% or exact match
+		tolerance := int64(float64(mappingDomainSum) * 0.01)
+		if tolerance < 1 {
+			tolerance = 1
+		}
+		passed := delta <= tolerance || mappingDomainSum == 0 // Skip check if no source counts
+
+		check := QACheck{
+			Rule:          "entity_count_consistency",
+			Description:   "Entity counts in staged DB are consistent with source analysis counts",
+			Severity:      "warning",
+			Passed:        passed,
+			AffectedCount: int(delta),
+			Detail: map[string]int64{
+				"staged_domains":  stagedDomains,
+				"source_domains":  mappingDomainSum,
+				"delta":           delta,
+				"staged_contacts": report.Summary["contacts"],
+				"staged_hosts":    report.Summary["hosts"],
+			},
+		}
+		if passed {
+			check.Message = fmt.Sprintf("Domain count consistent: %d staged (source: %d)", stagedDomains, mappingDomainSum)
+		} else {
+			check.Message = fmt.Sprintf("Domain count mismatch: %d staged vs %d from source (delta: %d)", stagedDomains, mappingDomainSum, delta)
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 5: Referential contacts ---
+	// Domains referencing registrant IDs that don't exist in contacts table
+	{
+		query := `SELECT COUNT(*) FROM domains WHERE registrant IS NOT NULL AND TRIM(registrant) != '' AND TRIM(registrant) NOT IN (SELECT TRIM(id) FROM contacts)`
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = 0 // Non-fatal if column doesn't exist
+		}
+		check := QACheck{
+			Rule:          "referential_contacts",
+			Description:   "Domain registrant IDs reference contacts that exist in the contacts table",
+			Severity:      "warning",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = "All domain contact references are valid"
+		} else {
+			check.Message = fmt.Sprintf("%d domains reference contacts not in the contacts table", count)
+			// Sample
+			sampleQuery := `SELECT name, registrant FROM domains WHERE registrant IS NOT NULL AND TRIM(registrant) != '' AND TRIM(registrant) NOT IN (SELECT TRIM(id) FROM contacts) LIMIT 50`
+			if rows, err := db.Query(sampleQuery); err == nil {
+				var samples []map[string]string
+				for rows.Next() {
+					var domain, registrant string
+					if rows.Scan(&domain, &registrant) == nil {
+						samples = append(samples, map[string]string{"domain": domain, "missingContactId": registrant})
+					}
+				}
+				rows.Close()
+				check.SampledItems = samples
+			}
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 6: Referential hosts ---
+	// domain_nameservers referencing hosts not in the hosts table
+	{
+		query := `SELECT COUNT(*) FROM domain_nameservers WHERE TRIM(nameserver) NOT IN (SELECT TRIM(name) FROM hosts)`
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = 0 // Non-fatal if table doesn't exist
+		}
+		totalNS := report.Summary["domain_hosts"]
+		check := QACheck{
+			Rule:          "referential_hosts",
+			Description:   "domain_nameservers entries reference hosts that exist in the hosts table",
+			Severity:      "warning",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = fmt.Sprintf("All %d nameserver references are valid", totalNS)
+		} else {
+			check.Message = fmt.Sprintf("%d nameserver references point to missing hosts", count)
+			sampleQuery := `SELECT domain_name, nameserver FROM domain_nameservers WHERE TRIM(nameserver) NOT IN (SELECT TRIM(name) FROM hosts) LIMIT 50`
+			if rows, err := db.Query(sampleQuery); err == nil {
+				var samples []map[string]string
+				for rows.Next() {
+					var domain, ns string
+					if rows.Scan(&domain, &ns) == nil {
+						samples = append(samples, map[string]string{"domain": domain, "missingHost": ns})
+					}
+				}
+				rows.Close()
+				check.SampledItems = samples
+			}
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 7: Expiry date sanity ---
+	{
+		now := time.Now().UTC()
+		pastDate := now.Format("2006-01-02")
+		futureDate := now.AddDate(10, 0, 0).Format("2006-01-02")
+
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND (exdate < '%s' OR exdate > '%s')`, pastDate, futureDate)
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = 0 // Non-fatal
+		}
+		check := QACheck{
+			Rule:          "expiry_date_sanity",
+			Description:   "Domain expiry dates are not in the past and not more than 10 years in the future",
+			Severity:      "warning",
+			Passed:        count == 0,
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = fmt.Sprintf("All %d expiry dates within expected range", report.Summary["domains"])
+		} else {
+			check.Message = fmt.Sprintf("%d domains have expiry dates outside the expected range", count)
+			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND (exdate < '%s' OR exdate > '%s') LIMIT 50`, pastDate, futureDate)
+			if rows, err := db.Query(sampleQuery); err == nil {
+				var samples []map[string]string
+				for rows.Next() {
+					var domain, exdate string
+					if rows.Scan(&domain, &exdate) == nil {
+						samples = append(samples, map[string]string{"domain": domain, "expiryDate": exdate})
+					}
+				}
+				rows.Close()
+				check.SampledItems = samples
+			}
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Serialize and upload QA report ---
+	reportJSON, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return QAStagedDatabaseResult{}, fmt.Errorf("marshal qa report failed: %w", err)
+	}
+
+	qaReportKey := filepath.Dir(args.StagedDBKey) + "/qa-report.json"
+	tmpFile, err := os.CreateTemp("", "qa-report-*.json")
+	if err != nil {
+		return QAStagedDatabaseResult{}, fmt.Errorf("create temp file failed: %w", err)
+	}
+	tmpFile.Write(reportJSON)
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	if err := s3c.UploadFile(ctx, qaReportKey, tmpFile.Name(), "application/json"); err != nil {
+		return QAStagedDatabaseResult{}, fmt.Errorf("upload qa report failed: %w", err)
+	}
+
+	activity.GetLogger(ctx).Info("QA Staged Database complete",
+		"passed", report.Passed,
+		"checks_run", len(report.Checks),
+		"qa_report_key", qaReportKey,
+	)
+
+	return QAStagedDatabaseResult{
+		Passed:      report.Passed,
+		QAReportKey: qaReportKey,
+	}, nil
 }

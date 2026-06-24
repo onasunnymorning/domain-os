@@ -26,6 +26,7 @@ func CreateSyncRegistrarScheduleDaily(cfg temporal.TemporalClientconfig) (string
 	if err != nil {
 		return "", err
 	}
+	defer temporalClient.Close()
 
 	// Create the schedule.
 	scheduleHandle, err := temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{

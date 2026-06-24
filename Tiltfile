@@ -19,12 +19,12 @@ docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unif
 
 # Group database and cache resources
 dc_resource('db', labels=["infrastructure"])
-dc_resource('redis', labels=["infrastructure"])
+dc_resource('redis', labels=["infrastructure"], auto_init=False)
 
 # Endpoints
 dc_resource('admin-api', labels=["endpoints"])
-dc_resource('epp-server', labels=["endpoints"])
-dc_resource('whois', labels=["endpoints"])
+dc_resource('epp-server', labels=["endpoints"], auto_init=False)
+dc_resource('whois', labels=["endpoints"], auto_init=False)
 
 # Init containers
 dc_resource('admin-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
@@ -41,10 +41,10 @@ dc_resource('unified-worker', labels=["workers"])
 dc_resource('minio', labels=["infrastructure"])
 dc_resource('minio-setup', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 
-dc_resource('prometheus', labels=["infrastructure"])
-dc_resource('grafana', labels=["infrastructure"])
-dc_resource('metabase', labels=["infrastructure"])
-dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
+dc_resource('prometheus', labels=["infrastructure"], auto_init=False)
+dc_resource('grafana', labels=["infrastructure"], auto_init=False)
+dc_resource('metabase', labels=["infrastructure"], auto_init=False)
+dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
 
 # Start Next.js frontend native development server
 local_resource(
@@ -52,6 +52,9 @@ local_resource(
     serve_cmd='cd frontend && ' +
               'NEXT_PUBLIC_API_URL="http://localhost:${API_PORT:-8080}" ' +
               'NEXT_PUBLIC_API_TOKEN="${ADMIN_TOKEN:-devtoken}" ' +
+              'NEXT_PUBLIC_AUTH0_ENABLED="false" ' +
+              'NEXT_PUBLIC_TEMPORAL_UI_URL="http://localhost:8081" ' +
+              'NEXT_PUBLIC_APP_VERSION="dev" ' +
               'PORT=3002 npm run dev',
     labels=["endpoints"]
 )
