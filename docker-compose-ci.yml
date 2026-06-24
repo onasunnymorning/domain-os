@@ -67,7 +67,7 @@ services:
       # Temporal Client (CI: temporalite, no TLS)
       - TMPIO_HOST_PORT=temporal:7233
       - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_QUEUE=object-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
 
@@ -136,9 +136,8 @@ services:
       - TMPIO_NAME_SPACE=default
       - TMPIO_KEY=
       - TMPIO_CERT=
-      - TMPIO_QUEUE=domain-lifecycle
-      - ESCROW_QUEUE=escrow-import
-      - TMPIO_SYNC_QUEUE=sync
+      - TMPIO_QUEUE=object-lifecycle
+      - ESCROW_QUEUE=data-pipeline
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above

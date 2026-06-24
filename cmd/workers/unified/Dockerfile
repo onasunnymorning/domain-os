@@ -8,7 +8,7 @@ COPY . .
 ENV GOTOOLCHAIN=auto
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/unified-worker ./cmd/workers/unified
 
-FROM alpine:3.21.3
+FROM alpine:3.21.4
 RUN apk upgrade --no-cache
 # Copy seed data (used by lifecycle worker for registrar sync)
 COPY ./initdata /initdata

@@ -58,7 +58,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
 		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+		WorkerQueue: temporal.QueueObjectLifecycle,
 	}
 
 	cli, err := temporal.GetTemporalClient(tCfg)

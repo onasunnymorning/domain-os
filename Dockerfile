@@ -56,7 +56,7 @@ RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdmin
 
 
 # Create API release image
-FROM alpine:3.21.3 AS admin-api
+FROM alpine:3.21.4 AS admin-api
 
 ## Install security patches and dnsviz dependencies
 RUN apk upgrade --no-cache && \
