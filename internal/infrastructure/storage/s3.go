@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,9 +20,10 @@ import (
 type S3Client struct {
 	client *minio.Client
 	bucket string
-	// publicEndpoint is the externally reachable endpoint for presigned URLs (e.g., http://localhost:9000)
-	// If empty, the SDK's internal endpoint host will be used as-is.
-	publicEndpoint string
+	// presignClient is configured with the public endpoint so that presigned URLs
+	// have correct S3 V4 signatures for the host the browser will actually use.
+	// If no public endpoint is set, this falls back to client.
+	presignClient *minio.Client
 }
 
 func NewS3ClientFromEnv() (*S3Client, error) {
@@ -48,51 +50,65 @@ func NewS3ClientFromEnv() (*S3Client, error) {
 		return nil, err
 	}
 
-	return &S3Client{client: cli, bucket: bucket, publicEndpoint: public}, nil
+	// Build a second client for presigning that uses the public endpoint.
+	// S3 V4 signatures include the Host header, so presigned URLs must be
+	// signed against the host the browser will actually reach.
+	presignCli := cli
+	if public != "" {
+		pubEndpoint, pubSSL := parseEndpointURL(public)
+		if pubEndpoint != "" {
+			pc, err := minio.New(pubEndpoint, &minio.Options{
+				Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
+				Secure:    pubSSL,
+				Region:    "us-east-1", // Avoids bucket location lookup (unreachable from Docker)
+				Transport: httpClient.Transport,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("creating presign client for %s: %w", pubEndpoint, err)
+			}
+			presignCli = pc
+		}
+	}
+
+	return &S3Client{client: cli, bucket: bucket, presignClient: presignCli}, nil
 }
 
-// PresignPut returns a presigned PUT URL for the specified key
-func (s *S3Client) PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expiry)
+// parseEndpointURL extracts host:port and SSL flag from a URL string.
+// Accepts "http://localhost:9000", "https://s3.example.com", or "localhost:9000".
+// Strips literal quotes (common docker-compose YAML mistake).
+func parseEndpointURL(raw string) (endpoint string, useSSL bool) {
+	raw = strings.Trim(raw, `"'`)
+	u, err := url.Parse(raw)
 	if err != nil {
-		return "", err
+		return raw, false
 	}
-	// If a public endpoint is provided, rewrite the URL's scheme/host to be externally reachable
-	if s.publicEndpoint != "" {
-		if pub, err := url.Parse(s.publicEndpoint); err == nil {
-			if pub.Scheme != "" {
-				u.Scheme = pub.Scheme
-			}
-			// If MINIO_PUBLIC_ENDPOINT may be provided without scheme (host:port), set default http
-			if u.Scheme == "" {
-				u.Scheme = "http"
-			}
-			if pub.Host != "" {
-				u.Host = pub.Host
-			} else if pub.Path != "" {
-				// Handle values like "localhost:9000" which end up in Path when scheme is missing
-				u.Host = strings.TrimPrefix(pub.Path, "/")
-			}
-		}
-	} else {
-		// Dev-friendly fallback: if the SDK host points to an internal docker name like "minio",
-		// rewrite it to localhost:9000 so the browser can reach it directly.
-		// This avoids common misconfig where MINIO_PUBLIC_ENDPOINT isn't set in dev.
-		if strings.HasPrefix(strings.ToLower(u.Host), "minio") || strings.HasSuffix(u.Host, ":9000") {
-			u.Scheme = "http"
-			// Preserve port when present; default to 9000
-			host := u.Host
-			if strings.Contains(host, ":") {
-				parts := strings.Split(host, ":")
-				port := parts[len(parts)-1]
-				if port == "" {
-					port = "9000"
-				}
-				u.Host = "localhost:" + port
-			} else {
-				u.Host = "localhost:9000"
-			}
-		}
+	useSSL = u.Scheme == "https"
+	if u.Host != "" {
+		return u.Host, useSSL
+	}
+	// url.Parse("localhost:9000") puts it in Path with empty Host
+	if u.Path != "" {
+		return strings.TrimPrefix(u.Path, "/"), false
+	}
+	return raw, false
+}
+
+// PresignPut returns a presigned PUT URL for the specified key.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.presignClient.PresignedPutObject(ctx, s.bucket, key, expiry)
+	if err != nil {
+		return "", fmt.Errorf("PresignPut(key=%s): %w", key, err)
+	}
+	return u.String(), nil
+}
+
+// PresignGet returns a presigned GET URL for the specified key.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.presignClient.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
+	if err != nil {
+		return "", fmt.Errorf("PresignGet(key=%s): %w", key, err)
 	}
 	return u.String(), nil
 }
@@ -190,4 +206,67 @@ func (s *S3Client) DownloadStream(ctx context.Context, key string) (io.ReadClose
 	}
 	// Note: It's the caller's responsibility to close the returned io.ReadCloser
 	return obj, nil
+}
+
+// =============================================================================
+// Multipart Upload — browser-direct large file uploads (S3-compatible)
+// =============================================================================
+
+// MultipartCompletePart identifies a successfully uploaded part by its number and ETag.
+type MultipartCompletePart struct {
+	PartNumber int
+	ETag       string
+}
+
+// InitMultipartUpload starts a new multipart upload and returns the upload ID.
+func (s *S3Client) InitMultipartUpload(ctx context.Context, key string) (string, error) {
+	core := minio.Core{Client: s.client}
+	uploadID, err := core.NewMultipartUpload(ctx, s.bucket, key, minio.PutObjectOptions{
+		ContentType: "application/octet-stream",
+	})
+	if err != nil {
+		return "", fmt.Errorf("InitMultipartUpload: %w", err)
+	}
+	return uploadID, nil
+}
+
+// PresignUploadPart returns a presigned PUT URL for uploading a single part.
+// The browser PUTs the chunk data directly to this URL.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignUploadPart(ctx context.Context, key, uploadID string, partNumber int, expiry time.Duration) (string, error) {
+	params := url.Values{
+		"partNumber": {strconv.Itoa(partNumber)},
+		"uploadId":   {uploadID},
+	}
+	u, err := s.presignClient.Presign(ctx, "PUT", s.bucket, key, expiry, params)
+	if err != nil {
+		return "", fmt.Errorf("PresignUploadPart(key=%s, part=%d): %w", key, partNumber, err)
+	}
+	return u.String(), nil
+}
+
+// CompleteMultipartUpload finalizes a multipart upload by assembling all parts.
+func (s *S3Client) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []MultipartCompletePart) error {
+	core := minio.Core{Client: s.client}
+	completeParts := make([]minio.CompletePart, len(parts))
+	for i, p := range parts {
+		completeParts[i] = minio.CompletePart{
+			PartNumber: p.PartNumber,
+			ETag:       p.ETag,
+		}
+	}
+	_, err := core.CompleteMultipartUpload(ctx, s.bucket, key, uploadID, completeParts, minio.PutObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("CompleteMultipartUpload: %w", err)
+	}
+	return nil
+}
+
+// AbortMultipartUpload cancels an in-progress multipart upload and cleans up parts.
+func (s *S3Client) AbortMultipartUpload(ctx context.Context, key, uploadID string) error {
+	core := minio.Core{Client: s.client}
+	if err := core.AbortMultipartUpload(ctx, s.bucket, key, uploadID); err != nil {
+		return fmt.Errorf("AbortMultipartUpload: %w", err)
+	}
+	return nil
 }

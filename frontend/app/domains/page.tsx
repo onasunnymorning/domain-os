@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDomains, useDomainCount } from "@/lib/hooks/useDomains";
 import { useRegistrars } from "@/lib/hooks/useRegistrars";
@@ -491,27 +492,7 @@ function DomainsPageInner() {
                       <TableHead className="w-40">Updated</TableHead>
                       <TableHead className="w-48">Expires</TableHead>
                       <TableHead className="w-[26rem]">
-                        <div className="flex items-center gap-1">
-                          Status
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button aria-label="Status help" className="inline-flex items-center text-muted-foreground hover:text-foreground">
-                                <HelpCircle className="h-4 w-4" />
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-80 p-3 text-sm" align="start">
-                              <div className="mb-2 font-medium">What do these mean?</div>
-                              <div className="space-y-2 max-h-64 overflow-auto pr-2">
-                                {Object.keys(STATUS_LABELS).map((k) => (
-                                  <div key={k} className="flex items-start gap-2">
-                                    <Badge variant="outline" className="text-xs whitespace-nowrap">{STATUS_LABELS[k]}</Badge>
-                                    <span className="text-muted-foreground">{STATUS_DESCRIPTIONS[k]}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
+                        Status
                       </TableHead>
                       <TableHead className="w-[22rem]">
                         <div className="flex items-center gap-1">
@@ -618,20 +599,30 @@ function DomainsPageInner() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
-                              {(() => {
-                                const s: any = (d as any).Status || {};
-                                const entries = Object.entries(s).filter(([, v]) => Boolean(v));
-                                if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
-                                return entries.map(([k]) => {
-                                  const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
-                                  const title = STATUS_DESCRIPTIONS[k] || label;
-                                  return (
-                                    <Badge key={k} variant="outline" className="text-xs" title={title}>
-                                      {label}
-                                    </Badge>
-                                  );
-                                });
-                              })()}
+                              <TooltipProvider delayDuration={150}>
+                                {(() => {
+                                  const s: any = (d as any).Status || {};
+                                  const entries = Object.entries(s).filter(([, v]) => Boolean(v));
+                                  if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
+                                  return entries.map(([k]) => {
+                                    const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
+                                    const desc = STATUS_DESCRIPTIONS[k] || label;
+                                    return (
+                                      <Tooltip key={k}>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="text-xs cursor-help">
+                                            {label}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center" className="max-w-xs text-xs">
+                                          <div className="font-semibold">{label}</div>
+                                          <div className="text-muted-foreground">{desc}</div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    );
+                                  });
+                                })()}
+                              </TooltipProvider>
                             </div>
                           </TableCell>
                           <TableCell>

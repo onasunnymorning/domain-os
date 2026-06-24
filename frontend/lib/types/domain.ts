@@ -177,3 +177,15 @@ export interface Quote {
   Class: string;
   Fees: QuoteFee[];
 }
+
+export interface DomainEvent {
+  id: string;
+  source: string;
+  type: string;
+  subject: string;
+  time: string;
+  trace_id?: string;
+  correlation_id?: string;
+  data?: any;
+}
+

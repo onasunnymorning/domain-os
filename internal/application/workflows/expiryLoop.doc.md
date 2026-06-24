@@ -6,109 +6,125 @@
 | **Queue** | `object-lifecycle` |
 | **Category** | `lifecycle` |
 | **Tags** | `lifecycle`, `domains`, `expiry` |
-| **Trigger** | `Schedule` |
+| **Trigger** | `Schedule` / `REST` |
 | **Human-in-the-Loop** | `No` |
 | **Launchpad Card** | `Read-only (scheduled)` |
 
 ## Overview
 
-The Expiry Loop is a scheduled workflow that runs every hour to process domains that have passed their expiration date. For each expired domain, it checks whether the domain is eligible for auto-renewal. Eligible domains are automatically renewed; ineligible domains are expired (transitioned to a post-expiry lifecycle state). Individual domain failures are logged but do not halt the loop, ensuring one problematic domain doesn't block processing of others.
+The Expiry Loop is a scheduled workflow that processes domains that have passed their expiration date. It locks a single reference time (or accepts an override) to prevent TOCTOU races between counting and listing. It batches eligibility checking concurrently to optimize network and database calls. Eligible domains are auto-renewed, and ineligible domains are expired in parallel with bounded concurrency. If the batch cap is reached, the workflow uses `ContinueAsNew` to drain the remainder of the queue immediately.
 
 ## Flow Diagram
 
 ```mermaid
 graph TD
-    A["Count Expired Domains"] --> B{"Count = 0?"}
-    B -- Yes --> DONE1["✅ Return nil (nothing to process)"]
-    B -- No --> C["List Expiring Domains"]
-    C --> D["For Each Domain"]
-    D --> E["Check Auto-Renew Eligibility"]
-    E --> F{"Can Auto-Renew?"}
-    F -- Yes --> G["Auto-Renew Domain"]
-    F -- No --> H["Expire Domain"]
-    G --> I{"More Domains?"}
-    H --> I
-    I -- Yes --> D
-    I -- No --> DONE2["✅ Return nil"]
+    A["Lock Reference Time"] --> B["Count Expired Domains"]
+    B --> C{"Count = 0?"}
+    C -- Yes --> DONE1["✅ Return result (nothing to process)"]
+    C -- No --> D["List Expiring Domains"]
+    D --> E["Batch Check Auto-Renew Eligibility"]
+    E --> F{"Dry Run?"}
+    F -- Yes --> DONE2["✅ Return Dry Run result"]
+    F -- No --> G["Process Writes in Parallel (Bounded Concurrency)"]
+    G --> H["Auto-Renew Domain (Parallel)"]
+    G --> I["Expire Domain (Parallel)"]
+    H --> J["Aggregate results into ExpiryLoopResult"]
+    I --> J
+    J --> K{"Batch Cap Reached?"}
+    K -- Yes --> L["🔄 ContinueAsNew (Immediate next batch)"]
+    K -- No --> DONE3["✅ Return final structured result"]
 
-    style D fill:#d5f5e3,stroke:#27ae60,stroke-width:2px
-    style F fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
+    style E fill:#d5f5e3,stroke:#27ae60,stroke-width:2px
+    style G fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
+    style L fill:#fadbd8,stroke:#e74c3c,stroke-width:2px
 ```
 
 ## Input
 
 ```go
-func ExpiryLoop(ctx workflow.Context) error
-```
+func ExpiryLoop(ctx workflow.Context, params ExpiryLoopParams) (ExpiryLoopResult, error)
 
-No input parameters. The workflow discovers expired domains dynamically.
+type ExpiryLoopParams struct {
+    BatchSize             int        `json:"batchSize,omitempty"`
+    ConcurrencyLimit      int        `json:"concurrencyLimit,omitempty"`
+    DryRun                bool       `json:"dryRun,omitempty"`
+    ReferenceTimeOverride *time.Time `json:"referenceTimeOverride,omitempty"`
+}
+```
 
 ## Output
 
-Returns `error` only. Returns `nil` on success (including when there are no expired domains to process).
+```go
+type ExpiryLoopResult struct {
+    StartedAt      time.Time           `json:"startedAt"`
+    CompletedAt    time.Time           `json:"completedAt"`
+    ReferenceTime  time.Time           `json:"referenceTime"`
+    TotalFound     int64               `json:"totalFound"`
+    TotalProcessed int                 `json:"totalProcessed"`
+    AutoRenewed    int                 `json:"autoRenewed"`
+    Expired        int                 `json:"expired"`
+    Failed         int                 `json:"failed"`
+    Skipped        int                 `json:"skipped"`
+    Notes          []string            `json:"notes"`
+    Failures       []ExpiryLoopFailure `json:"failures,omitempty"`
+}
+
+type ExpiryLoopFailure struct {
+    DomainName string `json:"domainName"`
+    Operation  string `json:"operation"` // "auto-renew-check", "auto-renew", "expire"
+    Error      string `json:"error"`
+}
+```
+
+## Query Handler
+
+The workflow exposes a `progress` query handler that returns the current `ExpiryLoopResult` in real-time, allowing operators to monitor the progress of parallel execution.
 
 ## Steps
 
-### 1. Count Expired Domains
+### 1. Lock Reference Time
+- **Description**: Captures `workflow.Now(ctx).UTC()` or uses the optional `ReferenceTimeOverride`.
+
+### 2. Count Expired Domains
 - **Activity**: `activities.GetExpiredDomainCount`
-- **Timeout**: Start-to-close 1min
-- **Retry**: Max 3 attempts, initial interval 1s, backoff coefficient 2.0, max interval 10min
-- **Description**: Queries the database for the count of domains whose expiry date has passed. If count is zero, the workflow returns immediately.
+- **Timeout**: 1 minute
+- **Description**: Queries the database for the count of domains whose expiry date is at or before the reference time.
 
-### 2. List Expiring Domains
+### 3. List Expiring Domains
 - **Activity**: `activities.ListExpiringDomains`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Retrieves the list of expired domain items (name and metadata) for processing.
+- **Timeout**: 1 minute
+- **Description**: Retrieves expiring domains using the reference time (up to 1,000 domains).
 
-### 3. Check Auto-Renew Eligibility (per domain)
-- **Activity**: `activities.CheckDomainCanAutoRenew`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Checks whether the domain has auto-renew enabled and meets the criteria for automatic renewal (e.g., registrar has auto-renew capability, domain is within grace period). On failure, the domain is skipped with a log entry.
+### 4. Batch Check Auto-Renew Eligibility
+- **Activity**: `activities.CheckDomainsCanAutoRenew`
+- **Timeout**: 1 minute
+- **Description**: Checks auto-renew eligibility for the entire list of domains concurrently in a bounded goroutine pool inside the activity.
 
-### 4a. Auto-Renew Domain
-- **Activity**: `activities.AutoRenewDomain`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Performs an automatic renewal of the domain, extending its registration period. On failure, the domain is skipped with a log entry.
+### 5. Parallel Writes (Auto-Renew or Expire)
+- **Activities**: `activities.AutoRenewDomain` or `activities.ExpireDomain`
+- **Timeout**: 1 minute per activity
+- **Description**: Executes writes concurrently using a semaphore pattern (buffered channel) inside the workflow up to `ConcurrencyLimit` (default: 20).
 
-### 4b. Expire Domain
-- **Activity**: `activities.ExpireDomain`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Transitions the domain to the expired lifecycle state. On failure, the domain is skipped with a log entry.
+### 6. Continue As New (Optional)
+- **Description**: If the listed domains are fewer than the total found, the workflow executes a `ContinueAsNew` error to immediately begin processing the remaining domains.
 
 ## Failure Modes
 
-| Failure | Cause | Workflow Behavior | Manual Recovery |
-|---------|-------|-------------------|-----------------|
-| Count query failure | DB connection issue | Workflow fails | Check DB health; next scheduled run will retry |
-| List query failure | DB query timeout | Workflow fails | Same as above |
-| Auto-renew check failure | Individual domain data issue | Logs error, skips domain, continues loop | Review logs, fix domain data, wait for next run |
-| Auto-renew failure | Renewal service error | Logs error, skips domain, continues loop | Manually renew domain via API |
-| Expire failure | Domain state transition error | Logs error, skips domain, continues loop | Manually expire domain via API |
-
-## Artifacts
-
-No persistent artifacts produced. Domain state changes are reflected directly in the database.
+| Failure | Cause | Workflow Behavior | Result Impact | Manual Recovery |
+|---------|-------|-------------------|---------------|-----------------|
+| Count query failure | DB connection issue | Workflow returns error | `Notes` contains error message | Check DB health; retry run |
+| List query failure | DB query timeout | Workflow returns error | `Notes` contains error message | Same as above |
+| Batch check failure | API rate limit/error | Workflow returns error | Workflow fails | Check API server health |
+| Individual write failure | EPP registry issue | Records failure, continues | `Failed++`, added to `Failures` | Manually expire/renew via API |
+| Batch cap hit | >1000 expired domains | Runs `ContinueAsNew` immediately | Next run processes remainder | Automatic self-healing |
 
 ## Operational Notes
 
-### Scheduling
-Runs every hour on a schedule.
-
 ### Monitoring
-- Monitor the expired domain count — a consistently high count may indicate auto-renew failures accumulating.
-- Watch for repeated error logs for the same domain across multiple runs.
-- The 1-minute activity timeout is appropriate for individual domain operations but could be tight if the list query returns a very large result set.
-
-### Manual Intervention
-- Domains that consistently fail auto-renew should be investigated individually.
-- To process expired domains outside the schedule: trigger the workflow manually via API.
-- The workflow is idempotent — re-running processes any currently expired domains.
+- Watch counts (`TotalFound`, `Failed`, `AutoRenewed`, `Expired`) in the Temporal UI.
+- Use `progress` query to check execution logs in real-time.
 
 ---
 
-> **Last updated**: 2025-06-23
-> **Updated by**: Agent (initial documentation)
+> **Last updated**: 2026-06-24
+> **Updated by**: Agent (redesigned with batch check & parallel writes)

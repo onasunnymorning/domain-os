@@ -4,14 +4,72 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { signalWorkflow } from '@/lib/api/workflows';
+import { signalWorkflow, getStorageDownloadURL } from '@/lib/api/workflows';
 import { cn } from '@/lib/utils';
 
 interface WorkflowArtifactViewerProps {
   workflowId: string;
-  artifacts?: Record<string, string>; // label → URL
+  artifacts?: Record<string, string>; // label → URL or S3 key
   signalName?: string;
   onSignalSent?: () => void;
+}
+
+function ArtifactLink({ label, urlOrKey }: { label: string; urlOrKey: string }) {
+  const [downloading, setDownloading] = useState(false);
+
+  const isS3Key =
+    !urlOrKey.startsWith('http://') &&
+    !urlOrKey.startsWith('https://') &&
+    !urlOrKey.startsWith('/');
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    if (!isS3Key) return;
+    e.preventDefault();
+    setDownloading(true);
+    try {
+      const { url } = await getStorageDownloadURL(urlOrKey);
+      window.open(url, '_blank');
+    } catch {
+      toast.error('Failed to resolve download URL');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (isS3Key) {
+    return (
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        className={cn(
+          'text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs transition-colors',
+          downloading && 'opacity-50 cursor-not-allowed'
+        )}
+      >
+        {downloading ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <Download className="size-3" />
+        )}
+        <span>{label}</span>
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={urlOrKey}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        'text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs transition-colors'
+      )}
+    >
+      <Download className="size-3" />
+      <span>{label}</span>
+    </a>
+  );
 }
 
 export function WorkflowArtifactViewer({
@@ -54,20 +112,9 @@ export function WorkflowArtifactViewer({
       {artifacts && Object.keys(artifacts).length > 0 && (
         <div className="space-y-1.5">
           <p className="text-muted-foreground text-xs font-medium">Artifacts</p>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col items-start gap-1">
             {Object.entries(artifacts).map(([label, url]) => (
-              <a
-                key={label}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  'text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs transition-colors'
-                )}
-              >
-                <Download className="size-3" />
-                <span>{label}</span>
-              </a>
+              <ArtifactLink key={label} label={label} urlOrKey={url} />
             ))}
           </div>
         </div>

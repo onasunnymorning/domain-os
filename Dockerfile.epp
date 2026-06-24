@@ -11,7 +11,8 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 RUN go mod verify
 
 # Copy source code
@@ -20,7 +21,9 @@ COPY internal/ ./internal/
 
 # Build the EPP server binary
 # CGO is disabled for a fully static binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a \
     -o epp-server \

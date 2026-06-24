@@ -12,8 +12,9 @@ var docFS embed.FS
 
 // WorkflowStep represents a step in a workflow for UI progress visualization
 type WorkflowStep struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
+	Key          string `json:"key"`
+	Label        string `json:"label"`
+	ActivityName string `json:"activityName,omitempty"` // Temporal activity name for progress tracking
 }
 
 // WorkflowMeta defines UI-facing metadata for a workflow type
@@ -38,36 +39,28 @@ type WorkflowMeta struct {
 func GetWorkflowRegistry() []WorkflowMeta {
 	registry := []WorkflowMeta{
 		{
-			Key:         "escrow-staging",
-			Name:        "Escrow Staging",
-			Description: "Parses, validates, and stages escrow deposit data for a TLD",
+			Key:         "escrow-import",
+			Name:        "TLD Import",
+			Description: "Unified workflow to parse, stage, QA, and ingest escrow deposit data after confirmation",
 			Queue:       temporal.QueueData,
 			Category:    "data-pipeline",
 			Tags:        []string{"data", "escrow", "import"},
+			HasSignal:   true,
+			SignalName:  "ConfirmEscrowImport",
 			Steps: []WorkflowStep{
-				{Key: "validate-escrow-source", Label: "Validate Escrow Source"},
-				{Key: "parse-extract-assets", Label: "Parse & Extract Assets"},
-				{Key: "build-staging-database", Label: "Build Staging Database"},
-				{Key: "resolve-registrars", Label: "Resolve Registrars"},
-				{Key: "finalize-staging", Label: "Finalize Staging"},
-				{Key: "qa-staged-database", Label: "QA Staged Database"},
-			},
-			docFile: "escrowImport.doc.md",
-		},
-		{
-			Key:         "escrow-ingestion",
-			Name:        "Escrow Ingestion",
-			Description: "Ingests staged escrow data into the live registry database",
-			Queue:       temporal.QueueData,
-			Category:    "data-pipeline",
-			Tags:        []string{"data", "escrow", "ingest"},
-			Steps: []WorkflowStep{
-				{Key: "ingest-contacts", Label: "Ingest Contacts"},
-				{Key: "ingest-hosts", Label: "Ingest Hosts"},
-				{Key: "ingest-domains", Label: "Ingest Domains"},
-				{Key: "ingest-nndns", Label: "Ingest NNDNs"},
-				{Key: "link-domain-hosts", Label: "Link Domain Hosts"},
-				{Key: "accredit-registrars", Label: "Accredit Registrars"},
+				{Key: "validate-escrow-source", Label: "Validate Escrow Source", ActivityName: "ValidateEscrowSource"},
+				{Key: "parse-extract-assets", Label: "Parse & Extract Assets", ActivityName: "ParseAndExtractAssets"},
+				{Key: "build-staging-database", Label: "Build Staging Database", ActivityName: "BuildStagingDatabase"},
+				{Key: "resolve-registrars", Label: "Resolve Registrars", ActivityName: "ResolveRegistrars"},
+				{Key: "finalize-staging", Label: "Finalize Staging", ActivityName: "FinalizeStaging"},
+				{Key: "qa-staged-database", Label: "QA Staged Database", ActivityName: "QAStagedDatabase"},
+				{Key: "await-confirmation", Label: "Await Ingest Confirmation"},
+				{Key: "ingest-contacts", Label: "Ingest Contacts", ActivityName: "IngestContacts"},
+				{Key: "ingest-hosts", Label: "Ingest Hosts", ActivityName: "IngestHosts"},
+				{Key: "ingest-domains", Label: "Ingest Domains", ActivityName: "IngestDomains"},
+				{Key: "ingest-nndns", Label: "Ingest NNDNs", ActivityName: "IngestNNDNs"},
+				{Key: "link-domain-hosts", Label: "Link Domain Hosts", ActivityName: "LinkDomainHosts"},
+				{Key: "accredit-registrars", Label: "Accredit Registrars", ActivityName: "AccreditRegistrars"},
 			},
 			docFile: "escrowImport.doc.md",
 		},
@@ -81,11 +74,11 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			HasSignal:   true,
 			SignalName:  "ConfirmTLDCleanup",
 			Steps: []WorkflowStep{
-				{Key: "check-eligibility", Label: "Check Eligibility"},
-				{Key: "plan-cleanup", Label: "Plan Cleanup"},
-				{Key: "await-confirmation", Label: "Await Confirmation"},
-				{Key: "backup-assets", Label: "Backup Assets"},
-				{Key: "delete-assets", Label: "Delete Assets"},
+				{Key: "check-eligibility", Label: "Check Eligibility", ActivityName: "CheckTLDCanBeDeleted"},
+				{Key: "plan-cleanup", Label: "Plan Cleanup", ActivityName: "PlanTLDCleanup"},
+				{Key: "await-confirmation", Label: "Await Confirmation"}, // Signal wait, no activity
+				{Key: "backup-assets", Label: "Backup Assets", ActivityName: "BackupTLDAssets"},
+				{Key: "delete-assets", Label: "Delete Assets", ActivityName: "DeleteTLDAssets"},
 			},
 			docFile: "tldCleanupWorkflow.doc.md",
 		},
@@ -99,11 +92,11 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Scheduled:    true,
 			ScheduleInfo: "Daily",
 			Steps: []WorkflowStep{
-				{Key: "sync-iana", Label: "Sync IANA"},
-				{Key: "count-registrars", Label: "Count Registrars"},
-				{Key: "diff-plan", Label: "Diff & Plan"},
-				{Key: "apply-creates", Label: "Apply Creates"},
-				{Key: "apply-updates", Label: "Apply Updates"},
+				{Key: "sync-iana", Label: "Sync IANA", ActivityName: "SyncIanaRegistrars"},
+				{Key: "count-registrars", Label: "Count Registrars", ActivityName: "CountRegistrars"},
+				{Key: "diff-plan", Label: "Diff & Plan", ActivityName: "DiffAndPlanRegistrars"},
+				{Key: "apply-creates", Label: "Apply Creates", ActivityName: "BulkCreateRegistrars"},
+				{Key: "apply-updates", Label: "Apply Updates", ActivityName: "SetRegistrarStatus"},
 			},
 			docFile: "syncRegistrarsWorkflow.doc.md",
 		},
@@ -117,23 +110,25 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
-				{Key: "update-exchange-rates", Label: "Update Exchange Rates"},
+				{Key: "update-exchange-rates", Label: "Update Exchange Rates", ActivityName: "UpdateFX"},
 			},
 			docFile: "updateFX.doc.md",
 		},
 		{
 			Key:          "expiry-loop",
 			Name:         "Expiry Loop",
-			Description:  "Processes expired and expiring domains for auto-renew or expiration",
+			Description:  "Processes expired domains for auto-renew or expiration. Returns structured result with counts and failure details.",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
 			Tags:         []string{"lifecycle", "domains", "expiry"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
-				{Key: "count-expired", Label: "Count Expired"},
-				{Key: "list-expiring", Label: "List Expiring"},
-				{Key: "process-auto-renew-expire", Label: "Process Auto-Renew/Expire"},
+				{Key: "lock-reference-time", Label: "Lock Reference Time", ActivityName: ""},
+				{Key: "count-expired", Label: "Count Expired", ActivityName: "GetExpiredDomainCount"},
+				{Key: "list-expiring", Label: "List Expiring", ActivityName: "ListExpiringDomains"},
+				{Key: "batch-check-autorenew", Label: "Batch Check Auto-Renew", ActivityName: "CheckDomainsCanAutoRenew"},
+				{Key: "parallel-writes", Label: "Process Auto-Renew/Expire Writes", ActivityName: "AutoRenewDomain"},
 			},
 			docFile: "expiryLoop.doc.md",
 		},
@@ -147,8 +142,9 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
-				{Key: "list-purgeable", Label: "List Purgeable"},
-				{Key: "purge-domains", Label: "Purge Domains"},
+				{Key: "count-purgeable", Label: "Count Purgeable", ActivityName: "GetPurgeableDomainCount"},
+				{Key: "list-purgeable", Label: "List Purgeable", ActivityName: "ListPurgeableDomains"},
+				{Key: "purge-domains", Label: "Purge Domains", ActivityName: "PurgeDomain"},
 			},
 			docFile: "purgeLoop.doc.md",
 		},
@@ -162,9 +158,9 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
-				{Key: "list-restored", Label: "List Restored"},
-				{Key: "unset-status", Label: "Unset Status"},
-				{Key: "force-renew", Label: "Force Renew"},
+				{Key: "list-restored", Label: "List Restored", ActivityName: "ListRestoredDomains"},
+				{Key: "unset-status", Label: "Unset Status", ActivityName: "UnSetDomainStatus"},
+				{Key: "force-renew", Label: "Force Renew", ActivityName: "RenewDomain"},
 			},
 			docFile: "restoreWorkflow.doc.md",
 		},
@@ -191,4 +187,21 @@ func GetWorkflowMeta(key string) (WorkflowMeta, bool) {
 		}
 	}
 	return WorkflowMeta{}, false
+}
+
+// BuildActivityStepMap creates a mapping from Temporal activity name → step key
+// for a given workflow type key. Used when parsing workflow execution history
+// to determine which step is active.
+func BuildActivityStepMap(workflowTypeKey string) map[string]string {
+	meta, ok := GetWorkflowMeta(workflowTypeKey)
+	if !ok {
+		return nil
+	}
+	m := make(map[string]string, len(meta.Steps))
+	for _, step := range meta.Steps {
+		if step.ActivityName != "" {
+			m[step.ActivityName] = step.Key
+		}
+	}
+	return m
 }

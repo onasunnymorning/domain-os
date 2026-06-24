@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
@@ -109,7 +110,9 @@ func NewWorkflowController(e *gin.Engine, handler gin.HandlerFunc) *WorkflowCont
 		grp.POST("/launch", controller.LaunchWorkflow)
 		grp.GET("/active", controller.ListActiveWorkflows)
 		grp.GET("/:workflowId/status", controller.GetWorkflowStatus)
+		grp.GET("/:workflowId/result", controller.GetWorkflowResult)
 		grp.POST("/:workflowId/signal", controller.SignalWorkflow)
+		grp.GET("/storage/download", controller.GetDownloadURL)
 	}
 	return controller
 }
@@ -322,31 +325,23 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 	var args []interface{}
 
 	switch req.WorkflowType {
-	case "escrow-staging":
+	case "escrow-import":
 		tld, _ := req.Params["tld"].(string)
 		objectKey, _ := req.Params["objectKey"].(string)
 		options, _ := req.Params["options"].(map[string]interface{})
 		if tld == "" || objectKey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and objectKey are required for escrow-staging"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and objectKey are required for escrow-import"})
 			return
 		}
-		wfID = fmt.Sprintf("escrow-staging-%s-%s", tld, ts)
-		workflow = workflows.EscrowStagingWorkflow
+		wfID = fmt.Sprintf("escrow-import-%s-%s", tld, ts)
+		workflow = workflows.EscrowImportWorkflow
 		args = []interface{}{workflows.EscrowImportParams{TLD: tld, ObjectKey: objectKey, Options: options}}
-
-	case "escrow-ingestion":
-		tld, _ := req.Params["tld"].(string)
-		stagedDbKey, _ := req.Params["stagedDbKey"].(string)
-		if tld == "" || stagedDbKey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and stagedDbKey are required for escrow-ingestion"})
-			return
-		}
-		wfID = fmt.Sprintf("escrow-ingestion-%s-%s", tld, ts)
-		workflow = workflows.EscrowIngestionWorkflow
-		args = []interface{}{workflows.EscrowIngestionParams{TLD: tld, StagedDBKey: stagedDbKey}}
 
 	case "tld-cleanup":
 		tld, _ := req.Params["tld"].(string)
+		if tld == "" {
+			tld, _ = req.Params["tldName"].(string)
+		}
 		if tld == "" {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld is required for tld-cleanup"})
 			return
@@ -371,14 +366,48 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = nil
 
 	case "expiry-loop":
+		var loopParams workflows.ExpiryLoopParams
+		if req.Params != nil {
+			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
+				loopParams.BatchSize = int(bs)
+			}
+			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
+				loopParams.ConcurrencyLimit = int(cl)
+			}
+			if dr, ok := req.Params["dryRun"].(bool); ok {
+				loopParams.DryRun = dr
+			}
+			if rto, ok := req.Params["referenceTimeOverride"].(string); ok && rto != "" {
+				if parsedTime, err := time.Parse(time.RFC3339, rto); err == nil {
+					loopParams.ReferenceTimeOverride = &parsedTime
+				}
+			}
+		}
 		wfID = fmt.Sprintf("expiry-loop-%s", ts)
 		workflow = workflows.ExpiryLoop
-		args = nil
+		args = []interface{}{loopParams}
 
 	case "purge-loop":
+		var loopParams workflows.PurgeLoopParams
+		if req.Params != nil {
+			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
+				loopParams.BatchSize = int(bs)
+			}
+			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
+				loopParams.ConcurrencyLimit = int(cl)
+			}
+			if dr, ok := req.Params["dryRun"].(bool); ok {
+				loopParams.DryRun = dr
+			}
+			if rto, ok := req.Params["referenceTimeOverride"].(string); ok && rto != "" {
+				if parsedTime, err := time.Parse(time.RFC3339, rto); err == nil {
+					loopParams.ReferenceTimeOverride = &parsedTime
+				}
+			}
+		}
 		wfID = fmt.Sprintf("purge-loop-%s", ts)
 		workflow = workflows.PurgeLoop
-		args = nil
+		args = []interface{}{loopParams}
 
 	case "restore-workflow":
 		wfID = fmt.Sprintf("restore-workflow-%s", ts)
@@ -450,14 +479,16 @@ func (c *WorkflowController) ListActiveWorkflows(ctx *gin.Context) {
 			startTime = exec.GetStartTime().AsTime().Format(time.RFC3339)
 		}
 
-		items = append(items, activeWorkflowItem{
+		item := activeWorkflowItem{
 			WorkflowID:   info.GetWorkflowId(),
 			RunID:        info.GetRunId(),
 			WorkflowType: wfType,
 			Status:       normalizeStatus(exec.GetStatus().String()),
 			StartTime:    startTime,
 			URL:          buildTemporalUILink(namespace, info.GetWorkflowId(), info.GetRunId()),
-		})
+		}
+
+		items = append(items, item)
 	}
 
 	ctx.JSON(http.StatusOK, activeWorkflowsResponse{
@@ -573,5 +604,111 @@ func deriveWorkflowType(workflowID string) string {
 		}
 	}
 	return "unknown"
+}
+
+// GetWorkflowResult returns the result of a completed workflow execution
+// @Summary Get workflow result
+// @Description Returns the result of a completed workflow, or status if still running
+// @Tags Workflows
+// @Produce json
+// @Param workflowId path string true "Workflow ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} map[string]string
+// @Router /workflows/{workflowId}/result [get]
+func (c *WorkflowController) GetWorkflowResult(ctx *gin.Context) {
+	workflowID := ctx.Param("workflowId")
+
+	cfg := temporal.NewClientConfigFromEnv("")
+	cli, err := temporal.GetTemporalClient(cfg)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to workflow service: " + err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	// Check if workflow is closed
+	desc, err := cli.DescribeWorkflowExecution(ctx.Request.Context(), workflowID, "")
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to describe workflow: " + err.Error()})
+		return
+	}
+
+	status := normalizeStatus(desc.GetWorkflowExecutionInfo().GetStatus().String())
+	if status == "RUNNING" {
+		var queryResult interface{}
+		queryResp, err := cli.QueryWorkflow(ctx.Request.Context(), workflowID, "", "state")
+		if err == nil {
+			if err = queryResp.Get(&queryResult); err == nil {
+				ctx.JSON(http.StatusOK, gin.H{
+					"status": "RUNNING",
+					"state":  queryResult,
+				})
+				return
+			}
+		}
+
+		queryResp, err = cli.QueryWorkflow(ctx.Request.Context(), workflowID, "", "progress")
+		if err == nil {
+			if err = queryResp.Get(&queryResult); err == nil {
+				ctx.JSON(http.StatusOK, gin.H{
+					"status": "RUNNING",
+					"state":  queryResult,
+				})
+				return
+			}
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"status": "RUNNING"})
+		return
+	}
+
+	// Workflow is closed, get result
+	run := cli.GetWorkflow(ctx.Request.Context(), workflowID, "")
+	var result map[string]interface{}
+	err = run.Get(ctx.Request.Context(), &result)
+	if err != nil {
+		ctx.JSON(http.StatusOK, gin.H{
+			"status": status,
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": status,
+		"result": result,
+	})
+}
+
+// GetDownloadURL returns a presigned GET URL for downloading a file from S3 storage
+// @Summary Get download URL
+// @Description Returns a presigned GET URL for the specified storage key
+// @Tags Workflows
+// @Produce json
+// @Param key query string true "Storage key"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /workflows/storage/download [get]
+func (c *WorkflowController) GetDownloadURL(ctx *gin.Context) {
+	key := ctx.Query("key")
+	if key == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "key query parameter is required"})
+		return
+	}
+
+	s3, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
+		return
+	}
+
+	url, err := s3.PresignGet(ctx.Request.Context(), key, 15*time.Minute)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate download URL: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"url": url})
 }
 

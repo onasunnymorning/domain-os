@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Activity,
@@ -26,9 +27,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useWorkflowStore, type WorkflowRun, type WorkflowStatus } from '@/lib/stores/useWorkflowStore';
 import { useActiveWorkflows } from '@/lib/hooks/useActiveWorkflows';
-import { WorkflowStepper } from './WorkflowStepper';
+import { WorkflowResult } from './WorkflowResult';
 import { WorkflowTemporalLink } from './WorkflowTemporalLink';
 import { WorkflowArtifactViewer } from './WorkflowArtifactViewer';
+import { getWorkflowRegistry } from '@/lib/api/workflows';
 
 // =============================================================================
 // Status styling helpers
@@ -68,16 +70,29 @@ function getPillColor(runs: WorkflowRun[]): string {
 
 function WorkflowRunItem({ run }: { run: WorkflowRun }) {
   const [expanded, setExpanded] = useState(false);
-  const hasSteps = run.steps && run.steps.length > 0;
+  const [runningState, setRunningState] = useState<any>(null);
+
+  const { data: registry } = useQuery({
+    queryKey: ['workflow-registry'],
+    queryFn: getWorkflowRegistry,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const meta = registry?.items?.find((item) => item.key === run.type);
+  const signalName = meta?.signalName || run.params?.signalName;
+
+  const artifacts = runningState?.manifestKey
+    ? { 'Cleanup Manifest': runningState.manifestKey }
+    : undefined;
 
   return (
     <div className="border-b last:border-b-0">
       <button
         type="button"
-        onClick={() => hasSteps && setExpanded(!expanded)}
+        onClick={() => setExpanded(!expanded)}
         className={cn(
           'flex w-full items-start gap-3 p-3 text-left transition-colors',
-          hasSteps && 'hover:bg-muted/50 cursor-pointer'
+          'hover:bg-muted/50 cursor-pointer'
         )}
       >
         {/* Status icon */}
@@ -101,32 +116,32 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
         </div>
 
         {/* Expand chevron */}
-        {hasSteps && (
-          <div className="text-muted-foreground mt-0.5 shrink-0">
-            {expanded ? (
-              <ChevronDown className="size-4" />
-            ) : (
-              <ChevronRight className="size-4" />
-            )}
-          </div>
-        )}
+        <div className="text-muted-foreground mt-0.5 shrink-0">
+          {expanded ? (
+            <ChevronDown className="size-4" />
+          ) : (
+            <ChevronRight className="size-4" />
+          )}
+        </div>
       </button>
 
-      {/* Expanded content: stepper + HITL actions */}
-      {expanded && hasSteps && (
-        <div className="border-t bg-muted/30 px-3 py-3 pl-9">
-          <WorkflowStepper
-            steps={run.steps!}
-            currentStep={run.currentStep}
+      {/* Expanded content: workflow result + HITL actions */}
+      {expanded && (
+        <div className="border-t bg-muted/30 px-3 py-3">
+          <WorkflowResult
+            workflowId={run.workflowId}
+            workflowType={run.type}
             status={run.status}
+            onStateLoaded={setRunningState}
           />
 
           {/* HITL signal buttons if applicable */}
-          {run.status === 'RUNNING' && run.params?.signalName && (
+          {run.status === 'RUNNING' && signalName && (
             <div className="mt-3 border-t pt-3">
               <WorkflowArtifactViewer
                 workflowId={run.workflowId}
-                signalName={run.params.signalName}
+                signalName={signalName}
+                artifacts={artifacts}
               />
             </div>
           )}
@@ -181,7 +196,7 @@ export function WorkflowControlCenter() {
 
       {/* Expanded Sheet drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
+        <SheetContent side="right" className="flex w-full flex-col overflow-hidden sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-2">
               <SheetTitle>Workflow Control Center</SheetTitle>
@@ -197,7 +212,7 @@ export function WorkflowControlCenter() {
           </SheetHeader>
 
           {/* Body: scrollable list of tracked workflows */}
-          <ScrollArea className="flex-1 -mx-4 px-4">
+          <ScrollArea className="flex-1 -mx-4 min-h-0 px-4">
             <div className="divide-y rounded-lg border">
               {runs.length === 0 ? (
                 <div className="text-muted-foreground flex flex-col items-center gap-2 p-6 text-center text-sm">

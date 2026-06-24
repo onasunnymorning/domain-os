@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { UserMenu } from '@/components/auth/user-menu';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -99,7 +100,8 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Search className="h-5 w-5" />
             </Button>
 
-            <div className="ml-auto flex items-center gap-4">
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeSwitcher />
               <UserMenu />
             </div>
           </div>

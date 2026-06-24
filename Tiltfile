@@ -12,7 +12,7 @@ docker_prune_settings(disable=False, max_age_mins=360, num_builds=0, interval_hr
 docker_compose("./docker-compose.yml", profiles=['full'], env_file='.env.tilt')
 
 # Explicitly build local Docker images that docker-compose lacks local builds for
-docker_build('geapex/domain-os:' + tag, '.', dockerfile='Dockerfile')
+docker_build('geapex/domain-os:' + tag, '.', dockerfile='Dockerfile', build_args={'SKIP_SWAG': 'true'})
 docker_build('geapex/whois:' + tag, '.', dockerfile='./cmd/whois/Dockerfile')
 docker_build('geapex/epp-server:' + tag, '.', dockerfile='Dockerfile.epp')
 docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
@@ -56,5 +56,11 @@ local_resource(
               'NEXT_PUBLIC_TEMPORAL_UI_URL="http://localhost:8081" ' +
               'NEXT_PUBLIC_APP_VERSION="dev" ' +
               'PORT=3002 npm run dev',
+    deps=[
+        'frontend/package.json',
+        'frontend/package-lock.json',
+        'frontend/next.config.ts',
+        'frontend/tsconfig.json'
+    ],
     labels=["endpoints"]
 )

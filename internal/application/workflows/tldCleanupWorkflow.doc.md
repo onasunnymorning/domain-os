@@ -56,9 +56,9 @@ type TLDCleanupParams struct {
 
 ```go
 type TLDCleanupResponse struct {
-    ManifestKey  string
-    BackupKey    string
-    DeletedCount int64
+    ManifestKey  string `json:"manifestKey"`
+    BackupKey    string `json:"backupKey"`
+    DeletedCount int64  `json:"deletedCount"`
 }
 ```
 

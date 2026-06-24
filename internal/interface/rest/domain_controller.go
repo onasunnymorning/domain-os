@@ -44,6 +44,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.GET("count", controller.CountDomains)
 		domainGroup.POST("quote", controller.GetQuote)
 		domainGroup.GET(":name/dns", controller.GetDomainDNS)
+		domainGroup.GET(":name/events", controller.ListDomainEvents)
 		// Add and remove hosts
 		domainGroup.POST(":name/hosts/:roid", controller.AddHostToDomain)
 		domainGroup.POST(":name/hostname/:hostName", controller.AddHostToDomainByHostName)
@@ -1389,3 +1390,32 @@ func getDomainListFilterFromContext(ctx *gin.Context) (*queries.ListDomainsFilte
 	}
 	return filter, nil
 }
+
+// ListDomainEvents godoc
+// @Summary List events for a domain
+// @Description List lifecycle events for a domain
+// @Tags Domains
+// @Produce json
+// @Param name path string true "Domain Name"
+// @Success 200 {array} entities.DomainEvent
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /domains/{name}/events [get]
+func (ctrl *DomainController) ListDomainEvents(ctx *gin.Context) {
+	name := ctx.Param("name")
+	if name == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "domain name parameter is required"})
+		return
+	}
+
+	events, err := ctrl.domainService.ListEventsByDomain(ctx.Request.Context(), name)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to list domain events: " + err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, events)
+}
+

@@ -8,7 +8,8 @@ RUN apk add upx
 # Go dependencies
 COPY go.mod ./
 COPY go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY ./internal ./internal
@@ -17,7 +18,9 @@ COPY ./cmd/whois/ ./cmd/whois/
 
 FROM build AS build-whois
 ARG GIT_SHA
-RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisServer /cmd/whois/whois.go
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
 FROM alpine:3.21.3 AS whois-server

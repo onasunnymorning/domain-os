@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { launchWorkflow, type WorkflowMeta } from '@/lib/api/workflows';
 import type { WorkflowRun } from '@/lib/stores/useWorkflowStore';
+import { FileUpload } from './FileUpload';
 
 interface WorkflowLaunchFormProps {
   workflow: WorkflowMeta | null;
@@ -28,7 +29,7 @@ interface WorkflowLaunchFormProps {
 // Per-workflow form bodies
 // =============================================================================
 
-function EscrowStagingForm({
+function EscrowImportForm({
   params,
   onChange,
 }: {
@@ -47,44 +48,19 @@ function EscrowStagingForm({
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="objectKey">Object Key</Label>
-        <Input
-          id="objectKey"
-          placeholder="e.g. escrow/2024/full/com.xml.gz"
-          value={params.objectKey ?? ''}
-          onChange={(e) => onChange({ ...params, objectKey: e.target.value })}
+        <Label>Escrow Deposit File</Label>
+        <FileUpload
+          workflowType="escrow-import"
+          tld={params.tld ?? ''}
+          disabled={!params.tld}
+          onUploaded={(key) => onChange({ ...params, objectKey: key })}
+          onClear={() => onChange({ ...params, objectKey: undefined })}
         />
-      </div>
-    </div>
-  );
-}
-
-function EscrowIngestionForm({
-  params,
-  onChange,
-}: {
-  params: Record<string, any>;
-  onChange: (p: Record<string, any>) => void;
-}) {
-  return (
-    <div className="grid gap-4">
-      <div className="grid gap-2">
-        <Label htmlFor="tld">TLD</Label>
-        <Input
-          id="tld"
-          placeholder="e.g. com"
-          value={params.tld ?? ''}
-          onChange={(e) => onChange({ ...params, tld: e.target.value })}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="stagedDbKey">Staged DB Key</Label>
-        <Input
-          id="stagedDbKey"
-          placeholder="e.g. staged/com/2024-01-15"
-          value={params.stagedDbKey ?? ''}
-          onChange={(e) => onChange({ ...params, stagedDbKey: e.target.value })}
-        />
+        {params.objectKey && (
+          <p className="text-muted-foreground truncate text-xs">
+            Key: {params.objectKey}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -100,12 +76,12 @@ function TldCleanupForm({
   return (
     <div className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="tldName">TLD Name</Label>
+        <Label htmlFor="tld">TLD Name</Label>
         <Input
-          id="tldName"
+          id="tld"
           placeholder="e.g. com"
-          value={params.tldName ?? ''}
-          onChange={(e) => onChange({ ...params, tldName: e.target.value })}
+          value={params.tld ?? ''}
+          onChange={(e) => onChange({ ...params, tld: e.target.value })}
         />
       </div>
       <div className="flex items-center gap-3">
@@ -171,10 +147,8 @@ function FormBody({
   onChange: (p: Record<string, any>) => void;
 }) {
   switch (workflowKey) {
-    case 'escrow-staging':
-      return <EscrowStagingForm params={params} onChange={onChange} />;
-    case 'escrow-ingestion':
-      return <EscrowIngestionForm params={params} onChange={onChange} />;
+    case 'escrow-import':
+      return <EscrowImportForm params={params} onChange={onChange} />;
     case 'tld-cleanup':
       return <TldCleanupForm params={params} onChange={onChange} />;
     case 'sync-registrars':
@@ -217,7 +191,6 @@ export function WorkflowLaunchForm({
         status: 'RUNNING',
         temporalUrl: result.url,
         startedAt: new Date().toISOString(),
-        steps: result.steps,
         params,
       };
 

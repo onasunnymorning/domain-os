@@ -28,7 +28,7 @@ const navigation = [
   { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Documentation', href: '/docs', icon: FileText },
-  { name: 'Escrow Imports', href: '/escrow', icon: Archive },
+  { name: 'TLD Imports', href: '/escrow', icon: Archive },
   { name: 'Analytics', href: GRAFANA_URL, icon: BarChart, target: '_blank' },
 ];
 

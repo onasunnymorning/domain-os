@@ -1,7 +1,9 @@
 package activities
 
 import (
+	"compress/gzip"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -303,4 +305,33 @@ func TestImportDomainsChunkedStatusMapCasingFix(t *testing.T) {
 			assert.True(t, ds.OK)
 		}
 	}
+}
+
+func TestDecompressGzipFile(t *testing.T) {
+	content := "<?xml version=\"1.0\" encoding=\"UTF-8\"?><rdeDeposit></rdeDeposit>"
+
+	// Write compressed content to temporary file
+	tmpDir := t.TempDir()
+	gzPath := filepath.Join(tmpDir, "test.xml.gz")
+	
+	f, err := os.Create(gzPath)
+	require.NoError(t, err)
+	
+	gw := gzip.NewWriter(f)
+	_, err = gw.Write([]byte(content))
+	require.NoError(t, err)
+	err = gw.Close()
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+
+	// Call decompression helper
+	xmlPath, err := decompressGzipFile(gzPath)
+	require.NoError(t, err)
+	defer os.Remove(xmlPath)
+
+	// Verify decompressed content
+	decContent, err := os.ReadFile(xmlPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(decContent))
 }

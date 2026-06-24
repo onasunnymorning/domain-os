@@ -33,6 +33,7 @@ func main() {
 	lifecycleWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
 
 	lifecycleWorker.RegisterActivity(activities.CheckDomainCanAutoRenew)
+	lifecycleWorker.RegisterActivity(activities.CheckDomainsCanAutoRenew)
 	lifecycleWorker.RegisterActivity(activities.GetExpiredDomainCount)
 	lifecycleWorker.RegisterActivity(activities.ListExpiringDomains)
 	lifecycleWorker.RegisterActivity(activities.AutoRenewDomain)
@@ -60,8 +61,7 @@ func main() {
 	// Handles escrow staging/ingestion, TLD cleanup, and FX rate updates.
 	dataWorker := worker.New(client, temporal.QueueData, worker.Options{})
 
-	dataWorker.RegisterWorkflow(workflows.EscrowStagingWorkflow)
-	dataWorker.RegisterWorkflow(workflows.EscrowIngestionWorkflow)
+	dataWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
 	dataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	dataWorker.RegisterWorkflow(workflows.UpdateFX)
 

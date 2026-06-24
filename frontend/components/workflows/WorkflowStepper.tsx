@@ -7,6 +7,8 @@ import type { WorkflowStep, WorkflowStatus } from '@/lib/stores/useWorkflowStore
 interface WorkflowStepperProps {
   steps: WorkflowStep[];
   currentStep?: string;
+  completedSteps?: string[];
+  failedStep?: string;
   status: WorkflowStatus;
 }
 
@@ -14,28 +16,19 @@ type StepState = 'completed' | 'current' | 'pending' | 'failed';
 
 function getStepState(
   stepKey: string,
-  steps: WorkflowStep[],
   currentStep: string | undefined,
+  completedSteps: string[] | undefined,
+  failedStep: string | undefined,
   status: WorkflowStatus
 ): StepState {
   // If the overall workflow is completed, all steps are completed
   if (status === 'COMPLETED') return 'completed';
 
-  if (!currentStep) return 'pending';
+  // Explicit step-level state from history parsing
+  if (failedStep === stepKey) return 'failed';
+  if (completedSteps?.includes(stepKey)) return 'completed';
+  if (currentStep === stepKey) return 'current';
 
-  const stepIndex = steps.findIndex((s) => s.key === stepKey);
-  const currentIndex = steps.findIndex((s) => s.key === currentStep);
-
-  if (stepIndex < 0 || currentIndex < 0) return 'pending';
-
-  if (stepIndex < currentIndex) return 'completed';
-  if (stepIndex === currentIndex) {
-    // If the workflow failed, mark the current step as failed
-    if (status === 'FAILED' || status === 'TIMED_OUT' || status === 'TERMINATED') {
-      return 'failed';
-    }
-    return 'current';
-  }
   return 'pending';
 }
 
@@ -53,13 +46,13 @@ const stepTextStyles: Record<StepState, string> = {
   failed: 'text-red-600 dark:text-red-400 font-medium',
 };
 
-export function WorkflowStepper({ steps, currentStep, status }: WorkflowStepperProps) {
+export function WorkflowStepper({ steps, currentStep, completedSteps, failedStep, status }: WorkflowStepperProps) {
   if (!steps.length) return null;
 
   return (
     <div className="flex flex-col gap-0">
       {steps.map((step, index) => {
-        const state = getStepState(step.key, steps, currentStep, status);
+        const state = getStepState(step.key, currentStep, completedSteps, failedStep, status);
         const isLast = index === steps.length - 1;
 
         return (
@@ -91,3 +84,4 @@ export function WorkflowStepper({ steps, currentStep, status }: WorkflowStepperP
     </div>
   );
 }
+

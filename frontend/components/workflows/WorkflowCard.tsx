@@ -85,7 +85,7 @@ export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
             className="gap-1.5"
           >
             <Play className="size-3" />
-            {workflow.scheduled ? 'Trigger One-Off' : 'Launch'}
+            {workflow.scheduled ? 'Trigger' : 'Launch'}
           </Button>
         </div>
       </CardFooter>

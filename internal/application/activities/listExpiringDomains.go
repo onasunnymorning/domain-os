@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -26,6 +27,9 @@ func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuer
 	qParams := make(map[string]string)
 	qParams["correlation_id"] = correlationID
 	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+	if !query.Before.IsZero() {
+		qParams["before"] = query.Before.Format(time.RFC3339)
+	}
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create URL: %w", err)

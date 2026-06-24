@@ -162,7 +162,7 @@ services:
       - TEMPORAL_CLIENT_CERT=
       # S3/MinIO settings for escrow
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT="http://localhost:9000"
+      - MINIO_PUBLIC_ENDPOINT=http://localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_USE_SSL=false
@@ -318,6 +318,8 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
+      # CORS: allow browser-direct uploads from any origin (presigned multipart)
+      - MINIO_API_CORS_ALLOW_ORIGIN=*
     command: server /data --console-address ":9001"
     ports:
       - 9000:9000

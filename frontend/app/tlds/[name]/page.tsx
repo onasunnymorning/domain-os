@@ -16,6 +16,7 @@ import { ArrowLeft, Globe, CheckCircle, XCircle, Calendar, Building2 } from 'luc
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
+import { StickySubNav } from '@/components/shared/StickySubNav';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -194,12 +195,25 @@ export default function TLDDetailPage({ params }: Props) {
           </div>
         )}
 
+        {/* Sticky Sub-Navigation */}
+        {!isLoading && tld && (
+          <StickySubNav
+            sections={[
+              { id: 'phases-section', label: 'Phases' },
+              { id: 'accredited-registrars', label: 'Registrars', count: regAccData?.Data?.length },
+              { id: 'tld-details', label: 'Details' },
+            ]}
+          />
+        )}
+
         {/* Phase Timeline */}
         {!isLoading && tld && (
-          <PhaseTimeline
-            tldName={tld.Name}
-            initialPhaseName={phaseName || undefined}
-          />
+          <div id="phases-section">
+            <PhaseTimeline
+              tldName={tld.Name}
+              initialPhaseName={phaseName || undefined}
+            />
+          </div>
         )}
 
         {/* Registrars Accredited for this TLD */}
@@ -280,7 +294,7 @@ export default function TLDDetailPage({ params }: Props) {
         </Card>
 
         {/* TLD Information Card (Details) */}
-        <Card>
+        <Card id="tld-details">
           <CardHeader>
             <CardTitle>Details</CardTitle>
           </CardHeader>

@@ -13,12 +13,14 @@ import type { DomainDetail } from "@/lib/types/domain";
 import { HelpCircle, Copy, Eye, EyeOff, Server, Repeat, RefreshCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
 import { DomainLifecycleWidget } from "@/components/domains/DomainLifecycleWidget";
 import { DomainStatusWidget } from "@/components/domains/DomainStatusWidget";
 import { DnsLookupModal } from "@/components/domains/DnsLookupModal";
+import { DomainEventsWidget } from "@/components/domains/DomainEventsWidget";
 import { DomainSettingsControls } from "@/components/domains/DomainSettingsControls";
-import { DomainQuotesWidget } from "@/components/domains/DomainQuotesWidget";
+import { PriceChecker } from "@/components/domains/PriceChecker";
 
 
 function formatUTCString(d: Date) {
@@ -126,14 +128,18 @@ export default function DomainDetailPage() {
               ) : (
                 <>
                   {renewalQuote && (
-                    <Badge 
-                      variant="secondary" 
-                      className="cursor-pointer hover:bg-muted font-medium bg-amber-50 text-amber-900 border-amber-200 transition-colors"
-                      title="Scroll to Price configuration"
-                      onClick={() => document.getElementById("price-configuration")?.scrollIntoView({ behavior: "smooth" })}
-                    >
-                      Will renew at: {new Intl.NumberFormat('en-US', { style: 'currency', currency: renewalQuote.Price?.currency || 'USD' }).format((renewalQuote.Price?.amount || 0) / 100)}
-                    </Badge>
+                    <PriceChecker
+                      domain={domain}
+                      trigger={
+                        <Badge 
+                          variant="secondary" 
+                          className="cursor-pointer hover:bg-muted font-medium bg-amber-50 text-amber-900 border-amber-200 transition-colors"
+                          title="Click to check pricing"
+                        >
+                          Will renew at: {new Intl.NumberFormat('en-US', { style: 'currency', currency: renewalQuote.Price?.currency || 'USD' }).format((renewalQuote.Price?.amount || 0) / 100)}
+                        </Badge>
+                      }
+                    />
                   )}
                   {domain?.ClID ? (
                     <Link href={`/registrars/${encodeURIComponent(domain.ClID)}`} title="Current registrar" aria-label="Current registrar">
@@ -178,23 +184,10 @@ export default function DomainDetailPage() {
           </div>
         </div>
 
-        {/* Lifecycle & Pricing container */}
+        {/* Lifecycle container */}
         {!isLoading && !error && domain && (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <DomainLifecycleWidget domain={domain} />
-            </div>
-            <div className="lg:col-span-1">
-              <Card id="price-configuration" className="h-full scroll-mt-20 flex flex-col">
-                <CardHeader className="pb-3">
-                  <CardTitle>Price Auth</CardTitle>
-                  <CardDescription className="text-xs">Select registrar to view pricing</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col">
-                  <DomainQuotesWidget domain={domain} />
-                </CardContent>
-              </Card>
-            </div>
+          <div>
+            <DomainLifecycleWidget domain={domain} />
           </div>
         )}
 
@@ -204,30 +197,10 @@ export default function DomainDetailPage() {
             <CardContent className="grid gap-6 sm:grid-cols-2">
               <div>
                 <div className="text-xs text-muted-foreground mb-2">
-                  <div className="flex items-center gap-1">
-                    Status
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button aria-label="Status help" className="inline-flex items-center text-muted-foreground hover:text-foreground">
-                          <HelpCircle className="h-4 w-4" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-3 text-sm" align="start">
-                        <div className="mb-2 font-medium">What do these mean?</div>
-                        <div className="space-y-2 max-h-64 overflow-auto pr-2">
-                          {Object.keys(STATUS_LABELS).map((k) => (
-                            <div key={k} className="flex items-start gap-2">
-                              <Badge variant="outline" className="text-xs whitespace-nowrap">{STATUS_LABELS[k]}</Badge>
-                              <span className="text-muted-foreground">{STATUS_DESCRIPTIONS[k]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  Status
                 </div>
                 <div className="mt-2">
-                  <DomainStatusWidget status={domain.Status} />
+                  <DomainStatusWidget status={domain.Status} domainName={domain.Name} />
                 </div>
               </div>
               <div>
@@ -304,19 +277,30 @@ export default function DomainDetailPage() {
                                 <td className="p-2">{h.InBailiwick ? 'Yes' : 'No'}</td>
                                 <td className="p-2">
                                   <div className="flex gap-1 flex-wrap">
-                                    {(() => {
-                                      const s: any = h.Status || {};
-                                      const entries = Object.entries(s).filter(([, v]) => Boolean(v));
-                                      if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
-                                      return entries.map(([k]) => {
-                                        const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
-                                        return (
-                                          <Badge key={k} variant="outline" className="text-xs">
-                                            {label}
-                                          </Badge>
-                                        );
-                                      });
-                                    })()}
+                                    <TooltipProvider delayDuration={150}>
+                                      {(() => {
+                                        const s: any = h.Status || {};
+                                        const entries = Object.entries(s).filter(([, v]) => Boolean(v));
+                                        if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
+                                        return entries.map(([k]) => {
+                                          const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
+                                          const desc = STATUS_DESCRIPTIONS[k] || label;
+                                          return (
+                                            <Tooltip key={k}>
+                                              <TooltipTrigger asChild>
+                                                <Badge variant="outline" className="text-xs cursor-help">
+                                                  {label}
+                                                </Badge>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="top" align="center" className="max-w-xs text-xs">
+                                                <div className="font-semibold">{label}</div>
+                                                <div className="text-muted-foreground">{desc}</div>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          );
+                                        });
+                                      })()}
+                                    </TooltipProvider>
                                   </div>
                                 </td>
                               </tr>
@@ -331,6 +315,12 @@ export default function DomainDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Domain Events / Activity History */}
+        {!isLoading && !error && domain && (
+          <DomainEventsWidget domainName={domain.Name} />
+        )}
+
 
 
 

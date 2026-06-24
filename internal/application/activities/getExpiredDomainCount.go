@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
@@ -19,6 +20,9 @@ func GetExpiredDomainCount(correlationID string, query queries.ExpiringDomainsQu
 	// Set up query parameters
 	qParams := make(map[string]string)
 	qParams["correlation_id"] = correlationID
+	if !query.Before.IsZero() {
+		qParams["before"] = query.Before.Format(time.RFC3339)
+	}
 	URL, err := getURLAndSetQueryParams(COUNT_ENDPOINT, qParams)
 
 	req, err := http.NewRequest("GET", URL.String(), nil)

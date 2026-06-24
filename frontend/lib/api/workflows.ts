@@ -76,6 +76,17 @@ export interface WorkflowStatusResponse {
   url: string;
 }
 
+export interface WorkflowResultResponse {
+  status: string;
+  result?: Record<string, any> | null;
+  error?: string;
+  state?: Record<string, any> | null;
+}
+
+export interface DownloadURLResponse {
+  url: string;
+}
+
 // =============================================================================
 // Existing Endpoints
 // =============================================================================
@@ -143,4 +154,22 @@ export async function signalWorkflow(
   payload?: any
 ): Promise<void> {
   await apiClient.post(`/workflows/${workflowId}/signal`, { signalName, payload });
+}
+
+/**
+ * Get the result of a completed workflow
+ * GET /workflows/:workflowId/result
+ */
+export async function getWorkflowResult(workflowId: string): Promise<WorkflowResultResponse> {
+  const { data } = await apiClient.get(`/workflows/${workflowId}/result`);
+  return data;
+}
+
+/**
+ * Get a presigned download URL for an S3 storage key
+ * GET /workflows/storage/download?key=...
+ */
+export async function getStorageDownloadURL(key: string): Promise<DownloadURLResponse> {
+  const { data } = await apiClient.get('/workflows/storage/download', { params: { key } });
+  return data;
 }

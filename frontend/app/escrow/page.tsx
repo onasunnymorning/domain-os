@@ -26,6 +26,13 @@ import { getRegistrarByClID } from '@/lib/api/registrars';
 import { RegistrarOverrideForm } from '@/components/escrow/RegistrarOverrideForm';
 
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function EscrowPage() {
   // Upload & start state
@@ -48,6 +55,47 @@ export default function EscrowPage() {
   const [runs, setRuns] = useState<EscrowRunItem[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState<string>('');
+
+  // Summary modal state
+  const [selectedSummaryRun, setSelectedSummaryRun] = useState<EscrowRunItem | null>(null);
+  const [summaryData, setSummaryData] = useState<any | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string>('');
+
+  useEffect(() => {
+    if (!selectedSummaryRun?.summaryUrl) {
+      setSummaryData(null);
+      setSummaryError('');
+      return;
+    }
+    let cancelled = false;
+    async function fetchSummary() {
+      setLoadingSummary(true);
+      setSummaryError('');
+      try {
+        const res = await fetch(selectedSummaryRun!.summaryUrl!);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch summary: HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setSummaryData(data);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setSummaryError(err.message || 'Failed to load summary file');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingSummary(false);
+        }
+      }
+    }
+    fetchSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSummaryRun]);
 
   // Fetch runs whenever filterTld changes
   useEffect(() => {
@@ -253,7 +301,7 @@ export default function EscrowPage() {
     <DashboardLayout>
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Escrow Imports</h1>
+          <h1 className="text-3xl font-bold tracking-tight">TLD Imports</h1>
           <p className="text-muted-foreground">Upload escrow files, start imports, and view results</p>
         </div>
 
@@ -303,7 +351,7 @@ export default function EscrowPage() {
                           ) : (
                             <XCircle className="h-4 w-4 text-red-600" />
                           )}
-                          <span>Escrow import enabled for .{tld}</span>
+                          <span>TLD import enabled for .{tld}</span>
                         </li>
                         <li className="flex items-center gap-2 text-sm">
                           {checksLoading ? (
@@ -330,7 +378,7 @@ export default function EscrowPage() {
                         <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
                           <Info className="h-4 w-4 mt-0.5" />
                           <div>
-                            Upload is disabled until all checks pass. Ensure escrow import is enabled and both system registrars exist.
+                            Upload is disabled until all checks pass. Ensure TLD import is enabled and both system registrars exist.
                           </div>
                         </div>
                       )}
@@ -497,34 +545,49 @@ export default function EscrowPage() {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <Badge variant={stage === 5 ? "default" : "outline"} className={stage === 5 ? "bg-green-600 hover:bg-green-700" : ""}>
-                                    {stage === 5 ? "Ingested (5/5)" : stage === 4 ? "Staged (4/5)" : `Stage ${stage}/5`}
-                                  </Badge>
-                                  {stage === 4 && r.stagedDbKey && (
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      className="h-6 text-xs"
-                                      onClick={async () => {
-                                        try {
-                                          toast.info('Triggering ingestion...');
-                                          const res = await startEscrowIngestion(r.tld, r.stagedDbKey!);
-                                          toast.success('Ingestion started', {
-                                            action: {
-                                              label: 'View Workflow',
-                                              onClick: () => window.open(res.url, '_blank'),
-                                            },
-                                            duration: 10000,
-                                          });
-                                          // Optionally trigger refresh
-                                          // load(); // requires un-scoping load function or relying on S3 eventual consistency (delay needed)
-                                        } catch (e: any) {
-                                          toast.error(e?.message || 'Failed to start ingestion');
-                                        }
-                                      }}
+                                  <Badge 
+                                      variant={
+                                        r.workflowStatus === 'FAILED' 
+                                          ? "destructive" 
+                                          : r.workflowStatus === 'RUNNING'
+                                            ? "secondary"
+                                            : stage === 5 
+                                              ? "default" 
+                                              : "outline"
+                                      } 
+                                      className={
+                                        r.workflowStatus === 'FAILED' 
+                                          ? "bg-red-600 hover:bg-red-700 text-white" 
+                                          : r.workflowStatus === 'RUNNING'
+                                            ? "bg-blue-500 hover:bg-blue-600 text-white animate-pulse"
+                                            : stage === 5 
+                                              ? "bg-green-600 hover:bg-green-700 text-white" 
+                                              : ""
+                                      }
                                     >
-                                      Run Ingestion
+                                      {r.workflowStatus === 'FAILED' 
+                                        ? "Failed" 
+                                        : r.workflowStatus === 'RUNNING'
+                                          ? `Running (${stage}/5)`
+                                          : stage === 5 
+                                            ? "Ingested (5/5)" 
+                                            : stage === 4 
+                                              ? "Staged (4/5)" 
+                                              : `Stage ${stage}/5`
+                                      }
+                                    </Badge>
+                                  {stage === 5 && r.summaryUrl && (
+                                    <Button
+                                      variant="link"
+                                      size="sm"
+                                      className="h-auto p-0 text-xs font-medium"
+                                      onClick={() => setSelectedSummaryRun(r)}
+                                    >
+                                      View Summary
                                     </Button>
+                                  )}
+                                  {stage === 4 && r.stagedDbKey && (
+                                    <span className="text-xs text-muted-foreground">Staged</span>
                                   )}
                                 </div>
                               </TableCell>
@@ -556,6 +619,75 @@ export default function EscrowPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Import Summary Dialog */}
+      <Dialog open={!!selectedSummaryRun} onOpenChange={(open) => { if (!open) setSelectedSummaryRun(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import Summary</DialogTitle>
+            <DialogDescription>
+              Overview of ingested data for TLD: <strong>.{selectedSummaryRun?.tld}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingSummary && (
+            <div className="flex flex-col items-center justify-center py-8 space-y-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading summary from S3…</p>
+            </div>
+          )}
+
+          {summaryError && (
+            <div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
+              <XCircle className="h-8 w-8 text-red-600" />
+              <p className="text-sm font-medium text-red-600">Failed to load summary</p>
+              <p className="text-xs text-muted-foreground max-w-xs">{summaryError}</p>
+            </div>
+          )}
+
+          {!loadingSummary && !summaryError && summaryData && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 dark:bg-slate-900/50 p-3 rounded-md border">
+                <div>
+                  <span className="text-muted-foreground text-xs block">Completed At</span>
+                  <span className="font-medium text-xs">
+                    {summaryData.completedAt ? new Date(summaryData.completedAt).toLocaleString() : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs block">QA Validation</span>
+                  <div>
+                    <Badge variant={summaryData.qaPassed ? 'default' : 'destructive'} className="text-[10px] py-0 px-1.5 h-4">
+                      {summaryData.qaPassed ? '✓ Passed' : '✗ Failed'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground text-xs block">Workflow ID</span>
+                  <span className="font-mono text-xs text-primary truncate block">
+                    {selectedSummaryRun?.url ? (
+                      <a href={selectedSummaryRun.url} target="_blank" rel="noreferrer" className="underline">
+                        {summaryData.workflowId || selectedSummaryRun.workflowId}
+                      </a>
+                    ) : (
+                      summaryData.workflowId || selectedSummaryRun?.workflowId
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingestion Counts</h4>
+                {summaryData.ingestedCounts ? (
+                  <SummaryCountsTable counts={summaryData.ingestedCounts} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No ingestion counts available.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
@@ -617,6 +749,54 @@ function TLDSearchList({ query, onSelect }: { query: string; onSelect: (name: st
           {name}
         </Button>
       ))}
+    </div>
+  );
+}
+
+function SummaryCountsTable({ counts }: { counts: Record<string, number> }) {
+  // Group by entity type: contacts_total, contacts_inserted → Contacts: { total: X, inserted: Y }
+  const groups: Record<string, Record<string, number>> = {};
+  for (const [key, value] of Object.entries(counts)) {
+    const parts = key.split('_');
+    if (parts.length >= 2) {
+      const entity = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const metric = parts.slice(1).join('_');
+      if (!groups[entity]) groups[entity] = {};
+      groups[entity][metric] = value;
+    } else {
+      if (!groups['Other']) groups['Other'] = {};
+      groups['Other'][key] = value;
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <table className="w-full text-sm animate-fade-in">
+        <thead>
+          <tr className="bg-muted/50">
+            <th className="px-3 py-1.5 text-left font-medium">Entity</th>
+            <th className="px-3 py-1.5 text-right font-medium">Total</th>
+            <th className="px-3 py-1.5 text-right font-medium">Inserted</th>
+            <th className="px-3 py-1.5 text-right font-medium">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(groups).map(([entity, metrics]) => (
+            <tr key={entity} className="border-t hover:bg-muted/30 transition-colors">
+              <td className="px-3 py-1.5 font-medium">{entity}</td>
+              <td className="text-muted-foreground px-3 py-1.5 text-right tabular-nums">
+                {metrics.total?.toLocaleString() ?? '—'}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-green-600 dark:text-green-400">
+                {metrics.inserted?.toLocaleString() ?? '—'}
+              </td>
+              <td className="text-muted-foreground px-3 py-1.5 text-right tabular-nums">
+                {metrics.updated?.toLocaleString() ?? '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

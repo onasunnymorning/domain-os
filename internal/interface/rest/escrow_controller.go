@@ -70,6 +70,7 @@ type EscrowRunItem struct {
 	RegistrarMappingJSON string `json:"registrarMappingJsonUrl,omitempty"`
 	SQLiteDbURL          string `json:"sqliteDbUrl,omitempty"`
 	ImportEventsURL      string `json:"importEventsUrl,omitempty"`
+	WorkflowStatus       string `json:"workflowStatus,omitempty"`
 }
 
 // EscrowImportListResponse is the envelope returned by ListImports
@@ -85,6 +86,10 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc) *EscrowControll
 	{
 		grp.POST("/uploads/presign", controller.Presign)
 		grp.POST("/uploads", controller.Upload)
+		grp.POST("/uploads/multipart/init", controller.InitMultipartUpload)
+		grp.POST("/uploads/multipart/presign-part", controller.PresignUploadPart)
+		grp.POST("/uploads/multipart/complete", controller.CompleteMultipartUpload)
+		grp.POST("/uploads/multipart/abort", controller.AbortMultipartUpload)
 		grp.POST("/imports", controller.StartImport)
 		grp.POST("/ingest", controller.StartIngestion)
 		grp.GET("/imports", controller.ListImports)
@@ -202,12 +207,12 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 	}
 	defer cli.Close()
 
-	wfID := fmt.Sprintf("escrow-staging-%s-%s", req.TLD, time.Now().Format("20060102-150405"))
+	wfID := fmt.Sprintf("escrow-import-%s-%s", req.TLD, time.Now().Format("20060102-150405"))
 
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.EscrowStagingWorkflow, workflows.EscrowImportParams{
+	}, workflows.EscrowImportWorkflow, workflows.EscrowImportParams{
 		TLD:       req.TLD,
 		ObjectKey: req.ObjectKey,
 		Options:   req.Options,
@@ -234,61 +239,9 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 }
 
 // StartIngestion triggers the EscrowIngestionWorkflow for a specific staged DB
+// Deprecated: This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal.
 func (c *EscrowController) StartIngestion(ctx *gin.Context) {
-	var req struct {
-		TLD         string `json:"tld"`
-		StagedDBKey string `json:"stagedDbKey"`
-	}
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-	if req.TLD == "" || req.StagedDBKey == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and stagedDbKey are required"})
-		return
-	}
-
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
-
-	cli, err := temporal.GetTemporalClient(cfg)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	defer cli.Close()
-
-	// Use a deterministic ID for ingestion based on the staged key to avoid duplicates?
-	// Or just a standard prefix.
-	// StagedDBKey usually contains timestamp and previous workflow ID components.
-	// Let's use "ingest-" + ...
-	safeKey := strings.ReplaceAll(filepath.Base(req.StagedDBKey), ".db", "")
-	wfID := fmt.Sprintf("ingest-%s-%s", req.TLD, safeKey)
-
-	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
-		ID:        wfID,
-		TaskQueue: cfg.WorkerQueue,
-	}, workflows.EscrowIngestionWorkflow, workflows.EscrowIngestionParams{
-		TLD:         req.TLD,
-		StagedDBKey: req.StagedDBKey,
-	})
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	temporalUIBase := os.Getenv("TEMPORAL_UI_URL")
-	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
-	if temporalUIBase == "" {
-		temporalUIBase = "http://localhost:8081"
-	}
-	link := temporalUIBase + "/namespaces/" + cfg.Namespace + "/workflows/" + we.GetID() + "/" + we.GetRunID()
-
-	ctx.JSON(http.StatusAccepted, startEscrowImportResponse{
-		WorkflowID: we.GetID(),
-		RunID:      we.GetRunID(),
-		Status:     "started",
-		URL:        link,
-	})
+	ctx.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal."})
 }
 
 
@@ -320,6 +273,15 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Initialize Temporal client for checking workflow status
+	cfg := temporal.NewClientConfigFromEnv("")
+	cli, err := temporal.GetTemporalClient(cfg)
+	var hasCli bool
+	if err == nil {
+		hasCli = true
+		defer cli.Close()
 	}
 
 	runs := make([]EscrowRunItem, 0, 32)
@@ -435,11 +397,20 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 			}
 		}
 
+		var wfStatus string
+		if hasCli {
+			desc, err := cli.DescribeWorkflowExecution(ctx.Request.Context(), wf, "")
+			if err == nil {
+				wfStatus = normalizeStatus(desc.GetWorkflowExecutionInfo().GetStatus().String())
+			}
+		}
+
 		item := EscrowRunItem{
-			TLD:        tld,
-			RunPrefix:  rp,
-			Date:       date,
-			WorkflowID: wf,
+			TLD:            tld,
+			RunPrefix:      rp,
+			Date:           date,
+			WorkflowID:     wf,
+			WorkflowStatus: wfStatus,
 			SummaryKey: func() string {
 				if hasSummary {
 					return sumKey
@@ -479,4 +450,165 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, EscrowImportListResponse{Items: runs, Count: len(runs)})
+}
+
+// =============================================================================
+// Multipart Upload — browser-direct large file uploads (S3-compatible)
+// =============================================================================
+
+const multipartPartSize = 100 * 1024 * 1024 // 100MB per part
+
+type initMultipartRequest struct {
+	WorkflowType string `json:"workflowType" binding:"required"`
+	TLD          string `json:"tld" binding:"required"`
+	Filename     string `json:"filename" binding:"required"`
+}
+
+type initMultipartResponse struct {
+	UploadID string `json:"uploadId"`
+	Key      string `json:"key"`
+	PartSize int    `json:"partSize"`
+}
+
+type presignPartRequest struct {
+	Key        string `json:"key" binding:"required"`
+	UploadID   string `json:"uploadId" binding:"required"`
+	PartNumber int    `json:"partNumber" binding:"required"`
+}
+
+type presignPartResponse struct {
+	URL string `json:"url"`
+}
+
+type completePartInfo struct {
+	PartNumber int    `json:"partNumber"`
+	ETag       string `json:"etag"`
+}
+
+type completeMultipartRequest struct {
+	Key      string             `json:"key" binding:"required"`
+	UploadID string             `json:"uploadId" binding:"required"`
+	Parts    []completePartInfo `json:"parts" binding:"required"`
+}
+
+type completeMultipartResponse struct {
+	Key string `json:"key"`
+}
+
+type abortMultipartRequest struct {
+	Key      string `json:"key" binding:"required"`
+	UploadID string `json:"uploadId" binding:"required"`
+}
+
+// InitMultipartUpload starts a new S3 multipart upload and returns the upload ID.
+// POST /escrow/uploads/multipart/init
+func (c *EscrowController) InitMultipartUpload(ctx *gin.Context) {
+	var req initMultipartRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld, workflowType, and filename are required"})
+		return
+	}
+
+	// Sanitize filename
+	safe := strings.ReplaceAll(filepath.Base(req.Filename), " ", "_")
+
+	// Build key: escrow/uploads/{workflowType}/{tld}/{uuid}/{filename}
+	uuid := fmt.Sprintf("%d", time.Now().UnixNano())
+	key := fmt.Sprintf("escrow/uploads/%s/%s/%s/%s", req.WorkflowType, req.TLD, uuid, safe)
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
+		return
+	}
+
+	uploadID, err := s3c.InitMultipartUpload(ctx.Request.Context(), key)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to init multipart upload: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, initMultipartResponse{
+		UploadID: uploadID,
+		Key:      key,
+		PartSize: multipartPartSize,
+	})
+}
+
+// PresignUploadPart returns a presigned PUT URL for a single part.
+// POST /escrow/uploads/multipart/presign-part
+func (c *EscrowController) PresignUploadPart(ctx *gin.Context) {
+	var req presignPartRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "key, uploadId, and partNumber are required"})
+		return
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
+		return
+	}
+
+	url, err := s3c.PresignUploadPart(ctx.Request.Context(), req.Key, req.UploadID, req.PartNumber, 30*time.Minute)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to presign part: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, presignPartResponse{URL: url})
+}
+
+// CompleteMultipartUpload finalizes a multipart upload by assembling all parts.
+// POST /escrow/uploads/multipart/complete
+func (c *EscrowController) CompleteMultipartUpload(ctx *gin.Context) {
+	var req completeMultipartRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "key, uploadId, and parts are required"})
+		return
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
+		return
+	}
+
+	parts := make([]storage.MultipartCompletePart, len(req.Parts))
+	for i, p := range req.Parts {
+		parts[i] = storage.MultipartCompletePart{
+			PartNumber: p.PartNumber,
+			ETag:       p.ETag,
+		}
+	}
+
+	if err := s3c.CompleteMultipartUpload(ctx.Request.Context(), req.Key, req.UploadID, parts); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to complete multipart upload: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, completeMultipartResponse{Key: req.Key})
+}
+
+// AbortMultipartUpload cancels an in-progress multipart upload and cleans up parts.
+// POST /escrow/uploads/multipart/abort
+func (c *EscrowController) AbortMultipartUpload(ctx *gin.Context) {
+	var req abortMultipartRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "key and uploadId are required"})
+		return
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
+		return
+	}
+
+	if err := s3c.AbortMultipartUpload(ctx.Request.Context(), req.Key, req.UploadID); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to abort multipart upload: " + err.Error()})
+		return
+	}
+
+	ctx.Status(http.StatusNoContent)
 }
