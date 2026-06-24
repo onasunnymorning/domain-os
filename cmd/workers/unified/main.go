@@ -54,6 +54,7 @@ func main() {
 	lifecycleWorker.RegisterActivity(activities.MakeCreateRegistrarCommands)
 	lifecycleWorker.RegisterActivity(activities.SetRegistrarStatus)
 	lifecycleWorker.RegisterActivity(activities.SetRegistrarIANAStatus)
+	lifecycleWorker.RegisterActivity(activities.BulkUpdateRegistrarStatuses)
 	lifecycleWorker.RegisterActivity(activities.GetRegistrarListItems)
 	lifecycleWorker.RegisterActivity(activities.CreateRegistrar)
 

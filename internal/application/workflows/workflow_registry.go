@@ -94,9 +94,11 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Steps: []WorkflowStep{
 				{Key: "sync-iana", Label: "Sync IANA", ActivityName: "SyncIanaRegistrars"},
 				{Key: "count-registrars", Label: "Count Registrars", ActivityName: "CountRegistrars"},
+				{Key: "fetch-iana", Label: "Fetch IANA Registrars", ActivityName: "GetIANARegistrars"},
+				{Key: "get-existing", Label: "Get Existing Registrars", ActivityName: "GetRegistrarListItems"},
 				{Key: "diff-plan", Label: "Diff & Plan", ActivityName: "DiffAndPlanRegistrars"},
 				{Key: "apply-creates", Label: "Apply Creates", ActivityName: "BulkCreateRegistrars"},
-				{Key: "apply-updates", Label: "Apply Updates", ActivityName: "SetRegistrarStatus"},
+				{Key: "apply-updates", Label: "Apply Status Updates", ActivityName: "BulkUpdateRegistrarStatuses"},
 			},
 			docFile: "syncRegistrarsWorkflow.doc.md",
 		},
