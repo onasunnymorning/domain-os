@@ -100,9 +100,10 @@ func NewTestAPI() (*TestAPI, error) {
 	// --- Services ---
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
 	tldService := services.NewTLDService(tldRepo, dnsRecordRepo)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, &noopPublisher{})
+	eventPublisher := &dbEventPublisher{db: db}
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService)
-	registrarService := services.NewRegistrarService(registrarRepo, &noopPublisher{})
+	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	contactService := services.NewContactService(contactRepo, *roidService)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
 	ianaRegistrarService := services.NewIANARegistrarService(ianaRegistrarRepo)
@@ -286,8 +287,18 @@ func DecodeJSON(resp *httptest.ResponseRecorder, target interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-type noopPublisher struct{}
+type dbEventPublisher struct {
+	db *gorm.DB
+}
 
-func (n *noopPublisher) Publish(ctx context.Context, events ...entities.DomainEvent) error {
-	return nil
+func (d *dbEventPublisher) Publish(ctx context.Context, events ...entities.DomainEvent) error {
+	records := make([]postgres.DomainEventRecord, len(events))
+	for i, e := range events {
+		record, err := postgres.ToDBDomainEvent(e)
+		if err != nil {
+			return err
+		}
+		records[i] = record
+	}
+	return d.db.WithContext(ctx).Create(&records).Error
 }

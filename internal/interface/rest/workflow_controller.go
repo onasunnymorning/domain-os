@@ -352,13 +352,21 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{workflows.TLDCleanupParams{TLD: tld, KeepTLDAndPhases: keepTLDAndPhases}}
 
 	case "sync-registrars":
-		batchSize := 100
-		if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
-			batchSize = int(bs)
+		var loopParams workflows.SyncRegistrarsParams
+		if req.Params != nil {
+			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
+				loopParams.BatchSize = int(bs)
+			}
+			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
+				loopParams.ConcurrencyLimit = int(cl)
+			}
+			if dr, ok := req.Params["dryRun"].(bool); ok {
+				loopParams.DryRun = dr
+			}
 		}
 		wfID = fmt.Sprintf("sync-registrars-%s", ts)
 		workflow = workflows.SyncRegistrarsWorkflow
-		args = []interface{}{batchSize}
+		args = []interface{}{loopParams}
 
 	case "update-fx":
 		wfID = fmt.Sprintf("update-fx-%s", ts)

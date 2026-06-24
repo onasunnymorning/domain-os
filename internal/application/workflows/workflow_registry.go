@@ -116,7 +116,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 		},
 		{
 			Key:          "expiry-loop",
-			Name:         "Expiry Loop",
+			Name:         "Expire Domains",
 			Description:  "Processes expired domains for auto-renew or expiration. Returns structured result with counts and failure details.",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
@@ -134,7 +134,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 		},
 		{
 			Key:          "purge-loop",
-			Name:         "Purge Loop",
+			Name:         "Purge Domains",
 			Description:  "Purges domains that have completed their redemption grace period",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
@@ -150,7 +150,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 		},
 		{
 			Key:          "restore-workflow",
-			Name:         "Restore Workflow",
+			Name:         "Restore Domains",
 			Description:  "Processes restored domains by unsetting status and forcing renewal",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",

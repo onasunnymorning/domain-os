@@ -1,11 +1,7 @@
 package workflows
 
-// This workflow implements the processes that are required to keep registrars in-sync with IANA and ICANN.
-// Drawing: https://miro.com/app/board/uXjVMwEdn4Y=/?moveToWidget=3458764614806207912&cot=14
-// Docs: https://www.notion.so/apex-domains/Registrar-management-1886c0599d5380249221e9d5e7a12b7f?pvs=4
-
 import (
-	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -15,24 +11,81 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-	"go.uber.org/zap"
 )
 
-func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
-	// SETUP
-	// Set up our logger
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	// Set envars
-	// apiHost := os.Getenv("API_HOST")
-	// apiPort := os.Getenv("API_PORT")
-	// baseURL := fmt.Sprintf("http://%s:%s", apiHost, apiPort)
-	// logger.Debug(fmt.Sprintf("baseURL: %s", baseURL))
+const (
+	maxSyncFailureSamples = 50
+)
 
-	// Get the workflow ID
+// SyncRegistrarsParams defines the input parameters for the SyncRegistrarsWorkflow.
+type SyncRegistrarsParams struct {
+	BatchSize        int  `json:"batchSize,omitempty"`
+	ConcurrencyLimit int  `json:"concurrencyLimit,omitempty"`
+	DryRun           bool `json:"dryRun,omitempty"`
+}
+
+// SyncRegistrarsResult is the structured output of the SyncRegistrarsWorkflow.
+type SyncRegistrarsResult struct {
+	StartedAt      time.Time               `json:"startedAt"`
+	CompletedAt    time.Time               `json:"completedAt"`
+	TotalProcessed int                     `json:"totalProcessed"`
+	Created        int                     `json:"created"`
+	Updated        int                     `json:"updated"`
+	Failed         int                     `json:"failed"`
+	Notes          []string                `json:"notes"`
+	Failures       []SyncRegistrarsFailure `json:"failures,omitempty"`
+}
+
+// SyncRegistrarsFailure records a single registrar sync failure.
+type SyncRegistrarsFailure struct {
+	ClID      string `json:"clId"`
+	Operation string `json:"operation"` // "create", "update-status", "update-iana-status"
+	Error     string `json:"error"`
+}
+
+// addFailure appends a failure record to the SyncRegistrarsResult.
+func (r *SyncRegistrarsResult) addFailure(clID, operation, errMsg string) {
+	r.Failed++
+	if len(r.Failures) < maxSyncFailureSamples {
+		r.Failures = append(r.Failures, SyncRegistrarsFailure{
+			ClID:      clID,
+			Operation: operation,
+			Error:     errMsg,
+		})
+	}
+}
+
+// SyncRegistrarsWorkflow orchestrates synchronization of registrar data.
+func SyncRegistrarsWorkflow(ctx workflow.Context, params SyncRegistrarsParams) (SyncRegistrarsResult, error) {
+	started := workflow.Now(ctx)
+	result := SyncRegistrarsResult{
+		StartedAt: started,
+	}
+
+	logger := workflow.GetLogger(ctx)
+
+	// Register query handler for progress tracking
+	err := workflow.SetQueryHandler(ctx, "progress", func() (SyncRegistrarsResult, error) {
+		return result, nil
+	})
+	if err != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to register query handler: "+err.Error())
+		return result, err
+	}
+
 	workflowID := getWorkflowID(ctx)
 
-	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
+	concurrencyLimit := params.ConcurrencyLimit
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = 20
+	}
+
+	batchSize := params.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
 		BackoffCoefficient:     2.0,
@@ -44,114 +97,161 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	options := workflow.ActivityOptions{
 		// Timeout options specify when to automatically timeout Activity functions.
 		StartToCloseTimeout: time.Minute,
-		// Optionally provide a customized RetryPolicy.
-		// Temporal retries failed Activities by default.
-		RetryPolicy: retrypolicy,
+		RetryPolicy:         retrypolicy,
 	}
 
 	// Apply the options.
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// WORKFLOW
-
-	// Sync registrars with IANA to ensure that we have up to date information
+	// Sync registrars with IANA
 	syncErr := workflow.ExecuteActivity(ctx, activities.SyncIanaRegistrars, workflowID).Get(ctx, nil)
 	if syncErr != nil {
-		logger.Error(fmt.Sprintf("failed to sync registrars with IANA: %v", syncErr))
-		return syncErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to sync registrars with IANA: "+syncErr.Error())
+		logger.Error("failed to sync registrars with IANA", "error", syncErr)
+		return result, syncErr
 	}
 
 	// Check if this is our first time syncing registrars (zero registrars in the system)
 	var rarCount response.CountResult
 	countErr := workflow.ExecuteActivity(ctx, activities.CountRegistrars, workflowID).Get(ctx, &rarCount)
 	if countErr != nil {
-		logger.Error(fmt.Sprintf("failed to count registrars: %v", countErr))
-		return countErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to count registrars: "+countErr.Error())
+		logger.Error("failed to count registrars", "error", countErr)
+		return result, countErr
 	}
 
 	// If it is our first time syncing, launch the first import of registrars
 	if rarCount.Count == 0 {
-		// Get the ICANN registrars via activity (to keep workflow deterministic)
 		var csvRars []icannregistrars.CSVRegistrar
 		getIcannErr := workflow.ExecuteActivity(ctx, activities.GetICANNRegistrars, workflowID, "./initdata/icannRegistrarList.csv").Get(ctx, &csvRars)
 		if getIcannErr != nil {
-			logger.Error(fmt.Sprintf("failed to get ICANN registrars from file via activity: %v", getIcannErr))
+			result.CompletedAt = workflow.Now(ctx)
+			result.Notes = append(result.Notes, "failed to get ICANN registrars from file: "+getIcannErr.Error())
+			logger.Error("failed to get ICANN registrars from file", "error", getIcannErr)
+			return result, getIcannErr
 		}
-		// Get the IANA registrars
+
 		var ianaRars []entities.IANARegistrar
-		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchsize).Get(ctx, &ianaRars)
+		ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchSize).Get(ctx, &ianaRars)
 		if ianaRarErr != nil {
-			logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
+			result.CompletedAt = workflow.Now(ctx)
+			result.Notes = append(result.Notes, "failed to get IANA registrars: "+ianaRarErr.Error())
+			logger.Error("failed to get IANA registrars", "error", ianaRarErr)
+			return result, ianaRarErr
 		}
-		// Merge both into a create command
+
 		cmds := []commands.CreateRegistrarCommand{}
 		createCmdErr := workflow.ExecuteActivity(ctx, activities.MakeCreateRegistrarCommands, workflowID, csvRars, ianaRars).Get(ctx, &cmds)
 		if createCmdErr != nil {
-			logger.Error(fmt.Sprintf("failed to get create commands: %v", createCmdErr))
+			result.CompletedAt = workflow.Now(ctx)
+			result.Notes = append(result.Notes, "failed to build create commands: "+createCmdErr.Error())
+			logger.Error("failed to build create commands", "error", createCmdErr)
+			return result, createCmdErr
 		}
-		// Create the registrars
-		createdRarCounter := 0
-		// Process the commands in chunks
+
+		if params.DryRun {
+			result.TotalProcessed = len(cmds)
+			result.Created = len(cmds)
+			result.CompletedAt = workflow.Now(ctx)
+			result.Notes = append(result.Notes, "Dry run completed: no state changes made")
+			return result, nil
+		}
+
+		// Process the creates in chunks via ExecuteActivity
 		for chunk := range commands.ChunkCreateRegistrarCommands(cmds, 100) {
-			if err := activities.BulkCreateRegistrars(workflowID, chunk); err != nil {
-				return err
+			bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, nil)
+			if bulkCreateErr != nil {
+				result.CompletedAt = workflow.Now(ctx)
+				result.Notes = append(result.Notes, "failed bulk creating registrars: "+bulkCreateErr.Error())
+				logger.Error("failed bulk creating registrars", "error", bulkCreateErr)
+				return result, bulkCreateErr
 			}
-			createdRarCounter += len(chunk)
+			result.Created += len(chunk)
+			result.TotalProcessed += len(chunk)
 		}
 
-		logger.Info(fmt.Sprintf("created %d registrars", createdRarCounter))
-
-		// TODO: launch as new the same workflow so the sync happens after the init
-		return nil
+		result.CompletedAt = workflow.Now(ctx)
+		return result, nil
 	}
 
 	// Update the registrars that have changed
-
-	// First get the IANA registrars
 	var ianaRars []entities.IANARegistrar
-	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchsize).Get(ctx, &ianaRars)
+	ianaRarErr := workflow.ExecuteActivity(ctx, activities.GetIANARegistrars, workflowID, batchSize).Get(ctx, &ianaRars)
 	if ianaRarErr != nil {
-		logger.Error(fmt.Sprintf("failed to get IANA registrars: %v", ianaRarErr))
-		return ianaRarErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to get IANA registrars: "+ianaRarErr.Error())
+		logger.Error("failed to get IANA registrars", "error", ianaRarErr)
+		return result, ianaRarErr
 	}
 
-	// Get our existing registrars
 	var rars []entities.RegistrarListItem
-	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID, batchsize).Get(ctx, &rars)
+	rarsErr := workflow.ExecuteActivity(ctx, activities.GetRegistrarListItems, workflowID, batchSize).Get(ctx, &rars)
 	if rarsErr != nil {
-		logger.Error(fmt.Sprintf("failed to get registrar list items: %v", rarsErr))
-		return rarsErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to get registrar list items: "+rarsErr.Error())
+		logger.Error("failed to get registrar list items", "error", rarsErr)
+		return result, rarsErr
 	}
 
-	// Compute plan via activity
 	var plan activities.DiffPlanResult
 	planErr := workflow.ExecuteActivity(ctx, activities.DiffAndPlanRegistrars, workflowID, ianaRars, rars).Get(ctx, &plan)
 	if planErr != nil {
-		logger.Error(fmt.Sprintf("failed to diff and plan registrars: %v", planErr))
-		return planErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "failed to diff and plan registrars: "+planErr.Error())
+		logger.Error("failed to diff and plan registrars", "error", planErr)
+		return result, planErr
 	}
 
-	// Apply creates in chunks
-	createdRarCounter := 0
+	if params.DryRun {
+		result.TotalProcessed = len(plan.Creates) + len(plan.Updates)
+		result.Created = len(plan.Creates)
+		result.Updated = len(plan.Updates)
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Dry run completed: no state changes made")
+		return result, nil
+	}
+
+	// Apply creates in chunks via ExecuteActivity
 	for chunk := range commands.ChunkCreateRegistrarCommands(plan.Creates, 100) {
-		if err := activities.BulkCreateRegistrars(workflowID, chunk); err != nil {
-			return err
+		bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, nil)
+		if bulkCreateErr != nil {
+			result.CompletedAt = workflow.Now(ctx)
+			result.Notes = append(result.Notes, "failed to apply registrar creates: "+bulkCreateErr.Error())
+			logger.Error("failed to apply registrar creates", "error", bulkCreateErr)
+			return result, bulkCreateErr
 		}
-		createdRarCounter += len(chunk)
-	}
-	if createdRarCounter > 0 {
-		logger.Info(fmt.Sprintf("created %d registrars", createdRarCounter))
+		result.Created += len(chunk)
+		result.TotalProcessed += len(chunk)
 	}
 
-	// Apply updates
+	// Apply updates in parallel
+	semCh := workflow.NewBufferedChannel(ctx, concurrencyLimit)
+
+	type futInfo struct {
+		clID      string
+		operation string
+		future    workflow.Future
+	}
+	var futures []futInfo
+
 	for _, upd := range plan.Updates {
-		if err := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, upd.ClID, upd.NewStatus).Get(ctx, nil); err != nil {
-			logger.Error(fmt.Sprintf("failed to set registrar status for %s: %v", upd.ClID, err))
-		}
+		semCh.Send(ctx, struct{}{})
+		f := workflow.ExecuteActivity(ctx, activities.SetRegistrarStatus, workflowID, upd.ClID, upd.NewStatus)
+		futures = append(futures, futInfo{
+			clID:      upd.ClID,
+			operation: "update-status",
+			future:    f,
+		})
+		workflow.Go(ctx, func(ctx workflow.Context) {
+			_ = f.Get(ctx, nil)
+			var token struct{}
+			semCh.Receive(ctx, &token)
+		})
 	}
 
-	// Ensure IANA status is up-to-date on existing registrars
-	// Build a set of existing registrar ClIDs
+	// Ensure IANA status is up-to-date
 	existingClIDs := make(map[string]struct{}, len(rars))
 	for _, r := range rars {
 		existingClIDs[r.ClID.String()] = struct{}{}
@@ -159,11 +259,43 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, batchsize int) error {
 	for _, ir := range ianaRars {
 		clid, _ := ir.CreateClID()
 		if _, ok := existingClIDs[clid.String()]; ok {
-			if err := workflow.ExecuteActivity(ctx, activities.SetRegistrarIANAStatus, workflowID, clid.String(), ir.Status.String()).Get(ctx, nil); err != nil {
-				logger.Error(fmt.Sprintf("failed to set registrar IANA status for %s: %v", clid.String(), err))
-			}
+			semCh.Send(ctx, struct{}{})
+			f := workflow.ExecuteActivity(ctx, activities.SetRegistrarIANAStatus, workflowID, clid.String(), ir.Status.String())
+			futures = append(futures, futInfo{
+				clID:      clid.String(),
+				operation: "update-iana-status",
+				future:    f,
+			})
+			workflow.Go(ctx, func(ctx workflow.Context) {
+				_ = f.Get(ctx, nil)
+				var token struct{}
+				semCh.Receive(ctx, &token)
+			})
 		}
 	}
 
-	return nil
+	// Gather results
+	for _, fut := range futures {
+		err := fut.future.Get(ctx, nil)
+		result.TotalProcessed++
+		if err != nil {
+			result.addFailure(fut.clID, fut.operation, err.Error())
+			logger.Error("failed to apply registrar update", "clID", fut.clID, "operation", fut.operation, "error", err)
+		} else {
+			result.Updated++
+		}
+	}
+
+	result.CompletedAt = workflow.Now(ctx)
+
+	// Add summary note
+	if result.Failed > 0 {
+		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
+		if result.Failed > maxSyncFailureSamples {
+			result.Notes = append(result.Notes, "Failure details capped at "+strconv.Itoa(maxSyncFailureSamples)+
+				" samples; total failures: "+strconv.Itoa(result.Failed))
+		}
+	}
+
+	return result, nil
 }
