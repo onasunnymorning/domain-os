@@ -72,5 +72,11 @@
     "typescript": "^5",
     "vite": "^7.3.5",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.10"
+    },
+    "esbuild": "^0.28.1"
   }
 }

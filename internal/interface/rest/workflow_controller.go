@@ -63,10 +63,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
 		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
-	}
-	if cfg.WorkerQueue == "" {
-		cfg.WorkerQueue = "domain-lifecycle"
+		WorkerQueue: temporal.QueueObjectLifecycle,
 	}
 
 	cli, err := temporal.GetTemporalClient(cfg)
@@ -127,16 +124,12 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 	}
 
 	cfg := temporal.TemporalClientconfig{
-		HostPort:   os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:  os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:  os.Getenv("TMPIO_KEY"),
-		ClientCert: os.Getenv("TMPIO_CERT"),
-		APIKey:     os.Getenv("TMPIO_API_KEY"),
-		// TLD cleanup is heavy and similar to escrow, run it on the escrow queue
-		WorkerQueue: os.Getenv("ESCROW_QUEUE"),
-	}
-	if cfg.WorkerQueue == "" {
-		cfg.WorkerQueue = "escrow-import"
+		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
+		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
+		ClientKey:   os.Getenv("TMPIO_KEY"),
+		ClientCert:  os.Getenv("TMPIO_CERT"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
+		WorkerQueue: temporal.QueueDataPipeline,
 	}
 
 	cli, err := temporal.GetTemporalClient(cfg)

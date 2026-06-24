@@ -26,12 +26,8 @@ func main() {
 	}
 	defer client.Close()
 
-	// --- Domain Lifecycle Worker (queue: TMPIO_QUEUE) ---
-	lifecycleQueue := os.Getenv("TMPIO_QUEUE")
-	if lifecycleQueue == "" {
-		lifecycleQueue = "domain-lifecycle"
-	}
-	lifecycleWorker := worker.New(client, lifecycleQueue, worker.Options{})
+	// --- Object Lifecycle Worker (queue: object-lifecycle) ---
+	lifecycleWorker := worker.New(client, temporal.QueueObjectLifecycle, worker.Options{})
 
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
@@ -49,6 +45,7 @@ func main() {
 	lifecycleWorker.RegisterActivity(activities.ListRestoredDomains)
 	lifecycleWorker.RegisterActivity(activities.GetDomain)
 	lifecycleWorker.RegisterActivity(activities.RenewDomain)
+	lifecycleWorker.RegisterActivity(activities.SetDomainStatus)
 	lifecycleWorker.RegisterActivity(activities.UnSetDomainStatus)
 	lifecycleWorker.RegisterActivity(activities.SyncIanaRegistrars)
 	lifecycleWorker.RegisterActivity(activities.GetICANNRegistrars)
@@ -57,51 +54,40 @@ func main() {
 	lifecycleWorker.RegisterActivity(activities.DiffAndPlanRegistrars)
 	lifecycleWorker.RegisterActivity(activities.MakeCreateRegistrarCommands)
 	lifecycleWorker.RegisterActivity(activities.SetRegistrarStatus)
+	lifecycleWorker.RegisterActivity(activities.SetRegistrarIANAStatus)
 	lifecycleWorker.RegisterActivity(activities.GetRegistrarListItems)
 	lifecycleWorker.RegisterActivity(activities.CreateRegistrar)
 
-	// --- Escrow Import Worker (queue: ESCROW_QUEUE) ---
-	escrowQueue := os.Getenv("ESCROW_QUEUE")
-	if escrowQueue == "" {
-		escrowQueue = "escrow-import"
-	}
-	escrowWorker := worker.New(client, escrowQueue, worker.Options{})
+	// --- Data Pipeline Worker (queue: data-pipeline) ---
+	// Handles escrow staging/ingestion, TLD cleanup, and FX rate updates.
+	dataWorker := worker.New(client, temporal.QueueDataPipeline, worker.Options{})
 
-	escrowWorker.RegisterWorkflow(workflows.EscrowStagingWorkflow)
-	escrowWorker.RegisterWorkflow(workflows.EscrowIngestionWorkflow)
-	escrowWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	dataWorker.RegisterWorkflow(workflows.EscrowStagingWorkflow)
+	dataWorker.RegisterWorkflow(workflows.EscrowIngestionWorkflow)
+	dataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	dataWorker.RegisterWorkflow(workflows.UpdateFX)
 
-	escrowWorker.RegisterActivity(&activities.EscrowImportActivities{})
+	dataWorker.RegisterActivity(&activities.EscrowImportActivities{})
+	dataWorker.RegisterActivity(activities.UpdateFX)
 
 	// TLD Cleanup activities require DB + S3; gracefully skip if unavailable
 	tldActs, err := activities.NewTLDCleanupActivities()
 	if err != nil {
 		log.Printf("WARNING: TLD cleanup activities not available (DB/S3 not configured): %v", err)
 	} else {
-		escrowWorker.RegisterActivity(tldActs.CheckTLDCanBeDeleted)
-		escrowWorker.RegisterActivity(tldActs.PlanTLDCleanup)
-		escrowWorker.RegisterActivity(tldActs.BackupTLDAssets)
-		escrowWorker.RegisterActivity(tldActs.DeleteTLDAssets)
+		dataWorker.RegisterActivity(tldActs.CheckTLDCanBeDeleted)
+		dataWorker.RegisterActivity(tldActs.PlanTLDCleanup)
+		dataWorker.RegisterActivity(tldActs.BackupTLDAssets)
+		dataWorker.RegisterActivity(tldActs.DeleteTLDAssets)
 	}
-
-	// --- Sync Worker (queue: TMPIO_SYNC_QUEUE) ---
-	syncQueue := os.Getenv("TMPIO_SYNC_QUEUE")
-	if syncQueue == "" {
-		syncQueue = "sync"
-	}
-	syncWorker := worker.New(client, syncQueue, worker.Options{})
-
-	syncWorker.RegisterWorkflow(workflows.UpdateFX)
-	syncWorker.RegisterActivity(activities.UpdateFX)
 
 	// Start all workers concurrently. worker.InterruptCh() returns a channel
 	// that is closed on SIGINT/SIGTERM, which gracefully stops all workers.
 	interruptCh := worker.InterruptCh()
 
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 2)
 	go func() { errCh <- lifecycleWorker.Run(interruptCh) }()
-	go func() { errCh <- escrowWorker.Run(interruptCh) }()
-	go func() { errCh <- syncWorker.Run(interruptCh) }()
+	go func() { errCh <- dataWorker.Run(interruptCh) }()
 
 	// Wait for any worker to exit (error or interrupt)
 	if err := <-errCh; err != nil {

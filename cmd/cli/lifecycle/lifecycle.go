@@ -283,7 +283,8 @@ func createTemporalSchedules(c *cli.Context) error {
 		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
+		WorkerQueue: temporal.QueueObjectLifecycle,
 	}
 
 	switch c.Args().First() {
@@ -292,7 +293,7 @@ func createTemporalSchedules(c *cli.Context) error {
 	case "purge":
 		return createTemporalPurgeSchedule(cfg)
 	case "updatefx":
-		cfg.WorkerQueue = os.Getenv("TMPIO_SYNC_QUEUE")
+		cfg.WorkerQueue = temporal.QueueDataPipeline
 		return createTemporalUpdateFXSchedule(cfg)
 	case "restore":
 		return createTemporalRestoreSchedule(cfg)

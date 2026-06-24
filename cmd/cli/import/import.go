@@ -190,6 +190,7 @@ func getTemporalClientConfig() temporal.TemporalClientconfig {
 		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
+		APIKey:      os.Getenv("TMPIO_API_KEY"),
+		WorkerQueue: temporal.QueueObjectLifecycle,
 	}
 }

@@ -160,7 +160,7 @@ services:
       # Temporal Client (dev: temporalite, no TLS)
       - TMPIO_HOST_PORT=temporal:7233
       - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_QUEUE=object-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
       # S3/MinIO settings for escrow
@@ -198,7 +198,7 @@ services:
       - DB_SSLMODE=${DB_SSLMODE}
       - TMPIO_HOST_PORT=temporal:7233
       - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
+      - TMPIO_QUEUE=object-lifecycle
       - TMPIO_KEY=
       - TMPIO_CERT=
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
@@ -281,9 +281,8 @@ services:
       - TMPIO_KEY=
       - TMPIO_CERT=
       # Task queues
-      - TMPIO_QUEUE=domain-lifecycle
-      - ESCROW_QUEUE=escrow-import
-      - TMPIO_SYNC_QUEUE=sync
+      - TMPIO_QUEUE=object-lifecycle
+      - ESCROW_QUEUE=data-pipeline
       # API connection
       - API_HOST=admin-api
       - API_PORT=${API_PORT}

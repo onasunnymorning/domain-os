@@ -199,7 +199,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
 		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: getEscrowQueue(),
+		WorkerQueue: temporal.QueueDataPipeline,
 	}
 
 	cli, err := temporal.GetTemporalClient(cfg)
@@ -261,7 +261,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 		ClientKey:   os.Getenv("TMPIO_KEY"),
 		ClientCert:  os.Getenv("TMPIO_CERT"),
 		APIKey:      os.Getenv("TMPIO_API_KEY"),
-		WorkerQueue: getEscrowQueue(),
+		WorkerQueue: temporal.QueueDataPipeline,
 	}
 
 	cli, err := temporal.GetTemporalClient(cfg)
@@ -305,13 +305,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 	})
 }
 
-func getEscrowQueue() string {
-	q := strings.TrimSpace(os.Getenv("ESCROW_QUEUE"))
-	if q == "" {
-		return "escrow-import"
-	}
-	return q
-}
+
 
 // ListImports returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes
 func (c *EscrowController) ListImports(ctx *gin.Context) {
