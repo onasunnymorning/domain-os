@@ -10,7 +10,9 @@ WORKDIR /
 # RUN apk add pkgconfig
 
 # Install swag
-RUN go install github.com/swaggo/swag/cmd/swag@v1.16.3
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go install github.com/swaggo/swag/cmd/swag@v1.16.3
 
 # Install UPX for binary compression
 RUN apk add upx
@@ -35,23 +37,32 @@ RUN apk add upx
 # Go dependencies
 COPY go.mod ./
 COPY go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY ./internal ./internal
 COPY ./pkg ./pkg
 COPY ./cmd/api/ry-admin ./cmd/api/ry-admin
+COPY ./docs /docs
 
 
 # Just build API
 FROM build AS build-admin-api
 # Generate swagger docs
 WORKDIR /cmd/api/ry-admin
-RUN swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/pkg/domain/entities,/internal/application/commands,/internal/interface/rest
+ARG SKIP_SWAG=false
+RUN if [ "$SKIP_SWAG" = "true" ]; then \
+        echo "Skipping swag init"; \
+    else \
+        swag init -g ryAdminAPI.go -o /docs --parseDependency -d ./,/pkg/domain/entities,/internal/application/commands,/internal/interface/rest; \
+    fi
 # build binary
 WORKDIR /
 ARG GIT_SHA
-RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI ./cmd/api/ry-admin
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI ./cmd/api/ry-admin
 # RUN upx --brute /ryAdminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 

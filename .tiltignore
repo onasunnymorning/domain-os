@@ -1,3 +1,6 @@
 /helmcharts/event-consumer/values.yaml
 coverage.out
 .env.tilt
+frontend/.next/
+frontend/node_modules/
+node_modules/

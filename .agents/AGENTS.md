@@ -44,3 +44,28 @@ Every Temporal workflow **must** have a sidecar documentation file. Documentatio
 - Every workflow must also be registered in `internal/application/workflows/workflow_registry.go` with accurate `Name`, `Description`, `Tags`, and `Steps`.
 - The workflow registry powers the **⌘K global search** in the UI — workflows are searchable by name, description, tags, and category. If a workflow isn't in the registry, users can't find or launch it.
 - When creating or modifying a workflow, update both the sidecar doc **and** the registry entry in the same change.
+
+## Error Handling
+
+This is **internal tooling** — every error message must be written for developers and operators, not end users. Unhelpful errors waste debugging time.
+
+### Requirements for all error messages
+
+1. **State what failed** — identify the operation, phase, or component (e.g., "Failed to initialize multipart upload", not "Something went wrong").
+2. **Include the underlying cause** — always propagate the original error message. In Go: `fmt.Errorf("operation X: %w", err)`. In TypeScript: include `err.message` or `err.response.data.error`.
+3. **Explain likely causes** — for infrastructure errors (S3, Temporal, DB), include the 2-3 most common causes (e.g., "Check that MinIO is running and MINIO_ENDPOINT is configured").
+4. **Include diagnostic data** — add context that helps debugging: URLs, keys, IDs, HTTP status codes, hostnames. Truncate or redact secrets, but don't strip useful info.
+5. **Suggest next steps** — when possible, tell the user what to check or do (e.g., "For MinIO CORS issues, ensure MINIO_API_CORS_ALLOW_ORIGIN is set").
+
+### Backend (Go) patterns
+
+- **Wrap errors with context**: `fmt.Errorf("PresignUploadPart(key=%s, part=%d): %w", key, partNumber, err)`
+- **HTTP handlers**: Return structured JSON errors with `error` field. Include the operation name and propagated error: `gin.H{"error": "failed to init multipart upload: " + err.Error()}`
+- **Never return bare `500 Internal Server Error`** without a message body.
+
+### Frontend (TypeScript) patterns
+
+- **API calls**: Catch errors and extract `err.response.data.error` (backend message) or `err.message` (network-level).
+- **XHR/fetch to external services (S3)**: Distinguish between HTTP errors (parse status + response body) and network errors (CORS, DNS, connectivity). Include the target URL/origin.
+- **S3 errors**: Parse the XML error response to extract `<Code>` and `<Message>` when available.
+- **Show error context in the UI**: The FileUpload component and toast notifications should display the full error message, not a generic "Upload failed".

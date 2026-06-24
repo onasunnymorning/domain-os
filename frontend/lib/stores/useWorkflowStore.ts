@@ -30,8 +30,6 @@ export interface WorkflowRun {
   temporalUrl: string;
   startedAt: string;
   closedAt?: string;
-  steps?: WorkflowStep[];
-  currentStep?: string;
   params?: Record<string, any>;
 }
 

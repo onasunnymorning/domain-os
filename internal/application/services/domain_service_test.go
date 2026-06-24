@@ -261,3 +261,33 @@ type noopPublisher struct{}
 func (n *noopPublisher) Publish(ctx context.Context, events ...entities.DomainEvent) error {
 	return nil
 }
+
+func TestDomainService_ListEventsByDomain(t *testing.T) {
+	ctx := context.Background()
+	domainName := "test-events.com"
+
+	mockEvents := []entities.DomainEvent{
+		{
+			ID:      "evt-123",
+			Source:  "domain-os/api",
+			Type:    "domain.registered",
+			Subject: domainName,
+			Time:    time.Now().UTC(),
+		},
+	}
+
+	repo := new(repositories.MockDomainRepository)
+	repo.On("ListEventsByDomain", ctx, domainName).Return(mockEvents, nil)
+
+	service := &DomainService{
+		domainRepository: repo,
+	}
+
+	events, err := service.ListEventsByDomain(ctx, domainName)
+	assert.NoError(t, err)
+	assert.Len(t, events, 1)
+	assert.Equal(t, "evt-123", events[0].ID)
+	assert.Equal(t, domainName, events[0].Subject)
+	repo.AssertExpectations(t)
+}
+

@@ -467,7 +467,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 
 			// Upsert: insert new, update existing (preserve ro_id, in_bailiwick, created_at)
 			if _, err := s.PG.Model(&dbHosts).ExcludeColumn("addresses").
-				OnConflict("ON CONSTRAINT idx_uniq_name_clid DO UPDATE").
+				OnConflict("(name, cl_id) DO UPDATE").
 				Set("cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, linked = EXCLUDED.linked, pending_create = EXCLUDED.pending_create, pending_delete = EXCLUDED.pending_delete, pending_update = EXCLUDED.pending_update, pending_transfer = EXCLUDED.pending_transfer, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited").
 				Insert(); err != nil {
 				return total, inserted, updated, fmt.Errorf("bulk upsert hosts failed: %w", err)

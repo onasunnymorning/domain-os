@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -2469,7 +2470,9 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 		return ParseAndExtractAssetsResult{}, err
 	}
 
-	base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
+	base := filepath.Base(key)
+	base = strings.TrimSuffix(base, ".gz")
+	base = strings.TrimSuffix(base, ".xml")
 	var runPrefix string
 	if args.RunPrefix != "" {
 		runPrefix = args.RunPrefix
@@ -2540,7 +2543,17 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 	}
 	defer os.Remove(xmlPath)
 
-	svc, err := services.NewStreamingXMLEscrowService(xmlPath)
+	decompressedPath := xmlPath
+	if strings.HasSuffix(strings.ToLower(key), ".gz") || strings.HasSuffix(strings.ToLower(xmlPath), ".gz") {
+		activity.GetLogger(ctx).Info("Decompressing gzip escrow file", "file", xmlPath)
+		decompressedPath, err = decompressGzipFile(xmlPath)
+		if err != nil {
+			return ParseAndExtractAssetsResult{}, fmt.Errorf("gzip decompression failed: %w", err)
+		}
+		defer os.Remove(decompressedPath)
+	}
+
+	svc, err := services.NewStreamingXMLEscrowService(decompressedPath)
 	if err != nil {
 		return ParseAndExtractAssetsResult{}, fmt.Errorf("service init failed: %w", err)
 	}
@@ -2556,7 +2569,7 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 	}
 
 	// Upload Artifacts
-	tempBase := strings.TrimSuffix(xmlPath, filepath.Ext(xmlPath))
+	tempBase := strings.TrimSuffix(decompressedPath, filepath.Ext(decompressedPath))
 	suffixes := []string{
 		"-domains.csv", "-domainStatuses.csv", "-domainNameservers.csv", "-DomainDnssec.csv",
 		"-domainTransfers.csv", "-domainRgpStatus.csv",
@@ -3751,6 +3764,25 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 			check.Passed = false
 		} else {
 			check.Message = fmt.Sprintf("%d records have NULL or empty clID", count)
+			// Sample failing records for troubleshooting
+			sampleQuery := `
+				SELECT 'contact' as entity, id as identifier FROM contacts WHERE clID IS NULL OR TRIM(clID) = ''
+				UNION ALL
+				SELECT 'host', name FROM hosts WHERE clID IS NULL OR TRIM(clID) = ''
+				UNION ALL
+				SELECT 'domain', name FROM domains WHERE clID IS NULL OR TRIM(clID) = ''
+				LIMIT 50`
+			if rows, err := db.Query(sampleQuery); err == nil {
+				defer rows.Close()
+				var samples []map[string]string
+				for rows.Next() {
+					var entity, identifier string
+					if rows.Scan(&entity, &identifier) == nil {
+						samples = append(samples, map[string]string{"entity": entity, "identifier": identifier})
+					}
+				}
+				check.SampledItems = samples
+			}
 		}
 		report.AddCheck(check)
 	}
@@ -3791,6 +3823,27 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 			check.Message = fmt.Sprintf("All %d distinct CLIDs are mapped", totalDistinct)
 		} else {
 			check.Message = fmt.Sprintf("%d distinct CLIDs are unmapped (of %d total)", count, totalDistinct)
+			// Sample unmapped CLIDs for troubleshooting
+			sampleQuery := `
+				SELECT DISTINCT clid FROM (
+					SELECT TRIM(clID) as clid FROM contacts WHERE clID IS NOT NULL AND clID != ''
+					UNION
+					SELECT TRIM(clID) FROM hosts WHERE clID IS NOT NULL AND clID != ''
+					UNION
+					SELECT TRIM(clID) FROM domains WHERE clID IS NOT NULL AND clID != ''
+				) WHERE clid NOT IN (SELECT TRIM(registrar_clid) FROM registrar_mapping WHERE registrar_clid IS NOT NULL)
+				LIMIT 50`
+			if rows, err := db.Query(sampleQuery); err == nil {
+				defer rows.Close()
+				var samples []map[string]string
+				for rows.Next() {
+					var clid string
+					if rows.Scan(&clid) == nil {
+						samples = append(samples, map[string]string{"unmappedClid": clid})
+					}
+				}
+				check.SampledItems = samples
+			}
 		}
 		report.AddCheck(check)
 	}
@@ -3975,4 +4028,87 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		Passed:      report.Passed,
 		QAReportKey: qaReportKey,
 	}, nil
+}
+
+type PersistImportSummaryArgs struct {
+	TLD            string           `json:"tld"`
+	RunPrefix      string           `json:"runPrefix"`
+	WorkflowID     string           `json:"workflowId"`
+	QAPassed       bool             `json:"qaPassed"`
+	QAReportKey    string           `json:"qaReportKey"`
+	IngestedCounts map[string]int64 `json:"ingestedCounts"`
+}
+
+type PersistImportSummaryResult struct {
+	SummaryKey string `json:"summaryKey"`
+}
+
+func (a *EscrowImportActivities) PersistImportSummary(ctx context.Context, args PersistImportSummaryArgs) (PersistImportSummaryResult, error) {
+	if strings.TrimSpace(args.TLD) == "" || strings.TrimSpace(args.RunPrefix) == "" {
+		return PersistImportSummaryResult{}, fmt.Errorf("tld and runPrefix are required")
+	}
+
+	payload := map[string]any{
+		"tld":            args.TLD,
+		"runPrefix":      args.RunPrefix,
+		"workflowId":     args.WorkflowID,
+		"completedAt":    time.Now().UTC().Format(time.RFC3339),
+		"qaPassed":       args.QAPassed,
+		"qaReportKey":    args.QAReportKey,
+		"ingestedCounts": args.IngestedCounts,
+	}
+
+	tmp, err := os.CreateTemp("", "escrow-summary-*.json")
+	if err != nil {
+		return PersistImportSummaryResult{}, fmt.Errorf("create temp file failed: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	enc := json.NewEncoder(tmp)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(payload); err != nil {
+		tmp.Close()
+		return PersistImportSummaryResult{}, fmt.Errorf("encode summary JSON failed: %w", err)
+	}
+	tmp.Close()
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return PersistImportSummaryResult{}, fmt.Errorf("init S3 client failed: %w", err)
+	}
+
+	key := args.RunPrefix + "/summary.json"
+	if err := s3c.UploadFile(ctx, key, tmp.Name(), "application/json"); err != nil {
+		return PersistImportSummaryResult{}, fmt.Errorf("upload summary to S3 failed: %w", err)
+	}
+
+	return PersistImportSummaryResult{SummaryKey: key}, nil
+}
+
+func decompressGzipFile(src string) (string, error) {
+	f, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return "", err
+	}
+	defer gr.Close()
+
+	// Keep extension as .xml so standard parsing functions detect it correctly
+	tmp, err := os.CreateTemp("", "escrow-decompressed-*.xml")
+	if err != nil {
+		return "", err
+	}
+	defer tmp.Close()
+
+	if _, err := io.Copy(tmp, gr); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+
+	return tmp.Name(), nil
 }

@@ -1904,3 +1904,13 @@ func (s *DomainService) bulkDomainFromCreateDomainCommands(cmds []*commands.Crea
 	}
 	return domains, nil
 }
+
+// ListEventsByDomain lists events for the given domain name
+func (s *DomainService) ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error) {
+	events, err := s.domainRepository.ListEventsByDomain(ctx, domainName)
+	if err != nil {
+		return nil, fmt.Errorf("DomainService.ListEventsByDomain(domain=%s): %w", domainName, err)
+	}
+	return events, nil
+}
+
