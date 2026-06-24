@@ -25,7 +25,7 @@ func main() {
 	bootstrap.EnsureTemporalInfrastructure(client)
 
 	// --- Object Lifecycle Worker (queue: object-lifecycle) ---
-	lifecycleWorker := worker.New(client, temporal.QueueObjectLifecycle, worker.Options{})
+	lifecycleWorker := worker.New(client, temporal.QueueLifecycle, worker.Options{})
 
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
@@ -58,7 +58,7 @@ func main() {
 
 	// --- Data Pipeline Worker (queue: data-pipeline) ---
 	// Handles escrow staging/ingestion, TLD cleanup, and FX rate updates.
-	dataWorker := worker.New(client, temporal.QueueDataPipeline, worker.Options{})
+	dataWorker := worker.New(client, temporal.QueueData, worker.Options{})
 
 	dataWorker.RegisterWorkflow(workflows.EscrowStagingWorkflow)
 	dataWorker.RegisterWorkflow(workflows.EscrowIngestionWorkflow)

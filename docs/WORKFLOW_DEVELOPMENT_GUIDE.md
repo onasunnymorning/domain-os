@@ -11,8 +11,8 @@
 
 | Queue | Env Var | Workflows | Purpose |
 |---|---|---|---|
-| `object-lifecycle` | `TEMPORAL_QUEUE` | ExpiryLoop, PurgeLoop, RestoreWorkflow, SyncRegistrarsWorkflow | Domain lifecycle operations |
-| `data-pipeline` | `TEMPORAL_ESCROW_QUEUE` | EscrowStagingWorkflow, EscrowIngestionWorkflow, TLDCleanupWorkflow, UpdateFX | Data import, escrow, and sync operations |
+| `object-lifecycle` | `TEMPORAL_LIFECYCLE_QUEUE` | ExpiryLoop, PurgeLoop, RestoreWorkflow, SyncRegistrarsWorkflow | Domain lifecycle operations |
+| `data-pipeline` | `TEMPORAL_DATA_QUEUE` | EscrowStagingWorkflow, EscrowIngestionWorkflow, TLDCleanupWorkflow, UpdateFX | Data import, escrow, and sync operations |
 
 ### Directory Layout
 
@@ -434,8 +434,8 @@ All Temporal client configuration uses **environment variables managed by Dopple
 |---|---|---|
 | `TEMPORAL_HOST_PORT` | Temporal server address | `temporal:7233` |
 | `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
-| `TEMPORAL_QUEUE` | Lifecycle task queue | `object-lifecycle` |
-| `TEMPORAL_ESCROW_QUEUE` | Data pipeline task queue | `data-pipeline` |
+| `TEMPORAL_LIFECYCLE_QUEUE` | Lifecycle task queue | `object-lifecycle` |
+| `TEMPORAL_DATA_QUEUE` | Data pipeline task queue | `data-pipeline` |
 | `TEMPORAL_API_KEY` | API key auth (Temporal Cloud) | — |
 | `TEMPORAL_CLIENT_CERT` | mTLS certificate (PEM) | — |
 | `TEMPORAL_CLIENT_KEY` | mTLS private key (PEM) | — |

@@ -17,7 +17,7 @@ func TestStartRegistrarSync_Returns500WhenTemporalConfigInvalid(t *testing.T) {
 	_ = os.Unsetenv("TEMPORAL_NAMESPACE")
 	_ = os.Unsetenv("TEMPORAL_CLIENT_KEY")
 	_ = os.Unsetenv("TEMPORAL_CLIENT_CERT")
-	_ = os.Unsetenv("TEMPORAL_QUEUE")
+	_ = os.Unsetenv("TEMPORAL_LIFECYCLE_QUEUE")
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

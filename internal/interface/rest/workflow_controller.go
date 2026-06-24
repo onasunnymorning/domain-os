@@ -134,7 +134,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 		req.BatchSize = 100
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueObjectLifecycle)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -184,7 +184,7 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 		req.KeepTLDAndPhases = false
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueDataPipeline)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {

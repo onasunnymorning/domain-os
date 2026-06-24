@@ -184,5 +184,5 @@ func importSchedule(c *cli.Context) error {
 }
 
 func getTemporalClientConfig() temporal.TemporalClientconfig {
-	return temporal.NewClientConfigFromEnv(temporal.QueueObjectLifecycle)
+	return temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
 }

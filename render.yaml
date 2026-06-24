@@ -57,7 +57,7 @@ services:
         value: "alp-test.fclnj"
       - key: TEMPORAL_API_KEY
         sync: false
-      - key: TEMPORAL_QUEUE
+      - key: TEMPORAL_LIFECYCLE_QUEUE
         value: "object-lifecycle"
 
   # ── Next.js Frontend ────────────────────────────────────

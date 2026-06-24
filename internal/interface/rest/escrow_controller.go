@@ -193,7 +193,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		return
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueDataPipeline)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -248,7 +248,7 @@ func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 		return
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueDataPipeline)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {

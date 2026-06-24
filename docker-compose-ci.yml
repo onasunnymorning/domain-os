@@ -61,7 +61,7 @@ services:
       # Temporal Client (CI: temporalite, no TLS)
       - TEMPORAL_HOST_PORT=temporal:7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_QUEUE=object-lifecycle
+      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
 
@@ -130,8 +130,8 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
-      - TEMPORAL_QUEUE=object-lifecycle
-      - TEMPORAL_ESCROW_QUEUE=data-pipeline
+      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
+      - TEMPORAL_DATA_QUEUE=data-pipeline
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above
