@@ -63,6 +63,11 @@ const FIELD_LABELS: Record<string, string> = {
   ingestedCounts: 'Ingested Counts',
   IngestedCounts: 'Ingested Counts',
   failures: 'Failures',
+  createdItems: 'Created Registrars',
+  updatedItems: 'Updated Registrars',
+  totalIana: 'Total IANA',
+  totalExisting: 'Total Existing',
+  totalProcessed: 'Total Processed',
 };
 
 function ArtifactDownloadButton({ label, s3Key }: { label: string; s3Key: string }) {
@@ -233,8 +238,47 @@ function ResultField({ label, value, workflowType }: { label: string; value: any
     );
   }
 
-  // Failures array
+  // Failures array — generic: works with domainName (ExpiryLoop) or clId (SyncRegistrars)
   if (label === 'failures' && Array.isArray(value)) {
+    if (value.length === 0) return null;
+    const idLabel = value[0]?.domainName ? 'Domain' : 'Registrar';
+    return (
+      <div className="space-y-2 py-2">
+        <span className="text-muted-foreground text-xs block font-semibold uppercase tracking-wider">
+          {displayLabel}
+        </span>
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-xs">
+                <th className="px-3 py-1.5 text-left font-medium">{idLabel}</th>
+                <th className="px-3 py-1.5 text-left font-medium">Operation</th>
+                <th className="px-3 py-1.5 text-left font-medium">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {value.map((f: any, i: number) => (
+                <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
+                  <td className="px-3 py-1.5 font-mono text-xs">{f.domainName || f.clId}</td>
+                  <td className="px-3 py-1.5 text-xs">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 capitalize">
+                      {f.operation?.replace('-', ' ')}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 font-medium">
+                    {f.error}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // Created registrars array
+  if (label === 'createdItems' && Array.isArray(value)) {
     if (value.length === 0) return null;
     return (
       <div className="space-y-2 py-2">
@@ -245,22 +289,80 @@ function ResultField({ label, value, workflowType }: { label: string; value: any
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/50 text-xs">
-                <th className="px-3 py-1.5 text-left font-medium">Domain</th>
-                <th className="px-3 py-1.5 text-left font-medium">Operation</th>
-                <th className="px-3 py-1.5 text-left font-medium">Error</th>
+                <th className="px-3 py-1.5 text-left font-medium">Registrar</th>
+                <th className="px-3 py-1.5 text-left font-medium">Name</th>
+                <th className="px-3 py-1.5 text-right font-medium">GurID</th>
+                <th className="px-3 py-1.5 text-left font-medium">Status</th>
+                <th className="px-3 py-1.5 text-left font-medium">IANA Status</th>
               </tr>
             </thead>
             <tbody>
-              {value.map((f: any, i: number) => (
+              {value.map((item: any, i: number) => (
                 <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
-                  <td className="px-3 py-1.5 font-mono text-xs">{f.domainName}</td>
+                  <td className="px-3 py-1.5 font-mono text-xs">{item.clId}</td>
+                  <td className="px-3 py-1.5 text-xs truncate max-w-[200px]" title={item.name}>{item.name}</td>
+                  <td className="px-3 py-1.5 text-xs text-right tabular-nums">{item.gurId}</td>
                   <td className="px-3 py-1.5 text-xs">
                     <Badge variant="outline" className="text-[10px] py-0 px-1 capitalize">
-                      {f.operation?.replace('-', ' ')}
+                      {item.status}
                     </Badge>
                   </td>
-                  <td className="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 font-medium">
-                    {f.error}
+                  <td className="px-3 py-1.5 text-xs">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1">
+                      {item.ianaStatus}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // Updated registrars array
+  if (label === 'updatedItems' && Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return (
+      <div className="space-y-2 py-2">
+        <span className="text-muted-foreground text-xs block font-semibold uppercase tracking-wider">
+          {displayLabel}
+        </span>
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-xs">
+                <th className="px-3 py-1.5 text-left font-medium">Registrar</th>
+                <th className="px-3 py-1.5 text-left font-medium">Status Change</th>
+                <th className="px-3 py-1.5 text-left font-medium">IANA Status Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {value.map((item: any, i: number) => (
+                <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
+                  <td className="px-3 py-1.5 font-mono text-xs">{item.clId}</td>
+                  <td className="px-3 py-1.5 text-xs">
+                    {item.oldStatus && item.newStatus ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1 capitalize">{item.oldStatus}</Badge>
+                        <span className="text-muted-foreground">→</span>
+                        <Badge variant="default" className="text-[10px] py-0 px-1 capitalize">{item.newStatus}</Badge>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs">
+                    {item.oldIanaStatus && item.newIanaStatus ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1">{item.oldIanaStatus}</Badge>
+                        <span className="text-muted-foreground">→</span>
+                        <Badge variant="default" className="text-[10px] py-0 px-1">{item.newIanaStatus}</Badge>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

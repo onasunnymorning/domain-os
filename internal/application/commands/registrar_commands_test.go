@@ -146,3 +146,94 @@ func TestCreateCreateRegistrarCommandFromIANARegistrar(t *testing.T) {
 		})
 	}
 }
+
+func TestCompareIANARegistrarStatusWithRarStatus(t *testing.T) {
+	tests := []struct {
+		name              string
+		iana              entities.IANARegistrar
+		rar               entities.RegistrarListItem
+		wantNil           bool
+		wantNewStatus     string
+		wantNewIANAStatus string
+	}{
+		{
+			name: "both in sync - accredited/ok",
+			iana: entities.IANARegistrar{GurID: 1, Status: entities.IANARegistrarStatusAccredited},
+			rar: entities.RegistrarListItem{
+				ClID:       "1-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusAccredited,
+			},
+			wantNil: true,
+		},
+		{
+			name: "both in sync - terminated/terminated",
+			iana: entities.IANARegistrar{GurID: 2, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "2-test",
+				Status:     entities.RegistrarStatusTerminated,
+				IANAStatus: entities.IANARegistrarStatusTerminated,
+			},
+			wantNil: true,
+		},
+		{
+			name: "platform status drift - terminated IANA but ok platform",
+			iana: entities.IANARegistrar{GurID: 3, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "3-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusTerminated,
+			},
+			wantNil:       false,
+			wantNewStatus: "terminated",
+		},
+		{
+			name: "IANA status drift only - platform correct but IANA stale",
+			iana: entities.IANARegistrar{GurID: 4, Status: entities.IANARegistrarStatusAccredited},
+			rar: entities.RegistrarListItem{
+				ClID:       "4-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusUnknown,
+			},
+			wantNil:           false,
+			wantNewStatus:     "",
+			wantNewIANAStatus: "Accredited",
+		},
+		{
+			name: "both statuses drift",
+			iana: entities.IANARegistrar{GurID: 5, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "5-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusAccredited,
+			},
+			wantNil:           false,
+			wantNewStatus:     "terminated",
+			wantNewIANAStatus: "Terminated",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := CompareIANARegistrarStatusWithRarStatus(tt.iana, tt.rar)
+
+			if tt.wantNil {
+				if cmd != nil {
+					t.Fatalf("expected nil result, got %+v", cmd)
+				}
+				return
+			}
+
+			if cmd == nil {
+				t.Fatalf("expected non-nil result, got nil")
+			}
+
+			if cmd.NewStatus != tt.wantNewStatus {
+				t.Errorf("NewStatus: got %q, want %q", cmd.NewStatus, tt.wantNewStatus)
+			}
+			if cmd.NewIANAStatus != tt.wantNewIANAStatus {
+				t.Errorf("NewIANAStatus: got %q, want %q", cmd.NewIANAStatus, tt.wantNewIANAStatus)
+			}
+		})
+	}
+}

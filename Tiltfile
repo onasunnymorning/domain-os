@@ -21,30 +21,9 @@ docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unif
 dc_resource('db', labels=["infrastructure"])
 dc_resource('redis', labels=["infrastructure"], auto_init=False)
 
-# Endpoints
-dc_resource('admin-api', labels=["endpoints"])
-dc_resource('epp-server', labels=["endpoints"], auto_init=False)
-dc_resource('whois', labels=["endpoints"], auto_init=False)
-
-# Init containers
-dc_resource('admin-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
-
-# Infrastructure
-dc_resource('temporal-postgres', labels=["infrastructure"])
-dc_resource('temporal', labels=["infrastructure"])
-dc_resource('temporal-ui', labels=["infrastructure"])
-
-# Workers
-dc_resource('unified-worker', labels=["workers"])
-
-# Object Storage
-dc_resource('minio', labels=["infrastructure"])
-dc_resource('minio-setup', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
-
-dc_resource('prometheus', labels=["infrastructure"], auto_init=False)
-dc_resource('grafana', labels=["infrastructure"], auto_init=False)
-dc_resource('metabase', labels=["infrastructure"], auto_init=False)
-dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
+# App
+dc_resource('admin-api', labels=["app"])
+dc_resource('unified-worker', labels=["app"])
 
 # Start Next.js frontend native development server
 local_resource(
@@ -62,5 +41,26 @@ local_resource(
         'frontend/next.config.ts',
         'frontend/tsconfig.json'
     ],
-    labels=["endpoints"]
+    labels=["app"]
 )
+
+# Endpoints
+dc_resource('epp-server', labels=["endpoints"], auto_init=False)
+dc_resource('whois', labels=["endpoints"], auto_init=False)
+
+# Init containers
+dc_resource('admin-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
+
+# Infrastructure
+dc_resource('temporal-postgres', labels=["infrastructure"])
+dc_resource('temporal', labels=["infrastructure"])
+dc_resource('temporal-ui', labels=["infrastructure"])
+
+# Object Storage
+dc_resource('minio', labels=["infrastructure"])
+dc_resource('minio-setup', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
+
+dc_resource('prometheus', labels=["infrastructure"], auto_init=False)
+dc_resource('grafana', labels=["infrastructure"], auto_init=False)
+dc_resource('metabase', labels=["infrastructure"], auto_init=False)
+dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
