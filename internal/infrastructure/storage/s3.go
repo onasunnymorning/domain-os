@@ -146,6 +146,19 @@ func (s *S3Client) UploadFile(ctx context.Context, key, path, contentType string
 	return err
 }
 
+// CopyObject performs a server-side copy of srcKey to dstKey within the same bucket.
+// No data is downloaded — the copy happens entirely on the S3/MinIO server.
+func (s *S3Client) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	_, err := s.client.CopyObject(ctx,
+		minio.CopyDestOptions{Bucket: s.bucket, Object: dstKey},
+		minio.CopySrcOptions{Bucket: s.bucket, Object: srcKey},
+	)
+	if err != nil {
+		return fmt.Errorf("CopyObject(src=%s, dst=%s): %w", srcKey, dstKey, err)
+	}
+	return nil
+}
+
 // ListObjectKeys lists object keys under a given prefix. If recursive is true, it descends into sub-prefixes.
 // Set maxKeys to a positive integer to limit the number of keys returned; pass 0 or negative for no explicit cap.
 func (s *S3Client) ListObjectKeys(ctx context.Context, prefix string, recursive bool, maxKeys int) ([]string, error) {

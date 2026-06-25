@@ -403,11 +403,11 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	log.Printf("Domains: %d total, %d inserted, %d updated", dTotal, dInserted, dUpdated)
 
 	log.Println("Linking Domain Hosts...")
-	lTotal, err := importer.LinkDomainHosts(ctx, sqliteDB, "", noopHeartbeat)
+	lTotal, lInserted, err := importer.LinkDomainHosts(ctx, sqliteDB, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("LinkDomainHosts failed: %w", err)
 	}
-	log.Printf("Links created: %d", lTotal)
+	log.Printf("Links: %d total, %d inserted", lTotal, lInserted)
 
 	// Save Run Report
 	reportPath := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_runreport.json"

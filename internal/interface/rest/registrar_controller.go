@@ -406,6 +406,9 @@ func getRegistrarListFilterFromContext(ctx *gin.Context) (*queries.ListRegistrar
 	filter.StatusEquals = ctx.Query("status_equals")
 	filter.IANAStatusEquals = ctx.Query("iana_status_equals")
 	filter.AutorenewEquals = ctx.Query("autorenew_equals")
+	filter.TLD = ctx.Query("tld")
+	filter.SortBy = ctx.Query("sort_by")
+	filter.SortOrder = ctx.Query("sort_order")
 
 	return filter, nil
 }

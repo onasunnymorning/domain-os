@@ -149,7 +149,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        "sync-registrars-" + time.Now().Format("20060102-150405"),
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.SyncRegistrarsWorkflow, req.BatchSize)
+	}, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{BatchSize: req.BatchSize})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -373,6 +373,32 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		workflow = workflows.UpdateFX
 		args = nil
 
+	case "sync-spec5":
+		wfID = fmt.Sprintf("sync-spec5-%s", ts)
+		workflow = workflows.SyncSpec5Workflow
+		args = nil
+
+	case "spec5-sweep":
+		var sweepParams workflows.Spec5SweepParams
+		if req.Params != nil {
+			if tld, ok := req.Params["tld"].(string); ok {
+				sweepParams.TLD = tld
+			}
+			if tldsVal, ok := req.Params["tlds"].([]interface{}); ok {
+				for _, v := range tldsVal {
+					if t, ok := v.(string); ok {
+						sweepParams.TLDs = append(sweepParams.TLDs, t)
+					}
+				}
+			}
+			if allTlds, ok := req.Params["allTlds"].(bool); ok {
+				sweepParams.AllTLDs = allTlds
+			}
+		}
+		wfID = fmt.Sprintf("spec5-sweep-%s", ts)
+		workflow = workflows.Spec5SweepWorkflow
+		args = []interface{}{sweepParams}
+
 	case "expiry-loop":
 		var loopParams workflows.ExpiryLoopParams
 		if req.Params != nil {
@@ -421,6 +447,35 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		wfID = fmt.Sprintf("restore-workflow-%s", ts)
 		workflow = workflows.RestoreWorkflow
 		args = nil
+
+	case "take-snapshot":
+		var snapParams workflows.TakeSnapshotParams
+		if req.Params != nil {
+			if label, ok := req.Params["label"].(string); ok {
+				snapParams.Label = label
+			}
+			if note, ok := req.Params["note"].(string); ok {
+				snapParams.Note = note
+			}
+		}
+		// Use the label in the workflow ID for easy identification in S3
+		if snapParams.Label != "" {
+			wfID = fmt.Sprintf("snapshot-%s-%s", snapParams.Label, ts)
+		} else {
+			wfID = fmt.Sprintf("snapshot-%s", ts)
+		}
+		workflow = workflows.TakeSnapshotWorkflow
+		args = []interface{}{snapParams}
+
+	case "seed-from-snapshot":
+		snapshotKey, _ := req.Params["snapshotKey"].(string)
+		if snapshotKey == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "snapshotKey is required for seed-from-snapshot"})
+			return
+		}
+		wfID = fmt.Sprintf("seed-from-snapshot-%s", ts)
+		workflow = workflows.SeedFromSnapshotWorkflow
+		args = []interface{}{workflows.SeedFromSnapshotParams{SnapshotKey: snapshotKey}}
 
 	default:
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported workflow type: %s", req.WorkflowType)})

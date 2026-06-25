@@ -20,27 +20,39 @@ type EscrowImportParams struct {
 
 // EscrowImportState tracks the real-time progress and QA status of the escrow import
 type EscrowImportState struct {
-	Phase       string           `json:"phase"` // "validating", "parsing", "staging_db", "resolving", "finalizing", "qa_check", "pending_confirmation", "ingesting", "completed", "aborted", "failed"
-	TLD         string           `json:"tld"`
-	ObjectKey   string           `json:"objectKey"`
-	RunPrefix   string           `json:"runPrefix"`
-	StagedDBKey string           `json:"stagedDbKey"`
-	QAPassed    bool             `json:"qaPassed"`
-	QAReportKey string           `json:"qaReportKey,omitempty"`
-	Error       string           `json:"error,omitempty"`
-	Ingested    map[string]int64 `json:"ingested,omitempty"`
+	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "resolving", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
+	TLD                    string                          `json:"tld"`
+	ObjectKey              string                          `json:"objectKey"`
+	RunPrefix              string                          `json:"runPrefix"`
+	BaseDBKey              string                          `json:"baseDbKey,omitempty"`
+	StagedDBKey            string                          `json:"stagedDbKey"`
+	QAPassed               bool                            `json:"qaPassed"`
+	QAReportKey            string                          `json:"qaReportKey,omitempty"`
+	Error                  string                          `json:"error,omitempty"`
+	Ingested               map[string]int64                `json:"ingested,omitempty"`
+	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
+	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
+	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
+	VerificationPassed     *bool                           `json:"verificationPassed,omitempty"`
+	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
 }
 
 // EscrowImportResult is the final output of the unified EscrowImportWorkflow
 type EscrowImportResult struct {
-	TLD            string           `json:"tld"`
-	ObjectKey      string           `json:"objectKey"`
-	RunPrefix      string           `json:"runPrefix"`
-	StagedDBKey    string           `json:"stagedDbKey"`
-	QAPassed       bool             `json:"qaPassed"`
-	QAReportKey    string           `json:"qaReportKey"`
-	Confirmed      bool             `json:"confirmed"`
-	IngestedCounts map[string]int64 `json:"ingestedCounts,omitempty"`
+	TLD                    string                          `json:"tld"`
+	ObjectKey              string                          `json:"objectKey"`
+	RunPrefix              string                          `json:"runPrefix"`
+	DBKey                  string                          `json:"dbKey,omitempty"`
+	StagedDBKey            string                          `json:"stagedDbKey"`
+	QAPassed               bool                            `json:"qaPassed"`
+	QAReportKey            string                          `json:"qaReportKey"`
+	Confirmed              bool                            `json:"confirmed"`
+	IngestedCounts         map[string]int64                `json:"ingestedCounts,omitempty"`
+	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
+	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
+	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
+	VerificationPassed     bool                            `json:"verificationPassed"`
+	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
 }
 
 // EscrowImportWorkflow manages the entire escrow import lifecycle.
@@ -92,10 +104,10 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 
 	// 1. Parse & Extract Assets
 	state.Phase = "parsing"
-	tld := params.TLD
 	wID := workflow.GetInfo(ctx).WorkflowExecution.ID
-	date := workflow.GetInfo(ctx).WorkflowStartTime.Format("20060102")
-	runPrefix := fmt.Sprintf("escrow/%s/%s/%s", tld, date, wID)
+	// Flat bucket layout: the workflow ID IS the run folder name.
+	// e.g. "escrow-import-best-20260625-001231" — already contains TLD + date.
+	runPrefix := wID
 	state.RunPrefix = runPrefix
 
 	var assetsOut activities.ParseAndExtractAssetsResult
@@ -119,9 +131,24 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		}, fmt.Errorf("ParseAndExtractAssets found structural problems with the escrow deposit: %v. Ingestion blocked.", assetsOut.AnalysisErrors)
 	}
 
+	// 1b. Copy source file into the run folder (server-side S3 copy, no download)
+	_ = workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute * 5,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Second * 2,
+			BackoffCoefficient: 2.0,
+			MaximumAttempts:    3,
+		},
+	}), acts.CopySourceToRunFolder, activities.CopySourceToRunFolderArgs{
+		SourceKey: params.ObjectKey,
+		RunPrefix: runPrefix,
+	}).Get(ctx, nil) // best-effort: don't fail the workflow if copy fails
+
 	// 2. Build Staging Database (Ryde.db)
 	state.Phase = "staging_db"
-	base := strings.TrimSuffix(filepath.Base(params.ObjectKey), filepath.Ext(params.ObjectKey))
+	base := filepath.Base(params.ObjectKey)
+	base = strings.TrimSuffix(base, ".gz")
+	base = strings.TrimSuffix(base, ".xml")
 
 	var collateOut activities.BuildStagingDatabaseResult
 	if err := workflow.ExecuteActivity(ctxStaging, acts.BuildStagingDatabase, activities.BuildStagingDatabaseArgs{
@@ -137,6 +164,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 
 	// 3. Resolve Registrars
 	state.Phase = "resolving"
+	state.BaseDBKey = collateOut.DBKey
 	overrides := make(map[string]string)
 	if val, ok := params.Options["registrarOverrides"]; ok {
 		if mapVal, ok := val.(map[string]interface{}); ok {
@@ -158,16 +186,23 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		return EscrowImportResult{}, fmt.Errorf("ResolveRegistrars(tld=%s, db=%s) activity failed: %w. Ensure registrar overrides match existing registrar IDs.", params.TLD, collateOut.DBKey, err)
 	}
 
-	// 4. Finalize Staging
-	state.Phase = "finalizing"
-	var stageOut activities.FinalizeStagingResult
-	if err := workflow.ExecuteActivity(ctxStaging, acts.FinalizeStaging, activities.FinalizeStagingArgs{
+	// Propagate mapping summary to state so the UI can surface it
+	state.TotalRegistrars = mapOut.TotalRegistrars
+	state.MappedRegistrars = mapOut.MappedCount
+	if mapOut.HasIssues {
+		state.UnmappedRegistrars = mapOut.UnmappedRegistrars
+	}
+
+	// 4. Apply Registrar Mappings
+	state.Phase = "applying_mappings"
+	var stageOut activities.ApplyRegistrarMappingsResult
+	if err := workflow.ExecuteActivity(ctxStaging, acts.ApplyRegistrarMappings, activities.ApplyRegistrarMappingsArgs{
 		TLD:   params.TLD,
 		DBKey: mapOut.DBKey,
 	}).Get(ctxStaging, &stageOut); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
-		return EscrowImportResult{}, fmt.Errorf("FinalizeStaging(tld=%s, db=%s) activity failed: %w", params.TLD, mapOut.DBKey, err)
+		return EscrowImportResult{}, fmt.Errorf("ApplyRegistrarMappings(tld=%s, db=%s) activity failed: %w", params.TLD, mapOut.DBKey, err)
 	}
 	state.StagedDBKey = stageOut.StagedDBKey
 
@@ -186,19 +221,25 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	state.QAPassed = qaOut.Passed
 	state.QAReportKey = qaOut.QAReportKey
 
-	// If QA failed, return result with QA info but do NOT progress to ingestion
+	// If QA failed, return result with QA info but do NOT progress to ingestion.
+	// This is an application-level outcome, not an infrastructure error — the workflow
+	// ran correctly and caught data quality issues. Returning nil lets Temporal mark
+	// the workflow COMPLETED so the result (with artifacts) is accessible in the UI.
 	if !qaOut.Passed {
-		state.Phase = "failed"
-		state.Error = fmt.Sprintf("QA Failed — ingestion blocked. See QA report: %s", qaOut.QAReportKey)
+		state.Phase = "qa_failed"
 		return EscrowImportResult{
-			TLD:         params.TLD,
-			ObjectKey:   params.ObjectKey,
-			RunPrefix:   assetsOut.RunPrefix,
-			StagedDBKey: stageOut.StagedDBKey,
-			QAPassed:    false,
-			QAReportKey: qaOut.QAReportKey,
-			Confirmed:   false,
-		}, fmt.Errorf("escrow staged database failed one or more QA error-severity validation checks: %s. Ingestion blocked.", qaOut.QAReportKey)
+			TLD:                params.TLD,
+			ObjectKey:          params.ObjectKey,
+			RunPrefix:          assetsOut.RunPrefix,
+			DBKey:              collateOut.DBKey,
+			StagedDBKey:        stageOut.StagedDBKey,
+			QAPassed:           false,
+			QAReportKey:        qaOut.QAReportKey,
+			Confirmed:          false,
+			TotalRegistrars:    mapOut.TotalRegistrars,
+			MappedRegistrars:   mapOut.MappedCount,
+			UnmappedRegistrars: mapOut.UnmappedRegistrars,
+		}, nil
 	}
 
 	// 6. Pause and wait for user confirmation via the ConfirmEscrowImport signal
@@ -218,15 +259,22 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 
 	if !confirmed {
 		state.Phase = "aborted"
+		// Rejection is an application-level outcome, not an infrastructure error.
+		// Returning nil lets Temporal mark the workflow COMPLETED so the result
+		// (with artifacts) is accessible in the UI — same pattern as QA failure.
 		return EscrowImportResult{
-			TLD:         params.TLD,
-			ObjectKey:   params.ObjectKey,
-			RunPrefix:   assetsOut.RunPrefix,
-			StagedDBKey: stageOut.StagedDBKey,
-			QAPassed:    true,
-			QAReportKey: qaOut.QAReportKey,
-			Confirmed:   false,
-		}, fmt.Errorf("escrow import aborted by user signal")
+			TLD:                params.TLD,
+			ObjectKey:          params.ObjectKey,
+			RunPrefix:          assetsOut.RunPrefix,
+			DBKey:              collateOut.DBKey,
+			StagedDBKey:        stageOut.StagedDBKey,
+			QAPassed:           true,
+			QAReportKey:        qaOut.QAReportKey,
+			Confirmed:          false,
+			TotalRegistrars:    mapOut.TotalRegistrars,
+			MappedRegistrars:   mapOut.MappedCount,
+			UnmappedRegistrars: mapOut.UnmappedRegistrars,
+		}, nil
 	}
 
 	// 7. Ingestion Phase
@@ -306,12 +354,14 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	var lRes activities.LinkDomainHostsResult
 	if err := workflow.ExecuteActivity(ctxIngest, acts.LinkDomainHosts, activities.LinkDomainHostsArgs{
 		StagedDBKey: stageOut.StagedDBKey,
+		TLD:         params.TLD,
 	}).Get(ctxIngest, &lRes); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
 		return EscrowImportResult{}, fmt.Errorf("LinkDomainHosts failed: %w", err)
 	}
 	counts["links_total"] = lRes.Total
+	counts["links_inserted"] = lRes.Inserted
 	state.Ingested = counts
 
 	// Accredit Registrars
@@ -340,16 +390,35 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		workflow.GetLogger(ctx).Warn("Failed to persist import summary to S3", "error", err)
 	}
 
+	// 9. Post-Ingestion Verification
+	// Compares staged data against live system via admin API.
+	// Verification failures are warnings — they don't fail the workflow.
+	state.Phase = "verifying"
+	var verifyOut activities.VerifyIngestionResult
+	if err := workflow.ExecuteActivity(ctxStaging, acts.VerifyIngestion, activities.VerifyIngestionArgs{
+		TLD:         params.TLD,
+		StagedDBKey: stageOut.StagedDBKey,
+		RunPrefix:   assetsOut.RunPrefix,
+	}).Get(ctxStaging, &verifyOut); err != nil {
+		workflow.GetLogger(ctx).Warn("Post-ingestion verification failed to run", "error", err)
+	}
+	vPassed := verifyOut.Passed
+	state.VerificationPassed = &vPassed
+	state.VerificationReportKey = verifyOut.ReportKey
+
 	state.Phase = "completed"
 
 	return EscrowImportResult{
-		TLD:            params.TLD,
-		ObjectKey:      params.ObjectKey,
-		RunPrefix:      assetsOut.RunPrefix,
-		StagedDBKey:    stageOut.StagedDBKey,
-		QAPassed:       true,
-		QAReportKey:    qaOut.QAReportKey,
-		Confirmed:      true,
-		IngestedCounts: counts,
+		TLD:                    params.TLD,
+		ObjectKey:              params.ObjectKey,
+		RunPrefix:              assetsOut.RunPrefix,
+		DBKey:                  collateOut.DBKey,
+		StagedDBKey:            stageOut.StagedDBKey,
+		QAPassed:               true,
+		QAReportKey:            qaOut.QAReportKey,
+		Confirmed:              true,
+		IngestedCounts:         counts,
+		VerificationPassed:     verifyOut.Passed,
+		VerificationReportKey:  verifyOut.ReportKey,
 	}, nil
 }

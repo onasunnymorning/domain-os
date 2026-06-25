@@ -44,17 +44,34 @@ func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSiz
 	return rars, nil
 }
 
+type dbAccreditedTLDRow struct {
+	TLD
+	DomainCount int `gorm:"column:domain_count"`
+}
+
 // ListRegistrarTLDs lists TLDs for a registrar
 func (r *AccreditationRepository) ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error) {
-	dbTLDs := []*TLD{}
-	err := r.db.WithContext(ctx).Order("name ASC").Limit(pageSize).Model(&Registrar{ClID: rarClID}).Association("TLDs").Find(&dbTLDs, "name > ?", cursor)
+	var rows []*dbAccreditedTLDRow
+
+	dbQuery := r.db.WithContext(ctx).Table("tlds").
+		Select("tlds.*, COALESCE(dc.domain_count, 0) as domain_count").
+		Joins("INNER JOIN accreditations a ON a.tld_name = tlds.name AND a.registrar_cl_id = ?", rarClID).
+		Joins("LEFT JOIN (SELECT tld_name AS dc_tld_name, COUNT(*) as domain_count FROM domains WHERE cl_id = ? GROUP BY tld_name) dc ON dc.dc_tld_name = tlds.name", rarClID).
+		Order("tlds.name ASC")
+
+	if cursor != "" {
+		dbQuery = dbQuery.Where("tlds.name > ?", cursor)
+	}
+
+	err := dbQuery.Limit(pageSize).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
-	tlds := make([]*entities.TLD, len(dbTLDs))
-	for i, dbTLD := range dbTLDs {
-		tlds[i] = FromDBTLD(dbTLD)
+	tlds := make([]*entities.TLD, len(rows))
+	for i, row := range rows {
+		tlds[i] = FromDBTLD(&row.TLD)
+		tlds[i].DomainCount = row.DomainCount
 	}
 
 	return tlds, nil

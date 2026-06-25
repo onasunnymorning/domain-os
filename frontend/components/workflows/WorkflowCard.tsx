@@ -14,9 +14,8 @@ interface WorkflowCardProps {
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
-  'data-pipeline': Database,
+  data: Database,
   lifecycle: RefreshCw,
-  operations: Settings,
 };
 
 export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {

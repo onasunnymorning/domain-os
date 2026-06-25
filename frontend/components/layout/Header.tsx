@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Menu, Search, ExternalLink, Clock, Database } from 'lucide-react';
+import { Menu, Search, ExternalLink, Activity, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { UserMenu } from '@/components/auth/user-menu';
@@ -34,7 +34,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       <header className="sticky top-0 z-40 bg-background">
         <div className="flex h-16 items-center">
           {/* Left section — matches sidebar width */}
-          <div className="flex h-full w-64 shrink-0 items-center gap-4 px-6">
+          <div className="flex h-full w-64 shrink-0 items-center gap-4 px-4">
             <Button
               variant="ghost"
               size="icon"
@@ -44,9 +44,8 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Menu className="h-5 w-5" />
             </Button>
 
-            <Link href="/" className="flex items-center gap-2 font-semibold">
+            <Link href="/" className="flex items-center px-3 md:hidden">
               <AlpacaLogo className="h-10 w-10" />
-              <span className="hidden sm:inline-block">Alpaca Names</span>
             </Link>
           </div>
 
@@ -73,7 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Temporal UI"
               >
-                <Clock className="h-3.5 w-3.5" />
+                <Activity className="h-3.5 w-3.5" />
                 <span className="hidden lg:inline">Temporal</span>
                 <ExternalLink className="h-3 w-3 opacity-50" />
               </a>

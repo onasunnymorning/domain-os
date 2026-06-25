@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/suite"
@@ -24,12 +25,20 @@ func TestAccreditationSuite(t *testing.T) {
 func (s *AccreditationSuite) SetupSuite() {
 	s.db = setupTestDB()
 
+	rarRepo := NewGormRegistrarRepository(s.db)
+	_ = rarRepo.Delete(context.Background(), "199-myrar")
+
+	tldRepo := NewGormTLDRepo(s.db)
+	_ = tldRepo.DeleteByName(context.Background(), "apex")
+
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_ = roRepo.DeleteByRyID(context.Background(), "apex")
+
 	// Create a registrar
-	rar, err := entities.NewRegistrar("199-myrar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	rar, err := entities.NewRegistrar("199-myrar", "accreditationRarName", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
 	if err != nil {
 		s.T().Fatal(err)
 	}
-	rarRepo := NewGormRegistrarRepository(s.db)
 	createdRar, err := rarRepo.Create(context.Background(), rar)
 	if err != nil {
 		s.T().Fatal(err)
@@ -41,7 +50,6 @@ func (s *AccreditationSuite) SetupSuite() {
 	if err != nil {
 		s.T().Fatal(err)
 	}
-	roRepo := NewGORMRegistryOperatorRepository(s.db)
 	_, err = roRepo.Create(context.Background(), ro)
 	if err != nil {
 		s.T().Fatal(err)
@@ -57,7 +65,6 @@ func (s *AccreditationSuite) SetupSuite() {
 	if err != nil {
 		s.T().Fatal(err)
 	}
-	tldRepo := NewGormTLDRepo(s.db)
 	err = tldRepo.Create(context.Background(), tld)
 	if err != nil {
 		s.T().Fatal(err)
@@ -130,9 +137,15 @@ func (s *AccreditationSuite) TestListRegistrarTLDs() {
 	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
+	// Insert a mock domain for this registrar and TLD
+	err = tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		2001, "domain-accred-test.com", s.rar.ClID.String(), s.tld.Name.String(), time.Now(), "auth").Error
+	s.Require().NoError(err)
+
 	tlds, err := repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar.ClID.String())
 	s.Require().NoError(err)
 	s.Require().Len(tlds, 1)
+	s.Require().Equal(1, tlds[0].DomainCount)
 
 	// Delete the accreditation
 	err = repo.DeleteAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())

@@ -66,9 +66,13 @@ func (s *ContactSuite) SetupSuite() {
 	s.db = setupTestDB()
 	NewGormTLDRepo(s.db)
 
-	// Create a registrar
-	rar, _ := entities.NewRegistrar("199-myrar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	s.db.Exec("DELETE FROM contacts")
+
 	repo := NewGormRegistrarRepository(s.db)
+	_ = repo.Delete(context.Background(), "199-myrar")
+
+	// Create a registrar
+	rar, _ := entities.NewRegistrar("199-myrar", "contactRarName", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
 	createdRar, _ := repo.Create(context.Background(), rar)
 	s.rarClid = createdRar.ClID.String()
 }

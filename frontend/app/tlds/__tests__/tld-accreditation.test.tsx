@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock IntersectionObserver
+global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+  takeRecords: vi.fn(),
+}));
+
 // Mock React's experimental `use` to synchronously resolve the Next.js params Promise
 vi.mock('react', async (orig) => {
   const actual = await (orig() as any);

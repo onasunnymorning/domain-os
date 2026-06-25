@@ -132,7 +132,7 @@ func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistra
 	case entities.IANARegistrarStatusTerminated:
 		cmd.Status = string(entities.RegistrarStatusTerminated)
 	case entities.IANARegistrarStatusReserved:
-		if ianaRar.GurID == 9995 || ianaRar.GurID == 9996 {
+		if entities.IsSpecialReservedGurID(ianaRar.GurID) {
 			cmd.Status = string(entities.RegistrarStatusOK)
 		}
 	}

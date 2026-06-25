@@ -13,8 +13,10 @@ type TLDResult struct {
 
 // CreateTLDCommand is the command to create a TLD
 type CreateTLDCommand struct {
-	Name string
-	RyID string
+	Name                     string
+	RyID                     string
+	CreateOperatorRegistrars bool // default true; creates 9998-{tld} and 9999-{tld} registrar accounts
+	AllowEscrowImport        bool // default true; permits escrow imports for this TLD
 }
 
 // CreateTLDCommandResult is the result of the CreateTLDCommand

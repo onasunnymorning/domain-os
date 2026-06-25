@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tldsApi, CreateTLDRequest, ListQueryParams } from '../api/tlds';
 import { toast } from 'sonner';
+import { useWorkflowStore, type WorkflowRun } from '@/lib/stores/useWorkflowStore';
 
 // List TLDs with pagination/filters
 export function useTLDs(params?: ListQueryParams) {
@@ -56,12 +57,43 @@ export function useCreateTLD() {
 // Delete TLD triggers the deletion workflow
 export function useDeleteTLD() {
   const queryClient = useQueryClient();
+  const addRun = useWorkflowStore((s) => s.addRun);
+  const setDrawerOpen = useWorkflowStore((s) => s.setDrawerOpen);
+  const selectRun = useWorkflowStore((s) => s.selectRun);
   
   return useMutation({
     mutationFn: ({ name, keepTLDAndPhases }: { name: string, keepTLDAndPhases: boolean }) => tldsApi.triggerCleanup(name, keepTLDAndPhases),
-    onSuccess: () => {
+    onSuccess: (data: any, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tlds'] });
       queryClient.invalidateQueries({ queryKey: ['tlds-count'] });
+
+      // Register the run in the workflow store
+      const run: WorkflowRun = {
+        workflowId: data.workflowId,
+        runId: data.runId,
+        type: 'tld-cleanup',
+        displayName: 'TLD Cleanup',
+        status: 'RUNNING',
+        temporalUrl: data.url,
+        startedAt: new Date().toISOString(),
+        params: {
+          tld: variables.name,
+          keepTLDAndPhases: variables.keepTLDAndPhases,
+        },
+      };
+
+      addRun(run);
+      selectRun(data.workflowId);
+      setDrawerOpen(true);
+
+      toast.success(`Cleanup workflow started for .${variables.name}`, {
+        description: `Review and confirm the deletion in the workflow control center.`,
+        action: data.url ? {
+          label: 'Temporal UI',
+          onClick: () => window.open(data.url, '_blank'),
+        } : undefined,
+        duration: 8000,
+      });
     },
     onError: (error: any) => {
       const message = error.response?.data?.error || 'Failed to trigger TLD deletion workflow';

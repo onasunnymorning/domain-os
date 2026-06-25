@@ -83,6 +83,9 @@ export interface RegistrarListItem {
   GurID: number;
   Status: RegistrarStatus;
   Autorenew: boolean;
+  DomainCount?: number;
+  TLDCount?: number;
+  TLDList?: string[];
 }
 
 /**
@@ -124,6 +127,9 @@ export interface RegistrarListParams {
   status_equals?: string;
   iana_status_equals?: string;
   autorenew_equals?: "true" | "false";
+  tld?: string;
+  sort_by?: string;
+  sort_order?: string;
 }
 
 /**

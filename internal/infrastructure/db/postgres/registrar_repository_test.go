@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -283,4 +284,137 @@ func (s *RegistrarSuite) TestCountRegistrars() {
 	require.NoError(s.T(), err)
 	require.GreaterOrEqual(s.T(), count, int64(0))
 
+}
+
+func (s *RegistrarSuite) TestListRegistrarsFilteringAndSorting() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormRegistrarRepository(tx)
+
+	// Create test TLDs
+	tx.Exec("INSERT INTO tlds (name) VALUES (?)", "com")
+	tx.Exec("INSERT INTO tlds (name) VALUES (?)", "net")
+
+	// Create 3 test registrars
+	reg1, _ := entities.NewRegistrar("reg-id-1", "Registrar One", "one@test.com", 10001, getValidRegistrarPostalInfoArr())
+	_, err := repo.Create(context.Background(), reg1)
+	require.NoError(s.T(), err)
+
+	reg2, _ := entities.NewRegistrar("reg-id-2", "Registrar Two", "two@test.com", 10002, getValidRegistrarPostalInfoArr())
+	_, err = repo.Create(context.Background(), reg2)
+	require.NoError(s.T(), err)
+
+	reg3, _ := entities.NewRegistrar("reg-id-3", "Registrar Three", "three@test.com", 10003, getValidRegistrarPostalInfoArr())
+	_, err = repo.Create(context.Background(), reg3)
+	require.NoError(s.T(), err)
+
+	// Add TLD accreditations
+	// reg1: com
+	tx.Exec("INSERT INTO accreditations (registrar_cl_id, tld_name) VALUES (?, ?)", "reg-id-1", "com")
+	// reg2: net
+	tx.Exec("INSERT INTO accreditations (registrar_cl_id, tld_name) VALUES (?, ?)", "reg-id-2", "net")
+	// reg3: com, net
+	tx.Exec("INSERT INTO accreditations (registrar_cl_id, tld_name) VALUES (?, ?)", "reg-id-3", "com")
+	tx.Exec("INSERT INTO accreditations (registrar_cl_id, tld_name) VALUES (?, ?)", "reg-id-3", "net")
+
+	// Add domains
+	// reg1: 1 domain
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1001, "domain1.com", "reg-id-1", "com", time.Now(), "auth")
+	// reg2: 3 domains
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1002, "domain2.net", "reg-id-2", "net", time.Now(), "auth")
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1003, "domain3.net", "reg-id-2", "net", time.Now(), "auth")
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1004, "domain4.net", "reg-id-2", "net", time.Now(), "auth")
+	// reg3: 2 domains
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1005, "domain5.com", "reg-id-3", "com", time.Now(), "auth")
+	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+		1006, "domain6.net", "reg-id-3", "net", time.Now(), "auth")
+
+	// Test 1: List all and verify counts
+	res, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+	})
+	require.NoError(s.T(), err)
+	// Find our test registrars in the results (there might be others from global migrations)
+	var found1, found2, found3 *entities.RegistrarListItem
+	for _, item := range res {
+		if item.ClID.String() == "reg-id-1" {
+			found1 = item
+		} else if item.ClID.String() == "reg-id-2" {
+			found2 = item
+		} else if item.ClID.String() == "reg-id-3" {
+			found3 = item
+		}
+	}
+	require.NotNil(s.T(), found1)
+	require.NotNil(s.T(), found2)
+	require.NotNil(s.T(), found3)
+
+	require.Equal(s.T(), 1, found1.DomainCount)
+	require.Equal(s.T(), 3, found2.DomainCount)
+	require.Equal(s.T(), 2, found3.DomainCount)
+
+	require.Equal(s.T(), 1, found1.TLDCount)
+	require.Contains(s.T(), found1.TLDList, "com")
+
+	require.Equal(s.T(), 2, found3.TLDCount)
+	require.Contains(s.T(), found3.TLDList, "com")
+	require.Contains(s.T(), found3.TLDList, "net")
+
+	// Test 2: Filter by TLD = net
+	resFilter, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListRegistrarsFilter{
+			TLD: "net",
+		},
+	})
+	require.NoError(s.T(), err)
+	// reg1 should NOT be in the results; reg2 and reg3 should be
+	hasReg1 := false
+	hasReg2 := false
+	hasReg3 := false
+	for _, item := range resFilter {
+		if item.ClID.String() == "reg-id-1" {
+			hasReg1 = true
+		} else if item.ClID.String() == "reg-id-2" {
+			hasReg2 = true
+		} else if item.ClID.String() == "reg-id-3" {
+			hasReg3 = true
+		}
+	}
+	require.False(s.T(), hasReg1)
+	require.True(s.T(), hasReg2)
+	require.True(s.T(), hasReg3)
+
+	// Test 3: Sort by domain_count DESC
+	resSortDesc, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListRegistrarsFilter{
+			SortBy:    "domain_count",
+			SortOrder: "desc",
+		},
+	})
+	require.NoError(s.T(), err)
+	// We want to make sure reg2 (3 domains) comes before reg3 (2 domains) which comes before reg1 (1 domain)
+	var orderIdx1, orderIdx2, orderIdx3 int = -1, -1, -1
+	idx := 0
+	for _, item := range resSortDesc {
+		// Only check our test registrars (ignore others that might have 0 domains)
+		if item.ClID.String() == "reg-id-1" {
+			orderIdx1 = idx
+			idx++
+		} else if item.ClID.String() == "reg-id-2" {
+			orderIdx2 = idx
+			idx++
+		} else if item.ClID.String() == "reg-id-3" {
+			orderIdx3 = idx
+			idx++
+		}
+	}
+	require.True(s.T(), orderIdx2 < orderIdx3, "reg2 (3) should be before reg3 (2)")
+	require.True(s.T(), orderIdx3 < orderIdx1, "reg3 (2) should be before reg1 (1)")
 }

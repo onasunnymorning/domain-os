@@ -582,6 +582,7 @@ func TestRegistrar_GetListRegistrarItem(t *testing.T) {
 				GurID:     123,
 				Status:    RegistrarStatusOK,
 				Autorenew: true,
+				TLDList:   []string{},
 			},
 		},
 		{
@@ -599,6 +600,7 @@ func TestRegistrar_GetListRegistrarItem(t *testing.T) {
 				GurID:     456,
 				Status:    RegistrarStatusReadonly,
 				Autorenew: false,
+				TLDList:   []string{},
 			},
 		},
 		{
@@ -616,6 +618,27 @@ func TestRegistrar_GetListRegistrarItem(t *testing.T) {
 				GurID:     789,
 				Status:    RegistrarStatusTerminated,
 				Autorenew: true,
+				TLDList:   []string{},
+			},
+		},
+		{
+			name: "registrar with TLDs",
+			reg: &Registrar{
+				ClID:      "my-registrar-010",
+				Name:      "TLD Registrar",
+				GurID:     101,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+				TLDs:      []*TLD{{Name: "com"}, {Name: "net"}, {Name: "org"}},
+			},
+			want: &RegistrarListItem{
+				ClID:      "my-registrar-010",
+				Name:      "TLD Registrar",
+				GurID:     101,
+				Status:    RegistrarStatusOK,
+				Autorenew: true,
+				TLDCount:  3,
+				TLDList:   []string{"com", "net", "org"},
 			},
 		},
 	}

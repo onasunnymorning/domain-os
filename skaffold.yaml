@@ -46,11 +46,7 @@ manifests:
         setValues:
           api.image: geapex/domain-os
           unifiedworker.image: geapex/unified-worker
-      - name: metabase
-        chartPath: deploy/helm/metabase
-        setValues:
-          metabase.service.type: ClusterIP
-          metabase.service.port: 3000
+
 
 
 portForward:

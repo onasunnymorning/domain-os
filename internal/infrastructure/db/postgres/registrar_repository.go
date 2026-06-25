@@ -3,11 +3,25 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
 )
+
+type dbRegistrarListItem struct {
+	ClID       string `gorm:"column:cl_id"`
+	Name       string `gorm:"column:name"`
+	GurID      int    `gorm:"column:gur_id"`
+	Status     string `gorm:"column:status"`
+	IANAStatus string `gorm:"column:iana_status"`
+	Autorenew  bool   `gorm:"column:autorenew"`
+	DomainCount int    `gorm:"column:domain_count"`
+	TLDList     string `gorm:"column:tld_list"`
+}
 
 // GormRegistrarRepository implements the RegistrarRepository interface
 type GormRegistrarRepository struct {
@@ -115,21 +129,27 @@ func (r *GormRegistrarRepository) Delete(ctx context.Context, clid string) error
 
 // List returns a list of registrars
 func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error) {
-	// Get a query object ordering by PK
-	dbQuery := r.db.WithContext(ctx).Order("cl_id ASC")
+	// Base query from table
+	dbQuery := r.db.WithContext(ctx).Table("registrars")
 
-	// Add cursor pagination if a cursor is provided
-	if params.PageCursor != "" {
-		dbQuery = dbQuery.Where("cl_id > ?", params.PageCursor)
-	}
+	// Select optimized query fields joining aggregated count and TLD string
+	selectFields := "registrars.cl_id, name, gur_id, status, autorenew, iana_status, " +
+		"COALESCE(dc.domain_count, 0) as domain_count, " +
+		"COALESCE(ac.tld_list, '') as tld_list"
+	
+	dbQuery = dbQuery.Select(selectFields).
+		Joins("LEFT JOIN (SELECT cl_id AS dc_cl_id, COUNT(*) as domain_count FROM domains GROUP BY cl_id) dc ON dc.dc_cl_id = registrars.cl_id").
+		Joins("LEFT JOIN (SELECT registrar_cl_id AS ac_cl_id, string_agg(tld_name, ',') as tld_list FROM accreditations GROUP BY registrar_cl_id) ac ON ac.ac_cl_id = registrars.cl_id")
 
 	// Add filters if provided
-	var err error
+	var filter queries.ListRegistrarsFilter
 	if params.Filter != nil {
-		filter, ok := params.Filter.(queries.ListRegistrarsFilter)
+		var ok bool
+		filter, ok = params.Filter.(queries.ListRegistrarsFilter)
 		if !ok {
 			return nil, "", ErrInvalidFilterType
 		} else {
+			var err error
 			dbQuery, err = setRegistrarFilters(dbQuery, filter)
 			if err != nil {
 				return nil, "", err
@@ -137,12 +157,51 @@ func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListI
 		}
 	}
 
+	// Filter by TLD accreditation if specified
+	if filter.TLD != "" {
+		dbQuery = dbQuery.Where("registrars.cl_id IN (SELECT registrar_cl_id FROM accreditations WHERE tld_name = ?)", filter.TLD)
+	}
+
+	// Apply cursor pagination and sorting
+	if filter.SortBy == "domain_count" {
+		if params.PageCursor != "" && strings.Contains(params.PageCursor, "|") {
+			parts := strings.Split(params.PageCursor, "|")
+			if len(parts) == 2 {
+				cursorDomainCount, _ := strconv.Atoi(parts[0])
+				cursorClID := parts[1]
+				if filter.SortOrder == "asc" {
+					dbQuery = dbQuery.Where(
+						"COALESCE(dc.domain_count, 0) > ? OR (COALESCE(dc.domain_count, 0) = ? AND registrars.cl_id > ?)",
+						cursorDomainCount, cursorDomainCount, cursorClID,
+					)
+				} else { // default desc
+					dbQuery = dbQuery.Where(
+						"COALESCE(dc.domain_count, 0) < ? OR (COALESCE(dc.domain_count, 0) = ? AND registrars.cl_id > ?)",
+						cursorDomainCount, cursorDomainCount, cursorClID,
+					)
+				}
+			}
+		}
+
+		if filter.SortOrder == "asc" {
+			dbQuery = dbQuery.Order("domain_count ASC, registrars.cl_id ASC")
+		} else {
+			dbQuery = dbQuery.Order("domain_count DESC, registrars.cl_id ASC")
+		}
+	} else {
+		// Default sorting by Client ID
+		if params.PageCursor != "" {
+			dbQuery = dbQuery.Where("registrars.cl_id > ?", params.PageCursor)
+		}
+		dbQuery = dbQuery.Order("registrars.cl_id ASC")
+	}
+
 	// Limit the number of results
 	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
 
 	// Execute the query
-	dbRars := []*Registrar{}
-	err = dbQuery.Find(&dbRars).Error
+	var dbRars []*dbRegistrarListItem
+	err := dbQuery.Scan(&dbRars).Error
 	if err != nil {
 		return nil, "", err
 	}
@@ -157,14 +216,35 @@ func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListI
 	// Convert the results to entities
 	rarList := make([]*entities.RegistrarListItem, len(dbRars))
 	for i, dbRar := range dbRars {
-		rar := FromDBRegistrar(dbRar)
-		rarList[i] = rar.GetListRegistrarItem()
+		var tlds []string
+		if dbRar.TLDList != "" {
+			tlds = strings.Split(dbRar.TLDList, ",")
+		} else {
+			tlds = []string{}
+		}
+
+		rarList[i] = &entities.RegistrarListItem{
+			ClID:        entities.ClIDType(dbRar.ClID),
+			Name:        dbRar.Name,
+			GurID:       dbRar.GurID,
+			Status:      entities.RegistrarStatus(dbRar.Status),
+			IANAStatus:  entities.IANARegistrarStatus(dbRar.IANAStatus),
+			Autorenew:   dbRar.Autorenew,
+			DomainCount: dbRar.DomainCount,
+			TLDCount:    len(tlds),
+			TLDList:     tlds,
+		}
 	}
 
-	// Set the cursor to the last cl_id in the list
+	// Set the cursor to the last item in the list
 	var lastID string
-	if hasMore {
-		lastID = rarList[len(rarList)-1].ClID.String()
+	if hasMore && len(rarList) > 0 {
+		lastRar := rarList[len(rarList)-1]
+		if filter.SortBy == "domain_count" {
+			lastID = fmt.Sprintf("%d|%s", lastRar.DomainCount, lastRar.ClID.String())
+		} else {
+			lastID = lastRar.ClID.String()
+		}
 	}
 
 	return rarList, lastID, nil

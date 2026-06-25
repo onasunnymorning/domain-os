@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useRegistrar } from "@/lib/hooks/useRegistrars";
 import { useRegistrarAccreditations, useAccreditRegistrar, useDeaccreditRegistrar } from "@/lib/hooks/useAccreditations";
+import { formatCompactNumber } from "@/lib/utils/numberUtils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -149,6 +150,7 @@ export default function RegistrarDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead className="w-28">Domains</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Unicode Name</TableHead>
                     <TableHead>Registry Operator</TableHead>
@@ -162,6 +164,9 @@ export default function RegistrarDetailPage() {
                         <Link href={`/tlds/${encodeURIComponent(tld.Name)}`} className="text-primary hover:underline">
                           {tld.Name}
                         </Link>
+                      </TableCell>
+                      <TableCell className="font-mono" title={(tld.DomainCount ?? 0).toLocaleString()}>
+                        {formatCompactNumber(tld.DomainCount ?? 0)}
                       </TableCell>
                       <TableCell><TLDTypeBadge type={tld.Type} /></TableCell>
                       <TableCell>

@@ -123,6 +123,44 @@ function SyncRegistrarsForm({
   );
 }
 
+function TakeSnapshotForm({
+  params,
+  onChange,
+}: {
+  params: Record<string, any>;
+  onChange: (p: Record<string, any>) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor="label">Label</Label>
+        <Input
+          id="label"
+          placeholder="e.g. pre-migration, dev-seed, v2.1-release"
+          value={params.label ?? ''}
+          onChange={(e) => onChange({ ...params, label: e.target.value })}
+        />
+        <p className="text-muted-foreground text-xs">
+          Short identifier used in the S3 key and workflow ID.
+        </p>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="note">Note</Label>
+        <textarea
+          id="note"
+          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          placeholder="e.g. Snapshot with seed data for development"
+          value={params.note ?? ''}
+          onChange={(e) => onChange({ ...params, note: e.target.value })}
+        />
+        <p className="text-muted-foreground text-xs">
+          Describe the intent of this snapshot. Preserved in the manifest.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ZeroParamConfirmation({ name }: { name: string }) {
   return (
     <p className="text-muted-foreground text-sm">
@@ -153,6 +191,8 @@ function FormBody({
       return <TldCleanupForm params={params} onChange={onChange} />;
     case 'sync-registrars':
       return <SyncRegistrarsForm params={params} onChange={onChange} />;
+    case 'take-snapshot':
+      return <TakeSnapshotForm params={params} onChange={onChange} />;
     default:
       return <ZeroParamConfirmation name={workflowName} />;
   }

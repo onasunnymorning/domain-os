@@ -122,6 +122,14 @@ func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string, heartbeat Heartbea
 		return fmt.Errorf("failed to create indexes: %w", err)
 	}
 
+	// Enrich registrar object counts from imported data tables.
+	// The registrars CSV doesn't include domain/host/contact counts, so we
+	// compute them from the actual data. ResolveRegistrars now uses a LEFT JOIN
+	// query instead, but this keeps the DB self-consistent for other consumers.
+	if err := svc.enrichRegistrarCounts(); err != nil {
+		return fmt.Errorf("failed to enrich registrar counts: %w", err)
+	}
+
 	log.Printf("✅ Successfully created SQLite database with escrow data")
 	return nil
 }
@@ -208,7 +216,10 @@ func (svc *CSVToSQLiteService) createSchema() error {
 		email TEXT,
 		url TEXT,
 		crdate TEXT,
-		"update" TEXT
+		"update" TEXT,
+		domain_count INTEGER DEFAULT 0,
+		host_count INTEGER DEFAULT 0,
+		contact_count INTEGER DEFAULT 0
 	);
 
 	-- Registrar postal information
@@ -304,6 +315,8 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_registrars_name ON registrars(name)",
 		"CREATE INDEX IF NOT EXISTS idx_registrars_gurid ON registrars(gurid)",
 		"CREATE INDEX IF NOT EXISTS idx_registrar_mapping_clid ON registrar_mapping(registrar_clid)",
+		// Hosts
+		"CREATE INDEX IF NOT EXISTS idx_hosts_clid ON hosts(clid)",
 		// Contacts
 		"CREATE INDEX IF NOT EXISTS idx_contacts_clid ON contacts(clid)",
 		"CREATE INDEX IF NOT EXISTS idx_contact_statuses_contact ON contact_statuses(contact_id)",
@@ -317,6 +330,24 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 	}
 
 	log.Printf("✅ Created database indexes for fast lookups")
+	return nil
+}
+
+// enrichRegistrarCounts populates domain_count, host_count, and contact_count
+// on the registrars table by counting actual references in the data tables.
+// This ensures the counts reflect reality rather than relying on external
+// analysis files or stale metadata.
+func (svc *CSVToSQLiteService) enrichRegistrarCounts() error {
+	_, err := svc.db.Exec(`
+		UPDATE registrars SET
+			domain_count = COALESCE((SELECT COUNT(*) FROM domains WHERE clid = registrars.id), 0),
+			host_count = COALESCE((SELECT COUNT(*) FROM hosts WHERE clid = registrars.id), 0),
+			contact_count = COALESCE((SELECT COUNT(*) FROM contacts WHERE clid = registrars.id), 0)
+	`)
+	if err != nil {
+		return fmt.Errorf("enrichRegistrarCounts: %w", err)
+	}
+	log.Printf("✅ Enriched registrar counts from imported data")
 	return nil
 }
 

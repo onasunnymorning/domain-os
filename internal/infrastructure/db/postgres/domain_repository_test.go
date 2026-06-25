@@ -30,9 +30,19 @@ func TestDomainSuite(t *testing.T) {
 func (s *DomainSuite) SetupSuite() {
 	s.db = setupTestDB()
 
-	// Create a registrar
-	rar, _ := entities.NewRegistrar("domaintestRar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	s.db.Exec("DELETE FROM domains")
+	s.db.Exec("DELETE FROM hosts")
+	s.db.Exec("DELETE FROM contacts")
+	s.db.Exec("DELETE FROM tlds WHERE ry_id = ?", "DomainSuiteRy")
+
 	repo := NewGormRegistrarRepository(s.db)
+	_ = repo.Delete(context.Background(), "domaintestRar")
+
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_ = roRepo.DeleteByRyID(context.Background(), "DomainSuiteRy")
+
+	// Create a registrar
+	rar, _ := entities.NewRegistrar("domaintestRar", "domainRarName", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
 	createdRar, err := repo.Create(context.Background(), rar)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRar)
@@ -40,7 +50,7 @@ func (s *DomainSuite) SetupSuite() {
 
 	// Create a Registry Operator
 	ro, _ := entities.NewRegistryOperator("DomainSuiteRy", "DomainSuiteRy", "me@my.email")
-	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	roRepo = NewGORMRegistryOperatorRepository(s.db)
 	_, err = roRepo.Create(context.Background(), ro)
 	s.Require().NoError(err)
 	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
@@ -840,27 +850,23 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 	s.Require().Equal(3, len(domains), "baseline: should list 3 domains with explicit false pending flags")
 
 	// --- Simulate escrow-imported data: set pending columns to NULL via raw SQL ---
-	sqlDB, err := tx.DB()
-	s.Require().NoError(err)
-
-	_, err = sqlDB.Exec(`
+	err = tx.Exec(`
 		UPDATE domains
 		SET pending_delete = NULL, pending_renew = NULL, pending_restore = NULL
 		WHERE name LIKE 'null-test-%'
-	`)
+	`).Error
 	s.Require().NoError(err)
 
 	// Verify the columns are actually NULL
-	var nullCount int
-	err = sqlDB.QueryRow(`
-		SELECT COUNT(*) FROM domains
-		WHERE name LIKE 'null-test-%'
-		AND pending_delete IS NULL
-		AND pending_renew IS NULL
-		AND pending_restore IS NULL
-	`).Scan(&nullCount)
+	var nullCount int64
+	err = tx.Table("domains").
+		Where("name LIKE 'null-test-%'").
+		Where("pending_delete IS NULL").
+		Where("pending_renew IS NULL").
+		Where("pending_restore IS NULL").
+		Count(&nullCount).Error
 	s.Require().NoError(err)
-	s.Require().Equal(3, nullCount, "sanity check: all 3 domains should have NULL pending flags")
+	s.Require().Equal(int64(3), nullCount, "sanity check: all 3 domains should have NULL pending flags")
 
 	// --- Core assertion: queries must still find domains with NULL pending flags ---
 	count, err = repo.CountExpiringDomains(context.Background(), before, "domaintestRar", "domaintesttld")
@@ -873,11 +879,11 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 
 	// --- Also test purgeable queries with NULL pending_delete ---
 	// Set one domain to have a valid purge date and pending_delete = NULL
-	_, err = sqlDB.Exec(`
+	err = tx.Exec(`
 		UPDATE domains
-		SET purge_date = $1, pending_delete = NULL
+		SET purge_date = ?, pending_delete = NULL
 		WHERE name = 'null-test-0.domaintesttld'
-	`, time.Now().AddDate(0, 0, -1).UTC())
+	`, time.Now().AddDate(0, 0, -1).UTC()).Error
 	s.Require().NoError(err)
 
 	// pending_delete is NULL so it should NOT be considered purgeable
@@ -887,11 +893,11 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 	s.Require().Equal(int64(0), purgeCount, "COALESCE: domain with NULL pending_delete should NOT be purgeable")
 
 	// Now set pending_delete to true — it SHOULD be purgeable
-	_, err = sqlDB.Exec(`
+	err = tx.Exec(`
 		UPDATE domains
 		SET pending_delete = true
 		WHERE name = 'null-test-0.domaintesttld'
-	`)
+	`).Error
 	s.Require().NoError(err)
 
 	purgeCount, err = repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), "domaintestRar", "domaintesttld")

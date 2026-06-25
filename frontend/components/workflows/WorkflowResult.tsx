@@ -1,17 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Download, AlertCircle, AlertTriangle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { getWorkflowResult, getStorageDownloadURL } from '@/lib/api/workflows';
+import { getWorkflowResult, getStorageDownloadURL, signalWorkflow } from '@/lib/api/workflows';
 import { QAReportViewer } from './QAReportViewer';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface WorkflowResultProps {
   workflowId: string;
   workflowType: string;
   status: string;
+  signalName?: string;
   onStateLoaded?: (state: any) => void;
 }
 
@@ -26,6 +29,7 @@ const ARTIFACT_FIELDS: Record<string, Record<string, string>> = {
     qaReportKey: 'QA Report',
     stagedDbKey: 'Staged Database',
     dbKey: 'Raw Database',
+    verificationReportKey: 'Verification Report',
     QAReportKey: 'QA Report',
     StagedDBKey: 'Staged Database',
     DBKey: 'Raw Database',
@@ -35,6 +39,12 @@ const ARTIFACT_FIELDS: Record<string, Record<string, string>> = {
     BackupKey: 'Backup Archive',
     manifestKey: 'Cleanup Manifest',
     backupKey: 'Backup Archive',
+  },
+  'take-snapshot': {
+    snapshotKey: 'Snapshot (JSONL)',
+    manifestKey: 'Manifest',
+    SnapshotKey: 'Snapshot (JSONL)',
+    ManifestKey: 'Manifest',
   },
 };
 
@@ -68,6 +78,16 @@ const FIELD_LABELS: Record<string, string> = {
   totalIana: 'Total IANA',
   totalExisting: 'Total Existing',
   totalProcessed: 'Total Processed',
+  // Take Snapshot
+  snapshotKey: 'Snapshot File',
+  SnapshotKey: 'Snapshot File',
+  tableCounts: 'Table Counts',
+  totalRows: 'Total Rows',
+  // Seed from Snapshot
+  insertedCounts: 'Inserted Counts',
+  skippedCounts: 'Skipped Counts',
+  totalInserted: 'Total Inserted',
+  totalSkipped: 'Total Skipped',
 };
 
 function ArtifactDownloadButton({ label, s3Key }: { label: string; s3Key: string }) {
@@ -168,6 +188,44 @@ function ArtifactsMap({ artifacts }: { artifacts: Record<string, string> }) {
 function ResultField({ label, value, workflowType }: { label: string; value: any; workflowType: string }) {
   // Skip internal/noisy fields
   if (label === 'runPrefix' || label === 'objectKey') return null;
+
+  if (workflowType === 'spec5-sweep' && label === 'tldResults' && typeof value === 'object' && value !== null) {
+    return (
+      <div className="space-y-2 py-2">
+        <span className="text-muted-foreground text-xs block font-semibold uppercase tracking-wider">
+          Sweep Results by TLD
+        </span>
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-xs">
+                <th className="px-3 py-2 text-left font-medium">TLD</th>
+                <th className="px-3 py-2 text-right font-medium">Matching Domains Count</th>
+                <th className="px-3 py-2 text-center font-medium">Artifact</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(value).map(([tld, details]: [string, any]) => (
+                <tr key={tld} className="border-t hover:bg-muted/30 transition-colors">
+                  <td className="px-3 py-2 font-mono text-sm">{tld}</td>
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">
+                    {details.count?.toLocaleString() ?? 0}
+                  </td>
+                  <td className="px-3 py-2 flex justify-center">
+                    {details.artifactKey ? (
+                      <ArtifactDownloadButton label="Download CSV" s3Key={details.artifactKey} />
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   const displayLabel = FIELD_LABELS[label] || label;
 
@@ -413,10 +471,154 @@ function ResultField({ label, value, workflowType }: { label: string; value: any
 
   return null;
 }
+// ---------------------------------------------------------------------------
+// Registrar Mapping Summary — always shows mapping counts, expands gaps if any
+// ---------------------------------------------------------------------------
+interface UnmappedRegistrar {
+  escrowId: string;
+  name: string;
+  gurId: number;
+  domainCount: number;
+  hostCount: number;
+  contactCount: number;
+}
 
-export function WorkflowResult({ workflowId, workflowType, status, onStateLoaded }: WorkflowResultProps) {
+interface RegistrarMappingSummaryProps {
+  total?: number;
+  mapped?: number;
+  unmapped?: UnmappedRegistrar[];
+}
+
+function RegistrarMappingSummary({ total, mapped, unmapped }: RegistrarMappingSummaryProps) {
+  // Don't render if we have no mapping data at all (e.g. old workflow result)
+  if (!total && !mapped && !unmapped?.length) return null;
+
+  const displayTotal = total || 0;
+  const displayMapped = mapped || 0;
+  const autoFixed = displayTotal - displayMapped;
+  const hasUnresolved = unmapped && unmapped.length > 0;
+  const isFullyMapped = displayMapped === displayTotal && !hasUnresolved;
+
+  // Determine visual state:
+  // - Green: all registrars mapped 1:1 (no auto-fix, no gaps)
+  // - Amber: auto-fixed registrars or unresolved gaps
+  const variant = isFullyMapped ? 'green' : 'amber';
+  const colors = variant === 'green'
+    ? { bg: 'bg-green-500/10 border-green-500/20', text: 'text-green-600 dark:text-green-400' }
+    : { bg: 'bg-amber-500/10 border-amber-500/20', text: 'text-amber-600 dark:text-amber-400' };
+
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <p className="text-xs font-semibold text-muted-foreground">Registrar Mapping</p>
+
+      {/* Summary line */}
+      <div className={`flex items-start gap-2 rounded-md px-3 py-2 border ${colors.bg}`}>
+        {isFullyMapped ? (
+          <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-green-500" />
+        ) : (
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+        )}
+        <div>
+          <p className={`text-xs font-medium ${colors.text}`}>
+            {displayMapped} of {displayTotal} registrars mapped
+            {autoFixed > 0 && !hasUnresolved
+              ? ` — ${autoFixed} auto-fixed (host-only registrars resolved via domain ownership)`
+              : ''}
+            {hasUnresolved ? ` — ${unmapped!.length} unmapped` : ''}
+          </p>
+          {hasUnresolved && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Re-run with <code className="bg-muted px-1 rounded">registrarOverrides</code> to resolve.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Unmapped details table */}
+      {hasUnresolved && (
+        <div className="overflow-x-auto rounded border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-muted/50 text-muted-foreground">
+                <th className="text-left px-2 py-1.5 font-medium">Escrow ID</th>
+                <th className="text-left px-2 py-1.5 font-medium">Name</th>
+                <th className="text-right px-2 py-1.5 font-medium">GurID</th>
+                <th className="text-right px-2 py-1.5 font-medium">Domains</th>
+                <th className="text-right px-2 py-1.5 font-medium">Hosts</th>
+                <th className="text-right px-2 py-1.5 font-medium">Contacts</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {unmapped!.map((r) => (
+                <tr key={r.escrowId} className="hover:bg-muted/20">
+                  <td className="px-2 py-1.5 font-mono">{r.escrowId}</td>
+                  <td className="px-2 py-1.5 truncate max-w-[140px]">{r.name}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{r.gurId}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{r.domainCount.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{r.hostCount.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{r.contactCount.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+export function WorkflowResult({ workflowId, workflowType, status, signalName, onStateLoaded }: WorkflowResultProps) {
+  const [signalSending, setSignalSending] = useState<'approve' | 'reject' | null>(null);
+  const [signalSent, setSignalSent] = useState(false);
+
+  const getSignalConfig = useCallback(() => {
+    switch (signalName) {
+      case 'ConfirmTLDCleanup':
+        return {
+          approveText: 'Confirm Deletion',
+          rejectText: 'Cancel Deletion',
+          approveToast: 'Deletion approved — cleanup starting',
+          rejectToast: 'Deletion cancelled',
+        };
+      case 'ConfirmSeedFromSnapshot':
+        return {
+          approveText: 'Confirm Seed',
+          rejectText: 'Cancel Seed',
+          approveToast: 'Seed approved — database import starting',
+          rejectToast: 'Seed cancelled',
+        };
+      case 'ConfirmEscrowImport':
+      default:
+        return {
+          approveText: 'Approve & Ingest',
+          rejectText: 'Reject',
+          approveToast: 'Import approved — ingestion starting',
+          rejectToast: 'Import rejected',
+        };
+    }
+  }, [signalName]);
+
+  const signalConfig = getSignalConfig();
+
+  const handleSignal = useCallback(async (approved: boolean) => {
+    if (!signalName) return;
+    const action = approved ? 'approve' : 'reject';
+    setSignalSending(action);
+    try {
+      await signalWorkflow(workflowId, signalName, approved);
+      setSignalSent(true);
+      toast.success(approved ? signalConfig.approveToast : signalConfig.rejectToast, {
+        description: `Signal sent to ${workflowId}`,
+      });
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to send signal';
+      toast.error('Signal failed', { description: message });
+    } finally {
+      setSignalSending(null);
+    }
+  }, [workflowId, signalName, signalConfig]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['workflow-result', workflowId],
+    queryKey: ['workflow-result', workflowId, status],
     queryFn: () => getWorkflowResult(workflowId),
     refetchInterval: status === 'RUNNING' ? 3000 : false,
     staleTime: status === 'RUNNING' ? 0 : Infinity,
@@ -451,34 +653,51 @@ export function WorkflowResult({ workflowId, workflowType, status, onStateLoaded
             </Badge>
           </div>
 
-          {(state.domainCount > 0 || state.contactCount > 0 || state.hostCount > 0) && (
+          {(typeof state.domainCount === 'number' || typeof state.contactCount === 'number' || typeof state.hostCount === 'number') && (
             <div className="space-y-1.5 rounded-md border p-2 bg-muted/20">
               <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
                 Planned deletion counts
               </p>
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div>
-                  <div className="font-semibold tabular-nums">{state.domainCount.toLocaleString()}</div>
+                  <div className="font-semibold tabular-nums">{(state.domainCount ?? 0).toLocaleString()}</div>
                   <div className="text-muted-foreground text-[10px]">Domains</div>
                 </div>
                 <div>
-                  <div className="font-semibold tabular-nums">{state.contactCount.toLocaleString()}</div>
+                  <div className="font-semibold tabular-nums">{(state.contactCount ?? 0).toLocaleString()}</div>
                   <div className="text-muted-foreground text-[10px]">Contacts</div>
                 </div>
                 <div>
-                  <div className="font-semibold tabular-nums">{state.hostCount.toLocaleString()}</div>
+                  <div className="font-semibold tabular-nums">{(state.hostCount ?? 0).toLocaleString()}</div>
                   <div className="text-muted-foreground text-[10px]">Hosts</div>
                 </div>
               </div>
             </div>
           )}
 
-          {state.stagedDbKey && (
+          {(state.stagedDbKey || state.baseDbKey || state.manifestKey || state.ManifestKey || state.backupKey || state.BackupKey) && (
             <div className="space-y-1.5 pt-2 border-t mt-2">
-              <span className="text-muted-foreground text-xs font-semibold">Staged Database</span>
-              <ArtifactDownloadButton label="Download Staged DB" s3Key={state.stagedDbKey} />
+              <span className="text-muted-foreground text-xs font-semibold">Workflow Artifacts</span>
+              {state.stagedDbKey && (
+                <ArtifactDownloadButton label="Staged Database" s3Key={state.stagedDbKey} />
+              )}
+              {state.baseDbKey && (
+                <ArtifactDownloadButton label="Base Database" s3Key={state.baseDbKey} />
+              )}
+              {(state.manifestKey || state.ManifestKey) && (
+                <ArtifactDownloadButton label="Cleanup Manifest" s3Key={state.manifestKey || state.ManifestKey} />
+              )}
+              {(state.backupKey || state.BackupKey) && (
+                <ArtifactDownloadButton label="Backup Archive" s3Key={state.backupKey || state.BackupKey} />
+              )}
             </div>
           )}
+
+          <RegistrarMappingSummary
+            total={state.totalRegistrars}
+            mapped={state.mappedRegistrars}
+            unmapped={state.unmappedRegistrars}
+          />
 
           {state.qaReportKey && (
             <div className="space-y-2 py-1 border-t pt-3 mt-3">
@@ -491,6 +710,46 @@ export function WorkflowResult({ workflowId, workflowType, status, onStateLoaded
           {state.error && (
             <div className="rounded bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-400">
               {state.error}
+            </div>
+          )}
+
+          {/* Inline Approve/Reject buttons — shown immediately when phase is pending_confirmation */}
+          {signalName && state.phase === 'pending_confirmation' && (
+            <div className="border-t pt-3 mt-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">Human-in-the-Loop Decision</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={signalSent || signalSending !== null}
+                  onClick={() => handleSignal(true)}
+                  className="gap-1.5"
+                >
+                  {signalSending === 'approve' ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3" />
+                  )}
+                  {signalConfig.approveText}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={signalSent || signalSending !== null}
+                  onClick={() => handleSignal(false)}
+                  className="gap-1.5"
+                >
+                  {signalSending === 'reject' ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <XCircle className="size-3" />
+                  )}
+                  {signalConfig.rejectText}
+                </Button>
+                {signalSent && (
+                  <span className="text-muted-foreground text-xs">Signal sent</span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -524,14 +783,112 @@ export function WorkflowResult({ workflowId, workflowType, status, onStateLoaded
     );
   }
 
-  // Workflow failed with error
-  if (data.error) {
+  // =========================================================================
+  // QA Gate Blocked — completed successfully but QA didn't pass
+  // =========================================================================
+  if (data.result && data.result.qaPassed === false && !data.error) {
+    const r = data.result;
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
+        {/* Warning banner */}
+        <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+              QA gate blocked ingestion
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The staged database failed one or more error-severity validation checks.
+              Review the QA report below, fix the source data or mappings, and re-run the import.
+            </p>
+          </div>
+        </div>
+
+        {/* Context */}
+        <div className="divide-y text-xs">
+          {r.tld && (
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">TLD</span>
+              <Badge variant="outline" className="text-xs">{r.tld}</Badge>
+            </div>
+          )}
+          {r.runPrefix && (
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <span className="text-muted-foreground shrink-0">Run Prefix</span>
+              <span className="truncate text-xs font-mono">{r.runPrefix}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Registrar Mapping */}
+        <RegistrarMappingSummary
+          total={r.totalRegistrars}
+          mapped={r.mappedRegistrars}
+          unmapped={r.unmappedRegistrars}
+        />
+
+        {/* QA Report Viewer */}
+        {r.qaReportKey && (
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">Interactive QA Report</p>
+            <QAReportViewer s3Key={r.qaReportKey} />
+          </div>
+        )}
+
+        {/* Artifact downloads */}
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-xs font-semibold text-muted-foreground">Artifacts</p>
+          <div className="space-y-1">
+            {r.qaReportKey && (
+              <ArtifactDownloadButton label="QA Report" s3Key={r.qaReportKey} />
+            )}
+            {r.stagedDbKey && (
+              <ArtifactDownloadButton label="Staged Database" s3Key={r.stagedDbKey} />
+            )}
+            {r.dbKey && (
+              <ArtifactDownloadButton label="Base Database" s3Key={r.dbKey} />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // Workflow FAILED with error — infrastructure or activity failure
+  // =========================================================================
+  if (data.error) {
+    // Try to extract useful artifact keys from partial result if available
+    const partialResult = data.result;
+    const hasArtifacts = partialResult && (partialResult.qaReportKey || partialResult.stagedDbKey || partialResult.QAReportKey || partialResult.StagedDBKey);
+
+    return (
+      <div className="space-y-3">
         <div className="flex items-start gap-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <span>{data.error}</span>
         </div>
+
+        {/* Artifact access for partial results */}
+        {hasArtifacts && (
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">Available Artifacts</p>
+            <div className="space-y-1">
+              {(partialResult.qaReportKey || partialResult.QAReportKey) && (
+                <ArtifactDownloadButton
+                  label="QA Report"
+                  s3Key={partialResult.qaReportKey || partialResult.QAReportKey}
+                />
+              )}
+              {(partialResult.stagedDbKey || partialResult.StagedDBKey) && (
+                <ArtifactDownloadButton
+                  label="Staged Database"
+                  s3Key={partialResult.stagedDbKey || partialResult.StagedDBKey}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

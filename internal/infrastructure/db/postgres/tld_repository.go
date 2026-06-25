@@ -68,15 +68,28 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 	return nil
 }
 
-// List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
+type dbTLDListItem struct {
+	TLD
+	RegistrarCount int `gorm:"column:registrar_count"`
+}
+
 func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
-	// Get a query object ordering by name (PK used for cursor pagination)
-	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
+	// Base query on tlds table
+	dbQuery := repo.db.WithContext(ctx).Table("tlds")
+
+	// Select optimized query fields
+	selectFields := "tlds.*, COALESCE(rc.registrar_count, 0) as registrar_count"
+	dbQuery = dbQuery.Select(selectFields).
+		Joins("LEFT JOIN (SELECT tld_name AS rc_tld_name, COUNT(*) as registrar_count FROM accreditations GROUP BY tld_name) rc ON rc.rc_tld_name = tlds.name")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
-		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
+		dbQuery = dbQuery.Where("tlds.name > ?", params.PageCursor)
 	}
+
+	// Order by name ASC for cursor pagination
+	dbQuery = dbQuery.Order("tlds.name ASC")
+
 	var err error
 	if params.Filter != nil {
 		// cast interface to ListTldsFilter
@@ -96,28 +109,29 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
 
 	// Execute the query
-	dbtlds := []*TLD{}
-	err = dbQuery.Find(&dbtlds).Error
+	var rows []*dbTLDListItem
+	err = dbQuery.Scan(&rows).Error
 	if err != nil {
 		return nil, "", err
 	}
 
 	// Check if there is a next page
-	hasMore := len(dbtlds) == params.PageSize+1
+	hasMore := len(rows) == params.PageSize+1
 	if hasMore {
 		// Return only up to Pagesize
-		dbtlds = dbtlds[:params.PageSize]
+		rows = rows[:params.PageSize]
 	}
 
 	// Map the DBTLDs to TLDs
-	tlds := make([]*entities.TLD, len(dbtlds))
-	for i, dbtld := range dbtlds {
-		tlds[i] = FromDBTLD(dbtld)
+	tlds := make([]*entities.TLD, len(rows))
+	for i, row := range rows {
+		tlds[i] = FromDBTLD(&row.TLD)
+		tlds[i].RegistrarCount = row.RegistrarCount
 	}
 
 	// Set the cursor to the last name in the list
 	var newCursor string
-	if hasMore {
+	if hasMore && len(tlds) > 0 {
 		newCursor = tlds[len(tlds)-1].Name.String()
 	}
 

@@ -12,7 +12,7 @@
 
 ## Overview
 
-The Sync Registrars Workflow keeps the system's registrar data in sync with IANA and ICANN sources. It operates in two distinct modes: **Bootstrap** (when zero registrars exist in the system) imports registrars from a local ICANN CSV file merged with IANA data, while **Sync** (when registrars already exist) computes a unified diff between current IANA data and the existing registrar records — comparing both platform status and IANA status — then applies creates and status updates in a single batched activity. Reserved IANA registrars are skipped (except special GurIDs 9995 and 9996).
+The Sync Registrars Workflow keeps the system's registrar data in sync with IANA and ICANN sources. It operates in two distinct modes: **Bootstrap** (when zero registrars exist in the system) imports registrars from a local ICANN CSV file merged with IANA data, while **Sync** (when registrars already exist) computes a unified diff between current IANA data and the existing registrar records — comparing both platform status and IANA status — then applies creates and status updates in a single batched activity. Reserved IANA registrars are skipped (except special GurIDs 9995, 9996, and 9997).
 
 ## Flow Diagram
 
@@ -159,7 +159,7 @@ The workflow exposes a `progress` query handler that returns the current `SyncRe
 
 #### 5b. Diff & Plan
 - **Activity**: `activities.DiffAndPlanRegistrars`
-- **Description**: Computes a unified diff comparing both platform status and IANA status. Produces `Creates` (new registrars) and `Updates` (status changes). Skips reserved registrars (except GurIDs 9995/9996). Forces OK for special GurIDs.
+- **Description**: Computes a unified diff comparing both platform status and IANA status. Produces `Creates` (new registrars) and `Updates` (status changes). Skips reserved registrars (except GurIDs 9995/9996/9997). Forces OK for special GurIDs.
 
 #### 6b. Bulk Create New Registrars
 - **Activity**: `activities.BulkCreateRegistrars` (chunked 100/batch)
@@ -189,5 +189,5 @@ The workflow exposes a `progress` query handler that returns the current `SyncRe
 
 ---
 
-> **Last updated**: 2026-06-24
-> **Updated by**: Agent (optimized: unified diff for both statuses, replaced parallel loops with batched activity, added checks-and-balances reporting)
+> **Last updated**: 2026-06-25
+> **Updated by**: Agent (added GurID 9997 to special reserved set, centralized via `entities.IsSpecialReservedGurID` helper)

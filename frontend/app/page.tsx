@@ -23,7 +23,6 @@ import {
   ExternalLink,
   Activity,
   Database,
-  BarChart,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRegistryOperatorsCount } from '@/lib/hooks/useRegistryOperators';
@@ -33,7 +32,7 @@ import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useContactCount } from '@/lib/hooks/useContacts';
 import { useHostCount } from '@/lib/hooks/useHosts';
 import { format } from 'date-fns';
-import { TEMPORAL_UI_URL, STORAGE_UI_URL, GRAFANA_URL } from '@/lib/constants/external-urls';
+import { TEMPORAL_UI_URL, STORAGE_UI_URL } from '@/lib/constants/external-urls';
 import {
   PieChart,
   Pie,
@@ -182,12 +181,6 @@ export default function Home() {
       href: STORAGE_UI_URL,
       icon: Database,
       description: 'MinIO console',
-    },
-    {
-      name: 'Analytics',
-      href: GRAFANA_URL,
-      icon: BarChart,
-      description: 'Grafana dashboards',
     },
   ].filter((r) => r.href);
 
