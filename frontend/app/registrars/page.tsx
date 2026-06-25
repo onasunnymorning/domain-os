@@ -67,7 +67,7 @@ export default function RegistrarsPage() {
                   </TabsTrigger>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[350px]" side="bottom" sideOffset={8}>
-                  <p>Data taken from ICANN accredited registrars as they appear in the IANA Registrar ID repository (https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml). Their only purpose is to keep the accreditation status synced with the ICANN/IANA repo.</p>
+                  <p>Data taken from ICANN accredited registrars as they appear in the <a href="https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">IANA Registrar ID repository</a>. Their only purpose is to keep the accreditation status synced with the ICANN/IANA repo.</p>
                   {ianaCount?.Count !== undefined && <p className="mt-2 text-xs font-medium border-t pt-2 border-border/50 text-muted-foreground mr-1">{ianaCount.Count.toLocaleString()}</p>}
                 </TooltipContent>
               </Tooltip>

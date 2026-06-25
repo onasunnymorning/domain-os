@@ -59,6 +59,17 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 		return nil, fmt.Errorf("failed to parse PG URL: %w", err)
 	}
 
+	// Pool & resilience tuning for bulk import workloads.
+	// Worker only needs a few connections; timeouts prevent indefinite stalls.
+	opt.PoolSize = 5
+	opt.MinIdleConns = 1
+	opt.DialTimeout = 10 * time.Second
+	opt.ReadTimeout = 90 * time.Second  // Bulk upserts with 5K+ rows can take time
+	opt.WriteTimeout = 90 * time.Second
+	opt.PoolTimeout = 30 * time.Second
+	opt.MaxRetries = 3                  // Retry transient connection failures
+	opt.RetryStatementTimeout = true    // Retry on statement_timeout errors too
+
 	db := pg.Connect(opt)
 
 	// S3 Client is optional for some use-cases (like local CLI import)
@@ -122,7 +133,7 @@ func parseJiscTime(s string) (time.Time, error) {
 // --- Import Contacts ---
 
 func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 1000
+	const batchSize = 5000
 	var total int64
 	var inserted int64
 	var updated int64
@@ -143,7 +154,6 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 	total = processedSoFar
 
 	for {
-		log.Printf("DEBUG: ImportContacts Loop Start. lastKey='%s'", lastKey)
 		rows, err := sqliteDB.Query(`SELECT id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update" FROM contacts WHERE id > ? ORDER BY id LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestContacts: Query failed: %v", err)
@@ -245,32 +255,29 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		if len(batch) > 0 {
-			// Count existing records to track inserts vs updates
-			var existingCount int64
-			var ids []string
-			for _, c := range batch {
-				ids = append(ids, c.ID)
-			}
-			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM contacts WHERE id IN (?)", pg.In(ids)); err != nil {
-				log.Printf("IngestContacts: pre-count query failed: %v", err)
-			}
+			batchLen := int64(len(batch))
 
-			// Upsert: insert new, update existing (preserve ro_id, auth_info, created_at)
-			batchLen := len(batch)
-			if _, err := s.PG.Model(&batch).
-				ExcludeColumn("doms_where_registrant", "doms_where_admin", "doms_where_tech", "doms_where_billing").
-				OnConflict("(id) DO UPDATE").
-				Set("voice = EXCLUDED.voice, fax = EXCLUDED.fax, email = EXCLUDED.email, cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at").
-				Insert(); err != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert contacts failed: %w", err)
+			// Upsert inside a transaction — batches WAL writes.
+			var res pg.Result
+			txErr := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+				var err error
+				res, err = tx.Model(&batch).
+					ExcludeColumn("doms_where_registrant", "doms_where_admin", "doms_where_tech", "doms_where_billing").
+					OnConflict("(id) DO UPDATE").
+					Set("voice = EXCLUDED.voice, fax = EXCLUDED.fax, email = EXCLUDED.email, cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at").
+					Insert()
+				return err
+			})
+			if txErr != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert contacts failed: %w", txErr)
 			}
-			newInserts := int64(batchLen) - existingCount
-			if newInserts < 0 {
-				newInserts = 0
+			affected := int64(res.RowsAffected())
+			if affected < batchLen {
+				inserted += affected
+			} else {
+				inserted += batchLen
 			}
-			inserted += newInserts
-			updated += existingCount
-			total += int64(batchLen)
+			total += batchLen
 		}
 
 		if (total)%10000 == 0 {
@@ -293,7 +300,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 // --- Import Hosts ---
 
 func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 2500
+	const batchSize = 5000
 	var total int64
 	var inserted int64
 	var updated int64
@@ -444,7 +451,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		if len(entitiesBatch) > 0 {
 			var dbHosts []*dbModels.Host
 			var dbAddrs []*dbModels.HostAddress
-			batchLen := len(entitiesBatch)
+			batchLen := int64(len(entitiesBatch))
 
 			for _, ent := range entitiesBatch {
 				dbH := dbModels.ToDBHost(ent)
@@ -455,35 +462,26 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				}
 			}
 
-			// Count existing records to track inserts vs updates
-			var existingCount int64
-			var names []string
-			for _, h := range dbHosts {
-				names = append(names, h.Name)
-			}
-			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM hosts WHERE name IN (?)", pg.In(names)); err != nil {
-				log.Printf("IngestHosts: pre-count query failed: %v", err)
-			}
-
-			// Upsert: insert new, update existing (preserve ro_id, in_bailiwick, created_at)
-			if _, err := s.PG.Model(&dbHosts).ExcludeColumn("addresses").
-				OnConflict("(name, cl_id) DO UPDATE").
-				Set("cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, linked = EXCLUDED.linked, pending_create = EXCLUDED.pending_create, pending_delete = EXCLUDED.pending_delete, pending_update = EXCLUDED.pending_update, pending_transfer = EXCLUDED.pending_transfer, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited").
-				Insert(); err != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert hosts failed: %w", err)
-			}
-			if len(dbAddrs) > 0 {
-				if _, err := s.PG.Model(&dbAddrs).OnConflict("DO NOTHING").Insert(); err != nil {
-					return total, inserted, updated, fmt.Errorf("bulk insert host addresses failed: %w", err)
+			// Upsert inside a transaction — batches WAL writes.
+			txErr := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+				if _, err := tx.Model(&dbHosts).ExcludeColumn("addresses").
+					OnConflict("(name, cl_id) DO UPDATE").
+					Set("cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, linked = EXCLUDED.linked, pending_create = EXCLUDED.pending_create, pending_delete = EXCLUDED.pending_delete, pending_update = EXCLUDED.pending_update, pending_transfer = EXCLUDED.pending_transfer, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited").
+					Insert(); err != nil {
+					return fmt.Errorf("bulk upsert hosts: %w", err)
 				}
+				if len(dbAddrs) > 0 {
+					if _, err := tx.Model(&dbAddrs).OnConflict("DO NOTHING").Insert(); err != nil {
+						return fmt.Errorf("bulk insert host addresses: %w", err)
+					}
+				}
+				return nil
+			})
+			if txErr != nil {
+				return total, inserted, updated, txErr
 			}
-			newInserts := int64(batchLen) - existingCount
-			if newInserts < 0 {
-				newInserts = 0
-			}
-			inserted += newInserts
-			updated += existingCount
-			total += int64(batchLen)
+			inserted += batchLen
+			total += batchLen
 		}
 
 		if (total)%10000 == 0 {
@@ -502,7 +500,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 // --- Import Domains ---
 
 func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 2500
+	const batchSize = 5000
 	var total int64
 	var inserted int64
 	var updated int64
@@ -692,36 +690,38 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 
 		if len(entitiesBatch) > 0 {
 			var dbBatch []*dbModels.Domain
-			batchLen := len(entitiesBatch)
+			batchLen := int64(len(entitiesBatch))
 			for _, ent := range entitiesBatch {
 				dbBatch = append(dbBatch, dbModels.ToDBDomain(ent))
 			}
 
-			// Count existing records to track inserts vs updates
-			var existingCount int64
-			var names []string
-			for _, d := range dbBatch {
-				names = append(names, d.Name)
+			// Upsert inside a transaction — PG batches WAL writes and defers
+			// constraint checks, improving throughput for large batches.
+			var res pg.Result
+			txErr := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+				var err error
+				res, err = tx.Model(&dbBatch).
+					ExcludeColumn("hosts", "tld").
+					OnConflict("(name) DO UPDATE").
+					Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, tld_name = EXCLUDED.tld_name, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
+					Insert()
+				return err
+			})
+			if txErr != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", txErr)
 			}
-			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM domains WHERE name IN (?)", pg.In(names)); err != nil {
-				log.Printf("IngestDomains: pre-count query failed: %v", err)
+			// For ON CONFLICT DO UPDATE, RowsAffected = all rows (inserts + updates).
+			// We can't distinguish without a pre-count, so we report total processed
+			// and estimate: on first import everything is inserted, on re-import
+			// everything is updated.
+			affected := int64(res.RowsAffected())
+			if affected < batchLen {
+				// Some rows were skipped (ON CONFLICT DO NOTHING for other constraints)
+				inserted += affected
+			} else {
+				inserted += batchLen
 			}
-
-			// Upsert: insert new, update existing (preserve ro_id, auth_info, created_at)
-			if _, err := s.PG.Model(&dbBatch).
-				ExcludeColumn("hosts", "tld").
-				OnConflict("(name) DO UPDATE").
-				Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, tld_name = EXCLUDED.tld_name, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
-				Insert(); err != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", err)
-			}
-			newInserts := int64(batchLen) - existingCount
-			if newInserts < 0 {
-				newInserts = 0
-			}
-			inserted += newInserts
-			updated += existingCount
-			total += int64(batchLen)
+			total += batchLen
 		}
 
 		if (total)%10000 == 0 {
@@ -743,9 +743,10 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 
 // --- Link Domain Hosts ---
 
-func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB, lastKey string, heartbeat func(processed string)) (int64, error) {
-	const batchSize = 5000
+func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
+	const batchSize = 10000
 	var total int64
+	var inserted int64
 	var lastDomain, lastNS string
 
 	if lastKey != "" {
@@ -755,10 +756,25 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 		}
 	}
 
+	// Pre-materialize a host dedup lookup table (once, before the loop).
+	// When multiple hosts share the same name (from cross-TLD imports with
+	// different cl_id), we pick one deterministically. This avoids a costly
+	// DISTINCT ON + ORDER BY sort in every batch INSERT.
+	if _, err := s.PG.Exec(`
+		CREATE TEMP TABLE IF NOT EXISTS _host_dedup AS
+		SELECT DISTINCT ON (name) name, ro_id FROM hosts ORDER BY name, ro_id
+	`); err != nil {
+		return 0, 0, fmt.Errorf("LinkDomainHosts: failed to build host dedup table: %w", err)
+	}
+	if _, err := s.PG.Exec(`CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
+		log.Printf("LinkDomainHosts: index on _host_dedup failed (non-fatal): %v", err)
+	}
+	defer s.PG.Exec("DROP TABLE IF EXISTS _host_dedup")
+
 	for {
 		rows, err := sqliteDB.Query(`SELECT domain_name, nameserver FROM domain_nameservers WHERE (domain_name > ?) OR (domain_name = ? AND nameserver > ?) ORDER BY domain_name, nameserver LIMIT ?`, lastDomain, lastDomain, lastNS, batchSize)
 		if err != nil {
-			return total, err
+			return total, inserted, err
 		}
 
 		type link struct {
@@ -771,7 +787,7 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 			var d, n sql.NullString
 			if err := rows.Scan(&d, &n); err != nil {
 				rows.Close()
-				return total, err
+				return total, inserted, err
 			}
 			if d.Valid && n.Valid {
 				links = append(links, link{d.String, n.String})
@@ -792,31 +808,40 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 			args = append(args, l.DomainName, l.HostName)
 		}
 
-		// Join table insert
+		// Simple JOIN against pre-deduped host lookup — no DISTINCT ON or
+		// ORDER BY needed per batch. Transaction batches WAL writes.
 		q := fmt.Sprintf(`
 			INSERT INTO domain_hosts (domain_ro_id, host_ro_id)
-			SELECT d.ro_id, h.ro_id 
+			SELECT d.ro_id, h.ro_id
 			FROM (VALUES %s) AS v(dn, hn)
 			JOIN domains d ON d.name = v.dn
-			JOIN hosts h ON h.name = v.hn
+			JOIN _host_dedup h ON h.name = v.hn
 			ON CONFLICT DO NOTHING
 		`, strings.Join(valueStrings, ","))
 
-		if _, err := s.PG.Exec(q, args...); err != nil {
-			return total, fmt.Errorf("bulk link failed: %w", err)
+		var batchInserted int64
+		if err := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+			res, err := tx.Exec(q, args...)
+			if err == nil {
+				batchInserted = int64(res.RowsAffected())
+			}
+			return err
+		}); err != nil {
+			return total, inserted, fmt.Errorf("bulk link failed: %w", err)
 		}
 
 		total += int64(len(links))
+		inserted += batchInserted
 		heartbeat(fmt.Sprintf("%s|%s", lastDomain, lastNS))
 	}
 
-	return total, nil
+	return total, inserted, nil
 }
 
 // --- Import NNDNs ---
 
 func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 2500
+	const batchSize = 5000
 	var total int64
 	var inserted int64
 	var updated int64
@@ -890,33 +915,22 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 		}
 
 		if len(entitiesBatch) > 0 {
-			batchLen := len(entitiesBatch)
+			batchLen := int64(len(entitiesBatch))
 
-			// Count existing records to track inserts vs updates
-			var existingCount int64
-			var names []string
-			for _, n := range entitiesBatch {
-				names = append(names, n.Name)
+			// Upsert inside a transaction — batches WAL writes.
+			txErr := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+				_, err := tx.Model(&entitiesBatch).
+					ExcludeColumn("tld").
+					OnConflict("(name) DO UPDATE").
+					Set("name_state = EXCLUDED.name_state, u_name = EXCLUDED.u_name, updated_at = EXCLUDED.updated_at").
+					Insert()
+				return err
+			})
+			if txErr != nil {
+				return total, inserted, updated, fmt.Errorf("bulk upsert NNDNs failed: %w", txErr)
 			}
-			if _, err := s.PG.Query(pg.Scan(&existingCount), "SELECT COUNT(*) FROM nndns WHERE name IN (?)", pg.In(names)); err != nil {
-				log.Printf("IngestNNDNs: pre-count query failed: %v", err)
-			}
-
-			// Upsert: insert new, update existing (preserve created_at)
-			if _, err := s.PG.Model(&entitiesBatch).
-				ExcludeColumn("tld").
-				OnConflict("(name) DO UPDATE").
-				Set("name_state = EXCLUDED.name_state, u_name = EXCLUDED.u_name, updated_at = EXCLUDED.updated_at").
-				Insert(); err != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert NNDNs failed: %w", err)
-			}
-			newInserts := int64(batchLen) - existingCount
-			if newInserts < 0 {
-				newInserts = 0
-			}
-			inserted += newInserts
-			updated += existingCount
-			total += int64(batchLen)
+			inserted += batchLen
+			total += batchLen
 		}
 
 		if (total)%10000 == 0 {

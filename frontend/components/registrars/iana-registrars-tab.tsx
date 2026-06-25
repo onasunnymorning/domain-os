@@ -33,7 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Search, Loader2 } from "lucide-react";
+import { RefreshCw, Search, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 export function IANARegistrarsTab() {
@@ -144,6 +144,20 @@ export function IANARegistrarsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* IANA Source Link */}
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-1">
+        <ExternalLink className="h-3.5 w-3.5" />
+        <span>Source:</span>
+        <a
+          href="https://www.iana.org/assignments/registrar-ids/registrar-ids.xhtml"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          IANA Registrar IDs Registry
+        </a>
+      </div>
 
       {/* Results Table */}
       <Card>

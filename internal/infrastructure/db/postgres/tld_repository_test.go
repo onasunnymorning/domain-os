@@ -28,6 +28,7 @@ func (s *TLDSuite) SetupSuite() {
 	// Create a Registry Operator
 	ro, _ := entities.NewRegistryOperator("TLDSuiteRo", "TLDSuiteRo", "TLDSuiteRo@me.email")
 	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_ = roRepo.DeleteByRyID(context.Background(), ro.RyID.String())
 	_, err := roRepo.Create(context.Background(), ro)
 	require.NoError(s.T(), err)
 	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())

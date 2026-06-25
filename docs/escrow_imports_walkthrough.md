@@ -11,7 +11,7 @@ flowchart TB
     Start((Start)) --> A[ParseAndExtractAssets]
     A -->|AssetKeys| B[BuildStagingDatabase]
     B -->|Ryde.db Key| C[ResolveRegistrars]
-    C -->|Ryde.db Key| D[FinalizeStaging]
+    C -->|Ryde.db Key| D[ApplyRegistrarMappings]
     D -->|Staged.db Key| E[ExecuteImport]
     E --> End((Done))
 ```
@@ -38,7 +38,7 @@ flowchart TB
     4. Persists mappings to `registrar_mapping` table in `ryde.db`.
     5. Uploads updated DB.
 
-### 4. FinalizeStaging (Activity)
+### 4. ApplyRegistrarMappings (Activity)
 *   **Input**: `ryde.db` Key
 *   **Output**: `staged.db` Key
 *   **Action**:

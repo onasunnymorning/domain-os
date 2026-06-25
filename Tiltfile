@@ -62,5 +62,4 @@ dc_resource('minio-setup', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL)
 
 dc_resource('prometheus', labels=["infrastructure"], auto_init=False)
 dc_resource('grafana', labels=["infrastructure"], auto_init=False)
-dc_resource('metabase', labels=["infrastructure"], auto_init=False)
-dc_resource('metabase-init', labels=["init"], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
+

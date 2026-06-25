@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Globe } from 'lucide-react';
 import Link from 'next/link';
@@ -25,6 +26,8 @@ const formSchema = z.object({
     .regex(/^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$/i, 'Invalid TLD name format')
     .refine((val) => !val.startsWith('-') && !val.endsWith('-'), 'TLD name cannot start or end with hyphen'),
   RyID: z.string().min(1, 'Registry Operator is required'),
+  CreateOperatorRegistrars: z.boolean(),
+  AllowEscrowImport: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -39,6 +42,8 @@ export default function CreateTLDPage() {
     defaultValues: {
       Name: '',
       RyID: '',
+      CreateOperatorRegistrars: true,
+      AllowEscrowImport: true,
     },
   });
 
@@ -152,6 +157,48 @@ export default function CreateTLDPage() {
                         Select the registry operator managing this TLD
                       </FormDescription>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="CreateOperatorRegistrars"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Create Operator Registrar Accounts</FormLabel>
+                        <FormDescription>
+                          Automatically creates the ICANN-reserved registrar accounts (9998/9999) for this TLD. These are required for transactions where the Registry Operator acts as Registrar.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="AllowEscrowImport"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Allow Escrow Import</FormLabel>
+                        <FormDescription>
+                          Permits importing domain data from escrow deposits into this TLD. Turn off if you want to prevent bulk data imports.
+                        </FormDescription>
+                      </div>
                     </FormItem>
                   )}
                 />

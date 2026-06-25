@@ -120,6 +120,10 @@ function TLDsPageInner() {
       accessor: 'RyID'
     },
     {
+      header: 'Accredited Registrars',
+      cell: (tld) => <span>{tld.RegistrarCount ?? 0}</span>
+    },
+    {
       header: 'DNS',
       cell: (tld) => tld.EnableDNS ? (
         <Badge variant="secondary" className="bg-green-100 text-green-800">Enabled</Badge>
@@ -292,7 +296,7 @@ function TLDsPageInner() {
         open={!!tldToDelete}
         onOpenChange={(open) => !open && setTldToDelete(null)}
         title="Are you sure?"
-        description={`This will permanently delete the TLD "${tldToDelete}" and all associated data.\n\nNote: TLDs with active phases cannot be deleted.`}
+        description={`This will start a background Temporal cleanup workflow to safely delete the TLD "${tldToDelete}" and its associated domains, hosts, and contacts.\n\nYou will be guided to review and approve the deletion counts in the workflow control center.`}
         onConfirm={confirmDelete}
         isDeleting={isDeleting}
       />

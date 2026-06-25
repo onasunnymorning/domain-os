@@ -53,6 +53,11 @@ type IANARegistrar struct {
 // 10. Trim any leading or trailing dashes again.
 // Finally, the processed string is validated as a ClIDType and returned.
 func (r IANARegistrar) CreateClID() (ClIDType, error) {
+	// Use explicit ClIDs for special reserved registrars to avoid
+	// truncated, indistinguishable slugs like "999x-reserved-fo".
+	if clid, ok := SpecialReservedClID(r.GurID); ok {
+		return NewClIDType(clid)
+	}
 	// split the r.Name string by comma ',' and return the frist part
 	slug := strings.Split(r.Name, ",")[0]
 	// lowercase the string

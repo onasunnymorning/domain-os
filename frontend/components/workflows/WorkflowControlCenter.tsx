@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -18,7 +18,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -29,7 +28,7 @@ import { useWorkflowStore, type WorkflowRun, type WorkflowStatus } from '@/lib/s
 import { useActiveWorkflows } from '@/lib/hooks/useActiveWorkflows';
 import { WorkflowResult } from './WorkflowResult';
 import { WorkflowTemporalLink } from './WorkflowTemporalLink';
-import { WorkflowArtifactViewer } from './WorkflowArtifactViewer';
+
 import { getWorkflowRegistry } from '@/lib/api/workflows';
 
 // =============================================================================
@@ -72,6 +71,14 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
   const [expanded, setExpanded] = useState(false);
   const [runningState, setRunningState] = useState<any>(null);
 
+  const selectedRunId = useWorkflowStore((s) => s.selectedRunId);
+
+  useEffect(() => {
+    if (selectedRunId === run.workflowId) {
+      setExpanded(true);
+    }
+  }, [selectedRunId, run.workflowId]);
+
   const { data: registry } = useQuery({
     queryKey: ['workflow-registry'],
     queryFn: getWorkflowRegistry,
@@ -80,10 +87,6 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
 
   const meta = registry?.items?.find((item) => item.key === run.type);
   const signalName = meta?.signalName || run.params?.signalName;
-
-  const artifacts = runningState?.manifestKey
-    ? { 'Cleanup Manifest': runningState.manifestKey }
-    : undefined;
 
   return (
     <div className="border-b last:border-b-0">
@@ -102,8 +105,12 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{run.displayName}</span>
-            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
-              {run.type}
+            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0 lowercase">
+              {run.type === 'tld-cleanup' && run.params?.tld
+                ? `.${run.params.tld.replace(/^\./, '')}`
+                : run.type === 'escrow-import' && run.params?.tld
+                ? `.${run.params.tld.replace(/^\./, '')}`
+                : run.type}
             </Badge>
           </div>
 
@@ -132,19 +139,9 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
             workflowId={run.workflowId}
             workflowType={run.type}
             status={run.status}
+            signalName={signalName}
             onStateLoaded={setRunningState}
           />
-
-          {/* HITL signal buttons if applicable */}
-          {run.status === 'RUNNING' && signalName && (
-            <div className="mt-3 border-t pt-3">
-              <WorkflowArtifactViewer
-                workflowId={run.workflowId}
-                signalName={signalName}
-                artifacts={artifacts}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -199,16 +196,13 @@ export function WorkflowControlCenter() {
         <SheetContent side="right" className="flex w-full flex-col overflow-hidden sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-2">
-              <SheetTitle>Workflow Control Center</SheetTitle>
+              <SheetTitle>Workflow Control</SheetTitle>
               {running > 0 && (
                 <Badge variant="default" className="tabular-nums">
                   {running} running
                 </Badge>
               )}
             </div>
-            <SheetDescription>
-              Track and manage your active workflows
-            </SheetDescription>
           </SheetHeader>
 
           {/* Body: scrollable list of tracked workflows */}
@@ -236,9 +230,6 @@ export function WorkflowControlCenter() {
               disabled={!runs.some((r) => r.status !== 'RUNNING')}
             >
               Clear Completed
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <a href="/workflows">Open Launchpad</a>
             </Button>
           </SheetFooter>
         </SheetContent>

@@ -11,14 +11,11 @@ import {
   Globe,
   Server,
   ChevronLeft,
-  Archive,
-  BarChart,
   ServerOff,
   Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { GRAFANA_URL } from '@/lib/constants/external-urls';
-
+import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Registry Operators', href: '/registry-operators', icon: Building2 },
@@ -28,8 +25,6 @@ const navigation = [
   { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Documentation', href: '/docs', icon: FileText },
-  { name: 'TLD Imports', href: '/escrow', icon: Archive },
-  { name: 'Analytics', href: GRAFANA_URL, icon: BarChart, target: '_blank' },
 ];
 
 interface SidebarProps {
@@ -53,12 +48,19 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] w-64 bg-background transition-transform md:translate-x-0',
+          'fixed left-0 top-0 z-50 h-screen w-64 bg-background transition-transform md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-full flex-col gap-2 p-4">
-          <nav className="flex-1 space-y-1">
+        <div className="flex h-full flex-col gap-4 pb-4">
+          {/* Logo container */}
+          <div className="flex h-32 items-center justify-center px-6">
+            <Link href="/" onClick={onClose} className="flex items-center justify-center">
+              <AlpacaLogo className="h-20 w-20" />
+            </Link>
+          </div>
+
+          <nav className="flex-1 space-y-1 px-4 overflow-y-auto">
             {navigation.map((item) => {
               const isActive = item.href === '/'
                 ? pathname === '/'
@@ -83,7 +85,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             })}
           </nav>
 
-          <div className="border-t pt-4">
+          <div className="pt-4 px-4">
             <p className="px-3 text-xs text-muted-foreground">
               v{process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'}
             </p>

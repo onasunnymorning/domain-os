@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRegistrars, useRegistrarCount, useStartRegistrarSyncWorkflow } from "@/lib/hooks/useRegistrars";
+import { useTLDs } from "@/lib/hooks/useTLDs";
 import { RegistrarListParams, RegistrarStatus } from "@/lib/types/registrar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +42,7 @@ import type { WorkflowStartResponse } from "@/lib/api/workflows";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCompactNumber } from "@/lib/utils/numberUtils";
 
 export function SystemRegistrarsTab() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,9 +51,15 @@ export function SystemRegistrarsTab() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   // New: dedicated IANA ID exact-match search input
   const [ianaIdQuery, setIanaIdQuery] = useState<string>("");
+  // New: TLD filter and Sorting
+  const [tldFilter, setTldFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("clid_asc");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const router = useRouter();
+
+  // Fetch TLDs for the dropdown filter
+  const { data: tldData } = useTLDs({ pagesize: 1000 });
 
   // Build query parameters
   const queryParams: RegistrarListParams = useMemo(() => {
@@ -73,8 +81,20 @@ export function SystemRegistrarsTab() {
     if (iid && /^\d+$/.test(iid)) {
       params.gurid_equals = parseInt(iid, 10);
     }
+    // Apply TLD filter
+    if (tldFilter && tldFilter !== "all") {
+      params.tld = tldFilter;
+    }
+    // Apply sorting params
+    if (sortBy === "domains_desc") {
+      params.sort_by = "domain_count";
+      params.sort_order = "desc";
+    } else if (sortBy === "domains_asc") {
+      params.sort_by = "domain_count";
+      params.sort_order = "asc";
+    }
     return params;
-  }, [pageSize, cursor, debouncedQuery, statusFilter, ianaIdQuery]);
+  }, [pageSize, cursor, debouncedQuery, statusFilter, ianaIdQuery, tldFilter, sortBy]);
 
   // Fetch data
   const { data, isLoading, error } = useRegistrars(queryParams);
@@ -83,11 +103,11 @@ export function SystemRegistrarsTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [workflowInfo, setWorkflowInfo] = useState<WorkflowStartResponse | null>(null);
 
-  // Reset pagination when search changes
+  // Reset pagination when search or filters change
   useEffect(() => {
     setCursor(undefined);
     setCursorStack([]);
-  }, [debouncedQuery, statusFilter, ianaIdQuery]);
+  }, [debouncedQuery, statusFilter, ianaIdQuery, tldFilter, sortBy]);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status.toLowerCase()) {
@@ -177,6 +197,35 @@ export function SystemRegistrarsTab() {
                   onChange={(e) => setIanaIdQuery(e.target.value)}
                 />
               </div>
+              {/* TLD filter dropdown */}
+              <div className="w-40">
+                <Select value={tldFilter} onValueChange={setTldFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All TLDs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All TLDs</SelectItem>
+                    {tldData?.Data?.map((tld) => (
+                      <SelectItem key={tld.Name} value={tld.Name}>
+                        .{tld.Name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Sorting selector */}
+              <div className="w-44">
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sort By" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="clid_asc">Client ID (A-Z)</SelectItem>
+                    <SelectItem value="domains_desc">Domains (High to Low)</SelectItem>
+                    <SelectItem value="domains_asc">Domains (Low to High)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {countData?.Count === 0 && (
                 <Button
                   variant="default"
@@ -225,6 +274,8 @@ export function SystemRegistrarsTab() {
                       <TableHead className="w-24">IANA ID</TableHead>
                       <TableHead className="w-32">Status</TableHead>
                       <TableHead className="w-32">Auto-renew</TableHead>
+                      <TableHead className="w-28">Domains</TableHead>
+                      <TableHead className="w-64">TLDs</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -235,6 +286,8 @@ export function SystemRegistrarsTab() {
                         <TableCell><Skeleton className="h-4 w-10" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -263,6 +316,8 @@ export function SystemRegistrarsTab() {
                         <TableHead className="w-24">IANA ID</TableHead>
                         <TableHead className="w-32">Status</TableHead>
                         <TableHead className="w-32">Auto-renew</TableHead>
+                        <TableHead className="w-28">Domains</TableHead>
+                        <TableHead className="w-64">TLDs</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -290,6 +345,27 @@ export function SystemRegistrarsTab() {
                             <Badge variant={registrar.Autorenew ? "default" : "outline"}>
                               {registrar.Autorenew ? "Enabled" : "Disabled"}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium" title={(registrar.DomainCount ?? 0).toLocaleString()}>
+                            {formatCompactNumber(registrar.DomainCount ?? 0)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1 max-w-[240px]">
+                              {registrar.TLDList && registrar.TLDList.length > 0 ? (
+                                registrar.TLDList.slice(0, 5).map((tld) => (
+                                  <Badge key={tld} variant="outline" className="text-[10px] py-0 px-1.5 font-normal">
+                                    .{tld}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                              {registrar.TLDList && registrar.TLDList.length > 5 && (
+                                <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-normal">
+                                  +{registrar.TLDList.length - 5} more
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

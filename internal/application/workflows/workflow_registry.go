@@ -23,7 +23,7 @@ type WorkflowMeta struct {
 	Name         string         `json:"name"`
 	Description  string         `json:"description"`
 	Queue        string         `json:"queue"`
-	Category     string         `json:"category"`               // "data-pipeline" | "lifecycle" | "operations"
+	Category     string         `json:"category"`               // "data" | "lifecycle"
 	Tags         []string       `json:"tags"`
 	HasSignal    bool           `json:"hasSignal"`
 	SignalName   string         `json:"signalName,omitempty"`
@@ -43,8 +43,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Name:        "TLD Import",
 			Description: "Unified workflow to parse, stage, QA, and ingest escrow deposit data after confirmation",
 			Queue:       temporal.QueueData,
-			Category:    "data-pipeline",
-			Tags:        []string{"data", "escrow", "import"},
+			Category:    "data",
+			Tags:        []string{"data", "GO"},
 			HasSignal:   true,
 			SignalName:  "ConfirmEscrowImport",
 			Steps: []WorkflowStep{
@@ -52,7 +52,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "parse-extract-assets", Label: "Parse & Extract Assets", ActivityName: "ParseAndExtractAssets"},
 				{Key: "build-staging-database", Label: "Build Staging Database", ActivityName: "BuildStagingDatabase"},
 				{Key: "resolve-registrars", Label: "Resolve Registrars", ActivityName: "ResolveRegistrars"},
-				{Key: "finalize-staging", Label: "Finalize Staging", ActivityName: "FinalizeStaging"},
+				{Key: "apply-registrar-mappings", Label: "Apply Registrar Mappings", ActivityName: "ApplyRegistrarMappings"},
 				{Key: "qa-staged-database", Label: "QA Staged Database", ActivityName: "QAStagedDatabase"},
 				{Key: "await-confirmation", Label: "Await Ingest Confirmation"},
 				{Key: "ingest-contacts", Label: "Ingest Contacts", ActivityName: "IngestContacts"},
@@ -61,6 +61,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "ingest-nndns", Label: "Ingest NNDNs", ActivityName: "IngestNNDNs"},
 				{Key: "link-domain-hosts", Label: "Link Domain Hosts", ActivityName: "LinkDomainHosts"},
 				{Key: "accredit-registrars", Label: "Accredit Registrars", ActivityName: "AccreditRegistrars"},
+				{Key: "persist-import-summary", Label: "Persist Import Summary", ActivityName: "PersistImportSummary"},
+				{Key: "verify-ingestion", Label: "Verify Ingestion", ActivityName: "VerifyIngestion"},
 			},
 			docFile: "escrowImport.doc.md",
 		},
@@ -69,8 +71,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Name:        "TLD Cleanup",
 			Description: "Backs up and removes all assets associated with a TLD after confirmation",
 			Queue:       temporal.QueueData,
-			Category:    "operations",
-			Tags:        []string{"operations", "tld", "cleanup"},
+			Category:    "lifecycle",
+			Tags:        []string{"lifecycle", "GO"},
 			HasSignal:   true,
 			SignalName:  "ConfirmTLDCleanup",
 			Steps: []WorkflowStep{
@@ -87,8 +89,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Name:         "Sync Registrars",
 			Description:  "Synchronizes the registrar list with the IANA registry",
 			Queue:        temporal.QueueLifecycle,
-			Category:     "operations",
-			Tags:         []string{"operations", "registrars", "sync"},
+			Category:     "data",
+			Tags:         []string{"data", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Daily",
 			Steps: []WorkflowStep{
@@ -107,8 +109,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Name:         "Update FX Rates",
 			Description:  "Fetches and updates foreign exchange rates",
 			Queue:        temporal.QueueData,
-			Category:     "data-pipeline",
-			Tags:         []string{"data", "finance", "fx"},
+			Category:     "data",
+			Tags:         []string{"data", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
@@ -117,12 +119,26 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "updateFX.doc.md",
 		},
 		{
+			Key:          "sync-spec5",
+			Name:         "Sync Spec5 Labels",
+			Description:  "Pulls the XML Spec5 reserved names from ICANN and refreshes the database",
+			Queue:        temporal.QueueData,
+			Category:     "data",
+			Tags:        []string{"data", "spec5", "sync", "GO"},
+			Scheduled:    true,
+			ScheduleInfo: "Daily",
+			Steps: []WorkflowStep{
+				{Key: "sync-spec5", Label: "Sync Spec5", ActivityName: "SyncSpec5"},
+			},
+			docFile: "syncSpec5Workflow.doc.md",
+		},
+		{
 			Key:          "expiry-loop",
 			Name:         "Expire Domains",
 			Description:  "Processes expired domains for auto-renew or expiration. Returns structured result with counts and failure details.",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
-			Tags:         []string{"lifecycle", "domains", "expiry"},
+			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
@@ -140,7 +156,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Description:  "Purges domains that have completed their redemption grace period",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
-			Tags:         []string{"lifecycle", "domains", "purge"},
+			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
@@ -156,7 +172,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Description:  "Processes restored domains by unsetting status and forcing renewal",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
-			Tags:         []string{"lifecycle", "domains", "restore"},
+			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
 			Steps: []WorkflowStep{
@@ -165,6 +181,46 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "force-renew", Label: "Force Renew", ActivityName: "RenewDomain"},
 			},
 			docFile: "restoreWorkflow.doc.md",
+		},
+		{
+			Key:         "take-snapshot",
+			Name:        "Take Snapshot",
+			Description: "Exports the entire database as a JSONL snapshot to S3 for backup or environment seeding",
+			Queue:       temporal.QueueData,
+			Category:    "operations",
+			Tags:        []string{"operations", "snapshot", "backup", "export", "GO"},
+			Steps: []WorkflowStep{
+				{Key: "take-snapshot", Label: "Take Snapshot", ActivityName: "TakeSnapshot"},
+			},
+			docFile: "takeSnapshot.doc.md",
+		},
+		{
+			Key:         "seed-from-snapshot",
+			Name:        "Seed from Snapshot",
+			Description: "Populates the database from a previously taken JSONL snapshot (ON CONFLICT DO NOTHING — gap-filling, idempotent)",
+			Queue:       temporal.QueueData,
+			Category:    "operations",
+			Tags:        []string{"operations", "snapshot", "seed", "import", "restore", "GO"},
+			HasSignal:   true,
+			SignalName:  "ConfirmSeedFromSnapshot",
+			Steps: []WorkflowStep{
+				{Key: "validate-snapshot", Label: "Validate Snapshot", ActivityName: "ValidateSnapshot"},
+				{Key: "await-confirmation", Label: "Await Confirmation"},
+				{Key: "seed-from-snapshot", Label: "Seed from Snapshot", ActivityName: "SeedFromSnapshot"},
+			},
+			docFile: "seedFromSnapshot.doc.md",
+		},
+		{
+			Key:         "spec5-sweep",
+			Name:        "Spec5 Domain Sweep",
+			Description: "Sweeps the domain inventory to return a list of Spec5 labels that exist as registered domains",
+			Queue:       temporal.QueueData,
+			Category:    "operations",
+			Tags:        []string{"operations", "spec5", "sweep", "GO"},
+			Steps: []WorkflowStep{
+				{Key: "spec5-sweep", Label: "Spec5 Sweep", ActivityName: "SweepSpec5Labels"},
+			},
+			docFile: "spec5Sweep.doc.md",
 		},
 	}
 

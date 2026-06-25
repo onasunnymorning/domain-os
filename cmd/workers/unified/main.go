@@ -57,6 +57,7 @@ func main() {
 	lifecycleWorker.RegisterActivity(activities.BulkUpdateRegistrarStatuses)
 	lifecycleWorker.RegisterActivity(activities.GetRegistrarListItems)
 	lifecycleWorker.RegisterActivity(activities.CreateRegistrar)
+	lifecycleWorker.RegisterActivity(activities.BulkCreateRegistrars)
 
 	// --- Data Pipeline Worker (queue: data-pipeline) ---
 	// Handles escrow staging/ingestion, TLD cleanup, and FX rate updates.
@@ -65,9 +66,11 @@ func main() {
 	dataWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
 	dataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	dataWorker.RegisterWorkflow(workflows.UpdateFX)
+	dataWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
 
 	dataWorker.RegisterActivity(&activities.EscrowImportActivities{})
 	dataWorker.RegisterActivity(activities.UpdateFX)
+	dataWorker.RegisterActivity(activities.SyncSpec5)
 
 	// TLD Cleanup activities require DB + S3; gracefully skip if unavailable
 	tldActs, err := activities.NewTLDCleanupActivities()
@@ -78,6 +81,30 @@ func main() {
 		dataWorker.RegisterActivity(tldActs.PlanTLDCleanup)
 		dataWorker.RegisterActivity(tldActs.BackupTLDAssets)
 		dataWorker.RegisterActivity(tldActs.DeleteTLDAssets)
+	}
+
+	// Snapshot workflows (Take Snapshot + Seed from Snapshot)
+	dataWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
+	dataWorker.RegisterWorkflow(workflows.SeedFromSnapshotWorkflow)
+
+	// Snapshot activities require DB + S3; gracefully skip if unavailable
+	snapActs, err := activities.NewSnapshotActivities()
+	if err != nil {
+		log.Printf("WARNING: Snapshot activities not available (DB/S3 not configured): %v", err)
+	} else {
+		dataWorker.RegisterActivity(snapActs.TakeSnapshot)
+		dataWorker.RegisterActivity(snapActs.ValidateSnapshot)
+		dataWorker.RegisterActivity(snapActs.SeedFromSnapshot)
+		dataWorker.RegisterActivity(snapActs.ListSnapshots)
+	}
+
+	// Spec5 Sweep (workflow + activity)
+	dataWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
+	spec5SweepActs, err := activities.NewSpec5SweepActivities()
+	if err != nil {
+		log.Printf("WARNING: Spec5 sweep activities not available (DB/S3 not configured): %v", err)
+	} else {
+		dataWorker.RegisterActivity(spec5SweepActs.SweepSpec5Labels)
 	}
 
 	// Start all workers concurrently. worker.InterruptCh() returns a channel

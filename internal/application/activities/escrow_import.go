@@ -44,7 +44,8 @@ type ValidateEscrowSourceResult struct {
 // EscrowImportActivities groups escrow-related activity methods
 type EscrowImportActivities struct{}
 
-// ValidateEscrowSource checks that required inputs are present and object exists in S3/MinIO
+// ValidateEscrowSource checks that required inputs are present, the TLD allows
+// escrow imports, and the source object exists in S3/MinIO.
 func (a *EscrowImportActivities) ValidateEscrowSource(ctx context.Context, args ValidateEscrowSourceArgs) (ValidateEscrowSourceResult, error) {
 	tld := strings.TrimSpace(args.TLD)
 	if tld == "" {
@@ -55,6 +56,34 @@ func (a *EscrowImportActivities) ValidateEscrowSource(ctx context.Context, args 
 		return ValidateEscrowSourceResult{}, fmt.Errorf("objectKey is required")
 	}
 
+	// Guard: check TLD allows escrow imports via admin API
+	apiBase := buildAdminAPIURL()
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := adminAPIGet(client, fmt.Sprintf("%s/tlds/%s", apiBase, tld))
+	if err != nil {
+		return ValidateEscrowSourceResult{}, fmt.Errorf("ValidateEscrowSource: failed to fetch TLD %q from API (%s): %w. Check that the admin-api is running and API_HOST/API_PORT are set", tld, apiBase, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ValidateEscrowSourceResult{}, fmt.Errorf("ValidateEscrowSource: TLD %q not found in the system. Create the TLD first", tld)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return ValidateEscrowSourceResult{}, fmt.Errorf("ValidateEscrowSource: failed to fetch TLD %q: HTTP %d: %s", tld, resp.StatusCode, string(body))
+	}
+
+	var tldInfo struct {
+		AllowEscrowImport bool `json:"AllowEscrowImport"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tldInfo); err != nil {
+		return ValidateEscrowSourceResult{}, fmt.Errorf("ValidateEscrowSource: failed to parse TLD response: %w", err)
+	}
+	if !tldInfo.AllowEscrowImport {
+		return ValidateEscrowSourceResult{}, fmt.Errorf("ValidateEscrowSource: escrow import is disabled for TLD %q. Enable it via PUT /tlds/%s/status/AllowEscrowImport", tld, tld)
+	}
+
+	// Validate source file exists in S3
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
 		return ValidateEscrowSourceResult{}, err
@@ -76,7 +105,7 @@ type StreamingAnalysisArgs struct {
 
 // StreamingAnalysisResult outcome
 type StreamingAnalysisResult struct {
-	RunPrefix    string            // escrow/<tld>/<yyyyMMdd>/<workflowId>
+	RunPrefix    string            // flat: workflowId (e.g. escrow-import-best-20260625-001231)
 	BaseFilename string            // derived base name used for CSVs
 	ArtifactKeys map[string]string // filename -> s3 key
 	Counts       map[string]int64  // optional counts (best-effort)
@@ -111,9 +140,12 @@ func (a *EscrowImportActivities) StreamingAnalysis(ctx context.Context, args Str
 	// Determine base filename early for stable path generation
 	base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
 
-	// Stable Run Prefix: escrow/<tld>/processed/<base>
-	// This usage of a deterministic path (vs random WorkflowID) allows resumption by finding existing artifacts.
-	runPrefix := filepath.ToSlash(filepath.Join("escrow", tld, "processed", base))
+	// Flat bucket layout: use workflow ID as the run prefix.
+	// Falls back to a deterministic name if called outside a workflow.
+	runPrefix := wfID
+	if runPrefix == "" || runPrefix == "unknown" {
+		runPrefix = fmt.Sprintf("escrow-legacy-%s-%s", tld, base)
+	}
 
 	// Resumption Check: If analysis.json exists, we assume this step was already done.
 	// We download the analysis JSON to populate the result struct correctly.
@@ -1085,12 +1117,13 @@ func (a *EscrowImportActivities) LinkDomainHostsDirect(ctx context.Context, args
 		_ = s3c.UploadString(ctx, cursorKey, k)
 	}
 
-	total, err := importer.LinkDomainHosts(ctx, db, lastKey, heartbeat)
+	total, lInserted, err := importer.LinkDomainHosts(ctx, db, lastKey, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
 
 	counts["domain_hosts_linked"] = total
+	counts["domain_hosts_inserted"] = lInserted
 
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Tallies: tallies}, nil
 }
@@ -2429,17 +2462,225 @@ type ResolveRegistrarsArgs struct {
 	Overrides map[string]string
 }
 
-type ResolveRegistrarsResult struct {
-	DBKey     string // Updated db key
-	HasIssues bool
+// UnmappedRegistrar captures info about a registrar that couldn't be auto-mapped
+// to a system registrar. Surfaced in the UI so operators can provide overrides.
+type UnmappedRegistrar struct {
+	EscrowID     string `json:"escrowId"`
+	Name         string `json:"name"`
+	GurID        int    `json:"gurId"`
+	DomainCount  int    `json:"domainCount"`
+	HostCount    int    `json:"hostCount"`
+	ContactCount int    `json:"contactCount"`
 }
 
-type FinalizeStagingArgs struct {
+// AutoFixedRegistrar records a host-only registrar that was automatically resolved
+// by tracing host→domain relationships and reassigning hosts to domain registrars.
+type AutoFixedRegistrar struct {
+	EscrowID        string `json:"escrowId"`
+	Name            string `json:"name"`
+	HostsReassigned int    `json:"hostsReassigned"` // Hosts updated to a single domain registrar
+	HostsDuplicated int    `json:"hostsDuplicated"` // Hosts duplicated across multiple domain registrars
+}
+
+type ResolveRegistrarsResult struct {
+	DBKey               string                // Updated db key
+	HasIssues           bool                  // True if any active registrar is unmapped
+	TotalRegistrars     int                   // Total registrars in escrow
+	MappedCount         int                   // Successfully mapped
+	UnmappedRegistrars  []UnmappedRegistrar   // Registrars that couldn't be auto-mapped
+	AutoFixedRegistrars []AutoFixedRegistrar  // Host-only registrars auto-resolved
+}
+
+// autoFixHostOnlyRegistrars resolves unmapped registrars that only manage hosts
+// (no domains, no contacts) by tracing host→domain_nameservers→domain relationships.
+//
+// For each host from an unmapped registrar:
+//   - Find which domains reference it (via domain_nameservers)
+//   - Determine which registrar those domains belong to
+//   - Reassign the host's clID to that domain's registrar
+//   - If the host is used by domains from multiple registrars, duplicate the host record
+//
+// This modifies the DB in-place. Hosts not referenced by any domain are left unchanged.
+func autoFixHostOnlyRegistrars(logger *log.Logger, db *sql.DB, hostOnly []UnmappedRegistrar) ([]AutoFixedRegistrar, error) {
+	if len(hostOnly) == 0 {
+		return nil, nil
+	}
+
+	// Build IN-clause for unmapped registrar IDs
+	placeholders := make([]string, len(hostOnly))
+	args := make([]interface{}, len(hostOnly))
+	for i, r := range hostOnly {
+		placeholders[i] = "?"
+		args[i] = r.EscrowID
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Step 1: Compute host → target registrar assignments.
+	// For each host from an unmapped registrar, find which mapped domain registrars
+	// reference it through domain_nameservers.
+	rows, err := db.Query(`
+		SELECT h.name AS host_name, h.clID AS original_clid, d.clID AS target_registrar
+		FROM hosts h
+		JOIN domain_nameservers dn ON dn.nameserver = h.name
+		JOIN domains d ON d.name = dn.domain_name
+		WHERE h.clID IN (`+inClause+`)
+		GROUP BY h.name, d.clID
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("autoFixHostOnlyRegistrars: query assignments: %w", err)
+	}
+
+	type hostAssignment struct {
+		HostName     string
+		OriginalClID string
+		TargetClID   string
+	}
+
+	// hostTargets maps hostname → list of target registrar escrow IDs
+	hostTargets := map[string][]string{}
+	// Track which original clID each host came from
+	hostOriginal := map[string]string{}
+
+	for rows.Next() {
+		var a hostAssignment
+		if err := rows.Scan(&a.HostName, &a.OriginalClID, &a.TargetClID); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: scan: %w", err)
+		}
+		hostTargets[a.HostName] = append(hostTargets[a.HostName], a.TargetClID)
+		hostOriginal[a.HostName] = a.OriginalClID
+	}
+	rows.Close()
+
+	if len(hostTargets) == 0 {
+		logger.Printf("No host assignments found — all hosts orphaned (unmappedRegistrars=%d)", len(hostOnly))
+		return nil, nil
+	}
+
+	// Step 2: Check if any hosts need duplication (used by multiple registrars)
+	needsDuplication := false
+	for _, targets := range hostTargets {
+		if len(targets) > 1 {
+			needsDuplication = true
+			break
+		}
+	}
+
+	// Step 3: Apply changes
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("autoFixHostOnlyRegistrars: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if needsDuplication {
+		// Recreate hosts table with composite PK (name, clid) to allow duplicates.
+		// This is necessary because the original schema has name as sole PK.
+		_, err = tx.Exec(`CREATE TABLE hosts_fixed (
+			name TEXT NOT NULL,
+			roid TEXT,
+			clid TEXT NOT NULL,
+			crrr TEXT,
+			crdate TEXT,
+			uprr TEXT,
+			"update" TEXT,
+			PRIMARY KEY (name, clid)
+		)`)
+		if err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: create hosts_fixed: %w", err)
+		}
+
+		// Copy hosts NOT from unmapped registrars (unchanged)
+		_, err = tx.Exec(`INSERT INTO hosts_fixed SELECT * FROM hosts WHERE clID NOT IN (`+inClause+`)`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: copy unaffected hosts: %w", err)
+		}
+
+		// Insert reassigned/duplicated hosts
+		stmt, err := tx.Prepare(`INSERT OR IGNORE INTO hosts_fixed (name, roid, clid, crrr, crdate, uprr, "update")
+			SELECT name, roid, ?, crrr, crdate, uprr, "update" FROM hosts WHERE name = ?`)
+		if err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: prepare insert: %w", err)
+		}
+		for hostName, targets := range hostTargets {
+			for _, targetClID := range targets {
+				if _, err := stmt.Exec(targetClID, hostName); err != nil {
+					logger.Printf("⚠️ Failed to insert reassigned host %s → %s: %v", hostName, targetClID, err)
+				}
+			}
+		}
+		stmt.Close()
+
+		// Copy orphaned hosts (from unmapped registrars, not referenced by any domain) as-is
+		_, err = tx.Exec(`INSERT OR IGNORE INTO hosts_fixed
+			SELECT * FROM hosts WHERE clID IN (`+inClause+`)
+			AND name NOT IN (SELECT DISTINCT nameserver FROM domain_nameservers)`, args...)
+		if err != nil {
+			logger.Printf("⚠️ Failed to copy orphaned hosts: %v", err)
+		}
+
+		// Swap tables
+		if _, err = tx.Exec(`DROP TABLE hosts`); err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: drop hosts: %w", err)
+		}
+		if _, err = tx.Exec(`ALTER TABLE hosts_fixed RENAME TO hosts`); err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: rename hosts_fixed: %w", err)
+		}
+	} else {
+		// Simple case: all hosts map to exactly one registrar, just UPDATE
+		stmt, err := tx.Prepare(`UPDATE hosts SET clID = ? WHERE name = ?`)
+		if err != nil {
+			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: prepare update: %w", err)
+		}
+		for hostName, targets := range hostTargets {
+			if _, err := stmt.Exec(targets[0], hostName); err != nil {
+				logger.Printf("⚠️ Failed to update host %s → %s: %v", hostName, targets[0], err)
+			}
+		}
+		stmt.Close()
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("autoFixHostOnlyRegistrars: commit: %w", err)
+	}
+
+	// Step 4: Build tracking data per unmapped registrar
+	perRegistrar := map[string]*AutoFixedRegistrar{}
+	for _, r := range hostOnly {
+		perRegistrar[r.EscrowID] = &AutoFixedRegistrar{
+			EscrowID: r.EscrowID,
+			Name:     r.Name,
+		}
+	}
+	for hostName, targets := range hostTargets {
+		origClID := hostOriginal[hostName]
+		if af, ok := perRegistrar[origClID]; ok {
+			if len(targets) == 1 {
+				af.HostsReassigned++
+			} else {
+				af.HostsDuplicated++
+			}
+		}
+	}
+
+	var result []AutoFixedRegistrar
+	for _, af := range perRegistrar {
+		if af.HostsReassigned > 0 || af.HostsDuplicated > 0 {
+			logger.Printf("✅ Auto-fixed host-only registrar %s (%s): reassigned=%d duplicated=%d",
+				af.EscrowID, af.Name, af.HostsReassigned, af.HostsDuplicated)
+			result = append(result, *af)
+		}
+	}
+
+	return result, nil
+}
+
+type ApplyRegistrarMappingsArgs struct {
 	TLD   string
 	DBKey string
 }
 
-type FinalizeStagingResult struct {
+type ApplyRegistrarMappingsResult struct {
 	StagedDBKey string
 }
 
@@ -2477,8 +2718,13 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 	if args.RunPrefix != "" {
 		runPrefix = args.RunPrefix
 	} else {
-		// Fallback to legacy behavior
-		runPrefix = filepath.ToSlash(filepath.Join("escrow", tld, "processed", base))
+		// Fallback: use activity workflow ID (flat bucket layout)
+		wfID := activity.GetInfo(ctx).WorkflowExecution.ID
+		if wfID != "" {
+			runPrefix = wfID
+		} else {
+			runPrefix = fmt.Sprintf("escrow-legacy-%s-%s", tld, base)
+		}
 	}
 
 	// Resumption Check using analysis.json
@@ -2716,50 +2962,11 @@ func (a *EscrowImportActivities) BuildStagingDatabase(ctx context.Context, args 
 		return BuildStagingDatabaseResult{}, fmt.Errorf("csv to sqlite failed for base %s: %w", base, err)
 	}
 
-	// Data Enrichment: Ingest domain counts from analysis.json
-	if analysisKey, ok := args.AssetKeys[base+"-analysis.json"]; ok {
-		activity.GetLogger(ctx).Info("Enriching DB with analysis data", "key", analysisKey)
-		if tmp, err := s3c.DownloadToFile(ctx, analysisKey); err == nil {
-			var analysis struct {
-				RegistrarMapping map[string]struct {
-					RecClID      string `json:"registrarClID"`
-					DomainCount  int    `json:"domainCount"`
-					HostCount    int    `json:"hostCount"`
-					ContactCount int    `json:"contactCount"`
-				} `json:"registrarMapping"`
-			}
-			data, _ := os.ReadFile(tmp)
-			if err := json.Unmarshal(data, &analysis); err == nil {
-				// Update DB
-				if db, err := sql.Open("sqlite", dbPath); err == nil {
-					// Add column (ignore error if exists)
-					_, _ = db.Exec(`ALTER TABLE registrars ADD COLUMN host_count INTEGER DEFAULT 0`)
-					_, _ = db.Exec(`ALTER TABLE registrars ADD COLUMN contact_count INTEGER DEFAULT 0`)
-
-					tx, _ := db.Begin()
-					stmt, _ := tx.Prepare(`UPDATE registrars SET domain_count = ?, host_count = ?, contact_count = ? WHERE ID = ?`)
-					// Try lower case ID if first fails? Usually sensitive.
-					// Actually the DB schema might be "id" or "ID".
-					// We'll rely on the fact that we just created it from CSV.
-					// If CSV header was "ClID", column is "ClID". Only checks ID for now.
-					// Let's try both to be safe or inspect.
-					// Simple update:
-					for clID, reg := range analysis.RegistrarMapping {
-						// Use the map key as the ID, as RecClID might be empty
-						if _, err := stmt.Exec(reg.DomainCount, reg.HostCount, reg.ContactCount, clID); err != nil {
-							// If ID column is lowercase "id" or something, this might fail if we assumed ID.
-							// But previously we query `SELECT ID...`.
-						}
-					}
-					stmt.Close()
-					tx.Commit()
-					db.Close()
-					activity.GetLogger(ctx).Info("Updated registrar domain counts", "count", len(analysis.RegistrarMapping))
-				}
-			}
-			os.Remove(tmp)
-		}
-	}
+	// NOTE: Registrar object counts (domain_count, host_count, contact_count) are now
+	// computed directly from the imported data tables by CSVToSQLiteService.enrichRegistrarCounts(),
+	// and ResolveRegistrars independently computes counts via LEFT JOIN against the data tables.
+	// The analysis.json enrichment was removed because the analysis data was pre-computed
+	// externally and often had stale or incomplete counts.
 
 	dbKey := runPrefix + "/" + filepath.Base(dbPath)
 	if err := s3c.UploadFile(ctx, dbKey, dbPath, "application/octet-stream"); err != nil {
@@ -2826,7 +3033,9 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		return ResolveRegistrarsResult{}, fmt.Errorf("create mapping table failed: %w", err)
 	}
 
-	// Read Registrars
+	// Read Registrars with actual object counts computed from data tables.
+	// The registrars table may have stale/missing count columns, so we derive
+	// counts by joining against domains, hosts, and contacts directly.
 	type regRow struct {
 		ClID         string
 		Name         string
@@ -2837,23 +3046,21 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	}
 	var registrars []regRow
 
-	// Try to query registrars table
-	// We check for domain_count column existence or handle missing
-	// Try to query registrars table
-	// We check for domain_count, host_count, and contact_count column existence or handle missing
-	query := `SELECT ID, name, gurID, domain_count, host_count, contact_count FROM registrars`
+	query := `
+		SELECT r.ID, r.name, r.gurID,
+			COALESCE(dc.cnt, 0) AS domain_count,
+			COALESCE(hc.cnt, 0) AS host_count,
+			COALESCE(cc.cnt, 0) AS contact_count
+		FROM registrars r
+		LEFT JOIN (SELECT clID, COUNT(*) AS cnt FROM domains GROUP BY clID) dc ON dc.clID = r.ID
+		LEFT JOIN (SELECT clID, COUNT(*) AS cnt FROM hosts GROUP BY clID) hc ON hc.clID = r.ID
+		LEFT JOIN (SELECT clID, COUNT(*) AS cnt FROM contacts GROUP BY clID) cc ON cc.clID = r.ID
+	`
 	rows, err := db.Query(query)
 	if err != nil {
-		// Fallback: DB might not have domain_count if enrichment failed or old run
-		// Try without domain_count
-		rows, err = db.Query(`SELECT ID, name, gurID, 0 as domain_count, 0 as host_count, 0 as contact_count FROM registrars`)
-		if err != nil {
-			// Try lowercase
-			rows, err = db.Query(`SELECT id, name, gurid, domain_count FROM registrars`)
-			if err != nil {
-				rows, err = db.Query(`SELECT id, name, gurid, 0 as domain_count FROM registrars`)
-			}
-		}
+		// Fallback: domains/hosts/contacts tables may not exist yet (thin TLD)
+		activity.GetLogger(ctx).Warn("Could not query with object counts, falling back", "error", err)
+		rows, err = db.Query(`SELECT ID, name, gurID, 0 AS domain_count, 0 AS host_count, 0 AS contact_count FROM registrars`)
 	}
 
 	if err != nil {
@@ -2891,7 +3098,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	}
 
 	mappedCount := 0
-	var missing []string
+	var unmapped []UnmappedRegistrar
 
 	for _, r := range registrars {
 		mappedID := ""
@@ -2936,7 +3143,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 			}
 		}
 
-		// Insert mapping or mark missing
+		// Insert mapping (mapped or NULL for unmapped)
 		if mappedID != "" {
 			_, err := tx.Exec(`INSERT OR REPLACE INTO registrar_mapping (escrow_id, registrar_clid, name, gurid) VALUES (?, ?, ?, ?)`,
 				r.ClID, mappedID, r.Name, r.GurID)
@@ -2946,31 +3153,83 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 			}
 			mappedCount++
 		} else {
-			// Smart Validation: Only fail if the registrar actually manages domains OR hosts OR contacts
+			// Do NOT insert a row into registrar_mapping for unmapped registrars.
+			// The absence of a mapping row tells ApplyRegistrarMappings.copyAndUpdate
+			// to preserve the original clID value (via WHERE EXISTS). Inserting a NULL
+			// row would cause EXISTS to match and set clID = NULL.
+
+			// Track unmapped registrars that actually manage objects
 			if r.DomainCount > 0 || r.HostCount > 0 || r.ContactCount > 0 {
 				activity.GetLogger(ctx).Warn("Registrar unmapped", "name", r.Name, "clid", r.ClID, "gurid", r.GurID, "domain_count", r.DomainCount, "host_count", r.HostCount, "contact_count", r.ContactCount)
-				missing = append(missing, fmt.Sprintf("%s (ClID: %s, GurID: %d, Domains: %d, Hosts: %d, Contacts: %d)", r.Name, r.ClID, r.GurID, r.DomainCount, r.HostCount, r.ContactCount))
+				unmapped = append(unmapped, UnmappedRegistrar{
+					EscrowID:     r.ClID,
+					Name:         r.Name,
+					GurID:        r.GurID,
+					DomainCount:  r.DomainCount,
+					HostCount:    r.HostCount,
+					ContactCount: r.ContactCount,
+				})
 			} else {
 				activity.GetLogger(ctx).Warn("Ignoring unmapped empty registrar", "name", r.Name, "clid", r.ClID, "gurid", r.GurID)
 			}
 		}
 	}
 
-	if len(missing) > 0 {
-		tx.Rollback()
-		activity.GetLogger(ctx).Error("Registrar mapping incomplete", "missing_count", len(missing), "missing", missing)
-		return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: true}, temporal.NewNonRetryableApplicationError(
-			fmt.Sprintf("mapping failed: %d registrars unmapped. Please provide overrides for: %s", len(missing), strings.Join(missing, ", ")),
-			"RegistrarMappingIncomplete",
-			nil,
-		)
-	}
-
 	if err := tx.Commit(); err != nil {
 		return ResolveRegistrarsResult{}, fmt.Errorf("commit failed: %w", err)
 	}
 
-	activity.GetLogger(ctx).Info("Mapped registrars", "total", len(registrars), "mapped", mappedCount)
+	// Auto-fix: resolve unmapped registrars that only have hosts (no domains, no contacts)
+	// by tracing host→domain_nameservers→domain relationships.
+	var hostOnly, remaining []UnmappedRegistrar
+	for _, u := range unmapped {
+		if u.DomainCount == 0 && u.ContactCount == 0 && u.HostCount > 0 {
+			hostOnly = append(hostOnly, u)
+		} else {
+			remaining = append(remaining, u)
+		}
+	}
+
+	var autoFixed []AutoFixedRegistrar
+	if len(hostOnly) > 0 {
+		activity.GetLogger(ctx).Info("Auto-fixing host-only unmapped registrars",
+			"count", len(hostOnly), "totalHosts", func() int {
+				n := 0
+				for _, r := range hostOnly {
+					n += r.HostCount
+				}
+				return n
+			}())
+
+		autoFixed, err = autoFixHostOnlyRegistrars(
+			log.New(os.Stderr, "[autofix] ", log.LstdFlags), db, hostOnly)
+		if err != nil {
+			activity.GetLogger(ctx).Error("Auto-fix failed, continuing with gaps", "err", err)
+			// Fall back: keep them as unmapped
+			remaining = append(remaining, hostOnly...)
+		} else {
+			activity.GetLogger(ctx).Info("Auto-fix complete",
+				"registrarsFixed", len(autoFixed),
+				"hostsProcessed", func() int {
+					n := 0
+					for _, af := range autoFixed {
+						n += af.HostsReassigned + af.HostsDuplicated
+					}
+					return n
+				}())
+		}
+	}
+
+	// Use remaining (non-fixable) as the final unmapped list
+	unmapped = remaining
+
+	if len(unmapped) > 0 {
+		activity.GetLogger(ctx).Warn("Registrar mapping incomplete — gaps will surface in QA",
+			"total", len(registrars), "mapped", mappedCount, "unmapped", len(unmapped))
+	} else {
+		activity.GetLogger(ctx).Info("Mapped registrars", "total", len(registrars), "mapped", mappedCount,
+			"autoFixed", len(autoFixed))
+	}
 
 	// Close the db to ensure WAL is checkpointed and flushed to the main db file before uploading
 	db.Close()
@@ -2985,6 +3244,8 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		"dbKey":       args.DBKey,
 		"completedAt": time.Now().UTC().Format(time.RFC3339),
 		"mappedCount": mappedCount,
+		"unmapped":    len(unmapped),
+		"autoFixed":   len(autoFixed),
 	}
 	if tmp, err := os.CreateTemp("", "map-manifest-*.json"); err == nil {
 		json.NewEncoder(tmp).Encode(manifest)
@@ -2993,7 +3254,14 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		os.Remove(tmp.Name())
 	}
 
-	return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: false}, nil
+	return ResolveRegistrarsResult{
+		DBKey:               args.DBKey,
+		HasIssues:           len(unmapped) > 0,
+		TotalRegistrars:     len(registrars),
+		MappedCount:         mappedCount,
+		UnmappedRegistrars:  unmapped,
+		AutoFixedRegistrars: autoFixed,
+	}, nil
 }
 
 func verifyRegistrarExists(client *http.Client, baseURL, token, id string) bool {
@@ -3081,14 +3349,14 @@ func fetchRegistrarByNameLike(client *http.Client, baseURL, token, name string) 
 	return "", nil
 }
 
-func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args FinalizeStagingArgs) (FinalizeStagingResult, error) {
+func (a *EscrowImportActivities) ApplyRegistrarMappings(ctx context.Context, args ApplyRegistrarMappingsArgs) (ApplyRegistrarMappingsResult, error) {
 	if args.DBKey == "" {
-		return FinalizeStagingResult{}, fmt.Errorf("dbKey is required")
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("dbKey is required")
 	}
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		return FinalizeStagingResult{}, err
+		return ApplyRegistrarMappingsResult{}, err
 	}
 
 	// Idempotency: Check if staged DB already exists
@@ -3100,13 +3368,13 @@ func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args Final
 
 	if exists, _ := s3c.Exists(ctx, stagedKey); exists {
 		activity.GetLogger(ctx).Info("Resuming: Staged DB found", "key", stagedKey)
-		return FinalizeStagingResult{StagedDBKey: stagedKey}, nil
+		return ApplyRegistrarMappingsResult{StagedDBKey: stagedKey}, nil
 	}
 
 	// Download Source DB
 	srcPath, err := s3c.DownloadToFile(ctx, args.DBKey)
 	if err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("download db failed: %w", err)
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("download db failed: %w", err)
 	}
 	defer os.Remove(srcPath)
 	defer os.Remove(srcPath + "-wal")
@@ -3121,20 +3389,34 @@ func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args Final
 
 	db, err := sql.Open("sqlite", stagedPath)
 	if err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("open staged db failed: %w", err)
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("open staged db failed: %w", err)
 	}
 	defer db.Close()
 
 	// Attach Source DB
 	if _, err := db.Exec(fmt.Sprintf("ATTACH DATABASE '%s' AS src", srcPath)); err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("attach failed: %w", err)
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("attach failed: %w", err)
 	}
 
-	// Helper to copy and update (Strict: Preserves original if unmapped)
-	copyAndUpdate := func(table string, clidCols ...string) error {
-		// Copy structure and data (Only CREATE if not exists, but we usually want fresh table? Logic is CREATE AS SELECT)
-		// The original code tried DROP TABLE IF EXISTS or relied on fresh staged.db?
-		// We are opening a fresh file usually (defer os.Remove(srcPath) implies we work on copies).
+	// Build a pre-normalized mapping lookup table (once).
+	// This eliminates the TRIM()/COLLATE NOCASE overhead that was defeating index
+	// usage on the PRIMARY KEY. ~500 rows, instant to build.
+	if _, err := db.Exec(`
+		CREATE TEMP TABLE _mapping AS 
+		SELECT TRIM(LOWER(escrow_id)) AS eid, registrar_clid 
+		FROM src.registrar_mapping
+		WHERE registrar_clid IS NOT NULL AND registrar_clid != ''
+	`); err != nil {
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("build mapping lookup failed: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX _idx_mapping_eid ON _mapping(eid)`); err != nil {
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("index mapping lookup failed: %w", err)
+	}
+
+	// stageTable copies a table from src and applies registrar mappings in a single UPDATE.
+	// - strictCols (clID): preserved as-is if unmapped (COALESCE fallback)
+	// - nullableCols (crRr, upRr): set to NULL if unmapped
+	stageTable := func(table string, strictCols []string, nullableCols []string) error {
 		_, err := db.Exec(fmt.Sprintf("CREATE TABLE %s AS SELECT * FROM src.%s", table, table))
 		if err != nil {
 			if strings.Contains(err.Error(), "no such table") {
@@ -3143,73 +3425,59 @@ func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args Final
 			return err
 		}
 
-		// Update CLIDs - Strict Mode (Preserve Value if Unmapped - triggers FK error later if invalid)
-		for _, col := range clidCols {
-			query := fmt.Sprintf(`UPDATE %s SET %s = (
-				SELECT registrar_clid FROM src.registrar_mapping 
-				WHERE TRIM(escrow_id) = TRIM(%s.%s) COLLATE NOCASE
-			) WHERE EXISTS (
-				SELECT 1 FROM src.registrar_mapping 
-				WHERE TRIM(escrow_id) = TRIM(%s.%s) COLLATE NOCASE
-			)`, table, col, table, col, table, col)
+		// Build a single UPDATE that maps all columns at once.
+		var setClauses []string
+		for _, col := range strictCols {
+			// Strict: preserve original value if no mapping found
+			setClauses = append(setClauses, fmt.Sprintf(
+				`%s = COALESCE((SELECT registrar_clid FROM _mapping WHERE eid = TRIM(LOWER(%s.%s))), %s.%s)`,
+				col, table, col, table, col))
+		}
+		for _, col := range nullableCols {
+			// Nullable: set to NULL if no mapping found
+			setClauses = append(setClauses, fmt.Sprintf(
+				`%s = (SELECT registrar_clid FROM _mapping WHERE eid = TRIM(LOWER(%s.%s)))`,
+				col, table, col))
+		}
 
+		if len(setClauses) > 0 {
+			query := fmt.Sprintf("UPDATE %s SET %s", table, strings.Join(setClauses, ", "))
 			if res, err := db.Exec(query); err != nil {
-				activity.GetLogger(ctx).Warn("Failed to update column in staged db", "table", table, "col", col, "error", err)
+				activity.GetLogger(ctx).Warn("ApplyRegistrarMappings: UPDATE failed", "table", table, "error", err)
 			} else {
 				af, _ := res.RowsAffected()
-				activity.GetLogger(ctx).Info("Updated CLIDs in staged db (Strict)", "table", table, "col", col, "affected", af)
+				activity.GetLogger(ctx).Info("ApplyRegistrarMappings: mapped registrar IDs", "table", table, "affected", af)
 			}
 		}
+
+		// Add clID index on staged table — benefits downstream QA queries
+		for _, col := range strictCols {
+			db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_staged_%s_%s ON %s(%s)", table, col, table, col))
+		}
+
 		return nil
 	}
 
-	// Helper to update columns to NULL if unmapped (Nullable Mode)
-	// We run this AFTER copyAndUpdate created the table.
-	updateNullable := func(table string, clidCols ...string) error {
-		for _, col := range clidCols {
-			// Update to NULL if no mapping found (Removing WHERE EXISTS clause)
-			query := fmt.Sprintf(`UPDATE %s SET %s = (
-				SELECT registrar_clid FROM src.registrar_mapping 
-				WHERE TRIM(escrow_id) = TRIM(%s.%s) COLLATE NOCASE
-			)`, table, col, table, col)
-
-			if res, err := db.Exec(query); err != nil {
-				activity.GetLogger(ctx).Warn("Failed to update nullable column in staged db", "table", table, "col", col, "error", err)
-			} else {
-				af, _ := res.RowsAffected()
-				activity.GetLogger(ctx).Info("Updated CLIDs in staged db (Nullable)", "table", table, "col", col, "affected", af)
-			}
-		}
-		return nil
+	// Stage entity tables (single indexed-lookup UPDATE each)
+	if err := stageTable("contacts", []string{"clID"}, []string{"crRr", "upRr"}); err != nil {
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("stage contacts failed: %w", err)
 	}
-
-	// Contacts
-	if err := copyAndUpdate("contacts", "clID"); err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("stage contacts failed: %w", err)
+	if err := stageTable("hosts", []string{"clID"}, []string{"crRr", "upRr"}); err != nil {
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("stage hosts failed: %w", err)
 	}
-	updateNullable("contacts", "crRr", "upRr")
-
-	// Hosts
-	if err := copyAndUpdate("hosts", "clID"); err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("stage hosts failed: %w", err)
+	if err := stageTable("domains", []string{"clID"}, []string{"crRr", "upRr"}); err != nil {
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("stage domains failed: %w", err)
 	}
-	updateNullable("hosts", "crRr", "upRr")
-
-	// Domains
-	if err := copyAndUpdate("domains", "clID"); err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("stage domains failed: %w", err)
-	}
-	updateNullable("domains", "crRr", "upRr")
 
 	// Copy auxiliary tables without updates
 	knownTables := []string{"host_addresses", "domain_hosts", "domain_statuses", "contact_statuses", "host_statuses", "domain_nameservers", "domain_rgp_statuses", "nndns", "registrars", "registrar_mapping", "registrar_postal_info"}
 	for _, t := range knownTables {
 		if _, err := db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM src.%s", t, t)); err != nil {
 			if strings.Contains(err.Error(), "no such table") {
-				activity.GetLogger(ctx).Warn("⚠️ FinalizeStaging: missing aux table in source, skipping", "table", t)
+				activity.GetLogger(ctx).Warn("⚠️ ApplyRegistrarMappings: missing aux table in source, skipping", "table", t)
 				continue
 			}
-			return FinalizeStagingResult{}, fmt.Errorf("stage aux table %s failed: %w", t, err)
+			return ApplyRegistrarMappingsResult{}, fmt.Errorf("stage aux table %s failed: %w", t, err)
 		}
 	}
 
@@ -3221,10 +3489,10 @@ func (a *EscrowImportActivities) FinalizeStaging(ctx context.Context, args Final
 
 	// Upload Staged DB
 	if err := s3c.UploadFile(ctx, stagedKey, stagedPath, "application/octet-stream"); err != nil {
-		return FinalizeStagingResult{}, fmt.Errorf("upload staged db failed: %w", err)
+		return ApplyRegistrarMappingsResult{}, fmt.Errorf("upload staged db failed: %w", err)
 	}
 
-	return FinalizeStagingResult{StagedDBKey: stagedKey}, nil
+	return ApplyRegistrarMappingsResult{StagedDBKey: stagedKey}, nil
 }
 
 // IngestContactsArgs parameters
@@ -3472,11 +3740,14 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 // LinkDomainHostsArgs parameters
 type LinkDomainHostsArgs struct {
 	StagedDBKey string
+	TLD         string
 }
 
 // LinkDomainHostsResult outcome
 type LinkDomainHostsResult struct {
-	Total int64
+	Total    int64
+	Inserted int64
+	Cleaned  int64 // stale links removed before re-linking
 }
 
 // LinkDomainHosts links domains to hosts
@@ -3518,12 +3789,30 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 		activity.RecordHeartbeat(ctx, processed)
 	}
 
-	total, err := destImporter.LinkDomainHosts(ctx, db, lastKey, heartbeat)
-	if err != nil {
-		return LinkDomainHostsResult{Total: total}, err
+	// Clean up stale domain_hosts links for this TLD before re-linking.
+	// Only on first attempt (no resume cursor) — the escrow is the source of truth.
+	var cleaned int64
+	if lastKey == "" && args.TLD != "" {
+		res, err := destImporter.PG.Exec(`
+			DELETE FROM domain_hosts
+			WHERE domain_ro_id IN (
+				SELECT ro_id FROM domains WHERE tld_name = ?
+			)
+		`, args.TLD)
+		if err != nil {
+			activity.GetLogger(ctx).Warn("LinkDomainHosts: failed to clean stale links (non-fatal)", "tld", args.TLD, "error", err)
+		} else {
+			cleaned = int64(res.RowsAffected())
+			activity.GetLogger(ctx).Info("LinkDomainHosts: cleaned stale links", "tld", args.TLD, "removed", cleaned)
+		}
 	}
 
-	return LinkDomainHostsResult{Total: total}, nil
+	total, linked, err := destImporter.LinkDomainHosts(ctx, db, lastKey, heartbeat)
+	if err != nil {
+		return LinkDomainHostsResult{Total: total, Inserted: linked, Cleaned: cleaned}, err
+	}
+
+	return LinkDomainHostsResult{Total: total, Inserted: linked, Cleaned: cleaned}, nil
 }
 
 // AccreditRegistrarsArgs parameters
@@ -4083,6 +4372,44 @@ func (a *EscrowImportActivities) PersistImportSummary(ctx context.Context, args 
 	}
 
 	return PersistImportSummaryResult{SummaryKey: key}, nil
+}
+
+// CopySourceToRunFolderArgs represents the input for the CopySourceToRunFolder activity
+type CopySourceToRunFolderArgs struct {
+	SourceKey string `json:"sourceKey"`
+	RunPrefix string `json:"runPrefix"`
+}
+
+// CopySourceToRunFolderResult represents the output
+type CopySourceToRunFolderResult struct {
+	DestKey string `json:"destKey"`
+}
+
+// CopySourceToRunFolder copies the original upload into the run folder via server-side S3 copy (no download roundtrip).
+func (a *EscrowImportActivities) CopySourceToRunFolder(ctx context.Context, args CopySourceToRunFolderArgs) (CopySourceToRunFolderResult, error) {
+	if args.SourceKey == "" || args.RunPrefix == "" {
+		return CopySourceToRunFolderResult{}, fmt.Errorf("sourceKey and runPrefix are required")
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return CopySourceToRunFolderResult{}, fmt.Errorf("CopySourceToRunFolder: s3 client: %w", err)
+	}
+
+	destKey := args.RunPrefix + "/" + filepath.Base(args.SourceKey)
+
+	// Idempotency: skip if already copied
+	if exists, _ := s3c.Exists(ctx, destKey); exists {
+		activity.GetLogger(ctx).Info("Source file already in run folder", "key", destKey)
+		return CopySourceToRunFolderResult{DestKey: destKey}, nil
+	}
+
+	if err := s3c.CopyObject(ctx, args.SourceKey, destKey); err != nil {
+		return CopySourceToRunFolderResult{}, fmt.Errorf("CopySourceToRunFolder(src=%s, dst=%s): %w", args.SourceKey, destKey, err)
+	}
+
+	activity.GetLogger(ctx).Info("Copied source file to run folder", "src", args.SourceKey, "dst", destKey)
+	return CopySourceToRunFolderResult{DestKey: destKey}, nil
 }
 
 func decompressGzipFile(src string) (string, error) {

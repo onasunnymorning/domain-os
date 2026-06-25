@@ -111,10 +111,10 @@ func (c *EscrowController) Presign(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Construct a key: escrow/YYYYMMDD/<timestamp>/<sanitized-filename>
+	// Construct a key under the ephemeral uploads/ prefix
 	ts := time.Now().UTC().Format("20060102")
 	safe := strings.ReplaceAll(filename, " ", "_")
-	key := fmt.Sprintf("escrow/%s/%d/%s", ts, time.Now().Unix(), safe)
+	key := fmt.Sprintf("uploads/%s/%d/%s", ts, time.Now().Unix(), safe)
 
 	url, err := s3c.PresignPut(ctx.Request.Context(), key, 15*time.Minute)
 	if err != nil {
@@ -176,7 +176,7 @@ func (c *EscrowController) Upload(ctx *gin.Context) {
 		return
 	}
 	day := time.Now().UTC().Format("20060102")
-	s3Key := fmt.Sprintf("escrow/%s/%d/%s", day, time.Now().Unix(), safeName)
+	s3Key := fmt.Sprintf("uploads/%s/%d/%s", day, time.Now().Unix(), safeName)
 	if upErr := s3c.UploadFile(ctx.Request.Context(), s3Key, destPath, "application/octet-stream"); upErr != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("s3 upload failed: %v", upErr)})
 		return
@@ -267,12 +267,20 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		return
 	}
 
-	// List objects under escrow/<tld>/ recursively
-	prefix := fmt.Sprintf("escrow/%s/", tld)
+	// Flat bucket layout: workflow ID folders are at the root.
+	// List by prefix matching the workflow ID naming convention: escrow-import-<tld>-
+	prefix := fmt.Sprintf("escrow-import-%s-", tld)
 	keys, err := s3c.ListObjectKeys(ctx.Request.Context(), prefix, true, 5000)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Also check for legacy nested keys (escrow/<tld>/...)
+	legacyPrefix := fmt.Sprintf("escrow/%s/", tld)
+	legacyKeys, lerr := s3c.ListObjectKeys(ctx.Request.Context(), legacyPrefix, true, 5000)
+	if lerr == nil {
+		keys = append(keys, legacyKeys...)
 	}
 
 	// Initialize Temporal client for checking workflow status
@@ -287,19 +295,42 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 	runs := make([]EscrowRunItem, 0, 32)
 	seen := map[string]bool{}
 
-	// Helper to extract run prefix
+	// Helper to extract run prefix from a key.
+	// Flat keys:   "escrow-import-best-20260625-001231/summary.json"
+	// Legacy keys: "escrow/best/20260625/escrow-import-best-20260625-001231/summary.json"
 	parseRunPrefix := func(key string) (string, string, string, bool) {
-		parts := strings.Split(key, "/")
-		if len(parts) < 4 {
+		// Skip uploads/ prefix — those are ephemeral
+		if strings.HasPrefix(key, "uploads/") {
 			return "", "", "", false
 		}
-		if parts[0] != "escrow" || parts[1] != tld {
+
+		parts := strings.SplitN(key, "/", 2)
+		if len(parts) < 2 {
 			return "", "", "", false
 		}
-		date := parts[2]
-		wf := parts[3]
-		rp := strings.Join(parts[:4], "/")
-		return rp, date, wf, true
+		wfID := parts[0]
+
+		// Flat layout: workflow ID is the first path segment
+		expectedPrefix := fmt.Sprintf("escrow-import-%s-", tld)
+		if strings.HasPrefix(wfID, expectedPrefix) {
+			// Extract date from workflow ID: escrow-import-<tld>-YYYYMMDD-HHMMSS
+			suffix := strings.TrimPrefix(wfID, expectedPrefix)
+			date := ""
+			if len(suffix) >= 8 {
+				date = suffix[:8]
+			}
+			return wfID, date, wfID, true
+		}
+
+		// Legacy nested format: escrow/<tld>/<date>/<wfid>/...
+		if wfID == "escrow" {
+			legacyParts := strings.Split(key, "/")
+			if len(legacyParts) >= 4 && legacyParts[1] == tld {
+				rp := strings.Join(legacyParts[:4], "/")
+				return rp, legacyParts[2], legacyParts[3], true
+			}
+		}
+		return "", "", "", false
 	}
 
 	// Build helpers for public URLs
@@ -381,7 +412,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 				lower := strings.ToLower(kk)
 				if strings.HasSuffix(lower, "-analysis.json") {
 					analysisKey = kk
-				} else if strings.HasSuffix(lower, "-registrarmapping.csv") {
+				} else if strings.HasSuffix(lower, "-registrarmapping.csv") || strings.HasSuffix(lower, "/registrarmapping.csv") {
 					regCsvKey = kk
 				} else if strings.HasSuffix(lower, "-registrarmapping.json") || strings.HasSuffix(lower, "-registrar-map.json") {
 					regJsonKey = kk
@@ -512,9 +543,9 @@ func (c *EscrowController) InitMultipartUpload(ctx *gin.Context) {
 	// Sanitize filename
 	safe := strings.ReplaceAll(filepath.Base(req.Filename), " ", "_")
 
-	// Build key: escrow/uploads/{workflowType}/{tld}/{uuid}/{filename}
+	// Build key: uploads/{tld}/{uuid}/{filename}
 	uuid := fmt.Sprintf("%d", time.Now().UnixNano())
-	key := fmt.Sprintf("escrow/uploads/%s/%s/%s/%s", req.WorkflowType, req.TLD, uuid, safe)
+	key := fmt.Sprintf("uploads/%s/%s/%s", req.TLD, uuid, safe)
 
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {

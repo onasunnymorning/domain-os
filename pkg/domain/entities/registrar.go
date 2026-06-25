@@ -87,24 +87,36 @@ type Registrar struct {
 
 // RegistrarListItem is a subset of the Registrar object that is used in lists (e.g. list all registrars) when the full object is not needed
 type RegistrarListItem struct {
-	ClID       ClIDType
-	Name       string
-	GurID      int
-	Status     RegistrarStatus
-	IANAStatus IANARegistrarStatus
-	Autorenew  bool
+	ClID        ClIDType
+	Name        string
+	GurID       int
+	Status      RegistrarStatus
+	IANAStatus  IANARegistrarStatus
+	Autorenew   bool
+	DomainCount int
+	TLDCount    int
+	TLDList     []string
 }
 
 // GetListRegistrarItem returns a pointer to a ListRegistrarItem struct
 // populated with the Registrar's ClID, Name, GurID, Status, and Autorenew fields.
 func (r *Registrar) GetListRegistrarItem() *RegistrarListItem {
+	// Map the entities.TLD slice to string names
+	tldList := make([]string, len(r.TLDs))
+	for i, t := range r.TLDs {
+		tldList[i] = string(t.Name)
+	}
+
 	return &RegistrarListItem{
-		ClID:       r.ClID,
-		Name:       r.Name,
-		GurID:      r.GurID,
-		Status:     r.Status,
-		IANAStatus: r.IANAStatus,
-		Autorenew:  r.Autorenew,
+		ClID:        r.ClID,
+		Name:        r.Name,
+		GurID:       r.GurID,
+		Status:      r.Status,
+		IANAStatus:  r.IANAStatus,
+		Autorenew:   r.Autorenew,
+		DomainCount: 0,
+		TLDCount:    len(r.TLDs),
+		TLDList:     tldList,
 	}
 }
 

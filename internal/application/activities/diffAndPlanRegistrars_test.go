@@ -161,4 +161,35 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 			t.Fatalf("expected forced OK for 9995, got %q", plan.Updates[0].NewStatus)
 		}
 	})
+
+	t.Run("create reserved for special GurID 9997", func(t *testing.T) {
+		i := iana(9997, "ICANN SLA Monitoring", entities.IANARegistrarStatusReserved)
+
+		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(plan.Creates) != 1 {
+			t.Fatalf("expected 1 create for 9997, got %d", len(plan.Creates))
+		}
+		if plan.SkippedReserved != 0 {
+			t.Fatalf("expected skippedReserved=0 for special ID, got %d", plan.SkippedReserved)
+		}
+	})
+
+	t.Run("special GurID 9997 forces OK when existing", func(t *testing.T) {
+		i := iana(9997, "ICANN SLA Monitoring", entities.IANARegistrarStatusReserved)
+		ex := existingFromIANA(i, entities.RegistrarStatusReadonly, entities.IANARegistrarStatusReserved)
+
+		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(plan.Updates) != 1 {
+			t.Fatalf("expected 1 update for special GurID 9997, got %d", len(plan.Updates))
+		}
+		if plan.Updates[0].NewStatus != string(entities.RegistrarStatusOK) {
+			t.Fatalf("expected forced OK for 9997, got %q", plan.Updates[0].NewStatus)
+		}
+	})
 }

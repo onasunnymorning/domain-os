@@ -195,7 +195,7 @@ func main() {
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	dnsRecRepo := postgres.NewGormDNSRecordRepository(gormDB)
-	tldService := services.NewTLDService(tldRepo, dnsRecRepo)
+	// tldService is created below after registrar deps are initialized
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
@@ -233,6 +233,10 @@ func main() {
 	// Accreditations
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo)
+	// Now create TLDService with operator registrar auto-provisioning deps
+	tldService := services.NewTLDService(tldRepo, dnsRecRepo,
+		services.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
+	)
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
 	contactService := services.NewContactService(contactRepo, *roidService)

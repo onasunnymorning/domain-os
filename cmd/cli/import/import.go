@@ -1,30 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"runtime"
-	"slices"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/schedules"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )
 
-const (
-	ScheduleTypeSyncRegistrars = "sync-registrars"
-)
 
-var (
-	supportedScheduleTypes = []string{
-		ScheduleTypeSyncRegistrars,
-	}
-)
 
 func main() {
 	start := time.Now()
@@ -73,14 +61,6 @@ func main() {
 					},
 				},
 			},
-			{
-				Name:      "schedule",
-				Aliases:   []string{"s", "sch"},
-				Usage:     "import schedules {schedulename}",
-				UsageText: "Use this command to import (create) temporal schedules",
-				Action:    importSchedule,
-				// TODO: port this over from the lifecycle cli tool
-			},
 		},
 	}
 
@@ -96,10 +76,6 @@ func main() {
 	time.Sleep(200 * time.Millisecond)
 	// Report the maximum memory usage
 	log.Printf("[DEBUG] Maximum memory usage: %d Mbytes\n", maxAlloc/1024/1024)
-}
-
-func notImplemented(c *cli.Context) error {
-	return cli.Exit("Not implemented", 1)
 }
 
 func importRegistrars(c *cli.Context) error {
@@ -164,25 +140,4 @@ func importRegistrars(c *cli.Context) error {
 	log.Println("")
 	log.Printf("[INFO] %d Registrars imported successfully\n", len(createCommands))
 	return nil
-}
-
-func importSchedule(c *cli.Context) error {
-	// Validate input
-	if !slices.Contains(supportedScheduleTypes, c.Args().First()) {
-		return cli.Exit(fmt.Sprintf("[ERROR] Unsupported schedule type: %s. Currently supporting %v", c.Args().First(), supportedScheduleTypes), 1)
-	}
-
-	// Create the schedule
-	scheduleID, err := schedules.CreateSyncRegistrarScheduleDaily(getTemporalClientConfig())
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-func getTemporalClientConfig() temporal.TemporalClientconfig {
-	return temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
 }

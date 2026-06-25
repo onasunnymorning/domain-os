@@ -136,7 +136,7 @@ function formatCellValue(value: any): string {
 // =============================================================================
 
 function QACheckRow({ check }: { check: QACheck }) {
-  const [expanded, setExpanded] = useState(!check.passed && check.sampledItems && check.sampledItems.length > 0);
+  const [expanded, setExpanded] = useState(false);
   const hasSamples = check.sampledItems && check.sampledItems.length > 0;
 
   return (

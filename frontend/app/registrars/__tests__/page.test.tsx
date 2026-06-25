@@ -7,10 +7,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RegistrarsPage from '../page';
 import * as registrarHooks from '@/lib/hooks/useRegistrars';
+import * as tldHooks from '@/lib/hooks/useTLDs';
 import { RegistrarStatus, IANARegistrarStatus } from '@/lib/types/registrar';
 
 // Mock the hooks and components
 vi.mock('@/lib/hooks/useRegistrars');
+vi.mock('@/lib/hooks/useTLDs');
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
@@ -39,6 +41,12 @@ describe('RegistrarsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    // Setup default mock for TLDs
+    vi.mocked(tldHooks.useTLDs).mockReturnValue({
+      data: { Data: [{ Name: 'com' }, { Name: 'net' }] },
+      isLoading: false,
+    } as any);
+
     // Setup default mocks for System Registrars
     vi.mocked(registrarHooks.useRegistrars).mockReturnValue({
       data: { Data: [], Meta: undefined },

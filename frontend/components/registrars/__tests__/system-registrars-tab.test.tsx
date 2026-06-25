@@ -7,10 +7,12 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SystemRegistrarsTab } from '../system-registrars-tab';
 import * as registrarHooks from '@/lib/hooks/useRegistrars';
+import * as tldHooks from '@/lib/hooks/useTLDs';
 import { RegistrarStatus } from '@/lib/types/registrar';
 
 // Mock the hooks
 vi.mock('@/lib/hooks/useRegistrars');
+vi.mock('@/lib/hooks/useTLDs');
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -27,6 +29,12 @@ const createWrapper = () => {
 describe('SystemRegistrarsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Provide a safe default for TLD hook
+    vi.mocked(tldHooks.useTLDs).mockReturnValue({
+      data: { Data: [{ Name: 'com' }, { Name: 'net' }] },
+      isLoading: false,
+    } as any);
 
     // Provide a safe default for start workflow mutation used by the component
     vi.mocked(registrarHooks.useStartRegistrarSyncWorkflow).mockReturnValue({

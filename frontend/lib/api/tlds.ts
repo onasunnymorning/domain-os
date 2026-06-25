@@ -10,11 +10,15 @@ export interface TLD {
   Phases: any[]; // Will type properly in Phase 2
   CreatedAt: string;
   UpdatedAt: string;
+  DomainCount?: number;
+  RegistrarCount?: number;
 }
 
 export interface CreateTLDRequest {
   Name: string;
   RyID: string;
+  CreateOperatorRegistrars?: boolean;
+  AllowEscrowImport?: boolean;
 }
 
 export interface ListQueryParams {

@@ -77,7 +77,7 @@ func (a *TLDCleanupActivities) PlanTLDCleanup(ctx context.Context, args PlanTLDC
 	s3c := a.S3Client
 	db := a.DB
 
-	manifestKey := fmt.Sprintf("escrow/%s/cleanup/%s_manifest.csv", args.TLD, args.WorkflowID)
+	manifestKey := fmt.Sprintf("%s/manifest.csv", args.WorkflowID)
 
 	pr, pw := io.Pipe()
 

@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:3.21.4
 RUN apk upgrade --no-cache
 # Copy seed data (used by lifecycle worker for registrar sync)
-COPY ./initdata /initdata
+COPY ./initdata /app/initdata
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
