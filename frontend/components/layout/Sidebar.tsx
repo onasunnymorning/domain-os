@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Building2,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
+import { CoLogo } from '@/components/icons/CoLogo';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Registry Operators', href: '/registry-operators', icon: Building2 },
@@ -34,6 +36,7 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [showAlpaca, setShowAlpaca] = useState(false);
 
   return (
     <>
@@ -54,10 +57,51 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       >
         <div className="flex h-full flex-col gap-4 pb-4">
           {/* Logo container */}
-          <div className="flex h-32 items-center justify-center px-6">
+          <div className="flex h-32 items-center justify-center px-6 flex-col gap-1">
             <Link href="/" onClick={onClose} className="flex items-center justify-center">
-              <AlpacaLogo className="h-20 w-20" />
+              <div className="relative h-20 w-20">
+                <div
+                  className={cn(
+                    'absolute inset-0 transition-all duration-500 ease-in-out',
+                    showAlpaca
+                      ? 'opacity-0 scale-90 rotate-12'
+                      : 'opacity-100 scale-100 rotate-0'
+                  )}
+                >
+                  <CoLogo className="h-20 w-20 text-[#DBFF00]" />
+                </div>
+                <div
+                  className={cn(
+                    'absolute inset-0 transition-all duration-500 ease-in-out',
+                    showAlpaca
+                      ? 'opacity-100 scale-100 rotate-0'
+                      : 'opacity-0 scale-90 -rotate-12'
+                  )}
+                >
+                  <AlpacaLogo className="h-20 w-20" />
+                </div>
+              </div>
             </Link>
+            {/* Subtle logo switcher */}
+            <button
+              onClick={() => setShowAlpaca(!showAlpaca)}
+              className="group flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors duration-200 select-none"
+              title={showAlpaca ? 'Switch to .co' : 'Switch to Alpaca'}
+              aria-label="Toggle logo"
+            >
+              <span
+                className={cn(
+                  'inline-block w-1 h-1 rounded-full transition-colors duration-300',
+                  showAlpaca ? 'bg-muted-foreground/30' : 'bg-[#DBFF00]'
+                )}
+              />
+              <span
+                className={cn(
+                  'inline-block w-1 h-1 rounded-full transition-colors duration-300',
+                  showAlpaca ? 'bg-orange-400' : 'bg-muted-foreground/30'
+                )}
+              />
+            </button>
           </div>
 
           <nav className="flex-1 space-y-1 px-4 overflow-y-auto">
