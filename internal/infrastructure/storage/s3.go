@@ -140,6 +140,22 @@ func (s *S3Client) DownloadToFile(ctx context.Context, key string) (string, erro
 	return dstPath, nil
 }
 
+// GetObjectStream returns a streaming reader for the object.
+// The caller MUST close the returned ReadCloser when done.
+// This avoids writing the entire object to disk (unlike DownloadToFile).
+func (s *S3Client) GetObjectStream(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("GetObjectStream(%s): %w", key, err)
+	}
+	info, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, 0, fmt.Errorf("GetObjectStream(%s) stat: %w", key, err)
+	}
+	return obj, info.Size, nil
+}
+
 // UploadFile uploads a local file to the bucket at the given key
 func (s *S3Client) UploadFile(ctx context.Context, key, path, contentType string) error {
 	_, err := s.client.FPutObject(ctx, s.bucket, key, path, minio.PutObjectOptions{ContentType: contentType})
