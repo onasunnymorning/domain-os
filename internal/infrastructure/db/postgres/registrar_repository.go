@@ -10,6 +10,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type dbRegistrarListItem struct {
@@ -94,13 +95,18 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	return soredDbRar, nil
 }
 
-// Bulk Create Creates multiple registrars in the repository
+// Bulk Create Creates multiple registrars in the repository.
+// Uses ON CONFLICT DO NOTHING so that re-runs and name collisions
+// (e.g. IANA name changes producing a new ClID but same Name) are
+// silently skipped instead of failing the entire batch.
 func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) error {
 	dbRars := make([]*Registrar, len(rars))
 	for i, rar := range rars {
 		dbRars[i] = ToDBRegistrar(rar)
 	}
-	return r.db.WithContext(ctx).Omit("TLDs").Create(dbRars).Error // We omit TLDs as we manage these through the Accreditation repository
+	return r.db.WithContext(ctx).Omit("TLDs").
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(dbRars).Error // We omit TLDs as we manage these through the Accreditation repository
 }
 
 // Update Updates a registrar in the repository
