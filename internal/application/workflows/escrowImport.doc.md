@@ -7,7 +7,7 @@
 | **Category** | `data-pipeline` |
 | **Tags** | `data`, `escrow`, `import` |
 | **Trigger** | `API` |
-| **Human-in-the-Loop** | `Yes` — signal: `ConfirmEscrowImport` |
+| **Human-in-the-Loop** | `Yes` — signals: `ProvideRegistrarOverrides`, `SkipRegistrarOverrides`, `ConfirmEscrowImport` |
 | **Launchpad Card** | `Yes` |
 
 ## Overview
@@ -27,11 +27,19 @@ flowchart TD
         S1b["📋 <b>Copy Source to Run Folder</b>\nServer-side S3 copy (best-effort)"]
         S2["🗃️ <b>Build Staging DB</b>\nCollate CSVs into Ryde.db"]
         S3["🔗 <b>Resolve Registrars</b>\nMatch registrar codes from escrow"]
+        S3Q{"Unmapped registrars\nwith domains?"}
+        S3b["⏸️ <b>Await Registrar Overrides</b>\nUser provides mappings or skips"]
+        S3c["🔗 <b>Re-resolve Registrars</b>\nWith overrides merged"]
         S4["✅ <b>Apply Registrar Mappings</b>\nSwap codes with system IDs in staged.db"]
         S5["🧪 <b>QA Staged DB</b>\nRun 7 automated check queries"]
         S5Q{"QA checks\npassed?"}
 
-        S0 --> S1 --> S1b --> S2 --> S3 --> S4 --> S5 --> S5Q
+        S0 --> S1 --> S1b --> S2 --> S3 --> S3Q
+        S3Q -- "Yes" --> S3b
+        S3Q -- "No" --> S4
+        S3b -- "ProvideRegistrarOverrides" --> S3c --> S4
+        S3b -- "SkipRegistrarOverrides" --> S4
+        S4 --> S5 --> S5Q
     end
 
     subgraph hitl ["2. Human-In-The-Loop Approval"]
@@ -135,7 +143,13 @@ type EscrowImportResult struct {
 - **Activity**: `ResolveRegistrars`
 - **Timeout**: Start-to-close 2h
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
-- **Description**: Inspects registrar codes in `ryde.db` and attempts to match them with system registrars. Manual mappings can be provided in `registrarOverrides`.
+- **Description**: Inspects registrar codes in `ryde.db` and attempts to match them with system registrars using a 3-tier strategy: (1) manual overrides, (2) auto-map by GurID, (3) auto-map by name. Manual mappings can be provided via `registrarOverrides` in workflow params or via the `ProvideRegistrarOverrides` signal.
+
+### 4b. Await Registrar Overrides (Conditional HITL)
+- **Signal**: `ProvideRegistrarOverrides` (payload: `map[string]string`) or `SkipRegistrarOverrides` (payload: `bool`)
+- **Phase**: `pending_registrar_overrides`
+- **Condition**: Only activates when unmapped registrars with `domainCount > 0` exist. Auto-skipped when all unmapped registrars are empty (no domains, only contacts/hosts).
+- **Description**: Pauses workflow execution and exposes the list of unmapped registrars in the workflow state. The UI shows an interactive override form where operators can either map each unmapped registrar to an existing system registrar (via search), create a new registrar on the fly, or skip. On `ProvideRegistrarOverrides`, the signal payload is merged with any initial overrides and `ResolveRegistrars` is re-run without re-parsing the escrow data. On `SkipRegistrarOverrides`, the workflow continues with the current (potentially incomplete) mappings.
 
 ### 5. Apply Registrar Mappings
 - **Activity**: `ApplyRegistrarMappings`

@@ -67,7 +67,7 @@ func (suite *ListExpiringDomainsTestSuite) TestListExpiringDomains_BadRequest() 
 	result, err := ListExpiringDomains("testCorrelationID", query)
 	suite.Error(err, "Expected an error for bad request")
 	suite.Nil(result, "Expected no result for bad request")
-	suite.Contains(err.Error(), "failed to fetch domain count", "Error should include fetch failure")
+	suite.Contains(err.Error(), "(400)", "Error should include status code")
 }
 
 func (suite *ListExpiringDomainsTestSuite) TestListExpiringDomains_NetworkError() {

@@ -114,7 +114,6 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, params SyncRegistrarsParams) (
 		BackoffCoefficient:     2.0,
 		MaximumInterval:        10 * time.Minute,
 		MaximumAttempts:        3, // 0 is unlimited retries
-		NonRetryableErrorTypes: []string{"none"},
 	}
 
 	options := workflow.ActivityOptions{
@@ -335,7 +334,6 @@ func syncRegistrarsIncremental(ctx workflow.Context, params SyncRegistrarsParams
 				BackoffCoefficient:     2.0,
 				MaximumInterval:        10 * time.Minute,
 				MaximumAttempts:        3,
-				NonRetryableErrorTypes: []string{"none"},
 			},
 		})
 

@@ -95,7 +95,7 @@ func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, beare
 
 	// Check for non-200 response codes
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Unmarshal into a local struct to avoid interface unmarshalling errors for Filter

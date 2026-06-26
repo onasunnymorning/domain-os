@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, AlertCircle, AlertTriangle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { Download, AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getWorkflowResult, getStorageDownloadURL, signalWorkflow } from '@/lib/api/workflows';
 import { QAReportViewer } from './QAReportViewer';
+import { RegistrarOverrideForm } from './RegistrarOverrideForm';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -710,6 +711,23 @@ export function WorkflowResult({ workflowId, workflowType, status, signalName, o
           {state.error && (
             <div className="rounded bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-400">
               {state.error}
+            </div>
+          )}
+
+          {/* Registrar override HITL gate */}
+          {state.phase === 'pending_registrar_overrides' && (
+            <div className="border-t pt-3 mt-3 space-y-3">
+              <div className="flex items-start gap-2 rounded-md bg-blue-500/10 border border-blue-500/20 px-3 py-2">
+                <Info className="mt-0.5 size-3.5 shrink-0 text-blue-500" />
+                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                  Registrar mapping found unmapped registrars with domains. Provide overrides below or skip to continue.
+                </p>
+              </div>
+              <RegistrarOverrideForm
+                workflowId={workflowId}
+                unmappedRegistrars={state.unmappedRegistrars || []}
+                onSignalSent={() => setSignalSent(true)}
+              />
             </div>
           )}
 

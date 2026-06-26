@@ -25,8 +25,8 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	}
 
 	t.Run("expiry-loop", func(t *testing.T) {
-		s, ok := byID["dominos-expiry-loop"]
-		require.True(t, ok, "missing schedule dominos-expiry-loop")
+		s, ok := byID["expiry-loop"]
+		require.True(t, ok, "missing schedule expiry-loop")
 		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
 		assert.Equal(t, time.Hour, s.Interval)
 		assert.Equal(t, time.Duration(0), s.Offset)
@@ -38,8 +38,8 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	})
 
 	t.Run("purge-loop", func(t *testing.T) {
-		s, ok := byID["dominos-purge-loop"]
-		require.True(t, ok, "missing schedule dominos-purge-loop")
+		s, ok := byID["purge-loop"]
+		require.True(t, ok, "missing schedule purge-loop")
 		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
 		assert.Equal(t, time.Hour, s.Interval)
 		assert.Equal(t, 30*time.Minute, s.Offset)
@@ -50,20 +50,20 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		assert.NotEmpty(t, s.Note)
 	})
 
-	t.Run("restore-workflow", func(t *testing.T) {
-		s, ok := byID["dominos-restore-workflow"]
-		require.True(t, ok, "missing schedule dominos-restore-workflow")
+	t.Run("restore-loop", func(t *testing.T) {
+		s, ok := byID["restore-loop"]
+		require.True(t, ok, "missing schedule restore-loop")
 		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
-		assert.Equal(t, time.Hour, s.Interval)
-		assert.Equal(t, 15*time.Minute, s.Offset)
-		assert.Equal(t, time.Hour, s.CatchupWindow)
+		assert.Equal(t, 4*time.Hour, s.Interval)
+		assert.Equal(t, time.Hour, s.Offset)
+		assert.Equal(t, 4*time.Hour, s.CatchupWindow)
 		assert.Nil(t, s.Args)
 		assert.NotEmpty(t, s.Note)
 	})
 
 	t.Run("sync-registrars", func(t *testing.T) {
-		s, ok := byID["dominos-sync-registrars"]
-		require.True(t, ok, "missing schedule dominos-sync-registrars")
+		s, ok := byID["sync-registrars"]
+		require.True(t, ok, "missing schedule sync-registrars")
 		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
 		assert.Equal(t, 24*time.Hour, s.Interval)
 		assert.Equal(t, 2*time.Hour, s.Offset)
@@ -76,8 +76,8 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	})
 
 	t.Run("update-fx", func(t *testing.T) {
-		s, ok := byID["dominos-update-fx"]
-		require.True(t, ok, "missing schedule dominos-update-fx")
+		s, ok := byID["update-fx"]
+		require.True(t, ok, "missing schedule update-fx")
 		assert.Equal(t, temporal.QueueData, s.Queue)
 		assert.Equal(t, time.Hour, s.Interval)
 		assert.Equal(t, 30*time.Minute, s.Offset)

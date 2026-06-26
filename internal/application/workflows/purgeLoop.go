@@ -83,7 +83,6 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		BackoffCoefficient:     2.0,
 		MaximumInterval:        10 * time.Minute,
 		MaximumAttempts:        3, // 0 is unlimited retries
-		NonRetryableErrorTypes: []string{"none"},
 	}
 
 	options := workflow.ActivityOptions{

@@ -46,7 +46,7 @@ func (suite *ExpireDomainTestSuite) TestExpireDomain_BadRequest() {
 
 	err := ExpireDomain("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "unexpected status code: 400", "Error should include status code")
+	suite.Contains(err.Error(), "(400)", "Error should include status code")
 }
 
 func (suite *ExpireDomainTestSuite) TestExpireDomain_NetworkError() {

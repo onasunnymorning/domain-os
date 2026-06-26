@@ -44,7 +44,7 @@ func GetPurgeableDomainCount(correlationID string, query queries.PurgeableDomain
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch domain count (%d): %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Parse the result

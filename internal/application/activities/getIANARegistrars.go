@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -97,8 +96,7 @@ func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, b
 
 	// Check for non-200 response codes
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("BEARER TOKEN: %s", bearerToken)
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Unmarshal robustly: decode Meta directly and defer decoding Data to a typed slice.

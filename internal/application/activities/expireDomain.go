@@ -38,7 +38,7 @@ func ExpireDomain(correlationID, domainName string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return httpResponseError(resp, body)
 	}
 
 	return nil

@@ -109,7 +109,6 @@ func ExpiryLoop(ctx workflow.Context, params ExpiryLoopParams) (ExpiryLoopResult
 		BackoffCoefficient:     2.0,
 		MaximumInterval:        10 * time.Minute,
 		MaximumAttempts:        3, // 0 is unlimited retries
-		NonRetryableErrorTypes: []string{"none"},
 	}
 
 	options := workflow.ActivityOptions{

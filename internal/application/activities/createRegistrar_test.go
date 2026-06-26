@@ -76,7 +76,7 @@ func TestCreateRegistrar(t *testing.T) {
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
-				assert.EqualError(t, err, tt.expectedError.Error())
+				assert.Contains(t, err.Error(), tt.expectedError.Error())
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedResult, result)

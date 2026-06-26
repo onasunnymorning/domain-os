@@ -50,7 +50,7 @@ func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarC
 			return fmt.Errorf("failed to read body of failed api request: %w", err)
 		}
 
-		return fmt.Errorf("error bulk creating registrars: %d: %s", resp.StatusCode, string(body))
+		return httpResponseError(resp, body)
 	}
 
 	return nil

@@ -63,7 +63,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_BadRequest() {
 
 	err := AutoRenewDomain("test2", "example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "unexpected status code: 400")
+	suite.Contains(err.Error(), "(400)")
 }
 
 func (suite *AutoRenewTestSuite) TestAutoRenewDomain_NetworkError() {

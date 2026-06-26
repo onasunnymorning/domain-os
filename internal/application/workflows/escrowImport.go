@@ -20,7 +20,7 @@ type EscrowImportParams struct {
 
 // EscrowImportState tracks the real-time progress and QA status of the escrow import
 type EscrowImportState struct {
-	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "resolving", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
+	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "resolving", "pending_registrar_overrides", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
 	TLD                    string                          `json:"tld"`
 	ObjectKey              string                          `json:"objectKey"`
 	RunPrefix              string                          `json:"runPrefix"`
@@ -33,6 +33,7 @@ type EscrowImportState struct {
 	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
 	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
 	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
+	OverridesProvided      map[string]string               `json:"overridesProvided,omitempty"`
 	VerificationPassed     *bool                           `json:"verificationPassed,omitempty"`
 	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
 }
@@ -51,6 +52,7 @@ type EscrowImportResult struct {
 	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
 	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
 	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
+	OverridesProvided      map[string]string               `json:"overridesProvided,omitempty"`
 	VerificationPassed     bool                            `json:"verificationPassed"`
 	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
 }
@@ -194,6 +196,82 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		state.UnmappedRegistrars = mapOut.UnmappedRegistrars
 	}
 
+	// 3b. Registrar Override Gate — pause if unmapped registrars have domains
+	// Check if any unmapped registrar has domains (the critical case that blocks import)
+	hasUnmappedWithDomains := false
+	for _, u := range mapOut.UnmappedRegistrars {
+		if u.DomainCount > 0 {
+			hasUnmappedWithDomains = true
+			break
+		}
+	}
+
+	if mapOut.HasIssues && hasUnmappedWithDomains {
+		state.Phase = "pending_registrar_overrides"
+		workflow.GetLogger(ctx).Info("Unmapped registrars with domains found. Waiting for ProvideRegistrarOverrides or SkipRegistrarOverrides signal.",
+			"unmappedCount", len(mapOut.UnmappedRegistrars))
+
+		overrideChan := workflow.GetSignalChannel(ctx, "ProvideRegistrarOverrides")
+		skipChan := workflow.GetSignalChannel(ctx, "SkipRegistrarOverrides")
+
+		overrideSelector := workflow.NewSelector(ctx)
+
+		// Option A: User provides overrides
+		overrideSelector.AddReceive(overrideChan, func(c workflow.ReceiveChannel, more bool) {
+			var signalOverrides map[string]interface{}
+			c.Receive(ctx, &signalOverrides)
+
+			// Merge signal overrides into existing overrides
+			for k, v := range signalOverrides {
+				overrides[k] = fmt.Sprint(v)
+			}
+			state.OverridesProvided = overrides
+
+			workflow.GetLogger(ctx).Info("Received ProvideRegistrarOverrides signal",
+				"overrideCount", len(signalOverrides))
+
+			// Re-run ResolveRegistrars with merged overrides
+			state.Phase = "resolving"
+			var reMapOut activities.ResolveRegistrarsResult
+			if err := workflow.ExecuteActivity(ctxStaging, acts.ResolveRegistrars, activities.ResolveRegistrarsArgs{
+				TLD:       params.TLD,
+				DBKey:     collateOut.DBKey,
+				RunPrefix: assetsOut.RunPrefix,
+				Overrides: overrides,
+			}).Get(ctxStaging, &reMapOut); err != nil {
+				state.Phase = "failed"
+				state.Error = err.Error()
+				// Can't return from closure, so we store the error and let the main flow handle it
+				mapOut = reMapOut
+				return
+			}
+
+			// Update state with new mapping results
+			mapOut = reMapOut
+			state.TotalRegistrars = reMapOut.TotalRegistrars
+			state.MappedRegistrars = reMapOut.MappedCount
+			if reMapOut.HasIssues {
+				state.UnmappedRegistrars = reMapOut.UnmappedRegistrars
+			} else {
+				state.UnmappedRegistrars = nil
+			}
+		})
+
+		// Option B: User skips overrides
+		overrideSelector.AddReceive(skipChan, func(c workflow.ReceiveChannel, more bool) {
+			var skip bool
+			c.Receive(ctx, &skip)
+			workflow.GetLogger(ctx).Info("Received SkipRegistrarOverrides signal, continuing with gaps")
+		})
+
+		overrideSelector.Select(ctx)
+
+		// Check if re-resolution failed
+		if state.Phase == "failed" {
+			return EscrowImportResult{}, fmt.Errorf("ResolveRegistrars(tld=%s, db=%s) re-resolution with overrides failed: %s", params.TLD, collateOut.DBKey, state.Error)
+		}
+	}
+
 	// 4. Apply Registrar Mappings
 	state.Phase = "applying_mappings"
 	var stageOut activities.ApplyRegistrarMappingsResult
@@ -240,6 +318,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 			TotalRegistrars:    mapOut.TotalRegistrars,
 			MappedRegistrars:   mapOut.MappedCount,
 			UnmappedRegistrars: mapOut.UnmappedRegistrars,
+			OverridesProvided:  state.OverridesProvided,
 		}, nil
 	}
 
@@ -275,6 +354,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 			TotalRegistrars:    mapOut.TotalRegistrars,
 			MappedRegistrars:   mapOut.MappedCount,
 			UnmappedRegistrars: mapOut.UnmappedRegistrars,
+			OverridesProvided:  state.OverridesProvided,
 		}, nil
 	}
 
@@ -419,6 +499,10 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		QAReportKey:            qaOut.QAReportKey,
 		Confirmed:              true,
 		IngestedCounts:         counts,
+		TotalRegistrars:        mapOut.TotalRegistrars,
+		MappedRegistrars:       mapOut.MappedCount,
+		UnmappedRegistrars:     mapOut.UnmappedRegistrars,
+		OverridesProvided:      state.OverridesProvided,
 		VerificationPassed:     verifyOut.Passed,
 		VerificationReportKey:  verifyOut.ReportKey,
 	}, nil

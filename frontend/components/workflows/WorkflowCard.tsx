@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Database, RefreshCw, Settings, Clock, Play, Zap, FileText } from 'lucide-react';
+import { Database, RefreshCw, Settings, Clock, Play, Zap, FileText, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { WorkflowMeta } from '@/lib/api/workflows';
+import { TEMPORAL_UI_URL } from '@/lib/constants/external-urls';
+
+const TEMPORAL_NAMESPACE = process.env.NEXT_PUBLIC_TEMPORAL_NAMESPACE || 'default';
 
 interface WorkflowCardProps {
   workflow: WorkflowMeta;
@@ -55,6 +58,21 @@ export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
           <div className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
             <Clock className="size-3" />
             <span>{workflow.scheduleInfo}</span>
+            {workflow.scheduleId && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                <a
+                  href={`${TEMPORAL_UI_URL}/namespaces/${TEMPORAL_NAMESPACE}/schedules/${workflow.scheduleId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  title={`View schedule "${workflow.scheduleId}" in Temporal`}
+                >
+                  <span className="font-mono">{workflow.scheduleId}</span>
+                  <ExternalLink className="size-2.5" />
+                </a>
+              </>
+            )}
           </div>
         )}
       </CardContent>
