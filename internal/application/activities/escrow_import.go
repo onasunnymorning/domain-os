@@ -2929,7 +2929,9 @@ func (a *EscrowImportActivities) BuildStagingDatabase(ctx context.Context, args 
 		if err != nil {
 			return BuildStagingDatabaseResult{}, fmt.Errorf("download asset %s failed: %w", filename, err)
 		}
-		os.Rename(tmpPath, dst)
+		if err := moveFile(tmpPath, dst); err != nil {
+			return BuildStagingDatabaseResult{}, fmt.Errorf("move asset %s to workdir failed: %w", filename, err)
+		}
 	}
 
 	// Validate Critical Assets
@@ -4438,4 +4440,39 @@ func decompressGzipFile(src string) (string, error) {
 	}
 
 	return tmp.Name(), nil
+}
+
+// moveFile moves src to dst. It tries os.Rename first (fast, same-device).
+// If Rename fails (e.g., cross-device, permission error), it falls back to
+// copy+delete so the caller always gets the file at dst.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+
+	// Fallback: copy content then remove source
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source %s: %w", src, err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create dest %s: %w", dst, err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		os.Remove(dst)
+		return fmt.Errorf("copy %s -> %s: %w", src, dst, err)
+	}
+
+	// Ensure data is flushed to disk
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("sync %s: %w", dst, err)
+	}
+
+	os.Remove(src)
+	return nil
 }
