@@ -40,11 +40,13 @@ services:
       # CORS — must match the frontend URL
       - key: CORS_ALLOWED_ORIGINS
         value: "https://alp-ui-test.onrender.com"
-      # Auth — disabled for initial TEST
+      # Auth0
       - key: AUTH0_ENABLED
-        value: "false"
-      - key: ADMIN_TOKEN
+        value: "true"
+      - key: AUTH0_DOMAIN
         sync: false
+      - key: AUTH0_AUDIENCE
+        value: "https://api.alpaca-test"
       # Observability — disabled for TEST
       - key: NEW_RELIC_ENABLED
         value: "false"
