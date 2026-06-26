@@ -74,15 +74,18 @@ services:
       # API URL — baked at build time (NEXT_PUBLIC_* are inlined by Next.js)
       - key: NEXT_PUBLIC_API_URL
         value: "https://alp-api-test.onrender.com"
-      # Auth — disabled for initial TEST
+      # Auth0
       - key: NEXT_PUBLIC_AUTH0_ENABLED
-        value: "false"
+        value: "true"
+      - key: NEXT_PUBLIC_AUTH0_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_AUTH0_CLIENT_ID
+        sync: false
+      - key: NEXT_PUBLIC_AUTH0_AUDIENCE
+        value: "https://api.alpaca-test"
       # Version
       - key: NEXT_PUBLIC_APP_VERSION
         value: "0.1.0-test"
-      # API auth token — baked at build time into client JS
-      - key: NEXT_PUBLIC_API_TOKEN
-        sync: false
       # External tool URLs — baked at build time
       - key: NEXT_PUBLIC_TEMPORAL_UI_URL
         value: "https://cloud.temporal.io/namespaces/alp-test.fclnj/workflows"
