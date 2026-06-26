@@ -76,6 +76,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	aoStaging := workflow.ActivityOptions{
 		StartToCloseTimeout:    time.Hour * 2,
 		ScheduleToCloseTimeout: time.Hour * 4,
+		HeartbeatTimeout:       time.Minute * 5,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second * 5,
 			BackoffCoefficient: 2.0,
