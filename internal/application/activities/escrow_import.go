@@ -2782,24 +2782,38 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 		}, nil
 	}
 
-	// Download and Process
-	xmlPath, err := s3c.DownloadToFile(ctx, key)
+	// ── Stream S3 → gzip → XML decoder (no temp files for source XML) ──
+	isGzip := strings.HasSuffix(strings.ToLower(key), ".gz")
+
+	stream, fileSize, err := s3c.GetObjectStream(ctx, key)
 	if err != nil {
-		return ParseAndExtractAssetsResult{}, fmt.Errorf("download failed: %w", err)
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("S3 stream failed: %w", err)
 	}
-	defer os.Remove(xmlPath)
+	defer stream.Close()
 
-	decompressedPath := xmlPath
-	if strings.HasSuffix(strings.ToLower(key), ".gz") || strings.HasSuffix(strings.ToLower(xmlPath), ".gz") {
-		activity.GetLogger(ctx).Info("Decompressing gzip escrow file", "file", xmlPath)
-		decompressedPath, err = decompressGzipFile(xmlPath)
+	// Build the reader chain: S3 stream → [gzip decoder] → XML decoder
+	var xmlReader io.Reader = stream
+	var gzReader *gzip.Reader
+	if isGzip {
+		activity.GetLogger(ctx).Info("Streaming gzip-compressed escrow", "key", key, "compressedSize", fileSize)
+		gzReader, err = gzip.NewReader(stream)
 		if err != nil {
-			return ParseAndExtractAssetsResult{}, fmt.Errorf("gzip decompression failed: %w", err)
+			return ParseAndExtractAssetsResult{}, fmt.Errorf("gzip reader init failed: %w", err)
 		}
-		defer os.Remove(decompressedPath)
+		defer gzReader.Close()
+		xmlReader = gzReader
+	} else {
+		activity.GetLogger(ctx).Info("Streaming uncompressed escrow", "key", key, "size", fileSize)
 	}
 
-	svc, err := services.NewStreamingXMLEscrowService(decompressedPath)
+	// CSVs still need a temp directory for output
+	outputDir, err := os.MkdirTemp("", "escrow-csv-*")
+	if err != nil {
+		return ParseAndExtractAssetsResult{}, fmt.Errorf("temp dir creation failed: %w", err)
+	}
+	defer os.RemoveAll(outputDir)
+
+	svc, err := services.NewStreamingXMLEscrowServiceFromReader(xmlReader, outputDir, base, fileSize)
 	if err != nil {
 		return ParseAndExtractAssetsResult{}, fmt.Errorf("service init failed: %w", err)
 	}
@@ -2808,14 +2822,13 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 		activity.RecordHeartbeat(ctx, details...)
 	}
 
-	// Run analysis (generates local CSVs)
-	// We pass false for mapRegistrars as that is now a separate step
+	// Run analysis (generates local CSVs in outputDir)
 	if err := svc.StreamAnalyze(false, GetBearerToken(), heartbeat); err != nil {
 		return ParseAndExtractAssetsResult{}, fmt.Errorf("stream analyze failed: %w", err)
 	}
 
-	// Upload Artifacts
-	tempBase := strings.TrimSuffix(decompressedPath, filepath.Ext(decompressedPath))
+	// Upload Artifacts — CSVs are at outputDir/base-*.csv
+	tempBase := filepath.Join(outputDir, base)
 	suffixes := []string{
 		"-domains.csv", "-domainStatuses.csv", "-domainNameservers.csv", "-DomainDnssec.csv",
 		"-domainTransfers.csv", "-domainRgpStatus.csv",
@@ -2843,34 +2856,14 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 		}
 	}
 
-	// Check for analysis errors
-	hasIssues := false
-	var errors []string
-
-	// Re-download analysis.json to check for errors (cleanest way since we uploaded it)
-	if analysisKey, ok := assets[base+"-analysis.json"]; ok {
-		if tmp, err := s3c.DownloadToFile(ctx, analysisKey); err == nil {
-			data, _ := os.ReadFile(tmp)
-			var envelope struct {
-				Analysis struct {
-					Errors          []string `json:"errors"`
-					MissingContacts []string `json:"missingContacts"`
-				} `json:"analysis"`
-			}
-			json.Unmarshal(data, &envelope)
-			errors = envelope.Analysis.Errors
-			if len(errors) > 0 || len(envelope.Analysis.MissingContacts) > 0 {
-				hasIssues = true
-			}
-			os.Remove(tmp)
-		}
-	}
+	// Check for analysis errors directly from service (no re-download needed)
+	hasIssues := len(svc.Analysis.Errors) > 0 || len(svc.Analysis.MissingContacts) > 0
 
 	return ParseAndExtractAssetsResult{
 		RunPrefix:      runPrefix,
 		AssetKeys:      assets,
 		HasIssues:      hasIssues,
-		AnalysisErrors: errors,
+		AnalysisErrors: svc.Analysis.Errors,
 	}, nil
 }
 
