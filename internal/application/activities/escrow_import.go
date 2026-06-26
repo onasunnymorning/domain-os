@@ -3092,7 +3092,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	// Mapping Logic
 	token := GetBearerToken()
 	client := &http.Client{Timeout: 10 * time.Second}
-	baseURL := "http://" + os.Getenv("API_HOST") + ":" + os.Getenv("API_PORT")
+	baseURL := buildAdminAPIURL()
 
 	tx, err := db.Begin()
 	if err != nil {
