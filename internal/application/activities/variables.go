@@ -16,7 +16,15 @@ var (
 func init() {
 	BASEURL = os.Getenv("API_URL")
 	if BASEURL == "" {
-		BASEURL = fmt.Sprintf("http://%s:%s", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
+		host := os.Getenv("API_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("API_PORT")
+		if port == "" {
+			port = "8080"
+		}
+		BASEURL = fmt.Sprintf("http://%s:%s", host, port)
 	}
 
 	// Initialize Token Manager for system authentication
