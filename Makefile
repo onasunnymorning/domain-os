@@ -202,9 +202,14 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 # Local CI (mirrors GitHub Actions)
 ###################
 
-ci-local: ci-lint ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + test + frontend + security + API integration)
+ci-local: ci-envcheck ci-lint ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + test + frontend + security + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
+
+ci-envcheck: ## Check env var registry for drift (new vars must be registered)
+	@echo "🔍 Checking env var registry drift..."
+	@go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions' ./internal/config/...
+	@echo "✅ Env var registry is in sync with code."
 
 ci-lint: ## Run all linters (Go + Frontend)
 	@echo "🔍 Running Go vet..."

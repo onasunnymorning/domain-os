@@ -61,6 +61,19 @@ services:
         sync: false
       - key: TEMPORAL_LIFECYCLE_QUEUE
         value: "object-lifecycle"
+      # S3 (Cloudflare R2) — API needs access for presigned URLs and escrow uploads
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_USE_SSL
+        value: "true"
+      - key: MINIO_PUBLIC_ENDPOINT
+        sync: false
+      - key: ESCROW_BUCKET
+        sync: false
 
   # ── Next.js Frontend ────────────────────────────────────
   - type: web
@@ -125,7 +138,7 @@ services:
       # Direct DB (Neon)
       - key: DATABASE_URL
         sync: false
-      # S3 (Backblaze B2)
+      # S3 (Cloudflare R2)
       - key: MINIO_ENDPOINT
         sync: false
       - key: MINIO_ACCESS_KEY
@@ -136,3 +149,6 @@ services:
         value: "true"
       - key: ESCROW_BUCKET
         sync: false
+      # Temporal data queue
+      - key: TEMPORAL_DATA_QUEUE
+        value: "data-pipeline"
