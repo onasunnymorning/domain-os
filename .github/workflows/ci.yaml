@@ -46,6 +46,18 @@ jobs:
           version: v2.12
           args: --issues-exit-code=0
 
+  envcheck:
+    name: Env Var Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+      - name: Check env var registry
+        run: go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions' ./internal/config/...
+
   unit-tests:
     runs-on: ubuntu-latest
     steps:
