@@ -48,7 +48,7 @@ func UnSetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return nil, httpResponseError(resp, body)
 	}
 
 	domain := &entities.Domain{}

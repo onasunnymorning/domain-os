@@ -47,7 +47,7 @@ func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	var domain entities.Domain

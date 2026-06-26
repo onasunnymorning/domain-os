@@ -49,7 +49,7 @@ func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) 
 	}
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	var rar entities.Registrar

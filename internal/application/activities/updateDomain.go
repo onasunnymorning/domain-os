@@ -49,7 +49,7 @@ func UpdateDomain(correlationID string, domain entities.Domain) (*entities.Domai
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to update domain (%d): %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Parse the result

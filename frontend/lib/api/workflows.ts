@@ -36,6 +36,7 @@ export interface WorkflowMeta {
   signalName?: string;
   scheduled: boolean;
   scheduleInfo?: string;
+  scheduleId?: string;
   steps: WorkflowStepMeta[];
   docMarkdown?: string;
 }

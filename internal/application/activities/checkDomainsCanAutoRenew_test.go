@@ -93,7 +93,7 @@ func (suite *CheckDomainsCanAutoRenewTestSuite) TestCheckDomainsCanAutoRenew_Mix
 	for _, f := range result.CheckFailures {
 		failures[f.DomainName] = f.Error
 	}
-	suite.Contains(failures["domain3.com"], "unexpected status code: 400")
+	suite.Contains(failures["domain3.com"], "(400)")
 	suite.Contains(failures["domain4.com"], "network disconnect")
 }
 

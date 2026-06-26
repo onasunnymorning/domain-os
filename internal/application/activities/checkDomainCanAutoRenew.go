@@ -41,7 +41,7 @@ func CheckDomainCanAutoRenew(correlationID string, domainName string) (bool, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return false, httpResponseError(resp, body)
 	}
 
 	canAutoRenewResponse := &response.CanAutoRenewResponse{}

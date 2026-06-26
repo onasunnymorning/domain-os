@@ -39,7 +39,7 @@ func SyncSpec5(correlationID string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

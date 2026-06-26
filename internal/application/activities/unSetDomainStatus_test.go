@@ -49,7 +49,7 @@ func TestUnSetDomainStatus(t *testing.T) {
 			},
 			mockStatusCode: http.StatusInternalServerError,
 			mockResponse:   `{"error": "internal server error"}`,
-			expectedError:  "unexpected status code: 500, response: {\"error\": \"internal server error\"}",
+			expectedError:  "(500) {\"error\": \"internal server error\"}",
 			expectedDomain: nil,
 		},
 		{

@@ -116,7 +116,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_AuthFail() {
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)
-	suite.Assert().Contains(err.Error(), "failed to update domain (401)")
+	suite.Assert().Contains(err.Error(), "(401)")
 	suite.Assert().Nil(updatedDomain)
 }
 
@@ -132,7 +132,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_ServerError() {
 
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)
-	suite.Assert().Contains(err.Error(), "failed to update domain (500): internal server error")
+	suite.Assert().Contains(err.Error(), "(500) internal server error")
 	suite.Assert().Nil(updatedDomain)
 }
 
@@ -149,7 +149,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_NotFound() {
 	updatedDomain, err := UpdateDomain(correlationID, domain)
 	suite.Require().Error(err)
 	// We check the status code in the error string
-	suite.Assert().Contains(err.Error(), "failed to update domain (404)")
+	suite.Assert().Contains(err.Error(), "(404)")
 	suite.Assert().Nil(updatedDomain)
 }
 

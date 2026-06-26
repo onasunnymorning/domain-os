@@ -43,7 +43,7 @@ func GetExpiredDomainCount(correlationID string, query queries.ExpiringDomainsQu
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch domain count (%d): %s", resp.StatusCode, string(body))
+		return nil, httpResponseError(resp, body)
 	}
 
 	countResponse := &response.CountResult{}

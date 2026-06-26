@@ -40,7 +40,7 @@ func PurgeDomain(correlationID, domainName string) error {
 	}
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

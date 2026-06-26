@@ -29,6 +29,7 @@ type WorkflowMeta struct {
 	SignalName   string         `json:"signalName,omitempty"`
 	Scheduled    bool           `json:"scheduled"`
 	ScheduleInfo string         `json:"scheduleInfo,omitempty"` // e.g., "Every hour"
+	ScheduleID   string         `json:"scheduleId,omitempty"`   // Temporal schedule ID for UI deep-links
 	Steps        []WorkflowStep `json:"steps"`
 	DocMarkdown  string         `json:"docMarkdown,omitempty"`
 	docFile      string
@@ -52,6 +53,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "parse-extract-assets", Label: "Parse & Extract Assets", ActivityName: "ParseAndExtractAssets"},
 				{Key: "build-staging-database", Label: "Build Staging Database", ActivityName: "BuildStagingDatabase"},
 				{Key: "resolve-registrars", Label: "Resolve Registrars", ActivityName: "ResolveRegistrars"},
+				{Key: "await-registrar-overrides", Label: "Await Registrar Overrides"},
 				{Key: "apply-registrar-mappings", Label: "Apply Registrar Mappings", ActivityName: "ApplyRegistrarMappings"},
 				{Key: "qa-staged-database", Label: "QA Staged Database", ActivityName: "QAStagedDatabase"},
 				{Key: "await-confirmation", Label: "Await Ingest Confirmation"},
@@ -93,6 +95,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Tags:         []string{"data", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Daily",
+			ScheduleID:   "sync-registrars",
 			Steps: []WorkflowStep{
 				{Key: "sync-iana", Label: "Sync IANA", ActivityName: "SyncIanaRegistrars"},
 				{Key: "count-registrars", Label: "Count Registrars", ActivityName: "CountRegistrars"},
@@ -113,6 +116,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Tags:         []string{"data", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
+			ScheduleID:   "update-fx",
 			Steps: []WorkflowStep{
 				{Key: "update-exchange-rates", Label: "Update Exchange Rates", ActivityName: "UpdateFX"},
 			},
@@ -127,6 +131,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Tags:        []string{"data", "spec5", "sync", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Daily",
+			ScheduleID:   "sync-spec5",
 			Steps: []WorkflowStep{
 				{Key: "sync-spec5", Label: "Sync Spec5", ActivityName: "SyncSpec5"},
 			},
@@ -141,6 +146,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
+			ScheduleID:   "expiry-loop",
 			Steps: []WorkflowStep{
 				{Key: "lock-reference-time", Label: "Lock Reference Time", ActivityName: ""},
 				{Key: "count-expired", Label: "Count Expired", ActivityName: "GetExpiredDomainCount"},
@@ -159,6 +165,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Every hour",
+			ScheduleID:   "purge-loop",
 			Steps: []WorkflowStep{
 				{Key: "count-purgeable", Label: "Count Purgeable", ActivityName: "GetPurgeableDomainCount"},
 				{Key: "list-purgeable", Label: "List Purgeable", ActivityName: "ListPurgeableDomains"},
@@ -174,7 +181,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Category:     "lifecycle",
 			Tags:         []string{"lifecycle", "GO"},
 			Scheduled:    true,
-			ScheduleInfo: "Every hour",
+			ScheduleInfo: "Every 4 hours",
+			ScheduleID:   "restore-loop",
 			Steps: []WorkflowStep{
 				{Key: "list-restored", Label: "List Restored", ActivityName: "ListRestoredDomains"},
 				{Key: "unset-status", Label: "Unset Status", ActivityName: "UnSetDomainStatus"},

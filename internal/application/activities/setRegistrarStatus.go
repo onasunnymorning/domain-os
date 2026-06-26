@@ -2,6 +2,7 @@ package activities
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -34,7 +35,8 @@ func SetRegistrarStatus(correlationID, clid, status string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to set registrar status through API: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

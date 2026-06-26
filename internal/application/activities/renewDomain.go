@@ -52,7 +52,7 @@ func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bo
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return httpResponseError(resp, body)
 	}
 
 	return nil

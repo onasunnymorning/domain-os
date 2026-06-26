@@ -2,6 +2,7 @@ package activities
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -39,7 +40,8 @@ func SetRegistrarIANAStatus(correlationID, clid, ianaStatus string) error {
 		return nil
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to set registrar IANA status through API: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

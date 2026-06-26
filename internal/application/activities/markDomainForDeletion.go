@@ -31,7 +31,7 @@ func MarkDomainForDeletion(domainName string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to mark domain for deletion (%d): %s", resp.StatusCode, body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

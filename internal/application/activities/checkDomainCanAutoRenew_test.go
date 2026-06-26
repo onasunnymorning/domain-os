@@ -49,7 +49,7 @@ func (suite *CheckDomainCanAutoRenewTestSuite) TestCheckDomainCanAutoRenew_BadRe
 
 	canAutoRenew, err := CheckDomainCanAutoRenew("testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "unexpected status code: 400", "Error should include status code")
+	suite.Contains(err.Error(), "(400)", "Error should include status code")
 	suite.False(canAutoRenew, "Expected canAutoRenew to be false for error")
 }
 

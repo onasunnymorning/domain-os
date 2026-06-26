@@ -41,7 +41,7 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	countResult := &response.CountResult{}
