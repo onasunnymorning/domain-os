@@ -2806,6 +2806,9 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 		activity.GetLogger(ctx).Info("Streaming uncompressed escrow", "key", key, "size", fileSize)
 	}
 
+	// Signal liveness before XML parsing begins — covers the S3 buffering gap
+	activity.RecordHeartbeat(ctx, "stream opened, starting parse")
+
 	// CSVs still need a temp directory for output
 	outputDir, err := os.MkdirTemp("", "escrow-csv-*")
 	if err != nil {
