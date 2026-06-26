@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Cloud,
   Database,
@@ -12,6 +13,7 @@ import {
   ExternalLink,
   KeyRound,
   Github,
+  Variable,
 } from 'lucide-react';
 
 const services = [
@@ -80,6 +82,112 @@ const services = [
   },
 ];
 
+type EnvVar = {
+  key: string;
+  description: string;
+  secret: boolean;
+  services: string[];
+};
+
+const envVarsByCategory: { category: string; icon: React.ElementType; color: string; vars: EnvVar[] }[] = [
+  {
+    category: 'Database (Neon)',
+    icon: Database,
+    color: 'text-green-400',
+    vars: [
+      { key: 'DATABASE_URL', description: 'Neon Postgres connection string', secret: true, services: ['API', 'Worker'] },
+      { key: 'AUTO_MIGRATE', description: 'Run GORM auto-migration on startup', secret: false, services: ['API'] },
+    ],
+  },
+  {
+    category: 'API Server',
+    icon: Rocket,
+    color: 'text-emerald-500',
+    vars: [
+      { key: 'API_PORT', description: 'HTTP listen port', secret: false, services: ['API'] },
+      { key: 'API_HOST', description: 'HTTP bind address', secret: false, services: ['API'] },
+      { key: 'API_NAME', description: 'API display name', secret: false, services: ['API'] },
+      { key: 'API_VERSION', description: 'API version string', secret: false, services: ['API'] },
+      { key: 'API_URL', description: 'Full API base URL (worker → API calls)', secret: false, services: ['Worker'] },
+      { key: 'GIN_MODE', description: 'Gin framework mode (debug/release)', secret: false, services: ['API'] },
+      { key: 'CORS_ALLOWED_ORIGINS', description: 'Allowed CORS origins (frontend URL)', secret: false, services: ['API'] },
+    ],
+  },
+  {
+    category: 'Auth0',
+    icon: Shield,
+    color: 'text-orange-400',
+    vars: [
+      { key: 'AUTH0_ENABLED', description: 'Enable Auth0 JWT validation', secret: false, services: ['API', 'Worker'] },
+      { key: 'AUTH0_DOMAIN', description: 'Auth0 tenant domain', secret: false, services: ['API', 'Worker'] },
+      { key: 'AUTH0_AUDIENCE', description: 'Auth0 API audience identifier', secret: false, services: ['API', 'Worker'] },
+      { key: 'AUTH0_WORKER_CLIENT_ID', description: 'M2M application client ID (worker → API)', secret: true, services: ['Worker'] },
+      { key: 'AUTH0_WORKER_CLIENT_SECRET', description: 'M2M application client secret', secret: true, services: ['Worker'] },
+      { key: 'ADMIN_TOKEN', description: 'Static admin token fallback (when Auth0 disabled)', secret: true, services: ['API'] },
+      { key: 'NEXT_PUBLIC_AUTH0_ENABLED', description: 'Enable Auth0 in the frontend', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_AUTH0_DOMAIN', description: 'Auth0 tenant domain (frontend)', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_AUTH0_CLIENT_ID', description: 'Auth0 SPA client ID', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_AUTH0_AUDIENCE', description: 'Auth0 API audience (frontend)', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_API_TOKEN', description: 'Static API token fallback (baked at build)', secret: true, services: ['Frontend'] },
+    ],
+  },
+  {
+    category: 'Temporal Cloud',
+    icon: Activity,
+    color: 'text-indigo-400',
+    vars: [
+      { key: 'TMPIO_HOST_PORT', description: 'Temporal Cloud gRPC endpoint', secret: false, services: ['API', 'Worker'] },
+      { key: 'TMPIO_NAME_SPACE', description: 'Temporal namespace (with account suffix)', secret: false, services: ['API', 'Worker'] },
+      { key: 'TMPIO_API_KEY', description: 'Temporal Cloud API key', secret: true, services: ['API', 'Worker'] },
+      { key: 'TMPIO_CERT', description: 'mTLS client certificate (legacy, PEM)', secret: true, services: ['API', 'Worker'] },
+      { key: 'TMPIO_KEY', description: 'mTLS private key (legacy, PEM)', secret: true, services: ['API', 'Worker'] },
+      { key: 'TMPIO_QUEUE', description: 'Domain lifecycle task queue name', secret: false, services: ['API', 'Worker'] },
+      { key: 'ESCROW_QUEUE', description: 'Escrow import task queue name', secret: false, services: ['API', 'Worker'] },
+      { key: 'TMPIO_SYNC_QUEUE', description: 'Sync (FX rates) task queue name', secret: false, services: ['Worker'] },
+    ],
+  },
+  {
+    category: 'Storage (B2)',
+    icon: HardDrive,
+    color: 'text-red-400',
+    vars: [
+      { key: 'MINIO_ENDPOINT', description: 'S3-compatible endpoint URL', secret: false, services: ['Worker'] },
+      { key: 'MINIO_ACCESS_KEY', description: 'S3 access key ID', secret: true, services: ['Worker'] },
+      { key: 'MINIO_SECRET_KEY', description: 'S3 secret access key', secret: true, services: ['Worker'] },
+      { key: 'MINIO_USE_SSL', description: 'Enable TLS for S3 connections', secret: false, services: ['Worker'] },
+      { key: 'MINIO_PUBLIC_ENDPOINT', description: 'Public presign endpoint (if different)', secret: false, services: ['Worker'] },
+      { key: 'ESCROW_BUCKET', description: 'Bucket name for escrow files', secret: false, services: ['Worker'] },
+    ],
+  },
+  {
+    category: 'Frontend',
+    icon: Rocket,
+    color: 'text-emerald-500',
+    vars: [
+      { key: 'NEXT_PUBLIC_API_URL', description: 'API base URL (baked at build time)', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_APP_VERSION', description: 'Displayed app version', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_TEMPORAL_UI_URL', description: 'Link to Temporal Cloud UI', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_STORAGE_UI_URL', description: 'Link to storage dashboard', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_GRAFANA_URL', description: 'Link to Grafana dashboard', secret: false, services: ['Frontend'] },
+    ],
+  },
+  {
+    category: 'Observability',
+    icon: Activity,
+    color: 'text-indigo-400',
+    vars: [
+      { key: 'NEW_RELIC_ENABLED', description: 'Enable New Relic APM', secret: false, services: ['API'] },
+      { key: 'PROMETHEUS_ENABLED', description: 'Enable Prometheus metrics endpoint', secret: false, services: ['API'] },
+    ],
+  },
+];
+
+const serviceColors: Record<string, string> = {
+  API: 'bg-emerald-500/15 text-emerald-400',
+  Frontend: 'bg-blue-500/15 text-blue-400',
+  Worker: 'bg-amber-500/15 text-amber-400',
+};
+
 export default function CloudPage() {
   return (
     <DashboardLayout>
@@ -132,6 +240,73 @@ export default function CloudPage() {
             </a>
           ))}
         </div>
+
+        {/* Environment Variables Reference */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Variable className="h-5 w-5" />
+              Environment Variables Reference
+            </CardTitle>
+            <CardDescription>
+              Complete list of environment variables across all services. Variables marked with 🔒 contain secrets and should be set via Doppler or Render&apos;s secret management.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue={envVarsByCategory[0].category} className="w-full">
+              <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0 mb-4">
+                {envVarsByCategory.map((cat) => (
+                  <TabsTrigger
+                    key={cat.category}
+                    value={cat.category}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5 text-xs"
+                  >
+                    <cat.icon className={`h-3.5 w-3.5 mr-1.5 ${cat.color}`} />
+                    {cat.category}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {envVarsByCategory.map((cat) => (
+                <TabsContent key={cat.category} value={cat.category}>
+                  <div className="rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left font-medium p-3">Variable</th>
+                          <th className="text-left font-medium p-3 hidden md:table-cell">Description</th>
+                          <th className="text-left font-medium p-3">Used by</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cat.vars.map((v, i) => (
+                          <tr key={v.key} className={i < cat.vars.length - 1 ? 'border-b' : ''}>
+                            <td className="p-3 font-mono text-xs">
+                              {v.secret && <span title="Secret — do not hardcode">🔒 </span>}
+                              {v.key}
+                            </td>
+                            <td className="p-3 text-muted-foreground hidden md:table-cell">{v.description}</td>
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-1">
+                                {v.services.map((s) => (
+                                  <span
+                                    key={s}
+                                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${serviceColors[s] || 'bg-muted text-muted-foreground'}`}
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </CardContent>
+        </Card>
 
         {/* Environment info */}
         <Card>
