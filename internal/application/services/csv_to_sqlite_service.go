@@ -942,12 +942,24 @@ func (svc *CSVToSQLiteService) importRegistrarMapping(tx *sql.Tx) error {
 		}
 		defer f.Close()
 
+		// Check if file is empty (0 bytes = no analysis data)
+		fi, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		if fi.Size() == 0 {
+			return nil // empty analysis file, nothing to import
+		}
+
 		// Minimal envelope to avoid depending on full struct
 		var envelope struct {
 			RegistrarMapping entities.RegistrarMapping `json:"registrarMapping"`
 		}
 		dec := json.NewDecoder(f)
 		if err := dec.Decode(&envelope); err != nil {
+			if err == io.EOF {
+				return nil // no data to parse
+			}
 			return fmt.Errorf("failed to parse analysis json for registrar mapping: %w", err)
 		}
 
