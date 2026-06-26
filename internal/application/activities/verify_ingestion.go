@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -42,9 +43,13 @@ type VerificationCheck struct {
 	SampledItems  []map[string]string `json:"sampledItems,omitempty"`
 }
 
-// buildAdminAPIURL constructs the admin API base URL from API_HOST and API_PORT
-// env vars (set in docker-compose/Tiltfile). Falls back to http://localhost:8080.
+// buildAdminAPIURL constructs the admin API base URL. Prefers API_URL if set
+// (for deployed environments), otherwise falls back to API_HOST/API_PORT
+// env vars (set in docker-compose/Tiltfile), defaulting to http://localhost:8080.
 func buildAdminAPIURL() string {
+	if u := os.Getenv("API_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
 	host := os.Getenv("API_HOST")
 	port := os.Getenv("API_PORT")
 	if host == "" {
