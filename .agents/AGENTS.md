@@ -69,3 +69,17 @@ This is **internal tooling** — every error message must be written for develop
 - **XHR/fetch to external services (S3)**: Distinguish between HTTP errors (parse status + response body) and network errors (CORS, DNS, connectivity). Include the target URL/origin.
 - **S3 errors**: Parse the XML error response to extract `<Code>` and `<Message>` when available.
 - **Show error context in the UI**: The FileUpload component and toast notifications should display the full error message, not a generic "Upload failed".
+
+## UI/UX Design Principles
+
+This is an **internal admin tool for registry operators**. Every screen should feel calm, confident, and professional — not cluttered or "demo-ware".
+
+### Core rules
+
+1. **Visually self-explanatory** — UI elements should communicate their purpose through layout, iconography, and hierarchy alone. Remove labels, descriptions, and helper text that merely restate what is already obvious from context.
+2. **Calm, not cluttered** — Generous whitespace, breathing room between sections. Never squeeze elements together. If a layout feels dense, remove content or increase spacing — don't shrink fonts.
+3. **Balanced detail** — Show enough information to be useful at a glance, but don't overwhelm. Prefer progressive disclosure (expand/collapse, hover tooltips) over dumping everything on screen.
+4. **No stating the obvious** — Omit `CardDescription` text like "Manage registry operators" under a card titled "Registry Operators". If the title is clear, the description is noise.
+5. **Warm, premium feel** — Use the project's sunset/desert design tokens. Subtle gradients, soft borders, and micro-animations (hover lifts, fade-ins) over hard edges and abrupt transitions.
+6. **Data over decoration** — Prefer real data density (tables, counts, event streams) over placeholder illustrations or decorative charts with no actionable insight.
+7. **Consistent component patterns** — Reuse shadcn/ui primitives (`Card`, `Badge`, `Button`, `Skeleton`) with the project theme. Don't introduce one-off styled components.

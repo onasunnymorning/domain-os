@@ -62,16 +62,14 @@ func buildAdminAPIURL() string {
 }
 
 // adminAPIGet performs an authenticated GET request against the admin API.
-// Uses the ADMIN_TOKEN env var as a Bearer token (required by Auth0Middleware
-// in legacy/dev mode).
+// Uses the shared TokenManager (Auth0 M2M) for authentication, falling back
+// to ADMIN_TOKEN when Auth0 is not configured.
 func adminAPIGet(client *http.Client, url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if token := os.Getenv("ADMIN_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
+	req.Header.Set("Authorization", GetBearerToken())
 	return client.Do(req)
 }
 

@@ -7,11 +7,11 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Alpaca Names',
+  title: 'CO Registry',
   description: "Registry administration dashboard",
   icons: {
-    icon: '/favicon.svg',
-    apple: '/favicon.svg',
+    icon: '/favicon-co.svg',
+    apple: '/favicon-co.svg',
   },
 };
 
