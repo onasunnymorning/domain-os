@@ -47,14 +47,22 @@ type DirectDBImporter struct {
 
 func NewDirectDBImporter() (*DirectDBImporter, error) {
 	// Initialize Postgres connection
-	opt, err := pg.ParseURL(fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASS", "postgres"),
-		getEnv("DB_HOST", "localhost"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_NAME", "domain_os"),
-		getEnv("DB_SSLMODE", "disable"),
-	))
+	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars (local/docker-compose)
+	var pgURL string
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		pgURL = dbURL
+	} else {
+		pgURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			getEnv("DB_USER", "postgres"),
+			getEnv("DB_PASS", "postgres"),
+			getEnv("DB_HOST", "localhost"),
+			getEnv("DB_PORT", "5432"),
+			getEnv("DB_NAME", "domain_os"),
+			getEnv("DB_SSLMODE", "disable"),
+		)
+	}
+
+	opt, err := pg.ParseURL(pgURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PG URL: %w", err)
 	}
