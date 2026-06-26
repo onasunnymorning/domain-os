@@ -68,6 +68,18 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 		return nil, fmt.Errorf("failed to parse PG URL: %w", err)
 	}
 
+	// Neon requires SNI to route connections to the correct endpoint.
+	// go-pg doesn't set TLSConfig.ServerName automatically (unlike pgx),
+	// so we must set it explicitly from the parsed host address.
+	if opt.TLSConfig != nil && opt.TLSConfig.ServerName == "" {
+		// opt.Addr is "host:port" — extract just the host for SNI
+		host := opt.Addr
+		if idx := strings.LastIndex(host, ":"); idx > 0 {
+			host = host[:idx]
+		}
+		opt.TLSConfig.ServerName = host
+	}
+
 	// Pool & resilience tuning for bulk import workloads.
 	// Worker only needs a few connections; timeouts prevent indefinite stalls.
 	opt.PoolSize = 5
