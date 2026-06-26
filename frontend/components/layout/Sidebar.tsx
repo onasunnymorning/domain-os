@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Building2,
@@ -13,7 +13,8 @@ import {
   Server,
   ChevronLeft,
   ServerOff,
-  Zap
+  Zap,
+  Cloud
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Domains', href: '/domains', icon: Server },
   { name: 'NNDNs', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
+  { name: 'Cloud', href: '/cloud', icon: Cloud },
   { name: 'Documentation', href: '/docs', icon: FileText },
 ];
 
@@ -37,6 +39,20 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [showAlpaca, setShowAlpaca] = useState(false);
+
+  const toggleBrand = useCallback(() => {
+    setShowAlpaca((prev) => {
+      const next = !prev;
+      // Swap tab title
+      document.title = next ? 'Alpaca Names' : 'CO Registry';
+      // Swap favicon
+      const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (link) {
+        link.href = next ? '/favicon.svg' : '/favicon-co.svg';
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <>
@@ -84,7 +100,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             </Link>
             {/* Subtle logo switcher */}
             <button
-              onClick={() => setShowAlpaca(!showAlpaca)}
+              onClick={toggleBrand}
               className="group flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors duration-200 select-none"
               title={showAlpaca ? 'Switch to .co' : 'Switch to Alpaca'}
               aria-label="Toggle logo"
