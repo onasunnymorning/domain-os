@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -50,7 +51,7 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars (local/docker-compose)
 	var pgURL string
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		pgURL = dbURL
+		pgURL = sanitizePGURLForGoPG(dbURL)
 	} else {
 		pgURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 			getEnv("DB_USER", "postgres"),
@@ -1019,4 +1020,31 @@ func (s *DirectDBImporter) AccreditRegistrars(ctx context.Context, sqliteDB *sql
 
 	log.Printf("AccreditRegistrars: Finished. Total new accreditations: %d", total)
 	return total, nil
+}
+
+// sanitizePGURLForGoPG strips query parameters that go-pg/pg doesn't support.
+// go-pg only accepts: sslmode, application_name, connect_timeout.
+// Neon DATABASE_URLs typically include channel_binding=require which causes
+// pg.ParseURL to fail. This function preserves only the supported params.
+func sanitizePGURLForGoPG(rawURL string) string {
+	supported := map[string]bool{
+		"sslmode":          true,
+		"application_name": true,
+		"connect_timeout":  true,
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL // return as-is, let pg.ParseURL report the error
+	}
+
+	q := u.Query()
+	cleaned := url.Values{}
+	for k, v := range q {
+		if supported[k] {
+			cleaned[k] = v
+		}
+	}
+	u.RawQuery = cleaned.Encode()
+	return u.String()
 }
