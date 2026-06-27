@@ -174,3 +174,15 @@ export async function getStorageDownloadURL(key: string): Promise<DownloadURLRes
   const { data } = await apiClient.get('/workflows/storage/download', { params: { key } });
   return data;
 }
+
+/**
+ * Terminate a running workflow execution
+ * DELETE /workflows/:workflowId
+ */
+export async function terminateWorkflow(
+  workflowId: string,
+  reason?: string
+): Promise<void> {
+  const params = reason ? { reason } : {};
+  await apiClient.delete(`/workflows/${workflowId}`, { params });
+}

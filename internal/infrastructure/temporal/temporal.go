@@ -18,7 +18,8 @@ type TemporalClientconfig struct {
 
 func GetTemporalClient(cfg TemporalClientconfig) (client.Client, error) {
 	// 1. API Key auth (Temporal Cloud recommended)
-	if strings.TrimSpace(cfg.APIKey) != "" {
+	apiKey := strings.TrimSpace(cfg.APIKey)
+	if apiKey != "" {
 		return client.Dial(client.Options{
 			HostPort:    cfg.HostPort,
 			Namespace:   cfg.Namespace,

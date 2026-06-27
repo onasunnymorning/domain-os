@@ -30,6 +30,7 @@ type DomainRepository interface {
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error
 	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
+	ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -148,3 +149,11 @@ func (m *MockDomainRepository) ListEventsByDomain(ctx context.Context, domainNam
 	return args.Get(0).([]entities.DomainEvent), args.Error(1)
 }
 
+// ListRecentEvents lists the most recent events across all subjects
+func (m *MockDomainRepository) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	args := m.Called(ctx, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]entities.DomainEvent), args.Error(1)
+}

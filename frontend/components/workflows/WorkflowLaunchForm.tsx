@@ -98,30 +98,6 @@ function TldCleanupForm({
   );
 }
 
-function SyncRegistrarsForm({
-  params,
-  onChange,
-}: {
-  params: Record<string, any>;
-  onChange: (p: Record<string, any>) => void;
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor="batchSize">Batch Size</Label>
-      <Input
-        id="batchSize"
-        type="number"
-        min={1}
-        max={10000}
-        placeholder="100"
-        value={params.batchSize ?? 100}
-        onChange={(e) =>
-          onChange({ ...params, batchSize: parseInt(e.target.value, 10) || 100 })
-        }
-      />
-    </div>
-  );
-}
 
 function TakeSnapshotForm({
   params,
@@ -189,8 +165,6 @@ function FormBody({
       return <EscrowImportForm params={params} onChange={onChange} />;
     case 'tld-cleanup':
       return <TldCleanupForm params={params} onChange={onChange} />;
-    case 'sync-registrars':
-      return <SyncRegistrarsForm params={params} onChange={onChange} />;
     case 'take-snapshot':
       return <TakeSnapshotForm params={params} onChange={onChange} />;
     default:

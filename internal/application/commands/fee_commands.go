@@ -6,6 +6,6 @@ type CreateFeeCommand struct {
 	TLDName    string `json:"-"`
 	Name       string `json:"name" binding:"required" example:"appliction_fee"`
 	Currency   string `json:"currency" binding:"required" example:"USD"`
-	Amount     uint64 `json:"amount" binding:"required" example:"1000"`
+	Amount     uint64 `json:"amount" binding:"min=0" example:"1000"`
 	Refundable bool   `json:"refundable" example:"true"`
 }

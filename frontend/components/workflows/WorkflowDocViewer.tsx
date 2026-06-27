@@ -1,9 +1,66 @@
 'use client';
 
-import { useEffect, useRef, memo } from 'react';
+import { useEffect, useRef, memo, useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
+import { cn } from '@/lib/utils';
+import { Check, Copy, Link2 } from 'lucide-react';
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+function slugify(text: any): string {
+  if (typeof text !== 'string') {
+    if (Array.isArray(text)) {
+      return text.map(t => slugify(t)).join('');
+    }
+    if (text && typeof text === 'object' && text.props && text.props.children) {
+      return slugify(text.props.children);
+    }
+    return '';
+  }
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-');
+}
+
+// =============================================================================
+// Active Heading Hook
+// =============================================================================
+
+function useActiveHeading(headingIds: string[]) {
+  const [activeId, setActiveId] = useState<string>('');
+
+  useEffect(() => {
+    if (headingIds.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries.filter((e) => e.isIntersecting);
+        if (visibleEntries.length > 0) {
+          // Highlight the first visible section heading
+          setActiveId(visibleEntries[0].target.id);
+        }
+      },
+      { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+    );
+
+    headingIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [headingIds]);
+
+  return activeId;
+}
 
 // =============================================================================
 // Mermaid initialization (once)
@@ -72,6 +129,39 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
 });
 
 // =============================================================================
+// Copyable Code block component
+// =============================================================================
+
+const CodeBlock = memo(function CodeBlock({ children, className, ...props }: any) {
+  const [copied, setCopied] = useState(false);
+  const codeText = String(children).trim();
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative group/code my-4">
+      <button
+        onClick={handleCopy}
+        className="absolute right-2 top-2 p-1.5 rounded-md border bg-card text-muted-foreground hover:text-foreground opacity-0 group-hover/code:opacity-100 transition-opacity duration-200 shadow-sm z-10"
+        title="Copy to clipboard"
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+      <code
+        className="block overflow-x-auto rounded-lg bg-muted p-4 pr-12 text-xs font-mono leading-relaxed whitespace-pre"
+        {...props}
+      >
+        {children}
+      </code>
+    </div>
+  );
+});
+
+// =============================================================================
 // Markdown prose styling — full-page optimized
 // =============================================================================
 
@@ -84,19 +174,66 @@ const markdownComponents = {
       {children}
     </h1>
   ),
-  h2: ({ children, ...props }: any) => (
-    <h2
-      className="mb-3 mt-8 border-b border-border/50 pb-1.5 text-xl font-semibold"
-      {...props}
-    >
-      {children}
-    </h2>
-  ),
-  h3: ({ children, ...props }: any) => (
-    <h3 className="mb-2 mt-6 text-lg font-semibold" {...props}>
-      {children}
-    </h3>
-  ),
+  h2: ({ children, ...props }: any) => {
+    const id = slugify(children);
+    return (
+      <h2
+        id={id}
+        className="group/heading mb-3 mt-8 border-b border-border/50 pb-1.5 text-xl font-semibold scroll-mt-20 flex items-center justify-between lg:justify-start gap-2"
+        {...props}
+      >
+        <span>{children}</span>
+        {id && (
+          <a
+            href={`#${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById(id)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
+              window.history.pushState(null, '', `#${id}`);
+              navigator.clipboard.writeText(window.location.origin + window.location.pathname + `#${id}`);
+            }}
+            className="opacity-0 group-hover/heading:opacity-100 transition-opacity duration-150 text-muted-foreground hover:text-foreground"
+            title="Copy link to this section"
+          >
+            <Link2 className="h-4 w-4" />
+          </a>
+        )}
+      </h2>
+    );
+  },
+  h3: ({ children, ...props }: any) => {
+    const id = slugify(children);
+    return (
+      <h3
+        id={id}
+        className="group/heading mb-2 mt-6 text-lg font-semibold scroll-mt-20 flex items-center justify-between lg:justify-start gap-2"
+        {...props}
+      >
+        <span>{children}</span>
+        {id && (
+          <a
+            href={`#${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById(id)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
+              window.history.pushState(null, '', `#${id}`);
+              navigator.clipboard.writeText(window.location.origin + window.location.pathname + `#${id}`);
+            }}
+            className="opacity-0 group-hover/heading:opacity-100 transition-opacity duration-150 text-muted-foreground hover:text-foreground"
+            title="Copy link to this section"
+          >
+            <Link2 className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </h3>
+    );
+  },
   h4: ({ children, ...props }: any) => (
     <h4 className="mb-2 mt-5 text-base font-semibold" {...props}>
       {children}
@@ -197,14 +334,7 @@ const markdownComponents = {
       );
     }
 
-    return (
-      <code
-        className="block overflow-x-auto rounded-lg bg-muted p-4 text-xs font-mono leading-relaxed whitespace-pre"
-        {...props}
-      >
-        {children}
-      </code>
-    );
+    return <CodeBlock {...props} className={className}>{children}</CodeBlock>;
   },
   pre: ({ children, ...props }: any) => (
     <div className="mb-6" {...props}>
@@ -232,15 +362,92 @@ interface WorkflowDocViewerProps {
   markdown: string;
 }
 
+interface TOCItem {
+  id: string;
+  text: string;
+  level: number;
+}
+
 export function WorkflowDocViewer({ markdown }: WorkflowDocViewerProps) {
+  // Extract headings
+  const tocItems = useMemo(() => {
+    const lines = markdown.split('\n');
+    const items: TOCItem[] = [];
+    const ids = new Set<string>();
+
+    for (const line of lines) {
+      const match = line.match(/^(#{2,3})\s+(.+)$/);
+      if (match) {
+        const level = match[1].length;
+        const text = match[2].trim().replace(/[#*`|\-_>]/g, '');
+        let id = slugify(text);
+        if (id) {
+          let suffix = 1;
+          const baseId = id;
+          while (ids.has(id)) {
+            id = `${baseId}-${suffix++}`;
+          }
+          ids.add(id);
+          items.push({ id, text, level });
+        }
+      }
+    }
+    return items;
+  }, [markdown]);
+
+  const headingIds = useMemo(() => tocItems.map((item) => item.id), [tocItems]);
+  const activeId = useActiveHeading(headingIds);
+
   return (
-    <article className="max-w-none">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={markdownComponents}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </article>
+    <div className="flex gap-8 relative items-start">
+      {/* Article Content */}
+      <article className="flex-1 max-w-none min-w-0 prose dark:prose-invert">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={markdownComponents}
+        >
+          {markdown}
+        </ReactMarkdown>
+      </article>
+
+      {/* Sticky Table of Contents */}
+      {tocItems.length > 0 && (
+        <aside className="hidden lg:block w-56 shrink-0 sticky top-24 self-start max-h-[calc(100vh-10rem)] overflow-y-auto pr-2 pb-4">
+          <div className="space-y-3">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
+              On This Page
+            </h4>
+            <ul className="space-y-2 text-xs border-l border-border/40 pl-0.5">
+              {tocItems.map((item) => (
+                <li
+                  key={item.id}
+                  style={{ paddingLeft: `${(item.level - 2) * 8}px` }}
+                >
+                  <a
+                    href={`#${item.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(item.id)?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
+                      window.history.pushState(null, '', `#${item.id}`);
+                    }}
+                    className={cn(
+                      'block py-0.5 transition-all duration-200 border-l pl-3 -ml-[1px]',
+                      activeId === item.id
+                        ? 'font-medium text-orange-600 dark:text-orange-400 border-orange-500/80 bg-orange-500/5 rounded-r'
+                        : 'text-muted-foreground hover:text-foreground border-transparent'
+                    )}
+                  >
+                    {item.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+      )}
+    </div>
   );
 }

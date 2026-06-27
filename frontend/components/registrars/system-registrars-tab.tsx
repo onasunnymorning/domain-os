@@ -53,7 +53,7 @@ export function SystemRegistrarsTab() {
   const [ianaIdQuery, setIanaIdQuery] = useState<string>("");
   // New: TLD filter and Sorting
   const [tldFilter, setTldFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("clid_asc");
+  const [sortBy, setSortBy] = useState<string>("domains_desc");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const router = useRouter();
@@ -330,7 +330,7 @@ export function SystemRegistrarsTab() {
                           <TableCell className="font-mono">
                             {registrar.ClID}
                           </TableCell>
-                          <TableCell className="font-medium">
+                          <TableCell className="font-semibold text-base">
                             {registrar.Name}
                           </TableCell>
                           <TableCell className="font-mono">

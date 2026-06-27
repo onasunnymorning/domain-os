@@ -36,7 +36,8 @@ function WorkflowsPageContent() {
   const [launchTarget, setLaunchTarget] = useState<WorkflowMeta | null>(null);
 
   const addRun = useWorkflowStore((s) => s.addRun);
-  const setDrawerOpen = useWorkflowStore((s) => s.setDrawerOpen);
+  const setModalOpen = useWorkflowStore((s) => s.setModalOpen);
+  const selectRun = useWorkflowStore((s) => s.selectRun);
 
   const { data: registry, isLoading } = useQuery({
     queryKey: ['workflow-registry'],
@@ -76,7 +77,8 @@ function WorkflowsPageContent() {
 
   const handleLaunched = (run: WorkflowRun) => {
     addRun(run);
-    setDrawerOpen(true);
+    selectRun(run.workflowId);
+    setModalOpen(true);
   };
 
   return (

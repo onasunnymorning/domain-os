@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD } from '@/lib/hooks/useTLDs';
 import { useTLDRegistrars, useAccreditForTLD, useDeaccreditForTLD } from '@/lib/hooks/useAccreditations';
@@ -16,7 +16,7 @@ import { ArrowLeft, Globe, CheckCircle, XCircle, Calendar, Building2 } from 'luc
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
-import { StickySubNav } from '@/components/shared/StickySubNav';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -34,7 +34,19 @@ interface Props {
 export default function TLDDetailPage({ params }: Props) {
   const { name } = use(params);
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const phaseName = searchParams.get('phase');
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(phaseName ? 'phases' : (tabParam || 'phases'));
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', value);
+    if (value !== 'phases') params.delete('phase');
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
   const { data: tld, isLoading, error } = useTLD(decodeURIComponent(name));
   const tldName = decodeURIComponent(name);
   const { data: regAccData, isLoading: regAccLoading } = useTLDRegistrars(tldName, { pagesize: 100 });
@@ -161,7 +173,9 @@ export default function TLDDetailPage({ params }: Props) {
           </div>
           {tld?.RyID && (
             <div className="ml-[52px]">
-              <Badge variant="outline" className="font-mono mt-1 text-sm">{tld.RyID}</Badge>
+              <Link href={`/registry-operators/${tld.RyID}`}>
+                <Badge variant="outline" className="font-mono mt-1 text-sm cursor-pointer hover:bg-primary/10 hover:border-primary/30 transition-colors">{tld.RyID}</Badge>
+              </Link>
             </div>
           )}
         </div>
@@ -174,198 +188,199 @@ export default function TLDDetailPage({ params }: Props) {
             <TLDAccreditedRegistrarCountWidget 
               count={regAccData?.Data?.length ?? 0} 
               isLoading={regAccLoading} 
-              onClick={() => {
-                const el = document.getElementById("accredited-registrars");
-                if (el) {
-                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
-                  window.scrollTo({ top: y, behavior: "smooth" });
-                }
-              }} 
+              onClick={() => handleTabChange('registrars')} 
             />
             <TLDDUMsPieChartCard 
               data={sortedRegistrars.map(r => ({ name: r.Name, clid: r.ClID, value: domainCounts[r.ClID] || 0 }))} 
-              onClick={() => {
-                const el = document.getElementById("accredited-registrars");
-                if (el) {
-                  const y = el.getBoundingClientRect().top + window.scrollY - 100;
-                  window.scrollTo({ top: y, behavior: "smooth" });
-                }
-              }}
+              onClick={() => handleTabChange('registrars')}
             />
           </div>
         )}
 
-        {/* Sticky Sub-Navigation */}
+        {/* Tabbed Content */}
         {!isLoading && tld && (
-          <StickySubNav
-            sections={[
-              { id: 'phases-section', label: 'Phases' },
-              { id: 'accredited-registrars', label: 'Registrars', count: regAccData?.Data?.length },
-              { id: 'tld-details', label: 'Details' },
-            ]}
-          />
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <TabsList>
+              <TabsTrigger value="phases">Phases</TabsTrigger>
+              <TabsTrigger value="registrars">
+                Registrars
+                {!regAccLoading && regAccData?.Data && (
+                  <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4 min-w-[1.25rem] rounded-full">
+                    {regAccData.Data.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="phases" className="mt-6" forceMount>
+              <div className={activeTab !== 'phases' ? 'hidden' : undefined}>
+              <PhaseTimeline
+                tldName={tld.Name}
+                initialPhaseName={phaseName || undefined}
+              />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="registrars" className="mt-6" forceMount>
+              <div className={activeTab !== 'registrars' ? 'hidden' : undefined}>
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Accredited Registrars</CardTitle>
+                    <CardDescription>
+                      {regAccLoading ? 'Loading accredited registrars…' : `${regAccData?.Data?.length ?? 0} registrar${(regAccData?.Data?.length ?? 0) !== 1 ? 's' : ''} accredited`}
+                    </CardDescription>
+                  </div>
+                  <div className="pt-1">
+                    <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {regAccLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4].map(i => (
+                        <Skeleton key={i} className="h-10 w-full" />
+                      ))}
+                    </div>
+                  ) : (regAccData?.Data?.length ?? 0) === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">No registrars accredited for this TLD</div>
+                  ) : (
+                    <div className="rounded-md border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-right">DUMs</TableHead>
+                            <TableHead>ClID</TableHead>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="w-[140px]"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedRegistrars.map((r: RegistrarListItem) => {
+                            const clidIndex = regAccClIDs.indexOf(r.ClID);
+                            const isCountLoading = clidIndex >= 0 ? domainCountsQueries[clidIndex]?.isLoading : false;
+                            return (
+                            <TableRow key={r.ClID}>
+                              <TableCell className="text-right whitespace-nowrap font-mono text-muted-foreground">
+                                {isCountLoading ? <Skeleton className="h-4 w-8 inline-block" /> : (domainCounts[r.ClID] || 0).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="font-mono">
+                                <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.Name}</Link>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
+                                  {r.Status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => {
+                                    setSelectedRegistrar(r);
+                                    setConfirmText('');
+                                    setDeaccError(null);
+                                    setDeaccOpen(true);
+                                  }}
+                                >
+                                  De-accredit
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );})
+                          }
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="details" className="mt-6" forceMount>
+              <div className={activeTab !== 'details' ? 'hidden' : undefined}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="space-y-6">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="space-y-2">
+                          <Skeleton className="h-3 w-20" />
+                          <Skeleton className="h-6 w-full max-w-md" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      {/* Type */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
+                        <div>{tld && getTypeBadge(tld.Type)}</div>
+                      </div>
+
+                      {/* Status Grid */}
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS</p>
+                          <div>
+                            {tld?.EnableDNS ? (
+                              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                <CheckCircle className="mr-1 h-3 w-3" /> Enabled
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">
+                                <XCircle className="mr-1 h-3 w-3" /> Disabled
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
+                          <div>
+                            {tld?.AllowEscrowImport ? (
+                              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                <CheckCircle className="mr-1 h-3 w-3" /> Enabled
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">
+                                <XCircle className="mr-1 h-3 w-3" /> Disabled
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Metadata */}
+                      <div className="pt-6 border-t">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
-
-        {/* Phase Timeline */}
-        {!isLoading && tld && (
-          <div id="phases-section">
-            <PhaseTimeline
-              tldName={tld.Name}
-              initialPhaseName={phaseName || undefined}
-            />
-          </div>
-        )}
-
-        {/* Registrars Accredited for this TLD */}
-        <Card id="accredited-registrars">
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Accredited Registrars</CardTitle>
-              <CardDescription>
-                {regAccLoading ? 'Loading accredited registrars…' : `${regAccData?.Data?.length ?? 0} registrar${(regAccData?.Data?.length ?? 0) !== 1 ? 's' : ''} accredited`}
-              </CardDescription>
-            </div>
-            <div className="pt-1">
-              <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {regAccLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3, 4].map(i => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : (regAccData?.Data?.length ?? 0) === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No registrars accredited for this TLD</div>
-            ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">DUMs</TableHead>
-                      <TableHead>ClID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[140px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedRegistrars.map((r: RegistrarListItem) => {
-                      const clidIndex = regAccClIDs.indexOf(r.ClID);
-                      const isCountLoading = clidIndex >= 0 ? domainCountsQueries[clidIndex]?.isLoading : false;
-                      return (
-                      <TableRow key={r.ClID}>
-                        <TableCell className="text-right whitespace-nowrap font-mono text-muted-foreground">
-                          {isCountLoading ? <Skeleton className="h-4 w-8 inline-block" /> : (domainCounts[r.ClID] || 0).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="font-mono">
-                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.Name}</Link>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
-                            {r.Status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setSelectedRegistrar(r);
-                              setConfirmText('');
-                              setDeaccError(null);
-                              setDeaccOpen(true);
-                            }}
-                          >
-                            De-accredit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );})}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* TLD Information Card (Details) */}
-        <Card id="tld-details">
-          <CardHeader>
-            <CardTitle>Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-6">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="space-y-2">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-6 w-full max-w-md" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {/* Type */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
-                  <div>{tld && getTypeBadge(tld.Type)}</div>
-                </div>
-
-                {/* Status Grid */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DNS</p>
-                    <div>
-                      {tld?.EnableDNS ? (
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <XCircle className="mr-1 h-3 w-3" /> Disabled
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Escrow Import</p>
-                    <div>
-                      {tld?.AllowEscrowImport ? (
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          <CheckCircle className="mr-1 h-3 w-3" /> Enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <XCircle className="mr-1 h-3 w-3" /> Disabled
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metadata */}
-                <div className="pt-6 border-t">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Created {tld && format(new Date(tld.CreatedAt), 'PPpp')}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Updated {tld && format(new Date(tld.UpdatedAt), 'PPpp')}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Add accreditation dialog */}
         <Dialog open={addOpen} onOpenChange={(v) => { setAddOpen(v); if (!v) { setAddError(null); setSearch(''); } }}>

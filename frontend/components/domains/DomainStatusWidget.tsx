@@ -1,10 +1,11 @@
 "use client";
 
 import { DomainStatus } from "@/lib/types/domain";
-import { LockKeyhole, UnlockKeyhole, AlertCircle, Clock, Repeat, Copy, Loader2 } from "lucide-react";
+import { LockKeyhole, UnlockKeyhole, AlertCircle, Clock, Repeat, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { CopyButton } from "@/components/ui/copy-button";
 import { STATUS_LABELS, STATUS_DESCRIPTIONS } from "@/lib/constants/domainStatus";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -274,19 +275,14 @@ export function DomainStatusWidget({ status, domainName }: Props) {
 
           {showRaw ? (
             <div className="bg-muted text-xs p-4 pt-10 overflow-x-auto group">
-              <button
-                onClick={async () => {
-                  try {
-                    const arr = Object.entries(status).filter(([, v]) => Boolean(v)).map(([k]) => k);
-                    await navigator.clipboard.writeText(JSON.stringify(arr, null, 2));
-                  } catch {}
-                }}
+              <CopyButton
+                value={JSON.stringify(Object.entries(status).filter(([, v]) => Boolean(v)).map(([k]) => k), null, 2)}
+                variant="none"
                 className="absolute top-2 right-10 p-1.5 z-10 text-muted-foreground hover:text-foreground bg-background/50 hover:bg-background rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                title="Copy JSON array"
+                tooltip="Copy JSON array"
                 aria-label="Copy JSON"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
+                iconClassName="h-4 w-4"
+              />
               <pre><code>{JSON.stringify(Object.entries(status).filter(([, v]) => Boolean(v)).map(([k]) => k), null, 2)}</code></pre>
             </div>
           ) : (

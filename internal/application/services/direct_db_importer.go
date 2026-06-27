@@ -325,6 +325,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 	var total int64
 	var inserted int64
 	var updated int64
+	var lastClID string // Secondary cursor for stable pagination across same-name hosts
 
 	// Count total
 	var totalRows int64
@@ -334,7 +335,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 	// Count already processed if resuming
 	var processedSoFar int64
 	if lastKey != "" {
-		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM hosts WHERE name <= ?", lastKey).Scan(&processedSoFar); err != nil {
+		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM hosts WHERE (name, clid) <= (?, ?)", lastKey, lastClID).Scan(&processedSoFar); err != nil {
 			log.Printf("IngestHosts: Failed to count processed rows: %v", err)
 		}
 	}
@@ -342,14 +343,13 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 	total = processedSoFar
 
 	for {
-		rows, err := sqliteDB.Query(`SELECT name, clid, crrr, uprr FROM hosts WHERE name > ? ORDER BY name LIMIT ?`, lastKey, batchSize)
+		rows, err := sqliteDB.Query(`SELECT name, clid, crrr, uprr FROM hosts WHERE (name, clid) > (?, ?) ORDER BY name, clid LIMIT ?`, lastKey, lastClID, batchSize)
 		if err != nil {
 			log.Printf("IngestHosts: Query failed: %v", err)
 			return total, inserted, updated, err
 		}
 
 		var entitiesBatch []*entities.Host
-		currentBatchMaxKey := ""
 
 		type rawHost struct {
 			Name, ClID, CrRr, UpRr string
@@ -364,7 +364,6 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				return total, inserted, updated, err
 			}
 			rawHosts = append(rawHosts, rawHost{name.String, clid.String, crrr.String, uprr.String})
-			currentBatchMaxKey = name.String
 		}
 		rows.Close()
 
@@ -472,16 +471,27 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		if len(entitiesBatch) > 0 {
 			var dbHosts []*dbModels.Host
 			var dbAddrs []*dbModels.HostAddress
-			batchLen := int64(len(entitiesBatch))
 
+			// Deduplicate by (name, cl_id) within the batch to prevent
+			// PG error 21000: "ON CONFLICT DO UPDATE cannot affect row a second time".
+			// Last occurrence wins (keeps the most recent data for a given key).
+			seen := make(map[string]int) // key: "name|cl_id" → index
 			for _, ent := range entitiesBatch {
 				dbH := dbModels.ToDBHost(ent)
-				dbHosts = append(dbHosts, dbH)
+				key := dbH.Name + "|" + dbH.ClID
+				if idx, exists := seen[key]; exists {
+					// Replace previous entry
+					dbHosts[idx] = dbH
+				} else {
+					seen[key] = len(dbHosts)
+					dbHosts = append(dbHosts, dbH)
+				}
 				for _, a := range dbH.Addresses {
 					val := a
 					dbAddrs = append(dbAddrs, &val)
 				}
 			}
+			batchLen := int64(len(dbHosts))
 
 			// Upsert inside a transaction — batches WAL writes.
 			txErr := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
@@ -509,7 +519,8 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			log.Printf("IngestHosts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
-		lastKey = currentBatchMaxKey
+		lastKey = rawHosts[len(rawHosts)-1].Name
+		lastClID = rawHosts[len(rawHosts)-1].ClID
 
 		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)

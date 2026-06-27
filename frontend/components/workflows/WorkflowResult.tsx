@@ -129,15 +129,22 @@ function ArtifactDownloadButton({ label, s3Key }: { label: string; s3Key: string
 }
 
 function CountsTable({ counts }: { counts: Record<string, number> }) {
+  // Human-readable overrides for entity key prefixes from the backend
+  const ENTITY_LABELS: Record<string, string> = {
+    links:  'Nameserver Links',
+    nndns:  'Blocked Domains',
+  };
+
   // Group by entity type: contacts_total, contacts_inserted → Contacts: { total: X, inserted: Y }
   const groups: Record<string, Record<string, number>> = {};
   for (const [key, value] of Object.entries(counts)) {
     const parts = key.split('_');
     if (parts.length >= 2) {
-      const entity = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const raw = parts[0];
+      const label = ENTITY_LABELS[raw] ?? (raw.charAt(0).toUpperCase() + raw.slice(1));
       const metric = parts.slice(1).join('_');
-      if (!groups[entity]) groups[entity] = {};
-      groups[entity][metric] = value;
+      if (!groups[label]) groups[label] = {};
+      groups[label][metric] = value;
     } else {
       if (!groups['Other']) groups['Other'] = {};
       groups['Other'][key] = value;

@@ -14,6 +14,7 @@ import { ArrowLeft, Pencil, Trash2, Mail, Phone, Globe, FileText, Server, Buildi
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { TLDCreateDialog } from '@/components/tlds/TLDCreateDialog';
 
 interface Props {
   params: Promise<{ ryid: string }>;
@@ -26,6 +27,7 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
   const { data: tldsData, isLoading: tldsLoading } = useTLDsByRyID(ryid);
   const deleteMutation = useDeleteRegistryOperator();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [tldCreateOpen, setTldCreateOpen] = useState(false);
 
   const handleDelete = async () => {
     try {
@@ -267,11 +269,10 @@ export default function RegistryOperatorDetailPage({ params }: Props) {
                     <p className="text-sm text-muted-foreground">
                       No TLDs assigned to this operator yet
                     </p>
-                    <Link href="/tlds/create">
-                      <Button variant="outline" size="sm" className="mt-4">
-                        Create First TLD
-                      </Button>
-                    </Link>
+                    <Button variant="outline" size="sm" className="mt-4" onClick={() => setTldCreateOpen(true)}>
+                      Create First TLD
+                    </Button>
+                    <TLDCreateDialog open={tldCreateOpen} onOpenChange={setTldCreateOpen} defaultRyId={ryid} />
                   </div>
                 )}
               </CardContent>

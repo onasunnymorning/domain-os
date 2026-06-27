@@ -1,158 +1,92 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useRegistryOperators, useDeleteRegistryOperator } from '@/lib/hooks/useRegistryOperators';
-import { TLDBadges } from '@/components/registry-operators/TLDBadges';
+import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
+import { ROCard } from '@/components/registry-operators/ROCard';
+import { ROCreateDialog } from '@/components/registry-operators/ROCreateDialog';
 import { Button } from '@/components/ui/button';
-import { PlusIcon, Trash2, Building2 } from 'lucide-react';
-import Link from 'next/link';
-import { toast } from 'sonner';
-
-import { ListPageLayout } from '@/components/shared/ListPageLayout';
-import { DataTable, ColumnDef } from '@/components/shared/DataTable';
-import { SearchFilter } from '@/components/shared/SearchFilter';
-import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
+import { Building2, PlusIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { RegistryOrbitWidget } from '@/components/dashboard/RegistryOrbitWidget';
 
 export default function RegistryOperatorsPage() {
-  const router = useRouter();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  
-  const { data, isLoading, error } = useRegistryOperators({
-    name_like: searchTerm || undefined,
-  });
-  
-  const deleteMutation = useDeleteRegistryOperator();
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try {
-      await deleteMutation.mutateAsync(deleteId);
-      toast.success('Registry operator deleted successfully');
-      setDeleteId(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete registry operator');
-    }
-  };
-
-  const columns: ColumnDef<any>[] = [
-    {
-      header: 'RyID',
-      accessor: 'RyID',
-      className: 'font-mono text-sm'
-    },
-    {
-      header: 'Name',
-      accessor: 'Name',
-      className: 'font-medium'
-    },
-    {
-      header: 'Email',
-      accessor: 'Email',
-      className: 'text-muted-foreground'
-    },
-    {
-      header: 'TLDs',
-      cell: (operator) => <TLDBadges ryid={operator.RyID} maxDisplay={3} />
-    },
-    {
-      header: 'URL',
-      cell: (operator) => operator.URL ? (
-        <a 
-          href={operator.URL} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-primary hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {operator.URL}
-        </a>
-      ) : (
-        <span className="text-muted-foreground">-</span>
-      )
-    },
-    {
-      header: 'Actions',
-      className: 'text-right',
-      cell: (operator) => (
-        <div className="flex justify-end gap-2">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteId(operator.RyID);
-            }}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      )
-    }
-  ];
+  const { data, isLoading, error } = useRegistryOperators({ pagesize: 50 });
+  const operators = data?.Data ?? [];
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
-    <ListPageLayout
-      icon={Building2}
-      title="Registry Operators"
-      description="Manage registry operators in your system"
-      actionButton={
-        <Link href="/registry-operators/create">
-          <Button>
+    <DashboardLayout>
+      <div className="space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Building2 className="h-8 w-8" />
+            Registry Operators
+          </h1>
+          <Button onClick={() => setCreateOpen(true)}>
             <PlusIcon className="mr-2 h-4 w-4" />
             Create Operator
           </Button>
-        </Link>
-      }
-      filters={
-        <div className="flex items-center gap-4">
-          <SearchFilter 
-            value={searchTerm} 
-            onChange={setSearchTerm} 
-            placeholder="Search by name..." 
-          />
         </div>
-      }
-    >
-      <DataTable
-        title="All Registry Operators"
-        description={`${data?.Data?.length || 0} registry operator(s) found`}
-        columns={columns}
-        data={data?.Data || []}
-        keyExtractor={(row) => row.RyID}
-        isLoading={isLoading}
-        onRowClick={(row) => router.push(`/registry-operators/${row.RyID}`)}
-        error={error ? `Error loading registry operators: ${error.message}` : undefined}
-        emptyState={
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="rounded-full bg-muted p-3 mb-4">
-              <Building2 className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold">No registry operators found</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {searchTerm 
-                ? 'Try adjusting your search terms'
-                : 'Get started by creating your first registry operator'
-              }
-            </p>
-            <Link href="/registry-operators/create">
-              <Button>
-                <PlusIcon className="mr-2 h-4 w-4" />
-                Create Registry Operator
-              </Button>
-            </Link>
-          </div>
-        }
-      />
 
-      <DeleteConfirmDialog
-        open={!!deleteId}
-        onOpenChange={(open) => !open && setDeleteId(null)}
-        description="This action cannot be undone. This will permanently delete the registry operator."
-        onConfirm={handleDelete}
-        isDeleting={deleteMutation.isPending}
-      />
-    </ListPageLayout>
+        {/* Error */}
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+            Failed to load registry operators: {error.message}
+          </div>
+        )}
+
+        {/* Loading skeletons */}
+        {isLoading && (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-xl border bg-card p-5 space-y-4">
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-4 w-28" />
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                  <Skeleton className="h-12 w-3/4 rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && operators.length === 0 && !error && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="rounded-full bg-muted p-4 mb-4">
+              <Building2 className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-1">No registry operators</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Create your first registry operator to get started.
+            </p>
+            <Button onClick={() => setCreateOpen(true)}>
+              <PlusIcon className="mr-2 h-4 w-4" />
+              Create Operator
+            </Button>
+          </div>
+        )}
+
+        {/* Card grid */}
+        {!isLoading && operators.length > 0 && (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {operators.map((op) => (
+              <ROCard key={op.RyID} operator={op} />
+            ))}
+          </div>
+        )}
+
+        {/* Registry Landscape — orbit visualization */}
+        {!isLoading && operators.length > 0 && (
+          <RegistryOrbitWidget />
+        )}
+      </div>
+
+      {/* Create dialog */}
+      <ROCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </DashboardLayout>
   );
 }

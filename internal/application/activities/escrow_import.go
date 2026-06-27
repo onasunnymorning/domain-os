@@ -2482,6 +2482,13 @@ type AutoFixedRegistrar struct {
 	HostsDuplicated int    `json:"hostsDuplicated"` // Hosts duplicated across multiple domain registrars
 }
 
+// RejectedOverride records an override that was provided but rejected during verification.
+type RejectedOverride struct {
+	Key      string `json:"key"`      // Override key (registrar name or GurID)
+	TargetID string `json:"targetId"` // The system ClID that was provided
+	Reason   string `json:"reason"`   // Why it was rejected
+}
+
 type ResolveRegistrarsResult struct {
 	DBKey               string                // Updated db key
 	HasIssues           bool                  // True if any active registrar is unmapped
@@ -2489,6 +2496,7 @@ type ResolveRegistrarsResult struct {
 	MappedCount         int                   // Successfully mapped
 	UnmappedRegistrars  []UnmappedRegistrar   // Registrars that couldn't be auto-mapped
 	AutoFixedRegistrars []AutoFixedRegistrar  // Host-only registrars auto-resolved
+	RejectedOverrides   []RejectedOverride    // Overrides that were provided but rejected
 }
 
 // autoFixHostOnlyRegistrars resolves unmapped registrars that only manage hosts
@@ -2998,11 +3006,14 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 
 	// Idempotency Check
 	// Since we modify the DB in place, we use a sidecar manifest to track completion.
+	// SKIP when overrides are provided — the caller explicitly wants a re-run
+	// with new mappings. The manifest will be overwritten at the end of this run.
 	manifestKey := args.DBKey + ".mapping-manifest.json"
-	if exists, _ := s3c.Exists(ctx, manifestKey); exists {
+	if len(args.Overrides) > 0 {
+		activity.GetLogger(ctx).Info("Overrides provided — bypassing idempotency check",
+			"manifestKey", manifestKey, "overrideCount", len(args.Overrides))
+	} else if exists, _ := s3c.Exists(ctx, manifestKey); exists {
 		activity.GetLogger(ctx).Info("Resuming: Registrar mapping manifest found", "manifestKey", manifestKey)
-		// We assume if manifest exists, the DB at args.DBKey is already mapped.
-		// We could verify content, but for now trust the artifact.
 		return ResolveRegistrarsResult{DBKey: args.DBKey, HasIssues: false}, nil
 	}
 
@@ -3090,6 +3101,15 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	client := &http.Client{Timeout: 10 * time.Second}
 	baseURL := buildAdminAPIURL()
 
+	activity.GetLogger(ctx).Info("ResolveRegistrars: starting mapping",
+		"apiBaseURL", baseURL,
+		"overrideCount", len(args.Overrides),
+		"tokenPrefix", func() string {
+			if len(token) > 15 { return token[:15] + "..." }
+			return token
+		}(),
+	)
+
 	tx, err := db.Begin()
 	if err != nil {
 		return ResolveRegistrarsResult{}, err
@@ -3097,6 +3117,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 
 	mappedCount := 0
 	var unmapped []UnmappedRegistrar
+	var rejected []RejectedOverride
 
 	for _, r := range registrars {
 		mappedID := ""
@@ -3112,9 +3133,24 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 
 			// Verify override validity
 			if mappedID != "" {
-				if !verifyRegistrarExists(client, baseURL, token, mappedID) {
-					activity.GetLogger(ctx).Warn("Override registrar not found", "id", mappedID)
+				if ok, reason := verifyRegistrarExists(client, baseURL, token, mappedID); !ok {
+					activity.GetLogger(ctx).Error("Override registrar verification FAILED",
+						"overrideKey", sourceName,
+						"targetClID", mappedID,
+						"reason", reason,
+						"apiURL", baseURL+"/registrars/"+mappedID,
+					)
+					rejected = append(rejected, RejectedOverride{
+						Key:      sourceName,
+						TargetID: mappedID,
+						Reason:   reason,
+					})
 					mappedID = "" // Invalid
+				} else {
+					activity.GetLogger(ctx).Info("Override registrar verified OK",
+						"overrideKey", sourceName,
+						"targetClID", mappedID,
+					)
 				}
 			}
 		}
@@ -3259,18 +3295,27 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		MappedCount:         mappedCount,
 		UnmappedRegistrars:  unmapped,
 		AutoFixedRegistrars: autoFixed,
+		RejectedOverrides:   rejected,
 	}, nil
 }
 
-func verifyRegistrarExists(client *http.Client, baseURL, token, id string) bool {
-	req, _ := http.NewRequest("GET", baseURL+"/registrars/"+id, nil)
+func verifyRegistrarExists(client *http.Client, baseURL, token, id string) (bool, string) {
+	url := baseURL + "/registrars/" + id
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, fmt.Sprintf("failed to build request: %v", err)
+	}
 	req.Header.Set("Authorization", token)
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return false, fmt.Sprintf("HTTP request failed (url=%s): %v", url, err)
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == 200
+	if resp.StatusCode == 200 {
+		return true, ""
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return false, fmt.Sprintf("GET %s returned HTTP %d: %s", url, resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
 // fetchRegistrarByGurID returns ID if found for GURID
@@ -3891,6 +3936,178 @@ type QAReport struct {
 	Checks    []QACheck         `json:"checks"`
 }
 
+// CleanOrphanedContactsArgs input for the orphan cleanup activity
+type CleanOrphanedContactsArgs struct {
+	TLD       string
+	DBKey     string
+	RunPrefix string
+}
+
+// CleanedRegistrar records what was cleaned for a specific dead registrar
+type CleanedRegistrar struct {
+	EscrowID     string `json:"escrowId"`
+	Name         string `json:"name"`
+	Reassigned   int    `json:"reassigned"`   // Contacts reassigned to domain's registrar
+	Deleted      int    `json:"deleted"`       // Contacts deleted (unreferenced)
+}
+
+// CleanOrphanedContactsResult output of the orphan cleanup activity
+type CleanOrphanedContactsResult struct {
+	DeletedContacts    int                `json:"deletedContacts"`
+	ReassignedContacts int                `json:"reassignedContacts"`
+	DeletedStatuses    int                `json:"deletedStatuses"`
+	CleanedRegistrars  []CleanedRegistrar `json:"cleanedRegistrars,omitempty"`
+	ReportKey          string             `json:"reportKey,omitempty"`
+}
+
+// CleanOrphanedContacts identifies registrars in the escrow that have zero domains
+// and zero hosts (dead/terminated registrars) and cleans up their contact objects:
+//   - Contacts referenced by domains as registrant: reassigned to the domain's registrar
+//   - Contacts not referenced by any domain: deleted
+//
+// This runs on the BASE DB before ResolveRegistrars, ensuring dead registrars
+// have zero objects and won't appear as unmapped.
+func (a *EscrowImportActivities) CleanOrphanedContacts(ctx context.Context, args CleanOrphanedContactsArgs) (CleanOrphanedContactsResult, error) {
+	if args.DBKey == "" {
+		return CleanOrphanedContactsResult{}, fmt.Errorf("dbKey is required")
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return CleanOrphanedContactsResult{}, err
+	}
+
+	dbPath, err := s3c.DownloadToFile(ctx, args.DBKey)
+	if err != nil {
+		return CleanOrphanedContactsResult{}, fmt.Errorf("download db failed: %w", err)
+	}
+	defer os.Remove(dbPath)
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return CleanOrphanedContactsResult{}, fmt.Errorf("open db failed: %w", err)
+	}
+	defer db.Close()
+
+	// Identify dead registrars: registrars with 0 domains AND 0 hosts.
+	// These registrars only have contacts (which may or may not be referenced by domains
+	// from other registrars).
+	deadRows, err := db.QueryContext(ctx, `
+		SELECT r.ID, r.name
+		FROM registrars r
+		WHERE r.ID NOT IN (SELECT DISTINCT clID FROM domains WHERE clID IS NOT NULL)
+		  AND r.ID NOT IN (SELECT DISTINCT clID FROM hosts WHERE clID IS NOT NULL)
+		  AND r.ID IN (SELECT DISTINCT clID FROM contacts WHERE clID IS NOT NULL)
+	`)
+	if err != nil {
+		return CleanOrphanedContactsResult{}, fmt.Errorf("query dead registrars: %w", err)
+	}
+
+	type deadReg struct{ ID, Name string }
+	var deadRegs []deadReg
+	for deadRows.Next() {
+		var d deadReg
+		if err := deadRows.Scan(&d.ID, &d.Name); err != nil {
+			deadRows.Close()
+			return CleanOrphanedContactsResult{}, fmt.Errorf("scan dead registrar: %w", err)
+		}
+		deadRegs = append(deadRegs, d)
+	}
+	deadRows.Close()
+
+	if len(deadRegs) == 0 {
+		activity.GetLogger(ctx).Info("No dead registrars with orphaned contacts found")
+		return CleanOrphanedContactsResult{}, nil
+	}
+
+	activity.GetLogger(ctx).Info("Found dead registrars with contact-only objects",
+		"count", len(deadRegs))
+
+	var result CleanOrphanedContactsResult
+
+	for _, dr := range deadRegs {
+		var cleaned CleanedRegistrar
+		cleaned.EscrowID = dr.ID
+		cleaned.Name = dr.Name
+
+		// Reassign contacts from this dead registrar that ARE referenced by domains
+		reassignRes, err := db.ExecContext(ctx, `
+			UPDATE contacts SET clID = (
+				SELECT d.clID FROM domains d WHERE d.registrant = contacts.id LIMIT 1
+			)
+			WHERE contacts.clID = ?
+			  AND contacts.id IN (SELECT registrant FROM domains WHERE registrant IS NOT NULL)
+		`, dr.ID)
+		if err != nil {
+			activity.GetLogger(ctx).Warn("Failed to reassign contacts", "registrar", dr.ID, "error", err)
+		} else if af, _ := reassignRes.RowsAffected(); af > 0 {
+			cleaned.Reassigned = int(af)
+			result.ReassignedContacts += int(af)
+		}
+
+		// Delete contacts from this dead registrar that are NOT referenced by any domain
+		deleteRes, err := db.ExecContext(ctx, `
+			DELETE FROM contacts
+			WHERE clID = ?
+			  AND id NOT IN (SELECT registrant FROM domains WHERE registrant IS NOT NULL)
+		`, dr.ID)
+		if err != nil {
+			activity.GetLogger(ctx).Warn("Failed to delete orphaned contacts", "registrar", dr.ID, "error", err)
+		} else if af, _ := deleteRes.RowsAffected(); af > 0 {
+			cleaned.Deleted = int(af)
+			result.DeletedContacts += int(af)
+		}
+
+		if cleaned.Reassigned > 0 || cleaned.Deleted > 0 {
+			result.CleanedRegistrars = append(result.CleanedRegistrars, cleaned)
+			activity.GetLogger(ctx).Info("Cleaned dead registrar",
+				"id", dr.ID, "name", dr.Name,
+				"reassigned", cleaned.Reassigned, "deleted", cleaned.Deleted)
+		}
+	}
+
+	// Clean up contact_statuses for deleted contacts
+	statusRes, err := db.ExecContext(ctx, `
+		DELETE FROM contact_statuses
+		WHERE contactID NOT IN (SELECT id FROM contacts)
+	`)
+	if err != nil {
+		activity.GetLogger(ctx).Warn("Failed to clean orphaned contact_statuses", "error", err)
+	} else if af, _ := statusRes.RowsAffected(); af > 0 {
+		result.DeletedStatuses = int(af)
+	}
+
+	activity.GetLogger(ctx).Info("CleanOrphanedContacts complete",
+		"deadRegistrars", len(deadRegs),
+		"reassigned", result.ReassignedContacts,
+		"deleted", result.DeletedContacts,
+		"statusesDeleted", result.DeletedStatuses,
+	)
+
+	// Upload cleanup report as a separate artifact
+	reportKey := args.RunPrefix + "/cleanup-report.json"
+	reportData, _ := json.MarshalIndent(result, "", "  ")
+	if tmp, err := os.CreateTemp("", "cleanup-report-*.json"); err == nil {
+		tmp.Write(reportData)
+		tmp.Close()
+		if err := s3c.UploadFile(ctx, reportKey, tmp.Name(), "application/json"); err != nil {
+			activity.GetLogger(ctx).Warn("Failed to upload cleanup report", "error", err)
+		}
+		os.Remove(tmp.Name())
+	}
+	result.ReportKey = reportKey
+
+	// Close DB to flush WAL before uploading
+	db.Close()
+
+	// Re-upload the cleaned base DB
+	if err := s3c.UploadFile(ctx, args.DBKey, dbPath, "application/octet-stream"); err != nil {
+		return CleanOrphanedContactsResult{}, fmt.Errorf("re-upload db failed: %w", err)
+	}
+
+	return result, nil
+}
+
 // AddCheck adds a check to the report and updates the overall passed status
 func (r *QAReport) AddCheck(check QACheck) {
 	r.Checks = append(r.Checks, check)
@@ -3898,6 +4115,7 @@ func (r *QAReport) AddCheck(check QACheck) {
 		r.Passed = false
 	}
 }
+
 
 // QAStagedDatabaseArgs input for the QA activity
 type QAStagedDatabaseArgs struct {
@@ -4248,29 +4466,65 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		report.AddCheck(check)
 	}
 
-	// --- Check 7: Expiry date sanity ---
+	// --- Check 7a: Expiry date far in the future (warning) ---
 	{
 		now := time.Now().UTC()
-		pastDate := now.Format("2006-01-02")
 		futureDate := now.AddDate(10, 0, 0).Format("2006-01-02")
 
-		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND (exdate < '%s' OR exdate > '%s')`, pastDate, futureDate)
 		var count int
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s'`, futureDate)
 		if err := db.QueryRow(query).Scan(&count); err != nil {
 			count = 0 // Non-fatal
 		}
 		check := QACheck{
-			Rule:          "expiry_date_sanity",
-			Description:   "Domain expiry dates are not in the past and not more than 10 years in the future",
+			Rule:          "expiry_date_far_future",
+			Description:   "Domain expiry dates should not be more than 10 years in the future",
 			Severity:      "warning",
 			Passed:        count == 0,
 			AffectedCount: count,
 		}
 		if count == 0 {
-			check.Message = fmt.Sprintf("All %d expiry dates within expected range", report.Summary["domains"])
+			check.Message = "No domains have expiry dates more than 10 years in the future"
 		} else {
-			check.Message = fmt.Sprintf("%d domains have expiry dates outside the expected range", count)
-			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND (exdate < '%s' OR exdate > '%s') LIMIT 50`, pastDate, futureDate)
+			check.Message = fmt.Sprintf("%d domains have expiry dates more than 10 years in the future", count)
+			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s' ORDER BY exdate DESC LIMIT 50`, futureDate)
+			if rows, err := db.Query(sampleQuery); err == nil {
+				var samples []map[string]string
+				for rows.Next() {
+					var domain, exdate string
+					if rows.Scan(&domain, &exdate) == nil {
+						samples = append(samples, map[string]string{"domain": domain, "expiryDate": exdate})
+					}
+				}
+				rows.Close()
+				check.SampledItems = samples
+			}
+		}
+		report.AddCheck(check)
+	}
+
+	// --- Check 7b: Expiry dates in the past (info) ---
+	{
+		now := time.Now().UTC()
+		pastDate := now.Format("2006-01-02")
+
+		var count int
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s'`, pastDate)
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			count = 0 // Non-fatal
+		}
+		check := QACheck{
+			Rule:          "expiry_date_in_past",
+			Description:   "Domains whose expiry date has already passed — expected for recently-expired domains pending deletion",
+			Severity:      "info",
+			Passed:        true, // past expiry dates are informational, not a failure
+			AffectedCount: count,
+		}
+		if count == 0 {
+			check.Message = "No domains have expiry dates in the past"
+		} else {
+			check.Message = fmt.Sprintf("%d domains have expiry dates in the past", count)
+			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s' ORDER BY exdate ASC LIMIT 50`, pastDate)
 			if rows, err := db.Query(sampleQuery); err == nil {
 				var samples []map[string]string
 				for rows.Next() {

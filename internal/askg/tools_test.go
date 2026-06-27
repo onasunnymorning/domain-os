@@ -243,6 +243,9 @@ func (m *mockDomainSvc) CountExpiringDomains(context.Context, *queries.ExpiringD
 func (m *mockDomainSvc) ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error) {
 	panic("not used")
 }
+func (m *mockDomainSvc) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	panic("not used")
+}
 func (m *mockDomainSvc) ListPurgeableDomains(context.Context, *queries.PurgeableDomainsQuery, int, string) ([]*entities.Domain, error) {
 	panic("not used")
 }

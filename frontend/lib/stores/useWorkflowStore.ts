@@ -35,13 +35,13 @@ export interface WorkflowRun {
 
 interface WorkflowStore {
   runs: WorkflowRun[];
-  drawerOpen: boolean;
+  modalOpen: boolean;
   selectedRunId: string | null;
   addRun: (run: WorkflowRun) => void;
   updateRun: (workflowId: string, patch: Partial<WorkflowRun>) => void;
   removeRun: (workflowId: string) => void;
   clearCompleted: () => void;
-  setDrawerOpen: (open: boolean) => void;
+  setModalOpen: (open: boolean) => void;
   selectRun: (workflowId: string | null) => void;
   hasRunning: () => boolean;
   runningCount: () => number;
@@ -51,7 +51,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
   persist(
     (set, get) => ({
       runs: [],
-      drawerOpen: false,
+      modalOpen: false,
       selectedRunId: null,
 
       addRun: (run) =>
@@ -80,7 +80,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
           runs: state.runs.filter((r) => r.status === 'RUNNING'),
         })),
 
-      setDrawerOpen: (open) => set({ drawerOpen: open }),
+      setModalOpen: (open) => set({ modalOpen: open }),
 
       selectRun: (workflowId) => set({ selectedRunId: workflowId }),
 

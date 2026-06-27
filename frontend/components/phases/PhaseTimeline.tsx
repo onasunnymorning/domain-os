@@ -5,11 +5,12 @@ import { Phase } from '@/lib/types/phase';
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { PhaseDetailDrawer } from './PhaseDetailDrawer';
-import { PhaseCreateWizard } from './PhaseCreateWizard';
+import { PhaseCreateConversation } from './PhaseCreateConversation';
 import { GanttTimeline } from './GanttTimeline';
 import { Button } from '@/components/ui/button';
-import { Plus, Calendar, Layers, Info } from 'lucide-react';
+import { Plus, Calendar, Layers, Import, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { WorkflowShortcuts } from '@/components/shared/WorkflowShortcuts';
 
 interface PhaseTimelineProps {
   tldName: string;
@@ -110,7 +111,10 @@ export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps)
               onPhaseClick={setSelectedPhase}
             />
           ) : (
-            <EmptyPhaseState onAddPhase={() => setShowCreateWizard(true)} />
+            <EmptyPhaseState
+              tldName={tldName}
+              onAddPhase={() => setShowCreateWizard(true)}
+            />
           )}
         </div>
       </Card>
@@ -124,8 +128,8 @@ export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps)
         allPhases={phases || []}
       />
 
-      {/* Create Phase Wizard */}
-      <PhaseCreateWizard
+      {/* Create Phase Conversation */}
+      <PhaseCreateConversation
         tldName={tldName}
         open={showCreateWizard}
         onClose={() => setShowCreateWizard(false)}
@@ -135,12 +139,12 @@ export function PhaseTimeline({ tldName, initialPhaseName }: PhaseTimelineProps)
   );
 }
 
-// ── Self-Documenting Empty State ───────────────────────────────────────────
+// ── Empty State with Import CTA ────────────────────────────────────────────
 
-function EmptyPhaseState({ onAddPhase }: { onAddPhase: () => void }) {
+function EmptyPhaseState({ tldName, onAddPhase }: { tldName: string; onAddPhase: () => void }) {
   return (
     <div className="rounded-lg border-2 border-dashed border-border/60 bg-muted/20 p-8">
-      <div className="max-w-lg mx-auto text-center space-y-4">
+      <div className="max-w-lg mx-auto text-center space-y-5">
         {/* Icon cluster */}
         <div className="flex items-center justify-center gap-3">
           <div className="rounded-full bg-orange-100 dark:bg-orange-900/30 p-3">
@@ -156,39 +160,26 @@ function EmptyPhaseState({ onAddPhase }: { onAddPhase: () => void }) {
           <h3 className="text-base font-semibold">No phases configured</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Phases define the <strong>pricing, policies, and registration rules</strong> for
-            this TLD at different points in time. Each phase specifies grace periods, label
-            constraints, contact data requirements, and per-currency pricing.
+            this TLD at different points in time.
           </p>
         </div>
 
-        {/* Phase type explanation */}
-        <div className="grid grid-cols-2 gap-3 text-left">
-          <div className="rounded-lg bg-background p-3 border">
-            <div className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-1">GA Phase</div>
-            <p className="text-xs text-muted-foreground">
-              General Availability — only one can be active at a time. GA phases form a continuous
-              timeline with no gaps or overlaps.
-            </p>
+        {/* Import CTA */}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <Import className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span>Need to import existing registry data first?</span>
           </div>
-          <div className="rounded-lg bg-background p-3 border">
-            <div className="text-xs font-semibold text-muted-foreground mb-1">Launch Phase</div>
-            <p className="text-xs text-muted-foreground">
-              Time-limited promotional or launch programs (e.g., Sunrise, Landrush). Multiple
-              launch phases can run simultaneously.
-            </p>
-          </div>
+          <WorkflowShortcuts workflowKeys={['escrow-import']} />
         </div>
 
-        {/* CTA */}
-        <Button onClick={onAddPhase} className="mt-2">
-          <Plus className="h-4 w-4 mr-2" />
-          Create First Phase
-        </Button>
-
-        {/* Hint */}
-        <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
-          <Info className="h-3 w-3" />
-          <span>Pricing and policies can be configured after creating a phase</span>
+        {/* Create CTA */}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Or start fresh:</p>
+          <Button onClick={onAddPhase} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Create First Phase
+          </Button>
         </div>
       </div>
     </div>

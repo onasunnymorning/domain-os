@@ -56,7 +56,7 @@ func (s *EventPublisherSuite) TestPublish() {
 	pub := NewPostgresEventPublisher(s.db, logger, true)
 
 	data := map[string]string{"key": "value"}
-	event := entities.NewDomainEvent("test-source", "domain.registered", "test-domain.com", data)
+	event := entities.NewDomainEvent("test-source", "domain.registered", "test-domain.com", "Domain test-domain.com registered", data)
 	event.TraceID = "trace-123"
 	event.CorrelationID = "corr-456"
 
@@ -85,6 +85,7 @@ func (s *EventPublisherSuite) TestPublish() {
 	s.Equal(event.Source, mappedEvent.Source)
 	s.Equal(event.Type, mappedEvent.Type)
 	s.Equal(event.Subject, mappedEvent.Subject)
+	s.Equal(event.Description, mappedEvent.Description)
 	s.Equal(event.TraceID, mappedEvent.TraceID)
 	s.Equal(event.CorrelationID, mappedEvent.CorrelationID)
 
@@ -93,7 +94,7 @@ func (s *EventPublisherSuite) TestPublish() {
 	logger2 := zap.New(core2)
 	pubDisabledLogs := NewPostgresEventPublisher(s.db, logger2, false)
 
-	event2 := entities.NewDomainEvent("test-source", "domain.renewed", "test-domain2.com", data)
+	event2 := entities.NewDomainEvent("test-source", "domain.renewed", "test-domain2.com", "Domain test-domain2.com renewed", data)
 	err = pubDisabledLogs.Publish(context.Background(), event2)
 	s.Require().NoError(err)
 	s.Require().Equal(0, core2.writeCount) // No logs generated!

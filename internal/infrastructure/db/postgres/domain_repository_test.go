@@ -64,10 +64,25 @@ func (s *DomainSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.tld = tld.Name.String()
 
+	// Create an active GA phase for the TLD so activeGAPhaseFilter passes
+	phaseRepo := NewGormPhaseRepository(s.db)
+	gaPhase, err := entities.NewPhase("GA1", "GA", time.Now().AddDate(0, 0, -1).UTC())
+	s.Require().NoError(err)
+	gaPhase.TLDName = entities.DomainName(s.tld)
+	_, err = phaseRepo.CreatePhase(context.Background(), gaPhase)
+	s.Require().NoError(err)
+
 	// Create a 5 more TLDs
 	for i := 0; i < 5; i++ {
 		tld, _ := entities.NewTLD(fmt.Sprintf("domaintesttld%d", i), "DomainSuiteRy")
 		err = tldRepo.Create(context.Background(), tld)
+		s.Require().NoError(err)
+
+		// Each TLD needs an active GA phase
+		gaPhase, err := entities.NewPhase("GA1", "GA", time.Now().AddDate(0, 0, -1).UTC())
+		s.Require().NoError(err)
+		gaPhase.TLDName = entities.DomainName(fmt.Sprintf("domaintesttld%d", i))
+		_, err = phaseRepo.CreatePhase(context.Background(), gaPhase)
 		s.Require().NoError(err)
 	}
 

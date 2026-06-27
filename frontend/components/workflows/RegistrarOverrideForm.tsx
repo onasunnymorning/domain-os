@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  StopCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getRegistrars, createRegistrar } from '@/lib/api/registrars';
-import { signalWorkflow } from '@/lib/api/workflows';
+import { signalWorkflow, terminateWorkflow } from '@/lib/api/workflows';
 import type { RegistrarListItem } from '@/lib/types/registrar';
 
 // ---------------------------------------------------------------------------
@@ -101,12 +102,35 @@ function RegistrarCombobox({
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await getRegistrars({
-          name_like: search || undefined,
-          status_equals: 'ok',
-          pagesize: 10,
-        });
-        setResults(res.Data || []);
+        const baseParams = { status_equals: 'ok' as const, pagesize: 10 };
+        const queries: Promise<{ Data: RegistrarListItem[] }>[] = [];
+
+        if (search) {
+          // Search by name and ClID in parallel
+          queries.push(getRegistrars({ ...baseParams, name_like: search }));
+          queries.push(getRegistrars({ ...baseParams, clid_like: search }));
+          // If numeric, also try exact GurID match
+          const asNum = Number(search);
+          if (!isNaN(asNum) && asNum > 0) {
+            queries.push(getRegistrars({ ...baseParams, gurid_equals: asNum }));
+          }
+        } else {
+          queries.push(getRegistrars(baseParams));
+        }
+
+        const responses = await Promise.all(queries);
+        // Merge and deduplicate by ClID
+        const seen = new Set<string>();
+        const merged: RegistrarListItem[] = [];
+        for (const res of responses) {
+          for (const r of res.Data || []) {
+            if (!seen.has(r.ClID)) {
+              seen.add(r.ClID);
+              merged.push(r);
+            }
+          }
+        }
+        setResults(merged);
       } catch {
         setResults([]);
       } finally {
@@ -135,7 +159,7 @@ function RegistrarCombobox({
       <PopoverContent className="w-[320px] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Search by name…"
+            placeholder="Search by name, ClID, or GurID…"
             value={search}
             onValueChange={setSearch}
           />
@@ -328,7 +352,7 @@ export function RegistrarOverrideForm({
 }: RegistrarOverrideFormProps) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [expandedCreate, setExpandedCreate] = useState<string | null>(null);
-  const [sending, setSending] = useState<'apply' | 'skip' | null>(null);
+  const [sending, setSending] = useState<'apply' | 'skip' | 'stop' | null>(null);
   const [emptyExpanded, setEmptyExpanded] = useState(false);
 
   // Partition: registrars with objects vs empty ones
@@ -388,6 +412,26 @@ export function RegistrarOverrideForm({
         err?.message ||
         'Failed to send signal';
       toast.error('Signal failed', { description: msg });
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const handleStop = async () => {
+    setSending('stop');
+    try {
+      await terminateWorkflow(workflowId, 'stopped by operator at registrar override step');
+      toast.success('Import stopped', {
+        description: 'The workflow has been terminated. You can re-run it when ready.',
+      });
+      onSignalSent();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to terminate workflow';
+      toast.error('Terminate failed', { description: msg });
     } finally {
       setSending(null);
     }
@@ -588,6 +632,29 @@ export function RegistrarOverrideForm({
             <TooltipContent side="bottom" className="max-w-[260px] text-xs">
               Domains and hosts belonging to unmapped registrars will be skipped
               during import. You can re-run with overrides later.
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={sending !== null}
+                onClick={handleStop}
+                className="gap-1.5 text-muted-foreground"
+              >
+                {sending === 'stop' ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <StopCircle className="size-3" />
+                )}
+                Stop Here for Now
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[260px] text-xs">
+              Terminate the import workflow. You can re-run it from scratch when
+              you&apos;re ready.
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

@@ -65,7 +65,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		TaskQueue: tCfg.WorkerQueue,
 	}
 
-	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{BatchSize: 100})
+	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{})
 	if err != nil {
 		logger.Fatal("Failed to start workflow", zap.Error(err))
 	}

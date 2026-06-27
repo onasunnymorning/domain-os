@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useDeletePhase, useEndPhase } from '@/lib/hooks/usePhases';
 import { useQuery } from '@tanstack/react-query';
 import { phasesApi } from '@/lib/api/phases';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -97,76 +97,78 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          {/* Header */}
-          <PhaseDetailHeader
-            phase={phaseData}
-            hasPreviousPhase={!!previousPhaseBasic}
-            showDiff={showDiff}
-            onToggleDiff={() => setShowDiff(!showDiff)}
-            onDelete={() => setShowDeleteDialog(true)}
-            onEndPhase={() => setShowEndPhaseDialog(true)}
-          />
-
-          <div className="mt-6 space-y-6">
-            {/* Diff */}
-            {showDiff && previousPhase && (
-              <PhaseConfigDiff phase={phaseData} compareWith={previousPhase} />
-            )}
-
-            {/* Date Section */}
-            <PhaseDateSection phase={phaseData} />
-
-            {/* Divider */}
-            <div className="border-t" />
-
-            {/* Pricing Section */}
-            <PhasePricingSection
+      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+          <div className="p-6">
+            {/* Header */}
+            <PhaseDetailHeader
               phase={phaseData}
-              tldName={tldName || ''}
-              onRefetch={handleRefetch}
+              hasPreviousPhase={!!previousPhaseBasic}
+              showDiff={showDiff}
+              onToggleDiff={() => setShowDiff(!showDiff)}
+              onDelete={() => setShowDeleteDialog(true)}
+              onEndPhase={() => setShowEndPhaseDialog(true)}
             />
 
-            {/* Divider */}
-            <div className="border-t" />
+            <div className="mt-6 space-y-6">
+              {/* Diff */}
+              {showDiff && previousPhase && (
+                <PhaseConfigDiff phase={phaseData} compareWith={previousPhase} />
+              )}
 
-            {/* Fees Section */}
-            <PhaseFeeSection
-              phase={phaseData}
-              tldName={tldName || ''}
-              onRefetch={handleRefetch}
-            />
+              {/* Date Section */}
+              <PhaseDateSection phase={phaseData} />
 
-            {/* Divider */}
-            <div className="border-t" />
+              {/* Divider */}
+              <div className="border-t" />
 
-            {/* Policy Section */}
-            <PhasePolicySection
-              phase={phaseData}
-              tldName={tldName || ''}
-              onRefetch={handleRefetch}
-            />
+              {/* Pricing Section */}
+              <PhasePricingSection
+                phase={phaseData}
+                tldName={tldName || ''}
+                onRefetch={handleRefetch}
+              />
 
-            {/* Premium List */}
-            {phaseData.premiumListName && (
-              <>
-                <div className="border-t" />
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Tag className="h-4 w-4 text-orange-600" />
-                    <span className="text-sm font-semibold">Premium List</span>
+              {/* Divider */}
+              <div className="border-t" />
+
+              {/* Fees Section */}
+              <PhaseFeeSection
+                phase={phaseData}
+                tldName={tldName || ''}
+                onRefetch={handleRefetch}
+              />
+
+              {/* Divider */}
+              <div className="border-t" />
+
+              {/* Policy Section */}
+              <PhasePolicySection
+                phase={phaseData}
+                tldName={tldName || ''}
+                onRefetch={handleRefetch}
+              />
+
+              {/* Premium List */}
+              {phaseData.premiumListName && (
+                <>
+                  <div className="border-t" />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-orange-600" />
+                      <span className="text-sm font-semibold">Premium List</span>
+                    </div>
+                    <Badge variant="outline" className="text-sm font-mono">{phaseData.premiumListName}</Badge>
                   </div>
-                  <Badge variant="outline" className="text-sm font-mono">{phaseData.premiumListName}</Badge>
-                </div>
-              </>
-            )}
+                </>
+              )}
 
-            {/* Metadata */}
-            <PhaseMetadataSection phase={phaseData} />
+              {/* Metadata */}
+              <PhaseMetadataSection phase={phaseData} />
+            </div>
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

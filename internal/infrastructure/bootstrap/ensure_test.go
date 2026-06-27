@@ -69,9 +69,8 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		assert.Equal(t, 2*time.Hour, s.Offset)
 		assert.Equal(t, 24*time.Hour, s.CatchupWindow)
 		require.Len(t, s.Args, 1)
-		params, ok := s.Args[0].(workflows.SyncRegistrarsParams)
+		_, ok = s.Args[0].(workflows.SyncRegistrarsParams)
 		require.True(t, ok, "SyncRegistrars args should be SyncRegistrarsParams, got %T", s.Args[0])
-		assert.Equal(t, 100, params.BatchSize)
 		assert.NotEmpty(t, s.Note)
 	})
 

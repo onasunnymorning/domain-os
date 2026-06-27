@@ -20,7 +20,7 @@ type EscrowImportParams struct {
 
 // EscrowImportState tracks the real-time progress and QA status of the escrow import
 type EscrowImportState struct {
-	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "resolving", "pending_registrar_overrides", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
+	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "cleaning_orphans", "resolving", "pending_registrar_overrides", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
 	TLD                    string                          `json:"tld"`
 	ObjectKey              string                          `json:"objectKey"`
 	RunPrefix              string                          `json:"runPrefix"`
@@ -34,6 +34,7 @@ type EscrowImportState struct {
 	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
 	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
 	OverridesProvided      map[string]string               `json:"overridesProvided,omitempty"`
+	RejectedOverrides      []activities.RejectedOverride   `json:"rejectedOverrides,omitempty"`
 	VerificationPassed     *bool                           `json:"verificationPassed,omitempty"`
 	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
 }
@@ -165,6 +166,23 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		return EscrowImportResult{}, fmt.Errorf("BuildStagingDatabase(tld=%s, runPrefix=%s) activity failed: %w. Check space/permissions in SQLite builder.", params.TLD, runPrefix, err)
 	}
 
+	// 2b. Clean Orphaned Contacts — remove contacts from dead registrars (0 domains, 0 hosts)
+	state.Phase = "cleaning_orphans"
+	var cleanOut activities.CleanOrphanedContactsResult
+	if err := workflow.ExecuteActivity(ctxStaging, acts.CleanOrphanedContacts, activities.CleanOrphanedContactsArgs{
+		TLD:       params.TLD,
+		DBKey:     collateOut.DBKey,
+		RunPrefix: assetsOut.RunPrefix,
+	}).Get(ctxStaging, &cleanOut); err != nil {
+		// Non-fatal: log and continue — cleanup is best-effort
+		workflow.GetLogger(ctx).Warn("CleanOrphanedContacts failed, continuing with uncleaned DB", "error", err)
+	} else if cleanOut.DeletedContacts > 0 || cleanOut.ReassignedContacts > 0 {
+		workflow.GetLogger(ctx).Info("Orphaned contacts cleaned",
+			"deleted", cleanOut.DeletedContacts,
+			"reassigned", cleanOut.ReassignedContacts,
+			"deadRegistrars", len(cleanOut.CleanedRegistrars))
+	}
+
 	// 3. Resolve Registrars
 	state.Phase = "resolving"
 	state.BaseDBKey = collateOut.DBKey
@@ -194,6 +212,11 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	state.MappedRegistrars = mapOut.MappedCount
 	if mapOut.HasIssues {
 		state.UnmappedRegistrars = mapOut.UnmappedRegistrars
+	}
+	if len(mapOut.RejectedOverrides) > 0 {
+		state.RejectedOverrides = mapOut.RejectedOverrides
+		workflow.GetLogger(ctx).Warn("Some registrar overrides were rejected",
+			"rejectedCount", len(mapOut.RejectedOverrides))
 	}
 
 	// 3b. Registrar Override Gate — pause if unmapped registrars have domains
@@ -254,6 +277,13 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 				state.UnmappedRegistrars = reMapOut.UnmappedRegistrars
 			} else {
 				state.UnmappedRegistrars = nil
+			}
+			if len(reMapOut.RejectedOverrides) > 0 {
+				state.RejectedOverrides = reMapOut.RejectedOverrides
+				workflow.GetLogger(ctx).Warn("Some registrar overrides were rejected during re-resolution",
+					"rejectedCount", len(reMapOut.RejectedOverrides))
+			} else {
+				state.RejectedOverrides = nil
 			}
 		})
 

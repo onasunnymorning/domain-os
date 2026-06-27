@@ -12,6 +12,7 @@ type DomainEventRecord struct {
 	Source        string    `gorm:"not null;index"`
 	Type          string    `gorm:"not null;index"`
 	Subject       string    `gorm:"not null;index"`
+	Description   string    `gorm:"type:text"`
 	OccurredAt    time.Time `gorm:"not null;index"`
 	TraceID       string    `gorm:"index"`
 	CorrelationID string    `gorm:"index"`
@@ -34,6 +35,7 @@ func ToDBDomainEvent(e entities.DomainEvent) (DomainEventRecord, error) {
 		Source:        e.Source,
 		Type:          e.Type,
 		Subject:       e.Subject,
+		Description:   e.Description,
 		OccurredAt:    e.Time,
 		TraceID:       e.TraceID,
 		CorrelationID: e.CorrelationID,
@@ -52,6 +54,7 @@ func (r DomainEventRecord) ToDomainEvent() (entities.DomainEvent, error) {
 		Source:        r.Source,
 		Type:          r.Type,
 		Subject:       r.Subject,
+		Description:   r.Description,
 		Time:          r.OccurredAt,
 		TraceID:       r.TraceID,
 		CorrelationID: r.CorrelationID,

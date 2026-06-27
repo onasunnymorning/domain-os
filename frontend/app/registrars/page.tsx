@@ -12,6 +12,7 @@ import { SystemRegistrarsTab } from "@/components/registrars/system-registrars-t
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRegistrarCount, useIANARegistrarCount } from "@/lib/hooks/useRegistrars";
 import { Plus, UserCheck } from "lucide-react";
+import { WorkflowShortcuts } from "@/components/shared/WorkflowShortcuts";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatCompactNumber } from "@/lib/utils/numberUtils";
@@ -25,14 +26,12 @@ export default function RegistrarsPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <UserCheck className="h-8 w-8" />
-              Registrar Management
+              Registrars
             </h1>
-            <p className="text-muted-foreground mt-2">
-              Manage IANA registrars and system registrars
-            </p>
+            <WorkflowShortcuts workflowKeys={['sync-registrars']} />
           </div>
           <div>
             <Button asChild>

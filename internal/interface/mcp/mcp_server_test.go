@@ -69,6 +69,9 @@ func (m *mockDomainService) CountExpiringDomains(context.Context, *queries.Expir
 func (m *mockDomainService) ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error) {
 	panic("not implemented")
 }
+func (m *mockDomainService) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	panic("not implemented")
+}
 func (m *mockDomainService) ListPurgeableDomains(context.Context, *queries.PurgeableDomainsQuery, int, string) ([]*entities.Domain, error) {
 	panic("not implemented")
 }

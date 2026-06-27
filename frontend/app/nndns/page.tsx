@@ -173,25 +173,22 @@ function NNDNsPageInner() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <ServerOff className="h-8 w-8" />
-              NNDNs (Non-Standard Names)
+              Blocking
             </h1>
-            <p className="text-muted-foreground mt-2">
-              Browse and search non-standard constraints like withheld or blocked domains
-            </p>
           </div>
         </div>
 
         {/* Info Box */}
         <Card>
           <CardHeader>
-            <CardTitle>NNDN Directory</CardTitle>
+            <CardTitle>Blocked Names</CardTitle>
             <CardDescription>
-              Use the filters below to browse registry-blocked and IDN mirrored domains.
+              Registry-blocked and IDN mirrored domains
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">
-              Total NNDNs: <span className="font-semibold">{countData?.Count ?? "-"}</span>
+              Total: <span className="font-semibold">{countData?.Count ?? "-"}</span>
             </div>
           </CardContent>
         </Card>
@@ -208,7 +205,7 @@ function NNDNsPageInner() {
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search NNDNs by name..."
+                    placeholder="Search blocked names..."
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
                     className="pl-9 h-9"
@@ -325,7 +322,7 @@ function NNDNsPageInner() {
           <CardContent className="pt-6">
             {error && (
               <div className="text-center py-8 text-red-600">
-                Error loading NNDNs: {(error as any)?.message || "Unknown error"}
+                Error loading blocked names: {(error as any)?.message || "Unknown error"}
               </div>
             )}
 
@@ -365,7 +362,7 @@ function NNDNsPageInner() {
                     {!isLoading && (!data?.Data || data.Data.length === 0) && (
                       <TableRow>
                         <TableCell className="py-8 text-center text-muted-foreground" colSpan={7}>
-                          No NNDNs found
+                          No blocked names found
                         </TableCell>
                       </TableRow>
                     )}
@@ -404,7 +401,7 @@ function NNDNsPageInner() {
             {data?.Meta && data?.Data && data.Data.length > 0 && (
               <div className="mt-4 flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">
-                  Showing {data.Data.length} NNDN{data.Data.length !== 1 ? "s" : ""}
+                  Showing {data.Data.length} blocked name{data.Data.length !== 1 ? "s" : ""}
                 </div>
                 <PaginationButtons />
               </div>

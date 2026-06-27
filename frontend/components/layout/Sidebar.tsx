@@ -25,7 +25,7 @@ const navigation = [
   { name: 'TLDs', href: '/tlds', icon: Globe },
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
-  { name: 'NNDNs', href: '/nndns', icon: ServerOff },
+  { name: 'Blocking', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Cloud', href: '/cloud', icon: Cloud },
   { name: 'Documentation', href: '/docs', icon: FileText },

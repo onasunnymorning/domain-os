@@ -8,6 +8,7 @@
 
 # Variables
 BRANCH := $(shell git branch --show-current)
+TAG := $(subst /,-,$(BRANCH))
 GIT_SHA := $(shell git rev-parse $(BRANCH))
 DOPPLER := doppler run --
 DOCKER_COMPOSE := docker compose
@@ -28,23 +29,27 @@ help: ## Show this help message
 
 dev: ## Start essential services (db, redis, epp-server, admin-api) for development
 	@echo "Starting essential services for development..."
-	@export BRANCH=$(BRANCH) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d
+	@export BRANCH=$(TAG) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d
 
 dev-logs: ## Follow logs for all running services
 	$(DOPPLER) $(DOCKER_COMPOSE) logs -f
 
 dev-build: ## Rebuild and start essential services
 	@echo "Building and starting services for branch $(BRANCH) with commit $(GIT_SHA)..."
-	@export BRANCH=$(BRANCH) && export GIT_SHA=$(GIT_SHA) && \
+	@export BRANCH=$(TAG) && export GIT_SHA=$(GIT_SHA) && \
 	$(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d --build
 
 dev-frontend: ## Start the Next.js frontend development server
 	@echo "Starting frontend development server..."
 	@cd frontend && $(DOPPLER) npm run dev
 
-local: ## Start local development with Tilt (includes all services + live rebuild)
-	@echo "Starting Tilt local development environment..."
-	@$(DOPPLER) tilt up
+local: ## Start local development with Tilt (Native/Hybrid Mode)
+	@echo "Starting Tilt local development environment (Native Mode)..."
+	@TILT_MODE=native $(DOPPLER) tilt up
+
+local-docker: ## Start local development with Tilt (Docker Mode)
+	@echo "Starting Tilt local development environment (Docker Mode)..."
+	@TILT_MODE=docker $(DOPPLER) tilt up
 
 askg: ## Run Ask G support agent (usage: make askg Q="What is the status of example.best?")
 	@$(DOPPLER) sh -c 'DB_HOST=localhost go run ./cmd/askg "$(Q)"'
@@ -118,9 +123,9 @@ test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (req
 		| xargs docker network rm 2>/dev/null || true
 	@docker volume rm domain-os_db domain-os_temporal_pgdata 2>/dev/null || true
 	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
-	@docker build -t geapex/domain-os:$(BRANCH) --build-arg GIT_SHA=$(BRANCH) .
+	@docker build -t geapex/domain-os:$(TAG) --build-arg GIT_SHA=$(BRANCH) .
 	@echo "Starting integration test containers (will run Postman tests via Newman)..."
-	@export BRANCH=$(BRANCH) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) \
+	@export BRANCH=$(TAG) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) \
 		$(DOCKER_COMPOSE) -p domain-os --profile essential -f $(COMPOSE_CI_FILE) \
 		up --remove-orphans --abort-on-container-exit --exit-code-from test; \
 	EXIT_CODE=$$?; \
@@ -202,9 +207,14 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 # Local CI (mirrors GitHub Actions)
 ###################
 
-ci-local: ci-envcheck ci-lint ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + test + frontend + security + API integration)
+ci-local: ci-preflight ci-envcheck ci-lint build-all ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + build + test + frontend + security + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
+
+ci-preflight: ## Kill any stale test containers that could conflict with CI (testdb, testdb-api, testdb-cov)
+	@echo "🧹 Cleaning up stale test containers on port 5432/5433..."
+	@docker rm -f testdb testdb-api testdb-cov 2>/dev/null || true
+	@echo "✅ Pre-flight clean complete."
 
 ci-envcheck: ## Check env var registry for drift (new vars must be registered)
 	@echo "🔍 Checking env var registry drift..."
@@ -228,7 +238,7 @@ ci-test-backend: ## Run Go tests matching CI (with race detector + DB health wai
 		(docker stop testdb 2>/dev/null; exit 1)
 	@go tool cover -func=coverage.out | tail -1
 	@echo "🧪 Stopping test database..."
-	@docker stop testdb 2>/dev/null || true
+	@docker rm -f testdb 2>/dev/null || true
 
 ci-test-frontend: ## Run frontend tests matching CI
 	@echo "⚛️  Running frontend tests with coverage..."
@@ -241,8 +251,8 @@ ci-security: ## Run security scans (govulncheck + npm audit + Trivy)
 	@echo "🔒 Running npm audit..."
 	@cd frontend && npm audit --audit-level=high
 	@echo "🔒 Running Trivy image scan..."
-	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/domain-os:latest
-	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/unified-worker:latest
+	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/domain-os:$(TAG)
+	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/unified-worker:$(TAG)
 	@echo "✅ Security scans passed!"
 
 ###################
@@ -251,31 +261,35 @@ ci-security: ## Run security scans (govulncheck + npm audit + Trivy)
 
 build: ## Build the main API Docker image
 	@echo "Building API image for branch $(BRANCH)..."
-	@docker build -t geapex/domain-os:$(BRANCH) --build-arg GIT_SHA=$(BRANCH) .
+	@docker build -t geapex/domain-os:$(TAG) --build-arg GIT_SHA=$(BRANCH) .
 
 build-epp: ## Build the EPP server Docker image
 	@echo "Building EPP server image for branch $(BRANCH)..."
-	@docker build -t geapex/epp-server:$(BRANCH) -f Dockerfile.epp --build-arg GIT_SHA=$(BRANCH) .
+	@docker build -t geapex/epp-server:$(TAG) -f Dockerfile.epp --build-arg GIT_SHA=$(BRANCH) .
 
 build-whois: ## Build the WHOIS/EPP client API Docker image
 	@echo "Building WHOIS/EPP client API image for branch $(BRANCH)..."
-	@docker build -t geapex/epp-client-api:$(BRANCH) -f ./cmd/api/epp-client/Dockerfile --build-arg GIT_SHA=$(BRANCH) .
+	@docker build -t geapex/epp-client-api:$(TAG) -f ./cmd/api/epp-client/Dockerfile --build-arg GIT_SHA=$(BRANCH) .
 
-build-all: build build-epp build-whois ## Build all Docker images
+build-worker: ## Build the unified worker Docker image
+	@echo "Building Unified Worker image for branch $(BRANCH)..."
+	@docker build -t geapex/unified-worker:$(TAG) -f ./cmd/workers/unified/Dockerfile --build-arg GIT_SHA=$(BRANCH) .
+
+build-all: build build-worker build-epp build-whois ## Build all Docker images
 
 push: build ## Build and push main API image to Docker Hub
 	@echo "Pushing API image to Docker Hub..."
-	@docker push geapex/domain-os:$(BRANCH)
+	@docker push geapex/domain-os:$(TAG)
 	@docker scout quickview 2>/dev/null || true
 
 push-epp: build-epp ## Build and push EPP server image to Docker Hub
 	@echo "Pushing EPP server image to Docker Hub..."
-	@docker push geapex/epp-server:$(BRANCH)
+	@docker push geapex/epp-server:$(TAG)
 	@docker scout quickview 2>/dev/null || true
 
 push-whois: build-whois ## Build and push WHOIS image to Docker Hub
 	@echo "Pushing WHOIS/EPP client API image to Docker Hub..."
-	@docker push geapex/epp-client-api:$(BRANCH)
+	@docker push geapex/epp-client-api:$(TAG)
 	@docker scout quickview 2>/dev/null || true
 
 push-all: push push-epp push-whois ## Build and push all images to Docker Hub

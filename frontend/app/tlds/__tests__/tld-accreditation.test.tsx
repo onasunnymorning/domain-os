@@ -117,9 +117,21 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
     } as any);
   });
 
+  // Helper: switch to the Registrars tab and wait for content to mount
+  const switchToRegistrarsTab = async () => {
+    // The tab accessible name includes the count badge text (e.g., "Registrars 2")
+    const tabs = screen.getAllByRole('tab');
+    const registrarsTab = tabs.find(t => t.textContent?.includes('Registrars'));
+    expect(registrarsTab).toBeDefined();
+    fireEvent.click(registrarsTab!);
+    // Wait for tab content to become interactive
+    await screen.findByRole('button', { name: /Accredit registrar/i });
+  };
+
   it('opens accredit modal, enforces eligibility, and accredits successfully', async () => {
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open the accredit modal
     fireEvent.click(screen.getByRole('button', { name: /Accredit registrar/i }));
@@ -158,6 +170,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
 
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     fireEvent.click(screen.getByRole('button', { name: /Accredit registrar/i }));
 
@@ -173,6 +186,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
   it('enforces confirmation and de-accredits successfully', async () => {
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open de-accredit dialog for a registrar
     fireEvent.click(screen.getAllByRole('button', { name: /De-accredit/i })[0]);
@@ -210,6 +224,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
 
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open de-accredit dialog
     fireEvent.click(screen.getAllByRole('button', { name: /De-accredit/i })[0]);
