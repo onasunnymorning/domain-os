@@ -2,12 +2,15 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { apiClient } from '../../lib/api/client';
+import { apiClient, setAuthToken } from '../../lib/api/client';
 import { DnssecGraph } from '../../components/dnssec/DnssecGraph';
 import { mapDNSVizToReactFlow } from '../../lib/dnssec';
 import { Node, Edge } from '@xyflow/react';
+import { useAuth0 } from '@auth0/auth0-react';
+import { ProtectedRoute } from '../../components/auth/protected-route';
 
 function DnssecContent() {
+  const { getAccessTokenSilently } = useAuth0();
   const searchParams = useSearchParams();
   const initialDomain = searchParams.get('domain') || '';
 
@@ -35,6 +38,16 @@ function DnssecContent() {
     setSelectedNode(null);
 
     try {
+      const authEnabled = process.env.NEXT_PUBLIC_AUTH0_ENABLED !== 'false';
+      if (authEnabled) {
+        try {
+          const token = await getAccessTokenSilently();
+          setAuthToken(token);
+        } catch (tokenErr) {
+          console.error("Failed to get access token silently:", tokenErr);
+        }
+      }
+
       const res = await apiClient.get(`/api/v1/dnssec?domain=${encodeURIComponent(domain)}`);
       const data = res.data;
       
@@ -147,12 +160,14 @@ function DnssecContent() {
 
 export default function DnssecPage() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-gray-950 text-emerald-500 font-mono">
-        Loading DNSSEC Visualizer...
-      </div>
-    }>
-      <DnssecContent />
-    </Suspense>
+    <ProtectedRoute>
+      <Suspense fallback={
+        <div className="flex items-center justify-center h-screen bg-gray-950 text-emerald-500 font-mono">
+          Loading DNSSEC Visualizer...
+        </div>
+      }>
+        <DnssecContent />
+      </Suspense>
+    </ProtectedRoute>
   );
 }
