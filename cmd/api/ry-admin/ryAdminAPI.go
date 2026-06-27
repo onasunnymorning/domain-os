@@ -267,8 +267,12 @@ func main() {
 	// r := gin.Default()
 	// Create a new Gin router without any default middleware.
 	r := gin.New()
-	// Use ginzap middleware to log requests with Zap
-	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
+	// Use ginzap middleware to log requests with Zap, skipping the /ping endpoint to reduce log noise
+	r.Use(ginzap.GinzapWithConfig(logger, &ginzap.Config{
+		TimeFormat: time.RFC3339,
+		UTC:        true,
+		SkipPaths:  []string{"/ping"},
+	}))
 
 	// Keep multipart memory small so large uploads spill to disk
 	r.MaxMultipartMemory = 8 << 20 // 8 MiB
@@ -317,6 +321,7 @@ func main() {
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)
+	rest.NewEventController(r, domainService, authMiddleware)
 	rest.NewPhaseController(r, phaseService, authMiddleware)
 	rest.NewFeeController(r, feeService, authMiddleware)
 	rest.NewPriceController(r, priceService, authMiddleware)

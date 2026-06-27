@@ -18,8 +18,7 @@ import (
 type WorkflowController struct{}
 
 type startRegistrarSyncRequest struct {
-	BatchSize int    `json:"batchSize"`
-	Mode      string `json:"mode"` // reserved for future use ("init"|"sync")
+	Mode string `json:"mode"` // reserved for future use ("init"|"sync")
 }
 
 type startWorkflowResponse struct {
@@ -80,7 +79,7 @@ func buildTemporalUILink(namespace, workflowID, runID string) string {
 	base := os.Getenv("TEMPORAL_UI_URL")
 	base = strings.Trim(base, "\"'")
 	if base == "" {
-		base = "http://localhost:8081"
+		base = "http://localhost:8233"
 	}
 	link := base + "/namespaces/" + namespace + "/workflows/" + workflowID
 	if runID != "" {
@@ -112,6 +111,7 @@ func NewWorkflowController(e *gin.Engine, handler gin.HandlerFunc) *WorkflowCont
 		grp.GET("/:workflowId/status", controller.GetWorkflowStatus)
 		grp.GET("/:workflowId/result", controller.GetWorkflowResult)
 		grp.POST("/:workflowId/signal", controller.SignalWorkflow)
+		grp.DELETE("/:workflowId", controller.TerminateWorkflow)
 		grp.GET("/storage/download", controller.GetDownloadURL)
 	}
 	return controller
@@ -129,13 +129,7 @@ func NewWorkflowController(e *gin.Engine, handler gin.HandlerFunc) *WorkflowCont
 // @Router /workflows/registrars/sync [post]
 func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	var req startRegistrarSyncRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		// Default when body is empty
-		req = startRegistrarSyncRequest{BatchSize: 100}
-	}
-	if req.BatchSize <= 0 {
-		req.BatchSize = 100
-	}
+	_ = ctx.ShouldBindJSON(&req) // optional body
 
 	cfg := temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
 
@@ -149,7 +143,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        "sync-registrars-" + time.Now().Format("20060102-150405"),
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{BatchSize: req.BatchSize})
+	}, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -354,9 +348,6 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 	case "sync-registrars":
 		var loopParams workflows.SyncRegistrarsParams
 		if req.Params != nil {
-			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
-				loopParams.BatchSize = int(bs)
-			}
 			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
 				loopParams.ConcurrencyLimit = int(cl)
 			}
@@ -654,6 +645,44 @@ func (c *WorkflowController) SignalWorkflow(ctx *gin.Context) {
 		"status":     "signaled",
 		"workflowId": workflowID,
 		"signalName": req.SignalName,
+	})
+}
+
+// TerminateWorkflow hard-stops a running workflow execution
+// @Summary Terminate a workflow
+// @Description Forcefully terminates a running Temporal workflow execution with an optional reason
+// @Tags Workflows
+// @Produce json
+// @Param workflowId path string true "Workflow ID"
+// @Param reason query string false "Termination reason"
+// @Success 200 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /workflows/{workflowId} [delete]
+func (c *WorkflowController) TerminateWorkflow(ctx *gin.Context) {
+	workflowID := ctx.Param("workflowId")
+	reason := ctx.Query("reason")
+	if reason == "" {
+		reason = "terminated by operator"
+	}
+
+	cfg := temporal.NewClientConfigFromEnv("")
+
+	cli, err := temporal.GetTemporalClient(cfg)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to workflow service: " + err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	if err := cli.TerminateWorkflow(ctx.Request.Context(), workflowID, "", reason); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to terminate workflow: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"status":     "terminated",
+		"workflowId": workflowID,
+		"reason":     reason,
 	})
 }
 

@@ -37,7 +37,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_FirstImport() {
 	s.env.OnActivity(activities.GetICANNRegistrars, mock.Anything, "./initdata/icannRegistrarList.csv").Return(csvRars, nil)
 
 	ianaRars := []entities.IANARegistrar{{Name: "iana1", GurID: 1}}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	// Make creates
 	createCmds := []commands.CreateRegistrarCommand{{ClID: "CL1"}}
@@ -46,7 +46,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_FirstImport() {
 	// Bulk Create
 	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, createCmds).Return(nil)
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -73,12 +73,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_Success
 		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusAccredited},
 		{Name: "iana2", GurID: 2, Status: entities.IANARegistrarStatusTerminated},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	existingRars := []entities.RegistrarListItem{
 		{ClID: entities.ClIDType("1-iana1"), Status: entities.RegistrarStatusOK, IANAStatus: entities.IANARegistrarStatusAccredited},
 	}
-	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, 100).Return(existingRars, nil)
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything).Return(existingRars, nil)
 
 	// Diff plan: one create (iana2 is new), no updates (iana1 is already OK/Accredited)
 	plan := activities.DiffPlanResult{
@@ -92,7 +92,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_Success
 
 	// No bulk update because Updates is empty
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -114,12 +114,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_WithSta
 	ianaRars := []entities.IANARegistrar{
 		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusTerminated},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	existingRars := []entities.RegistrarListItem{
 		{ClID: entities.ClIDType("1-iana1"), Status: entities.RegistrarStatusOK, IANAStatus: entities.IANARegistrarStatusAccredited},
 	}
-	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, 100).Return(existingRars, nil)
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything).Return(existingRars, nil)
 
 	// Diff plan: platform and IANA status both changed
 	plan := activities.DiffPlanResult{
@@ -139,7 +139,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_WithSta
 	}
 	s.env.OnActivity(activities.BulkUpdateRegistrarStatuses, mock.Anything, plan.Updates).Return(bulkResult, nil)
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -166,12 +166,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_WithPar
 	ianaRars := []entities.IANARegistrar{
 		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusTerminated},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	existingRars := []entities.RegistrarListItem{
 		{ClID: entities.ClIDType("1-iana1"), Status: entities.RegistrarStatusOK, IANAStatus: entities.IANARegistrarStatusAccredited},
 	}
-	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, 100).Return(existingRars, nil)
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything).Return(existingRars, nil)
 
 	plan := activities.DiffPlanResult{
 		Creates: []commands.CreateRegistrarCommand{},
@@ -192,7 +192,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_WithPar
 	}
 	s.env.OnActivity(activities.BulkUpdateRegistrarStatuses, mock.Anything, plan.Updates).Return(bulkResult, nil)
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -218,12 +218,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_DryRun_Incremental
 		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusAccredited},
 		{Name: "iana2", GurID: 2, Status: entities.IANARegistrarStatusTerminated},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	existingRars := []entities.RegistrarListItem{
 		{ClID: entities.ClIDType("1-iana1"), Status: entities.RegistrarStatusOK, IANAStatus: entities.IANARegistrarStatusAccredited},
 	}
-	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, 100).Return(existingRars, nil)
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything).Return(existingRars, nil)
 
 	plan := activities.DiffPlanResult{
 		Creates:         []commands.CreateRegistrarCommand{{ClID: "NEWCL"}},
@@ -234,7 +234,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_DryRun_Incremental
 
 	// No write activities mocked because they must not be executed during DryRun.
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100, DryRun: true})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{DryRun: true})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -260,12 +260,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_DryRun_Bootstrap()
 		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusAccredited},
 		{Name: "iana2", GurID: 2, Status: entities.IANARegistrarStatusReserved},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	createCmds := []commands.CreateRegistrarCommand{{ClID: "CL1"}}
 	s.env.OnActivity(activities.MakeCreateRegistrarCommands, mock.Anything, csvRars, ianaRars).Return(createCmds, nil)
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100, DryRun: true})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{DryRun: true})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -281,7 +281,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_DryRun_Bootstrap()
 func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_SyncIanaFailure() {
 	s.env.OnActivity(activities.SyncIanaRegistrars, mock.Anything).Return(fmt.Errorf("IANA XML unavailable"))
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 
 	err := s.env.GetWorkflowError()
@@ -298,12 +298,12 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_SkippedReservedSur
 		{Name: "reserved1", GurID: 3000, Status: entities.IANARegistrarStatusReserved},
 		{Name: "reserved2", GurID: 3001, Status: entities.IANARegistrarStatusReserved},
 	}
-	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, 100).Return(ianaRars, nil)
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything).Return(ianaRars, nil)
 
 	existingRars := []entities.RegistrarListItem{
 		{ClID: entities.ClIDType("1-iana1"), Status: entities.RegistrarStatusOK, IANAStatus: entities.IANARegistrarStatusAccredited},
 	}
-	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, 100).Return(existingRars, nil)
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything).Return(existingRars, nil)
 
 	plan := activities.DiffPlanResult{
 		Creates:         []commands.CreateRegistrarCommand{},
@@ -312,7 +312,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_SkippedReservedSur
 	}
 	s.env.OnActivity(activities.DiffAndPlanRegistrars, mock.Anything, ianaRars, existingRars).Return(plan, nil)
 
-	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{BatchSize: 100})
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 

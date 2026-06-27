@@ -6,7 +6,7 @@ import (
 
 func TestDomainEvent(t *testing.T) {
 	data := "some test data"
-	event := NewDomainEvent("test-source", "test.event", "test-subject", data)
+	event := NewDomainEvent("test-source", "test.event", "test-subject", "Test event happened", data)
 
 	if event.ID == "" {
 		t.Error("expected event ID to be generated, got empty string")
@@ -19,6 +19,9 @@ func TestDomainEvent(t *testing.T) {
 	}
 	if event.Subject != "test-subject" {
 		t.Errorf("expected subject to be 'test-subject', got %s", event.Subject)
+	}
+	if event.Description != "Test event happened" {
+		t.Errorf("expected description to be 'Test event happened', got %s", event.Description)
 	}
 	if event.Time.IsZero() {
 		t.Error("expected time to be set, got zero time")

@@ -3,7 +3,7 @@
 import { Phase } from '@/lib/types/phase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { isPhaseCurrent, isPhaseFuture } from '@/lib/utils/dateUtils';
 import { Trash2, GitCompare, CalendarX } from 'lucide-react';
 
@@ -30,11 +30,11 @@ export function PhaseDetailHeader({
   const canEnd = (isCurrent || isFuture) && !phase.ends;
 
   return (
-    <SheetHeader className="pb-6 border-b space-y-4">
+    <DialogHeader className="pb-6 border-b space-y-4">
       {/* Title and Badge */}
       <div className="space-y-3">
         <div className="flex items-baseline gap-3">
-          <SheetTitle className="text-4xl font-bold">{phase.name}</SheetTitle>
+          <DialogTitle className="text-4xl font-bold">{phase.name}</DialogTitle>
           <Badge
             variant={phase.type === 'GA' ? 'default' : 'secondary'}
             className="text-xs"
@@ -42,13 +42,13 @@ export function PhaseDetailHeader({
             {phase.type}
           </Badge>
         </div>
-        <SheetDescription className="text-sm text-muted-foreground">
+        <DialogDescription className="text-sm text-muted-foreground">
           {isCurrent
             ? '🟢 Currently active'
             : isFuture
             ? '🔵 Scheduled'
             : '⚫ Past'}
-        </SheetDescription>
+        </DialogDescription>
       </div>
 
       {/* Action Buttons */}
@@ -84,6 +84,6 @@ export function PhaseDetailHeader({
           </Button>
         )}
       </div>
-    </SheetHeader>
+    </DialogHeader>
   );
 }

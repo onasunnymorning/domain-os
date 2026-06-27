@@ -98,9 +98,27 @@ function extractDocSections(workflows: WorkflowMeta[]): DocSearchResult[] {
   return sections;
 }
 
+import { CONTACT_DATA_POLICY_DOC_MARKDOWN } from '../constants/contactDataPolicyDoc';
+
+const STATIC_DOCS: WorkflowMeta[] = [
+  {
+    key: 'contact-data-policy',
+    name: 'Contact Data Policy',
+    description: 'Configuration, enforcement rules, and compliance standards for domain contacts',
+    queue: '',
+    category: 'policy',
+    tags: ['policy', 'contact', 'registrant', 'tech', 'admin', 'billing'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: CONTACT_DATA_POLICY_DOC_MARKDOWN,
+  }
+];
+
 function filterDocumentation(workflows: WorkflowMeta[], query: string): DocSearchResult[] {
   const q = query.toLowerCase();
-  const sections = extractDocSections(workflows);
+  const allDocs = [...workflows, ...STATIC_DOCS];
+  const sections = extractDocSections(allDocs);
   return sections
     .filter(
       (s) =>

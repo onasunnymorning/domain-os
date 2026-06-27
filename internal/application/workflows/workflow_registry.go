@@ -52,6 +52,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "validate-escrow-source", Label: "Validate Escrow Source", ActivityName: "ValidateEscrowSource"},
 				{Key: "parse-extract-assets", Label: "Parse & Extract Assets", ActivityName: "ParseAndExtractAssets"},
 				{Key: "build-staging-database", Label: "Build Staging Database", ActivityName: "BuildStagingDatabase"},
+				{Key: "clean-orphaned-contacts", Label: "Clean Orphaned Contacts", ActivityName: "CleanOrphanedContacts"},
 				{Key: "resolve-registrars", Label: "Resolve Registrars", ActivityName: "ResolveRegistrars"},
 				{Key: "await-registrar-overrides", Label: "Await Registrar Overrides"},
 				{Key: "apply-registrar-mappings", Label: "Apply Registrar Mappings", ActivityName: "ApplyRegistrarMappings"},

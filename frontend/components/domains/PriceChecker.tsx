@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { DomainDetail } from "@/lib/types/domain";
 import { useDomainQuotes } from "@/lib/hooks/useDomains";
 import { useTLDRegistrars } from "@/lib/hooks/useAccreditations";
-import { Repeat, Copy, ChevronDown, Check, Search } from "lucide-react";
+import { Repeat, ChevronDown, Check, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { CopyButton } from "@/components/ui/copy-button";
 
 interface Props {
   domain: DomainDetail;
@@ -155,18 +156,14 @@ export function PriceChecker({ domain, trigger }: Props) {
               </div>
             ) : showRaw ? (
               <div className="bg-muted text-xs p-4 pt-10 overflow-x-auto group min-h-[140px] relative">
-                <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(JSON.stringify(simplifiedQuotes, null, 2));
-                    } catch {}
-                  }}
+                <CopyButton
+                  value={JSON.stringify(simplifiedQuotes, null, 2)}
+                  variant="none"
                   className="absolute top-2 right-10 p-1.5 z-10 text-muted-foreground hover:text-foreground bg-background/50 hover:bg-background rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                  title="Copy JSON array"
+                  tooltip="Copy JSON array"
                   aria-label="Copy JSON"
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
+                  iconClassName="h-4 w-4"
+                />
                 <pre className="h-full"><code>{JSON.stringify(simplifiedQuotes, null, 2)}</code></pre>
               </div>
             ) : (

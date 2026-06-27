@@ -226,7 +226,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 	// Be defensive: strip accidental surrounding quotes from env values
 	temporalUIBase = strings.Trim(temporalUIBase, "\"'")
 	if temporalUIBase == "" {
-		temporalUIBase = "http://localhost:8081"
+		temporalUIBase = "http://localhost:8233"
 	}
 	link := temporalUIBase + "/namespaces/" + cfg.Namespace + "/workflows/" + we.GetID() + "/" + we.GetRunID()
 
@@ -394,7 +394,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 		}
 		ui := strings.TrimSpace(os.Getenv("TEMPORAL_UI_URL"))
 		if ui == "" {
-			ui = "http://localhost:8081"
+			ui = "http://localhost:8233"
 		}
 		url := ui + "/namespaces/" + ns + "/workflows/" + wf
 

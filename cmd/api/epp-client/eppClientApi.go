@@ -151,10 +151,11 @@ func main() {
 		log.Fatalf("failed to create client pool: %v", err)
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/ping"}}))
+	r.Use(gin.Recovery())
 
 	r.GET("/ping", func(c *gin.Context) {
-		log.Println("Received ping request")
 		c.String(http.StatusOK, "pong")
 	})
 

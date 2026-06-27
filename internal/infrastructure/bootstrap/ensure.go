@@ -69,7 +69,7 @@ func desiredSchedules() []scheduleSpec {
 			Queue:         temporal.QueueLifecycle,
 			Interval:      24 * time.Hour,
 			Offset:        2 * time.Hour,
-			Args:          []interface{}{workflows.SyncRegistrarsParams{BatchSize: 100}},
+			Args:          []interface{}{workflows.SyncRegistrarsParams{}},
 			CatchupWindow: 24 * time.Hour,
 			Note:          "Syncs registrars with IANA daily — managed by bootstrap",
 		},

@@ -278,6 +278,19 @@ func (dr *DomainRepository) Count(ctx context.Context, filter queries.ListDomain
 	return count, err
 }
 
+// activeGAPhaseFilter is a SQL condition that restricts results to domains whose
+// TLD has at least one currently active GA phase. A phase is active when its
+// start date is in the past and it either has no end date or the end date is in
+// the future. This prevents lifecycle workflows from processing domains in
+// "sleeping" TLDs that have no active phase.
+const activeGAPhaseFilter = `EXISTS (
+	SELECT 1 FROM phases
+	WHERE phases.tld_name = domains.tld_name
+	  AND phases.type = 'GA'
+	  AND phases.starts <= NOW()
+	  AND (phases.ends IS NULL OR phases.ends > NOW())
+)`
+
 // ListExpiringDomains returns a list of domains that are expiring before the given time. These domain objects have minimal properties filled: RoID, Name and ExpiryDate
 func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time.Time, pagesize int, clid, tld, cursor string) ([]*entities.Domain, error) {
 	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
@@ -286,7 +299,7 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +315,7 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 // CountExiringDomains returns the number of domains that are expiring within the given number of days
 func (dr *DomainRepository) CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Count(&count).Error
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Count(&count).Error
 	return count, err
 }
 
@@ -314,7 +327,7 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, after time
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", after).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", after).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -330,14 +343,14 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, after time
 // CountPurgeableDomains returns the number of domains that are pending deletion and have passed the grace period
 func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", after).Count(&count).Error
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", after).Where(activeGAPhaseFilter).Count(&count).Error
 	return count, err
 }
 
 // CountRestoredDomains returns the number of domains that are in pendingRestore state (have been restored using the Domain.Restore() function)
 func (dr *DomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Count(&count).Error
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Count(&count).Error
 	return count, err
 }
 
@@ -349,7 +362,7 @@ func (dr *DomainRepository) ListRestoredDomains(ctx context.Context, pagesize in
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -440,6 +453,31 @@ func (dr *DomainRepository) ListEventsByDomain(ctx context.Context, domainName s
 		e, err := dbEvent.ToDomainEvent()
 		if err != nil {
 			return nil, fmt.Errorf("ListEventsByDomain(domain=%s) deserialization error for event ID %s: %w", domainName, dbEvent.ID, err)
+		}
+		events[i] = e
+	}
+	return events, nil
+}
+
+// ListRecentEvents lists the most recent events across all subjects in reverse chronological order
+func (dr *DomainRepository) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var dbEvents []DomainEventRecord
+	err := dr.db.WithContext(ctx).
+		Order("occurred_at DESC").
+		Limit(limit).
+		Find(&dbEvents).Error
+	if err != nil {
+		return nil, fmt.Errorf("ListRecentEvents(limit=%d) database query failed: %w. Check that the database is accessible and the domain_events table exists", limit, err)
+	}
+
+	events := make([]entities.DomainEvent, len(dbEvents))
+	for i, dbEvent := range dbEvents {
+		e, err := dbEvent.ToDomainEvent()
+		if err != nil {
+			return nil, fmt.Errorf("ListRecentEvents(limit=%d) deserialization error for event ID %s: %w", limit, dbEvent.ID, err)
 		}
 		events[i] = e
 	}

@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useDomain, useDomainQuote } from "@/lib/hooks/useDomains";
 import { formatDistanceToNow } from "date-fns";
 import type { DomainDetail } from "@/lib/types/domain";
-import { HelpCircle, Copy, Eye, EyeOff, Server, Repeat, RefreshCcw } from "lucide-react";
+import { HelpCircle, Eye, EyeOff, Server, Repeat, RefreshCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -21,6 +21,7 @@ import { DnsLookupModal } from "@/components/domains/DnsLookupModal";
 import { DomainEventsWidget } from "@/components/domains/DomainEventsWidget";
 import { DomainSettingsControls } from "@/components/domains/DomainSettingsControls";
 import { PriceChecker } from "@/components/domains/PriceChecker";
+import { CopyButton } from "@/components/ui/copy-button";
 
 
 function formatUTCString(d: Date) {
@@ -108,18 +109,12 @@ export default function DomainDetailPage() {
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight font-mono">{name || "Domain"}</h1>
               {name && (
-                <Button
-                  variant="outline"
-                  size="icon"
+                <CopyButton
+                  value={name}
                   className="h-8 w-8"
                   aria-label="Copy domain name"
-                  onClick={async () => {
-                    try { await navigator.clipboard.writeText(name); } catch {}
-                  }}
-                  title="Copy domain name"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+                  tooltip="Copy domain name"
+                />
               )}
             </div>
             <div className="mt-2 flex items-center gap-2">
@@ -241,19 +236,14 @@ export default function DomainDetailPage() {
                       <Repeat className="w-4 h-4" />
                     </button>
                     {showRawHosts ? (
-                      <div className="bg-muted text-xs p-4 pt-10 overflow-x-auto group min-h-[120px]">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const arr = domain.Hosts!.map(h => h.Name);
-                              await navigator.clipboard.writeText(JSON.stringify(arr, null, 2));
-                            } catch {}
-                          }}
+                      <div className="bg-muted text-xs p-4 pt-10 overflow-x-auto group min-h-[120px] relative">
+                        <CopyButton
+                          value={JSON.stringify(domain.Hosts!.map(h => h.Name), null, 2)}
+                          variant="none"
                           className="absolute top-2 right-10 p-1.5 z-10 text-muted-foreground hover:text-foreground bg-background/50 hover:bg-background rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                          title="Copy JSON array"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </button>
+                          tooltip="Copy JSON array"
+                          iconClassName="h-4 w-4"
+                        />
                         <pre><code>{JSON.stringify(domain.Hosts!.map(h => h.Name), null, 2)}</code></pre>
                       </div>
                     ) : (
@@ -498,16 +488,14 @@ export default function DomainDetailPage() {
                       <Button variant="outline" size="icon" aria-label={showAuth ? 'Hide AuthInfo' : 'Show AuthInfo'} onClick={() => setShowAuth((v) => !v)}>
                         {showAuth ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                      <Button
+                      <CopyButton
+                        value={domain.AuthInfo!}
                         variant="outline"
                         size="icon"
                         aria-label="Copy AuthInfo"
-                        onClick={async () => {
-                          try { await navigator.clipboard.writeText(domain.AuthInfo!); } catch {}
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                        tooltip="Copy AuthInfo"
+                        iconClassName="h-4 w-4"
+                      />
                     </>
                   )}
                 </div>

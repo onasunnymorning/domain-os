@@ -91,19 +91,21 @@ describe('RegistrarsPage', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
       // DashboardLayout is rendered (check for its structure instead of testid)
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
 
     it('should display page header with correct title', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
 
     it('should display page description', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      expect(screen.getByText(/Manage.*registrars/i)).toBeInTheDocument();
+      // Description was removed per "no stating the obvious" UI rule
+      // Verify the page renders with the Create Registrar action instead
+      expect(screen.getByText('Create Registrar')).toBeInTheDocument();
     });
   });
 
@@ -183,7 +185,7 @@ describe('RegistrarsPage', () => {
 
       // Loading state shows skeleton rows in a table, not pagination buttons
       // Verify the page renders without crashing in loading state
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
   });
 
@@ -217,7 +219,7 @@ describe('RegistrarsPage', () => {
     it('should have accessible heading hierarchy', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      const heading = screen.getByRole('heading', { name: 'Registrar Management' });
+      const heading = screen.getByRole('heading', { name: 'Registrars' });
       expect(heading).toBeInTheDocument();
     });
   });

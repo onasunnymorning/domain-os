@@ -297,6 +297,7 @@ func (s *RegistrarService) publishRegistrarEvent(
 		"domain-os/api",
 		eventType,
 		event.ClientID,
+		msg,
 		event,
 	)
 	domainEvent.TraceID = event.TraceID

@@ -1724,6 +1724,7 @@ func (s *DomainService) publishDomainEvent(
 		"domain-os/api",
 		eventType,
 		event.DomainName,
+		msg,
 		event,
 	)
 	domainEvent.TraceID = event.TraceID
@@ -1910,6 +1911,15 @@ func (s *DomainService) ListEventsByDomain(ctx context.Context, domainName strin
 	events, err := s.domainRepository.ListEventsByDomain(ctx, domainName)
 	if err != nil {
 		return nil, fmt.Errorf("DomainService.ListEventsByDomain(domain=%s): %w", domainName, err)
+	}
+	return events, nil
+}
+
+// ListRecentEvents lists the most recent events across all entities
+func (s *DomainService) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	events, err := s.domainRepository.ListRecentEvents(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("DomainService.ListRecentEvents(limit=%d): %w", limit, err)
 	}
 	return events, nil
 }

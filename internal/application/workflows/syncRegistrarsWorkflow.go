@@ -21,7 +21,6 @@ const (
 
 // SyncRegistrarsParams defines the input parameters for the SyncRegistrarsWorkflow.
 type SyncRegistrarsParams struct {
-	BatchSize        int  `json:"batchSize,omitempty"`
 	ConcurrencyLimit int  `json:"concurrencyLimit,omitempty"`
 	DryRun           bool `json:"dryRun,omitempty"`
 }
@@ -104,10 +103,7 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, params SyncRegistrarsParams) (
 
 	workflowID := getWorkflowID(ctx)
 
-	batchSize := params.BatchSize
-	if batchSize <= 0 {
-		batchSize = 100
-	}
+	const batchSize = 100
 
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,

@@ -1,6 +1,7 @@
 FROM golang:1.26-alpine AS build
 
 WORKDIR /
+ENV CGO_ENABLED=0
 
 # Install UPX for binary compression
 RUN apk add upx

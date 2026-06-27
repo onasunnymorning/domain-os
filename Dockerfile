@@ -2,6 +2,7 @@
 FROM golang:1.26.4-alpine AS build
 
 WORKDIR /
+ENV CGO_ENABLED=0
 
 # Install build Dependencies for EPP
 # RUN apk add libxml2

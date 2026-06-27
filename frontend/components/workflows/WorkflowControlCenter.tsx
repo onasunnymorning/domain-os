@@ -8,18 +8,20 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  ChevronDown,
-  ChevronRight,
   Rocket,
   AlertTriangle,
+  Terminal,
+  X,
+  Trash2,
 } from 'lucide-react';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -35,20 +37,53 @@ import { getWorkflowRegistry } from '@/lib/api/workflows';
 // Status styling helpers
 // =============================================================================
 
-function getStatusIcon(status: WorkflowStatus) {
+function getStatusIcon(status: WorkflowStatus, size = 'size-3.5') {
   switch (status) {
     case 'RUNNING':
-      return <Activity className="size-3.5 animate-pulse text-blue-500" />;
+      return <Activity className={`${size} animate-pulse text-blue-500`} />;
     case 'COMPLETED':
-      return <CheckCircle2 className="size-3.5 text-green-500" />;
+      return <CheckCircle2 className={`${size} text-green-500`} />;
     case 'FAILED':
     case 'TIMED_OUT':
     case 'TERMINATED':
-      return <XCircle className="size-3.5 text-red-500" />;
+      return <XCircle className={`${size} text-red-500`} />;
     case 'CANCELED':
-      return <AlertTriangle className="size-3.5 text-amber-500" />;
+      return <AlertTriangle className={`${size} text-amber-500`} />;
     default:
-      return <Clock className="size-3.5 text-muted-foreground" />;
+      return <Clock className={`${size} text-muted-foreground`} />;
+  }
+}
+
+// Solarized Dark palette
+const SOL = {
+  base03: '#002b36',   // bg
+  base02: '#073642',   // bg highlights
+  base01: '#586e75',   // comments / muted
+  base00: '#657b83',   // secondary text
+  base0:  '#839496',   // body text
+  base1:  '#93a1a1',   // emphasized text
+  green:  '#859900',
+  cyan:   '#2aa198',
+  blue:   '#268bd2',
+  yellow: '#b58900',
+  orange: '#cb4b16',
+  red:    '#dc322f',
+} as const;
+
+function getStatusColor(status: WorkflowStatus): string {
+  switch (status) {
+    case 'RUNNING':
+      return 'text-[#268bd2]';  // sol blue
+    case 'COMPLETED':
+      return 'text-[#859900]';  // sol green
+    case 'FAILED':
+    case 'TIMED_OUT':
+    case 'TERMINATED':
+      return 'text-[#dc322f]';  // sol red
+    case 'CANCELED':
+      return 'text-[#b58900]';  // sol yellow
+    default:
+      return 'text-[#586e75]';  // sol base01
   }
 }
 
@@ -64,20 +99,11 @@ function getPillColor(runs: WorkflowRun[]): string {
 }
 
 // =============================================================================
-// Workflow Item Row
+// Run detail panel (terminal-style)
 // =============================================================================
 
-function WorkflowRunItem({ run }: { run: WorkflowRun }) {
-  const [expanded, setExpanded] = useState(false);
+function RunDetailPanel({ run }: { run: WorkflowRun }) {
   const [runningState, setRunningState] = useState<any>(null);
-
-  const selectedRunId = useWorkflowStore((s) => s.selectedRunId);
-
-  useEffect(() => {
-    if (selectedRunId === run.workflowId) {
-      setExpanded(true);
-    }
-  }, [selectedRunId, run.workflowId]);
 
   const { data: registry } = useQuery({
     queryKey: ['workflow-registry'],
@@ -89,61 +115,69 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
   const signalName = meta?.signalName || run.params?.signalName;
 
   return (
-    <div className="border-b last:border-b-0">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className={cn(
-          'flex w-full items-start gap-3 p-3 text-left transition-colors',
-          'hover:bg-muted/50 cursor-pointer'
-        )}
-      >
-        {/* Status icon */}
-        <div className="mt-0.5 shrink-0">{getStatusIcon(run.status)}</div>
+    <div className="flex h-full flex-col">
+      {/* Terminal title bar */}
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${SOL.base02}` }}>
+        <div className="flex items-center gap-2.5">
+          {getStatusIcon(run.status, 'size-4')}
+          <span className="font-medium text-sm" style={{ color: SOL.base1 }}>{run.displayName}</span>
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 lowercase"
+            style={{ borderColor: SOL.base02, color: SOL.base0 }}
+          >
+            {run.type}
+          </Badge>
+        </div>
+        <WorkflowTemporalLink url={run.temporalUrl} className="text-[#586e75] hover:text-[#93a1a1]" />
+      </div>
 
-        {/* Main content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">{run.displayName}</span>
-            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0 lowercase">
-              {run.type === 'tld-cleanup' && run.params?.tld
-                ? `.${run.params.tld.replace(/^\./, '')}`
-                : run.type === 'escrow-import' && run.params?.tld
-                ? `.${run.params.tld.replace(/^\./, '')}`
-                : run.type}
-            </Badge>
-          </div>
-
-          <div className="text-muted-foreground mt-1 flex items-center gap-3 text-xs">
+      {/* Terminal body */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-4 font-mono text-sm">
+          {/* Meta line */}
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs mb-4 pb-3" style={{ color: SOL.base01, borderBottom: `1px solid ${SOL.base02}80` }}>
             <span>
-              {formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })}
+              <span style={{ color: SOL.base00 }}>started</span>{' '}
+              <span style={{ color: SOL.base0 }}>
+                {formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })}
+              </span>
             </span>
-            <WorkflowTemporalLink url={run.temporalUrl} />
+            <span>
+              <span style={{ color: SOL.base00 }}>status</span>{' '}
+              <span className={getStatusColor(run.status)}>
+                {run.status.toLowerCase().replace('_', ' ')}
+              </span>
+            </span>
+            {run.params?.tld && (
+              <span>
+                <span style={{ color: SOL.base00 }}>tld</span>{' '}
+                <span style={{ color: SOL.base0 }}>.{run.params.tld.replace(/^\./, '')}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Prompt indicator */}
+          <div className="flex items-center gap-2 text-xs mb-3" style={{ color: SOL.base01 }}>
+            <span style={{ color: SOL.green }}>❯</span>
+            <span style={{ color: SOL.base0 }}>{run.type}</span>
+            {run.status === 'RUNNING' && (
+              <span className="inline-block w-2 h-4 animate-pulse rounded-sm" style={{ backgroundColor: SOL.base0 }} />
+            )}
+          </div>
+
+          {/* WorkflowResult — existing component, just wrapped */}
+          <div style={{ color: SOL.base0 }} className="[&_*]:border-[#073642] [&_table]:border-[#073642] [&_thead]:bg-[#073642]/50 [&_.text-muted-foreground]:text-[#586e75] [&_button]:border-[#073642]">
+            <WorkflowResult
+              workflowId={run.workflowId}
+              workflowType={run.type}
+              status={run.status}
+              signalName={signalName}
+              onStateLoaded={setRunningState}
+            />
           </div>
         </div>
-
-        {/* Expand chevron */}
-        <div className="text-muted-foreground mt-0.5 shrink-0">
-          {expanded ? (
-            <ChevronDown className="size-4" />
-          ) : (
-            <ChevronRight className="size-4" />
-          )}
-        </div>
-      </button>
-
-      {/* Expanded content: workflow result + HITL actions */}
-      {expanded && (
-        <div className="border-t bg-muted/30 px-3 py-3">
-          <WorkflowResult
-            workflowId={run.workflowId}
-            workflowType={run.type}
-            status={run.status}
-            signalName={signalName}
-            onStateLoaded={setRunningState}
-          />
-        </div>
-      )}
+      </ScrollArea>
     </div>
   );
 }
@@ -153,7 +187,7 @@ function WorkflowRunItem({ run }: { run: WorkflowRun }) {
 // =============================================================================
 
 export function WorkflowControlCenter() {
-  const { runs, drawerOpen, setDrawerOpen, clearCompleted, runningCount } =
+  const { runs, modalOpen, setModalOpen, clearCompleted, runningCount, selectedRunId, selectRun } =
     useWorkflowStore();
 
   // Keep data fresh via polling
@@ -161,16 +195,25 @@ export function WorkflowControlCenter() {
 
   const running = runningCount();
 
+  // Auto-select first run if none selected or selected run was removed
+  useEffect(() => {
+    if (runs.length > 0 && (!selectedRunId || !runs.find((r) => r.workflowId === selectedRunId))) {
+      selectRun(runs[0].workflowId);
+    }
+  }, [runs, selectedRunId, selectRun]);
+
+  const selectedRun = runs.find((r) => r.workflowId === selectedRunId) ?? null;
+
   // Hide completely when there are no tracked workflows
   if (runs.length === 0) return null;
 
   return (
     <>
       {/* Collapsed pill — fixed in bottom-right */}
-      {!drawerOpen && (
+      {!modalOpen && (
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
+          onClick={() => setModalOpen(true)}
           className={cn(
             'fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-lg transition-all duration-200',
             getPillColor(runs),
@@ -191,49 +234,104 @@ export function WorkflowControlCenter() {
         </button>
       )}
 
-      {/* Expanded Sheet drawer */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="flex w-full flex-col overflow-hidden sm:max-w-md">
-          <SheetHeader>
-            <div className="flex items-center gap-2">
-              <SheetTitle>Workflow Control</SheetTitle>
-              {running > 0 && (
-                <Badge variant="default" className="tabular-nums">
-                  {running} running
-                </Badge>
-              )}
+      {/* Modal */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          />
+          <DialogPrimitive.Content
+            className={cn(
+              'fixed top-[50%] left-[50%] z-50 translate-x-[-50%] translate-y-[-50%]',
+              'w-[calc(100vw-3rem)] max-w-5xl h-[calc(100vh-6rem)] max-h-[700px]',
+              'rounded-xl shadow-2xl',
+              'flex flex-col overflow-hidden',
+              'data-[state=open]:animate-in data-[state=closed]:animate-out',
+              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+              'duration-200'
+            )}
+            style={{ backgroundColor: `${SOL.base03}e0`, borderColor: SOL.base02, borderWidth: 1 }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${SOL.base02}` }}>
+              <div className="flex items-center gap-3">
+                <Terminal className="size-5" style={{ color: SOL.base01 }} />
+                <DialogTitle className="text-base font-semibold" style={{ color: SOL.base1 }}>
+                  Workflow Control
+                </DialogTitle>
+                {running > 0 && (
+                  <Badge className="bg-[#268bd2] text-white text-[10px] px-2 py-0 tabular-nums">
+                    {running} running
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearCompleted}
+                  disabled={!runs.some((r) => r.status !== 'RUNNING')}
+                  className="text-[#586e75] hover:text-[#93a1a1] hover:bg-[#073642] text-xs gap-1.5"
+                >
+                  <Trash2 className="size-3" />
+                  Clear Done
+                </Button>
+                <DialogPrimitive.Close className="rounded-sm p-1.5 transition-colors text-[#586e75] hover:text-[#93a1a1] hover:bg-[#073642]">
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </DialogPrimitive.Close>
+              </div>
             </div>
-          </SheetHeader>
 
-          {/* Body: scrollable list of tracked workflows */}
-          <ScrollArea className="flex-1 -mx-4 min-h-0 px-4">
-            <div className="divide-y rounded-lg border">
-              {runs.length === 0 ? (
-                <div className="text-muted-foreground flex flex-col items-center gap-2 p-6 text-center text-sm">
-                  <Rocket className="size-8 opacity-40" />
-                  <p>No workflows tracked yet</p>
-                </div>
-              ) : (
-                runs.map((run) => (
-                  <WorkflowRunItem key={run.workflowId} run={run} />
-                ))
-              )}
+            {/* Body: split panel */}
+            <div className="flex flex-1 min-h-0">
+              {/* Left sidebar — run list */}
+              <div className="w-56 shrink-0 overflow-y-auto" style={{ borderRight: `1px solid ${SOL.base02}` }}>
+                {runs.map((run) => {
+                  const isSelected = run.workflowId === selectedRunId;
+                  return (
+                    <button
+                      key={run.workflowId}
+                      type="button"
+                      onClick={() => selectRun(run.workflowId)}
+                      className="flex w-full items-start gap-2.5 px-3 py-3 text-left transition-colors"
+                      style={{
+                        borderBottom: `1px solid ${SOL.base02}80`,
+                        backgroundColor: isSelected ? `${SOL.base02}cc` : 'transparent',
+                      }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = `${SOL.base02}40`; }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
+                      <div className="mt-0.5 shrink-0">{getStatusIcon(run.status)}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate" style={{ color: isSelected ? SOL.base1 : SOL.base0 }}>
+                          {run.displayName}
+                        </p>
+                        <p className="text-[10px] mt-0.5" style={{ color: SOL.base01 }}>
+                          {formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right panel — terminal-style result */}
+              <div className="flex-1 min-w-0">
+                {selectedRun ? (
+                  <RunDetailPanel key={selectedRun.workflowId} run={selectedRun} />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center text-sm gap-2" style={{ color: SOL.base01 }}>
+                    <Rocket className="size-8 opacity-40" />
+                    <p>Select a workflow</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </ScrollArea>
-
-          {/* Footer */}
-          <SheetFooter className="flex-row justify-between border-t pt-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearCompleted}
-              disabled={!runs.some((r) => r.status !== 'RUNNING')}
-            >
-              Clear Completed
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </Dialog>
     </>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Menu, Search, ExternalLink, Activity, Database } from 'lucide-react';
+import { TEMPORAL_UI_URL, STORAGE_UI_URL } from '@/lib/constants/external-urls';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { UserMenu } from '@/components/auth/user-menu';
@@ -66,7 +67,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             {/* External tool links */}
             <div className="hidden items-center gap-1 sm:flex">
               <a
-                href="http://localhost:8081"
+                href={TEMPORAL_UI_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

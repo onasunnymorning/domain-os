@@ -117,7 +117,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       open={open}
       onOpenChange={onOpenChange}
       title="Global Search"
-      description="Search across domains, TLDs, registrars, NNDNs, registry operators, and workflows"
+      description="Search across domains, TLDs, registrars, blocked names, registry operators, and workflows"
     >
       <CommandInput
         placeholder="Search domains, TLDs, registrars, workflows..."
@@ -287,7 +287,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         {results && results.nndns.length > 0 && (
           <>
             {hasPreviousGroup(5) && <CommandSeparator />}
-            <CommandGroup heading="NNDNs">
+            <CommandGroup heading="Blocked Names">
               {results.nndns.map((nndn) => (
                 <CommandItem
                   key={`nndn-${nndn.Name}`}

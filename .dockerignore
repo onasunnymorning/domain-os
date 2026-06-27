@@ -7,6 +7,7 @@ node_modules
 frontend/node_modules
 frontend/.next
 frontend/
+local/
 # docs/
 deploy/
 # Keep initdata for workers that need seed CSVs
@@ -25,3 +26,17 @@ test-output
 vendor/
 coverage.html
 agent-coverage.html
+
+# Local compiled binaries in root
+/askg
+/epp
+/escrowImport
+/rest.test
+/ry-admin
+
+# Local coverage and temp db/json files
+/coverage.out
+/api-coverage.out
+/jisc_analysis.db
+/analysis_debug.json
+/test_input.json

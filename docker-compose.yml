@@ -3,7 +3,7 @@ services:
   db:
     image: postgres:16.1
     restart: always
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 3s
@@ -31,7 +31,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -207,7 +207,31 @@ services:
     networks:
       - dos
 
-  # Temporal stack (dev) - Postgres + Temporal Server + UI
+  # ── Native dev mode: single lightweight container, in-memory SQLite ─────────
+  # Provides gRPC on 7233 and built-in UI on 8081. Ephemeral — workflows reset
+  # on restart, which is fine since native Go services use Temporal Cloud.
+  temporal-dev:
+    image: temporalio/admin-tools:latest
+    entrypoint: [ "temporal" ]
+    command: >
+      server start-dev
+        --ip 0.0.0.0
+        --port 7233
+        --ui-port 8233
+        --namespace default
+    profiles: [ infra ]
+    ports:
+      - 7233:7233
+      - 8233:8233
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 7233" ]
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dos
+
+  # ── Docker mode: production-parity stack (dedicated Postgres + auto-setup) ──
   temporal-postgres:
     image: postgres:14
     restart: unless-stopped
@@ -256,7 +280,7 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
-      - 8081:8080 # UI on host 8081 to avoid conflict with admin-api 8080
+      - 8081:8080
     depends_on:
       - temporal
     networks:
@@ -314,7 +338,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
@@ -338,7 +362,7 @@ services:
   minio-setup:
     image: minio/mc:latest
     restart: "no"
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     depends_on:
       minio:
         condition: service_healthy

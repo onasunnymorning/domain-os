@@ -183,6 +183,7 @@ export interface DomainEvent {
   source: string;
   type: string;
   subject: string;
+  description?: string;
   time: string;
   trace_id?: string;
   correlation_id?: string;

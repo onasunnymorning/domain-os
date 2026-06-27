@@ -58,7 +58,7 @@ export function useCreateTLD() {
 export function useDeleteTLD() {
   const queryClient = useQueryClient();
   const addRun = useWorkflowStore((s) => s.addRun);
-  const setDrawerOpen = useWorkflowStore((s) => s.setDrawerOpen);
+  const setModalOpen = useWorkflowStore((s) => s.setModalOpen);
   const selectRun = useWorkflowStore((s) => s.selectRun);
   
   return useMutation({
@@ -84,7 +84,7 @@ export function useDeleteTLD() {
 
       addRun(run);
       selectRun(data.workflowId);
-      setDrawerOpen(true);
+      setModalOpen(true);
 
       toast.success(`Cleanup workflow started for .${variables.name}`, {
         description: `Review and confirm the deletion in the workflow control center.`,
