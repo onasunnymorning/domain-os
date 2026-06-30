@@ -1,16 +1,15 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
-import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
 import { formatCompactNumber } from '@/lib/utils/numberUtils';
 import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
 import { TLDCreateDialog } from '@/components/tlds/TLDCreateDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+
 import { 
   Select,
   SelectContent,
@@ -35,30 +34,6 @@ export default function TLDsPage() {
   );
 }
 
-// Lightweight, per-row async cell for domain count
-function DomainCountCell({ tldName, onCountResolved }: { tldName: string; onCountResolved?: (name: string, count: number) => void }) {
-  const { data, isLoading, isError } = useDomainCount({ tld_equals: tldName });
-
-  useEffect(() => {
-    if (typeof data?.Count === 'number') {
-      onCountResolved?.(tldName, data.Count);
-    }
-  }, [tldName, data?.Count, onCountResolved]);
-
-  if (isLoading) return <Skeleton className="h-4 w-10 inline-block" />;
-  if (isError) return <span className="text-muted-foreground">—</span>;
-  const count = data?.Count;
-  const formattedTime = data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : '';
-  const exactCount = typeof count === 'number' ? count.toLocaleString() : '';
-  const titleText = [exactCount, formattedTime].filter(Boolean).join(' | ');
-
-  return (
-    <span className="cursor-help border-b border-dotted border-muted-foreground/50 pb-0.5" title={titleText || undefined}>
-      {typeof count === 'number' ? formatCompactNumber(count) : '—'}
-    </span>
-  );
-}
-
 function TLDsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,12 +42,6 @@ function TLDsPageInner() {
   const [ryidFilter, setRyidFilter] = useState<string>(searchParams.get('ryid_equals') || '');
   const [tldToDelete, setTldToDelete] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  // Tracks async-resolved domain counts for client-side sorting
-  const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
-
-  const handleCountResolved = useCallback((name: string, count: number) => {
-    setDomainCounts((prev) => (prev[name] === count ? prev : { ...prev, [name]: count }));
-  }, []);
   
   const debouncedSearch = useDebounce(searchTerm, 300);
   
@@ -108,9 +77,9 @@ function TLDsPageInner() {
     }
   };
 
-  // Sort by resolved async domain counts descending; falls back to API value while loading
+  // Sort by domain count descending
   const tlds = [...(data?.Data || [])].sort(
-    (a, b) => (domainCounts[b.Name] ?? b.DomainCount ?? 0) - (domainCounts[a.Name] ?? a.DomainCount ?? 0)
+    (a, b) => (b.DomainCount ?? 0) - (a.DomainCount ?? 0)
   );
 
   const columns: ColumnDef<any>[] = [
@@ -122,7 +91,12 @@ function TLDsPageInner() {
     },
     {
       header: 'Domains',
-      cell: (tld) => <DomainCountCell tldName={tld.Name} onCountResolved={handleCountResolved} />
+      cell: (tld) => (
+        <span className="cursor-help border-b border-dotted border-muted-foreground/50 pb-0.5"
+              title={typeof tld.DomainCount === 'number' ? tld.DomainCount.toLocaleString() : undefined}>
+          {typeof tld.DomainCount === 'number' ? formatCompactNumber(tld.DomainCount) : '—'}
+        </span>
+      )
     },
     {
       header: 'Registrars',

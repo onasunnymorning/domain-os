@@ -269,24 +269,24 @@ export function SystemRegistrarsTab() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-28">Domains</TableHead>
                       <TableHead>Client ID</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead className="w-24">IANA ID</TableHead>
                       <TableHead className="w-32">Status</TableHead>
                       <TableHead className="w-32">Auto-renew</TableHead>
-                      <TableHead className="w-28">Domains</TableHead>
                       <TableHead className="w-64">TLDs</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-10" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       </TableRow>
                     ))}
@@ -311,12 +311,12 @@ export function SystemRegistrarsTab() {
                     <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-28">Domains</TableHead>
                         <TableHead>Client ID</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead className="w-24">IANA ID</TableHead>
                         <TableHead className="w-32">Status</TableHead>
                         <TableHead className="w-32">Auto-renew</TableHead>
-                        <TableHead className="w-28">Domains</TableHead>
                         <TableHead className="w-64">TLDs</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -327,6 +327,9 @@ export function SystemRegistrarsTab() {
                           className="cursor-pointer hover:bg-muted/40"
                           onClick={() => router.push(`/registrars/${registrar.ClID}`)}
                         >
+                          <TableCell className="font-medium" title={(registrar.DomainCount ?? 0).toLocaleString()}>
+                            {formatCompactNumber(registrar.DomainCount ?? 0)}
+                          </TableCell>
                           <TableCell className="font-mono">
                             {registrar.ClID}
                           </TableCell>
@@ -345,9 +348,6 @@ export function SystemRegistrarsTab() {
                             <Badge variant={registrar.Autorenew ? "default" : "outline"}>
                               {registrar.Autorenew ? "Enabled" : "Disabled"}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="font-medium" title={(registrar.DomainCount ?? 0).toLocaleString()}>
-                            {formatCompactNumber(registrar.DomainCount ?? 0)}
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1 max-w-[240px]">

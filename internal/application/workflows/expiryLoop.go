@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -82,11 +83,6 @@ func ExpiryLoop(ctx workflow.Context, params ExpiryLoopParams) (ExpiryLoopResult
 	// Get the workflow ID for correlation
 	workflowID := getWorkflowID(ctx)
 
-	// Set defaults
-	concurrencyLimit := params.ConcurrencyLimit
-	if concurrencyLimit <= 0 {
-		concurrencyLimit = 20
-	}
 
 	// Lock a single reference time for the entire run to eliminate TOCTOU races
 	// between count and list queries.
@@ -182,63 +178,42 @@ func ExpiryLoop(ctx workflow.Context, params ExpiryLoopParams) (ExpiryLoopResult
 		return result, nil
 	}
 
-	// Step 4: Process write activities in parallel with bounded concurrency
-	semCh := workflow.NewBufferedChannel(ctx, concurrencyLimit)
-
-	type futInfo struct {
-		domainName string
-		operation  string
-		future     workflow.Future
-	}
-	var futures []futInfo
-
-	// Trigger Auto-Renews
-	for _, name := range batchCheckResult.EligibleForAutoRenew {
-		semCh.Send(ctx, struct{}{})
-
-		f := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, workflowID, name)
-		futures = append(futures, futInfo{
-			domainName: name,
-			operation:  "auto-renew",
-			future:     f,
+	// Step 4a: Batch auto-renew
+	if len(batchCheckResult.EligibleForAutoRenew) > 0 {
+		var autoRenewBatch services.BatchResult
+		batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Minute,
+			HeartbeatTimeout:    2 * time.Minute,
+			RetryPolicy:         retrypolicy,
 		})
-
-		workflow.Go(ctx, func(ctx workflow.Context) {
-			_ = f.Get(ctx, nil)
-			var token struct{}
-			semCh.Receive(ctx, &token)
-		})
-	}
-
-	// Trigger Expiries
-	for _, name := range batchCheckResult.EligibleForExpiry {
-		semCh.Send(ctx, struct{}{})
-
-		f := workflow.ExecuteActivity(ctx, activities.ExpireDomain, workflowID, name)
-		futures = append(futures, futInfo{
-			domainName: name,
-			operation:  "expire",
-			future:     f,
-		})
-
-		workflow.Go(ctx, func(ctx workflow.Context) {
-			_ = f.Get(ctx, nil)
-			var token struct{}
-			semCh.Receive(ctx, &token)
-		})
-	}
-
-	// Gather results
-	for _, fut := range futures {
-		err := fut.future.Get(ctx, nil)
-		result.TotalProcessed++
-		if err != nil {
-			result.addFailure(fut.domainName, fut.operation, err.Error())
+		autoRenewErr := workflow.ExecuteActivity(batchCtx, "BatchAutoRenewDomains", workflowID, batchCheckResult.EligibleForAutoRenew, 1).Get(ctx, &autoRenewBatch)
+		if autoRenewErr != nil {
+			result.addFailure("batch-auto-renew", "auto-renew", autoRenewErr.Error())
 		} else {
-			if fut.operation == "auto-renew" {
-				result.AutoRenewed++
-			} else {
-				result.Expired++
+			result.AutoRenewed = len(autoRenewBatch.Succeeded)
+			result.TotalProcessed += len(autoRenewBatch.Succeeded) + len(autoRenewBatch.Failed)
+			for _, f := range autoRenewBatch.Failed {
+				result.addFailure(f.DomainName, "auto-renew", f.Error)
+			}
+		}
+	}
+
+	// Step 4b: Batch expire
+	if len(batchCheckResult.EligibleForExpiry) > 0 {
+		var expireBatch services.BatchResult
+		batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Minute,
+			HeartbeatTimeout:    2 * time.Minute,
+			RetryPolicy:         retrypolicy,
+		})
+		expireErr := workflow.ExecuteActivity(batchCtx, "BatchExpireDomains", workflowID, batchCheckResult.EligibleForExpiry).Get(ctx, &expireBatch)
+		if expireErr != nil {
+			result.addFailure("batch-expire", "expire", expireErr.Error())
+		} else {
+			result.Expired = len(expireBatch.Succeeded)
+			result.TotalProcessed += len(expireBatch.Succeeded) + len(expireBatch.Failed)
+			for _, f := range expireBatch.Failed {
+				result.addFailure(f.DomainName, "expire", f.Error)
 			}
 		}
 	}

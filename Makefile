@@ -325,6 +325,10 @@ db-reset: ## Reset the database (removes volume and recreates)
 	@docker volume rm domain-os_db 2>/dev/null || true
 	@$(DOPPLER) $(DOCKER_COMPOSE) up -d db
 
+db-dump: ## Dump the local PostgreSQL database (add SQL=1 for plain SQL format)
+	@$(DOPPLER) sh -c 'DB_HOST=localhost ./scripts/pg-dump-local.sh $(if $(SQL),--sql,)'
+
+
 ###################
 # Frontend
 ###################

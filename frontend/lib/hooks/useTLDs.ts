@@ -8,6 +8,7 @@ export function useTLDs(params?: ListQueryParams) {
   return useQuery({
     queryKey: ['tlds', params],
     queryFn: () => tldsApi.list(params),
+    staleTime: 30_000, // 30s — domain counts are included in the TLD response and don't change frequently
   });
 }
 

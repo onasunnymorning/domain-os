@@ -14,7 +14,7 @@ type Contact struct {
 	Voice                    string
 	Fax                      string
 	Email                    string
-	ClID                     string
+	ClID                     string `gorm:"index"`
 	CrRr                     *string
 	UpRr                     *string
 	AuthInfo                 string `gorm:"not null"`

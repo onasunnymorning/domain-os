@@ -99,6 +99,8 @@ function extractDocSections(workflows: WorkflowMeta[]): DocSearchResult[] {
 }
 
 import { CONTACT_DATA_POLICY_DOC_MARKDOWN } from '../constants/contactDataPolicyDoc';
+import { DATABASE_INDEX_STRATEGY_DOC_MARKDOWN } from '../constants/databaseIndexStrategyDoc';
+import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
   {
@@ -112,7 +114,31 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: CONTACT_DATA_POLICY_DOC_MARKDOWN,
-  }
+  },
+  {
+    key: 'database-index-strategy',
+    name: 'Database Index Strategy',
+    description: 'PostgreSQL indexing for 80M+ domain scale, storage budgets, query optimization, and event lifecycle',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['database', 'postgresql', 'index', 'performance', 'scale', 'domains', 'events', 'optimization'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: DATABASE_INDEX_STRATEGY_DOC_MARKDOWN,
+  },
+  {
+    key: 'posthog-analytics',
+    name: 'PostHog Analytics',
+    description: 'Event tracking, session recordings, error capture, and behavioral analytics for the registry UI',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['posthog', 'analytics', 'tracking', 'events', 'session', 'recording', 'autocapture', 'error'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: POSTHOG_ANALYTICS_DOC_MARKDOWN,
+  },
 ];
 
 function filterDocumentation(workflows: WorkflowMeta[], query: string): DocSearchResult[] {

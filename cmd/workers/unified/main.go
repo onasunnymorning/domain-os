@@ -59,6 +59,14 @@ func main() {
 	lifecycleWorker.RegisterActivity(activities.CreateRegistrar)
 	lifecycleWorker.RegisterActivity(activities.BulkCreateRegistrars)
 
+	// Lifecycle batch activities require DB; gracefully skip if unavailable
+	lifecycleActs, err := activities.NewLifecycleActivities()
+	if err != nil {
+		log.Printf("WARNING: Lifecycle batch activities not available (DB not configured): %v", err)
+	} else {
+		lifecycleWorker.RegisterActivity(lifecycleActs)
+	}
+
 	// --- Data Pipeline Worker (queue: data-pipeline) ---
 	// Handles escrow staging/ingestion, TLD cleanup, and FX rate updates.
 	dataWorker := worker.New(client, temporal.QueueData, worker.Options{})

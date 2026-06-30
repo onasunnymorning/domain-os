@@ -71,6 +71,7 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 type dbTLDListItem struct {
 	TLD
 	RegistrarCount int `gorm:"column:registrar_count"`
+	DomainCount    int `gorm:"column:domain_count"`
 }
 
 func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
@@ -78,9 +79,10 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	dbQuery := repo.db.WithContext(ctx).Table("tlds")
 
 	// Select optimized query fields
-	selectFields := "tlds.*, COALESCE(rc.registrar_count, 0) as registrar_count"
+	selectFields := "tlds.*, COALESCE(rc.registrar_count, 0) as registrar_count, COALESCE(dc.domain_count, 0) as domain_count"
 	dbQuery = dbQuery.Select(selectFields).
-		Joins("LEFT JOIN (SELECT tld_name AS rc_tld_name, COUNT(*) as registrar_count FROM accreditations GROUP BY tld_name) rc ON rc.rc_tld_name = tlds.name")
+		Joins("LEFT JOIN (SELECT tld_name AS rc_tld_name, COUNT(*) as registrar_count FROM accreditations GROUP BY tld_name) rc ON rc.rc_tld_name = tlds.name").
+		Joins("LEFT JOIN (SELECT tld_name AS dc_tld_name, COUNT(*) as domain_count FROM domains GROUP BY tld_name) dc ON dc.dc_tld_name = tlds.name")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
@@ -127,6 +129,7 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	for i, row := range rows {
 		tlds[i] = FromDBTLD(&row.TLD)
 		tlds[i].RegistrarCount = row.RegistrarCount
+		tlds[i].DomainCount = row.DomainCount
 	}
 
 	// Set the cursor to the last name in the list

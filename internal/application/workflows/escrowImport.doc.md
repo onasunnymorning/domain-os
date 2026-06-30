@@ -171,7 +171,15 @@ type EscrowImportResult struct {
 - **Activity**: `IngestContacts`
 - **Timeout**: Start-to-close 10h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
-- **Description**: Upserts contact records from `staged.db` to the live database, preserving original creation times and identifiers.
+- **Description**: Upserts contact records from `staged.db` to the live database, preserving original creation times and identifiers. Returns `Skipped` count for contacts excluded due to unmapped CLIDs — this count is surfaced in workflow state as `contacts_skipped`.
+
+### 8b. Validate Contact References (FK gate)
+- **Activity**: `ValidateRegistrantRefs`
+- **Timeout**: Start-to-close 2h
+- **Retry**: **MaximumAttempts: 1 (non-retryable)**
+- **Description**: Cross-checks every domain contact reference (registrant, admin, tech, billing) in `staged.db` against the live Postgres `contacts` table. Runs **after** `IngestContacts` and **before** `IngestDomains`. Any contact ID referenced by a domain that is missing from Postgres would produce a foreign key violation at domain ingest time — this activity catches those cases and fails fast with a clear diagnostic message listing missing IDs and sample domains.
+- **Failure behavior**: If any references are missing, returns a `NonRetryableApplicationError` of type `MissingContactRefs` with a count breakdown by role (registrant/admin/tech/billing) and up to 50 sampled violations. The workflow phase is set to `failed` and `IngestDomains` is **not attempted**.
+- **Recovery**: Investigate why `IngestContacts` skipped those contacts (check `contacts_skipped` count, registrar CLID mappings and overrides). Fix the mapping and re-run the import.
 
 ### 9. Ingest Hosts
 - **Activity**: `IngestHosts`
@@ -224,6 +232,7 @@ type EscrowImportResult struct {
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
 | QA Check Blocked | Staged data contains missing/null CLIDs, contacts, or hosts | Workflow **completes** with `QAPassed=false` (phase `qa_failed`). Ingestion is not started. Result contains QA Report and Staged DB keys. | Review the interactive QA Report, fix mappings or source file, re-run import. |
+| Contact Reference Validation Failed | Contacts skipped during `IngestContacts` (unmapped CLIDs) leave dangling domain references | Workflow **fails** at `ValidateRegistrantRefs` with a `MissingContactRefs` error. `IngestDomains` is **never attempted** — no partial data written. | Check `contacts_skipped` in workflow state. Investigate registrar CLID override mismatches. Fix mappings and re-run import. |
 | Ingestion Activity Timeout | Large TLD database size | Retries activity up to 3 times. | If retries exhaust, check DB load and restart workflow using the same staged DB if possible, or run a new import. |
 
 ## Artifacts

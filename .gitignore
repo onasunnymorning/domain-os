@@ -45,6 +45,7 @@ go.work
 # Local scrap files
 scraps/
 local/
+backups/
 
 # Omit the local generated docs (we do need them locally so that code validation will not complain)
 docs/*.json

@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench } from 'lucide-react';
+import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -87,6 +87,36 @@ export default function DocsIndexPage() {
                           </div>
                           <CardDescription className="text-xs leading-relaxed line-clamp-3">
                             Enforcement levels, compliance standards, and validation behaviors for contact registration details.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                    <Link href="/docs/posthog-analytics" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-orange-500/30 hover:bg-orange-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <BarChart3 className="h-4 w-4 text-orange-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              PostHog Analytics
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            Event tracking, session recordings, error capture, and behavioral analytics configuration.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                    <Link href="/docs/database-index-strategy" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-orange-500/30 hover:bg-orange-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Database className="h-4 w-4 text-orange-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              Database Index Strategy
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            PostgreSQL indexing strategy for 80M+ domain scale, storage budgets, and query optimization.
                           </CardDescription>
                         </CardHeader>
                       </Card>

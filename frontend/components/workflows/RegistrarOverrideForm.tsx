@@ -37,13 +37,60 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getRegistrars, createRegistrar } from '@/lib/api/registrars';
+import { getRegistrars, getIANARegistrarByGurID } from '@/lib/api/registrars';
 import { signalWorkflow, terminateWorkflow } from '@/lib/api/workflows';
+import { apiClient } from '@/lib/api/client';
 import type { RegistrarListItem } from '@/lib/types/registrar';
+
+// ---------------------------------------------------------------------------
+// Strongly-typed command matching commands.CreateRegistrarCommand on the backend
+// ---------------------------------------------------------------------------
+
+interface RegistrarPostalAddress {
+  Street1?: string;
+  Street2?: string;
+  Street3?: string;
+  City: string;    // required — maps to backend `City`
+  SP?: string;     // StateProvince — backend JSON tag is "SP"
+  PC?: string;     // PostalCode    — backend JSON tag is "PC"
+  CC: string;      // CountryCode   — backend JSON tag is "CC", required by NewAddress
+}
+
+interface RegistrarPostalInfo {
+  Type: 'int' | 'loc';   // PostalInfoEnumType
+  Address: RegistrarPostalAddress;
+}
+
+interface CreateRegistrarCommand {
+  ClID: string;
+  Name: string;
+  Email: string;
+  GurID?: number;
+  Voice?: string;
+  URL?: string;
+  RdapBaseURL?: string;
+  Status?: string;
+  IANAStatus?: string;
+  PostalInfo: [RegistrarPostalInfo | null, RegistrarPostalInfo | null];
+}
+
+async function submitCreateRegistrar(cmd: CreateRegistrarCommand) {
+  const { data } = await apiClient.post('/registrars', cmd);
+  return data;
+}
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface UnmappedRegistrarPostalInfo {
+  type: string;
+  street1?: string;
+  city?: string;
+  stateProvince?: string;
+  postalCode?: string;
+  countryCode?: string;
+}
 
 export interface UnmappedRegistrar {
   escrowId: string;
@@ -52,6 +99,11 @@ export interface UnmappedRegistrar {
   domainCount: number;
   hostCount: number;
   contactCount: number;
+  // Suggestion fields — pre-populated from escrow data, operator can override
+  suggestedEmail?: string;
+  suggestedVoice?: string;
+  suggestedUrl?: string;
+  suggestedPostal?: UnmappedRegistrarPostalInfo[];
 }
 
 interface RegistrarOverrideFormProps {
@@ -209,11 +261,37 @@ function RegistrarCombobox({
 // Inline Create Form
 // ---------------------------------------------------------------------------
 
+const COUNTRY_CODES = [
+  'AD','AE','AF','AG','AI','AL','AM','AO','AQ','AR','AS','AT','AU','AW','AX','AZ',
+  'BA','BB','BD','BE','BF','BG','BH','BI','BJ','BL','BM','BN','BO','BQ','BR','BS',
+  'BT','BV','BW','BY','BZ','CA','CC','CD','CF','CG','CH','CI','CK','CL','CM','CN',
+  'CO','CR','CU','CV','CW','CX','CY','CZ','DE','DJ','DK','DM','DO','DZ','EC','EE',
+  'EG','EH','ER','ES','ET','FI','FJ','FK','FM','FO','FR','GA','GB','GD','GE','GF',
+  'GG','GH','GI','GL','GM','GN','GP','GQ','GR','GS','GT','GU','GW','GY','HK','HM',
+  'HN','HR','HT','HU','ID','IE','IL','IM','IN','IO','IQ','IR','IS','IT','JE','JM',
+  'JO','JP','KE','KG','KH','KI','KM','KN','KP','KR','KW','KY','KZ','LA','LB','LC',
+  'LI','LK','LR','LS','LT','LU','LV','LY','MA','MC','MD','ME','MF','MG','MH','MK',
+  'ML','MM','MN','MO','MP','MQ','MR','MS','MT','MU','MV','MW','MX','MY','MZ','NA',
+  'NC','NE','NF','NG','NI','NL','NO','NP','NR','NU','NZ','OM','PA','PE','PF','PG',
+  'PH','PK','PL','PM','PN','PR','PS','PT','PW','PY','QA','RE','RO','RS','RU','RW',
+  'SA','SB','SC','SD','SE','SG','SH','SI','SJ','SK','SL','SM','SN','SO','SR','SS',
+  'ST','SV','SX','SY','SZ','TC','TD','TF','TG','TH','TJ','TK','TL','TM','TN','TO',
+  'TR','TT','TV','TW','TZ','UA','UG','UM','US','UY','UZ','VA','VC','VE','VG','VI',
+  'VN','VU','WF','WS','YE','YT','ZA','ZM','ZW',
+];
+
 interface CreateFormState {
   clid: string;
   name: string;
   gurId: number;
   email: string;
+  voice: string;
+  url: string;
+  street1: string;
+  city: string;
+  countryCode: string;
+  stateProvince: string;
+  postalCode: string;
 }
 
 function InlineCreateForm({
@@ -225,42 +303,86 @@ function InlineCreateForm({
   onCreated: (clid: string) => void;
   onCancel: () => void;
 }) {
+  const primary = registrar.suggestedPostal?.find((p) => p.type === 'int')
+    ?? registrar.suggestedPostal?.[0];
+
   const [form, setForm] = useState<CreateFormState>({
     clid: generateClID(registrar.gurId, registrar.name),
     name: registrar.name,
     gurId: registrar.gurId,
-    email: '',
+    email: registrar.suggestedEmail ?? '',
+    voice: registrar.suggestedVoice ?? '',
+    url:   registrar.suggestedUrl   ?? '',
+    street1:       primary?.street1       ?? '',
+    city:          primary?.city          ?? '',
+    countryCode:   primary?.countryCode   ?? '',
+    stateProvince: primary?.stateProvince ?? '',
+    postalCode:    primary?.postalCode    ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ianaLoading, setIanaLoading] = useState(false);
+
+  // IANA enrichment: if GurID is set and escrow didn't supply a URL, try IANA as a fallback
+  useEffect(() => {
+    if (!registrar.gurId || registrar.suggestedUrl) return;
+    setIanaLoading(true);
+    getIANARegistrarByGurID(registrar.gurId)
+      .then((iana) => {
+        setForm((f) => ({
+          ...f,
+          url: f.url || iana.RdapURL || '',
+        }));
+      })
+      .catch(() => { /* IANA lookup is best-effort */ })
+      .finally(() => setIanaLoading(false));
+  }, [registrar.gurId, registrar.suggestedUrl]);
+
+  const field = (key: keyof CreateFormState, value: string | number) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.email) {
-      setError('Email is required');
-      return;
+
+    if (!form.email.trim()) { setError('Email is required'); return; }
+    if (!form.city.trim())  { setError('City is required (postal address)'); return; }
+    if (!form.countryCode.trim() || form.countryCode.length !== 2) {
+      setError('A valid 2-letter country code is required (ISO 3166-1 alpha-2)'); return;
     }
+
     setSaving(true);
     setError(null);
-    try {
-      await createRegistrar({
-        ClID: form.clid,
-        Name: form.name,
-        Email: form.email,
-        GurID: form.gurId,
-        Status: 'ok' as any,
-        IANAStatus: 'Unknown' as any,
-        PostalInfo: [
-          {
-            Type: 'int',
-            Address: { Street: [''], City: 'TBD', CountryCode: 'PE' },
+
+    const cmd: CreateRegistrarCommand = {
+      ClID: form.clid.trim(),
+      Name: form.name.trim(),
+      Email: form.email.trim(),
+      GurID: form.gurId || undefined,
+      Voice: form.voice.trim() || undefined,
+      URL: form.url.trim() || undefined,
+      Status: 'readonly',
+      IANAStatus: 'Unknown',
+      PostalInfo: [
+        {
+          Type: 'int',
+          Address: {
+            Street1: form.street1.trim() || undefined,
+            City: form.city.trim(),
+            SP: form.stateProvince.trim() || undefined,
+            PC: form.postalCode.trim() || undefined,
+            CC: form.countryCode.toUpperCase().trim(),
           },
-        ],
-      });
+        },
+        null,
+      ],
+    };
+
+    try {
+      await submitCreateRegistrar(cmd);
       toast.success('Registrar created', {
-        description: `${form.clid} is now available as an override target`,
+        description: `${cmd.ClID} is now available as an override target`,
       });
-      onCreated(form.clid);
+      onCreated(cmd.ClID);
     } catch (err: any) {
       const msg =
         err?.response?.data?.error ||
@@ -275,63 +397,138 @@ function InlineCreateForm({
 
   return (
     <tr>
-      <td colSpan={8} className="px-2 py-2 bg-muted/30">
+      <td colSpan={8} className="px-2 py-3 bg-muted/30">
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">ClID</Label>
-              <Input
-                value={form.clid}
-                onChange={(e) => setForm((f) => ({ ...f, clid: e.target.value }))}
-                className="h-7 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Name</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="h-7 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">GurID</Label>
-              <Input
-                type="number"
-                value={form.gurId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, gurId: parseInt(e.target.value, 10) || 0 }))
-                }
-                className="h-7 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Email *</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="operator@example.com"
-                className="h-7 text-xs"
-              />
+
+          {/* ── Identity ── */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Identity</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">ClID *</Label>
+                <Input value={form.clid} onChange={(e) => field('clid', e.target.value)} className="h-7 text-xs font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Name *</Label>
+                <Input value={form.name} onChange={(e) => field('name', e.target.value)} className="h-7 text-xs" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">GurID</Label>
+                <Input
+                  type="number"
+                  value={form.gurId || ''}
+                  onChange={(e) => field('gurId', parseInt(e.target.value, 10) || 0)}
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Email *</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => field('email', e.target.value)}
+                  placeholder="ops@registrar.example"
+                  className="h-7 text-xs"
+                />
+              </div>
             </div>
           </div>
+
+          {/* ── Contact ── */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Contact</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Phone</Label>
+                <Input
+                  value={form.voice}
+                  onChange={(e) => field('voice', e.target.value)}
+                  placeholder="+1.2125551234"
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">
+                  URL
+                  {ianaLoading && <Loader2 className="inline ml-1 size-2.5 animate-spin" />}
+                </Label>
+                <Input
+                  value={form.url}
+                  onChange={(e) => field('url', e.target.value)}
+                  placeholder="https://rdap.example.com"
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Postal Address (int) ── */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Postal Address (international)</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-[10px] text-muted-foreground">Street</Label>
+                <Input
+                  value={form.street1}
+                  onChange={(e) => field('street1', e.target.value)}
+                  placeholder="123 Main St"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">City *</Label>
+                <Input
+                  value={form.city}
+                  onChange={(e) => field('city', e.target.value)}
+                  placeholder="New York"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">State / Province</Label>
+                <Input
+                  value={form.stateProvince}
+                  onChange={(e) => field('stateProvince', e.target.value)}
+                  placeholder="NY"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Postal Code</Label>
+                <Input
+                  value={form.postalCode}
+                  onChange={(e) => field('postalCode', e.target.value)}
+                  placeholder="10001"
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Country Code *</Label>
+                <Input
+                  value={form.countryCode}
+                  onChange={(e) => field('countryCode', e.target.value.toUpperCase().slice(0, 2))}
+                  placeholder="US"
+                  maxLength={2}
+                  list="country-code-list"
+                  className="h-7 text-xs font-mono uppercase"
+                />
+                <datalist id="country-code-list">
+                  {COUNTRY_CODES.map((cc) => <option key={cc} value={cc} />)}
+                </datalist>
+              </div>
+            </div>
+          </div>
+
           {error && (
-            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+            <p className="text-xs text-destructive">{error}</p>
           )}
+
           <div className="flex items-center gap-2">
             <Button type="submit" size="sm" disabled={saving} className="h-7 text-xs gap-1">
               {saving && <Loader2 className="size-3 animate-spin" />}
               Create Registrar
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onCancel}
-              disabled={saving}
-              className="h-7 text-xs"
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving} className="h-7 text-xs">
               Cancel
             </Button>
           </div>

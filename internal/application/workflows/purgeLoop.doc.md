@@ -12,7 +12,7 @@
 
 ## Overview
 
-The Purge Loop is a scheduled workflow that runs every hour to permanently remove domains that have completed their redemption grace period and are eligible for purging. It locks a reference time to count and list purgeable domains, checks progress concurrently using a worker pool with bounded concurrency, and aggregates outputs into a structured `PurgeLoopResult`. If the batch size is capped, it uses `ContinueAsNew` to drain the remainder immediately.
+The Purge Loop is a scheduled workflow that runs every hour to permanently remove domains that have completed their redemption grace period and are eligible for purging. It locks a reference time to count and list purgeable domains, then uses a single batch activity to purge all domains via the service layer directly — eliminating the per-domain HTTP overhead of the previous implementation. If the batch size is capped, it uses `ContinueAsNew` to drain the remainder immediately.
 
 ## Flow Diagram
 
@@ -24,9 +24,8 @@ graph TD
     C -- No --> D["List Purgeable Domains"]
     D --> E{"Dry Run?"}
     E -- Yes --> DONE2["✅ Return Dry Run result"]
-    E -- No --> F["Purge Domains in Parallel (Bounded Concurrency)"]
-    F --> G["Purge Domain (Parallel)"]
-    G --> H["Aggregate results into PurgeLoopResult"]
+    E -- No --> F["Batch Purge Domains"]
+    F --> H["Aggregate results into PurgeLoopResult"]
     H --> I{"Batch Cap Reached?"}
     I -- Yes --> J["🔄 ContinueAsNew (Immediate next batch)"]
     I -- No --> DONE3["✅ Return final structured result"]
@@ -84,10 +83,10 @@ The workflow exposes a `progress` query handler that returns the current `PurgeL
 - **Timeout**: 1 minute
 - **Description**: Retrieves expiring domains (up to 1,000 domains).
 
-### 3. Parallel Purge Writes
-- **Activity**: `activities.PurgeDomain`
-- **Timeout**: 1 minute per activity
-- **Description**: Permanently deletes the domains and their resources concurrently using a semaphore pattern (buffered channel) inside the workflow up to `ConcurrencyLimit` (default: 20).
+### 3. Batch Purge
+- **Activity**: `BatchPurgeDomains` (struct method on `LifecycleActivities`)
+- **Timeout**: 30 minutes (start-to-close), 2 minutes (heartbeat)
+- **Description**: Permanently deletes the domains and their resources in a single batch activity call. Processes domains in chunks internally with heartbeats.
 
 ### 4. Continue As New (Optional)
 - **Description**: If the listed domains are fewer than the total found, the workflow executes a `ContinueAsNew` error to immediately begin processing the remaining domains.
@@ -103,14 +102,19 @@ The workflow exposes a `progress` query handler that returns the current `PurgeL
 
 ## Operational Notes
 
+### Performance
+- **Before (per-domain)**: N HTTP requests (one per domain) for purge writes.
+- **After (batched)**: 1 activity call total, processing the full batch via the service layer directly.
+
 ### Scheduling
 Runs every hour at the 30-minute mark (offset from the Expiry Loop which runs on the hour).
 
 ### Monitoring
 - Watch counts (`TotalFound`, `Failed`, `Purged`) in the Temporal UI.
 - Use `progress` query to check execution logs in real-time.
+- Heartbeat messages report chunk progress during batch activities.
 
 ---
 
-> **Last updated**: 2026-06-24
-> **Updated by**: Agent (redesigned with parallel writes and progress tracking)
+> **Last updated**: 2026-06-29
+> **Updated by**: Agent (refactored to batch activities)

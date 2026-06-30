@@ -16,7 +16,7 @@ import (
 type NNDN struct {
 	Name      string `gorm:"primaryKey"` // ASCII Name as primary key
 	UName     string // Unicode Name, should only be populated if the blocked string is an IDN
-	TLDName   string `gorm:"not null;foreignKey"` // TLD Name as a foreign key
+	TLDName   string `gorm:"not null;foreignKey;index"` // TLD Name as a foreign key
 	TLD       TLD
 	NameState string `gorm:"not null"` // State of the NNDN, not null
 	Reason    string // Reason for the NNDN being blocked

@@ -43,14 +43,32 @@ if tilt_mode == 'docker':
     dc_resource('admin-init',       labels=['init'], trigger_mode=TRIGGER_MODE_MANUAL, resource_deps=['admin-api'])
 
 else:
-    # ─── Native Mode: infra in Docker, Go apps on host ────────────────────────
+    # ─── Native Mode: infra in Docker, Go + Temporal on host ──────────────────
     docker_compose('./docker-compose.yml', profiles=['infra'], env_file='.env.tilt')
 
     dc_resource('db',               labels=['infrastructure'])
     dc_resource('redis',            labels=['infrastructure'])
-    dc_resource('temporal-dev',     labels=['infrastructure'])
     dc_resource('minio',            labels=['infrastructure'])
     dc_resource('minio-setup',      labels=['init'], trigger_mode=TRIGGER_MODE_MANUAL)
+
+    # Temporal dev server runs natively via the `temporal` CLI with SQLite.
+    # Persists workflow state across restarts via a local DB file.
+    local_resource(
+        'temporal',
+        serve_cmd=' '.join([
+            'temporal', 'server', 'start-dev',
+            '--port', '7233',
+            '--ui-port', '8233',
+            '--namespace', 'default',
+            '--db-filename', './local/temporal.db',
+            '--log-format', 'pretty',
+        ]),
+        readiness_probe=probe(
+            period_secs=5,
+            tcp_socket=tcp_socket_action(port=7233),
+        ),
+        labels=['infrastructure'],
+    )
 
     local_resource(
         'admin-api',
@@ -65,7 +83,7 @@ else:
         serve_cmd=DOPPLER_NATIVE + ' go run ./cmd/workers/unified',
         deps=['./internal', './pkg', './cmd/workers/unified'],
         labels=['app'],
-        resource_deps=['db', 'temporal-dev'],
+        resource_deps=['db', 'temporal'],
     )
 
     local_resource(
@@ -100,7 +118,7 @@ local_resource(
         'NEXT_PUBLIC_API_URL':         'http://localhost:8080',
         'NEXT_PUBLIC_API_TOKEN':       'devtoken',
         'NEXT_PUBLIC_AUTH0_ENABLED':   'false',
-        'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # temporal-dev built-in UI (native) or temporal-ui (docker)
+        'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # native temporal CLI UI; docker mode uses :8081
         'NEXT_PUBLIC_APP_VERSION':     'dev',
     },
     deps=[

@@ -36,6 +36,39 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	// Manual indexes for tables where GORM tags can't be used (M2M join tables, composites).
+	// Using IF NOT EXISTS for idempotency.
+	manualIndexes := []string{
+		// domain_hosts: reverse lookup by host_ro_id — PK is (domain_ro_id, host_ro_id) so host-only lookups are full table scans
+		"CREATE INDEX IF NOT EXISTS idx_domain_hosts_host_ro_id ON domain_hosts (host_ro_id)",
+		// phases: composite for activeGAPhaseFilter EXISTS subquery that runs on every lifecycle query
+		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
+		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
+		"CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name ON accreditations (tld_name)",
+	}
+	for _, idx := range manualIndexes {
+		if err := db.Exec(idx).Error; err != nil {
+			log.Printf("Warning: failed to create index: %s — %v", idx, err)
+		}
+	}
+
+	// Drop legacy domain_events indexes that have no matching queries in the codebase.
+	// These were replaced by a composite (subject, occurred_at DESC) index via GORM tags.
+	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
+	legacyIndexes := []string{
+		"DROP INDEX IF EXISTS idx_domain_events_source",
+		"DROP INDEX IF EXISTS idx_domain_events_type",
+		"DROP INDEX IF EXISTS idx_domain_events_trace_id",
+		"DROP INDEX IF EXISTS idx_domain_events_correlation_id",
+		"DROP INDEX IF EXISTS idx_domain_events_subject",
+		"DROP INDEX IF EXISTS idx_domain_events_occurred_at",
+	}
+	for _, idx := range legacyIndexes {
+		if err := db.Exec(idx).Error; err != nil {
+			log.Printf("Warning: failed to drop legacy index: %s — %v", idx, err)
+		}
+	}
+
 	return nil
 }
 

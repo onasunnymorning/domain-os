@@ -12,14 +12,14 @@ type Domain struct {
 	Name                          string `gorm:"uniqueIndex;not null"`
 	OriginalName                  string
 	UName                         string
-	RegistrantID                  *string // These are optional, prohibited or mandatory based on ContactDataPolicy
-	AdminID                       *string // These are optional, prohibited or mandatory based on ContactDataPolicy
-	TechID                        *string // These are optional, prohibited or mandatory based on ContactDataPolicy
-	BillingID                     *string // These are optional, prohibited or mandatory based on ContactDataPolicy
-	ClID                          string
+	RegistrantID                  *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	AdminID                       *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	TechID                        *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	BillingID                     *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	ClID                          string  `gorm:"index"`
 	CrRr                          *string
 	UpRr                          *string
-	TLDName                       string `gorm:"not null;foreignKey"`
+	TLDName                       string `gorm:"not null;foreignKey;index"`
 	TLD                           TLD
 	ExpiryDate                    time.Time `gorm:"not null;index"`
 	DropCatch                     bool

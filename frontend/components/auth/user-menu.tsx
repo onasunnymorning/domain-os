@@ -2,6 +2,7 @@
 
 import { useAuth0 } from '@auth0/auth0-react';
 import { LogOut, User as UserIcon } from 'lucide-react';
+import posthog from 'posthog-js';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -21,6 +22,8 @@ export function UserMenu() {
     }
 
     const handleLogout = () => {
+        posthog.capture('user_logged_out');
+        posthog.reset();
         logout({ logoutParams: { returnTo: window.location.origin } });
     };
 

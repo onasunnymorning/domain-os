@@ -9,13 +9,13 @@ import (
 
 type DomainEventRecord struct {
 	ID            string    `gorm:"primaryKey;type:uuid"`
-	Source        string    `gorm:"not null;index"`
-	Type          string    `gorm:"not null;index"`
-	Subject       string    `gorm:"not null;index"`
+	Source        string    `gorm:"not null"`
+	Type          string    `gorm:"not null"`
+	Subject       string    `gorm:"not null;index:idx_events_subject_occurred,priority:1"`
 	Description   string    `gorm:"type:text"`
-	OccurredAt    time.Time `gorm:"not null;index"`
-	TraceID       string    `gorm:"index"`
-	CorrelationID string    `gorm:"index"`
+	OccurredAt    time.Time `gorm:"not null;index:idx_events_subject_occurred,priority:2,sort:desc"`
+	TraceID       string
+	CorrelationID string
 	Data          []byte    `gorm:"type:jsonb;not null"`
 	Published     bool      `gorm:"default:false;index"` // outbox relay flag
 	CreatedAt     time.Time

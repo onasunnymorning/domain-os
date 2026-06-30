@@ -26,6 +26,7 @@ import { TLDAccreditedRegistrarCountWidget } from '@/components/tlds/TLDAccredit
 import { TLDDomainCountWidget } from '@/components/tlds/TLDDomainCountWidget';
 import { TLDReservedInventoryWidget } from '@/components/tlds/TLDReservedInventoryWidget';
 import { TLDDUMsPieChartCard } from '@/components/tlds/TLDDUMsPieChartCard';
+import posthog from 'posthog-js';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -429,6 +430,11 @@ export default function TLDDetailPage({ params }: Props) {
                                 setAddError(null);
                                 try {
                                   await accreditForTLD.mutateAsync(r.ClID);
+                                  posthog.capture('registrar_accredited_to_tld', {
+                                    tld_name: tldName,
+                                    registrar_clid: r.ClID,
+                                    registrar_name: r.Name,
+                                  });
                                   setAddOpen(false);
                                   setSearch('');
                                 } catch (err) {
@@ -484,6 +490,11 @@ export default function TLDDetailPage({ params }: Props) {
                     setDeaccError(null);
                     try {
                       await deaccreditForTLD.mutateAsync(selectedRegistrar.ClID);
+                      posthog.capture('registrar_deaccredited_from_tld', {
+                        tld_name: tldName,
+                        registrar_clid: selectedRegistrar.ClID,
+                        registrar_name: selectedRegistrar.Name,
+                      });
                       setDeaccOpen(false);
                       setConfirmText('');
                       setSelectedRegistrar(null);

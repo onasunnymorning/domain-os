@@ -11,7 +11,7 @@ import (
 type Host struct {
 	RoID                int64  `gorm:"primaryKey"`
 	Name                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null"`
-	ClID                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null"`
+	ClID                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null;index"`
 	CrRr                *string
 	UpRr                *string
 	InBailiwick         bool

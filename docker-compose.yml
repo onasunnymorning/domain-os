@@ -207,29 +207,7 @@ services:
     networks:
       - dos
 
-  # ── Native dev mode: single lightweight container, in-memory SQLite ─────────
-  # Provides gRPC on 7233 and built-in UI on 8081. Ephemeral — workflows reset
-  # on restart, which is fine since native Go services use Temporal Cloud.
-  temporal-dev:
-    image: temporalio/admin-tools:latest
-    entrypoint: [ "temporal" ]
-    command: >
-      server start-dev
-        --ip 0.0.0.0
-        --port 7233
-        --ui-port 8233
-        --namespace default
-    profiles: [ infra ]
-    ports:
-      - 7233:7233
-      - 8233:8233
-    healthcheck:
-      test: [ "CMD-SHELL", "nc -z localhost 7233" ]
-      interval: 5s
-      retries: 10
-      start_period: 10s
-    networks:
-      - dos
+
 
   # ── Docker mode: production-parity stack (dedicated Postgres + auto-setup) ──
   temporal-postgres:
