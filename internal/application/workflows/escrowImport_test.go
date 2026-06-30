@@ -39,6 +39,7 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_Success() {
 
 	// Ingestion mocks
 	s.env.OnActivity(acts.IngestContacts, mock.Anything, mock.Anything).Return(activities.IngestContactsResult{Total: 10, Inserted: 8, Updated: 2}, nil)
+	s.env.OnActivity(acts.ValidateRegistrantRefs, mock.Anything, mock.Anything).Return(activities.ValidateRegistrantRefsResult{}, nil)
 	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.Anything).Return(activities.IngestHostsResult{Total: 5, Inserted: 5, Updated: 0}, nil)
 	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.Anything).Return(activities.IngestDomainsResult{Total: 100, Inserted: 90, Updated: 10}, nil)
 	s.env.OnActivity(acts.IngestNNDNs, mock.Anything, mock.Anything).Return(activities.IngestNNDNsResult{Total: 1, Inserted: 1, Updated: 0}, nil)
@@ -239,6 +240,7 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_AllMapped_CountsPropag
 	s.env.OnActivity(acts.ApplyRegistrarMappings, mock.Anything, mock.Anything).Return(activities.ApplyRegistrarMappingsResult{StagedDBKey: "escrow/com/20260625/test-wf/staged.db"}, nil)
 	s.env.OnActivity(acts.QAStagedDatabase, mock.Anything, mock.Anything).Return(activities.QAStagedDatabaseResult{Passed: true, QAReportKey: "escrow/com/20260625/test-wf/qa-report.json"}, nil)
 	s.env.OnActivity(acts.IngestContacts, mock.Anything, mock.Anything).Return(activities.IngestContactsResult{}, nil)
+	s.env.OnActivity(acts.ValidateRegistrantRefs, mock.Anything, mock.Anything).Return(activities.ValidateRegistrantRefsResult{}, nil)
 	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.Anything).Return(activities.IngestHostsResult{}, nil)
 	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.Anything).Return(activities.IngestDomainsResult{}, nil)
 	s.env.OnActivity(acts.IngestNNDNs, mock.Anything, mock.Anything).Return(activities.IngestNNDNsResult{}, nil)
@@ -313,6 +315,7 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_OverrideSignal_Resolve
 	s.env.OnActivity(acts.ApplyRegistrarMappings, mock.Anything, mock.Anything).Return(activities.ApplyRegistrarMappingsResult{StagedDBKey: "escrow/co/20260625/test-wf/staged.db"}, nil)
 	s.env.OnActivity(acts.QAStagedDatabase, mock.Anything, mock.Anything).Return(activities.QAStagedDatabaseResult{Passed: true, QAReportKey: "escrow/co/20260625/test-wf/qa-report.json"}, nil)
 	s.env.OnActivity(acts.IngestContacts, mock.Anything, mock.Anything).Return(activities.IngestContactsResult{}, nil)
+	s.env.OnActivity(acts.ValidateRegistrantRefs, mock.Anything, mock.Anything).Return(activities.ValidateRegistrantRefsResult{}, nil)
 	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.Anything).Return(activities.IngestHostsResult{}, nil)
 	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.Anything).Return(activities.IngestDomainsResult{}, nil)
 	s.env.OnActivity(acts.IngestNNDNs, mock.Anything, mock.Anything).Return(activities.IngestNNDNsResult{}, nil)
@@ -427,6 +430,7 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_NoDomainsUnmapped_Auto
 	s.env.OnActivity(acts.ApplyRegistrarMappings, mock.Anything, mock.Anything).Return(activities.ApplyRegistrarMappingsResult{StagedDBKey: "escrow/co/20260625/test-wf/staged.db"}, nil)
 	s.env.OnActivity(acts.QAStagedDatabase, mock.Anything, mock.Anything).Return(activities.QAStagedDatabaseResult{Passed: true, QAReportKey: "escrow/co/20260625/test-wf/qa-report.json"}, nil)
 	s.env.OnActivity(acts.IngestContacts, mock.Anything, mock.Anything).Return(activities.IngestContactsResult{}, nil)
+	s.env.OnActivity(acts.ValidateRegistrantRefs, mock.Anything, mock.Anything).Return(activities.ValidateRegistrantRefsResult{}, nil)
 	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.Anything).Return(activities.IngestHostsResult{}, nil)
 	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.Anything).Return(activities.IngestDomainsResult{}, nil)
 	s.env.OnActivity(acts.IngestNNDNs, mock.Anything, mock.Anything).Return(activities.IngestNNDNsResult{}, nil)

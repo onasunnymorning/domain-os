@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRecentEvents } from '@/lib/hooks/useRecentEvents';
 import {
   Card,
@@ -31,6 +32,90 @@ import {
   UserMinus,
   Settings,
 } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+interface LinkTarget {
+  text: string;
+  href: string;
+}
+
+function renderClickableText(text: string, event: any) {
+  const targets: LinkTarget[] = [];
+
+  // Extract domain name target
+  if (event.type.startsWith('domain.')) {
+    const domainName = event.data?.DomainName || event.data?.domainName || (event.subject && event.subject !== 'bulk' ? event.subject : undefined);
+    if (domainName && typeof domainName === 'string') {
+      targets.push({
+        text: domainName,
+        href: `/domains/${encodeURIComponent(domainName)}`,
+      });
+    }
+  }
+
+  // Extract registrar client ID target
+  const clid = event.data?.ClientID || event.data?.clientId || event.data?.ClID || event.data?.clid || (event.type.startsWith('registrar.') && event.subject && event.subject !== 'bulk' ? event.subject : undefined);
+  if (clid && typeof clid === 'string') {
+    targets.push({
+      text: clid,
+      href: `/registrars/${encodeURIComponent(clid)}`,
+    });
+  }
+
+  // Deduplicate and filter out empty texts or text not present in display text
+  const activeTargets: LinkTarget[] = [];
+  const seenTexts = new Set<string>();
+
+  for (const target of targets) {
+    if (target.text && text.includes(target.text) && !seenTexts.has(target.text)) {
+      activeTargets.push(target);
+      seenTexts.add(target.text);
+    }
+  }
+
+  if (activeTargets.length === 0) {
+    return text;
+  }
+
+  // Sort by length of text descending to match longest first
+  activeTargets.sort((a, b) => b.text.length - a.text.length);
+
+  // Recursively split the text and insert Links
+  const renderParts = (currentText: string, remainingTargets: LinkTarget[]): React.ReactNode[] => {
+    if (!currentText) return [];
+    if (remainingTargets.length === 0) return [currentText];
+
+    const [first, ...rest] = remainingTargets;
+    const index = currentText.indexOf(first.text);
+
+    if (index === -1) {
+      return renderParts(currentText, rest);
+    }
+
+    const before = currentText.substring(0, index);
+    const match = currentText.substring(index, index + first.text.length);
+    const after = currentText.substring(index + first.text.length);
+
+    return [
+      ...renderParts(before, rest),
+      <Link
+        key={`${match}-${index}`}
+        href={first.href}
+        onClick={(e) => e.stopPropagation()}
+        className="text-primary hover:underline font-semibold transition-colors"
+      >
+        {match}
+      </Link>,
+      ...renderParts(after, remainingTargets),
+    ];
+  };
+
+  return <>{renderParts(text, activeTargets)}</>;
+}
+
 
 // ---------------------------------------------------------------------------
 // Event type → visual config
@@ -275,10 +360,17 @@ export function EventFeed() {
 
               return (
                 <div key={event.id} className="group">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent/50 cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
                     onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setExpandedId(isExpanded ? null : event.id);
+                      }
+                    }}
                   >
                     {/* Status dot */}
                     <span
@@ -295,7 +387,7 @@ export function EventFeed() {
                           {config.label}
                         </Badge>
                         <span className="text-sm truncate text-foreground">
-                          {displayText}
+                          {renderClickableText(displayText, event)}
                         </span>
                       </div>
                     </div>
@@ -312,7 +404,7 @@ export function EventFeed() {
                     ) : (
                       <ChevronDown className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                     )}
-                  </button>
+                  </div>
 
                   {/* Expanded payload */}
                   {isExpanded && (

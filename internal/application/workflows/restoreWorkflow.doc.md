@@ -12,39 +12,52 @@
 
 ## Overview
 
-The Restore Workflow is a scheduled workflow that runs every hour (with a 15-minute offset) to finalize domain restorations. It processes domains currently in the `PendingRestore` state by removing that status flag and performing a forced 1-year renewal. If the renewal fails, it rolls back by re-setting the `PendingRestore` status so the domain can be retried on the next run. Individual domain failures are logged but do not halt the loop.
+The Restore Workflow is a scheduled workflow that runs every 4 hours to finalize domain restorations. It lists domains currently in the `PendingRestore` state and processes them in a single batch activity call (`BatchRestoreDomains`), which handles unsetting the status flag and performing the forced renewal internally. The workflow returns a structured `RestoreLoopResult` with counts and failure details.
 
 ## Flow Diagram
 
 ```mermaid
 graph TD
     A["List Restored Domains (PendingRestore)"] --> B{"Any domains?"}
-    B -- No --> DONE1["✅ Return nil"]
-    B -- Yes --> C["For Each Domain"]
-    C --> D["Unset PendingRestore Status"]
-    D --> E["Force Renew Domain (1 year)"]
-    E --> F{"Renew Succeeded?"}
-    F -- Yes --> G{"More Domains?"}
-    F -- No --> H["⟲ Rollback: Re-set PendingRestore"]
-    H --> G
-    G -- Yes --> C
-    G -- No --> DONE2["✅ Return nil"]
+    B -- No --> DONE1["✅ Return result (nothing to process)"]
+    B -- Yes --> C["Batch Restore Domains"]
+    C --> D["Aggregate results into RestoreLoopResult"]
+    D --> DONE2["✅ Return final structured result"]
 
-    style H fill:#fadbd8,stroke:#e74c3c,stroke-width:2px
-    style F fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
+    style C fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
 ```
 
 ## Input
 
 ```go
-func RestoreWorkflow(ctx workflow.Context) error
+func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error)
 ```
 
 No input parameters. The workflow discovers `PendingRestore` domains dynamically.
 
 ## Output
 
-Returns `error` only. Returns `nil` on success.
+```go
+type RestoreLoopResult struct {
+    StartedAt      time.Time        `json:"startedAt"`
+    CompletedAt    time.Time        `json:"completedAt"`
+    TotalFound     int              `json:"totalFound"`
+    TotalProcessed int              `json:"totalProcessed"`
+    Restored       int              `json:"restored"`
+    Failed         int              `json:"failed"`
+    Notes          []string         `json:"notes"`
+    Failures       []RestoreFailure `json:"failures,omitempty"`
+}
+
+type RestoreFailure struct {
+    DomainName string `json:"domainName"`
+    Error      string `json:"error"`
+}
+```
+
+## Query Handler
+
+The workflow exposes a `progress` query handler that returns the current `RestoreLoopResult` in real-time, allowing operators to monitor progress.
 
 ## Steps
 
@@ -54,36 +67,18 @@ Returns `error` only. Returns `nil` on success.
 - **Retry**: Max 3 attempts, initial interval 1s, backoff coefficient 2.0, max interval 10min
 - **Description**: Queries for all domains with the `PendingRestore` status flag set. Returns a list of `DomainRestoredItem` structs containing the domain name and registrar client ID (`ClID`).
 
-### 2. Unset PendingRestore Status (per domain)
-- **Activity**: `activities.UnSetDomainStatus`
-- **Input**: `ToggleDomainStatusCommand{DomainName, Status: PendingRestore, CorrelationID: workflowID}`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Removes the `PendingRestore` status flag from the domain. On failure, logs a warning and continues to attempt the renewal.
-
-### 3. Force Renew Domain (per domain)
-- **Activity**: `activities.RenewDomain`
-- **Input**: `workflowID, RenewDomainCommand{Name, ClID, Years: 1}, true (force)`
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: Performs a forced renewal of the domain for 1 year. The `force` flag bypasses normal eligibility checks since this is a restoration.
-
-### 4. (Rollback) Re-set PendingRestore Status
-- **Activity**: `activities.SetDomainStatus`
-- **Input**: Same `ToggleDomainStatusCommand` as step 2
-- **Trigger**: Only executed if the Force Renew in step 3 fails
-- **Timeout**: Same as above
-- **Retry**: Same as above
-- **Description**: If the renewal fails, the `PendingRestore` status is re-applied so the domain will be picked up on the next scheduled run for retry. This is the rollback/compensation mechanism.
+### 2. Batch Restore
+- **Activity**: `BatchRestoreDomains` (struct method on `LifecycleActivities`)
+- **Timeout**: 30 minutes (start-to-close), 2 minutes (heartbeat)
+- **Description**: Restores all listed domains in a single batch activity call. Processes domains in chunks internally with heartbeats. Handles unsetting the `PendingRestore` status and performing forced 1-year renewals.
 
 ## Failure Modes
 
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
 | List query failure | DB connection issue | Workflow fails entirely | Check DB health; next run will retry |
-| Unset status failure | Domain not found, concurrent modification | Logs warning, continues to renew attempt | Investigate domain state |
-| Renew failure | Billing error, domain lock, system error | Rolls back: re-sets `PendingRestore`, continues loop | Check renewal service, fix domain manually |
-| Rollback failure | DB error during re-set | Logs error — domain is left without `PendingRestore` and without renewal | **Critical**: manually re-set status or renew domain |
+| Batch restore failure (total) | Activity-level error | Workflow returns error | Check service health, retry run |
+| Individual domain failure | Billing error, domain lock | Recorded in `Failures` list | Review failures, manually restore via API |
 
 ## Artifacts
 
@@ -92,12 +87,12 @@ No persistent artifacts produced. Domain state changes are reflected directly in
 ## Operational Notes
 
 ### Scheduling
-Runs every hour at the 15-minute mark (offset from Expiry Loop and Purge Loop to distribute load).
+Runs every 4 hours (offset from Expiry Loop and Purge Loop to distribute load).
 
 ### Monitoring
-- Monitor for domains that repeatedly fail renewal across multiple runs — these may need manual intervention.
-- Watch for rollback failures (the "double failure" scenario where both renew and re-set fail), as these leave domains in an inconsistent state.
-- Track the count of `PendingRestore` domains — a growing count indicates the restore pipeline is falling behind.
+- Watch counts (`TotalFound`, `Failed`, `Restored`) in the Temporal UI.
+- Use `progress` query to check execution status in real-time.
+- Monitor for domains that repeatedly fail restoration across multiple runs — these may need manual intervention.
 
 ### Manual Intervention
 - To force restore processing: trigger the workflow manually via API.
@@ -106,5 +101,5 @@ Runs every hour at the 15-minute mark (offset from Expiry Loop and Purge Loop to
 
 ---
 
-> **Last updated**: 2025-06-23
-> **Updated by**: Agent (initial documentation)
+> **Last updated**: 2026-06-29
+> **Updated by**: Agent (refactored to batch activities with structured result)

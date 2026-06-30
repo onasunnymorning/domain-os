@@ -20,6 +20,7 @@ import type { TLD } from "@/lib/api/tlds";
 import { RegistrarDomainCountWidget } from "@/components/registrars/RegistrarDomainCountWidget";
 import { RegistrarLifecycleWidget } from "@/components/registrars/RegistrarLifecycleWidget";
 import { RegistrarTLDCountWidget } from "@/components/registrars/RegistrarTLDCountWidget";
+import posthog from "posthog-js";
 
 export default function RegistrarDetailPage() {
   const params = useParams();
@@ -242,6 +243,11 @@ export default function RegistrarDetailPage() {
                             disabled={accreditMutation.isPending}
                             onClick={async () => {
                               await accreditMutation.mutateAsync(tld.Name);
+                              posthog.capture('tld_accredited_to_registrar', {
+                                registrar_clid: clid,
+                                tld_name: tld.Name,
+                                tld_type: tld.Type,
+                              });
                               setAddOpen(false);
                               setSearch("");
                             }}
@@ -293,6 +299,10 @@ export default function RegistrarDetailPage() {
                   setDeaccError(null);
                   try {
                     await deaccreditMutation.mutateAsync(selectedTLD.Name);
+                    posthog.capture('tld_deaccredited_from_registrar', {
+                      registrar_clid: clid,
+                      tld_name: selectedTLD.Name,
+                    });
                     setDeaccOpen(false);
                     setConfirmText("");
                     setSelectedTLD(null);

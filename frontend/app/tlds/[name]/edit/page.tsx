@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import posthog from 'posthog-js';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -59,6 +60,10 @@ export default function EditTLDPage({ params }: Props) {
   const handleDelete = () => {
     deleteTLD({ name, keepTLDAndPhases }, {
       onSuccess: () => {
+        posthog.capture('tld_deleted', {
+          tld_name: tldName,
+          keep_tld_and_phases: keepTLDAndPhases,
+        });
         setDeleteOpen(false);
         setDeleteConfirmText('');
         setKeepTLDAndPhases(false);
@@ -84,8 +89,17 @@ export default function EditTLDPage({ params }: Props) {
   }, [tld, isLoading, form]);
 
   const onSubmit = async (values: FormValues) => {
-    await updateTLD({ name: tldName, data: values });
-    router.push(`/tlds/${encodeURIComponent(tldName)}`);
+    try {
+      await updateTLD({ name: tldName, data: values });
+      posthog.capture('tld_updated', {
+        tld_name: tldName,
+        allow_escrow_import: values.AllowEscrowImport,
+      });
+      router.push(`/tlds/${encodeURIComponent(tldName)}`);
+    } catch (error) {
+      posthog.captureException(error);
+      throw error;
+    }
   };
 
   return (

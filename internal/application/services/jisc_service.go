@@ -380,11 +380,11 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	noopHeartbeat := func(s string) {} // CLI doesn't need heartbeat callbacks
 
 	log.Println("Importing Contacts...")
-	cTotal, cInserted, cUpdated, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	cTotal, cInserted, cUpdated, cSkipped, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportContacts failed: %w", err)
 	}
-	log.Printf("Contacts: %d total, %d inserted, %d updated", cTotal, cInserted, cUpdated)
+	log.Printf("Contacts: %d total, %d inserted, %d updated, %d skipped", cTotal, cInserted, cUpdated, cSkipped)
 
 	log.Println("Importing Hosts...")
 	hTotal, hInserted, hUpdated, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)

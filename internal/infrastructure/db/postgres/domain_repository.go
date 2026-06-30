@@ -82,6 +82,29 @@ func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, pr
 	return ToDomain(d), nil
 }
 
+// GetDomainsByNames retrieves multiple domains from the database by their names.
+// Returns the found domains; names that don't exist are silently skipped.
+func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+
+	var dbDomains []Domain
+	q := dr.db.WithContext(ctx)
+	if preloadHosts {
+		q = q.Preload("Hosts")
+	}
+	if err := q.Where("name IN ?", names).Find(&dbDomains).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]*entities.Domain, len(dbDomains))
+	for i := range dbDomains {
+		result[i] = ToDomain(&dbDomains[i])
+	}
+	return result, nil
+}
+
 // UpdateDomain updates a domain in the database
 func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
@@ -437,12 +460,14 @@ func setDomainFilters(dbQuery *gorm.DB, filter queries.ListDomainsFilter) (*gorm
 	return dbQuery, nil
 }
 
-// ListEventsByDomain lists events matching the subject (domain name) in reverse chronological order
+// ListEventsByDomain lists events matching the subject (domain name) in reverse chronological order.
+// Results are capped at 1000 to prevent unbounded queries at scale.
 func (dr *DomainRepository) ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error) {
 	var dbEvents []DomainEventRecord
 	err := dr.db.WithContext(ctx).
 		Where("subject = ?", domainName).
 		Order("occurred_at DESC").
+		Limit(1000).
 		Find(&dbEvents).Error
 	if err != nil {
 		return nil, fmt.Errorf("ListEventsByDomain(domain=%s) database query failed: %w. Check that the database is accessible and the domain_events table exists", domainName, err)

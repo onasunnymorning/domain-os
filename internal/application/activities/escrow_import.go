@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	gopg "github.com/go-pg/pg/v10"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	pg "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -800,7 +801,7 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 		_ = s3c.UploadString(ctx, cursorKey, k)
 	}
 
-	total, inserted, updated, err := importer.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, skipped, err := importer.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -808,6 +809,7 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 	counts["contacts_imported"] = total
 	counts["contacts_inserted"] = inserted
 	counts["contacts_updated"] = updated
+	counts["contacts_skipped"] = skipped
 
 	return ImportFromSQLiteResult{DBKey: dbKey, Counts: counts, Tallies: tallies}, nil
 }
@@ -2464,6 +2466,8 @@ type ResolveRegistrarsArgs struct {
 
 // UnmappedRegistrar captures info about a registrar that couldn't be auto-mapped
 // to a system registrar. Surfaced in the UI so operators can provide overrides.
+// Suggestion fields are pre-populated from the escrow data so the operator can
+// review and confirm without manual lookup.
 type UnmappedRegistrar struct {
 	EscrowID     string `json:"escrowId"`
 	Name         string `json:"name"`
@@ -2471,6 +2475,23 @@ type UnmappedRegistrar struct {
 	DomainCount  int    `json:"domainCount"`
 	HostCount    int    `json:"hostCount"`
 	ContactCount int    `json:"contactCount"`
+
+	// Suggestion fields — pre-filled from escrow data for the inline create form.
+	// Operators should review and correct before submitting.
+	SuggestedEmail  string                       `json:"suggestedEmail,omitempty"`
+	SuggestedVoice  string                       `json:"suggestedVoice,omitempty"`
+	SuggestedURL    string                       `json:"suggestedUrl,omitempty"`
+	SuggestedPostal []UnmappedRegistrarPostalInfo `json:"suggestedPostal,omitempty"`
+}
+
+// UnmappedRegistrarPostalInfo holds a single postal address suggestion from the escrow data.
+type UnmappedRegistrarPostalInfo struct {
+	Type          string `json:"type"`
+	Street1       string `json:"street1,omitempty"`
+	City          string `json:"city,omitempty"`
+	StateProvince string `json:"stateProvince,omitempty"`
+	PostalCode    string `json:"postalCode,omitempty"`
+	CountryCode   string `json:"countryCode,omitempty"`
 }
 
 // AutoFixedRegistrar records a host-only registrar that was automatically resolved
@@ -3052,6 +3073,9 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		DomainCount  int
 		HostCount    int
 		ContactCount int
+		Email        string
+		Voice        string
+		URL          string
 	}
 	var registrars []regRow
 
@@ -3059,7 +3083,10 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		SELECT r.ID, r.name, r.gurID,
 			COALESCE(dc.cnt, 0) AS domain_count,
 			COALESCE(hc.cnt, 0) AS host_count,
-			COALESCE(cc.cnt, 0) AS contact_count
+			COALESCE(cc.cnt, 0) AS contact_count,
+			COALESCE(r.email, '') AS email,
+			COALESCE(r.voice, '') AS voice,
+			COALESCE(r.url, '')   AS url
 		FROM registrars r
 		LEFT JOIN (SELECT clID, COUNT(*) AS cnt FROM domains GROUP BY clID) dc ON dc.clID = r.ID
 		LEFT JOIN (SELECT clID, COUNT(*) AS cnt FROM hosts GROUP BY clID) hc ON hc.clID = r.ID
@@ -3069,7 +3096,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	if err != nil {
 		// Fallback: domains/hosts/contacts tables may not exist yet (thin TLD)
 		activity.GetLogger(ctx).Warn("Could not query with object counts, falling back", "error", err)
-		rows, err = db.Query(`SELECT ID, name, gurID, 0 AS domain_count, 0 AS host_count, 0 AS contact_count FROM registrars`)
+		rows, err = db.Query(`SELECT ID, name, gurID, 0 AS domain_count, 0 AS host_count, 0 AS contact_count, COALESCE(email,'') AS email, COALESCE(voice,'') AS voice, COALESCE(url,'') AS url FROM registrars`)
 	}
 
 	if err != nil {
@@ -3084,7 +3111,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 
 	for rows.Next() {
 		var r regRow
-		if err := rows.Scan(&r.ClID, &r.Name, &r.GurID, &r.DomainCount, &r.HostCount, &r.ContactCount); err == nil {
+		if err := rows.Scan(&r.ClID, &r.Name, &r.GurID, &r.DomainCount, &r.HostCount, &r.ContactCount, &r.Email, &r.Voice, &r.URL); err == nil {
 			registrars = append(registrars, r)
 		}
 	}
@@ -3195,13 +3222,35 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 			// Track unmapped registrars that actually manage objects
 			if r.DomainCount > 0 || r.HostCount > 0 || r.ContactCount > 0 {
 				activity.GetLogger(ctx).Warn("Registrar unmapped", "name", r.Name, "clid", r.ClID, "gurid", r.GurID, "domain_count", r.DomainCount, "host_count", r.HostCount, "contact_count", r.ContactCount)
+
+				// Enrich with postal info from the already-open SQLite DB so the
+				// operator doesn't have to look it up manually in the form.
+				var suggestedPostal []UnmappedRegistrarPostalInfo
+				piRows, piErr := db.Query(
+					`SELECT COALESCE(type,'int'), COALESCE(street1,''), COALESCE(city,''), COALESCE(state_province,''), COALESCE(postal_code,''), COALESCE(country_code,'') FROM registrar_postal_info WHERE registrar_id = ?`,
+					r.ClID,
+				)
+				if piErr == nil {
+					for piRows.Next() {
+						var pi UnmappedRegistrarPostalInfo
+						if scanErr := piRows.Scan(&pi.Type, &pi.Street1, &pi.City, &pi.StateProvince, &pi.PostalCode, &pi.CountryCode); scanErr == nil {
+							suggestedPostal = append(suggestedPostal, pi)
+						}
+					}
+					piRows.Close()
+				}
+
 				unmapped = append(unmapped, UnmappedRegistrar{
-					EscrowID:     r.ClID,
-					Name:         r.Name,
-					GurID:        r.GurID,
-					DomainCount:  r.DomainCount,
-					HostCount:    r.HostCount,
-					ContactCount: r.ContactCount,
+					EscrowID:        r.ClID,
+					Name:            r.Name,
+					GurID:           r.GurID,
+					DomainCount:     r.DomainCount,
+					HostCount:       r.HostCount,
+					ContactCount:    r.ContactCount,
+					SuggestedEmail:  r.Email,
+					SuggestedVoice:  r.Voice,
+					SuggestedURL:    r.URL,
+					SuggestedPostal: suggestedPostal,
 				})
 			} else {
 				activity.GetLogger(ctx).Warn("Ignoring unmapped empty registrar", "name", r.Name, "clid", r.ClID, "gurid", r.GurID)
@@ -3545,9 +3594,10 @@ type IngestContactsArgs struct {
 
 // IngestContactsResult outcome
 type IngestContactsResult struct {
-	Total    int64
+	Total   int64
 	Inserted int64
 	Updated  int64
+	Skipped  int64 // contacts present in staged DB but excluded (unmapped CLID / RoID failure)
 }
 
 // IngestContacts imports contacts from the staged DB into the registry
@@ -3593,13 +3643,222 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 		activity.RecordHeartbeat(ctx, processed)
 	}
 
-	total, inserted, updated, err := destImporter.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, skipped, err := destImporter.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
 	if err != nil {
-		return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated}, err
+		return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated, Skipped: skipped}, err
 	}
 
-	return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated}, nil
+	return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated, Skipped: skipped}, nil
 }
+
+// ValidateRegistrantRefsArgs parameters
+type ValidateRegistrantRefsArgs struct {
+	StagedDBKey string
+}
+
+// ValidateRegistrantRefsResult outcome
+type ValidateRegistrantRefsResult struct {
+	// RegistrantMissing is the count of domain registrant IDs not found in Postgres contacts.
+	RegistrantMissing int
+	// AdminMissing is the count of domain admin IDs not found in Postgres contacts.
+	AdminMissing int
+	// TechMissing is the count of domain tech IDs not found in Postgres contacts.
+	TechMissing int
+	// BillingMissing is the count of domain billing IDs not found in Postgres contacts.
+	BillingMissing int
+	// TotalMissing is the total count of missing contact references across all roles.
+	TotalMissing int
+	// SampledMissing contains up to 50 sampled violations for operator triage.
+	SampledMissing []MissingContactRef
+}
+
+// MissingContactRef describes a single domain contact reference that could not be resolved
+// in Postgres after IngestContacts completed.
+type MissingContactRef struct {
+	Domain    string `json:"domain"`
+	Role      string `json:"role"`      // "registrant", "admin", "tech", "billing"
+	ContactID string `json:"contactId"` // the ID that is missing from contacts table
+}
+
+// ValidateRegistrantRefs cross-checks all domain contact references (registrant, admin, tech,
+// billing) in the staged SQLite DB against the live Postgres contacts table. It must run AFTER
+// IngestContacts and BEFORE IngestDomains — any missing reference would cause a FK violation.
+//
+// Failures are NOT retryable: if contacts are absent from Postgres, a retry of this activity
+// cannot fix that. The operator must investigate the skipped contacts and re-run the import.
+func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, args ValidateRegistrantRefsArgs) (ValidateRegistrantRefsResult, error) {
+	if args.StagedDBKey == "" {
+		return ValidateRegistrantRefsResult{}, temporal.NewNonRetryableApplicationError(
+			"ValidateRegistrantRefs: stagedDBKey is required",
+			"ValidationError", nil,
+		)
+	}
+
+	s3c, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init S3 client: %w", err)
+	}
+
+	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
+	if err != nil {
+		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: download staged DB (key=%s): %w", args.StagedDBKey, err)
+	}
+	defer os.Remove(dbPath)
+
+	sqliteDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: open staged DB: %w", err)
+	}
+	defer sqliteDB.Close()
+
+	// Open Postgres connection for live contact lookup.
+	destImporter, err := services.NewDirectDBImporter()
+	if err != nil {
+		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init PG importer: %w", err)
+	}
+	defer destImporter.PG.Close()
+
+	// Collect all distinct, non-empty contact IDs from the staged DB for each role.
+	type roleQuery struct {
+		role   string
+		column string // column name in the staged SQLite domains table
+	}
+	roles := []roleQuery{
+		{"registrant", "registrant"},
+		{"admin", "admin"},
+		{"tech", "tech"},
+		{"billing", "billing"},
+	}
+
+	result := ValidateRegistrantRefsResult{}
+	const sampleCap = 50
+
+	for _, rq := range roles {
+		// Collect all distinct non-empty contact IDs for this role.
+		query := fmt.Sprintf(
+			`SELECT DISTINCT TRIM(%s) FROM domains WHERE %s IS NOT NULL AND TRIM(%s) != ''`,
+			rq.column, rq.column, rq.column,
+		)
+		rows, err := sqliteDB.QueryContext(ctx, query)
+		if err != nil {
+			// If the column doesn't exist in this escrow schema, skip gracefully.
+			activity.GetLogger(ctx).Warn("ValidateRegistrantRefs: column query failed, skipping role",
+				"role", rq.role, "error", err)
+			continue
+		}
+
+		var contactIDs []string
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil && id != "" {
+				contactIDs = append(contactIDs, id)
+			}
+		}
+		rows.Close()
+
+		if len(contactIDs) == 0 {
+			continue
+		}
+
+		// Batch-query Postgres to find which IDs exist.
+		// We query in chunks of 1000 to avoid very long IN clauses.
+		const chunkSize = 1000
+		for i := 0; i < len(contactIDs); i += chunkSize {
+			end := i + chunkSize
+			if end > len(contactIDs) {
+				end = len(contactIDs)
+			}
+			chunk := contactIDs[i:end]
+
+			// Use go-pg's Model API with pg.In to query which contact IDs from this
+			// chunk actually exist in Postgres. We scan into a slice of structs.
+			type contactIDRow struct {
+				ID string `pg:"id"`
+			}
+			var found []contactIDRow
+			if _, err := destImporter.PG.QueryContext(
+				ctx,
+				&found,
+				`SELECT id FROM contacts WHERE id IN (?)`,
+				gopg.In(chunk),
+			); err != nil {
+				return ValidateRegistrantRefsResult{}, fmt.Errorf(
+					"ValidateRegistrantRefs: PG lookup for role=%s chunk=%d: %w — check that Postgres is reachable and the contacts table exists",
+					rq.role, i/chunkSize, err,
+				)
+			}
+
+			foundIDs := make(map[string]bool, len(found))
+			for _, row := range found {
+				foundIDs[row.ID] = true
+			}
+
+			// Any ID in the chunk not found in Postgres is a violation.
+			for _, id := range chunk {
+				if !foundIDs[id] {
+					switch rq.role {
+					case "registrant":
+						result.RegistrantMissing++
+					case "admin":
+						result.AdminMissing++
+					case "tech":
+						result.TechMissing++
+					case "billing":
+						result.BillingMissing++
+					}
+					result.TotalMissing++
+
+					// Sample up to sampleCap violations for operator triage.
+					if len(result.SampledMissing) < sampleCap {
+						// Find a domain referencing this contact ID for context.
+						var domainName string
+						sampleQ := fmt.Sprintf(
+							`SELECT name FROM domains WHERE TRIM(%s) = ? LIMIT 1`,
+							rq.column,
+						)
+						_ = sqliteDB.QueryRowContext(ctx, sampleQ, id).Scan(&domainName)
+						result.SampledMissing = append(result.SampledMissing, MissingContactRef{
+							Domain:    domainName,
+							Role:      rq.role,
+							ContactID: id,
+						})
+					}
+				}
+			}
+		}
+
+		activity.GetLogger(ctx).Info("ValidateRegistrantRefs: role checked",
+			"role", rq.role,
+			"totalRefsChecked", len(contactIDs),
+		)
+	}
+
+	if result.TotalMissing > 0 {
+		// Non-retryable: missing contacts cannot appear in Postgres by retrying this activity.
+		// The operator must investigate why IngestContacts skipped these contacts (check for
+		// unmapped CLIDs in registrar_mapping, or CLID override mismatches), fix the mapping,
+		// and re-run the import from scratch.
+		return result, temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf(
+				"ValidateRegistrantRefs: %d domain contact references are missing from Postgres contacts table "+
+					"(registrant=%d, admin=%d, tech=%d, billing=%d). "+
+					"These contacts were likely skipped during IngestContacts due to unmapped CLIDs. "+
+					"Check registrar_mapping entries and registrar overrides, then re-run the import. "+
+					"See SampledMissing in the result for up to %d examples.",
+				result.TotalMissing,
+				result.RegistrantMissing, result.AdminMissing, result.TechMissing, result.BillingMissing,
+				sampleCap,
+			),
+			"MissingContactRefs", nil,
+		)
+	}
+
+	activity.GetLogger(ctx).Info("ValidateRegistrantRefs: all domain contact references resolved in Postgres",
+		"rolesChecked", len(roles),
+	)
+	return result, nil
+}
+
 
 // IngestHostsArgs parameters
 type IngestHostsArgs struct {
@@ -4405,7 +4664,7 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		check := QACheck{
 			Rule:          "referential_contacts",
 			Description:   "Domain registrant IDs reference contacts that exist in the contacts table",
-			Severity:      "warning",
+			Severity:      "error", // FK violation if contacts are missing; always blocks ingestion
 			Passed:        count == 0,
 			AffectedCount: count,
 		}

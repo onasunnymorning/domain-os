@@ -415,7 +415,34 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	counts["contacts_total"] = cRes.Total
 	counts["contacts_inserted"] = cRes.Inserted
 	counts["contacts_updated"] = cRes.Updated
+	counts["contacts_skipped"] = cRes.Skipped
 	state.Ingested = counts
+
+	// Validate all domain contact references (registrant, admin, tech, billing) exist in Postgres
+	// before attempting to ingest domains. Any missing contact causes a FK violation at domain
+	// ingest time. This is a non-retryable gate: missing contacts can't appear by retrying.
+	aoValidate := workflow.ActivityOptions{
+		StartToCloseTimeout:    time.Hour * 2,
+		ScheduleToCloseTimeout: time.Hour * 3,
+		HeartbeatTimeout:       time.Minute * 5,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 1, // Non-retryable: missing contacts require operator intervention
+		},
+	}
+	ctxValidate := workflow.WithActivityOptions(ctx, aoValidate)
+	var vRefRes activities.ValidateRegistrantRefsResult
+	if err := workflow.ExecuteActivity(ctxValidate, acts.ValidateRegistrantRefs, activities.ValidateRegistrantRefsArgs{
+		StagedDBKey: stageOut.StagedDBKey,
+	}).Get(ctxValidate, &vRefRes); err != nil {
+		state.Phase = "failed"
+		state.Error = err.Error()
+		return EscrowImportResult{}, fmt.Errorf(
+			"ValidateRegistrantRefs failed: %w. "+
+				"Contacts skipped during IngestContacts: %d. "+
+				"IngestDomains was NOT attempted — no partial data written.",
+			err, cRes.Skipped,
+		)
+	}
 
 	// Ingest Hosts
 	var hRes activities.IngestHostsResult

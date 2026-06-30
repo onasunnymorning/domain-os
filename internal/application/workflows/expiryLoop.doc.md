@@ -12,7 +12,7 @@
 
 ## Overview
 
-The Expiry Loop is a scheduled workflow that processes domains that have passed their expiration date. It locks a single reference time (or accepts an override) to prevent TOCTOU races between counting and listing. It batches eligibility checking concurrently to optimize network and database calls. Eligible domains are auto-renewed, and ineligible domains are expired in parallel with bounded concurrency. If the batch cap is reached, the workflow uses `ContinueAsNew` to drain the remainder of the queue immediately.
+The Expiry Loop is a scheduled workflow that processes domains that have passed their expiration date. It locks a single reference time (or accepts an override) to prevent TOCTOU races between counting and listing. It batches eligibility checking via the service layer, then uses batch activities to auto-renew or expire domains in a single service call per operation — eliminating the per-domain HTTP overhead of the previous implementation. If the batch cap is reached, the workflow uses `ContinueAsNew` to drain the remainder.
 
 ## Flow Diagram
 
@@ -25,17 +25,16 @@ graph TD
     D --> E["Batch Check Auto-Renew Eligibility"]
     E --> F{"Dry Run?"}
     F -- Yes --> DONE2["✅ Return Dry Run result"]
-    F -- No --> G["Process Writes in Parallel (Bounded Concurrency)"]
-    G --> H["Auto-Renew Domain (Parallel)"]
-    G --> I["Expire Domain (Parallel)"]
+    F -- No --> G["Batch Auto-Renew Domains"]
+    G --> H["Batch Expire Domains"]
     H --> J["Aggregate results into ExpiryLoopResult"]
-    I --> J
     J --> K{"Batch Cap Reached?"}
     K -- Yes --> L["🔄 ContinueAsNew (Immediate next batch)"]
     K -- No --> DONE3["✅ Return final structured result"]
 
     style E fill:#d5f5e3,stroke:#27ae60,stroke-width:2px
     style G fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
+    style H fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
     style L fill:#fadbd8,stroke:#e74c3c,stroke-width:2px
 ```
 
@@ -100,12 +99,17 @@ The workflow exposes a `progress` query handler that returns the current `Expiry
 - **Timeout**: 1 minute
 - **Description**: Checks auto-renew eligibility for the entire list of domains concurrently in a bounded goroutine pool inside the activity.
 
-### 5. Parallel Writes (Auto-Renew or Expire)
-- **Activities**: `activities.AutoRenewDomain` or `activities.ExpireDomain`
-- **Timeout**: 1 minute per activity
-- **Description**: Executes writes concurrently using a semaphore pattern (buffered channel) inside the workflow up to `ConcurrencyLimit` (default: 20).
+### 5. Batch Auto-Renew
+- **Activity**: `BatchAutoRenewDomains` (struct method on `LifecycleActivities`)
+- **Timeout**: 30 minutes (start-to-close), 2 minutes (heartbeat)
+- **Description**: Auto-renews all eligible domains in a single batch activity call. Processes domains in chunks internally with heartbeats.
 
-### 6. Continue As New (Optional)
+### 6. Batch Expire
+- **Activity**: `BatchExpireDomains` (struct method on `LifecycleActivities`)
+- **Timeout**: 30 minutes (start-to-close), 2 minutes (heartbeat)
+- **Description**: Expires all ineligible-for-auto-renew domains in a single batch activity call.
+
+### 7. Continue As New (Optional)
 - **Description**: If the listed domains are fewer than the total found, the workflow executes a `ContinueAsNew` error to immediately begin processing the remaining domains.
 
 ## Failure Modes
@@ -115,16 +119,24 @@ The workflow exposes a `progress` query handler that returns the current `Expiry
 | Count query failure | DB connection issue | Workflow returns error | `Notes` contains error message | Check DB health; retry run |
 | List query failure | DB query timeout | Workflow returns error | `Notes` contains error message | Same as above |
 | Batch check failure | API rate limit/error | Workflow returns error | Workflow fails | Check API server health |
-| Individual write failure | EPP registry issue | Records failure, continues | `Failed++`, added to `Failures` | Manually expire/renew via API |
+| Batch auto-renew failure | Service-layer error | Records failure, continues to expire step | `Failed++`, added to `Failures` | Review failures, manually renew via API |
+| Batch expire failure | Service-layer error | Records failure | `Failed++`, added to `Failures` | Manually expire via API |
 | Batch cap hit | >1000 expired domains | Runs `ContinueAsNew` immediately | Next run processes remainder | Automatic self-healing |
 
 ## Operational Notes
 
+### Performance
+- **Before (per-domain)**: N HTTP requests (one per domain) for auto-renew/expire writes.
+- **After (batched)**: 2 activity calls total (1 for auto-renew, 1 for expire), each processing the full batch via the service layer directly.
+- TLD/phase lookups are cached per TLD group within each batch.
+- Registrar lookups are cached per ClID within the auto-renew batch.
+
 ### Monitoring
 - Watch counts (`TotalFound`, `Failed`, `AutoRenewed`, `Expired`) in the Temporal UI.
 - Use `progress` query to check execution logs in real-time.
+- Heartbeat messages report chunk progress during batch activities.
 
 ---
 
-> **Last updated**: 2026-06-24
-> **Updated by**: Agent (redesigned with batch check & parallel writes)
+> **Last updated**: 2026-06-29
+> **Updated by**: Agent (refactored to batch activities) — eliminates per-domain HTTP overhead)

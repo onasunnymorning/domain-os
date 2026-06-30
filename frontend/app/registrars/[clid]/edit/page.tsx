@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useRegistrar, useUpdateRegistrar } from "@/lib/hooks/useRegistrars";
 import { RegistrarStatus, IANARegistrarStatus } from "@/lib/types/registrar";
+import posthog from "posthog-js";
 
 const formSchema = z.object({
   Name: z.string().min(1, "Name is required").optional(),
@@ -170,8 +171,14 @@ export default function EditRegistrarPage() {
     try {
       await mutateAsync({ clid, data: payload });
       toast.success("Registrar updated successfully");
+      posthog.capture('registrar_updated', {
+        clid,
+        status: payload.Status,
+        iana_status: payload.IANAStatus,
+      });
       router.push(`/registrars/${encodeURIComponent(clid)}`);
     } catch (error: any) {
+      posthog.captureException(error);
       toast.error(error?.response?.data?.error || "Failed to update registrar");
     }
   };

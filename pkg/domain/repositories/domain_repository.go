@@ -29,6 +29,7 @@ type DomainRepository interface {
 	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error
+	GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error)
 	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
 	ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error)
 }
@@ -54,6 +55,15 @@ func (m *MockDomainRepository) BulkCreate(ctx context.Context, domains []*entiti
 func (m *MockDomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
 	args := m.Called(ctx, name, preloadHosts)
 	return args.Get(0).(*entities.Domain), args.Error(1)
+}
+
+// GetDomainsByNames retrieves multiple domains by their names
+func (m *MockDomainRepository) GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error) {
+	args := m.Called(ctx, names, preloadHosts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Domain), args.Error(1)
 }
 
 // UpdateDomain updates a domain

@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { launchWorkflow, type WorkflowMeta } from '@/lib/api/workflows';
 import type { WorkflowRun } from '@/lib/stores/useWorkflowStore';
 import { FileUpload } from './FileUpload';
+import posthog from 'posthog-js';
 
 interface WorkflowLaunchFormProps {
   workflow: WorkflowMeta | null;
@@ -208,12 +209,18 @@ export function WorkflowLaunchForm({
         params,
       };
 
+      posthog.capture('workflow_launched', {
+        workflow_key: workflow.key,
+        workflow_name: workflow.name,
+        workflow_id: result.workflowId,
+      });
       onLaunched(run);
       toast.success(`Workflow "${workflow.name}" launched successfully`, {
         description: `ID: ${result.workflowId}`,
       });
       handleClose();
     } catch (error: any) {
+      posthog.captureException(error);
       const message =
         error?.response?.data?.message || error?.message || 'Failed to launch workflow';
       toast.error('Launch failed', { description: message });

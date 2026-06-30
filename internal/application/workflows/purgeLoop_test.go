@@ -1,13 +1,15 @@
 package workflows
 
 import (
-	"fmt"
+	"context"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -20,6 +22,14 @@ type PurgeLoopWorkflowTestSuite struct {
 func (s *PurgeLoopWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
 	s.env.RegisterWorkflow(PurgeLoop)
+
+	// Register stub function for string-based batch activity so the test env can resolve it
+	s.env.RegisterActivityWithOptions(
+		func(ctx context.Context, correlationID string, domainNames []string) (services.BatchResult, error) {
+			return services.BatchResult{}, nil
+		},
+		activity.RegisterOptions{Name: "BatchPurgeDomains"},
+	)
 }
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_NoDomains() {
@@ -45,9 +55,13 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_Success_Mixed() {
 	}
 	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything).Return(domains, nil)
 
-	s.env.OnActivity(activities.PurgeDomain, mock.Anything, "purge1.com").Return(nil)
-	s.env.OnActivity(activities.PurgeDomain, mock.Anything, "purge2.com").Return(fmt.Errorf("purge fail"))
-	s.env.OnActivity(activities.PurgeDomain, mock.Anything, "purge3.com").Return(nil)
+	// Batch purge: purge2.com fails
+	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{"purge1.com", "purge3.com"},
+		Failed: []services.BatchFailure{
+			{DomainName: "purge2.com", Error: "purge fail"},
+		},
+	}, nil)
 
 	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{ConcurrencyLimit: 2})
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -87,6 +101,30 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_DryRun() {
 	s.Equal(2, result.Purged)
 	s.Equal(0, result.Failed)
 	s.Contains(result.Notes, "Dry run completed: no state changes made")
+}
+
+func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_ContinueAsNew() {
+	// Count reports 100 domains but list only returns 2 (batch cap hit)
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
+
+	domains := []response.DomainExpiryItem{
+		{Name: "domain1.com"},
+		{Name: "domain2.com"},
+	}
+	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything).Return(domains, nil)
+
+	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{"domain1.com", "domain2.com"},
+		Failed:    []services.BatchFailure{},
+	}, nil)
+
+	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+
+	// ContinueAsNew surfaces as a ContinueAsNewError — Temporal test framework treats it as a workflow error
+	err := s.env.GetWorkflowError()
+	s.Require().Error(err)
+	s.Contains(err.Error(), "continue as new")
 }
 
 func TestPurgeLoopWorkflowTestSuite(t *testing.T) {

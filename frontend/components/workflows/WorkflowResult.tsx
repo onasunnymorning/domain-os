@@ -10,6 +10,7 @@ import { QAReportViewer } from './QAReportViewer';
 import { RegistrarOverrideForm } from './RegistrarOverrideForm';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import posthog from 'posthog-js';
 
 interface WorkflowResultProps {
   workflowId: string;
@@ -98,6 +99,10 @@ function ArtifactDownloadButton({ label, s3Key }: { label: string; s3Key: string
     setDownloading(true);
     try {
       const { url } = await getStorageDownloadURL(s3Key);
+      posthog.capture('workflow_artifact_downloaded', {
+        artifact_label: label,
+        s3_key: s3Key,
+      });
       window.open(url, '_blank');
     } catch {
       // Fallback: show error
@@ -613,11 +618,17 @@ export function WorkflowResult({ workflowId, workflowType, status, signalName, o
     setSignalSending(action);
     try {
       await signalWorkflow(workflowId, signalName, approved);
+      posthog.capture('workflow_signal_sent', {
+        workflow_id: workflowId,
+        signal_name: signalName,
+        approved,
+      });
       setSignalSent(true);
       toast.success(approved ? signalConfig.approveToast : signalConfig.rejectToast, {
         description: `Signal sent to ${workflowId}`,
       });
     } catch (error: any) {
+      posthog.captureException(error);
       const message = error?.response?.data?.message || error?.message || 'Failed to send signal';
       toast.error('Signal failed', { description: message });
     } finally {
@@ -733,7 +744,7 @@ export function WorkflowResult({ workflowId, workflowType, status, signalName, o
               <RegistrarOverrideForm
                 workflowId={workflowId}
                 unmappedRegistrars={state.unmappedRegistrars || []}
-                onSignalSent={() => setSignalSent(true)}
+                onSignalSent={() => { /* override signal sent — don't lock the confirmation gate */ }}
               />
             </div>
           )}

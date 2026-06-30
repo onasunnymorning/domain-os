@@ -14,6 +14,7 @@ import {
   KeyRound,
   Github,
   Variable,
+  BarChart3,
 } from 'lucide-react';
 
 const services = [
@@ -79,6 +80,15 @@ const services = [
     color: 'text-amber-400',
     bgColor: 'bg-amber-400/10',
     items: ['Escrow deposits', 'TLD backups'],
+  },
+  {
+    name: 'PostHog',
+    description: 'Product analytics — event tracking, session recordings, error capture',
+    icon: BarChart3,
+    url: 'https://us.posthog.com/project/487655',
+    color: 'text-rose-400',
+    bgColor: 'bg-rose-400/10',
+    items: ['Autocapture', 'Session recordings', 'Custom events', 'Error tracking'],
   },
 ];
 
@@ -178,6 +188,15 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
     vars: [
       { key: 'NEW_RELIC_ENABLED', description: 'Enable New Relic APM', secret: false, services: ['API'] },
       { key: 'PROMETHEUS_ENABLED', description: 'Enable Prometheus metrics endpoint', secret: false, services: ['API'] },
+    ],
+  },
+  {
+    category: 'Analytics (PostHog)',
+    icon: BarChart3,
+    color: 'text-rose-400',
+    vars: [
+      { key: 'NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN', description: 'PostHog project API key (write-only ingest key)', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_POSTHOG_HOST', description: 'PostHog ingest endpoint (proxied via /ingest)', secret: false, services: ['Frontend'] },
     ],
   },
 ];

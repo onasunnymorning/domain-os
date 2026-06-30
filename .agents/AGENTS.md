@@ -83,3 +83,89 @@ This is an **internal admin tool for registry operators**. Every screen should f
 5. **Warm, premium feel** — Use the project's sunset/desert design tokens. Subtle gradients, soft borders, and micro-animations (hover lifts, fade-ins) over hard edges and abrupt transitions.
 6. **Data over decoration** — Prefer real data density (tables, counts, event streams) over placeholder illustrations or decorative charts with no actionable insight.
 7. **Consistent component patterns** — Reuse shadcn/ui primitives (`Card`, `Badge`, `Button`, `Skeleton`) with the project theme. Don't introduce one-off styled components.
+
+## In-App Documentation (Definition of Done)
+
+This project has a **built-in documentation portal** at `/docs` in the frontend UI. Documentation is rendered with full markdown support (GFM tables, Mermaid diagrams, syntax-highlighted code blocks, table of contents) and is **searchable via ⌘K global search**. Keeping it current is part of "done" for any significant change.
+
+### When to update documentation
+
+| Operation | Documentation Action |
+|-----------|---------------------|
+| **Adding** a significant architectural feature, strategy, or pattern | Create a new reference guide doc |
+| **Modifying** a system covered by an existing doc | Update the relevant doc to reflect the changes |
+| **Retiring** a system or strategy | Delete or mark the doc as superseded |
+
+### What qualifies as "significant"
+
+Write documentation for topics that a future developer or operator would need to understand to make informed decisions. Examples:
+- Database indexing strategies, schema design rationale
+- Infrastructure architecture (caching, storage tiers, event pipelines)
+- Policy enforcement rules (contact data, lifecycle, access control)
+- Integration patterns (S3, Temporal, external APIs)
+- Performance optimization strategies and trade-offs
+
+Do **not** create docs for trivial changes (bug fixes, UI tweaks, dependency bumps).
+
+### How to add a new doc
+
+1. **Content**: Create a markdown constant in `frontend/lib/constants/<docName>Doc.ts` exporting a template literal
+2. **Page**: Create `frontend/app/docs/<doc-slug>/page.tsx` using the pattern in `frontend/app/docs/contact-data-policy/page.tsx`
+3. **Index**: Add a card to the Reference Guides sidebar in `frontend/app/docs/page.tsx`
+4. **Search**: Add an entry to the `STATIC_DOCS` array in `frontend/lib/api/search.ts` with a descriptive `name`, `description`, and `tags` — this powers ⌘K discoverability
+5. **Rendering**: Use `<WorkflowDocViewer markdown={YOUR_CONSTANT} />` — it handles ToC, Mermaid diagrams, code blocks, and anchor links automatically
+
+### Existing reference guides
+
+| Doc | Route | Content |
+|-----|-------|---------|
+| Contact Data Policy | `/docs/contact-data-policy` | Enforcement levels, validation, compliance |
+| PostHog Analytics | `/docs/posthog-analytics` | Event tracking, session recordings, error capture |
+| Database Index Strategy | `/docs/database-index-strategy` | PostgreSQL indexing for scale, storage budgets, query optimization |
+
+Workflow documentation (sidecar `.doc.md` files) is served automatically from the workflow registry — see the "Workflow Documentation" section above.
+
+## PostHog Analytics (Definition of Done)
+
+PostHog is the frontend analytics layer. Every change to event tracking, the PostHog SDK configuration, or custom events must be reflected across **three surfaces**:
+
+### When to update PostHog documentation
+
+| Operation | Documentation Action |
+|-----------|---------------------|
+| **Adding** a new `posthog.capture()` event | Add to the event inventory table in `frontend/lib/constants/posthogAnalyticsDoc.ts` |
+| **Removing** an event | Remove from the event inventory table |
+| **Changing** PostHog SDK config (e.g. `instrumentation-client.ts`, `next.config.ts` rewrites) | Update the Architecture and Configuration sections in the doc |
+| **Adding/changing** PostHog-related environment variables | Update all three: (1) the doc, (2) the Cloud page env vars, (3) `frontend/Dockerfile`, (4) `render.yaml` |
+
+### PostHog files to keep in sync
+
+| File | What it contains |
+|---|---|
+| `frontend/instrumentation-client.ts` | PostHog SDK init (capture settings, proxy config) |
+| `frontend/next.config.ts` | Reverse proxy rewrites for `/ingest` |
+| `frontend/lib/constants/posthogAnalyticsDoc.ts` | In-app documentation (event inventory, architecture, config) |
+| `frontend/app/cloud/page.tsx` | Cloud Infrastructure page (service card + env vars in the `Analytics (PostHog)` tab) |
+| `frontend/lib/api/search.ts` | ⌘K search index (`STATIC_DOCS` entry for `posthog-analytics`) |
+| `frontend/.env.local` | Local dev env vars (`NEXT_PUBLIC_POSTHOG_*`) |
+| `frontend/Dockerfile` | Build args for `NEXT_PUBLIC_POSTHOG_*` |
+| `render.yaml` | Render deployment env vars for `NEXT_PUBLIC_POSTHOG_*` |
+
+## Cloud Infrastructure Page (Definition of Done)
+
+The Cloud Infrastructure page (`frontend/app/cloud/page.tsx`) is the single source of truth for external services and environment variables. Keep it in sync:
+
+### When to update the Cloud page
+
+| Operation | Cloud Page Action |
+|-----------|------------------|
+| **Adding** a new external service (SaaS, managed DB, etc.) | Add a service card to the `services` array with name, description, icon, URL, and key items |
+| **Adding** a new environment variable | Add to the appropriate category in `envVarsByCategory` — or create a new category if needed |
+| **Removing** a service or env var | Remove the corresponding entry |
+| **Changing** an env var's purpose or scope | Update `description` and `services` fields |
+
+### Rules for env var entries
+
+- Mark vars as `secret: true` if they contain credentials, API keys with write/read access, or connection strings with passwords
+- `NEXT_PUBLIC_*` vars are **not** secrets (they're baked into the client bundle)
+- The `services` array should list which deployment targets use the var: `'API'`, `'Frontend'`, or `'Worker'`

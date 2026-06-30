@@ -1924,3 +1924,411 @@ func (s *DomainService) ListRecentEvents(ctx context.Context, limit int) ([]enti
 	return events, nil
 }
 
+// BatchResult captures outcomes for batch operations.
+type BatchResult struct {
+	Succeeded []string       `json:"succeeded"`
+	Failed    []BatchFailure `json:"failed"`
+}
+
+// BatchFailure records a single failure in a batch operation.
+type BatchFailure struct {
+	DomainName string `json:"domainName"`
+	Error      string `json:"error"`
+}
+
+// BatchExpireDomains expires multiple domains in a single batch, grouping by TLD
+// to amortize TLD+phase lookups. Individual domain failures do not stop the batch.
+func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string) BatchResult {
+	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
+
+	if len(names) == 0 {
+		return result
+	}
+
+	// Fetch all domains in one query
+	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, false)
+	if err != nil {
+		for _, n := range names {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("batch fetch failed: %v", err)})
+		}
+		return result
+	}
+
+	// Index by name for fast lookup
+	domMap := make(map[string]*entities.Domain, len(domains))
+	for _, d := range domains {
+		domMap[d.Name.String()] = d
+	}
+
+	// Group names by TLD to cache phase lookups
+	byTLD := make(map[string][]string)
+	for _, n := range names {
+		dom, ok := domMap[n]
+		if !ok {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: "domain not found"})
+			continue
+		}
+		tldName := dom.Name.ParentDomain()
+		byTLD[tldName] = append(byTLD[tldName], n)
+	}
+
+	// Process each TLD group
+	for tldName, tldNames := range byTLD {
+		// Lookup TLD+phase once per group
+		tld, err := svc.tldRepo.GetByName(ctx, tldName, true)
+		if err != nil {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("TLD lookup failed: %v", err)})
+			}
+			continue
+		}
+		phase, err := tld.GetCurrentGAPhase()
+		if err != nil {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("GA phase lookup failed: %v", err)})
+			}
+			continue
+		}
+
+		for _, name := range tldNames {
+			dom := domMap[name]
+
+			// Create lifecycle event
+			event, err := entities.NewDomainLifeCycleEvent(
+				dom.ClID.String(),
+				"",
+				dom.Name.ParentDomain(),
+				dom.Name.String(),
+				0,
+				entities.TransactionTypeExpiry,
+			)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("lifecycle event creation failed: %v", err)})
+				continue
+			}
+
+			// Save previous state
+			prevState := dom.DeepCopy()
+
+			// Expire the domain
+			if err := dom.Expire(phase); err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("expire failed: %v", err)})
+				continue
+			}
+
+			// Save the domain
+			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
+				continue
+			}
+			event.DomainRoID = updatedDomain.RoID.String()
+
+			// Publish event
+			msg := fmt.Sprintf("Domain %s expired", name)
+			svc.publishDomainEvent(ctx, "domain.expired", msg, event, nil, updatedDomain, prevState)
+
+			result.Succeeded = append(result.Succeeded, name)
+		}
+	}
+
+	return result
+}
+
+// BatchAutoRenewDomains auto-renews multiple domains in a single batch, grouping
+// by TLD and caching registrar lookups by ClID. Individual domain failures do not
+// stop the batch.
+func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []string, years int) BatchResult {
+	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
+
+	if len(names) == 0 {
+		return result
+	}
+
+	// Fetch all domains in one query
+	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, false)
+	if err != nil {
+		for _, n := range names {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("batch fetch failed: %v", err)})
+		}
+		return result
+	}
+
+	// Index by name for fast lookup
+	domMap := make(map[string]*entities.Domain, len(domains))
+	for _, d := range domains {
+		domMap[d.Name.String()] = d
+	}
+
+	// Group names by TLD
+	byTLD := make(map[string][]string)
+	for _, n := range names {
+		dom, ok := domMap[n]
+		if !ok {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: "domain not found"})
+			continue
+		}
+		tldName := dom.Name.ParentDomain()
+		byTLD[tldName] = append(byTLD[tldName], n)
+	}
+
+	// Cache registrar lookups by ClID
+	rarCache := make(map[string]*entities.Registrar)
+
+	// Process each TLD group
+	for tldName, tldNames := range byTLD {
+		// Lookup TLD+phase once per group
+		tld, err := svc.tldRepo.GetByName(ctx, tldName, true)
+		if err != nil {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("TLD lookup failed: %v", err)})
+			}
+			continue
+		}
+		phase, err := tld.GetCurrentGAPhase()
+		if err != nil {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("GA phase lookup failed: %v", err)})
+			}
+			continue
+		}
+
+		// Check if phase allows auto-renew
+		if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: ErrAutoRenewNotEnabledTLD.Error()})
+			}
+			continue
+		}
+
+		for _, name := range tldNames {
+			dom := domMap[name]
+
+			// Lookup registrar (cached by ClID)
+			clid := dom.ClID.String()
+			rar, ok := rarCache[clid]
+			if !ok {
+				rar, err = svc.rarRepo.GetByClID(ctx, clid, false)
+				if err != nil {
+					result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("registrar lookup failed: %v", err)})
+					continue
+				}
+				rarCache[clid] = rar
+			}
+			if !rar.Autorenew {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: ErrAutoRenewNotEnabledRar.Error()})
+				continue
+			}
+
+			// Create lifecycle event
+			event, err := entities.NewDomainLifeCycleEvent(
+				rar.ClID.String(),
+				"",
+				dom.Name.ParentDomain(),
+				dom.Name.String(),
+				1,
+				entities.TransactionTypeAutoRenewal,
+			)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("lifecycle event creation failed: %v", err)})
+				continue
+			}
+
+			// Get quote
+			quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+				DomainName:      dom.Name.String(),
+				ClID:            rar.ClID.String(),
+				TransactionType: entities.TransactionTypeAutoRenewal,
+				Currency:        phase.Policy.BaseCurrency,
+				Years:           1,
+				PhaseName:       phase.Name.String(),
+			})
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("quote failed: %v", err)})
+				continue
+			}
+			event.Quote = *quote
+
+			// Save previous state
+			prevState := dom.DeepCopy()
+
+			// Renew the domain
+			if err := dom.Renew(years, true, phase); err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("renew failed: %v", err)})
+				continue
+			}
+
+			// Save the domain
+			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
+				continue
+			}
+			event.DomainRoID = updatedDomain.RoID.String()
+
+			// Publish event
+			msg := fmt.Sprintf("Domain %s auto-renewed for %d years", name, years)
+			svc.publishDomainEvent(ctx, "domain.auto_renewed", msg, event, nil, updatedDomain, prevState)
+
+			result.Succeeded = append(result.Succeeded, name)
+		}
+	}
+
+	return result
+}
+
+// BatchPurgeDomains purges multiple domains in a single batch, with hosts
+// preloaded. Individual domain failures do not stop the batch.
+func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string) BatchResult {
+	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
+
+	if len(names) == 0 {
+		return result
+	}
+
+	// Fetch all domains in one query with hosts preloaded
+	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, true)
+	if err != nil {
+		for _, n := range names {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("batch fetch failed: %v", err)})
+		}
+		return result
+	}
+
+	// Index by name for fast lookup
+	domMap := make(map[string]*entities.Domain, len(domains))
+	for _, d := range domains {
+		domMap[d.Name.String()] = d
+	}
+
+	for _, name := range names {
+		dom, ok := domMap[name]
+		if !ok {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: "domain not found"})
+			continue
+		}
+
+		// Check if the domain can be purged
+		if !dom.CanBePurged() {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: "the purge date is in the future"})
+			continue
+		}
+
+		// Dissociate all hosts if there are any
+		if len(dom.Hosts) > 0 {
+			if err := svc.RemoveAllDomainHosts(ctx, name); err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("host removal failed: %v", err)})
+				continue
+			}
+		}
+
+		// If the domain is flagged for DropCatching, create an NNDN record
+		var createdNNDN *entities.NNDN
+		if dom.DropCatch {
+			nndn, err := entities.NewNNDN(dom.Name.String())
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("NNDN creation failed: %v", err)})
+				continue
+			}
+			nndn.Reason = "Domain.DropCatch is true"
+			createdNNDN, err = svc.nndnRepo.CreateNNDN(ctx, nndn)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("NNDN save failed: %v", err)})
+				continue
+			}
+		}
+
+		// Delete the domain
+		if err := svc.domainRepository.DeleteDomainByName(ctx, name); err != nil {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("delete failed: %v", err)})
+			continue
+		}
+
+		// Log lifecycle event (matches PurgeDomain: event created after delete)
+		event, err := entities.NewDomainLifeCycleEvent(
+			dom.ClID.String(),
+			"",
+			dom.Name.ParentDomain(),
+			dom.Name.String(),
+			0,
+			entities.TransactionTypePurge,
+		)
+		if err != nil {
+			// Domain already deleted, log failure but count as succeeded
+			result.Succeeded = append(result.Succeeded, name)
+			continue
+		}
+		event.DomainRoID = dom.RoID.String()
+
+		msg := fmt.Sprintf("Domain %s purged", name)
+		svc.publishDomainEvent(ctx, "domain.purged", msg, event, nil, createdNNDN, dom)
+
+		result.Succeeded = append(result.Succeeded, name)
+	}
+
+	return result
+}
+
+// BatchRestoreDomains completes restoration for multiple domains by unsetting
+// PendingRestore and force-renewing each domain. Individual domain failures do
+// not stop the batch.
+func (svc *DomainService) BatchRestoreDomains(ctx context.Context, names []string) BatchResult {
+	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
+
+	if len(names) == 0 {
+		return result
+	}
+
+	// Fetch all domains in one query to get ClID for renew commands
+	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, false)
+	if err != nil {
+		for _, n := range names {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("batch fetch failed: %v", err)})
+		}
+		return result
+	}
+
+	// Index by name for fast lookup
+	domMap := make(map[string]*entities.Domain, len(domains))
+	for _, d := range domains {
+		domMap[d.Name.String()] = d
+	}
+
+	for _, name := range names {
+		dom, ok := domMap[name]
+		if !ok {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: "domain not found"})
+			continue
+		}
+
+		// Unset PendingRestore status
+		_, err := svc.UnSetStatus(ctx, name, entities.DomainStatusPendingRestore)
+		if err != nil {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("unset PendingRestore failed: %v", err)})
+			continue
+		}
+
+		// Force-renew the domain
+		cmd := &commands.RenewDomainCommand{
+			Name:  name,
+			ClID:  dom.ClID.String(),
+			Years: 1,
+		}
+		_, err = svc.RenewDomain(ctx, cmd, true)
+		if err != nil {
+			// Re-set PendingRestore on failure so the domain stays in a consistent state
+			_, setErr := svc.SetStatus(ctx, name, entities.DomainStatusPendingRestore)
+			errMsg := fmt.Sprintf("renew failed: %v", err)
+			if setErr != nil {
+				errMsg += fmt.Sprintf("; re-setting PendingRestore also failed: %v", setErr)
+			}
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: errMsg})
+			continue
+		}
+
+		result.Succeeded = append(result.Succeeded, name)
+	}
+
+	return result
+}
+

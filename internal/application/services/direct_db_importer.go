@@ -153,11 +153,17 @@ func parseJiscTime(s string) (time.Time, error) {
 
 // --- Import Contacts ---
 
-func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
+// ImportContacts bulk-upserts contacts from a staged SQLite DB into Postgres.
+// Returns (total, inserted, updated, skipped, error).
+// skipped counts contacts that were present in the staged DB but excluded due to
+// unmapped CLIDs or RoID generation failures — these will NOT be in Postgres, so
+// any domain referencing them as registrant/admin/tech/billing will fail the FK gate.
+func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, int64, error) {
 	const batchSize = 5000
 	var total int64
 	var inserted int64
 	var updated int64
+	var skipped int64
 
 	// Count total
 	var totalRows int64
@@ -178,7 +184,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		rows, err := sqliteDB.Query(`SELECT id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update" FROM contacts WHERE id > ? ORDER BY id LIMIT ?`, lastKey, batchSize)
 		if err != nil {
 			log.Printf("IngestContacts: Query failed: %v", err)
-			return total, inserted, updated, err
+			return total, inserted, updated, skipped, err
 		}
 
 		var batch []*dbModels.Contact
@@ -191,7 +197,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 			if err := rows.Scan(&id, &roid, &voice, &fax, &email, &clid, &crrr, &crdate, &uprr, &upDate); err != nil {
 				rows.Close()
 				log.Printf("IngestContacts: Scan failed: %v", err)
-				return total, inserted, updated, err
+				return total, inserted, updated, skipped, err
 			}
 			currentBatchMaxKey = id.String
 
@@ -212,7 +218,10 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 
 			mappedClID, ok := mapClid(clid.String)
 			if !ok {
-				// Record skipped (unmapped CLID or invalid data)
+				// Contact excluded: unmapped CLID — will NOT appear in Postgres.
+				// Any domain referencing this contact as registrant/admin/tech/billing
+				// will trigger a FK violation at IngestDomains time.
+				skipped++
 				continue
 			}
 
@@ -260,8 +269,8 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 			if r, err := entities.NewRoidType(newID, entities.RoidTypeContact); err == nil {
 				c.RoID = r
 			} else {
-				// Should not happen, but safeguard
-				// Record skipped (unmapped CLID or invalid data)
+				// Should not happen, but safeguard — still counts as a skip
+				skipped++
 				continue
 			}
 
@@ -290,7 +299,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 				return err
 			})
 			if txErr != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert contacts failed: %w", txErr)
+				return total, inserted, updated, skipped, fmt.Errorf("bulk upsert contacts failed: %w", txErr)
 			}
 			affected := int64(res.RowsAffected())
 			if affected < batchLen {
@@ -302,7 +311,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		if (total)%10000 == 0 {
-			log.Printf("IngestContacts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
+			log.Printf("IngestContacts: Processed %d / %d records (Inserted: %d, Updated: %d, Skipped: %d)", total, totalRows, inserted, updated, skipped)
 		}
 
 		lastKey = currentBatchMaxKey
@@ -311,11 +320,11 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		// Create JSON payload for heartbeat
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
 		heartbeat(payload)
 	}
-	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
-	return total, inserted, updated, nil
+	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d, Skipped: %d", total, inserted, updated, skipped)
+	return total, inserted, updated, skipped, nil
 }
 
 // --- Import Hosts ---
