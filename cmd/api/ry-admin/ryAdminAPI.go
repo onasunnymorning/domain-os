@@ -11,6 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
@@ -255,6 +256,18 @@ func main() {
 	// Possibly merge the domainservice and quoteservice
 	// domainService.QuoteService = *quoteService
 
+	// Event Search — unified search across hot (PG) and warm (S3) tiers
+	eventRepo := postgres.NewPostgresEventRepository(gormDB)
+	var archiveReader *storage.EventArchiveReader
+	s3Client, s3Err := storage.NewS3ClientFromEnv()
+	if s3Err != nil {
+		logger.Warn("S3 not configured — warm-tier event search disabled",
+			zap.Error(s3Err))
+	} else {
+		archiveReader = storage.NewEventArchiveReader(s3Client)
+	}
+	eventSearchService := services.NewEventSearchService(eventRepo, archiveReader, 0)
+
 	// Whois
 	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
 
@@ -328,6 +341,7 @@ func main() {
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)
 	rest.NewEventController(r, domainService, authMiddleware)
+	rest.NewEventSearchController(r, eventSearchService, authMiddleware)
 	rest.NewPhaseController(r, phaseService, authMiddleware)
 	rest.NewFeeController(r, feeService, authMiddleware)
 	rest.NewPriceController(r, priceService, authMiddleware)

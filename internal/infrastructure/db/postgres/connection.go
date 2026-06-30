@@ -50,6 +50,12 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
+		// domain_events: type index for type-filtered event search queries
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_type ON domain_events (type)",
+		// domain_events: partial actor index for actor-filtered event search queries
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_actor ON domain_events (actor) WHERE actor != ''",
+		// domain_events: partial roid index for roid-filtered event search queries
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_roid ON domain_events (ro_id) WHERE ro_id != ''",
 	}
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {
@@ -62,7 +68,6 @@ func AutoMigrate(db *gorm.DB) error {
 	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
 	legacyIndexes := []string{
 		"DROP INDEX IF EXISTS idx_domain_events_source",
-		"DROP INDEX IF EXISTS idx_domain_events_type",
 		"DROP INDEX IF EXISTS idx_domain_events_trace_id",
 		"DROP INDEX IF EXISTS idx_domain_events_correlation_id",
 		"DROP INDEX IF EXISTS idx_domain_events_subject",

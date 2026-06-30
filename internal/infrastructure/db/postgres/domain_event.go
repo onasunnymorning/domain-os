@@ -21,6 +21,7 @@ type DomainEventRecord struct {
 	BeforeState   []byte    `gorm:"type:jsonb"`
 	AfterState    []byte    `gorm:"type:jsonb"`
 	Actor         string    `gorm:"type:text"`
+	RoID          string    `gorm:"type:text"`
 	Published     bool      `gorm:"default:false;index"` // outbox relay flag
 	CreatedAt     time.Time
 }
@@ -68,6 +69,7 @@ func ToDBDomainEvent(e entities.DomainEvent) (DomainEventRecord, error) {
 		BeforeState:   beforeBytes,
 		AfterState:    afterBytes,
 		Actor:         e.Actor,
+		RoID:          e.RoID,
 		Published:     false,
 	}, nil
 }
@@ -107,5 +109,6 @@ func (r DomainEventRecord) ToDomainEvent() (entities.DomainEvent, error) {
 		BeforeState:   rawBefore,
 		AfterState:    rawAfter,
 		Actor:         r.Actor,
+		RoID:          r.RoID,
 	}, nil
 }

@@ -20,6 +20,7 @@ type DomainEvent struct {
 	BeforeState   interface{} `json:"before_state,omitempty"`
 	AfterState    interface{} `json:"after_state,omitempty"`
 	Actor         string      `json:"actor,omitempty"`
+	RoID          string      `json:"roid,omitempty"`
 }
 
 func NewDomainEvent(source, eventType, subject, description string, data interface{}) DomainEvent {

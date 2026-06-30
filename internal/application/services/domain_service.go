@@ -1735,6 +1735,9 @@ func (s *DomainService) publishDomainEvent(
 	if actor, ok := ctx.Value("userid").(string); ok {
 		domainEvent.Actor = actor
 	}
+	if event != nil {
+		domainEvent.RoID = event.DomainRoID
+	}
 
 	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
 		log.Printf("failed to publish event %s: %v", eventType, err)
