@@ -47,22 +47,28 @@ function renderClickableText(text: string, event: any) {
 
   // Extract domain name target
   if (event.type.startsWith('domain.')) {
-    const domainName = event.data?.DomainName || event.data?.domainName || (event.subject && event.subject !== 'bulk' ? event.subject : undefined);
-    if (domainName && typeof domainName === 'string') {
-      targets.push({
-        text: domainName,
-        href: `/domains/${encodeURIComponent(domainName)}`,
-      });
+    const isDeleted = event.type === 'domain.admin_deleted' || event.type === 'domain.purged';
+    if (!isDeleted) {
+      const domainName = event.data?.DomainName || event.data?.domainName || (event.subject && event.subject !== 'bulk' ? event.subject : undefined);
+      if (domainName && typeof domainName === 'string') {
+        targets.push({
+          text: domainName,
+          href: `/domains/${encodeURIComponent(domainName)}`,
+        });
+      }
     }
   }
 
   // Extract registrar client ID target
-  const clid = event.data?.ClientID || event.data?.clientId || event.data?.ClID || event.data?.clid || (event.type.startsWith('registrar.') && event.subject && event.subject !== 'bulk' ? event.subject : undefined);
-  if (clid && typeof clid === 'string') {
-    targets.push({
-      text: clid,
-      href: `/registrars/${encodeURIComponent(clid)}`,
-    });
+  const isRegistrarDeleted = event.type === 'registrar.deleted';
+  if (!isRegistrarDeleted) {
+    const clid = event.data?.ClientID || event.data?.clientId || event.data?.ClID || event.data?.clid || (event.type.startsWith('registrar.') && event.subject && event.subject !== 'bulk' ? event.subject : undefined);
+    if (clid && typeof clid === 'string') {
+      targets.push({
+        text: clid,
+        href: `/registrars/${encodeURIComponent(clid)}`,
+      });
+    }
   }
 
   // Deduplicate and filter out empty texts or text not present in display text
