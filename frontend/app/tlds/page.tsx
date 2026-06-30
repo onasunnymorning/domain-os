@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Globe, Plus, X } from 'lucide-react';
+import { Globe, Plus, X, Download } from 'lucide-react';
 import { WorkflowShortcuts } from '@/components/shared/WorkflowShortcuts';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 
@@ -81,6 +81,32 @@ function TLDsPageInner() {
   const tlds = [...(data?.Data || [])].sort(
     (a, b) => (b.DomainCount ?? 0) - (a.DomainCount ?? 0)
   );
+
+  const handleExportCSV = () => {
+    const headers = ['TLD Name', 'Domains Count', 'Status', 'Escrow Status', 'Registry Operator ID'];
+    const rows = tlds.map(t => [
+      t.Name,
+      t.DomainCount ?? 0,
+      t.Accredited ? 'Accredited' : 'Disabled',
+      t.AllowEscrowImport ? 'Enabled' : 'Disabled',
+      t.RyID || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `tlds_export.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const columns: ColumnDef<any>[] = [
     {
@@ -233,7 +259,7 @@ function TLDsPageInner() {
         <WorkflowShortcuts workflowKeys={['escrow-import', 'tld-cleanup']} />
       }
       actionButton={
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button onClick={() => setCreateOpen(true)} className="h-9">
           <Plus className="mr-2 h-4 w-4" />
           Create TLD
         </Button>
@@ -248,6 +274,18 @@ function TLDsPageInner() {
         keyExtractor={(row) => row.Name}
         isLoading={isLoading}
         onRowClick={(row) => router.push(`/tlds/${row.Name}`)}
+        headerActions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={tlds.length === 0}
+            className="h-9 font-medium"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        }
         emptyState={
           <div className="text-center py-12">
             <Globe className="mx-auto h-12 w-12 text-muted-foreground" />

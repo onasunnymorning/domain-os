@@ -336,25 +336,13 @@ export default function TLDDetailPage({ params }: Props) {
                       {isLoading ? 'Loading accredited registrars…' : `${tld?.RegistrarCount ?? 0} registrar${(tld?.RegistrarCount ?? 0) !== 1 ? 's' : ''} accredited`}
                     </CardDescription>
                   </div>
-                  <div className="pt-1">
-                    <Button size="sm" onClick={() => setAddOpen(true)}>Accredit registrar</Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
-                    <RegistrarSearchFilters
-                      searchQuery={searchQuery}
-                      setSearchQuery={setSearchQuery}
-                      ianaIdQuery={ianaIdQuery}
-                      setIanaIdQuery={setIanaIdQuery}
-                      className="flex-1"
-                    />
+                  <div className="pt-1 flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleExportCSV}
                       disabled={exporting || (regAccData?.Data?.length ?? 0) === 0}
-                      className="shrink-0 font-medium"
+                      className="shrink-0 font-medium h-9"
                       title={
                         (regAccData?.Data?.length ?? 0) === 0
                           ? "No registrars to export"
@@ -366,6 +354,18 @@ export default function TLDDetailPage({ params }: Props) {
                       <Download className="h-4 w-4 mr-2" />
                       {exporting ? 'Exporting...' : 'Export CSV'}
                     </Button>
+                    <Button size="sm" onClick={() => setAddOpen(true)} className="h-9">Accredit registrar</Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
+                    <RegistrarSearchFilters
+                      searchQuery={searchQuery}
+                      setSearchQuery={setSearchQuery}
+                      ianaIdQuery={ianaIdQuery}
+                      setIanaIdQuery={setIanaIdQuery}
+                      className="flex-1"
+                    />
                   </div>
 
                   {regAccLoading ? (

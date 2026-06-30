@@ -31,7 +31,8 @@ import { useRegistrars } from "@/lib/hooks/useRegistrars";
 import { useTLDs } from "@/lib/hooks/useTLDs";
 import { DomainListParams } from "@/lib/types/domain";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser, SlidersHorizontal } from "lucide-react";
+import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser, SlidersHorizontal, X, Download } from "lucide-react";
+import { getDomains } from "@/lib/api/domains";
 import { WorkflowShortcuts } from "@/components/shared/WorkflowShortcuts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -110,6 +111,68 @@ function DomainsPageInner() {
   const [pageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      // 1. Fetch filtered domains (large page size, matching current filters)
+      const exportParams: DomainListParams = {
+        pagesize: 10000,
+      };
+      const q = (debouncedName || "").trim();
+      if (q) {
+        if (exactMatch) {
+          exportParams.name_equals = q;
+        } else {
+          exportParams.name_like = q;
+        }
+      }
+      if (clidFilter) exportParams.clid_equals = clidFilter;
+      if (tldFilter) exportParams.tld_equals = tldFilter;
+      if (roidMin) exportParams.roid_greater_than = roidMin;
+      if (roidMax) exportParams.roid_less_than = roidMax;
+      if (createdAfter) exportParams.created_after = `${createdAfter}T00:00:00Z`;
+      if (createdBefore) exportParams.created_before = `${createdBefore}T23:59:59Z`;
+      if (expiresAfter) exportParams.expires_after = `${expiresAfter}T00:00:00Z`;
+      if (expiresBefore) exportParams.expires_before = `${expiresBefore}T23:59:59Z`;
+
+      const res = await getDomains(exportParams);
+      const domains = res.Data || [];
+
+      // 2. Generate CSV content
+      const headers = ['Domain Name', 'TLD', 'Registrar (ClID)', 'Created At', 'Expiry Date', 'Status', 'RGP Status'];
+      const rows = domains.map(d => [
+        d.Name,
+        d.TLDName,
+        d.ClID,
+        d.CreatedAt || '',
+        d.ExpiryDate || '',
+        d.Status || '',
+        d.RGPStatus || ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // 3. Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `domains_export.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export domains CSV:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -280,13 +343,22 @@ function DomainsPageInner() {
                   </div>
                 </div>
                 <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search domains..."
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
-                    className="pl-9 h-9"
+                    className="pl-9 pr-8 h-9"
                   />
+                  {nameQuery && (
+                    <button
+                      onClick={() => setNameQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      type="button"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -391,7 +463,7 @@ function DomainsPageInner() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className={showAdvanced ? "bg-muted" : ""}
+                  className={showAdvanced ? "bg-muted h-9" : "h-9"}
                 >
                   <SlidersHorizontal className="h-4 w-4 mr-2" />
                   Advanced Filters
@@ -402,7 +474,7 @@ function DomainsPageInner() {
                   onClick={resetFilters}
                   aria-label="Reset filters"
                   title="Clear all filters and search"
-                  className="justify-start"
+                  className="justify-start h-9"
                 >
                   <Eraser className="h-4 w-4 mr-2" /> Reset filters
                 </Button>
@@ -492,7 +564,24 @@ function DomainsPageInner() {
             {!error && (
               <>
                 {data?.Meta && data?.Data && data.Data.length > 0 && (
-                  <div className="mb-4 flex justify-end">
+                  <div className="mb-4 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                      className="h-9 font-medium"
+                      title={
+                        (data?.Data?.length ?? 0) === 0
+                          ? "No domains to export"
+                          : exporting
+                          ? "Exporting to CSV..."
+                          : "Export filtered domain list to CSV"
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {exporting ? 'Exporting...' : 'Export CSV'}
+                    </Button>
                     <PaginationButtons />
                   </div>
                 )}
