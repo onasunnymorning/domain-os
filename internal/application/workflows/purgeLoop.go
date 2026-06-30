@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -59,7 +60,6 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		StartedAt: started,
 	}
 
-	logger := workflow.GetLogger(ctx)
 
 	// Register a query handler so progress is visible in the UI
 	err := workflow.SetQueryHandler(ctx, "progress", func() (PurgeLoopResult, error) {
@@ -73,10 +73,6 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 
 	workflowID := getWorkflowID(ctx)
 
-	concurrencyLimit := params.ConcurrencyLimit
-	if concurrencyLimit <= 0 {
-		concurrencyLimit = 20
-	}
 
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
@@ -111,7 +107,6 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 	if countErr != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Failed to count purgeable domains: "+countErr.Error())
-		logger.Error("Failed to count purgeable domains", "error", countErr)
 		return result, countErr
 	}
 	result.TotalFound = domainCount.Count
@@ -129,7 +124,6 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 	if listErr != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Failed to list purgeable domains: "+listErr.Error())
-		logger.Error("Failed to list purgeable domains", "error", listErr)
 		return result, listErr
 	}
 
@@ -148,40 +142,26 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		return result, nil
 	}
 
-	// Step 3: Purge domains in parallel with bounded concurrency
-	semCh := workflow.NewBufferedChannel(ctx, concurrencyLimit)
-
-	type futInfo struct {
-		domainName string
-		future     workflow.Future
-	}
-	var futures []futInfo
-
-	for _, domain := range domains {
-		semCh.Send(ctx, struct{}{})
-
-		f := workflow.ExecuteActivity(ctx, activities.PurgeDomain, workflowID, domain.Name)
-		futures = append(futures, futInfo{
-			domainName: domain.Name,
-			future:     f,
-		})
-
-		workflow.Go(ctx, func(ctx workflow.Context) {
-			_ = f.Get(ctx, nil)
-			var token struct{}
-			semCh.Receive(ctx, &token)
-		})
+	// Step 3: Batch purge
+	domainNames := make([]string, len(domains))
+	for i, d := range domains {
+		domainNames[i] = d.Name
 	}
 
-	// Gather results
-	for _, fut := range futures {
-		err := fut.future.Get(ctx, nil)
-		result.TotalProcessed++
-		if err != nil {
-			result.addFailure(fut.domainName, err.Error())
-			logger.Error("Error purging domain", "domain", fut.domainName, "error", err)
-		} else {
-			result.Purged++
+	var purgeBatch services.BatchResult
+	batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 30 * time.Minute,
+		HeartbeatTimeout:    2 * time.Minute,
+		RetryPolicy:         retrypolicy,
+	})
+	purgeErr := workflow.ExecuteActivity(batchCtx, "BatchPurgeDomains", workflowID, domainNames).Get(ctx, &purgeBatch)
+	if purgeErr != nil {
+		result.addFailure("batch-purge", purgeErr.Error())
+	} else {
+		result.Purged = len(purgeBatch.Succeeded)
+		result.TotalProcessed = len(purgeBatch.Succeeded) + len(purgeBatch.Failed)
+		for _, f := range purgeBatch.Failed {
+			result.addFailure(f.DomainName, f.Error)
 		}
 	}
 
