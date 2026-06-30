@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useDomainEvents } from "@/lib/hooks/useDomains";
+import { useEventSearch } from "@/lib/hooks/useEventSearch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,8 @@ import {
   ChevronDown, 
   ChevronUp,
   History,
-  FileCode
+  FileCode,
+  Loader2
 } from "lucide-react";
 
 interface Props {
@@ -26,7 +27,19 @@ interface Props {
 }
 
 export function DomainEventsWidget({ domainName }: Props) {
-  const { data: events, isLoading, error } = useDomainEvents(domainName);
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useEventSearch({ subject: domainName, limit: 50 });
+
+  // Flatten paginated results
+  const events = data?.pages.flatMap(page => page.data) ?? [];
+  const totalCount = data?.pages[0]?.totalCount ?? 0;
+
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -147,7 +160,11 @@ export function DomainEventsWidget({ domainName }: Props) {
           Activity History
         </CardTitle>
         <CardDescription>
-          Chronological audit log of lifecycle events, registrations, and updates
+          {totalCount > 0 ? (
+            <span className="tabular-nums">{totalCount} lifecycle events</span>
+          ) : (
+            'Chronological audit log of lifecycle events'
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="relative pl-6 border-l border-muted-foreground/25 ml-4 space-y-6">
@@ -202,6 +219,11 @@ export function DomainEventsWidget({ domainName }: Props) {
                       Action: {event.data.TransactionType}
                     </Badge>
                   )}
+                  {event.actor && (
+                    <Badge variant="outline" className="font-mono bg-amber-50 dark:bg-amber-950/30">
+                      Actor: {event.actor}
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Advanced Info & Toggle */}
@@ -230,16 +252,69 @@ export function DomainEventsWidget({ domainName }: Props) {
                   </Button>
                 </div>
 
-                {/* Raw JSON block */}
+                {/* Structured payload / Raw JSON block */}
                 {isExpanded && (
-                  <div className="mt-2 text-xs border rounded-md bg-muted/65 dark:bg-zinc-950/50 p-3 max-h-[300px] overflow-auto font-mono scrollbar-thin">
-                    <pre><code>{JSON.stringify(event, null, 2)}</code></pre>
+                  <div className="mt-2 text-xs border rounded-md bg-muted/65 dark:bg-zinc-950/50 p-3 max-h-[300px] overflow-auto font-mono scrollbar-thin space-y-3">
+                    {/* Show structured state diffs when available */}
+                    {(event.command || event.before_state || event.after_state) && (
+                      <div className="space-y-2 font-sans">
+                        {event.actor && (
+                          <div className="text-xs text-muted-foreground">
+                            Performed by: <span className="font-medium text-foreground">{event.actor}</span>
+                          </div>
+                        )}
+                        {event.command && (
+                          <details className="group">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Command</summary>
+                            <pre className="mt-1 pl-3 border-l-2 border-primary/30"><code>{JSON.stringify(event.command, null, 2)}</code></pre>
+                          </details>
+                        )}
+                        {event.before_state && (
+                          <details className="group">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Before State</summary>
+                            <pre className="mt-1 pl-3 border-l-2 border-orange-400/30"><code>{JSON.stringify(event.before_state, null, 2)}</code></pre>
+                          </details>
+                        )}
+                        {event.after_state && (
+                          <details className="group">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">After State</summary>
+                            <pre className="mt-1 pl-3 border-l-2 border-emerald-400/30"><code>{JSON.stringify(event.after_state, null, 2)}</code></pre>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                    {/* Always show full raw JSON */}
+                    <details className={event.command || event.before_state || event.after_state ? 'group' : 'group open'}>
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors font-sans">
+                        Raw Event JSON
+                      </summary>
+                      <pre className="mt-1"><code>{JSON.stringify(event, null, 2)}</code></pre>
+                    </details>
                   </div>
                 )}
               </div>
             </div>
           );
         })}
+
+        {/* Load more button */}
+        {hasNextPage && (
+          <div className="pt-4 flex justify-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="text-xs gap-1.5"
+            >
+              {isFetchingNextPage ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading...</>
+              ) : (
+                <>Load earlier events</>
+              )}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

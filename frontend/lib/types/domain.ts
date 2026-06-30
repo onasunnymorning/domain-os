@@ -188,5 +188,10 @@ export interface DomainEvent {
   trace_id?: string;
   correlation_id?: string;
   data?: any;
+  command?: any;
+  before_state?: any;
+  after_state?: any;
+  actor?: string;
+  roid?: string;
 }
 
