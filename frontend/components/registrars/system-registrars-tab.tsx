@@ -242,24 +242,6 @@ export function SystemRegistrarsTab() {
               />
             </div>
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportCSV}
-                disabled={exporting || (data?.Data?.length ?? 0) === 0}
-                className="h-9 shrink-0 font-medium"
-                title={
-                  (data?.Data?.length ?? 0) === 0
-                    ? "No registrars to export"
-                    : exporting
-                    ? "Exporting to CSV..."
-                    : "Export filtered registrar list to CSV"
-                }
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {exporting ? 'Exporting...' : 'Export CSV'}
-              </Button>
-
               {countData?.Count === 0 && (
                 <Button
                   variant="default"
@@ -339,7 +321,24 @@ export function SystemRegistrarsTab() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-4 flex justify-end">
+                  <div className="mb-4 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                      className="h-9 font-medium"
+                      title={
+                        (data?.Data?.length ?? 0) === 0
+                          ? "No registrars to export"
+                          : exporting
+                          ? "Exporting to CSV..."
+                          : "Export filtered registrar list to CSV"
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {exporting ? 'Exporting...' : 'Export CSV'}
+                    </Button>
                     <PaginationButtons />
                   </div>
                   <div className="rounded-md border">

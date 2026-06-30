@@ -33,8 +33,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Search, Loader2, ExternalLink } from "lucide-react";
+import { RefreshCw, Search, Loader2, ExternalLink, X, Download } from "lucide-react";
 import { toast } from "sonner";
+import { getIANARegistrars } from "@/lib/api/registrars";
 
 export function IANARegistrarsTab() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,6 +72,63 @@ export function IANARegistrarsTab() {
     }
   };
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const exportParams: IANARegistrarListParams = {
+        pagesize: 10000,
+      };
+      if (searchQuery) {
+        exportParams.name_like = searchQuery;
+      }
+      if (statusFilter && statusFilter !== "all") {
+        exportParams.status = statusFilter;
+      }
+
+      const res = await getIANARegistrars(exportParams);
+      const registrars = res.Data || [];
+
+      // 2. Generate CSV content
+      const headers = ['IANA ID', 'Name', 'Status', 'RDAP URL', 'CreatedAt'];
+      const rows = registrars.map(r => [
+        r.GurID,
+        r.Name,
+        r.Status,
+        r.RdapURL || '',
+        r.CreatedAt || ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // 3. Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `iana_registrars.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export IANA registrars CSV:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const hasActiveFilters = searchQuery !== "" || statusFilter !== "all";
+
+  const handleReset = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case IANARegistrarStatus.Accredited:
@@ -89,58 +147,83 @@ export function IANARegistrarsTab() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex-1 min-w-[280px] flex items-center gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name or IANA ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-9 h-9"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
-            </div>
-            <div className="w-64">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value={IANARegistrarStatus.Accredited}>
-                    Accredited
-                  </SelectItem>
-                  <SelectItem value={IANARegistrarStatus.Terminated}>
-                    Terminated
-                  </SelectItem>
-                  <SelectItem value={IANARegistrarStatus.Reserved}>
-                    Reserved
-                  </SelectItem>
-                  <SelectItem value={IANARegistrarStatus.Unknown}>
-                    Unknown
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              onClick={handleSync}
-              disabled={syncMutation.isPending}
-              variant="outline"
-              className="shrink-0"
-            >
-              {syncMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sync from IANA
-                </>
+              <div className="w-48">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Accredited}>
+                      Accredited
+                    </SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Terminated}>
+                      Terminated
+                    </SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Reserved}>
+                      Reserved
+                    </SelectItem>
+                    <SelectItem value={IANARegistrarStatus.Unknown}>
+                      Unknown
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleReset}
+                  className="h-9 px-3 text-muted-foreground hover:text-foreground shrink-0 gap-1.5"
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
               )}
-            </Button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleSync}
+                disabled={syncMutation.isPending}
+                variant="outline"
+                className="h-9 shrink-0"
+                size="sm"
+              >
+                {syncMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Sync from IANA
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -182,8 +265,28 @@ export function IANARegistrarsTab() {
                   No registrars found matching your criteria
                 </div>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                      className="h-9 shrink-0 font-medium"
+                      title={
+                        (data?.Data?.length ?? 0) === 0
+                          ? "No registrars to export"
+                          : exporting
+                          ? "Exporting to CSV..."
+                          : "Export filtered IANA registrar list to CSV"
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {exporting ? 'Exporting...' : 'Export CSV'}
+                    </Button>
+                  </div>
+                  <div className="rounded-md border">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-24">IANA ID</TableHead>
@@ -225,6 +328,7 @@ export function IANARegistrarsTab() {
                     </TableBody>
                   </Table>
                 </div>
+              </div>
               )}
 
               {data.Meta && data.Data && data.Data.length > 0 && (
