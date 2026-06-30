@@ -15,8 +15,8 @@ import (
 func Test_desiredSchedules_AllDefined(t *testing.T) {
 	specs := desiredSchedules()
 
-	// We must have exactly 5 schedules.
-	require.Len(t, specs, 5, "expected 5 schedules in desiredSchedules()")
+	// We must have exactly 7 schedules.
+	require.Len(t, specs, 7, "expected 7 schedules in desiredSchedules()")
 
 	// Map by ID for easy lookup
 	byID := make(map[string]scheduleSpec, len(specs))
@@ -82,6 +82,32 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		assert.Equal(t, 30*time.Minute, s.Offset)
 		assert.Equal(t, time.Hour, s.CatchupWindow)
 		assert.Nil(t, s.Args)
+		assert.NotEmpty(t, s.Note)
+	})
+
+	t.Run("event-relay", func(t *testing.T) {
+		s, ok := byID["event-relay"]
+		require.True(t, ok, "missing schedule event-relay")
+		assert.Equal(t, temporal.QueueData, s.Queue)
+		assert.Equal(t, 5*time.Minute, s.Interval)
+		assert.Equal(t, time.Duration(0), s.Offset)
+		assert.Equal(t, 5*time.Minute, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.EventRelayParams)
+		assert.True(t, ok, "EventRelay args should be EventRelayParams, got %T", s.Args[0])
+		assert.NotEmpty(t, s.Note)
+	})
+
+	t.Run("event-prune", func(t *testing.T) {
+		s, ok := byID["event-prune"]
+		require.True(t, ok, "missing schedule event-prune")
+		assert.Equal(t, temporal.QueueData, s.Queue)
+		assert.Equal(t, 24*time.Hour, s.Interval)
+		assert.Equal(t, 6*time.Hour, s.Offset)
+		assert.Equal(t, 24*time.Hour, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.EventPruneParams)
+		assert.True(t, ok, "EventPrune args should be EventPruneParams, got %T", s.Args[0])
 		assert.NotEmpty(t, s.Note)
 	})
 }

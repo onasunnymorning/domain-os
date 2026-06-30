@@ -56,11 +56,6 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 		return
 	}
 
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "CREATE", "Fee", ctx.Param("tldName")+"-"+ctx.Param("phaseName"), ctx.Request.URL.RequestURI())
-	event.Details.Command = cmd
-
 	// Set the TLD and phase in the command
 	cmd.TLDName = ctx.Param("tldName")
 	cmd.PhaseName = ctx.Param("phaseName")
@@ -68,7 +63,6 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 	// Call the service to create the fee
 	fee, err := ctrl.feeService.CreateFee(ctx.Request.Context(), &cmd)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidFee) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -76,8 +70,6 @@ func (ctrl *FeeController) CreateFee(ctx *gin.Context) {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	event.Details.After = fee
 
 	// Return the response
 	ctx.JSON(201, fee)
@@ -120,14 +112,9 @@ func (ctrl *FeeController) ListFees(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/phases/{phaseName}/fees/{feeName}/{currency} [delete]
 func (ctrl *FeeController) DeleteFee(ctx *gin.Context) {
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "DELETE", "Fee", ctx.Param("feeName")+"-"+ctx.Param("currency"), ctx.Request.URL.RequestURI())
-	event.Details.Command = ctx.Param("feeName") + ctx.Param("currency")
 	// Call the service to delete the fee
 	err := ctrl.feeService.DeleteFee(ctx.Request.Context(), ctx.Param("phaseName"), ctx.Param("tldName"), ctx.Param("feeName"), ctx.Param("currency"))
 	if err != nil {
-		event.Details.Error = err.Error()
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

@@ -10,15 +10,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRegistrars, useRegistrarCount, useStartRegistrarSyncWorkflow } from "@/lib/hooks/useRegistrars";
 import { useTLDs } from "@/lib/hooks/useTLDs";
-import { RegistrarListParams, RegistrarStatus } from "@/lib/types/registrar";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RegistrarListParams } from "@/lib/types/registrar";
+import { RegistrarSearchFilters } from "./RegistrarSearchFilters";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +26,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { getRegistrars } from "@/lib/api/registrars";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +54,73 @@ export function SystemRegistrarsTab() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const router = useRouter();
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      // 1. Fetch filtered system registrars (large page size, matching current filters)
+      const exportParams: RegistrarListParams = {
+        pagesize: 10000,
+      };
+      const q = (debouncedQuery || "").trim();
+      if (q) {
+        exportParams.name_like = q;
+      }
+      if (statusFilter && statusFilter !== "all") {
+        exportParams.status_equals = statusFilter.toLowerCase();
+      }
+      const iid = (ianaIdQuery || "").trim();
+      if (iid && /^\d+$/.test(iid)) {
+        exportParams.gurid_equals = parseInt(iid, 10);
+      }
+      if (tldFilter && tldFilter !== "all") {
+        exportParams.tld = tldFilter;
+      }
+      if (sortBy === "domains_desc") {
+        exportParams.sort_by = "domain_count";
+        exportParams.sort_order = "desc";
+      } else if (sortBy === "domains_asc") {
+        exportParams.sort_by = "domain_count";
+        exportParams.sort_order = "asc";
+      }
+
+      const res = await getRegistrars(exportParams);
+      const registrars = res.Data || [];
+
+      // 2. Generate CSV content
+      const headers = ['Client ID', 'Name', 'IANA ID', 'Status', 'Auto-renew', 'Domains', 'TLDs'];
+      const rows = registrars.map(r => [
+        r.ClID,
+        r.Name,
+        r.GurID || '',
+        r.Status,
+        r.Autorenew ? 'Enabled' : 'Disabled',
+        r.DomainCount ?? 0,
+        (r.TLDList || []).join(' ')
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // 3. Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `system_registrars.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Fetch TLDs for the dropdown filter
   const { data: tldData } = useTLDs({ pagesize: 1000 });
@@ -161,74 +225,45 @@ export function SystemRegistrarsTab() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search registrars..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex-1 min-w-[280px]">
+              <RegistrarSearchFilters
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                ianaIdQuery={ianaIdQuery}
+                setIanaIdQuery={setIanaIdQuery}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                tldFilter={tldFilter}
+                setTldFilter={setTldFilter}
+                tlds={tldData?.Data}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+              />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                className="h-9 shrink-0 font-medium"
+                title={
+                  (data?.Data?.length ?? 0) === 0
+                    ? "No registrars to export"
+                    : exporting
+                    ? "Exporting to CSV..."
+                    : "Export filtered registrar list to CSV"
+                }
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </Button>
 
-              <div className="w-48">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value={RegistrarStatus.OK}>OK</SelectItem>
-                    <SelectItem value={RegistrarStatus.Readonly}>Readonly</SelectItem>
-                    <SelectItem value={RegistrarStatus.Terminated}>Terminated</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* IANA ID exact match */}
-              <div className="w-28">
-                <Input
-                  placeholder="IANA ID"
-                  inputMode="numeric"
-                  value={ianaIdQuery}
-                  onChange={(e) => setIanaIdQuery(e.target.value)}
-                />
-              </div>
-              {/* TLD filter dropdown */}
-              <div className="w-40">
-                <Select value={tldFilter} onValueChange={setTldFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All TLDs" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All TLDs</SelectItem>
-                    {tldData?.Data?.map((tld) => (
-                      <SelectItem key={tld.Name} value={tld.Name}>
-                        .{tld.Name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Sorting selector */}
-              <div className="w-44">
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sort By" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="clid_asc">Client ID (A-Z)</SelectItem>
-                    <SelectItem value="domains_desc">Domains (High to Low)</SelectItem>
-                    <SelectItem value="domains_asc">Domains (Low to High)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               {countData?.Count === 0 && (
                 <Button
                   variant="default"
+                  size="sm"
                   onClick={() => {
                     startWorkflow.mutate(undefined, {
                       onSuccess: (data) => {
@@ -238,7 +273,7 @@ export function SystemRegistrarsTab() {
                     });
                   }}
                   disabled={startWorkflow.isPending}
-                  className="shrink-0"
+                  className="h-9 shrink-0"
                 >
                   {startWorkflow.isPending ? (
                     <span className="inline-flex items-center gap-2">

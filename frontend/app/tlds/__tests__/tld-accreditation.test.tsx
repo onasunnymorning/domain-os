@@ -74,29 +74,32 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
       isPending: false,
     } as any);
 
-    // Accredited registrars list for this TLD
-    vi.mocked(accHooks.useTLDRegistrars).mockReturnValue({
-      data: {
-        Data: [
-          { ClID: 'REG-OK', Name: 'Ok Registrar', Status: 'ok' },
-          { ClID: 'REG-TERM', Name: 'Term Registrar', Status: 'terminated' },
-        ],
-      },
-      isLoading: false,
-    } as any);
-
-    // Registrar search results when opening accredit modal
-    vi.mocked(regHooks.useRegistrars).mockReturnValue({
-      data: {
-        Data: [
-          { ClID: 'REG-SEARCH-OK', Name: 'Search Ok', Status: 'ok' },
-          { ClID: 'REG-SEARCH-RO', Name: 'Search Readonly', Status: 'readonly' },
-          { ClID: 'REG-SEARCH-TERM', Name: 'Search Terminated', Status: 'terminated' },
-        ],
-      },
-      isLoading: false,
-      error: null,
-    } as any);
+    // Registrar search results and main TLD accredited registrars list
+    vi.mocked(regHooks.useRegistrars).mockImplementation((params) => {
+      if (params && params.tld === 'example') {
+        return {
+          data: {
+            Data: [
+              { ClID: 'REG-OK', Name: 'Ok Registrar', Status: 'ok' },
+              { ClID: 'REG-TERM', Name: 'Term Registrar', Status: 'terminated' },
+            ],
+          },
+          isLoading: false,
+          error: null,
+        } as any;
+      }
+      return {
+        data: {
+          Data: [
+            { ClID: 'REG-SEARCH-OK', Name: 'Search Ok', Status: 'ok' },
+            { ClID: 'REG-SEARCH-RO', Name: 'Search Readonly', Status: 'readonly' },
+            { ClID: 'REG-SEARCH-TERM', Name: 'Search Terminated', Status: 'terminated' },
+          ],
+        },
+        isLoading: false,
+        error: null,
+      } as any;
+    });
 
     // Default mutations: succeed
     vi.mocked(accHooks.useAccreditForTLD).mockReturnValue({

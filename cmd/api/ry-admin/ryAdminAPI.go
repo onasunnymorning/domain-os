@@ -198,7 +198,7 @@ func main() {
 	// tldService is created below after registrar deps are initialized
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
-	phaseService := services.NewPhaseService(phaseRepo, tldRepo)
+	phaseService := services.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
 	// Fees
 	feeRepo := postgres.NewFeeRepository(gormDB)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)
@@ -232,18 +232,18 @@ func main() {
 	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	// Accreditations
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
-	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo)
+	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	// Now create TLDService with operator registrar auto-provisioning deps
 	tldService := services.NewTLDService(tldRepo, dnsRecRepo,
 		services.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
 	)
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
-	contactService := services.NewContactService(contactRepo, *roidService)
+	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)
 	// Hosts
 	hostRepo := postgres.NewGormHostRepository(gormDB)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
-	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService)
+	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
@@ -308,7 +308,13 @@ func main() {
 		zap.Bool("auth0_enabled", cfg.Auth0Enabled),
 		zap.String("auth0_domain", cfg.Auth0Domain))
 
-	authMiddleware := rest.Auth0Middleware(cfg.Auth0Domain, cfg.Auth0Audience, JWT_TOKEN, cfg.Auth0Enabled)
+	auth0Middleware := rest.Auth0Middleware(cfg.Auth0Domain, cfg.Auth0Audience, JWT_TOKEN, cfg.Auth0Enabled)
+	authMiddleware := func(c *gin.Context) {
+		auth0Middleware(c)
+		if !c.IsAborted() {
+			rest.ContextPropagationMiddleware()(c)
+		}
+	}
 
 	rest.NewPingController(r)
 	rest.NewRegistryOperatorController(r, registryOperatorService, authMiddleware)

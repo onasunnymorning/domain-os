@@ -2,6 +2,9 @@ package services
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -11,15 +14,21 @@ import (
 
 // PhaseService is the implementation of the PhaseService interface
 type PhaseService struct {
-	tldRepo   repositories.TLDRepository
-	phaseRepo repositories.PhaseRepository
+	tldRepo        repositories.TLDRepository
+	phaseRepo      repositories.PhaseRepository
+	eventPublisher repositories.EventPublisher
 }
 
 // NewPhaseService returns a new instance of PhaseService
-func NewPhaseService(phaseRepo repositories.PhaseRepository, tldRepo repositories.TLDRepository) *PhaseService {
+func NewPhaseService(
+	phaseRepo repositories.PhaseRepository,
+	tldRepo repositories.TLDRepository,
+	eventPublisher repositories.EventPublisher,
+) *PhaseService {
 	return &PhaseService{
-		tldRepo:   tldRepo,
-		phaseRepo: phaseRepo,
+		tldRepo:        tldRepo,
+		phaseRepo:      phaseRepo,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -55,6 +64,8 @@ func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePh
 		return nil, err
 	}
 
+	svc.publishPhaseEvent(ctx, "phase.created", fmt.Sprintf("%s/%s", dbPhase.TLDName.String(), dbPhase.Name.String()), fmt.Sprintf("Phase %s for TLD %s created", dbPhase.Name.String(), dbPhase.TLDName.String()), cmd, dbPhase, nil)
+
 	return dbPhase, nil
 }
 
@@ -74,6 +85,11 @@ func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tldName, n
 		return err
 	}
 
+	prevPhase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, tldName, name)
+	if err != nil {
+		return err
+	}
+
 	// Use our Entity functions to delete the phase
 	err = tld.DeletePhase(entities.ClIDType(name))
 	if err != nil {
@@ -81,7 +97,13 @@ func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tldName, n
 	}
 
 	// If there were no errors, remove the phase from the repository
-	return svc.phaseRepo.DeletePhaseByTLDAndName(ctx, tldName, name)
+	err = svc.phaseRepo.DeletePhaseByTLDAndName(ctx, tldName, name)
+	if err != nil {
+		return err
+	}
+
+	svc.publishPhaseEvent(ctx, "phase.deleted", fmt.Sprintf("%s/%s", tldName, name), fmt.Sprintf("Phase %s for TLD %s deleted", name, tldName), nil, nil, prevPhase)
+	return nil
 }
 
 // ListPhasesByTLD retrieves all phases for a TLD
@@ -119,6 +141,11 @@ func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCom
 		return nil, err
 	}
 
+	prevPhase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Use our domain functions to set the end and catch any errors
 	endedPhase, err := tld.EndPhase(entities.ClIDType(cmd.PhaseName), cmd.Ends)
 	if err != nil {
@@ -131,12 +158,66 @@ func (svc *PhaseService) EndPhase(ctx context.Context, cmd *commands.EndPhaseCom
 		return nil, err
 	}
 
-	// if all is fine, return the updated phase
+	svc.publishPhaseEvent(ctx, "phase.ended", fmt.Sprintf("%s/%s", updatedPhase.TLDName.String(), updatedPhase.Name.String()), fmt.Sprintf("Phase %s for TLD %s ended", updatedPhase.Name.String(), updatedPhase.TLDName.String()), cmd, updatedPhase, prevPhase)
 
 	return updatedPhase, nil
 }
 
 // UpdatePhase updates a phase
 func (svc *PhaseService) UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
-	return svc.phaseRepo.UpdatePhase(ctx, phase)
+	prevPhase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, phase.TLDName.String(), phase.Name.String())
+	if err != nil {
+		return nil, err
+	}
+
+	updated, err := svc.phaseRepo.UpdatePhase(ctx, phase)
+	if err != nil {
+		return nil, err
+	}
+
+	svc.publishPhaseEvent(ctx, "phase.updated", fmt.Sprintf("%s/%s", updated.TLDName.String(), updated.Name.String()), fmt.Sprintf("Phase %s for TLD %s updated", updated.Name.String(), updated.TLDName.String()), nil, updated, prevPhase)
+
+	return updated, nil
+}
+
+func (svc *PhaseService) publishPhaseEvent(
+	ctx context.Context,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if svc.eventPublisher == nil {
+		return
+	}
+	data := map[string]interface{}{
+		"phase_id":  subject,
+		"timestamp": time.Now().UTC(),
+	}
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		subject,
+		msg,
+		data,
+	)
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		domainEvent.TraceID = traceID
+	}
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		domainEvent.CorrelationID = correlationID
+	}
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
+
+	if err := svc.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		log.Printf("failed to publish phase event %s: %v", eventType, err)
+	}
 }

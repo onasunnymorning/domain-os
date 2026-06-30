@@ -121,6 +121,21 @@ export default function DocsIndexPage() {
                         </CardHeader>
                       </Card>
                     </Link>
+                    <Link href="/docs/event-consumer" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-amber-500/30 hover:bg-amber-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Database className="h-4 w-4 text-amber-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              Event Consumer Cloud
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            Tiered event lifecycle: hot PostgreSQL → warm S3 → cold archive, with automated relay and pruning.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
                   </div>
                 </div>
               </div>

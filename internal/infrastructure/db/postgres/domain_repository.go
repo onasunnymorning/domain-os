@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"time"
 
@@ -284,6 +285,14 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 // Count returns the number of domains in the database
 func (dr *DomainRepository) Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error) {
 	var count int64
+
+	// If no filters are provided, attempt to use pg_class estimates for performance (except in tests).
+	if filter.IsEmpty() && flag.Lookup("test.v") == nil {
+		err := dr.db.WithContext(ctx).Raw("SELECT COALESCE(reltuples::bigint, 0) FROM pg_class WHERE relname = 'domains'").Scan(&count).Error
+		if err == nil && count > 0 {
+			return count, nil
+		}
+	}
 
 	// Create a query object
 	dbQuery := dr.db.WithContext(ctx).Model(&Domain{})

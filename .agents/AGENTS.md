@@ -83,6 +83,7 @@ This is an **internal admin tool for registry operators**. Every screen should f
 5. **Warm, premium feel** — Use the project's sunset/desert design tokens. Subtle gradients, soft borders, and micro-animations (hover lifts, fade-ins) over hard edges and abrupt transitions.
 6. **Data over decoration** — Prefer real data density (tables, counts, event streams) over placeholder illustrations or decorative charts with no actionable insight.
 7. **Consistent component patterns** — Reuse shadcn/ui primitives (`Card`, `Badge`, `Button`, `Skeleton`) with the project theme. Don't introduce one-off styled components.
+8. **Number Formatting** — Format large numbers (like domain counts, registrar counts) using the compact abbreviation pattern (e.g., 1.2K, 3.4M) via the `formatCompactNumber` helper in `frontend/lib/utils/numberUtils.ts` to ensure consistency and clean data presentation. Use native tooltips (`title` attribute) to expose the full exact number on hover.
 
 ## In-App Documentation (Definition of Done)
 
@@ -122,6 +123,7 @@ Do **not** create docs for trivial changes (bug fixes, UI tweaks, dependency bum
 | Contact Data Policy | `/docs/contact-data-policy` | Enforcement levels, validation, compliance |
 | PostHog Analytics | `/docs/posthog-analytics` | Event tracking, session recordings, error capture |
 | Database Index Strategy | `/docs/database-index-strategy` | PostgreSQL indexing for scale, storage budgets, query optimization |
+| Event Consumer Cloud | `/docs/event-consumer` | Tiered event lifecycle, relay workflows, S3 archival, pruning |
 
 Workflow documentation (sidecar `.doc.md` files) is served automatically from the workflow registry — see the "Workflow Documentation" section above.
 

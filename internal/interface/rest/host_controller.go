@@ -76,14 +76,10 @@ func (ctrl *HostController) GetHostByRoID(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid} [delete]
 func (ctrl *HostController) DeleteHostByRoID(ctx *gin.Context) {
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host", ctx.Param("roid"), ctx.Request.URL.RequestURI())
 	roidString := ctx.Param("roid")
 
 	err := ctrl.hostService.DeleteHostByRoID(ctx.Request.Context(), roidString)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidRoid) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -195,13 +191,9 @@ func (ctrl *HostController) ListHosts(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [post]
 func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "CREATE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
 	// Try and add the address
 	updatedHost, err := ctrl.hostService.AddHostAddress(ctx.Request.Context(), ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -213,9 +205,6 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	event.Details.Command = ctx.Param("ip")
-	event.Details.After = updatedHost
 
 	// Return the response
 	ctx.JSON(200, updatedHost)
@@ -236,14 +225,9 @@ func (ctrl *HostController) AddAddressToHost(ctx *gin.Context) {
 // @Failure 500
 // @Router /hosts/{roid}/addresses/{ip}  [delete]
 func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "DELETE", "Host Address", ctx.Param("ip"), ctx.Request.URL.RequestURI())
-
 	// Try and remove the address
 	updatedHost, err := ctrl.hostService.RemoveHostAddress(ctx.Request.Context(), ctx.Param("roid"), ctx.Param("ip"))
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrHostNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -251,9 +235,6 @@ func (ctrl *HostController) RemoveAddressFromHost(ctx *gin.Context) {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	event.Details.Command = ctx.Param("ip")
-	event.Details.After = updatedHost
 
 	// Return the response
 	ctx.JSON(200, updatedHost)

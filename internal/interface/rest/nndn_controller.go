@@ -159,14 +159,6 @@ func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(204, nil)
-	event := GetEvent(ctx)
-	if event == nil {
-		return
-	}
-	event.Details.Result = entities.EventResultSuccess
-	event.Action = entities.EventTypeDelete
-	event.ObjectType = entities.ObjectTypeNNDN
-	ctx.Set("event", event)
 }
 
 // CreateNNDN godoc

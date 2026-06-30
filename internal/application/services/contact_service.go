@@ -2,6 +2,9 @@ package services
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
@@ -14,19 +17,20 @@ import (
 type ContactService struct {
 	contactRepository repositories.ContactRepository
 	roidService       RoidService
+	eventPublisher    repositories.EventPublisher
 }
 
 // NewContactService returns a new ContactService
-func NewContactService(contactRepo repositories.ContactRepository, roidService RoidService) *ContactService {
+func NewContactService(contactRepo repositories.ContactRepository, roidService RoidService, eventPublisher repositories.EventPublisher) *ContactService {
 	return &ContactService{
 		contactRepository: contactRepo,
 		roidService:       roidService,
+		eventPublisher:    eventPublisher,
 	}
 }
 
 // CreateContact creates a new contact
 func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.CreateContactCommand) (*entities.Contact, error) {
-
 	// Create a new contact from the command
 	c, err := s.contactFromCreateContactCommand(cmd)
 	if err != nil {
@@ -38,6 +42,8 @@ func (s *ContactService) CreateContact(ctx context.Context, cmd *commands.Create
 	if err != nil {
 		return nil, err
 	}
+
+	s.publishContactEvent(ctx, "contact.created", newContact.ID.String(), fmt.Sprintf("Contact %s created", newContact.ID.String()), cmd, newContact, nil)
 
 	return newContact, nil
 }
@@ -62,6 +68,8 @@ func (s *ContactService) BulkCreate(ctx context.Context, cmds []*commands.Create
 		return errors.Join(entities.ErrInvalidContact, err)
 	}
 
+	s.publishContactEvent(ctx, "contact.bulk_created", "bulk", fmt.Sprintf("Bulk created %d contacts", len(cmds)), cmds, contacts, nil)
+
 	return nil
 }
 
@@ -78,11 +86,72 @@ func (s *ContactService) UpdateContact(ctx context.Context, c *entities.Contact)
 	// preserve read-only metadata fields from the previous state
 	c.CreatedAt = previousC.CreatedAt
 
-	return s.contactRepository.UpdateContact(ctx, c)
+	updatedContact, err := s.contactRepository.UpdateContact(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+
+	s.publishContactEvent(ctx, "contact.updated", updatedContact.ID.String(), fmt.Sprintf("Contact %s updated", updatedContact.ID.String()), nil, updatedContact, previousC)
+
+	return updatedContact, nil
 }
 
 func (s *ContactService) DeleteContactByID(ctx context.Context, id string) error {
-	return s.contactRepository.DeleteContactByID(ctx, id)
+	previousC, err := s.contactRepository.GetContactByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	err = s.contactRepository.DeleteContactByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	s.publishContactEvent(ctx, "contact.deleted", id, fmt.Sprintf("Contact %s deleted", id), nil, nil, previousC)
+
+	return nil
+}
+
+func (s *ContactService) publishContactEvent(
+	ctx context.Context,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if s.eventPublisher == nil {
+		return
+	}
+	data := map[string]interface{}{
+		"contact_id": subject,
+		"timestamp":  time.Now().UTC(),
+	}
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		subject,
+		msg,
+		data,
+	)
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		domainEvent.TraceID = traceID
+	}
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		domainEvent.CorrelationID = correlationID
+	}
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
+
+	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		log.Printf("failed to publish contact event %s: %v", eventType, err)
+	}
 }
 
 func (s *ContactService) ListContacts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Contact, string, error) {

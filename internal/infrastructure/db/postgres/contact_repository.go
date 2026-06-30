@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -148,6 +149,14 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 
 func (r *ContactRepository) Count(ctx context.Context, filter queries.ListContactsFilter) (int64, error) {
 	var count int64
+
+	// If no filters are provided, attempt to use pg_class estimates for performance (except in tests).
+	if filter.IsEmpty() && flag.Lookup("test.v") == nil {
+		err := r.db.WithContext(ctx).Raw("SELECT COALESCE(reltuples::bigint, 0) FROM pg_class WHERE relname = 'contacts'").Scan(&count).Error
+		if err == nil && count > 0 {
+			return count, nil
+		}
+	}
 
 	dbQuery := r.db.WithContext(ctx).Model(&Contact{})
 

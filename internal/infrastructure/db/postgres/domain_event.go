@@ -17,6 +17,10 @@ type DomainEventRecord struct {
 	TraceID       string
 	CorrelationID string
 	Data          []byte    `gorm:"type:jsonb;not null"`
+	Command       []byte    `gorm:"type:jsonb"`
+	BeforeState   []byte    `gorm:"type:jsonb"`
+	AfterState    []byte    `gorm:"type:jsonb"`
+	Actor         string    `gorm:"type:text"`
 	Published     bool      `gorm:"default:false;index"` // outbox relay flag
 	CreatedAt     time.Time
 }
@@ -30,6 +34,26 @@ func ToDBDomainEvent(e entities.DomainEvent) (DomainEventRecord, error) {
 	if err != nil {
 		return DomainEventRecord{}, err
 	}
+	var commandBytes, beforeBytes, afterBytes []byte
+	if e.Command != nil {
+		commandBytes, err = json.Marshal(e.Command)
+		if err != nil {
+			return DomainEventRecord{}, err
+		}
+	}
+	if e.BeforeState != nil {
+		beforeBytes, err = json.Marshal(e.BeforeState)
+		if err != nil {
+			return DomainEventRecord{}, err
+		}
+	}
+	if e.AfterState != nil {
+		afterBytes, err = json.Marshal(e.AfterState)
+		if err != nil {
+			return DomainEventRecord{}, err
+		}
+	}
+
 	return DomainEventRecord{
 		ID:            e.ID,
 		Source:        e.Source,
@@ -40,15 +64,35 @@ func ToDBDomainEvent(e entities.DomainEvent) (DomainEventRecord, error) {
 		TraceID:       e.TraceID,
 		CorrelationID: e.CorrelationID,
 		Data:          dataBytes,
+		Command:       commandBytes,
+		BeforeState:   beforeBytes,
+		AfterState:    afterBytes,
+		Actor:         e.Actor,
 		Published:     false,
 	}, nil
 }
 
 func (r DomainEventRecord) ToDomainEvent() (entities.DomainEvent, error) {
-	var raw json.RawMessage
-	if err := json.Unmarshal(r.Data, &raw); err != nil {
+	var rawData, rawCommand, rawBefore, rawAfter json.RawMessage
+	if err := json.Unmarshal(r.Data, &rawData); err != nil {
 		return entities.DomainEvent{}, err
 	}
+	if len(r.Command) > 0 {
+		if err := json.Unmarshal(r.Command, &rawCommand); err != nil {
+			return entities.DomainEvent{}, err
+		}
+	}
+	if len(r.BeforeState) > 0 {
+		if err := json.Unmarshal(r.BeforeState, &rawBefore); err != nil {
+			return entities.DomainEvent{}, err
+		}
+	}
+	if len(r.AfterState) > 0 {
+		if err := json.Unmarshal(r.AfterState, &rawAfter); err != nil {
+			return entities.DomainEvent{}, err
+		}
+	}
+
 	return entities.DomainEvent{
 		ID:            r.ID,
 		Source:        r.Source,
@@ -58,6 +102,10 @@ func (r DomainEventRecord) ToDomainEvent() (entities.DomainEvent, error) {
 		Time:          r.OccurredAt,
 		TraceID:       r.TraceID,
 		CorrelationID: r.CorrelationID,
-		Data:          raw,
+		Data:          rawData,
+		Command:       rawCommand,
+		BeforeState:   rawBefore,
+		AfterState:    rawAfter,
+		Actor:         r.Actor,
 	}, nil
 }

@@ -1729,6 +1729,12 @@ func (s *DomainService) publishDomainEvent(
 	)
 	domainEvent.TraceID = event.TraceID
 	domainEvent.CorrelationID = event.CorrelationID
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
 
 	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
 		log.Printf("failed to publish event %s: %v", eventType, err)

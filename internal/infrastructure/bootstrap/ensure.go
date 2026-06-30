@@ -82,6 +82,26 @@ func desiredSchedules() []scheduleSpec {
 			CatchupWindow: time.Hour,
 			Note:          "Updates FX rates hourly — managed by bootstrap",
 		},
+		{
+			ID:            "event-relay",
+			Workflow:      workflows.EventRelay,
+			Queue:         temporal.QueueData,
+			Interval:      5 * time.Minute,
+			Offset:        0,
+			Args:          []interface{}{workflows.EventRelayParams{}},
+			CatchupWindow: 5 * time.Minute,
+			Note:          "Archives events to S3 every 5 minutes — managed by bootstrap",
+		},
+		{
+			ID:            "event-prune",
+			Workflow:      workflows.EventPrune,
+			Queue:         temporal.QueueData,
+			Interval:      24 * time.Hour,
+			Offset:        6 * time.Hour,
+			Args:          []interface{}{workflows.EventPruneParams{}},
+			CatchupWindow: 24 * time.Hour,
+			Note:          "Prunes archived events daily — managed by bootstrap",
+		},
 	}
 }
 
