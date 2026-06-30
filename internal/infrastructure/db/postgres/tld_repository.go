@@ -43,6 +43,18 @@ func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, prelo
 
 	tld := FromDBTLD(dbtld)
 
+	// Count the registrars and domains
+	var registrarCount int64
+	var domainCount int64
+	if err := repo.db.WithContext(ctx).Table("accreditations").Where("tld_name = ?", name).Count(&registrarCount).Error; err != nil {
+		return nil, err
+	}
+	if err := repo.db.WithContext(ctx).Table("domains").Where("tld_name = ?", name).Count(&domainCount).Error; err != nil {
+		return nil, err
+	}
+	tld.RegistrarCount = int(registrarCount)
+	tld.DomainCount = int(domainCount)
+
 	return tld, nil
 }
 
@@ -78,11 +90,11 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	// Base query on tlds table
 	dbQuery := repo.db.WithContext(ctx).Table("tlds")
 
-	// Select optimized query fields
-	selectFields := "tlds.*, COALESCE(rc.registrar_count, 0) as registrar_count, COALESCE(dc.domain_count, 0) as domain_count"
-	dbQuery = dbQuery.Select(selectFields).
-		Joins("LEFT JOIN (SELECT tld_name AS rc_tld_name, COUNT(*) as registrar_count FROM accreditations GROUP BY tld_name) rc ON rc.rc_tld_name = tlds.name").
-		Joins("LEFT JOIN (SELECT tld_name AS dc_tld_name, COUNT(*) as domain_count FROM domains GROUP BY tld_name) dc ON dc.dc_tld_name = tlds.name")
+	// Select optimized query fields using correlated subqueries to avoid scanning/grouping the entire domains table
+	selectFields := "tlds.*, " +
+		"(SELECT COUNT(*) FROM accreditations WHERE accreditations.tld_name = tlds.name) as registrar_count, " +
+		"(SELECT COUNT(*) FROM domains WHERE domains.tld_name = tlds.name) as domain_count"
+	dbQuery = dbQuery.Select(selectFields)
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {

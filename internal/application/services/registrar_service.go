@@ -302,6 +302,12 @@ func (s *RegistrarService) publishRegistrarEvent(
 	)
 	domainEvent.TraceID = event.TraceID
 	domainEvent.CorrelationID = event.CorrelationID
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
 
 	if domainEvent.Subject == "" {
 		domainEvent.Subject = "bulk"

@@ -35,3 +35,12 @@ func (f ListContactsFilter) ToQueryParams() string {
 
 	return queryParams
 }
+
+// IsEmpty returns true if all filter criteria are zero/empty.
+func (f ListContactsFilter) IsEmpty() bool {
+	return f.RoidGreaterThan == "" &&
+		f.RoidLessThan == "" &&
+		f.IdLike == "" &&
+		f.EmailLike == "" &&
+		f.ClidEquals == ""
+}

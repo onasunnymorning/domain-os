@@ -100,6 +100,7 @@ function extractDocSections(workflows: WorkflowMeta[]): DocSearchResult[] {
 
 import { CONTACT_DATA_POLICY_DOC_MARKDOWN } from '../constants/contactDataPolicyDoc';
 import { DATABASE_INDEX_STRATEGY_DOC_MARKDOWN } from '../constants/databaseIndexStrategyDoc';
+import { EVENT_CONSUMER_DOC_MARKDOWN } from '../constants/eventConsumerDoc';
 import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
@@ -126,6 +127,18 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: DATABASE_INDEX_STRATEGY_DOC_MARKDOWN,
+  },
+  {
+    key: 'event-consumer',
+    name: 'Event Consumer Cloud',
+    description: 'Tiered event lifecycle with automated relay to S3, pruning, and long-term archival',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['events', 'consumer', 'archive', 's3', 'minio', 'temporal', 'prune', 'relay', 'lifecycle'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: EVENT_CONSUMER_DOC_MARKDOWN,
   },
   {
     key: 'posthog-analytics',

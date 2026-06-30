@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -95,6 +96,8 @@ func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCom
 		svc.provisionOperatorRegistrars(ctx, createdTLD, cmd.RyID)
 	}
 
+	svc.publishTLDEvent(ctx, "tld.created", createdTLD.Name.String(), fmt.Sprintf("TLD %s created", createdTLD.Name.String()), cmd, createdTLD, nil)
+
 	return createdTLD, nil
 }
 
@@ -124,7 +127,13 @@ func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
 	if len(tld.GetCurrentPhases()) != 0 {
 		return ErrCannotDeleteTLDWithActivePhases
 	}
-	return svc.tldRepository.DeleteByName(ctx, name)
+	err = svc.tldRepository.DeleteByName(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	svc.publishTLDEvent(ctx, "tld.deleted", name, fmt.Sprintf("TLD %s deleted", name), nil, nil, tld)
+	return nil
 }
 
 // GetTLDHeader gets a TLD header
@@ -203,6 +212,11 @@ func (svc *TLDService) SetAllowEscrowImport(ctx context.Context, tldName string,
 		return nil, err
 	}
 
+	var prevTLD entities.TLD
+	if tld != nil {
+		prevTLD = *tld
+	}
+
 	// Use the tld method to set the flag
 	err = tld.ToggleAllowEscrowImport(allowEscrowImport)
 	if err != nil {
@@ -214,6 +228,8 @@ func (svc *TLDService) SetAllowEscrowImport(ctx context.Context, tldName string,
 	if err != nil {
 		return nil, err
 	}
+
+	svc.publishTLDEvent(ctx, "tld.allow_escrow_import_updated", tld.Name.String(), fmt.Sprintf("TLD %s allow escrow import set to %t", tld.Name.String(), allowEscrowImport), allowEscrowImport, tld, &prevTLD)
 
 	return tld, nil
 }
@@ -278,4 +294,46 @@ func (svc *TLDService) dummyPostalInfo() *entities.RegistrarPostalInfo {
 	a, _ := entities.NewAddress("Reserved", "US")
 	pi, _ := entities.NewRegistrarPostalInfo(entities.PostalInfoEnumTypeINT, a)
 	return pi
+}
+
+func (svc *TLDService) publishTLDEvent(
+	ctx context.Context,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if svc.eventPub == nil {
+		return
+	}
+	data := map[string]interface{}{
+		"tld_name":  subject,
+		"timestamp": time.Now().UTC(),
+	}
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		subject,
+		msg,
+		data,
+	)
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		domainEvent.TraceID = traceID
+	}
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		domainEvent.CorrelationID = correlationID
+	}
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
+
+	if err := svc.eventPub.Publish(ctx, domainEvent); err != nil {
+		log.Printf("failed to publish tld event %s: %v", eventType, err)
+	}
 }

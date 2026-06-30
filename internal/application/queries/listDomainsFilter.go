@@ -61,3 +61,17 @@ func (df ListDomainsFilter) ToQueryParams() string {
 	}
 	return queryString
 }
+
+// IsEmpty returns true if all filter criteria are zero/empty.
+func (df ListDomainsFilter) IsEmpty() bool {
+	return df.RoidGreaterThan == "" &&
+		df.RoidLessThan == "" &&
+		df.NameLike == "" &&
+		df.NameEquals == "" &&
+		df.TldEquals == "" &&
+		df.ClidEquals == "" &&
+		df.ExpiresBefore.IsZero() &&
+		df.ExpiresAfter.IsZero() &&
+		df.CreatedBefore.IsZero() &&
+		df.CreatedAfter.IsZero()
+}

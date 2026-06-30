@@ -84,15 +84,16 @@ The \`domain_events\` table is append-only and grows to 500M+ rows. The original
 | \`correlation_id\` | ❌ No |
 | \`published\` | ✅ Yes (outbox relay) |
 
-### After (3 indexes, ~20 GB)
+### After (4 indexes, ~30 GB)
 
 | Index | Purpose |
 |-------|---------|
 | \`(subject, occurred_at DESC)\` composite | Event timeline query — single index covers \`WHERE subject = ? ORDER BY occurred_at DESC\` |
+| \`occurred_at DESC\` | Global timeline query — single index covers \`ORDER BY occurred_at DESC LIMIT ?\` (e.g. ListRecentEvents) |
 | \`published\` | Outbox relay flag for future event consumer |
 | \`id\` (PK) | Primary key |
 
-**Net savings: ~70 GB** of index storage at scale, plus reduced write amplification on every event INSERT.
+**Net savings: ~60 GB** of index storage at scale, plus reduced write amplification on every event INSERT.
 
 ## Storage Budget
 
@@ -150,7 +151,6 @@ DROP INDEX IF EXISTS idx_domain_event_records_type;
 DROP INDEX IF EXISTS idx_domain_event_records_trace_id;
 DROP INDEX IF EXISTS idx_domain_event_records_correlation_id;
 DROP INDEX IF EXISTS idx_domain_event_records_subject;
-DROP INDEX IF EXISTS idx_domain_event_records_occurred_at;
 \`\`\`
 
 ## Query Patterns Covered

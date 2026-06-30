@@ -232,6 +232,40 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			},
 			docFile: "spec5Sweep.doc.md",
 		},
+		{
+			Key:          "event-relay",
+			Name:         "Event Relay",
+			Description:  "Relays unpublished domain events to S3 archives in batches",
+			Queue:        temporal.QueueData,
+			Category:     "data",
+			Tags:         []string{"data", "events", "relay", "s3", "cloud", "GO"},
+			Scheduled:    true,
+			ScheduleInfo: "Every 5 minutes",
+			ScheduleID:   "event-relay",
+			Steps: []WorkflowStep{
+				{Key: "fetch-events", Label: "Fetch Unpublished Events", ActivityName: "FetchUnpublishedEvents"},
+				{Key: "archive-to-s3", Label: "Archive to S3", ActivityName: "ArchiveEventsToS3"},
+				{Key: "mark-published", Label: "Mark Published", ActivityName: "MarkEventsPublished"},
+				{Key: "count-remaining", Label: "Count Remaining", ActivityName: "CountUnpublishedEvents"},
+			},
+			docFile: "eventRelay.doc.md",
+		},
+		{
+			Key:          "event-prune",
+			Name:         "Event Prune",
+			Description:  "Prunes old domain events past the retention window in batches",
+			Queue:        temporal.QueueData,
+			Category:     "data",
+			Tags:         []string{"data", "events", "prune", "cleanup", "cloud", "GO"},
+			Scheduled:    true,
+			ScheduleInfo: "Daily",
+			ScheduleID:   "event-prune",
+			Steps: []WorkflowStep{
+				{Key: "count-prunable", Label: "Count Prunable Events", ActivityName: "CountPrunableEvents"},
+				{Key: "prune-events", Label: "Prune Events", ActivityName: "PruneEvents"},
+			},
+			docFile: "eventPrune.doc.md",
+		},
 	}
 
 	for i := range registry {

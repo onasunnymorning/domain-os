@@ -115,6 +115,17 @@ func main() {
 		dataWorker.RegisterActivity(spec5SweepActs.SweepSpec5Labels)
 	}
 
+	// Event Relay + Prune (consumer cloud)
+	dataWorker.RegisterWorkflow(workflows.EventRelay)
+	dataWorker.RegisterWorkflow(workflows.EventPrune)
+
+	eventRelayActs, err := activities.NewEventRelayActivities()
+	if err != nil {
+		log.Printf("WARNING: Event relay activities not available (DB/S3 not configured): %v", err)
+	} else {
+		dataWorker.RegisterActivity(eventRelayActs)
+	}
+
 	// Start all workers concurrently. worker.InterruptCh() returns a channel
 	// that is closed on SIGINT/SIGTERM, which gracefully stops all workers.
 	interruptCh := worker.InterruptCh()

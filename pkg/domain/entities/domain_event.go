@@ -16,6 +16,10 @@ type DomainEvent struct {
 	TraceID       string      `json:"trace_id,omitempty"`
 	CorrelationID string      `json:"correlation_id,omitempty"`
 	Data          interface{} `json:"data"`            // DomainLifeCycleEvent, RegistrarLifecycleEvent, etc.
+	Command       interface{} `json:"command,omitempty"`
+	BeforeState   interface{} `json:"before_state,omitempty"`
+	AfterState    interface{} `json:"after_state,omitempty"`
+	Actor         string      `json:"actor,omitempty"`
 }
 
 func NewDomainEvent(source, eventType, subject, description string, data interface{}) DomainEvent {

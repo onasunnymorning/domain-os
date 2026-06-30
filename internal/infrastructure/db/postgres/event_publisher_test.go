@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -60,6 +61,11 @@ func (s *EventPublisherSuite) TestPublish() {
 	event.TraceID = "trace-123"
 	event.CorrelationID = "corr-456"
 
+	event.Command = map[string]string{"action": "register"}
+	event.BeforeState = map[string]string{"status": "pending"}
+	event.AfterState = map[string]string{"status": "registered"}
+	event.Actor = "user-999"
+
 	err := pub.Publish(context.Background(), event)
 	s.Require().NoError(err)
 
@@ -76,6 +82,10 @@ func (s *EventPublisherSuite) TestPublish() {
 	s.Equal("test-domain.com", record.Subject)
 	s.Equal("trace-123", record.TraceID)
 	s.Equal("corr-456", record.CorrelationID)
+	s.JSONEq(`{"action": "register"}`, string(record.Command))
+	s.JSONEq(`{"status": "pending"}`, string(record.BeforeState))
+	s.JSONEq(`{"status": "registered"}`, string(record.AfterState))
+	s.Equal("user-999", record.Actor)
 	s.False(record.Published)
 
 	// Test mapping back
@@ -88,6 +98,10 @@ func (s *EventPublisherSuite) TestPublish() {
 	s.Equal(event.Description, mappedEvent.Description)
 	s.Equal(event.TraceID, mappedEvent.TraceID)
 	s.Equal(event.CorrelationID, mappedEvent.CorrelationID)
+	s.JSONEq(`{"action": "register"}`, string(mappedEvent.Command.(json.RawMessage)))
+	s.JSONEq(`{"status": "pending"}`, string(mappedEvent.BeforeState.(json.RawMessage)))
+	s.JSONEq(`{"status": "registered"}`, string(mappedEvent.AfterState.(json.RawMessage)))
+	s.Equal(event.Actor, mappedEvent.Actor)
 
 	// Toggle logEvents = false
 	core2 := &mockCore{}

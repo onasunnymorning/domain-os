@@ -45,6 +45,11 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
 		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
 		"CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name ON accreditations (tld_name)",
+		// domains: composite index to support expiring/purgeable domain queries filtered by cl_id and tld_name
+		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
+		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
+		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 	}
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {
@@ -61,7 +66,6 @@ func AutoMigrate(db *gorm.DB) error {
 		"DROP INDEX IF EXISTS idx_domain_events_trace_id",
 		"DROP INDEX IF EXISTS idx_domain_events_correlation_id",
 		"DROP INDEX IF EXISTS idx_domain_events_subject",
-		"DROP INDEX IF EXISTS idx_domain_events_occurred_at",
 	}
 	for _, idx := range legacyIndexes {
 		if err := db.Exec(idx).Error; err != nil {

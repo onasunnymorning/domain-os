@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -18,14 +19,21 @@ type HostService struct {
 	hostRepository    repositories.HostRepository
 	addressRepository repositories.HostAddressRepository
 	roidService       interfaces.RoidService
+	eventPublisher    repositories.EventPublisher
 }
 
 // NewHostService creates a new instance of HostService
-func NewHostService(hostRepository repositories.HostRepository, addressRepository repositories.HostAddressRepository, roidService interfaces.RoidService) *HostService {
+func NewHostService(
+	hostRepository repositories.HostRepository,
+	addressRepository repositories.HostAddressRepository,
+	roidService interfaces.RoidService,
+	eventPublisher repositories.EventPublisher,
+) *HostService {
 	return &HostService{
 		hostRepository:    hostRepository,
 		addressRepository: addressRepository,
 		roidService:       roidService,
+		eventPublisher:    eventPublisher,
 	}
 }
 
@@ -68,6 +76,8 @@ func (s *HostService) CreateHost(ctx context.Context, cmd *commands.CreateHostCo
 		return nil, err
 	}
 
+	s.publishHostEvent(ctx, "host.created", dbHost.RoID.String(), fmt.Sprintf("Host %s created", dbHost.Name), cmd, dbHost, nil)
+
 	return dbHost, nil
 }
 
@@ -86,7 +96,13 @@ func (s *HostService) BulkCreate(ctx context.Context, cmds []*commands.CreateHos
 	}
 
 	// Create the hosts in the repository
-	return s.hostRepository.BulkCreate(ctx, hosts)
+	err := s.hostRepository.BulkCreate(ctx, hosts)
+	if err != nil {
+		return err
+	}
+
+	s.publishHostEvent(ctx, "host.bulk_created", "bulk", fmt.Sprintf("Bulk created %d hosts", len(cmds)), cmds, hosts, nil)
+	return nil
 }
 
 // GetHostByRoid gets a host by its roid in string format
@@ -118,7 +134,19 @@ func (s *HostService) DeleteHostByRoID(ctx context.Context, roidString string) e
 	if err != nil {
 		return err
 	}
-	return s.hostRepository.DeleteHostByRoid(ctx, roidInt)
+
+	previousHost, err := s.hostRepository.GetHostByRoid(ctx, roidInt)
+	if err != nil {
+		return err
+	}
+
+	err = s.hostRepository.DeleteHostByRoid(ctx, roidInt)
+	if err != nil {
+		return err
+	}
+
+	s.publishHostEvent(ctx, "host.deleted", roidString, fmt.Sprintf("Host %s deleted", previousHost.Name), nil, nil, previousHost)
+	return nil
 }
 
 // ListHosts lists hosts
@@ -149,6 +177,12 @@ func (s *HostService) AddHostAddress(ctx context.Context, roidString, ip string)
 		return nil, err
 	}
 
+	var prevHost entities.Host
+	if host != nil {
+		prevHost = *host
+		prevHost.Addresses = append([]netip.Addr{}, host.Addresses...)
+	}
+
 	// Add the addresses
 	a, err := host.AddAddress(ip)
 	if err != nil {
@@ -164,6 +198,8 @@ func (s *HostService) AddHostAddress(ctx context.Context, roidString, ip string)
 	if err != nil {
 		return nil, err
 	}
+
+	s.publishHostEvent(ctx, "host.address_added", roidString, fmt.Sprintf("Address %s added to host %s", ip, host.Name), ip, host, &prevHost)
 
 	return host, nil
 }
@@ -187,6 +223,12 @@ func (s *HostService) RemoveHostAddress(ctx context.Context, roidString, ip stri
 		return nil, err
 	}
 
+	var prevHost entities.Host
+	if host != nil {
+		prevHost = *host
+		prevHost.Addresses = append([]netip.Addr{}, host.Addresses...)
+	}
+
 	// Add the addresses
 	a, err := host.RemoveAddress(ip)
 	if err != nil {
@@ -202,6 +244,8 @@ func (s *HostService) RemoveHostAddress(ctx context.Context, roidString, ip stri
 	if err != nil {
 		return nil, err
 	}
+
+	s.publishHostEvent(ctx, "host.address_removed", roidString, fmt.Sprintf("Address %s removed from host %s", ip, host.Name), ip, host, &prevHost)
 
 	return host, nil
 }
@@ -261,4 +305,46 @@ func (s *HostService) createHostFromCreateHostCommand(cmd *commands.CreateHostCo
 		return nil, err
 	}
 	return host, nil
+}
+
+func (s *HostService) publishHostEvent(
+	ctx context.Context,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if s.eventPublisher == nil {
+		return
+	}
+	data := map[string]interface{}{
+		"host_roid": subject,
+		"timestamp": time.Now().UTC(),
+	}
+
+	domainEvent := entities.NewDomainEvent(
+		"domain-os/api",
+		eventType,
+		subject,
+		msg,
+		data,
+	)
+	if traceID, ok := ctx.Value("trace_id").(string); ok {
+		domainEvent.TraceID = traceID
+	}
+	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+		domainEvent.CorrelationID = correlationID
+	}
+	domainEvent.Command = command
+	domainEvent.BeforeState = previousState
+	domainEvent.AfterState = newState
+	if actor, ok := ctx.Value("userid").(string); ok {
+		domainEvent.Actor = actor
+	}
+
+	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		fmt.Printf("failed to publish host event %s: %v\n", eventType, err)
+	}
 }
