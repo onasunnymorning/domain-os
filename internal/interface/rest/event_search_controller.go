@@ -42,6 +42,8 @@ func NewEventSearchController(e *gin.Engine, searchService *services.EventSearch
 // @Param source query string false "Filter by event source (exact match)"
 // @Param actor query string false "Filter by actor (exact match)"
 // @Param roid query string false "Filter by ROID (exact match)"
+// @Param trace_id query string false "Filter by Trace ID (exact match)"
+// @Param correlation_id query string false "Filter by Correlation ID (exact match)"
 // @Param after query string false "Filter events after this time (ISO 8601, inclusive)"
 // @Param before query string false "Filter events before this time (ISO 8601, exclusive)"
 // @Param limit query int false "Maximum number of events per page (default 50, max 200)"
@@ -72,12 +74,14 @@ func (ctrl *EventSearchController) SearchEvents(ctx *gin.Context) {
 // query string.
 func parseSearchFilter(ctx *gin.Context) (entities.EventSearchFilter, error) {
 	filter := entities.EventSearchFilter{
-		Subject: ctx.Query("subject"),
-		Type:    ctx.Query("type"),
-		Source:  ctx.Query("source"),
-		Actor:   ctx.Query("actor"),
-		RoID:    ctx.Query("roid"),
-		Cursor:  ctx.Query("cursor"),
+		Subject:       ctx.Query("subject"),
+		Type:          ctx.Query("type"),
+		Source:        ctx.Query("source"),
+		Actor:         ctx.Query("actor"),
+		RoID:          ctx.Query("roid"),
+		TraceID:       ctx.Query("trace_id"),
+		CorrelationID: ctx.Query("correlation_id"),
+		Cursor:        ctx.Query("cursor"),
 	}
 
 	// Parse limit

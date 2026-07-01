@@ -22,7 +22,7 @@ func (s *SyncSpec5WorkflowTestSuite) SetupTest() {
 }
 
 func (s *SyncSpec5WorkflowTestSuite) Test_SyncSpec5Workflow_Success() {
-	s.env.OnActivity(activities.SyncSpec5, mock.Anything).Return(nil)
+	s.env.OnActivity(activities.SyncSpec5, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	s.env.ExecuteWorkflow(SyncSpec5Workflow)
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -30,7 +30,7 @@ func (s *SyncSpec5WorkflowTestSuite) Test_SyncSpec5Workflow_Success() {
 }
 
 func (s *SyncSpec5WorkflowTestSuite) Test_SyncSpec5Workflow_Failure() {
-	s.env.OnActivity(activities.SyncSpec5, mock.Anything).Return(errors.New("sync failed"))
+	s.env.OnActivity(activities.SyncSpec5, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("sync failed"))
 
 	s.env.ExecuteWorkflow(SyncSpec5Workflow)
 	s.Require().True(s.env.IsWorkflowCompleted())

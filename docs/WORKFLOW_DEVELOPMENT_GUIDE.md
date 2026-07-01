@@ -9,10 +9,12 @@
 
 ### Inventory
 
-| Queue | Env Var | Workflows | Purpose |
-|---|---|---|---|
-| `object-lifecycle` | `TEMPORAL_LIFECYCLE_QUEUE` | ExpiryLoop, PurgeLoop, RestoreWorkflow, SyncRegistrarsWorkflow | Domain lifecycle operations |
-| `data-pipeline` | `TEMPORAL_DATA_QUEUE` | EscrowStagingWorkflow, EscrowIngestionWorkflow, TLDCleanupWorkflow, UpdateFX | Data import, escrow, and sync operations |
+| Queue | Workflows | Purpose |
+|---|---|---|
+| `fast-ops` | Serial Drift, UpdateFX | Low-latency, sub-minute activities |
+| `scheduled` | Event Relay, Event Prune, Sync Spec5, Spec5 Sweep, Sync Registrars | Periodic background work |
+| `heavy-batch` | Escrow Import, TLD Cleanup, Take Snapshot, Seed from Snapshot | Multi-hour, resource-intensive |
+| `lifecycle` | Expiry Loop, Purge Loop, Restore Workflow, Tombstone Backfill | Domain state-machine transitions |
 
 ### Directory Layout
 
@@ -417,14 +419,16 @@ workflows.RegisterSyncWorkflows(syncWorker, syncActs)
 
 ### 3.2 Task Queue Strategy
 
-The current 3-queue setup is appropriate. When adding new workflows, assign to queues based on:
+The 4-queue setup is designed to prevent poller starvation and group workloads with similar resource and latency characteristics:
 
 | Queue | Use When |
 |---|---|
-| `object-lifecycle` | Domain CRUD, registrar management, anything that interacts with the core domain model |
-| `data-pipeline` | Heavy data operations, imports, exports, cleanup, and periodic sync tasks (FX rates, external data pulls) |
+| `fast-ops` | Low-latency, sub-minute activities (e.g., serial drift checks, DNS queries, exchange rate updates) |
+| `scheduled` | Periodic background work (e.g., event relay, prune, Spec5 sync, registrar sync) |
+| `heavy-batch` | Multi-hour, resource-intensive operations (e.g., escrow import, TLD cleanup, database snapshotting) |
+| `lifecycle` | Domain state-machine transitions (e.g., expiry loop, purge loop, restore workflow) |
 
-> **IMPORTANT:** If you add a workflow that doesn't fit these categories (e.g., a reporting or analytics workflow), prefer adding a new task queue over overloading an existing one. Define the queue name as a constant, never hardcode strings in multiple places.
+> **IMPORTANT:** Always define queue names as constants in internal/infrastructure/temporal/queues.go. Never hardcode strings in multiple places.
 
 ### 3.3 Temporal Client Configuration
 
@@ -434,8 +438,6 @@ All Temporal client configuration uses **environment variables managed by Dopple
 |---|---|---|
 | `TEMPORAL_HOST_PORT` | Temporal server address | `temporal:7233` |
 | `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
-| `TEMPORAL_LIFECYCLE_QUEUE` | Lifecycle task queue | `object-lifecycle` |
-| `TEMPORAL_DATA_QUEUE` | Data pipeline task queue | `data-pipeline` |
 | `TEMPORAL_API_KEY` | API key auth (Temporal Cloud) | — |
 | `TEMPORAL_CLIENT_CERT` | mTLS certificate (PEM) | — |
 | `TEMPORAL_CLIENT_KEY` | mTLS private key (PEM) | — |

@@ -33,7 +33,7 @@ func (s *PurgeLoopWorkflowTestSuite) SetupTest() {
 }
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_NoDomains() {
-	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
 
 	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -46,14 +46,14 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_NoDomains() {
 }
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_Success_Mixed() {
-	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 3}, nil)
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 3}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "purge1.com"},
 		{Name: "purge2.com"},
 		{Name: "purge3.com"},
 	}
-	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	// Batch purge: purge2.com fails
 	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
@@ -82,13 +82,13 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_Success_Mixed() {
 }
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_DryRun() {
-	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 2}, nil)
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 2}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "domain1.com"},
 		{Name: "domain2.com"},
 	}
-	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{DryRun: true})
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -105,13 +105,13 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_DryRun() {
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_ContinueAsNew() {
 	// Count reports 100 domains but list only returns 2 (batch cap hit)
-	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "domain1.com"},
 		{Name: "domain2.com"},
 	}
-	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
 		Succeeded: []string{"domain1.com", "domain2.com"},

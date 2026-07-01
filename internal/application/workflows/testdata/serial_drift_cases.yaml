@@ -1,0 +1,216 @@
+cases:
+  # ---------------------------------------------------------------------------
+  # Category: convergence — clean case, all slaves follow master
+  # ---------------------------------------------------------------------------
+
+  - id: clean-convergence-after-bump
+    category: convergence
+    description: "Master bumps serial, all slaves follow within refresh window"
+    what_makes_it_tricky: "Baseline happy path — confirms the normal case works before edge cases"
+    master:
+      nameserver: ns1.master.example
+      serial: 2024010102
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history:
+      - nameserver: ns1.slave.example
+        serial: 2024010101
+        master_serial: 2024010101
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+        master_serial: 2024010102
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: converged
+          drift_tier: expected
+      overall_tier: expected
+
+  # ---------------------------------------------------------------------------
+  # Category: lagging — slave behind but within acceptable window
+  # ---------------------------------------------------------------------------
+
+  - id: single-lagging-slave
+    category: lagging
+    description: "Two slaves healthy, one behind but within live refresh window"
+    what_makes_it_tricky: "Per-slave granularity — overall is still 'expected' because lagging within refresh is expected"
+    master:
+      nameserver: ns1.master.example
+      serial: 2024010103
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        serial: 2024010103
+      - nameserver: ns2.slave.example
+        serial: 2024010103
+      - nameserver: ns3.slave.example
+        serial: 2024010102
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history: []
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: converged
+          drift_tier: expected
+        ns2.slave.example:
+          status: converged
+          drift_tier: expected
+        ns3.slave.example:
+          status: lagging
+          drift_tier: expected
+      overall_tier: expected
+
+  # ---------------------------------------------------------------------------
+  # Category: stalled — slave not advancing despite master bumps
+  # ---------------------------------------------------------------------------
+
+  - id: stalled-slave
+    category: stalled
+    description: "Master has advanced 3 times, slave serial unchanged"
+    what_makes_it_tricky: "Must detect stall from history, not just current comparison"
+    master:
+      nameserver: ns1.master.example
+      serial: 2024010105
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history:
+      # 3 consecutive checks where master advanced but slave stayed at 2024010102
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+        master_serial: 2024010103
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+        master_serial: 2024010104
+      - nameserver: ns1.slave.example
+        serial: 2024010102
+        master_serial: 2024010105
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: stalled
+          drift_tier: critical
+      overall_tier: critical
+
+  # ---------------------------------------------------------------------------
+  # Category: unreachable — DNS query failure
+  # ---------------------------------------------------------------------------
+
+  - id: unreachable-slave
+    category: unreachable
+    description: "DNS query to slave times out"
+    what_makes_it_tricky: "Must handle gracefully without crashing the workflow"
+    master:
+      nameserver: ns1.master.example
+      serial: 2024010102
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        error: "i/o timeout"
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history: []
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: unreachable
+          drift_tier: warning
+      overall_tier: warning
+
+  # ---------------------------------------------------------------------------
+  # Category: wraparound — RFC 1982 edge case
+  # ---------------------------------------------------------------------------
+
+  - id: serial-wraparound
+    category: wraparound
+    description: "Serial wraps around 2^32 boundary — master at 0x00000001, slave at 0xFFFFFFFE"
+    what_makes_it_tricky: "Naive integer comparison says slave > master; RFC 1982 says slave < master"
+    master:
+      nameserver: ns1.master.example
+      serial: 1           # 0x00000001
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        serial: 4294967294  # 0xFFFFFFFE
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history: []
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: lagging
+          drift_tier: expected
+      overall_tier: expected
+
+  # ---------------------------------------------------------------------------
+  # Category: confidence gate — static match with no increment observed
+  # ---------------------------------------------------------------------------
+
+  - id: static-match-no-increment
+    category: confidence_gate
+    description: "Slave serial matches master, but no master increment has been observed yet"
+    what_makes_it_tricky: >
+      Per-check status is 'converged', but confidence-ready is false.
+      A static match doesn't prove live AXFR/IXFR — the slave might have
+      the serial from a prior manual load and never actually transferred.
+    master:
+      nameserver: ns1.master.example
+      serial: 2024010101
+      refresh: 3600
+      retry: 900
+      expire: 604800
+    slaves:
+      - nameserver: ns1.slave.example
+        serial: 2024010101
+    config:
+      stalled_after_n: 3
+      confidence_n: 5
+      grace_multiplier: 2.5
+    history:
+      # 10 consecutive checks, all with the same master serial — no increment
+      - nameserver: ns1.slave.example
+        serial: 2024010101
+        master_serial: 2024010101
+      - nameserver: ns1.slave.example
+        serial: 2024010101
+        master_serial: 2024010101
+      - nameserver: ns1.slave.example
+        serial: 2024010101
+        master_serial: 2024010101
+    expect:
+      per_slave:
+        ns1.slave.example:
+          status: converged
+          drift_tier: expected
+      overall_tier: expected
+      # NOTE: confidence_ready assessment happens in the rollup query,
+      # not in EvaluateDrift. This case tests that EvaluateDrift correctly
+      # classifies as converged/expected even when history shows no increment.

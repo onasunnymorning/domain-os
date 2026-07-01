@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-func UnSetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain, error) {
+func UnSetDomainStatus(ctx context.Context, cmd commands.ToggleDomainStatusCommand) (*entities.Domain, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/status/%s", BASEURL, cmd.DomainName, cmd.Status)
 
 	// marshall the request body
@@ -30,11 +31,10 @@ func UnSetDomainStatus(cmd commands.ToggleDomainStatusCommand) (*entities.Domain
 		return nil, fmt.Errorf("failed to create URL: %w", err)
 	}
 
-	req, err := http.NewRequest("DELETE", URL.String(), bytes.NewBuffer(jsonData))
+	req, err := prepareRequest(ctx, "DELETE", URL.String(), bytes.NewBuffer(jsonData), cmd.CorrelationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -138,6 +138,7 @@ function TakeSnapshotForm({
   );
 }
 
+
 function ZeroParamConfirmation({ name }: { name: string }) {
   return (
     <p className="text-muted-foreground text-sm">
@@ -222,7 +223,10 @@ export function WorkflowLaunchForm({
     } catch (error: any) {
       posthog.captureException(error);
       const message =
-        error?.response?.data?.message || error?.message || 'Failed to launch workflow';
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to launch workflow';
       toast.error('Launch failed', { description: message });
     } finally {
       setIsSubmitting(false);

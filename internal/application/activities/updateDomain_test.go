@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -95,7 +96,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_Success() {
 	// Make sure we use the same bearer token that the server expects
 	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
-	updatedDomain, err := UpdateDomain(correlationID, domain)
+	updatedDomain, err := UpdateDomain(context.Background(), correlationID, domain)
 
 	// We expect no error
 	suite.Require().NoError(err)
@@ -114,7 +115,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_AuthFail() {
 	// Provide a mismatched token that triggers a 401 in the test server
 	os.Setenv("ADMIN_TOKEN", "wrong-token")
 
-	updatedDomain, err := UpdateDomain(correlationID, domain)
+	updatedDomain, err := UpdateDomain(context.Background(), correlationID, domain)
 	suite.Require().Error(err)
 	suite.Assert().Contains(err.Error(), "(401)")
 	suite.Assert().Nil(updatedDomain)
@@ -130,7 +131,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_ServerError() {
 	// Correct token so the server goes to the 500 branch
 	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
-	updatedDomain, err := UpdateDomain(correlationID, domain)
+	updatedDomain, err := UpdateDomain(context.Background(), correlationID, domain)
 	suite.Require().Error(err)
 	suite.Assert().Contains(err.Error(), "(500) internal server error")
 	suite.Assert().Nil(updatedDomain)
@@ -146,7 +147,7 @@ func (suite *UpdateDomainTestSuite) TestUpdateDomain_NotFound() {
 	// Use correct token
 	os.Setenv("ADMIN_TOKEN", "test-bearer-token")
 
-	updatedDomain, err := UpdateDomain(correlationID, domain)
+	updatedDomain, err := UpdateDomain(context.Background(), correlationID, domain)
 	suite.Require().Error(err)
 	// We check the status code in the error string
 	suite.Assert().Contains(err.Error(), "(404)")

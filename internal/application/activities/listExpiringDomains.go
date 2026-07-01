@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +18,7 @@ var (
 )
 
 // ListExpiringDomains takes an ExpiringDomainsQuery and returns a list of domains that are expiring before the given date. It gets these through the admin API.
-func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuery) ([]response.DomainExpiryItem, error) {
+func ListExpiringDomains(ctx context.Context, correlationID string, query queries.ExpiringDomainsQuery) ([]response.DomainExpiryItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/expiring", BASEURL)
 
 	// Set up an API client
@@ -36,11 +37,10 @@ func ListExpiringDomains(correlationID string, query queries.ExpiringDomainsQuer
 	}
 
 	// get a list of domains that have expired
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

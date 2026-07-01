@@ -1598,13 +1598,13 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 		for _, c := range cmds {
 			createHostCmds = append(createHostCmds, *c)
 		}
-		if err := BulkCreateHosts("escrow-import", createHostCmds); err != nil {
+		if err := BulkCreateHosts(ctx, "escrow-import", createHostCmds); err != nil {
 			// If bulk fails (e.g., duplicates), try per-item create for idempotency
 			for i, c := range cmds {
 				if i%100 == 0 {
 					activity.RecordHeartbeat(ctx, "fallback-hosts", c.ClID)
 				}
-				if ierr := CreateHost("escrow-import", *c); ierr != nil {
+				if ierr := CreateHost(ctx, "escrow-import", *c); ierr != nil {
 					// collect error event and continue; keep import resilient
 					*events = append(*events, ReportEvent{
 						Level:     "error",
@@ -1903,13 +1903,13 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 		for _, c := range cmds {
 			createDomCmds = append(createDomCmds, *c)
 		}
-		if err := BulkCreateDomains("escrow-import", createDomCmds); err != nil {
+		if err := BulkCreateDomains(ctx, "escrow-import", createDomCmds); err != nil {
 			// On error (duplicates, etc.), try per-item to be idempotent
 			for i, c := range cmds {
 				if i%100 == 0 {
 					activity.RecordHeartbeat(ctx, "fallback-domains", c.Name)
 				}
-				if ierr := CreateDomain("escrow-import", *c); ierr != nil {
+				if ierr := CreateDomain(ctx, "escrow-import", *c); ierr != nil {
 					// collect error and continue
 					*events = append(*events, ReportEvent{
 						Level:     "error",
@@ -2021,7 +2021,7 @@ func (a *EscrowImportActivities) linkDomainHosts(ctx context.Context, sqldb *sql
 				activity.RecordHeartbeat(ctx, "link-domains", p.d)
 			}
 			// AddHostToDomainByHostname is idempotent (safe to retry)
-			if err := AddHostToDomainByHostname("escrow-import", p.d, p.n); err != nil {
+			if err := AddHostToDomainByHostname(ctx, "escrow-import", p.d, p.n); err != nil {
 				*events = append(*events, ReportEvent{
 					Level:     "error",
 					Activity:  "ImportFromSQLite.linkDomainHosts",
@@ -2302,13 +2302,13 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 		for _, c := range cmds {
 			createContactCmds = append(createContactCmds, *c)
 		}
-		if err := BulkCreateContacts("escrow-import", createContactCmds); err != nil {
+		if err := BulkCreateContacts(ctx, "escrow-import", createContactCmds); err != nil {
 			// try per-item for idempotency
 			for i, c := range cmds {
 				if i%100 == 0 {
 					activity.RecordHeartbeat(ctx, "fallback-contacts", c.ID)
 				}
-				if ierr := CreateContact("escrow-import", *c); ierr != nil {
+				if ierr := CreateContact(ctx, "escrow-import", *c); ierr != nil {
 					*events = append(*events, ReportEvent{
 						Level:     "error",
 						Activity:  "ImportFromSQLite.contacts",

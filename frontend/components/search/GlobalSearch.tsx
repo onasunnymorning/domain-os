@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  Archive,
   Building2,
   FileText,
   Globe,
@@ -92,6 +93,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       results.tlds.length > 0 ||
       results.registrars.length > 0 ||
       results.nndns.length > 0 ||
+      results.tombstones.length > 0 ||
       results.registryOperators.length > 0 ||
       results.workflows.length > 0 ||
       results.documentation.length > 0);
@@ -107,6 +109,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       results?.tlds.length ?? 0,
       results?.registrars.length ?? 0,
       results?.nndns.length ?? 0,
+      results?.tombstones.length ?? 0,
       results?.registryOperators.length ?? 0,
     ];
     return groups.slice(0, index).some((count) => count > 0);
@@ -310,10 +313,39 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           </>
         )}
 
+        {/* Archived Domains (Tombstones) */}
+        {results && results.tombstones.length > 0 && (
+          <>
+            {hasPreviousGroup(6) && <CommandSeparator />}
+            <CommandGroup heading="Archived Domains">
+              {results.tombstones.map((t) => (
+                <CommandItem
+                  key={`tombstone-${t.roid}`}
+                  value={`tombstone-${t.name}-${t.roid}`}
+                  onSelect={() =>
+                    handleSelect(
+                      `/domains/${encodeURIComponent(t.name)}`
+                    )
+                  }
+                >
+                  <Archive className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1 truncate">{t.name}</span>
+                  <Badge
+                    variant="secondary"
+                    className="ml-2 text-xs font-normal bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+                  >
+                    Archived
+                  </Badge>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
         {/* Registry Operators */}
         {results && results.registryOperators.length > 0 && (
           <>
-            {hasPreviousGroup(6) && <CommandSeparator />}
+            {hasPreviousGroup(7) && <CommandSeparator />}
             <CommandGroup heading="Registry Operators">
               {results.registryOperators.map((ro) => (
                 <CommandItem

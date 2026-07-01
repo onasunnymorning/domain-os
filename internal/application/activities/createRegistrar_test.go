@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,7 @@ func TestCreateRegistrar(t *testing.T) {
 
 			BASEURL = mockServer.URL
 
-			result, err := CreateRegistrar(tt.correlationID, tt.cmd)
+			result, err := CreateRegistrar(context.Background(), tt.correlationID, tt.cmd)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

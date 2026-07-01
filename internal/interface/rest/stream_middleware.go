@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -11,8 +12,24 @@ func ContextMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("userid", "admin")
 		c.Set("app", entities.AppAdminAPI)
-		c.Set("correlation_id", c.Query("correlation_id"))
-		c.Set("trace_id", c.Query("trace_id"))
+
+		// 1. Correlation ID: query parameter first, fallback to header
+		correlationID := c.Query("correlation_id")
+		if correlationID == "" {
+			correlationID = c.GetHeader("X-Correlation-ID")
+		}
+		c.Set("correlation_id", correlationID)
+
+		// 2. Trace ID: query parameter first, fallback to header, fallback to generating new UUID
+		traceID := c.Query("trace_id")
+		if traceID == "" {
+			traceID = c.GetHeader("X-Trace-ID")
+		}
+		if traceID == "" {
+			traceID = uuid.New().String()
+		}
+		c.Set("trace_id", traceID)
+
 		c.Next()
 	}
 }

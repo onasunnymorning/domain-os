@@ -1,10 +1,10 @@
 package workflows
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -26,9 +26,17 @@ type EventRelayResult struct {
 	Notes          []string  `json:"notes"`
 }
 
+// RelayBatchResult is the lightweight result of a single relay batch activity.
+// Only metadata crosses the Temporal boundary — events stay inside the activity.
+type RelayBatchResult struct {
+	Archived int    `json:"archived"`
+	S3Key    string `json:"s3Key"`
+}
+
 // EventRelay orchestrates the relay of unpublished domain events to S3.
-// It fetches events in batches, archives each batch to S3, marks them as
-// published, and repeats until all events are relayed or the batch cap is hit.
+// It runs a consolidated activity per batch that fetches events, archives
+// them to S3, and marks them as published — all within a single activity
+// execution to avoid serializing large event payloads through Temporal.
 func EventRelay(ctx workflow.Context, params EventRelayParams) (EventRelayResult, error) {
 	started := workflow.Now(ctx)
 	result := EventRelayResult{
@@ -37,7 +45,7 @@ func EventRelay(ctx workflow.Context, params EventRelayParams) (EventRelayResult
 
 	// Apply defaults
 	if params.BatchSize <= 0 {
-		params.BatchSize = 500
+		params.BatchSize = 200
 	}
 	if params.MaxBatches <= 0 {
 		params.MaxBatches = 10
@@ -53,9 +61,6 @@ func EventRelay(ctx workflow.Context, params EventRelayParams) (EventRelayResult
 		return result, err
 	}
 
-	workflowID := getWorkflowID(ctx)
-	_ = workflowID // available for activity correlation if needed
-
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:    time.Second,
 		BackoffCoefficient: 2.0,
@@ -64,54 +69,33 @@ func EventRelay(ctx workflow.Context, params EventRelayParams) (EventRelayResult
 	}
 
 	options := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
+		StartToCloseTimeout: 10 * time.Minute,
+		HeartbeatTimeout:    2 * time.Minute,
 		RetryPolicy:         retrypolicy,
 	}
 
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// Batch loop: fetch → archive → mark published
+	// Batch loop: single consolidated activity per batch
 	for batch := 0; batch < params.MaxBatches; batch++ {
-		// Step A: Fetch unpublished events
-		var events []entities.DomainEvent
-		fetchErr := workflow.ExecuteActivity(ctx, "FetchUnpublishedEvents", params.BatchSize).Get(ctx, &events)
-		if fetchErr != nil {
+		var batchResult RelayBatchResult
+		batchErr := workflow.ExecuteActivity(ctx, "RelayEventBatch", params.BatchSize).Get(ctx, &batchResult)
+		if batchErr != nil {
 			result.CompletedAt = workflow.Now(ctx)
-			result.Notes = append(result.Notes, "Failed to fetch unpublished events: "+fetchErr.Error())
-			return result, fetchErr
+			result.Notes = append(result.Notes, fmt.Sprintf("Failed batch %d: %s", batch+1, batchErr.Error()))
+			return result, batchErr
 		}
 
-		// If no events returned, we're done
-		if len(events) == 0 {
+		// If nothing was archived, we're done
+		if batchResult.Archived == 0 {
 			break
 		}
 
-		// Step B: Archive the batch to S3
-		var s3Key string
-		archiveErr := workflow.ExecuteActivity(ctx, "ArchiveEventsToS3", events).Get(ctx, &s3Key)
-		if archiveErr != nil {
-			result.CompletedAt = workflow.Now(ctx)
-			result.Notes = append(result.Notes, "Failed to archive events to S3: "+archiveErr.Error())
-			return result, archiveErr
-		}
-		result.S3Keys = append(result.S3Keys, s3Key)
-
-		// Step C: Collect event IDs and mark them as published
-		eventIDs := make([]string, len(events))
-		for i, e := range events {
-			eventIDs[i] = e.ID
-		}
-
-		markErr := workflow.ExecuteActivity(ctx, "MarkEventsPublished", eventIDs).Get(ctx, nil)
-		if markErr != nil {
-			result.CompletedAt = workflow.Now(ctx)
-			result.Notes = append(result.Notes, "Failed to mark events as published: "+markErr.Error())
-			return result, markErr
-		}
-
-		// Update counters
-		result.TotalArchived += len(events)
+		result.TotalArchived += batchResult.Archived
 		result.TotalBatches++
+		if batchResult.S3Key != "" {
+			result.S3Keys = append(result.S3Keys, batchResult.S3Key)
+		}
 	}
 
 	// Final step: count remaining unpublished events

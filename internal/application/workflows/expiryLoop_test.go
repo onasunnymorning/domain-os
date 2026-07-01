@@ -39,7 +39,7 @@ func (s *ExpiryLoopWorkflowTestSuite) SetupTest() {
 }
 
 func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_NoDomains() {
-	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
 
 	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -53,7 +53,7 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_NoDomains() {
 
 func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 	// 4 domains found
-	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 4}, nil)
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 4}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "renew1.com"},
@@ -61,7 +61,7 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 		{Name: "expire1.com"},
 		{Name: "expire2.com"},
 	}
-	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
 		EligibleForAutoRenew: []string{"renew1.com", "renew2.com"},
@@ -70,7 +70,7 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 			{DomainName: "failcheck.com", Error: "some check error"},
 		},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, []string{"renew1.com", "renew2.com", "expire1.com", "expire2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"renew1.com", "renew2.com", "expire1.com", "expire2.com"}).Return(batchCheckRes, nil)
 
 	// Batch auto-renew: renew2.com fails
 	s.env.OnActivity("BatchAutoRenewDomains", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
@@ -114,19 +114,19 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 }
 
 func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_DryRun() {
-	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 2}, nil)
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 2}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "domain1.com"},
 		{Name: "domain2.com"},
 	}
-	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
 		EligibleForAutoRenew: []string{"domain1.com"},
 		EligibleForExpiry:    []string{"domain2.com"},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
 
 	// In dry run, write activities must NOT be called. If they are, it will panic because they are not mocked.
 
@@ -146,19 +146,19 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_DryRun() {
 
 func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_ContinueAsNew() {
 	// Count reports 100 domains but list only returns 2 (batch cap hit)
-	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
 
 	domains := []response.DomainExpiryItem{
 		{Name: "domain1.com"},
 		{Name: "domain2.com"},
 	}
-	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything).Return(domains, nil)
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
 	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
 		EligibleForAutoRenew: []string{},
 		EligibleForExpiry:    []string{"domain1.com", "domain2.com"},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
 
 	s.env.OnActivity("BatchExpireDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
 		Succeeded: []string{"domain1.com", "domain2.com"},

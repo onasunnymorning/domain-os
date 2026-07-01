@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,9 +70,9 @@ func TestSyncSpec5(t *testing.T) {
 			}()
 
 			// Call the function under test
-			err := SyncSpec5(tc.correlationID)
+			err := SyncSpec5(context.Background(), tc.correlationID)
 			if (err != nil) != tc.wantErr {
-				t.Errorf("SyncSpec5() error = %v, wantErr %v", err, tc.wantErr)
+				t.Errorf("SyncSpec5(context.Background(), ) error = %v, wantErr %v", err, tc.wantErr)
 			}
 		})
 	}

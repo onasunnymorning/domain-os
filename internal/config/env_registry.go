@@ -76,8 +76,6 @@ var Registry = []EnvVar{
 	{Name: "TEMPORAL_CLIENT_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Temporal mTLS client key PEM (legacy, use API key instead)"},
 	{Name: "TEMPORAL_CLIENT_CERT", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Temporal mTLS client cert PEM (legacy, use API key instead)"},
 	{Name: "TEMPORAL_UI_URL", Services: []Service{ServiceAPI}, Default: "http://localhost:8233", Description: "Temporal UI URL for workflow links"},
-	{Name: "TEMPORAL_LIFECYCLE_QUEUE", Services: []Service{ServiceAPI, ServiceWorker}, Default: "lifecycle", Description: "Temporal task queue for lifecycle workflows"},
-	{Name: "TEMPORAL_DATA_QUEUE", Services: []Service{ServiceWorker}, Default: "data-pipeline", Description: "Temporal task queue for data pipeline workflows"},
 
 	// ═══════════════════════════════════════════
 	// STORAGE (S3 / MinIO / R2)

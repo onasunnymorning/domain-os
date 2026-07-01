@@ -91,6 +91,14 @@ func (r *PostgresEventRepository) SearchEvents(ctx context.Context, filter entit
 		query = query.Where("ro_id = ?", filter.RoID)
 		countQuery = countQuery.Where("ro_id = ?", filter.RoID)
 	}
+	if filter.TraceID != "" {
+		query = query.Where("trace_id = ?", filter.TraceID)
+		countQuery = countQuery.Where("trace_id = ?", filter.TraceID)
+	}
+	if filter.CorrelationID != "" {
+		query = query.Where("correlation_id = ?", filter.CorrelationID)
+		countQuery = countQuery.Where("correlation_id = ?", filter.CorrelationID)
+	}
 	if filter.After != nil {
 		query = query.Where("occurred_at >= ?", *filter.After)
 		countQuery = countQuery.Where("occurred_at >= ?", *filter.After)

@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -83,7 +84,7 @@ func TestUnSetDomainStatus(t *testing.T) {
 
 			BASEURL = mockServer.URL
 
-			domain, err := UnSetDomainStatus(tt.cmd)
+			domain, err := UnSetDomainStatus(context.Background(), tt.cmd)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

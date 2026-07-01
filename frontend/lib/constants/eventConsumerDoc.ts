@@ -57,7 +57,7 @@ graph TB
 
 ### Event Relay (Scheduled: every 5 minutes)
 
-The relay is the core of the pipeline. It runs on the \`data-pipeline\` Temporal task queue.
+The relay is the core of the pipeline. It runs on the \`scheduled\` Temporal task queue.
 
 \`\`\`mermaid
 flowchart LR

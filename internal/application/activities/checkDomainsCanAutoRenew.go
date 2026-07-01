@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"sync"
 )
 
@@ -18,7 +19,7 @@ type CheckDomainsCanAutoRenewResult struct {
 }
 
 // CheckDomainsCanAutoRenew checks the auto-renew eligibility for multiple domains concurrently.
-func CheckDomainsCanAutoRenew(correlationID string, domainNames []string) (CheckDomainsCanAutoRenewResult, error) {
+func CheckDomainsCanAutoRenew(ctx context.Context, correlationID string, domainNames []string) (CheckDomainsCanAutoRenewResult, error) {
 	var result CheckDomainsCanAutoRenewResult
 	result.EligibleForAutoRenew = []string{}
 	result.EligibleForExpiry = []string{}
@@ -42,7 +43,7 @@ func CheckDomainsCanAutoRenew(correlationID string, domainNames []string) (Check
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			canAutoRenew, err := CheckDomainCanAutoRenew(correlationID, domain)
+			canAutoRenew, err := CheckDomainCanAutoRenew(ctx, correlationID, domain)
 
 			mu.Lock()
 			defer mu.Unlock()

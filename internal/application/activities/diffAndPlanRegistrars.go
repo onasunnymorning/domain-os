@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -18,7 +19,7 @@ type DiffPlanResult struct {
 // - Creates: new registrars to create (skips Reserved except special reserved GurIDs 9995, 9996, 9997)
 // - Updates: status updates where IANA status and platform status differ (forces OK for special reserved GurIDs)
 // - SkippedReserved: count of reserved registrars skipped
-func DiffAndPlanRegistrars(correlationID string, iana []entities.IANARegistrar, existing []entities.RegistrarListItem) (DiffPlanResult, error) {
+func DiffAndPlanRegistrars(ctx context.Context, correlationID string, iana []entities.IANARegistrar, existing []entities.RegistrarListItem) (DiffPlanResult, error) {
 	result := DiffPlanResult{
 		Creates: []commands.CreateRegistrarCommand{},
 		Updates: []commands.UpdateRegistrarStatusCommand{},

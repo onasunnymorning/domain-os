@@ -37,14 +37,16 @@ func (s *EventRepositorySuite) seedEvents() []DomainEventRecord {
 
 	records := []DomainEventRecord{
 		{
-			ID:         uuid.NewString(),
-			Source:     "test-api",
-			Type:       "domain.registered",
-			Subject:    "example.com",
-			OccurredAt: baseTime,
-			Data:       emptyData,
-			Actor:      "admin@test.com",
-			RoID:       "1001_DOM-APEX",
+			ID:            uuid.NewString(),
+			Source:        "test-api",
+			Type:          "domain.registered",
+			Subject:       "example.com",
+			OccurredAt:    baseTime,
+			Data:          emptyData,
+			Actor:         "admin@test.com",
+			RoID:          "1001_DOM-APEX",
+			TraceID:       "trace-reg-123",
+			CorrelationID: "corr-reg-456",
 		},
 		{
 			ID:         uuid.NewString(),
@@ -214,6 +216,32 @@ func (s *EventRepositorySuite) TestSearchByDateRange() {
 		s.True(!e.Time.Before(after), "event time should be >= after")
 		s.True(e.Time.Before(before), "event time should be < before")
 	}
+}
+
+func (s *EventRepositorySuite) TestSearchByTraceID() {
+	s.seedEvents()
+	ctx := context.Background()
+
+	result, err := s.repo.SearchEvents(ctx, entities.EventSearchFilter{
+		TraceID: "trace-reg-123",
+	})
+	s.Require().NoError(err)
+	s.Equal(int64(1), result.TotalCount)
+	s.Len(result.Events, 1)
+	s.Equal("trace-reg-123", result.Events[0].TraceID)
+}
+
+func (s *EventRepositorySuite) TestSearchByCorrelationID() {
+	s.seedEvents()
+	ctx := context.Background()
+
+	result, err := s.repo.SearchEvents(ctx, entities.EventSearchFilter{
+		CorrelationID: "corr-reg-456",
+	})
+	s.Require().NoError(err)
+	s.Equal(int64(1), result.TotalCount)
+	s.Len(result.Events, 1)
+	s.Equal("corr-reg-456", result.Events[0].CorrelationID)
 }
 
 func (s *EventRepositorySuite) TestSearchCursorPagination() {

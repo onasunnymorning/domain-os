@@ -202,6 +202,14 @@ func (r *EventArchiveReader) matchesFilter(evt entities.DomainEvent, filter enti
 		return false
 	}
 
+	if filter.TraceID != "" && evt.TraceID != filter.TraceID {
+		return false
+	}
+
+	if filter.CorrelationID != "" && evt.CorrelationID != filter.CorrelationID {
+		return false
+	}
+
 	if filter.After != nil && evt.Time.Before(*filter.After) {
 		return false
 	}

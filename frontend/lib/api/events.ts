@@ -15,6 +15,8 @@ export interface EventSearchParams {
   source?: string;
   actor?: string;
   roid?: string;
+  trace_id?: string;
+  correlation_id?: string;
   after?: string;  // ISO 8601
   before?: string; // ISO 8601
   limit?: number;

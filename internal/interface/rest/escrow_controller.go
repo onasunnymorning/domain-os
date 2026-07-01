@@ -198,7 +198,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 		return
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueHeavyBatch)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {

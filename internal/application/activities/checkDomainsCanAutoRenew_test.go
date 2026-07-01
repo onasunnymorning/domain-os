@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"fmt"
 	"io"
@@ -81,7 +82,7 @@ func (suite *CheckDomainsCanAutoRenewTestSuite) TestCheckDomainsCanAutoRenew_Mix
 	BASEURL = "http://localhost:8000"
 	defer func() { BASEURL = originalBaseURL }()
 
-	result, err := CheckDomainsCanAutoRenew("testCorr", domains)
+	result, err := CheckDomainsCanAutoRenew(context.Background(), "testCorr", domains)
 	suite.NoError(err)
 
 	suite.ElementsMatch([]string{"domain1.com"}, result.EligibleForAutoRenew)

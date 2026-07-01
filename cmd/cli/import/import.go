@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"runtime"
@@ -87,7 +88,7 @@ func importRegistrars(c *cli.Context) error {
 	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
 	log.Println("[INFO] Correlation ID:", correlationID)
 	// Get a count of the registrars in the system
-	count, err := activities.CountRegistrars(correlationID)
+	count, err := activities.CountRegistrars(context.Background(), correlationID)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -99,28 +100,28 @@ func importRegistrars(c *cli.Context) error {
 
 	// Get the ICANN registrars
 	log.Printf("[INFO] Getting ICANN registrars from file: %s\n", c.String("filename"))
-	icannRars, err := activities.GetICANNRegistrars(correlationID, c.String("filename"))
+	icannRars, err := activities.GetICANNRegistrars(context.Background(), correlationID, c.String("filename"))
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Sync our IANA registrar list
 	log.Println("[INFO] Syncing IANA registrars...")
-	syncErr := activities.SyncIanaRegistrars(correlationID)
+	syncErr := activities.SyncIanaRegistrars(context.Background(), correlationID)
 	if syncErr != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the IANA registrars
 	log.Println("[INFO] Getting IANA registrars...")
-	ianaRars, err := activities.GetIANARegistrars(correlationID, 100)
+	ianaRars, err := activities.GetIANARegistrars(context.Background(), correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the create commands
 	log.Println("[INFO] Creating registrar CREATE commands...")
-	createCommands, err := activities.MakeCreateRegistrarCommands(correlationID, icannRars, ianaRars)
+	createCommands, err := activities.MakeCreateRegistrarCommands(context.Background(), correlationID, icannRars, ianaRars)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -131,7 +132,7 @@ func importRegistrars(c *cli.Context) error {
 	pbar := progressbar.New(len(createCommands))
 	// Process the commands in chunks of 100
 	for chunk := range commands.ChunkCreateRegistrarCommands(createCommands, c.Int("chunksize")) {
-		if err := activities.BulkCreateRegistrars(correlationID, chunk); err != nil {
+		if err := activities.BulkCreateRegistrars(context.Background(), correlationID, chunk); err != nil {
 			return cli.Exit(err, 1)
 		}
 		pbar.Add(len(chunk))

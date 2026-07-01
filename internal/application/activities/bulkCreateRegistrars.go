@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 )
 
-func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarCommand) error {
+func BulkCreateRegistrars(ctx context.Context, correlationID string, cmds []commands.CreateRegistrarCommand) error {
 	ENDPOINT := fmt.Sprintf("%s/registrars/bulk", BASEURL)
 
 	// Set up an API client
@@ -30,11 +31,10 @@ func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarC
 	}
 
 	// Create the request
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonBody), correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

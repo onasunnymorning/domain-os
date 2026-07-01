@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -32,7 +33,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		i := iana(1001, "Example Registrar, Inc.", entities.IANARegistrarStatusAccredited)
 		ex := existingFromIANA(i, entities.RegistrarStatusOK, entities.IANARegistrarStatusAccredited)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -51,7 +52,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		i := iana(1002, "Terminated Registrar, LLC", entities.IANARegistrarStatusTerminated)
 		ex := existingFromIANA(i, entities.RegistrarStatusOK, entities.IANARegistrarStatusAccredited)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -71,7 +72,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		// Platform status is OK (correct) but IANA status is still Unknown
 		ex := existingFromIANA(i, entities.RegistrarStatusOK, entities.IANARegistrarStatusUnknown)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -92,7 +93,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		i := iana(1004, "All Good Registrar", entities.IANARegistrarStatusTerminated)
 		ex := existingFromIANA(i, entities.RegistrarStatusTerminated, entities.IANARegistrarStatusTerminated)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -104,7 +105,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 	t.Run("create when new accredited registrar not present", func(t *testing.T) {
 		i := iana(1003, "New Registrar, Corp.", entities.IANARegistrarStatusAccredited)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, nil)
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -119,7 +120,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 	t.Run("skip reserved registrar when not special GurIDs", func(t *testing.T) {
 		i := iana(2001, "Reserved Registrar", entities.IANARegistrarStatusReserved)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, nil)
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -134,7 +135,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 	t.Run("create reserved for special GurID 9995", func(t *testing.T) {
 		i := iana(9995, "Pre-Delegation Testing Registrar", entities.IANARegistrarStatusReserved)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, nil)
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -150,7 +151,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		i := iana(9995, "Pre-Delegation Testing", entities.IANARegistrarStatusReserved)
 		ex := existingFromIANA(i, entities.RegistrarStatusReadonly, entities.IANARegistrarStatusReserved)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -165,7 +166,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 	t.Run("create reserved for special GurID 9997", func(t *testing.T) {
 		i := iana(9997, "ICANN SLA Monitoring", entities.IANARegistrarStatusReserved)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, nil)
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -181,7 +182,7 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		i := iana(9997, "ICANN SLA Monitoring", entities.IANARegistrarStatusReserved)
 		ex := existingFromIANA(i, entities.RegistrarStatusReadonly, entities.IANARegistrarStatusReserved)
 
-		plan, err := DiffAndPlanRegistrars("corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

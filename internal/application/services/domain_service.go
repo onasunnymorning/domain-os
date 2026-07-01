@@ -52,6 +52,22 @@ type DomainService struct {
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
 	eventPublisher   repositories.EventPublisher
+	tombstoneRepo    repositories.TombstoneRepository // optional — for domain archival
+}
+
+// SetTombstoneRepo sets the optional tombstone repository for domain archival.
+// This uses a setter instead of a constructor parameter to avoid breaking
+// existing call sites (API server, workers, MCP, tests, etc.).
+func (s *DomainService) SetTombstoneRepo(repo repositories.TombstoneRepository) {
+	s.tombstoneRepo = repo
+}
+
+// derivePurgeReason determines the purge reason based on the domain's current state.
+func derivePurgeReason(dom *entities.Domain) string {
+	if dom.Status.PendingDelete {
+		return "expired"
+	}
+	return "admin_delete"
 }
 
 // NewDomainService returns a new instance of a DomainService
@@ -406,6 +422,35 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 		createdNNDN, err = s.nndnRepo.CreateNNDN(ctx, nndn)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Create a tombstone for archival (always, regardless of DropCatch).
+	// This preserves the domain's metadata and final snapshot for operator audit,
+	// lifecycle browsing, and ROID-based event linking after the domain is deleted.
+	if s.tombstoneRepo != nil {
+		var expiredAt *time.Time
+		if !dom.ExpiryDate.IsZero() && dom.ExpiryDate.Before(time.Now()) {
+			expiredAt = &dom.ExpiryDate
+		}
+
+		tombstone := &entities.DomainTombstone{
+			RoID:          dom.RoID,
+			Name:          dom.Name,
+			UName:         dom.UName,
+			TLDName:       dom.TLDName,
+			RegistrarClID: string(dom.ClID),
+			RegisteredAt:  dom.CreatedAt,
+			ExpiredAt:     expiredAt,
+			PurgedAt:      time.Now().UTC(),
+			PurgeReason:   derivePurgeReason(dom),
+			DropCatch:     dom.DropCatch,
+			LastSnapshot:  dom,
+			CreatedAt:     time.Now().UTC(),
+		}
+		if _, err := s.tombstoneRepo.CreateTombstone(ctx, tombstone); err != nil {
+			// Log but don't fail the purge — tombstone creation is non-critical
+			log.Printf("WARNING: failed to create tombstone for %s (ROID=%s): %v", dom.Name, dom.RoID, err)
 		}
 	}
 

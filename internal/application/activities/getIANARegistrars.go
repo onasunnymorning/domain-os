@@ -14,7 +14,7 @@ import (
 )
 
 // GetIANARegistrars queries an API for all IANA registrars, following pagination links until there are no more.
-func GetIANARegistrars(correlationID string, batchsize int) ([]entities.IANARegistrar, error) {
+func GetIANARegistrars(ctx context.Context, correlationID string, batchsize int) ([]entities.IANARegistrar, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -36,7 +36,7 @@ func GetIANARegistrars(correlationID string, batchsize int) ([]entities.IANARegi
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchIANARegistrarsPage(context.Background(), client, currentURL, GetBearerToken())
+		apiResponse, err := fetchIANARegistrarsPage(ctx, client, currentURL, GetBearerToken(), correlationID)
 		if err != nil {
 			return nil, err
 		}
@@ -71,14 +71,13 @@ func GetIANARegistrars(correlationID string, batchsize int) ([]entities.IANARegi
 
 // fetchIANARegistrarsPage fetches a single page of IANA registrars from the provided URL.
 // It handles sending the request, reading the response, checking the status code, and unmarshaling JSON.
-func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
+func fetchIANARegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string, correlationID string) (*response.ListItemResult, error) {
 	// Create the request with context for cancellation/timeouts
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	req, err := prepareRequest(ctx, http.MethodGet, urlStr, nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	// Attach bearer token (e.g., "Bearer abc123")
-	req.Header.Add("Authorization", bearerToken)
 
 	// Execute the request
 	resp, err := client.Do(req)

@@ -171,3 +171,40 @@ The Cloud Infrastructure page (`frontend/app/cloud/page.tsx`) is the single sour
 - Mark vars as `secret: true` if they contain credentials, API keys with write/read access, or connection strings with passwords
 - `NEXT_PUBLIC_*` vars are **not** secrets (they're baked into the client bundle)
 - The `services` array should list which deployment targets use the var: `'API'`, `'Frontend'`, or `'Worker'`
+
+## Temporal Worker & Queue Architecture
+
+The project uses Temporal for workflow orchestration with a queue-per-workload-profile design. Understanding this is critical when adding new workflows.
+
+### Queue Assignment Rules
+
+When creating a new workflow, assign it to the correct queue based on its workload profile:
+
+| Queue | Use For | Key Trait |
+|-------|---------|----------|
+| `fast-ops` | Operator-facing, sub-minute activities (DNS checks, HTTP fetches) | Latency-sensitive — must start within seconds |
+| `scheduled` | Periodic background work (event relay, sync, prune) | Tolerates 10-30s of scheduling delay |
+| `heavy-batch` | Multi-hour activities (escrow import, snapshots, TLD cleanup) | Resource-intensive — must NOT block other queues |
+| `lifecycle` | Domain state-machine transitions (expiry, purge, restore) | Steady hourly cadence with moderate durations |
+
+### When Adding a New Workflow
+
+1. **Classify the workload** — What's the expected activity duration? Is it operator-facing (latency-sensitive) or background (tolerant)? Is it scheduled or ad-hoc?
+2. **Assign the correct queue** — Use the table above. Never put a multi-hour activity on `fast-ops` or `scheduled`.
+3. **Register on the correct worker** — In `cmd/workers/unified/main.go`, register the workflow and activities on the worker for the chosen queue.
+4. **Update the workflow registry** — In `internal/application/workflows/workflow_registry.go`, set the `Queue` field to the correct constant from `internal/infrastructure/temporal/queues.go`.
+5. **If adding a new scheduled workflow** — Add it to `internal/infrastructure/bootstrap/ensure.go` with the correct queue.
+
+### Anti-Patterns to Avoid
+
+- **Mixing fast and slow on the same queue** — A 30-second activity and a 10-hour activity should never share a queue. The long activity starves the short one of pollers.
+- **Default `worker.Options{}`** — Always specify `MaxConcurrentWorkflowTaskPollers`, `MaxConcurrentActivityTaskPollers`, and `MaxConcurrentActivityExecutionSize` explicitly.
+- **Heartbeat timeout < expected queue delay** — If your activity might sit in the queue for 2 minutes waiting for a poller, a 2-minute heartbeat timeout will fire before the activity even starts. Set heartbeat timeouts with queue delay headroom.
+
+### Reference
+
+- Queue constants: `internal/infrastructure/temporal/queues.go`
+- Worker config: `cmd/workers/unified/main.go`
+- Workflow registry: `internal/application/workflows/workflow_registry.go`
+- Bootstrap schedules: `internal/infrastructure/bootstrap/ensure.go`
+- In-app documentation: `/docs/worker-queue-architecture`

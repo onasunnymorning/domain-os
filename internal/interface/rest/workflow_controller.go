@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/onasunnymorning/domain-os/internal/application/serialdrift"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
@@ -131,7 +132,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	var req startRegistrarSyncRequest
 	_ = ctx.ShouldBindJSON(&req) // optional body
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueScheduled)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -181,7 +182,7 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 		req.KeepTLDAndPhases = false
 	}
 
-	cfg := temporal.NewClientConfigFromEnv(temporal.QueueData)
+	cfg := temporal.NewClientConfigFromEnv(temporal.QueueHeavyBatch)
 
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -467,6 +468,62 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		wfID = fmt.Sprintf("seed-from-snapshot-%s", ts)
 		workflow = workflows.SeedFromSnapshotWorkflow
 		args = []interface{}{workflows.SeedFromSnapshotParams{SnapshotKey: snapshotKey}}
+
+	case "tombstone-backfill":
+		var backfillParams workflows.TombstoneBackfillParams
+		if req.Params != nil {
+			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
+				backfillParams.BatchSize = int(bs)
+			}
+			if mb, ok := req.Params["maxBatches"].(float64); ok && mb > 0 {
+				backfillParams.MaxBatches = int(mb)
+			}
+		}
+		wfID = fmt.Sprintf("tombstone-backfill-%s", ts)
+		workflow = workflows.TombstoneBackfill
+		args = []interface{}{backfillParams}
+
+	case "serial-drift":
+		tenantID, _ := req.Params["tenantId"].(string)
+		slavingID, _ := req.Params["slavingId"].(string)
+		zone, _ := req.Params["zone"].(string)
+		if tenantID == "" || zone == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tenantId and zone are required for serial-drift"})
+			return
+		}
+
+		// Extract nameserver lists (required for ad-hoc runs when slavingId is empty)
+		var masterNS, slaveNS []string
+		if rawMaster, ok := req.Params["masterNS"].([]interface{}); ok {
+			for _, v := range rawMaster {
+				if s, ok := v.(string); ok && s != "" {
+					masterNS = append(masterNS, s)
+				}
+			}
+		}
+		if rawSlave, ok := req.Params["slaveNS"].([]interface{}); ok {
+			for _, v := range rawSlave {
+				if s, ok := v.(string); ok && s != "" {
+					slaveNS = append(slaveNS, s)
+				}
+			}
+		}
+
+		// For ad-hoc runs (no slavingId), nameservers are required
+		if slavingID == "" && (len(masterNS) == 0 || len(slaveNS) == 0) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "masterNS and slaveNS are required when no slavingId is provided"})
+			return
+		}
+
+		wfID = fmt.Sprintf("serial-drift-%s-%s", zone, ts)
+		workflow = workflows.CheckSerialDriftWorkflow
+		args = []interface{}{serialdrift.Params{
+			TenantID:  tenantID,
+			SlavingID: slavingID,
+			Zone:      zone,
+			MasterNS:  masterNS,
+			SlaveNS:   slaveNS,
+		}}
 
 	default:
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported workflow type: %s", req.WorkflowType)})

@@ -83,11 +83,11 @@ function TLDsPageInner() {
   );
 
   const handleExportCSV = () => {
-    const headers = ['TLD Name', 'Domains Count', 'Status', 'Escrow Status', 'Registry Operator ID'];
+    const headers = ['TLD Name', 'Domains Count', 'DNS Status', 'Escrow Status', 'Registry Operator ID'];
     const rows = tlds.map(t => [
       t.Name,
       t.DomainCount ?? 0,
-      t.Accredited ? 'Accredited' : 'Disabled',
+      t.EnableDNS ? 'Enabled' : 'Disabled',
       t.AllowEscrowImport ? 'Enabled' : 'Disabled',
       t.RyID || ''
     ]);

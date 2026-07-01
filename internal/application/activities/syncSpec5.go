@@ -1,13 +1,14 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 )
 
 // SyncSpec5 triggers the synchronization of Spec5 labels from ICANN.
-func SyncSpec5(correlationID string) error {
+func SyncSpec5(ctx context.Context, correlationID string) error {
 	ENDPOINT := fmt.Sprintf("%s/sync/icann-spec5", BASEURL)
 
 	// Set up an API client
@@ -21,11 +22,10 @@ func SyncSpec5(correlationID string) error {
 	}
 
 	// Create the request
-	req, err := http.NewRequest("PUT", URL.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)
