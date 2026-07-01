@@ -48,7 +48,7 @@ services:
       - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
       - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -61,7 +61,6 @@ services:
       # Temporal Client (CI: temporalite, no TLS)
       - TEMPORAL_HOST_PORT=temporal:7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
 
@@ -130,11 +129,14 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
-      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
-      - TEMPORAL_DATA_QUEUE=data-pipeline
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
     networks:
       - dos
 # TEST container from wich we will be running integration tests based on a postman collection
