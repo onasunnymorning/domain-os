@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"runtime"
@@ -79,7 +80,7 @@ func syncRegistrars(c *cli.Context) error {
 	log.Println("Correlation ID:", correlationID)
 
 	// Get a count of the registrars in the system
-	count, err := activities.CountRegistrars(correlationID)
+	count, err := activities.CountRegistrars(context.Background(), correlationID)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -91,7 +92,7 @@ func syncRegistrars(c *cli.Context) error {
 
 	// Sync our IANA registrar list
 	log.Println("Syncing IANA registrars...")
-	syncErr := activities.SyncIanaRegistrars(correlationID)
+	syncErr := activities.SyncIanaRegistrars(context.Background(), correlationID)
 	if syncErr != nil {
 		return cli.Exit(err, 1)
 	}
@@ -100,14 +101,14 @@ func syncRegistrars(c *cli.Context) error {
 	log.Println("Getting IANA registrars...")
 
 	// TODO: add command flag for batchsize instead of hard coding
-	ianaRars, err := activities.GetIANARegistrars(correlationID, 100)
+	ianaRars, err := activities.GetIANARegistrars(context.Background(), correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the registrars currently in the platform
 	log.Println("Getting existing Registrars...")
-	rars, err := activities.GetRegistrarListItems(correlationID, 100)
+	rars, err := activities.GetRegistrarListItems(context.Background(), correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -128,7 +129,7 @@ func syncRegistrars(c *cli.Context) error {
 					log.Printf("Updating registrar %s status from %s to %s\n", cmd.ClID, cmd.OldStatus, cmd.NewStatus)
 
 					// update the registrar status
-					err := activities.SetRegistrarStatus(correlationID, cmd.ClID, cmd.NewStatus)
+					err := activities.SetRegistrarStatus(context.Background(), correlationID, cmd.ClID, cmd.NewStatus)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}
@@ -154,7 +155,7 @@ func syncRegistrars(c *cli.Context) error {
 			}
 
 			// create the registrar
-			_, err = activities.CreateRegistrar(correlationID, *cmd)
+			_, err = activities.CreateRegistrar(context.Background(), correlationID, *cmd)
 			if err != nil {
 				return cli.Exit(err, 1)
 			}

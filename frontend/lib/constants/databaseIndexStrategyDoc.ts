@@ -59,6 +59,8 @@ These prevent full table scans on the largest table in the system.
 |-------|---------|---------|
 | \`domain_events\` | \`(subject, occurred_at DESC)\` | Event timeline per domain — replaces 2 separate indexes |
 | \`phases\` | \`(tld_name, type, starts)\` | \`activeGAPhaseFilter\` EXISTS subquery on every lifecycle query |
+| \`domains\` | \`(tld_name, expiry_date)\` | TLD-only expiring domain queries (e.g. global workflows) |
+| \`domains\` | \`(tld_name, purge_date)\` | TLD-only purgeable domain queries (e.g. global workflows) |
 
 ### Supporting Indexes
 
@@ -84,7 +86,7 @@ The \`domain_events\` table is append-only and grows to 500M+ rows. The original
 | \`correlation_id\` | ❌ No |
 | \`published\` | ✅ Yes (outbox relay) |
 
-### After (4 indexes, ~30 GB)
+### After (5 indexes, ~30 GB)
 
 | Index | Purpose |
 |-------|---------|
@@ -92,6 +94,7 @@ The \`domain_events\` table is append-only and grows to 500M+ rows. The original
 | \`occurred_at DESC\` | Global timeline query — single index covers \`ORDER BY occurred_at DESC LIMIT ?\` (e.g. ListRecentEvents) |
 | \`published\` | Outbox relay flag for future event consumer |
 | \`id\` (PK) | Primary key |
+| \`id\` (Partial) | Partial index \`WHERE type = 'domain.purged' AND ro_id != ''\` to optimize tombstone backfill pagination |
 
 **Net savings: ~60 GB** of index storage at scale, plus reduced write amplification on every event INSERT.
 
@@ -139,6 +142,18 @@ CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts
 -- accreditations by TLD
 CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name
   ON accreditations (tld_name);
+
+-- domain_events partial index for tombstone backfill pagination
+CREATE INDEX IF NOT EXISTS idx_domain_events_purged_id
+  ON domain_events (id) WHERE type = 'domain.purged' AND ro_id != '';
+
+-- domains composite index for TLD-only expiring domains
+CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry
+  ON domains (tld_name, expiry_date);
+
+-- domains composite index for TLD-only purgeable domains
+CREATE INDEX IF NOT EXISTS idx_domains_tld_purge
+  ON domains (tld_name, purge_date);
 \`\`\`
 
 ### Legacy Index Cleanup

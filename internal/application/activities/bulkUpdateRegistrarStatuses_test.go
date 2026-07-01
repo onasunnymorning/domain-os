@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -187,7 +188,7 @@ func TestBulkUpdateRegistrarStatuses(t *testing.T) {
 			defer func() { os.Setenv("ADMIN_TOKEN", originalAdminToken) }()
 
 			// Execute
-			result, err := BulkUpdateRegistrarStatuses("test-correlation-id", tc.updates)
+			result, err := BulkUpdateRegistrarStatuses(context.Background(), "test-correlation-id", tc.updates)
 
 			// The function never returns an error at the top level
 			require.NoError(t, err)

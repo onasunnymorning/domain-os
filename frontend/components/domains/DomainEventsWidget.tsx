@@ -19,14 +19,20 @@ import {
   ChevronUp,
   History,
   FileCode,
-  Loader2
+  Loader2,
+  GitCompare
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
+import { StateDiffModal } from "@/components/shared/StateDiffModal";
+import { DomainEvent } from "@/lib/types/domain";
 
 interface Props {
   domainName: string;
+  /** When provided, events are filtered by ROID instead of domain name (for archived incarnations). */
+  roid?: string;
 }
 
-export function DomainEventsWidget({ domainName }: Props) {
+export function DomainEventsWidget({ domainName, roid }: Props) {
   const {
     data,
     isLoading,
@@ -34,13 +40,18 @@ export function DomainEventsWidget({ domainName }: Props) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useEventSearch({ subject: domainName, limit: 50 });
+  } = useEventSearch(
+    roid
+      ? { roid, limit: 50 }
+      : { subject: domainName, limit: 50 }
+  );
 
   // Flatten paginated results
   const events = data?.pages.flatMap(page => page.data) ?? [];
   const totalCount = data?.pages[0]?.totalCount ?? 0;
 
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [activeDiffEvent, setActiveDiffEvent] = useState<DomainEvent | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedEventId(expandedEventId === id ? null : id);
@@ -226,7 +237,7 @@ export function DomainEventsWidget({ domainName }: Props) {
                   )}
                 </div>
 
-                {/* Advanced Info & Toggle */}
+                 {/* Advanced Info & Toggle */}
                 <div className="flex items-center justify-between text-xs pt-1">
                   <div className="flex gap-4 text-muted-foreground font-mono text-[10px]">
                     {event.trace_id && (
@@ -240,16 +251,29 @@ export function DomainEventsWidget({ domainName }: Props) {
                       </span>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground"
-                    onClick={() => toggleExpand(event.id)}
-                  >
-                    <FileCode className="h-3.5 w-3.5" />
-                    {isExpanded ? "Hide Payload" : "Show Payload"}
-                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {(event.before_state || event.after_state) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs font-medium gap-1 text-primary hover:text-primary hover:bg-muted cursor-pointer"
+                        onClick={() => setActiveDiffEvent(event)}
+                      >
+                        <GitCompare className="h-3.5 w-3.5" />
+                        Diff State
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                      onClick={() => toggleExpand(event.id)}
+                    >
+                      <FileCode className="h-3.5 w-3.5" />
+                      {isExpanded ? "Hide Payload" : "Show Payload"}
+                      {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Structured payload / Raw JSON block */}
@@ -264,31 +288,43 @@ export function DomainEventsWidget({ domainName }: Props) {
                           </div>
                         )}
                         {event.command && (
-                          <details className="group">
+                          <details className="group relative group/code">
                             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Command</summary>
-                            <pre className="mt-1 pl-3 border-l-2 border-primary/30"><code>{JSON.stringify(event.command, null, 2)}</code></pre>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-primary/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.command, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.command, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
                           </details>
                         )}
                         {event.before_state && (
-                          <details className="group">
+                          <details className="group relative group/code">
                             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Before State</summary>
-                            <pre className="mt-1 pl-3 border-l-2 border-orange-400/30"><code>{JSON.stringify(event.before_state, null, 2)}</code></pre>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-orange-400/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.before_state, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.before_state, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
                           </details>
                         )}
                         {event.after_state && (
-                          <details className="group">
+                          <details className="group relative group/code">
                             <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">After State</summary>
-                            <pre className="mt-1 pl-3 border-l-2 border-emerald-400/30"><code>{JSON.stringify(event.after_state, null, 2)}</code></pre>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-emerald-400/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.after_state, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.after_state, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
                           </details>
                         )}
                       </div>
                     )}
                     {/* Always show full raw JSON */}
-                    <details className={event.command || event.before_state || event.after_state ? 'group' : 'group open'}>
+                    <details className={`relative group/code ${event.command || event.before_state || event.after_state ? 'group' : 'group open'}`}>
                       <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors font-sans">
                         Raw Event JSON
                       </summary>
-                      <pre className="mt-1"><code>{JSON.stringify(event, null, 2)}</code></pre>
+                      <div className="relative">
+                        <pre className="mt-1 overflow-x-auto pr-10"><code>{JSON.stringify(event, null, 2)}</code></pre>
+                        <CopyButton value={JSON.stringify(event, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                      </div>
                     </details>
                   </div>
                 )}
@@ -316,6 +352,15 @@ export function DomainEventsWidget({ domainName }: Props) {
           </div>
         )}
       </CardContent>
+
+      <StateDiffModal
+        isOpen={!!activeDiffEvent}
+        onClose={() => setActiveDiffEvent(null)}
+        before={activeDiffEvent?.before_state}
+        after={activeDiffEvent?.after_state}
+        title="State Difference"
+        subtitle={`Comparing before/after state for event: ${activeDiffEvent ? getEventConfig(activeDiffEvent.type).title : ""}`}
+      />
     </Card>
   );
 }

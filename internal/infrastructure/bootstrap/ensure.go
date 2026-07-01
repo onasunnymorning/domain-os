@@ -66,7 +66,7 @@ func desiredSchedules() []scheduleSpec {
 		{
 			ID:            "sync-registrars",
 			Workflow:      workflows.SyncRegistrarsWorkflow,
-			Queue:         temporal.QueueLifecycle,
+			Queue:         temporal.QueueScheduled,
 			Interval:      24 * time.Hour,
 			Offset:        2 * time.Hour,
 			Args:          []interface{}{workflows.SyncRegistrarsParams{}},
@@ -76,16 +76,25 @@ func desiredSchedules() []scheduleSpec {
 		{
 			ID:            "update-fx",
 			Workflow:      workflows.UpdateFX,
-			Queue:         temporal.QueueData,
+			Queue:         temporal.QueueFastOps,
 			Interval:      time.Hour,
 			Offset:        30 * time.Minute,
 			CatchupWindow: time.Hour,
 			Note:          "Updates FX rates hourly — managed by bootstrap",
 		},
 		{
+			ID:            "sync-spec5",
+			Workflow:      workflows.SyncSpec5Workflow,
+			Queue:         temporal.QueueScheduled,
+			Interval:      24 * time.Hour,
+			Offset:        4 * time.Hour,
+			CatchupWindow: 24 * time.Hour,
+			Note:          "Syncs Spec5 XML daily — managed by bootstrap",
+		},
+		{
 			ID:            "event-relay",
 			Workflow:      workflows.EventRelay,
-			Queue:         temporal.QueueData,
+			Queue:         temporal.QueueScheduled,
 			Interval:      5 * time.Minute,
 			Offset:        0,
 			Args:          []interface{}{workflows.EventRelayParams{}},
@@ -95,7 +104,7 @@ func desiredSchedules() []scheduleSpec {
 		{
 			ID:            "event-prune",
 			Workflow:      workflows.EventPrune,
-			Queue:         temporal.QueueData,
+			Queue:         temporal.QueueScheduled,
 			Interval:      24 * time.Hour,
 			Offset:        6 * time.Hour,
 			Args:          []interface{}{workflows.EventPruneParams{}},
@@ -256,6 +265,14 @@ func scheduleDrifted(desc client.ScheduleDescription, spec scheduleSpec) bool {
 	} else {
 		// No spec or intervals means drift
 		return true
+	}
+
+	// Check workflow action (task queue, workflow ID pattern)
+	if action, ok := sched.Action.(*client.ScheduleWorkflowAction); ok {
+		if action.TaskQueue != spec.Queue {
+			log.Printf("[infra] Schedule %q task queue drifted: have %q, want %q", spec.ID, action.TaskQueue, spec.Queue)
+			return true
+		}
 	}
 
 	// Check overlap policy

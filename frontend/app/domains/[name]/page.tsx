@@ -22,6 +22,8 @@ import { DomainEventsWidget } from "@/components/domains/DomainEventsWidget";
 import { DomainSettingsControls } from "@/components/domains/DomainSettingsControls";
 import { PriceChecker } from "@/components/domains/PriceChecker";
 import { CopyButton } from "@/components/ui/copy-button";
+import { ArchivedDomainView } from "@/components/domains/ArchivedDomainView";
+import { useTombstonesByName } from "@/lib/hooks/useTombstones";
 
 
 function formatUTCString(d: Date) {
@@ -70,6 +72,14 @@ export default function DomainDetailPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [showRawHosts, setShowRawHosts] = useState(false);
   const domain = (data || {}) as DomainDetail;
+
+  // When domain is not found, check for tombstones (archived incarnations)
+  const is404 = !!error && (error as any)?.response?.status === 404;
+  const domainNotFound = !isLoading && (!!error || !data);
+  const { data: tombstones, isLoading: isTombstonesLoading } = useTombstonesByName(
+    name,
+    domainNotFound
+  );
 
   const renewalQuoteReq = useMemo(() => {
     if (!domain?.Name || !domain?.ClID) return null;
@@ -184,6 +194,11 @@ export default function DomainDetailPage() {
           <div>
             <DomainLifecycleWidget domain={domain} />
           </div>
+        )}
+
+        {/* Domain Events / Activity History */}
+        {!isLoading && !error && domain && (
+          <DomainEventsWidget domainName={domain.Name} />
         )}
 
         {/* Status & Grace Periods */}
@@ -306,11 +321,6 @@ export default function DomainDetailPage() {
           </Card>
         )}
 
-        {/* Domain Events / Activity History */}
-        {!isLoading && !error && domain && (
-          <DomainEventsWidget domainName={domain.Name} />
-        )}
-
 
 
 
@@ -330,7 +340,7 @@ export default function DomainDetailPage() {
               </div>
             )}
 
-            {error && (
+            {error && !is404 && (
               <div className="text-red-600">Failed to load domain: {(error as any)?.message || "Unknown error"}</div>
             )}
 
@@ -463,8 +473,16 @@ export default function DomainDetailPage() {
               </div>
             )}
 
-            {!isLoading && !error && !data && (
-              <div className="text-muted-foreground">Domain not found.</div>
+            {!isLoading && domainNotFound && !isTombstonesLoading && (!tombstones || tombstones.length === 0) && (
+              <div className="text-muted-foreground">No domain currently exists with the name <span className="font-mono font-medium">{name}</span>.</div>
+            )}
+
+            {!isLoading && domainNotFound && isTombstonesLoading && (
+              <div className="text-muted-foreground text-sm">Checking archive…</div>
+            )}
+
+            {!isLoading && domainNotFound && tombstones && tombstones.length > 0 && (
+              <ArchivedDomainView tombstones={tombstones} domainName={name} />
             )}
           </CardContent>
         </Card>

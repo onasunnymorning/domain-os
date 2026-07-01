@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -57,12 +58,12 @@ func TestGetIANARegistrars(t *testing.T) {
 			os.Setenv("AUTH0_ENABLED", "false") // Ensure we use fallback
 
 			// Call the activity
-			got, err := GetIANARegistrars("corr-xyz", 100)
+			got, err := GetIANARegistrars(context.Background(), "corr-xyz", 100)
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("GetIANARegistrars() error = %v, wantErr=%v", err, tc.wantErr)
+				t.Fatalf("GetIANARegistrars(context.Background(), ) error = %v, wantErr=%v", err, tc.wantErr)
 			}
 			if err == nil && len(got) != tc.wantCount {
-				t.Fatalf("GetIANARegistrars() count = %d, want %d", len(got), tc.wantCount)
+				t.Fatalf("GetIANARegistrars(context.Background(), ) count = %d, want %d", len(got), tc.wantCount)
 			}
 		})
 	}

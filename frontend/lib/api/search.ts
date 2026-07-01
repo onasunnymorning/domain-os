@@ -5,6 +5,7 @@ import type { RegistrarListItem } from '@/lib/types/registrar';
 import type { NNDN } from './nndns';
 import type { RegistryOperator } from './types';
 import type { WorkflowMeta } from './workflows';
+import type { DomainTombstone } from './tombstones';
 
 export interface DocSearchResult {
   workflowKey: string;
@@ -18,6 +19,7 @@ export interface SearchResults {
   tlds: TLD[];
   registrars: RegistrarListItem[];
   nndns: NNDN[];
+  tombstones: DomainTombstone[];
   registryOperators: RegistryOperator[];
   workflows: WorkflowMeta[];
   documentation: DocSearchResult[];
@@ -100,8 +102,10 @@ function extractDocSections(workflows: WorkflowMeta[]): DocSearchResult[] {
 
 import { CONTACT_DATA_POLICY_DOC_MARKDOWN } from '../constants/contactDataPolicyDoc';
 import { DATABASE_INDEX_STRATEGY_DOC_MARKDOWN } from '../constants/databaseIndexStrategyDoc';
+import { DOMAIN_ARCHIVAL_DOC_MARKDOWN } from '../constants/domainArchivalDoc';
 import { EVENT_CONSUMER_DOC_MARKDOWN } from '../constants/eventConsumerDoc';
 import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc';
+import { WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN } from '../constants/workerQueueArchitectureDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
   {
@@ -152,6 +156,30 @@ const STATIC_DOCS: WorkflowMeta[] = [
     steps: [],
     docMarkdown: POSTHOG_ANALYTICS_DOC_MARKDOWN,
   },
+  {
+    key: 'domain-archival',
+    name: 'Domain Archival',
+    description: 'Tombstone architecture, ROID-based linking, and lifecycle history for purged domains',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['domain', 'archival', 'tombstone', 'roid', 'purge', 'lifecycle', 'history', 'archive'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: DOMAIN_ARCHIVAL_DOC_MARKDOWN,
+  },
+  {
+    key: 'worker-queue-architecture',
+    name: 'Worker Queue Architecture',
+    description: 'Queue taxonomy, Temporal worker configuration, poller tuning, and deployment topology',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['temporal', 'worker', 'queue', 'poller', 'architecture', 'scaling', 'tuning', 'deployment'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN,
+  },
 ];
 
 function filterDocumentation(workflows: WorkflowMeta[], query: string): DocSearchResult[] {
@@ -184,6 +212,7 @@ export async function searchAll(query: string): Promise<SearchResults> {
     tldsResult,
     registrarsResult,
     nndnsResult,
+    tombstonesResult,
     registryOperatorsResult,
     workflowsResult,
     docsResult,
@@ -192,6 +221,7 @@ export async function searchAll(query: string): Promise<SearchResults> {
     apiClient.get('/tlds', { params: { name_like: query, pagesize } }),
     apiClient.get('/registrars', { params: { name_like: query, pagesize } }),
     apiClient.get('/nndns', { params: { name_like: query, pagesize } }),
+    apiClient.get('/tombstones', { params: { name_like: query, pagesize } }),
     apiClient.get('/registry-operators', { params: { name_like: query, pagesize } }),
     getWorkflowRegistryForSearch().then((all) => filterWorkflows(all, query)),
     getWorkflowRegistryForSearch().then((all) => filterDocumentation(all, query)),
@@ -213,6 +243,10 @@ export async function searchAll(query: string): Promise<SearchResults> {
     nndns:
       nndnsResult.status === 'fulfilled'
         ? (nndnsResult.value.data?.Data ?? [])
+        : [],
+    tombstones:
+      tombstonesResult.status === 'fulfilled'
+        ? (tombstonesResult.value.data?.Data ?? [])
         : [],
     registryOperators:
       registryOperatorsResult.status === 'fulfilled'

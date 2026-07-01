@@ -37,8 +37,6 @@ app:
 temporal:
   TEMPORAL_HOST_PORT: "temporal:7233"
   TEMPORAL_NAMESPACE: "default"
-  TEMPORAL_LIFECYCLE_QUEUE: "object-lifecycle"
-  TEMPORAL_DATA_QUEUE: "data-pipeline"
   TEMPORAL_API_KEY: ""
 
 prometheus:

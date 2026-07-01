@@ -34,7 +34,7 @@ func (s *RestoreWorkflowTestSuite) SetupTest() {
 }
 
 func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_NoDomains() {
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything).
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return([]response.DomainRestoredItem{}, nil)
 
 	s.env.ExecuteWorkflow(RestoreWorkflow)
@@ -52,7 +52,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_Success() {
 		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
 		{Name: "restored2.com", RoID: "ro2", ClID: "reg2"},
 	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything).
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return(domains, nil)
 
 	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
@@ -79,7 +79,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_PartialFailure() {
 		{Name: "ok.com", RoID: "ro1", ClID: "reg1"},
 		{Name: "fail.com", RoID: "ro2", ClID: "reg2"},
 	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything).
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return(domains, nil)
 
 	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
@@ -107,7 +107,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_PartialFailure() {
 }
 
 func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_ListError() {
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything).
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("API unavailable: connection refused"))
 
 	s.env.ExecuteWorkflow(RestoreWorkflow)

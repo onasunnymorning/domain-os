@@ -249,12 +249,14 @@ func main() {
 	domainRepo := postgres.NewDomainRepository(gormDB)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 
-	// REMOVEME:
-	// Quotes
-	// quoteService := services.NewQuoteService(tldRepo, domainRepo, premiumLabelRepo, fxRepo)
-	// FIXME: How to do better dependecy injection on this without the risk of a nil pointer
-	// Possibly merge the domainservice and quoteservice
-	// domainService.QuoteService = *quoteService
+	// Domain Tombstones — archival records for purged domains
+	tombstoneRepo := postgres.NewGormTombstoneRepository(gormDB)
+	tombstoneService := services.NewTombstoneService(tombstoneRepo)
+	domainService.SetTombstoneRepo(tombstoneRepo)
+
+	// Zone Slaving — SOA serial drift monitoring for zone migrations
+	serialDriftRepo := postgres.NewSerialDriftRepository(gormDB)
+	zoneSlavingService := services.NewZoneSlavingService(serialDriftRepo)
 
 	// Event Search — unified search across hot (PG) and warm (S3) tiers
 	eventRepo := postgres.NewPostgresEventRepository(gormDB)
@@ -301,7 +303,7 @@ func main() {
 	corsConfig := cors.Config{
 		AllowOrigins:     strings.Split(allowedOrigins, ","),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -340,6 +342,7 @@ func main() {
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)
+	rest.NewTombstoneController(r, tombstoneService, authMiddleware)
 	rest.NewEventController(r, domainService, authMiddleware)
 	rest.NewEventSearchController(r, eventSearchService, authMiddleware)
 	rest.NewPhaseController(r, phaseService, authMiddleware)
@@ -355,6 +358,8 @@ func main() {
 	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow
 	rest.NewEscrowController(r, authMiddleware)
+	// Zone Slaving (serial drift monitoring)
+	rest.NewZoneSlavingController(r, zoneSlavingService, authMiddleware)
 
 
 	// Serve the swagger documentation

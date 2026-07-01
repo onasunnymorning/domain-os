@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"fmt"
 	"io"
@@ -36,7 +37,7 @@ func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_Succe
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetPurgeableDomainCount("testCorrelationID", queries.PurgeableDomainsQuery{})
+	result, err := GetPurgeableDomainCount(context.Background(), "testCorrelationID", queries.PurgeableDomainsQuery{})
 	suite.NoError(err, "Expected no error for successful response")
 	suite.NotNil(result, "Expected a valid response")
 	suite.Equal(int64(50), result.Count, "Expected count to match")
@@ -49,7 +50,7 @@ func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_BadRe
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetPurgeableDomainCount("testCorrelationID", queries.PurgeableDomainsQuery{})
+	result, err := GetPurgeableDomainCount(context.Background(), "testCorrelationID", queries.PurgeableDomainsQuery{})
 	suite.Error(err, "Expected an error for bad request")
 	suite.Nil(result, "Expected no result for bad request")
 	suite.Contains(err.Error(), "(400)", "Error should include status code")
@@ -58,7 +59,7 @@ func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_BadRe
 func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_NetworkError() {
 	suite.mockTransport.Err = fmt.Errorf("network error")
 
-	result, err := GetPurgeableDomainCount("testCorrelationID", queries.PurgeableDomainsQuery{})
+	result, err := GetPurgeableDomainCount(context.Background(), "testCorrelationID", queries.PurgeableDomainsQuery{})
 	suite.Error(err, "Expected an error for network failure")
 	suite.Nil(result, "Expected no result for network error")
 	suite.Contains(err.Error(), "failed to fetch domain count", "Error should indicate network failure")
@@ -71,7 +72,7 @@ func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_Parse
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	result, err := GetPurgeableDomainCount("testCorrelationID", queries.PurgeableDomainsQuery{})
+	result, err := GetPurgeableDomainCount(context.Background(), "testCorrelationID", queries.PurgeableDomainsQuery{})
 	suite.Error(err, "Expected an error for invalid JSON response")
 	suite.Nil(result, "Expected no result for invalid JSON")
 	suite.Contains(err.Error(), "failed to parse response body", "Error should indicate parse failure")

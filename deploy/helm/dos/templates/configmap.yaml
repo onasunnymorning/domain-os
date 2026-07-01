@@ -19,7 +19,5 @@ data:
 
   TEMPORAL_HOST_PORT: {{ .Values.temporal.TEMPORAL_HOST_PORT | quote }}
   TEMPORAL_NAMESPACE: {{ .Values.temporal.TEMPORAL_NAMESPACE | quote }}
-  TEMPORAL_LIFECYCLE_QUEUE: {{ .Values.temporal.TEMPORAL_LIFECYCLE_QUEUE | quote }}
-  TEMPORAL_DATA_QUEUE: {{ .Values.temporal.TEMPORAL_DATA_QUEUE | quote }}
 
   PROMETHEUS_ENABLED: {{ .Values.prometheus.enabled | quote }}

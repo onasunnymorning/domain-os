@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) (*entities.Registrar, error) {
+func CreateRegistrar(ctx context.Context, correlationID string, cmd commands.CreateRegistrarCommand) (*entities.Registrar, error) {
 	ENDPOINT := fmt.Sprintf("%s/registrars", BASEURL)
 
 	// Set up an API client
@@ -31,11 +32,10 @@ func CreateRegistrar(correlationID string, cmd commands.CreateRegistrarCommand) 
 	}
 
 	// Create the request
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonBody), correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

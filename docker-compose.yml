@@ -139,7 +139,7 @@ services:
       - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
       - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -157,7 +157,6 @@ services:
       # Temporal Client (dev: temporalite, no TLS)
       - TEMPORAL_HOST_PORT=temporal:7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
       # S3/MinIO settings for escrow
@@ -191,7 +190,7 @@ services:
         condition: service_healthy # Wait for migrations / full startup 
     command: [ "/ryAdminAPI", "init-registrars" ]
     environment:
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -199,7 +198,6 @@ services:
       - DB_SSLMODE=${DB_SSLMODE}
       - TEMPORAL_HOST_PORT=temporal:7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
@@ -283,9 +281,6 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
-      # Task queues
-      - TEMPORAL_LIFECYCLE_QUEUE=object-lifecycle
-      - TEMPORAL_DATA_QUEUE=data-pipeline
       # API connection
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
@@ -303,7 +298,7 @@ services:
       - MINIO_USE_SSL=false
       - ESCROW_BUCKET=escrow
       # Postgres (TLD cleanup)
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -367,7 +362,7 @@ services:
         - action: rebuild
           path: ./cmd/whois
     environment:
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}

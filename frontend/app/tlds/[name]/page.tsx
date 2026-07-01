@@ -216,12 +216,13 @@ export default function TLDDetailPage({ params }: Props) {
       const countsMap = new Map(counts.map(c => [c.clid, c.count]));
 
       // 3. Generate CSV content
-      const headers = ['Client ID', 'Name', 'IANA ID', 'Status', 'DUMs'];
+      const headers = ['Client ID', 'Name', 'IANA ID', 'Status', 'Auto-renew', 'DUMs'];
       const rows = registrars.map(r => [
         r.ClID,
         r.Name,
         r.GurID || '',
         r.Status,
+        r.Autorenew ? 'Enabled' : 'Disabled',
         countsMap.get(r.ClID) || 0
       ]);
 
@@ -390,6 +391,7 @@ export default function TLDDetailPage({ params }: Props) {
                               <TableHead className="cursor-help" title="Client ID / Registrar ID (unique identifier)">ClID</TableHead>
                               <TableHead>Name</TableHead>
                               <TableHead>Status</TableHead>
+                              <TableHead>Auto-renew</TableHead>
                               <TableHead className="w-[140px]"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -412,6 +414,11 @@ export default function TLDDetailPage({ params }: Props) {
                                 <TableCell>
                                   <Badge variant={r.Status === 'ok' ? 'default' : r.Status === 'terminated' ? 'destructive' : 'secondary'}>
                                     {r.Status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={r.Autorenew ? 'default' : 'outline'}>
+                                    {r.Autorenew ? 'Enabled' : 'Disabled'}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">

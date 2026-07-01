@@ -1,12 +1,13 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-func SyncIanaRegistrars(correlationID string) error {
+func SyncIanaRegistrars(ctx context.Context, correlationID string) error {
 	ENDPOINT := fmt.Sprintf("%s/sync/iana-registrars", BASEURL)
 
 	// Set up an API client
@@ -20,11 +21,10 @@ func SyncIanaRegistrars(correlationID string) error {
 	}
 
 	// Create the request
-	req, err := http.NewRequest("PUT", URL.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)

@@ -90,7 +90,6 @@ test: test-unit ## Run unit tests (default)
 
 test-unit: ## Run unit tests with coverage
 	@echo "Starting test database..."
-	@docker volume rm domain-os_db 2>/dev/null || true
 	# Ensure any previous leftover test container is removed to avoid name conflicts
 	@docker rm -f testdb 2>/dev/null || true
 	@docker run --rm -d \
@@ -121,7 +120,7 @@ test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (req
 		| xargs docker rm -f 2>/dev/null || true
 	@docker network ls -q --filter name=domain-os_dos \
 		| xargs docker network rm 2>/dev/null || true
-	@docker volume rm domain-os_db domain-os_temporal_pgdata 2>/dev/null || true
+	@docker volume rm domain-os_temporal_pgdata 2>/dev/null || true
 	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
 	@docker build -t geapex/domain-os:$(TAG) --build-arg GIT_SHA=$(BRANCH) .
 	@echo "Starting integration test containers (will run Postman tests via Newman)..."

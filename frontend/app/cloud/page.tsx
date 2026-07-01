@@ -151,9 +151,6 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
       { key: 'TEMPORAL_API_KEY', description: 'Temporal Cloud API key', secret: true, services: ['API', 'Worker'] },
       { key: 'TEMPORAL_CLIENT_CERT', description: 'mTLS client certificate (PEM)', secret: true, services: ['API', 'Worker'] },
       { key: 'TEMPORAL_CLIENT_KEY', description: 'mTLS private key (PEM)', secret: true, services: ['API', 'Worker'] },
-      { key: 'TEMPORAL_LIFECYCLE_QUEUE', description: 'Domain lifecycle task queue name', secret: false, services: ['API', 'Worker'] },
-      { key: 'TEMPORAL_DATA_QUEUE', description: 'Data pipeline task queue name', secret: false, services: ['API', 'Worker'] },
-      { key: 'TEMPORAL_SYNC_QUEUE', description: 'Sync (FX rates) task queue name', secret: false, services: ['Worker'] },
     ],
   },
   {

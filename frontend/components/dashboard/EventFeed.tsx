@@ -14,6 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useRegistrars } from '@/lib/hooks/useRegistrars';
+import { searchEvents } from '@/lib/api/events';
 import {
   CheckCircle2,
   RefreshCw,
@@ -37,6 +44,9 @@ import {
   X,
   Loader2,
   User,
+  Download,
+  Calendar as CalendarIcon,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { EventSearchParams } from '@/lib/api/events';
 
@@ -52,17 +62,15 @@ interface LinkTarget {
 function renderClickableText(text: string, event: any) {
   const targets: LinkTarget[] = [];
 
-  // Extract domain name target
+  // Extract domain name target — always link, even for purged/deleted domains.
+  // The domain detail page handles 404 → tombstone archive fallback.
   if (event.type.startsWith('domain.')) {
-    const isDeleted = event.type === 'domain.admin_deleted' || event.type === 'domain.purged';
-    if (!isDeleted) {
-      const domainName = event.data?.DomainName || event.data?.domainName || (event.subject && event.subject !== 'bulk' ? event.subject : undefined);
-      if (domainName && typeof domainName === 'string') {
-        targets.push({
-          text: domainName,
-          href: `/domains/${encodeURIComponent(domainName)}`,
-        });
-      }
+    const domainName = event.data?.DomainName || event.data?.domainName || (event.subject && event.subject !== 'bulk' ? event.subject : undefined);
+    if (domainName && typeof domainName === 'string') {
+      targets.push({
+        text: domainName,
+        href: `/domains/${encodeURIComponent(domainName)}`,
+      });
     }
   }
 
@@ -219,6 +227,7 @@ const EVENT_TYPE_FILTERS = [
   { value: 'tld.*', label: 'All TLD Events' },
   { value: 'domain.registered', label: 'Domain Registered' },
   { value: 'domain.renewed', label: 'Domain Renewed' },
+  { value: 'domain.auto_renewed', label: 'Domain Auto-Renewed' },
   { value: 'domain.expired', label: 'Domain Expired' },
   { value: 'domain.purged', label: 'Domain Purged' },
   { value: 'domain.updated', label: 'Domain Updated' },
@@ -230,10 +239,36 @@ const EVENT_TYPE_FILTERS = [
 
 export function EventFeed() {
   const [showFilters, setShowFilters] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Filter States
   const [typeFilter, setTypeFilter] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('');
   const [actorFilter, setActorFilter] = useState('');
+  const [roidFilter, setRoidFilter] = useState('');
+  const [openReg, setOpenReg] = useState(false);
+  const [regSearch, setRegSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [traceIdFilter, setTraceIdFilter] = useState('');
+  const [correlationIdFilter, setCorrelationIdFilter] = useState('');
+  const [dateAfter, setDateAfter] = useState<Date | undefined>(undefined);
+  const [dateBefore, setDateBefore] = useState<Date | undefined>(undefined);
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Fetch active registrars for the dropdown
+  const { data: registrarData } = useRegistrars({ pagesize: 200 });
+  const registrars = registrarData?.Data ?? [];
+
+  const filteredRegistrars = useMemo(() => {
+    if (!regSearch) return registrars;
+    const searchLower = regSearch.toLowerCase();
+    return registrars.filter((r) =>
+      r.ClID.toLowerCase().includes(searchLower) ||
+      (r.Name && r.Name.toLowerCase().includes(searchLower))
+    );
+  }, [registrars, regSearch]);
 
   // Build search params — only include non-empty values
   const searchParams = useMemo<Omit<EventSearchParams, 'cursor'>>(() => {
@@ -241,10 +276,45 @@ export function EventFeed() {
     if (typeFilter) params.type = typeFilter;
     if (subjectFilter) params.subject = subjectFilter;
     if (actorFilter) params.actor = actorFilter;
-    return params;
-  }, [typeFilter, subjectFilter, actorFilter]);
+    if (roidFilter) params.roid = roidFilter;
+    if (sourceFilter) params.source = sourceFilter;
+    if (traceIdFilter) params.trace_id = traceIdFilter;
+    if (correlationIdFilter) params.correlation_id = correlationIdFilter;
 
-  const hasActiveFilters = typeFilter || subjectFilter || actorFilter;
+    if (dateAfter) {
+      const startOfDay = new Date(dateAfter);
+      startOfDay.setHours(0, 0, 0, 0);
+      params.after = startOfDay.toISOString();
+    }
+    if (dateBefore) {
+      const endOfDay = new Date(dateBefore);
+      endOfDay.setHours(23, 59, 59, 999);
+      params.before = endOfDay.toISOString();
+    }
+    return params;
+  }, [
+    typeFilter,
+    subjectFilter,
+    actorFilter,
+    roidFilter,
+    sourceFilter,
+    traceIdFilter,
+    correlationIdFilter,
+    dateAfter,
+    dateBefore,
+  ]);
+
+  const hasActiveFilters = !!(
+    typeFilter ||
+    subjectFilter ||
+    actorFilter ||
+    roidFilter ||
+    sourceFilter ||
+    traceIdFilter ||
+    correlationIdFilter ||
+    dateAfter ||
+    dateBefore
+  );
 
   const {
     data,
@@ -266,6 +336,86 @@ export function EventFeed() {
     setTypeFilter('');
     setSubjectFilter('');
     setActorFilter('');
+    setRoidFilter('');
+    setRegSearch('');
+    setSourceFilter('');
+    setTraceIdFilter('');
+    setCorrelationIdFilter('');
+    setDateAfter(undefined);
+    setDateBefore(undefined);
+    setShowAdvanced(false);
+  };
+
+  const exportToCSV = async () => {
+    setIsExporting(true);
+    try {
+      const allEvents: any[] = [];
+      let currentCursor: string | undefined = undefined;
+      let pageCount = 0;
+      const maxPages = 5; // Capped at 1,000 matches (5 pages of 200 events)
+
+      // Copy active filters but request maximum page limit
+      const exportParams = {
+        ...searchParams,
+        limit: 200,
+      };
+
+      while (pageCount < maxPages) {
+        const result = await searchEvents({
+          ...exportParams,
+          cursor: currentCursor,
+        });
+
+        if (!result.data || result.data.length === 0) {
+          break;
+        }
+
+        allEvents.push(...result.data);
+
+        if (!result.nextCursor || result.data.length < 200) {
+          break;
+        }
+
+        currentCursor = result.nextCursor;
+        pageCount++;
+      }
+
+      // Formulate CSV file content
+      const headers = ['ID', 'Time', 'Type', 'Subject', 'Actor', 'RoID', 'Source', 'TraceID', 'CorrelationID', 'Description'];
+      const csvRows = [headers.join(',')];
+
+      for (const evt of allEvents) {
+        const row = [
+          evt.id || '',
+          evt.time || '',
+          evt.type || '',
+          `"${(evt.subject || '').replace(/"/g, '""')}"`,
+          `"${(evt.actor || '').replace(/"/g, '""')}"`,
+          `"${(evt.roid || '').replace(/"/g, '""')}"`,
+          `"${(evt.source || '').replace(/"/g, '""')}"`,
+          evt.trace_id || '',
+          evt.correlation_id || '',
+          `"${(evt.description || '').replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(','));
+      }
+
+      // Safe Blob-based download to support large files without URI size limitations
+      const csvContent = "\uFEFF" + csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `events_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Event CSV Export Failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -278,15 +428,50 @@ export function EventFeed() {
           </CardTitle>
           <div className="flex items-center gap-2">
             {totalCount > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">
+              <span className="text-xs text-muted-foreground tabular-nums mr-1">
                 {totalCount.toLocaleString()} total
               </span>
             )}
-            {tier && tier !== 'hot' && (
-              <Badge variant="outline" className="text-[10px]">
-                {tier}
+
+            {tier && (
+              <Badge
+                variant={tier === 'hot' ? 'secondary' : 'outline'}
+                className={cn(
+                  "text-[10px] capitalize font-medium mr-1 select-none",
+                  tier === 'hot' && "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400",
+                  tier === 'warm' && "bg-amber-500/10 text-amber-600 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400",
+                  tier === 'mixed' && "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:bg-blue-500/20 dark:text-blue-400"
+                )}
+              >
+                {tier} tier
               </Badge>
             )}
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={exportToCSV}
+                    disabled={isExporting || events.length === 0}
+                  >
+                    {isExporting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent align="end" className="max-w-[220px]">
+                  <p className="text-[11px] leading-relaxed">
+                    Export results to CSV. Exports are capped at the first 1,000 matches for performance and S3 safety.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <Button
               variant={showFilters ? 'secondary' : 'ghost'}
               size="icon"
@@ -301,38 +486,234 @@ export function EventFeed() {
 
         {/* Filter bar */}
         {showFilters && (
-          <div className="mt-3 space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-200">
-            <div className="flex gap-2">
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="flex h-8 rounded-md border border-input bg-background px-2 py-1 text-xs ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                {EVENT_TYPE_FILTERS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <Input
-                placeholder="Subject (domain, registrar...)"
-                value={subjectFilter}
-                onChange={(e) => setSubjectFilter(e.target.value)}
-                className="h-8 text-xs"
-              />
-              <Input
-                placeholder="Actor"
-                value={actorFilter}
-                onChange={(e) => setActorFilter(e.target.value)}
-                className="h-8 text-xs w-32"
-              />
+          <div className="mt-3 space-y-3 animate-in fade-in-0 slide-in-from-top-2 duration-200 p-3 bg-muted/30 border rounded-lg">
+            {/* Main Filters Row 1 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">Event Type</span>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {EVENT_TYPE_FILTERS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">Subject (Domain / ID)</span>
+                <Input
+                  placeholder="e.g. example.best"
+                  value={subjectFilter}
+                  onChange={(e) => setSubjectFilter(e.target.value)}
+                  className="h-8 text-xs w-full"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">Registrar</span>
+                <Popover open={openReg} onOpenChange={setOpenReg}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openReg}
+                      className={cn(
+                        "h-8 w-full justify-between text-left text-xs font-normal bg-background",
+                        !roidFilter && "text-muted-foreground"
+                      )}
+                    >
+                      <span className="truncate">
+                        {roidFilter
+                          ? (registrars.find((r) => r.ClID === roidFilter)?.Name
+                            ? `${registrars.find((r) => r.ClID === roidFilter)?.Name} (${roidFilter})`
+                            : roidFilter)
+                          : "All Registrars"}
+                      </span>
+                      <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-2" align="start">
+                    <Input
+                      placeholder="Search registrar..."
+                      value={regSearch}
+                      onChange={(e) => setRegSearch(e.target.value)}
+                      className="mb-2 h-8 text-xs"
+                    />
+                    <ScrollArea className="h-52">
+                      <div className="space-y-1">
+                        <Button
+                          variant={roidFilter === '' ? "secondary" : "ghost"}
+                          className="w-full justify-start text-xs h-8 font-normal"
+                          onClick={() => {
+                            setRoidFilter('');
+                            setOpenReg(false);
+                          }}
+                        >
+                          All Registrars
+                        </Button>
+                        {filteredRegistrars.map((opt) => (
+                          <Button
+                            key={opt.ClID}
+                            variant={opt.ClID === roidFilter ? "secondary" : "ghost"}
+                            className="w-full justify-start text-xs h-8 font-normal"
+                            onClick={() => {
+                              setRoidFilter(opt.ClID);
+                              setOpenReg(false);
+                            }}
+                          >
+                            <span className="truncate">
+                              {opt.Name ? `${opt.Name} (${opt.ClID})` : opt.ClID}
+                            </span>
+                          </Button>
+                        ))}
+                        {filteredRegistrars.length === 0 && (
+                          <div className="text-xs text-muted-foreground px-2 py-1">No results</div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-6 text-xs gap-1 text-muted-foreground">
-                <X className="h-3 w-3" />
-                Clear filters
+
+            {/* Date Filters Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">From Date</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "h-8 w-full justify-start text-left text-xs font-normal bg-background",
+                        !dateAfter && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0" />
+                      {dateAfter ? dateAfter.toLocaleDateString() : <span>Pick start date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateAfter}
+                      onSelect={setDateAfter}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">To Date</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "h-8 w-full justify-start text-left text-xs font-normal bg-background",
+                        !dateBefore && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0" />
+                      {dateBefore ? dateBefore.toLocaleDateString() : <span>Pick end date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateBefore}
+                      onSelect={setDateBefore}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            {/* Advanced Toggle */}
+            <div className="pt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[11px] gap-1 px-1 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                {showAdvanced ? "Hide Advanced Filters" : "Show Advanced Filters"}
               </Button>
+            </div>
+
+            {/* Collapsible Advanced Filters */}
+            {showAdvanced && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1 border-t border-dashed animate-in fade-in-0 duration-200">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">Actor</span>
+                  <Input
+                    placeholder="admin@test.com"
+                    value={actorFilter}
+                    onChange={(e) => setActorFilter(e.target.value)}
+                    className="h-8 text-xs w-full"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase px-1">Source</span>
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">All Sources</option>
+                    <option value="domain-os/api">API</option>
+                    <option value="domain-os/worker">Worker</option>
+                    <option value="domain-os/epp">EPP</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase px-1 font-mono">Trace ID</span>
+                  <Input
+                    placeholder="trace-xxx"
+                    value={traceIdFilter}
+                    onChange={(e) => setTraceIdFilter(e.target.value)}
+                    className="h-8 text-xs w-full font-mono"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase px-1 font-mono">Correlation ID</span>
+                  <Input
+                    placeholder="corr-xxx"
+                    value={correlationIdFilter}
+                    onChange={(e) => setCorrelationIdFilter(e.target.value)}
+                    className="h-8 text-xs w-full font-mono"
+                  />
+                </div>
+              </div>
             )}
+
+            {/* Filter actions */}
+            {hasActiveFilters && (
+              <div className="flex justify-start pt-1">
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs gap-1 text-destructive hover:bg-destructive/10">
+                  <X className="h-3 w-3" />
+                  Clear all filters
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {totalCount > 1000 && showFilters && (
+          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-in fade-in-0 duration-200">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>Search matches {totalCount.toLocaleString()} events. Exporting will only download the first 1,000 matches.</span>
           </div>
         )}
       </CardHeader>
@@ -449,9 +830,18 @@ export function EventFeed() {
                           </Badge>
                         )}
                         {event.trace_id && (
-                          <Badge variant="outline" className="text-[10px] font-mono">
-                            trace:{event.trace_id.slice(0, 8)}
-                          </Badge>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTraceIdFilter(event.trace_id || '');
+                              setShowFilters(true);
+                              setShowAdvanced(true);
+                            }}
+                            className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-mono font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer"
+                            title="Filter all events by this Trace ID"
+                          >
+                            trace:{event.trace_id.slice(0, 8)}... (Filter)
+                          </button>
                         )}
                       </div>
                       <pre className="text-muted-foreground leading-relaxed">

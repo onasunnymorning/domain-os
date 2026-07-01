@@ -15,8 +15,8 @@ import (
 func Test_desiredSchedules_AllDefined(t *testing.T) {
 	specs := desiredSchedules()
 
-	// We must have exactly 7 schedules.
-	require.Len(t, specs, 7, "expected 7 schedules in desiredSchedules()")
+	// We must have exactly 8 schedules.
+	require.Len(t, specs, 8, "expected 8 schedules in desiredSchedules()")
 
 	// Map by ID for easy lookup
 	byID := make(map[string]scheduleSpec, len(specs))
@@ -64,7 +64,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	t.Run("sync-registrars", func(t *testing.T) {
 		s, ok := byID["sync-registrars"]
 		require.True(t, ok, "missing schedule sync-registrars")
-		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
 		assert.Equal(t, 24*time.Hour, s.Interval)
 		assert.Equal(t, 2*time.Hour, s.Offset)
 		assert.Equal(t, 24*time.Hour, s.CatchupWindow)
@@ -77,7 +77,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	t.Run("update-fx", func(t *testing.T) {
 		s, ok := byID["update-fx"]
 		require.True(t, ok, "missing schedule update-fx")
-		assert.Equal(t, temporal.QueueData, s.Queue)
+		assert.Equal(t, temporal.QueueFastOps, s.Queue)
 		assert.Equal(t, time.Hour, s.Interval)
 		assert.Equal(t, 30*time.Minute, s.Offset)
 		assert.Equal(t, time.Hour, s.CatchupWindow)
@@ -85,10 +85,21 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		assert.NotEmpty(t, s.Note)
 	})
 
+	t.Run("sync-spec5", func(t *testing.T) {
+		s, ok := byID["sync-spec5"]
+		require.True(t, ok, "missing schedule sync-spec5")
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
+		assert.Equal(t, 24*time.Hour, s.Interval)
+		assert.Equal(t, 4*time.Hour, s.Offset)
+		assert.Equal(t, 24*time.Hour, s.CatchupWindow)
+		assert.Nil(t, s.Args)
+		assert.NotEmpty(t, s.Note)
+	})
+
 	t.Run("event-relay", func(t *testing.T) {
 		s, ok := byID["event-relay"]
 		require.True(t, ok, "missing schedule event-relay")
-		assert.Equal(t, temporal.QueueData, s.Queue)
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
 		assert.Equal(t, 5*time.Minute, s.Interval)
 		assert.Equal(t, time.Duration(0), s.Offset)
 		assert.Equal(t, 5*time.Minute, s.CatchupWindow)
@@ -101,7 +112,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	t.Run("event-prune", func(t *testing.T) {
 		s, ok := byID["event-prune"]
 		require.True(t, ok, "missing schedule event-prune")
-		assert.Equal(t, temporal.QueueData, s.Queue)
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
 		assert.Equal(t, 24*time.Hour, s.Interval)
 		assert.Equal(t, 6*time.Hour, s.Offset)
 		assert.Equal(t, 24*time.Hour, s.CatchupWindow)

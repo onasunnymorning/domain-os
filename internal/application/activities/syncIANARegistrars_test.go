@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,9 +71,9 @@ func TestSyncIanaRegistrars(t *testing.T) {
 			}()
 
 			// Call the function under test
-			err := SyncIanaRegistrars(tc.correlationID)
+			err := SyncIanaRegistrars(context.Background(), tc.correlationID)
 			if (err != nil) != tc.wantErr {
-				t.Errorf("SyncIanaRegistrars() error = %v, wantErr %v", err, tc.wantErr)
+				t.Errorf("SyncIanaRegistrars(context.Background(), ) error = %v, wantErr %v", err, tc.wantErr)
 			}
 
 			// If we expect an error, we can also inspect the error message if needed

@@ -116,7 +116,7 @@ local_resource(
     serve_cmd='cd frontend && PORT=3002 npm run dev',
     env={
         'NEXT_PUBLIC_API_URL':         'http://localhost:8080',
-        'NEXT_PUBLIC_API_TOKEN':       'devtoken',
+        'NEXT_PUBLIC_API_TOKEN':       os.getenv('ADMIN_TOKEN', 'devtoken'),
         'NEXT_PUBLIC_AUTH0_ENABLED':   'false',
         'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # native temporal CLI UI; docker mode uses :8081
         'NEXT_PUBLIC_APP_VERSION':     'dev',

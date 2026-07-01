@@ -8,6 +8,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { WorkflowCard } from '@/components/workflows/WorkflowCard';
 import { WorkflowTagFilter } from '@/components/workflows/WorkflowTagFilter';
 import { WorkflowLaunchForm } from '@/components/workflows/WorkflowLaunchForm';
+import { SerialDriftDialog } from '@/components/workflows/SerialDriftDialog';
 import { useWorkflowStore } from '@/lib/stores/useWorkflowStore';
 import { getWorkflowRegistry, type WorkflowMeta } from '@/lib/api/workflows';
 import type { WorkflowRun } from '@/lib/stores/useWorkflowStore';
@@ -158,9 +159,14 @@ function WorkflowsPageContent() {
         )}
       </div>
 
-      {/* Launch Form Dialog */}
+      {/* Launch Form Dialog — routes serial-drift to dedicated dialog */}
       <WorkflowLaunchForm
-        workflow={launchTarget}
+        workflow={launchTarget?.key === 'serial-drift' ? null : launchTarget}
+        onClose={() => setLaunchTarget(null)}
+        onLaunched={handleLaunched}
+      />
+      <SerialDriftDialog
+        workflow={launchTarget?.key === 'serial-drift' ? launchTarget : null}
         onClose={() => setLaunchTarget(null)}
         onLaunched={handleLaunched}
       />

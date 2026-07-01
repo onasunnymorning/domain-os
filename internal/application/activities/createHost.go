@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 )
 
-func CreateHost(correlationID string, cmd commands.CreateHostCommand) error {
+func CreateHost(ctx context.Context, correlationID string, cmd commands.CreateHostCommand) error {
 	ENDPOINT := fmt.Sprintf("%s/hosts", BASEURL)
 	client := http.Client{}
 	qParams := map[string]string{"correlationID": correlationID}
@@ -22,11 +23,11 @@ func CreateHost(correlationID string, cmd commands.CreateHostCommand) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal command: %w", err)
 	}
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonBody), correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to create host: %w", err)

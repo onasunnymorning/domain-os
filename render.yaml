@@ -59,8 +59,6 @@ services:
         value: "alp-test.fclnj"
       - key: TEMPORAL_API_KEY
         sync: false
-      - key: TEMPORAL_LIFECYCLE_QUEUE
-        value: "object-lifecycle"
       # S3 (Cloudflare R2) — API needs access for presigned URLs and escrow uploads
       - key: MINIO_ENDPOINT
         sync: false
@@ -154,6 +152,4 @@ services:
         value: "true"
       - key: ESCROW_BUCKET
         sync: false
-      # Temporal data queue
-      - key: TEMPORAL_DATA_QUEUE
-        value: "data-pipeline"
+

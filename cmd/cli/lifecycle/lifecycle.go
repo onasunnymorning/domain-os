@@ -3,6 +3,7 @@ package main
 // This CLI tool allows you to run domain lifecycle operations.
 
 import (
+	"context"
 	"log"
 	"os"
 	"runtime"
@@ -88,7 +89,7 @@ func main() {
 func expire(c *cli.Context) error {
 	// Query the API for the amount of expired domains
 	log.Println("Querying expired domain count...")
-	countResult, err := activities.GetExpiredDomainCount(getCorrelationIDFromContext(c), queries.ExpiringDomainsQuery{})
+	countResult, err := activities.GetExpiredDomainCount(context.Background(), getCorrelationIDFromContext(c), queries.ExpiringDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func expire(c *cli.Context) error {
 		return err
 	}
 	log.Println("Querying expired domains...")
-	domains, err := activities.ListExpiringDomains(getCorrelationIDFromContext(c), *q)
+	domains, err := activities.ListExpiringDomains(context.Background(), getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -117,7 +118,7 @@ func expire(c *cli.Context) error {
 	log.Println("Processing expired domains...")
 	for _, domain := range domains {
 		// Try and auto-renew the domain
-		err := activities.AutoRenewDomain(getCorrelationIDFromContext(c), domain.Name)
+		err := activities.AutoRenewDomain(context.Background(), getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			// If the domain is not eligible for auto-renew, it should be marked for deletion
 			if strings.Contains(err.Error(), "auto renew is not enabled") {
@@ -143,7 +144,7 @@ func purge(c *cli.Context) error {
 
 	// Query the API for the amount of purgeable domains
 	log.Println("Querying purgeable domain count...")
-	countResult, err := activities.GetPurgeableDomainCount(getCorrelationIDFromContext(c), queries.PurgeableDomainsQuery{})
+	countResult, err := activities.GetPurgeableDomainCount(context.Background(), getCorrelationIDFromContext(c), queries.PurgeableDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -162,7 +163,7 @@ func purge(c *cli.Context) error {
 	}
 	log.Println("Querying purgeable domains...")
 
-	domains, err := activities.ListPurgeableDomains(getCorrelationIDFromContext(c), *q)
+	domains, err := activities.ListPurgeableDomains(context.Background(), getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -172,7 +173,7 @@ func purge(c *cli.Context) error {
 	log.Println("Processing purgeable domains...")
 	for _, domain := range domains {
 		// Premanently delete the domain
-		err := activities.PurgeDomain(getCorrelationIDFromContext(c), domain.Name)
+		err := activities.PurgeDomain(context.Background(), getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			log.Printf("Failed to delete domain %s: %s\n", domain.Name, err)
 			continue
@@ -195,7 +196,7 @@ func restore(c *cli.Context) error {
 	correlationID := "lifecycle-cli-" + uuid.New()
 	log.Println("Correlation ID for this command:", correlationID)
 	// trigger the restore workflow activities
-	restoredDomains, err := activities.ListRestoredDomains(correlationID, &queries.RestoredDomainsQuery{})
+	restoredDomains, err := activities.ListRestoredDomains(context.Background(), correlationID, &queries.RestoredDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -210,7 +211,7 @@ func restore(c *cli.Context) error {
 		}
 
 		// Renew the domain
-		err := activities.RenewDomain(correlationID, cmd, false)
+		err := activities.RenewDomain(context.Background(), correlationID, cmd, false)
 		if err != nil {
 			return err
 		}

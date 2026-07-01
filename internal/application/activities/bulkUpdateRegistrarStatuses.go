@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,7 +28,7 @@ type BulkUpdateError struct {
 // For each command, it updates platform status and/or IANA status via the REST API,
 // only making HTTP calls for fields that actually changed (NewStatus / NewIANAStatus non-empty).
 // Failures are collected rather than aborting, so the workflow gets a complete picture.
-func BulkUpdateRegistrarStatuses(correlationID string, updates []commands.UpdateRegistrarStatusCommand) (BulkUpdateResult, error) {
+func BulkUpdateRegistrarStatuses(ctx context.Context, correlationID string, updates []commands.UpdateRegistrarStatusCommand) (BulkUpdateResult, error) {
 	result := BulkUpdateResult{
 		UpdatedIDs: []string{},
 		Errors:     []BulkUpdateError{},
@@ -40,7 +41,7 @@ func BulkUpdateRegistrarStatuses(correlationID string, updates []commands.Update
 
 		// Update platform status if changed
 		if upd.NewStatus != "" {
-			if err := updateStatus(client, correlationID, upd.ClID, upd.NewStatus); err != nil {
+			if err := updateStatus(ctx, client, correlationID, upd.ClID, upd.NewStatus); err != nil {
 				result.Errors = append(result.Errors, BulkUpdateError{
 					ClID:      upd.ClID,
 					Operation: "update-status",
@@ -52,7 +53,7 @@ func BulkUpdateRegistrarStatuses(correlationID string, updates []commands.Update
 
 		// Update IANA status if changed
 		if upd.NewIANAStatus != "" {
-			if err := updateIANAStatus(client, correlationID, upd.ClID, upd.NewIANAStatus); err != nil {
+			if err := updateIANAStatus(ctx, client, correlationID, upd.ClID, upd.NewIANAStatus); err != nil {
 				result.Errors = append(result.Errors, BulkUpdateError{
 					ClID:      upd.ClID,
 					Operation: "update-iana-status",
@@ -74,7 +75,7 @@ func BulkUpdateRegistrarStatuses(correlationID string, updates []commands.Update
 }
 
 // updateStatus sends a PUT request to update a registrar's platform status.
-func updateStatus(client http.Client, correlationID, clid, status string) error {
+func updateStatus(ctx context.Context, client http.Client, correlationID, clid, status string) error {
 	endpoint := fmt.Sprintf("%s/registrars/%s/status/%s", BASEURL, clid, strings.ToLower(status))
 
 	qParams := map[string]string{"correlationID": correlationID}
@@ -83,11 +84,10 @@ func updateStatus(client http.Client, correlationID, clid, status string) error 
 		return fmt.Errorf("failed to build URL for status update (clid=%s): %w", clid, err)
 	}
 
-	req, err := http.NewRequest("PUT", url.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", url.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request for status update (clid=%s): %w", clid, err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -103,7 +103,7 @@ func updateStatus(client http.Client, correlationID, clid, status string) error 
 }
 
 // updateIANAStatus sends a PUT request to update a registrar's IANA status.
-func updateIANAStatus(client http.Client, correlationID, clid, ianaStatus string) error {
+func updateIANAStatus(ctx context.Context, client http.Client, correlationID, clid, ianaStatus string) error {
 	endpoint := fmt.Sprintf("%s/registrars/%s/iana_status/%s", BASEURL, clid, ianaStatus)
 
 	qParams := map[string]string{"correlationID": correlationID}
@@ -112,11 +112,10 @@ func updateIANAStatus(client http.Client, correlationID, clid, ianaStatus string
 		return fmt.Errorf("failed to build URL for IANA status update (clid=%s): %w", clid, err)
 	}
 
-	req, err := http.NewRequest("PUT", url.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", url.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request for IANA status update (clid=%s): %w", clid, err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

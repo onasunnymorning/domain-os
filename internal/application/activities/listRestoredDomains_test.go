@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +66,7 @@ func TestListRestoredDomains(t *testing.T) {
 
 			BASEURL = server.URL
 
-			result, err := ListRestoredDomains(tt.correlationID, tt.query)
+			result, err := ListRestoredDomains(context.Background(), tt.correlationID, tt.query)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

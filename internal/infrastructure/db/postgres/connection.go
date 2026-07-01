@@ -31,6 +31,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&FX{},
 		&TLDDNSRecord{},
 		&DomainEventRecord{},
+		&DomainTombstoneRecord{},
+		&ZoneSlavingRecord{},
+		&SerialCheckRunRecord{},
+		&SerialObservationRecord{},
 	)
 	if err != nil {
 		return err
@@ -48,6 +52,9 @@ func AutoMigrate(db *gorm.DB) error {
 		// domains: composite index to support expiring/purgeable domain queries filtered by cl_id and tld_name
 		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
 		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
+		// domains: composite index to support expiring/purgeable domain queries filtered by tld_name only (e.g. global/CLI workflows)
+		"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
+		"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 		// domain_events: type index for type-filtered event search queries
@@ -56,6 +63,12 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_actor ON domain_events (actor) WHERE actor != ''",
 		// domain_events: partial roid index for roid-filtered event search queries
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_roid ON domain_events (ro_id) WHERE ro_id != ''",
+		// domain_events: partial index on id for purged events with roid to support tombstone backfill pagination
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_purged_id ON domain_events (id) WHERE type = 'domain.purged' AND ro_id != ''",
+		// domain_events: partial index on trace_id for trace-filtered event search queries
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_trace_id ON domain_events (trace_id) WHERE trace_id != ''",
+		// domain_events: partial index on correlation_id for correlation-filtered event search queries
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_correlation_id ON domain_events (correlation_id) WHERE correlation_id != ''",
 	}
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {
@@ -68,8 +81,6 @@ func AutoMigrate(db *gorm.DB) error {
 	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
 	legacyIndexes := []string{
 		"DROP INDEX IF EXISTS idx_domain_events_source",
-		"DROP INDEX IF EXISTS idx_domain_events_trace_id",
-		"DROP INDEX IF EXISTS idx_domain_events_correlation_id",
 		"DROP INDEX IF EXISTS idx_domain_events_subject",
 	}
 	for _, idx := range legacyIndexes {

@@ -52,7 +52,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	logger.Info("No registrars found. Triggering SyncRegistrarsWorkflow...")
 
 	// Connect to Temporal
-	tCfg := temporal.NewClientConfigFromEnv(temporal.QueueLifecycle)
+	tCfg := temporal.NewClientConfigFromEnv(temporal.QueueScheduled)
 
 	cli, err := temporal.GetTemporalClient(tCfg)
 	if err != nil {
