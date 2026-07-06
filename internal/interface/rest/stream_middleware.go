@@ -13,15 +13,24 @@ func ContextMiddleware() gin.HandlerFunc {
 		c.Set("userid", "admin")
 		c.Set("app", entities.AppAdminAPI)
 
-		// 1. Correlation ID: query parameter first, fallback to header
+		// 1. Correlation ID: query parameter first (either correlation_id or correlationID), fallback to header, fallback to generating new UUID
 		correlationID := c.Query("correlation_id")
+		if correlationID == "" {
+			correlationID = c.Query("correlationID")
+		}
 		if correlationID == "" {
 			correlationID = c.GetHeader("X-Correlation-ID")
 		}
+		if correlationID == "" {
+			correlationID = uuid.New().String()
+		}
 		c.Set("correlation_id", correlationID)
 
-		// 2. Trace ID: query parameter first, fallback to header, fallback to generating new UUID
+		// 2. Trace ID: query parameter first (either trace_id or traceID), fallback to header, fallback to generating new UUID
 		traceID := c.Query("trace_id")
+		if traceID == "" {
+			traceID = c.Query("traceID")
+		}
 		if traceID == "" {
 			traceID = c.GetHeader("X-Trace-ID")
 		}
@@ -54,6 +63,5 @@ func ContextPropagationMiddleware() gin.HandlerFunc {
 			}
 		}
 		c.Request = c.Request.WithContext(ctx)
-		c.Next()
 	}
 }

@@ -3,12 +3,16 @@ package main
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	appservices "github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/askg"
+	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -187,76 +191,76 @@ func main() {
 	if err != nil {
 		logger.Panic("Failed to create ID Generator", zap.Error(err))
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := appservices.NewRoidService(idGenerator)
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 	// Registry Operators
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(gormDB)
-	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
+	registryOperatorService := appservices.NewRegistryOperatorService(registryOperatorRepo)
 	// TLDs
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	dnsRecRepo := postgres.NewGormDNSRecordRepository(gormDB)
 	// tldService is created below after registrar deps are initialized
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
-	phaseService := services.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
+	phaseService := appservices.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
 	// Fees
 	feeRepo := postgres.NewFeeRepository(gormDB)
-	feeService := services.NewFeeService(phaseRepo, feeRepo)
+	feeService := appservices.NewFeeService(phaseRepo, feeRepo)
 	// Prices
 	priceRepo := postgres.NewGormPriceRepository(gormDB)
-	priceService := services.NewPriceService(phaseRepo, priceRepo)
+	priceService := appservices.NewPriceService(phaseRepo, priceRepo)
 	// Premium Lists
 	premiumListRepo := postgres.NewGORMPremiumListRepository(gormDB)
-	premiumListService := services.NewPremiumListService(premiumListRepo)
+	premiumListService := appservices.NewPremiumListService(premiumListRepo)
 	// Premium Labels
 	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
-	premiumLabelService := services.NewPremiumLabelService(premiumLabelRepo)
+	premiumLabelService := appservices.NewPremiumLabelService(premiumLabelRepo)
 	// NNDNs
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
-	nndnService := services.NewNNDNService(nndnRepo)
+	nndnService := appservices.NewNNDNService(nndnRepo)
 	// FX
 	fxRepo := postgres.NewFXRepository(gormDB)
-	fxService := services.NewFXService(fxRepo)
+	fxService := appservices.NewFXService(fxRepo)
 	// Sync
 	ianaRepo := ianaregistrars.NewIANARRepository()
 	icannRepo := icannspec5.NewICANNRepo()
 	spec5Repo := postgres.NewSpec5Repository(gormDB)
 	iregistrarRepo := postgres.NewIANARegistrarRepository(gormDB)
-	syncService := services.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)
+	syncService := appservices.NewSyncService(iregistrarRepo, spec5Repo, icannRepo, ianaRepo, fxRepo)
 	// Spec5
-	spec5Service := services.NewSpec5Service(spec5Repo)
+	spec5Service := appservices.NewSpec5Service(spec5Repo)
 	// IANA Registrars
-	ianaRegistrarService := services.NewIANARegistrarService(iregistrarRepo)
+	ianaRegistrarService := appservices.NewIANARegistrarService(iregistrarRepo)
 	// Registrars
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
-	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
+	registrarService := appservices.NewRegistrarService(registrarRepo, eventPublisher)
 	// Accreditations
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
-	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
+	accreditationService := appservices.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	// Now create TLDService with operator registrar auto-provisioning deps
-	tldService := services.NewTLDService(tldRepo, dnsRecRepo,
-		services.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
+	tldService := appservices.NewTLDService(tldRepo, dnsRecRepo,
+		appservices.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
 	)
 	// Contacts
 	contactRepo := postgres.NewContactRepository(gormDB)
-	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)
+	contactService := appservices.NewContactService(contactRepo, *roidService, eventPublisher)
 	// Hosts
 	hostRepo := postgres.NewGormHostRepository(gormDB)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
-	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
+	hostService := appservices.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB)
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
+	domainService := appservices.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 
 	// Domain Tombstones — archival records for purged domains
 	tombstoneRepo := postgres.NewGormTombstoneRepository(gormDB)
-	tombstoneService := services.NewTombstoneService(tombstoneRepo)
+	tombstoneService := appservices.NewTombstoneService(tombstoneRepo)
 	domainService.SetTombstoneRepo(tombstoneRepo)
 
 	// Zone Slaving — SOA serial drift monitoring for zone migrations
 	serialDriftRepo := postgres.NewSerialDriftRepository(gormDB)
-	zoneSlavingService := services.NewZoneSlavingService(serialDriftRepo)
+	zoneSlavingService := appservices.NewZoneSlavingService(serialDriftRepo)
 
 	// Event Search — unified search across hot (PG) and warm (S3) tiers
 	eventRepo := postgres.NewPostgresEventRepository(gormDB)
@@ -268,13 +272,13 @@ func main() {
 	} else {
 		archiveReader = storage.NewEventArchiveReader(s3Client)
 	}
-	eventSearchService := services.NewEventSearchService(eventRepo, archiveReader, 0)
+	eventSearchService := appservices.NewEventSearchService(eventRepo, archiveReader, 0)
 
 	// Whois
-	whoisService := services.NewWhoisService(domainRepo, registrarRepo)
+	whoisService := appservices.NewWhoisService(domainRepo, registrarRepo)
 
 	// Dnssec
-	dnssecService := services.NewDnssecService()
+	dnssecService := appservices.NewDnssecService()
 
 
 
@@ -329,6 +333,7 @@ func main() {
 		if !c.IsAborted() {
 			rest.ContextPropagationMiddleware()(c)
 		}
+		c.Next()
 	}
 
 	rest.NewPingController(r)
@@ -360,6 +365,55 @@ func main() {
 	rest.NewEscrowController(r, authMiddleware)
 	// Zone Slaving (serial drift monitoring)
 	rest.NewZoneSlavingController(r, zoneSlavingService, authMiddleware)
+
+	// Agent Alpaca (Ask G) — only enabled when ANTHROPIC_API_KEY is configured.
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+		askgModel := os.Getenv("LLM_MODEL")
+		if askgModel == "" {
+			askgModel = anthropicprovider.DefaultModel
+		}
+
+		askgCfg := askg.Config{
+			Provider:        "anthropic",
+			Model:           askgModel,
+			ClassifierModel: anthropicprovider.DefaultClassifier,
+			MaxIterations:   askg.DefaultMaxIterations,
+			APIKey:          apiKey,
+			BaseURL:         os.Getenv("ANTHROPIC_BASE_URL"),
+		}
+
+		askgProvider := anthropicprovider.NewAdapter(askgCfg)
+		askgLogger := slog.Default()
+
+		// KnowledgeService — optional; if docs/index.yaml is not found or
+		// cannot be loaded, the answer_system_question tool is simply not
+		// registered and the agent falls back to data-only tools.
+		var knowledgeSvc interfaces.KnowledgeService
+		projectRoot := os.Getenv("KNOWLEDGE_BASE_DIR")
+		if projectRoot == "" {
+			// Fall back to the current working directory.
+			projectRoot, _ = os.Getwd()
+		}
+		ks, ksErr := appservices.NewKnowledgeService(projectRoot)
+		if ksErr != nil {
+			logger.Warn("KnowledgeService not available — answer_system_question tool disabled",
+				zap.Error(ksErr),
+				zap.String("project_root", projectRoot))
+		} else {
+			knowledgeSvc = ks
+			logger.Info("KnowledgeService loaded",
+				zap.Int("docs", ks.DocCount()),
+				zap.Int("chunks", ks.ChunkCount()))
+		}
+
+		askgExecutor := askg.NewInProcessToolExecutor(domainService, tldService, knowledgeSvc, askgLogger)
+		askgOrch := askg.NewOrchestrator(askgProvider, askgExecutor, askgCfg, askgLogger)
+
+		rest.NewAgentController(r, askgOrch, authMiddleware)
+		logger.Info("Agent Alpaca (Ask G) enabled", zap.String("model", askgCfg.Model))
+	} else {
+		logger.Warn("Agent Alpaca (Ask G) disabled — ANTHROPIC_API_KEY not set. Set it via Doppler to enable the /agent endpoints.")
+	}
 
 
 	// Serve the swagger documentation

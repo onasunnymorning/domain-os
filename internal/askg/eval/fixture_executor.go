@@ -51,8 +51,9 @@ func (e *FixtureToolExecutor) Execute(_ context.Context, call askg.ToolCall, sco
 	}
 }
 
-// Tools returns the same two tool definitions as InProcessToolExecutor:
-// get_domain and get_tld with identical descriptions and input schemas.
+// Tools returns the tool definitions available in the eval harness:
+// get_domain, get_tld, and answer_system_question with identical
+// descriptions and input schemas to InProcessToolExecutor.
 func (e *FixtureToolExecutor) Tools() []askg.ToolDef {
 	return []askg.ToolDef{
 		{
@@ -81,6 +82,20 @@ func (e *FixtureToolExecutor) Tools() []askg.ToolDef {
 					},
 				},
 				"required": []string{"name"},
+			},
+		},
+		{
+			Name:        "answer_system_question",
+			Description: "Search the internal knowledge base for information about system architecture, workflows, deployment, domain lifecycle, and registry operations. Use this when the question is about HOW the system works, not about specific domain or TLD data.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"question": map[string]any{
+						"type":        "string",
+						"description": "The question to search the knowledge base for",
+					},
+				},
+				"required": []string{"question"},
 			},
 		},
 	}

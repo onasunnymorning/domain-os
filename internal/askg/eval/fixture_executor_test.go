@@ -127,9 +127,9 @@ func TestFixtureToolExecutor_Tools(t *testing.T) {
 	exec := NewFixtureToolExecutor(nil)
 	tools := exec.Tools()
 
-	require.Len(t, tools, 2, "should return two tool definitions")
+	require.Len(t, tools, 3, "should return three tool definitions")
 
-	names := make(map[string]bool, 2)
+	names := make(map[string]bool, 3)
 	for _, td := range tools {
 		names[td.Name] = true
 		assert.NotEmpty(t, td.Description, "tool %s should have a description", td.Name)
@@ -138,6 +138,7 @@ func TestFixtureToolExecutor_Tools(t *testing.T) {
 
 	assert.True(t, names["get_domain"], "should include get_domain")
 	assert.True(t, names["get_tld"], "should include get_tld")
+	assert.True(t, names["answer_system_question"], "should include answer_system_question")
 }
 
 func TestFixtureToolExecutor_ErrorFixture(t *testing.T) {

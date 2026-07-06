@@ -104,4 +104,54 @@ describe('DomainEventsWidget', () => {
     // Raw JSON is inside a <details> element — verify it's present in the DOM
     expect(screen.getByText('Raw Event JSON')).toBeInTheDocument();
   });
+
+  it('renders diff button when states are present and opens the diff modal', async () => {
+    const mockEvents = [
+      {
+        id: 'evt-2',
+        type: 'domain.status_set',
+        source: 'domain-os/api',
+        subject: 'example.com',
+        time: '2026-06-25T12:00:00Z',
+        before_state: {
+          Status: ['ok'],
+        },
+        after_state: {
+          Status: ['clientHold'],
+        },
+      },
+    ];
+
+    vi.mocked(eventSearchHooks.useEventSearch).mockReturnValue(
+      mockInfiniteResult({
+        data: {
+          pages: [{ data: mockEvents, totalCount: 1, tier: 'hot' }],
+          pageParams: [undefined],
+        },
+      })
+    );
+
+    render(<DomainEventsWidget domainName="example.com" />, { wrapper: createWrapper() });
+
+    // Diff button should be present because before/after state exist
+    const diffButton = screen.getByText('Diff State');
+    expect(diffButton).toBeInTheDocument();
+
+    // Dialog/modal should not be open yet
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // Click to open diff modal
+    fireEvent.click(diffButton);
+
+    // The dialog should appear in the DOM
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    
+    // Check for title or elements in diff modal
+    expect(await screen.findByText('State Difference')).toBeInTheDocument();
+    expect(screen.getByText('Key Changes')).toBeInTheDocument();
+    
+    // Check that changed property 'Status.0' is rendered
+    expect(await screen.findByText('Status.0')).toBeInTheDocument();
+  });
 });
+

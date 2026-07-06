@@ -153,4 +153,55 @@ describe('ArchivedDomainView', () => {
     expect(historyLink).toBeDefined();
     expect(historyLink?.getAttribute('href')).toBe('/domains/example.com/history');
   });
+
+  it('renders diff button when states are present in event and opens diff dialog', async () => {
+    const mockEvents = [
+      {
+        id: 'evt-3',
+        type: 'domain.auto_renewed',
+        source: 'domain-os/api',
+        subject: 'example.com',
+        time: '2026-06-26T12:00:00Z',
+        before_state: {
+          AutoRenew: false,
+        },
+        after_state: {
+          AutoRenew: true,
+        },
+      },
+    ];
+
+    vi.mocked(eventSearchHooks.useEventSearch).mockReturnValue(
+      mockInfiniteResult({
+        data: {
+          pages: [{ data: mockEvents, totalCount: 1, tier: 'hot' }],
+          pageParams: [undefined],
+        },
+      })
+    );
+
+    render(
+      <ArchivedDomainView tombstones={[baseTombstone]} domainName="example.com" />,
+      { wrapper: createWrapper() }
+    );
+
+    // Verify activity history header rendered
+    expect(screen.getByText('Filtered by ROID to show only this incarnation.')).toBeInTheDocument();
+
+    // Verify Diff State button is present
+    const diffButton = screen.getByText('Diff State');
+    expect(diffButton).toBeInTheDocument();
+
+    // Dialog should not be in DOM yet
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // Open Diff Modal
+    fireEvent.click(diffButton);
+
+    // Dialog should now be open
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findByText('State Difference')).toBeInTheDocument();
+    expect(await screen.findByText('AutoRenew')).toBeInTheDocument();
+  });
 });
+

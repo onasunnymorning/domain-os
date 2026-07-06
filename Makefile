@@ -1,7 +1,7 @@
 # Makefile for Domain OS
 # Consolidated commands for development, testing, and deployment
 
-.PHONY: help clean-docker local askg test-askg test-askg-eval
+.PHONY: help clean-docker local askg test-askg test-eval test-askg-eval
 
 # Default target
 .DEFAULT_GOAL := help
@@ -197,6 +197,10 @@ test-epp: ## Run EPP-specific tests
 test-askg: ## Run Ask G orchestrator tests
 	@echo "Running Ask G tests..."
 	@go test ./internal/askg/... -v -count=1
+
+test-eval: ## Run deterministic eval case validation (no API key needed)
+	@echo "Running deterministic eval case validation..."
+	@go test ./internal/askg/eval/... -run TestEvalFixtureCases -v -count=1
 
 test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY via Doppler)
 	@echo "Running Ask G evals (live model)..."
