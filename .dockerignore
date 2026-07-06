@@ -33,6 +33,13 @@ agent-coverage.html
 /escrowImport
 /rest.test
 /ry-admin
+/unified
+/mcp
+
+# Large local data directories
+backups/
+grafana/
+prometheus/
 
 # Local coverage and temp db/json files
 /coverage.out

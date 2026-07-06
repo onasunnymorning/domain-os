@@ -16,6 +16,7 @@ const (
 	ServiceWorker   Service = "worker"
 	ServiceFrontend Service = "frontend"
 	ServiceEPP      Service = "epp"
+	ServiceMCP      Service = "mcp"
 	ServiceCLI      Service = "cli"
 )
 
@@ -104,6 +105,12 @@ var Registry = []EnvVar{
 	{Name: "REDIS_HOST", Services: []Service{ServiceEPP}, Default: "localhost", Description: "Redis host for EPP session store"},
 	{Name: "REDIS_PORT", Services: []Service{ServiceEPP}, Default: "6379", Description: "Redis port"},
 	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP}, Description: "Redis password (empty = no auth)"},
+
+	// ═══════════════════════════════════════════
+	// MCP SERVER
+	// ═══════════════════════════════════════════
+	{Name: "MCP_TRANSPORT", Services: []Service{ServiceMCP}, Default: "stdio", Description: "MCP transport mode: 'stdio' for local IDE, 'http' for container deployment"},
+	{Name: "MCP_PORT", Services: []Service{ServiceMCP}, Default: "3001", Description: "HTTP listen port when MCP_TRANSPORT=http"},
 
 	// ═══════════════════════════════════════════
 	// EXTERNAL APIs

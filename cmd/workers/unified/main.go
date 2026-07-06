@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
+
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
@@ -11,6 +13,7 @@ import (
 )
 
 func main() {
+	log.Printf("unified-worker version=%s sha=%s built=%s", buildinfo.Version, buildinfo.GitSHA, buildinfo.BuildDate)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 

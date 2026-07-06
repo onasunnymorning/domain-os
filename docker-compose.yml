@@ -371,6 +371,38 @@ services:
       - 43:43
     networks:
       - dos
+
+  # MCP (Model Context Protocol) Server — read-only AI tool server
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: "geapex/mcp-server:${BRANCH}"
+    restart: unless-stopped
+    profiles: [ full ]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3001/healthz || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    environment:
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=3001
+    ports:
+      - 3001:3001
+    networks:
+      - dos
+
   # Frontend Admin Container
   # admin-frontend:
   #   image: "admin-dash:delete"

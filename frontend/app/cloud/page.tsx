@@ -196,12 +196,26 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
       { key: 'NEXT_PUBLIC_POSTHOG_HOST', description: 'PostHog ingest endpoint (proxied via /ingest)', secret: false, services: ['Frontend'] },
     ],
   },
+  {
+    category: 'AI / Agent',
+    icon: Activity,
+    color: 'text-violet-400',
+    vars: [
+      { key: 'ANTHROPIC_API_KEY', description: 'Anthropic API key — enables Agent Alpaca', secret: true, services: ['API'] },
+      { key: 'ANTHROPIC_BASE_URL', description: 'Optional Anthropic API base URL override', secret: false, services: ['API'] },
+      { key: 'ASKG_MODEL', description: 'Claude model for tool-use reasoning (default: claude-sonnet-4-6)', secret: false, services: ['API'] },
+      { key: 'ASKG_CLASSIFIER_MODEL', description: 'Cheaper model for intent classification (future)', secret: false, services: ['API'] },
+      { key: 'MCP_TRANSPORT', description: 'MCP server transport: stdio or http (default: stdio)', secret: false, services: ['MCP'] },
+      { key: 'MCP_PORT', description: 'MCP HTTP listen port (default: 3001)', secret: false, services: ['MCP'] },
+    ],
+  },
 ];
 
 const serviceColors: Record<string, string> = {
   API: 'bg-emerald-500/15 text-emerald-400',
   Frontend: 'bg-blue-500/15 text-blue-400',
   Worker: 'bg-amber-500/15 text-amber-400',
+  MCP: 'bg-violet-500/15 text-violet-400',
 };
 
 export default function CloudPage() {
