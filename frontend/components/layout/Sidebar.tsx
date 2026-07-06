@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
 import { CoLogo } from '@/components/icons/CoLogo';
+import { AgentPanel } from '@/components/agent/AgentPanel';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Registry Operators', href: '/registry-operators', icon: Building2 },
@@ -39,6 +40,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [showAlpaca, setShowAlpaca] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
 
   const toggleBrand = useCallback(() => {
     setShowAlpaca((prev) => {
@@ -145,13 +147,29 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             })}
           </nav>
 
-          <div className="pt-4 px-4">
-            <p className="px-3 text-xs text-muted-foreground">
+          {/* Ask Alpaca button */}
+          <div className="px-4 pb-2">
+            <button
+              type="button"
+              onClick={() => setAgentPanelOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-gradient-to-r hover:from-orange-500/10 hover:to-amber-500/10 hover:text-foreground group"
+            >
+              <div className="flex h-4 w-4 items-center justify-center">
+                <AlpacaLogo className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
+              </div>
+              Ask Alpaca
+            </button>
+          </div>
+
+          <div className="pt-2 px-4 border-t border-border/30">
+            <p className="px-3 py-2 text-xs text-muted-foreground">
               v{process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'}
             </p>
           </div>
         </div>
       </aside>
+
+      <AgentPanel open={agentPanelOpen} onOpenChange={setAgentPanelOpen} />
     </>
   );
 }

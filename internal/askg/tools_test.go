@@ -43,6 +43,7 @@ func TestInProcessToolExecutor_GetDomain_Found(t *testing.T) {
 		&mockTLDSvc{getByName: func(_ context.Context, _ string, _ bool) (*entities.TLD, error) {
 			return nil, entities.ErrTLDNotFound
 		}},
+		nil,
 		newDiscardLogger(),
 	)
 
@@ -63,6 +64,7 @@ func TestInProcessToolExecutor_GetDomain_NotFound(t *testing.T) {
 			return nil, entities.ErrDomainNotFound
 		}},
 		nil,
+		nil,
 		newDiscardLogger(),
 	)
 
@@ -76,7 +78,7 @@ func TestInProcessToolExecutor_GetDomain_NotFound(t *testing.T) {
 }
 
 func TestInProcessToolExecutor_GetDomain_InvalidInput(t *testing.T) {
-	exec := NewInProcessToolExecutor(nil, nil, newDiscardLogger())
+	exec := NewInProcessToolExecutor(nil, nil, nil, newDiscardLogger())
 
 	tests := []struct {
 		name  string
@@ -137,6 +139,7 @@ func TestInProcessToolExecutor_GetTLD_Found(t *testing.T) {
 			assert.Equal(t, "best", name)
 			return testTLD, nil
 		}},
+		nil,
 		newDiscardLogger(),
 	)
 
@@ -156,6 +159,7 @@ func TestInProcessToolExecutor_GetTLD_NotFound(t *testing.T) {
 		&mockTLDSvc{getByName: func(_ context.Context, _ string, _ bool) (*entities.TLD, error) {
 			return nil, entities.ErrTLDNotFound
 		}},
+		nil,
 		newDiscardLogger(),
 	)
 
@@ -169,7 +173,7 @@ func TestInProcessToolExecutor_GetTLD_NotFound(t *testing.T) {
 }
 
 func TestInProcessToolExecutor_UnknownTool(t *testing.T) {
-	exec := NewInProcessToolExecutor(nil, nil, newDiscardLogger())
+	exec := NewInProcessToolExecutor(nil, nil, nil, newDiscardLogger())
 
 	result := exec.Execute(context.Background(), ToolCall{
 		ID:    "test-5",
@@ -181,7 +185,7 @@ func TestInProcessToolExecutor_UnknownTool(t *testing.T) {
 }
 
 func TestInProcessToolExecutor_Tools_ReturnsDefinitions(t *testing.T) {
-	exec := NewInProcessToolExecutor(nil, nil, newDiscardLogger())
+	exec := NewInProcessToolExecutor(nil, nil, nil, newDiscardLogger())
 	tools := exec.Tools()
 
 	require.Len(t, tools, 2)

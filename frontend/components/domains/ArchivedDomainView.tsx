@@ -19,16 +19,19 @@ import {
   FileCode,
   History,
   Loader2,
+  GitCompare,
 } from 'lucide-react';
 
 import type { DomainTombstone } from '@/lib/api/tombstones';
 import { useEventSearch } from '@/lib/hooks/useEventSearch';
+import type { DomainEvent } from '@/lib/types/domain';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyButton } from '@/components/ui/copy-button';
+import { StateDiffModal } from '@/components/shared/StateDiffModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -275,6 +278,7 @@ function ArchivedEventsSection({ tombstone }: { tombstone: DomainTombstone }) {
   const totalCount = data?.pages[0]?.totalCount ?? 0;
 
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [activeDiffEvent, setActiveDiffEvent] = useState<DomainEvent | null>(null);
 
   if (isLoading) {
     return (
@@ -386,12 +390,23 @@ function ArchivedEventsSection({ tombstone }: { tombstone: DomainTombstone }) {
                   )}
                 </div>
 
-                {/* Expand toggle */}
-                <div className="flex justify-end">
+                 {/* Expand toggle */}
+                <div className="flex justify-end gap-2">
+                  {(event.before_state || event.after_state) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs font-medium gap-1 text-primary hover:text-primary hover:bg-muted cursor-pointer"
+                      onClick={() => setActiveDiffEvent(event)}
+                    >
+                      <GitCompare className="h-3.5 w-3.5" />
+                      Diff State
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground"
+                    className="h-7 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
                     onClick={() =>
                       setExpandedEventId(isExpanded ? null : event.id)
                     }
@@ -406,11 +421,56 @@ function ArchivedEventsSection({ tombstone }: { tombstone: DomainTombstone }) {
                   </Button>
                 </div>
 
+                {/* Structured payload / Raw JSON block */}
                 {isExpanded && (
-                  <div className="mt-2 text-xs border rounded-md bg-muted/65 dark:bg-zinc-950/50 p-3 max-h-[300px] overflow-auto font-mono scrollbar-thin">
-                    <pre>
-                      <code>{JSON.stringify(event, null, 2)}</code>
-                    </pre>
+                  <div className="mt-2 text-xs border rounded-md bg-muted/65 dark:bg-zinc-950/50 p-3 max-h-[300px] overflow-auto font-mono scrollbar-thin space-y-3">
+                    {/* Show structured state diffs when available */}
+                    {(event.command || event.before_state || event.after_state) && (
+                      <div className="space-y-2 font-sans">
+                        {event.actor && (
+                          <div className="text-xs text-muted-foreground">
+                            Performed by: <span className="font-medium text-foreground">{event.actor}</span>
+                          </div>
+                        )}
+                        {event.command && (
+                          <details className="group relative group/code">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Command</summary>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-primary/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.command, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.command, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
+                          </details>
+                        )}
+                        {event.before_state && (
+                          <details className="group relative group/code">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Before State</summary>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-orange-400/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.before_state, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.before_state, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
+                          </details>
+                        )}
+                        {event.after_state && (
+                          <details className="group relative group/code">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">After State</summary>
+                            <div className="relative">
+                              <pre className="mt-1 pl-3 border-l-2 border-emerald-400/30 overflow-x-auto pr-10"><code>{JSON.stringify(event.after_state, null, 2)}</code></pre>
+                              <CopyButton value={JSON.stringify(event.after_state, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                    {/* Always show full raw JSON */}
+                    <details className={`relative group/code ${event.command || event.before_state || event.after_state ? 'group' : 'group open'}`}>
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors font-sans font-medium">
+                        Raw Event JSON
+                      </summary>
+                      <div className="relative">
+                        <pre className="mt-1 overflow-x-auto pr-10"><code>{JSON.stringify(event, null, 2)}</code></pre>
+                        <CopyButton value={JSON.stringify(event, null, 2)} className="absolute right-2 top-2 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
@@ -439,6 +499,15 @@ function ArchivedEventsSection({ tombstone }: { tombstone: DomainTombstone }) {
           </div>
         )}
       </CardContent>
+
+      <StateDiffModal
+        isOpen={!!activeDiffEvent}
+        onClose={() => setActiveDiffEvent(null)}
+        before={activeDiffEvent?.before_state}
+        after={activeDiffEvent?.after_state}
+        title="State Difference"
+        subtitle={`Comparing before/after state for event: ${activeDiffEvent ? activeDiffEvent.type.replace('domain.', '').replaceAll('_', ' ') : ""}`}
+      />
     </Card>
   );
 }

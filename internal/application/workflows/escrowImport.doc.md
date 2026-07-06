@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Status** | `ACTIVE` |
-| **Queue** | `data-pipeline` |
+| **Queue** | `heavy-batch` |
 | **Category** | `data-pipeline` |
 | **Tags** | `data`, `escrow`, `import` |
 | **Trigger** | `API` |
@@ -26,6 +26,7 @@ flowchart TD
         S1["📄 <b>Parse & Extract Assets</b>\nStream escrow file into CSVs"]
         S1b["📋 <b>Copy Source to Run Folder</b>\nServer-side S3 copy (best-effort)"]
         S2["🗃️ <b>Build Staging DB</b>\nCollate CSVs into Ryde.db"]
+        S2b["🧹 <b>Clean Orphaned Contacts</b>\nRemove contacts from dead registrars\n(best-effort, non-fatal)"]
         S3["🔗 <b>Resolve Registrars</b>\nMatch registrar codes from escrow"]
         S3Q{"Unmapped registrars\nwith domains?"}
         S3b["⏸️ <b>Await Registrar Overrides</b>\nUser provides mappings or skips"]
@@ -34,7 +35,7 @@ flowchart TD
         S5["🧪 <b>QA Staged DB</b>\nRun 7 automated check queries"]
         S5Q{"QA checks\npassed?"}
 
-        S0 --> S1 --> S1b --> S2 --> S3 --> S3Q
+        S0 --> S1 --> S1b --> S2 --> S2b --> S3 --> S3Q
         S3Q -- "Yes" --> S3b
         S3Q -- "No" --> S4
         S3b -- "ProvideRegistrarOverrides" --> S3c --> S4
@@ -53,6 +54,7 @@ flowchart TD
     subgraph ingest ["3. Ingestion Phase"]
         direction TB
         I0["👤 <b>Ingest Contacts</b>"]
+        I0b["🔐 <b>Validate Contact Refs</b>\nFK gate — non-retryable"]
         I1["🖥️ <b>Ingest Hosts</b>"]
         I2["🌐 <b>Ingest Domains</b>"]
         I3["🚫 <b>Ingest NNDNs</b>"]
@@ -61,7 +63,7 @@ flowchart TD
         I6["📊 <b>Persist Import Summary</b>"]
         I7["🔎 <b>Verify Ingestion</b>\nReconcile staged vs live via API"]
         
-        I0 --> I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7
+        I0 --> I0b --> I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7
     end
 
     QAFAIL["⚠️ <b>QA Blocked</b>\nCompletes with QAPassed=false.\nQA Report key returned."]
@@ -101,14 +103,21 @@ type EscrowImportParams struct {
 
 ```go
 type EscrowImportResult struct {
-	TLD            string           `json:"tld"`
-	ObjectKey      string           `json:"objectKey"`
-	RunPrefix      string           `json:"runPrefix"`
-	StagedDBKey    string           `json:"stagedDbKey"`
-	QAPassed       bool             `json:"qaPassed"`
-	QAReportKey    string           `json:"qaReportKey"`
-	Confirmed      bool             `json:"confirmed"`
-	IngestedCounts map[string]int64 `json:"ingestedCounts,omitempty"`
+	TLD                    string                        `json:"tld"`
+	ObjectKey              string                        `json:"objectKey"`
+	RunPrefix              string                        `json:"runPrefix"`
+	DBKey                  string                        `json:"dbKey,omitempty"`
+	StagedDBKey            string                        `json:"stagedDbKey"`
+	QAPassed               bool                          `json:"qaPassed"`
+	QAReportKey            string                        `json:"qaReportKey"`
+	Confirmed              bool                          `json:"confirmed"`
+	IngestedCounts         map[string]int64              `json:"ingestedCounts,omitempty"`
+	TotalRegistrars        int                           `json:"totalRegistrars,omitempty"`
+	MappedRegistrars       int                           `json:"mappedRegistrars,omitempty"`
+	UnmappedRegistrars     []activities.UnmappedRegistrar `json:"unmappedRegistrars,omitempty"`
+	OverridesProvided      map[string]string             `json:"overridesProvided,omitempty"`
+	VerificationPassed     bool                          `json:"verificationPassed"`
+	VerificationReportKey  string                        `json:"verificationReportKey,omitempty"`
 }
 ```
 
@@ -116,15 +125,15 @@ type EscrowImportResult struct {
 
 ### 1. Validate Escrow Source
 - **Activity**: `ValidateEscrowSource`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
 - **Description**: Verifies that the input S3 object key exists in the configured bucket and that the target TLD matches system expectations.
 
 ### 2. Parse & Extract Assets
 - **Activity**: `ParseAndExtractAssets`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
-- **Description**: Streams the XML/CSV escrow file and splits it into individual CSV entity tables (`domains.csv`, `contacts.csv`, etc.) uploaded under the run folder (`<workflowID>/`).
+- **Description**: Streams the XML/CSV escrow file and splits it into individual CSV entity tables (`domains.csv`, `contacts.csv`, etc.) uploaded under the run folder (`<workflowID>/`). If the parser detects structural issues (`HasIssues=true`), the workflow returns early with analysis errors — ingestion is blocked.
 
 ### 2b. Copy Source to Run Folder
 - **Activity**: `CopySourceToRunFolder`
@@ -135,31 +144,39 @@ type EscrowImportResult struct {
 
 ### 3. Build Staging Database
 - **Activity**: `BuildStagingDatabase`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
 - **Description**: Combines all the individual CSV assets into a single SQLite file named `ryde.db` under the run prefix.
 
+### 3b. Clean Orphaned Contacts
+- **Activity**: `CleanOrphanedContacts`
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
+- **Retry**: Max 5 attempts, backoff coefficient 2.0
+- **Best-effort**: Failure does **not** fail the workflow — logged as a warning and the workflow continues with the uncleaned DB.
+- **Phase**: `cleaning_orphans`
+- **Description**: Scans the staging database for registrars that own zero domains and zero hosts. Contacts belonging exclusively to these "dead" registrars are either deleted or reassigned. This reduces noise in the registrar resolution step and avoids importing orphaned data. The activity returns counts of deleted contacts, reassigned contacts, and the list of cleaned registrars.
+
 ### 4. Resolve Registrars
 - **Activity**: `ResolveRegistrars`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
 - **Description**: Inspects registrar codes in `ryde.db` and attempts to match them with system registrars using a 3-tier strategy: (1) manual overrides, (2) auto-map by GurID, (3) auto-map by name. Manual mappings can be provided via `registrarOverrides` in workflow params or via the `ProvideRegistrarOverrides` signal.
 
 ### 4b. Await Registrar Overrides (Conditional HITL)
-- **Signal**: `ProvideRegistrarOverrides` (payload: `map[string]string`) or `SkipRegistrarOverrides` (payload: `bool`)
+- **Signal**: `ProvideRegistrarOverrides` (payload: `map[string]interface{}`) or `SkipRegistrarOverrides` (payload: `bool`)
 - **Phase**: `pending_registrar_overrides`
 - **Condition**: Only activates when unmapped registrars with `domainCount > 0` exist. Auto-skipped when all unmapped registrars are empty (no domains, only contacts/hosts).
 - **Description**: Pauses workflow execution and exposes the list of unmapped registrars in the workflow state. The UI shows an interactive override form where operators can either map each unmapped registrar to an existing system registrar (via search), create a new registrar on the fly, or skip. On `ProvideRegistrarOverrides`, the signal payload is merged with any initial overrides and `ResolveRegistrars` is re-run without re-parsing the escrow data. On `SkipRegistrarOverrides`, the workflow continues with the current (potentially incomplete) mappings.
 
 ### 5. Apply Registrar Mappings
 - **Activity**: `ApplyRegistrarMappings`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
 - **Description**: Produces the `staged.db` SQLite file by replacing all raw registrar codes with system IDs in all records.
 
 ### 6. QA Staged Database
 - **Activity**: `QAStagedDatabase`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
 - **Retry**: Max 5 attempts, backoff coefficient 2.0
 - **Description**: Runs 7 automated database check queries. Creates the `qa-report.json` report. If any check with `error` severity fails, ingestion is blocked and the workflow completes with `QAPassed=false` (phase `qa_failed`). This is an application-level outcome, not a workflow error — the result contains the QA Report key and Staged DB key so operators can inspect and fix the data.
 
@@ -169,13 +186,13 @@ type EscrowImportResult struct {
 
 ### 8. Ingest Contacts
 - **Activity**: `IngestContacts`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Upserts contact records from `staged.db` to the live database, preserving original creation times and identifiers. Returns `Skipped` count for contacts excluded due to unmapped CLIDs — this count is surfaced in workflow state as `contacts_skipped`.
 
 ### 8b. Validate Contact References (FK gate)
 - **Activity**: `ValidateRegistrantRefs`
-- **Timeout**: Start-to-close 2h
+- **Timeout**: Start-to-close 2h, Schedule-to-close 3h, Heartbeat 5m
 - **Retry**: **MaximumAttempts: 1 (non-retryable)**
 - **Description**: Cross-checks every domain contact reference (registrant, admin, tech, billing) in `staged.db` against the live Postgres `contacts` table. Runs **after** `IngestContacts` and **before** `IngestDomains`. Any contact ID referenced by a domain that is missing from Postgres would produce a foreign key violation at domain ingest time — this activity catches those cases and fails fast with a clear diagnostic message listing missing IDs and sample domains.
 - **Failure behavior**: If any references are missing, returns a `NonRetryableApplicationError` of type `MissingContactRefs` with a count breakdown by role (registrant/admin/tech/billing) and up to 50 sampled violations. The workflow phase is set to `failed` and `IngestDomains` is **not attempted**.
@@ -183,54 +200,68 @@ type EscrowImportResult struct {
 
 ### 9. Ingest Hosts
 - **Activity**: `IngestHosts`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Upserts host nameserver records from `staged.db` to the live registry.
 
 ### 10. Ingest Domains
 - **Activity**: `IngestDomains`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Upserts domain registration records.
 
 ### 11. Ingest NNDNs
 - **Activity**: `IngestNNDNs`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Ingests Non-Existent Domain Name reservations.
 
 ### 12. Link Domain Hosts
 - **Activity**: `LinkDomainHosts`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Resolves domain-nameserver associations.
 
 ### 13. Accredit Registrars
 - **Activity**: `AccreditRegistrars`
-- **Timeout**: Start-to-close 10h, Heartbeat 10m
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
 - **Retry**: Max 3 attempts, backoff coefficient 2.0
 - **Description**: Grants accreditations to registrars mapping to the imported TLD.
 
 ### 14. Persist Import Summary
 - **Activity**: `PersistImportSummary`
-- **Timeout**: Start-to-close 5m
-- **Description**: Serializes ingestion counts and metadata to a JSON summary in S3. Non-critical — failures are logged as warnings.
+- **Timeout**: Start-to-close 10h, Schedule-to-close 20h, Heartbeat 10m
+- **Retry**: Max 3 attempts, backoff coefficient 2.0
+- **Best-effort**: Failure does **not** fail the workflow — logged as a warning.
+- **Description**: Serializes ingestion counts and metadata to a JSON summary in S3 (`import-summary.json`).
 
 ### 15. Verify Ingestion
 - **Activity**: `VerifyIngestion`
-- **Timeout**: Start-to-close 5m
-- **Description**: Post-ingestion verification. Downloads the staged DB and compares it against the live system via admin API. Runs domain count reconciliation and a 20-domain random sample spot-check. Results are uploaded as `verification-report.json`. Verification failures are informational — they do not fail the workflow.
+- **Timeout**: Start-to-close 2h, Schedule-to-close 4h, Heartbeat 5m
+- **Retry**: Max 5 attempts, backoff coefficient 2.0
+- **Best-effort**: Verification failures are informational — they do **not** fail the workflow.
+- **Description**: Post-ingestion verification. Downloads the staged DB and compares it against the live system via admin API. Runs domain count reconciliation and a 20-domain random sample spot-check. Results are uploaded as `verification-report.json`. The result's `Passed` boolean and `ReportKey` are included in the final workflow output.
 
 ## Signals
 
-| Signal Name | Payload Type | Description |
-|-------------|-------------|-------------|
-| `ConfirmEscrowImport` | `bool` | Sent by the user to approve (`true`) or cancel (`false`) the import execution |
+| Signal Name | Payload Type | Phase | Description |
+|-------------|-------------|-------|-------------|
+| `ProvideRegistrarOverrides` | `map[string]interface{}` | `pending_registrar_overrides` | Operator provides registrar code → system ID mappings. Merged with existing overrides and triggers a re-run of `ResolveRegistrars`. |
+| `SkipRegistrarOverrides` | `bool` | `pending_registrar_overrides` | Operator skips the override step. The workflow continues with the current (potentially incomplete) mappings. |
+| `ConfirmEscrowImport` | `bool` | `pending_confirmation` | Sent by the user to approve (`true`) or cancel (`false`) the import execution. |
+
+## Query Handlers
+
+| Query Name | Return Type | Description |
+|------------|------------|-------------|
+| `state` | `EscrowImportState` | Returns the real-time workflow state including current phase, QA status, registrar mapping summary, ingestion counts, and verification results. |
 
 ## Failure Modes
 
 | Failure | Cause | Workflow Behavior | Manual Recovery |
-|---------|-------|-------------------|-----------------|
+|---------|-------|-------------------|-----------------| 
+| Escrow source missing | Object key doesn't exist in S3 | Workflow **fails** at `ValidateEscrowSource`. | Verify the file was uploaded correctly and the object key matches. |
+| Parse structural issues | Escrow file has invalid layout/encoding | Workflow **returns early** from `ParseAndExtractAssets` with `HasIssues=true` and analysis errors. | Fix the source file and re-run. |
 | QA Check Blocked | Staged data contains missing/null CLIDs, contacts, or hosts | Workflow **completes** with `QAPassed=false` (phase `qa_failed`). Ingestion is not started. Result contains QA Report and Staged DB keys. | Review the interactive QA Report, fix mappings or source file, re-run import. |
 | Contact Reference Validation Failed | Contacts skipped during `IngestContacts` (unmapped CLIDs) leave dangling domain references | Workflow **fails** at `ValidateRegistrantRefs` with a `MissingContactRefs` error. `IngestDomains` is **never attempted** — no partial data written. | Check `contacts_skipped` in workflow state. Investigate registrar CLID override mismatches. Fix mappings and re-run import. |
 | Ingestion Activity Timeout | Large TLD database size | Retries activity up to 3 times. | If retries exhaust, check DB load and restart workflow using the same staged DB if possible, or run a new import. |
@@ -248,6 +279,8 @@ Uploaded source files land in an ephemeral prefix `uploads/<tld>/<timestamp>/<fi
 | `ryde.db` | `<workflowID>/ryde.db` | SQLite database of raw imported records |
 | `staged.db` | `<workflowID>/staged.db` | Final staged SQLite database with resolved registrar mappings |
 | `qa-report.json` | `<workflowID>/qa-report.json` | Automated QA check results |
+| `import-summary.json` | `<workflowID>/import-summary.json` | Serialized ingestion counts and metadata |
+| `verification-report.json` | `<workflowID>/verification-report.json` | Post-ingestion reconciliation report (staged vs live) |
 
 ## Operational Notes
 
@@ -261,8 +294,8 @@ escrow-import-best-20260625-001231/
   ryde.db
   staged.db
   qa-report.json
-  verification-report.json
   import-summary.json
+  verification-report.json
 ```
 
 ### ListImports Backward Compatibility
@@ -276,5 +309,5 @@ If an import needs to be cancelled while paused, click "Reject" in the Launchpad
 
 ---
 
-> **Last updated**: 2026-06-25
+> **Last updated**: 2026-07-01
 > **Updated by**: Antigravity

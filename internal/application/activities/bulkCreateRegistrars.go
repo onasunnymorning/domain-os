@@ -18,7 +18,7 @@ func BulkCreateRegistrars(ctx context.Context, correlationID string, cmds []comm
 	client := http.Client{}
 
 	// set the correlation ID
-	qParams := map[string]string{"correlationID": correlationID}
+	qParams := map[string]string{"correlation_id": correlationID}
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
 		return fmt.Errorf("failed to add query params: %w", err)

@@ -18,29 +18,36 @@ import (
 // directly — no MCP transport round-trip. It reuses the same input/output
 // structs and mapping logic as the MCP server so schemas never drift.
 type InProcessToolExecutor struct {
-	domainService interfaces.DomainService
-	tldService    interfaces.TLDService
-	logger        *slog.Logger
+	domainService    interfaces.DomainService
+	tldService       interfaces.TLDService
+	knowledgeService interfaces.KnowledgeService // nil if knowledge base not loaded
+	logger           *slog.Logger
 }
 
 // NewInProcessToolExecutor creates a tool executor wired to the given
-// application services. The logger is used for structured observability.
+// application services. The knowledgeService may be nil — if so, the
+// answer_system_question tool is simply not advertised.
+// The logger is used for structured observability.
 func NewInProcessToolExecutor(
 	domainService interfaces.DomainService,
 	tldService interfaces.TLDService,
+	knowledgeService interfaces.KnowledgeService,
 	logger *slog.Logger,
 ) *InProcessToolExecutor {
 	return &InProcessToolExecutor{
-		domainService: domainService,
-		tldService:    tldService,
-		logger:        logger,
+		domainService:    domainService,
+		tldService:       tldService,
+		knowledgeService: knowledgeService,
+		logger:           logger,
 	}
 }
 
 // Tools returns the tool definitions derived from the MCP tool types.
 // The JSON Schema is built from the same struct tags used by the MCP server.
+// The answer_system_question tool is only advertised when a KnowledgeService
+// is configured.
 func (e *InProcessToolExecutor) Tools() []ToolDef {
-	return []ToolDef{
+	tools := []ToolDef{
 		{
 			Name:        "get_domain",
 			Description: "Look up the current registry state of a domain name, including EPP status codes, expiry, redemption/RGP state, nameservers, and sponsoring registrar.",
@@ -70,6 +77,25 @@ func (e *InProcessToolExecutor) Tools() []ToolDef {
 			},
 		},
 	}
+
+	if e.knowledgeService != nil {
+		tools = append(tools, ToolDef{
+			Name:        "answer_system_question",
+			Description: "Search the internal knowledge base for information about system architecture, workflows, deployment, domain lifecycle, and registry operations. Use this when the question is about HOW the system works, not about specific domain or TLD data.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"question": map[string]any{
+						"type":        "string",
+						"description": "The question to search the knowledge base for",
+					},
+				},
+				"required": []string{"question"},
+			},
+		})
+	}
+
+	return tools
 }
 
 // Execute runs a single tool call against the in-process application services.
@@ -91,6 +117,8 @@ func (e *InProcessToolExecutor) Execute(ctx context.Context, call ToolCall, scop
 		result, err = e.executeDomain(ctx, call.Input)
 	case "get_tld":
 		result, err = e.executeTLD(ctx, call.Input)
+	case "answer_system_question":
+		result, err = e.executeKnowledgeSearch(ctx, call.Input)
 	default:
 		err = fmt.Errorf("unknown tool: %s", call.Name)
 	}
@@ -207,6 +235,73 @@ func (e *InProcessToolExecutor) executeTLD(ctx context.Context, rawInput any) (*
 	}
 
 	return output, nil
+}
+
+// knowledgeSearchOutput is the structured output for the answer_system_question tool.
+type knowledgeSearchOutput struct {
+	LowConfidence bool                   `json:"low_confidence"`
+	Message       string                 `json:"message,omitempty"`
+	Results       []knowledgeSearchEntry  `json:"results,omitempty"`
+}
+
+// knowledgeSearchEntry is a single chunk from the knowledge search results.
+type knowledgeSearchEntry struct {
+	Source  string  `json:"source"`  // relative file path
+	Section string  `json:"section"` // heading trail
+	Content string  `json:"content"` // markdown text
+	Score   float64 `json:"score"`   // BM25 relevance score
+}
+
+// executeKnowledgeSearch searches the knowledge base for the given question
+// and returns the top matching chunks. If no results are found or all scores
+// are below the confidence threshold, it returns a low_confidence flag.
+func (e *InProcessToolExecutor) executeKnowledgeSearch(_ context.Context, rawInput any) (*knowledgeSearchOutput, error) {
+	if e.knowledgeService == nil {
+		return nil, fmt.Errorf("knowledge base not available: KnowledgeService was not initialized — check that docs/index.yaml exists and is valid")
+	}
+
+	question, err := extractStringField(rawInput, "question")
+	if err != nil {
+		return nil, fmt.Errorf("invalid input: %w", err)
+	}
+
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return nil, fmt.Errorf("invalid input: question must not be empty")
+	}
+
+	results, err := e.knowledgeService.Search(question, 5)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge search failed for question %q: %w", question, err)
+	}
+
+	// Check for low-confidence: no results or all scores below threshold.
+	const confidenceThreshold = 0.5
+
+	if len(results) == 0 || results[0].Score < confidenceThreshold {
+		return &knowledgeSearchOutput{
+			LowConfidence: true,
+			Message:       "No sufficiently relevant documentation was found for this question. You should escalate to a human rather than attempting to answer from these results.",
+		}, nil
+	}
+
+	entries := make([]knowledgeSearchEntry, 0, len(results))
+	for _, r := range results {
+		if r.Score < confidenceThreshold {
+			break // results are sorted by score, so stop at first low-confidence
+		}
+		entries = append(entries, knowledgeSearchEntry{
+			Source:  r.DocPath,
+			Section: r.Section,
+			Content: r.Content,
+			Score:   r.Score,
+		})
+	}
+
+	return &knowledgeSearchOutput{
+		LowConfidence: false,
+		Results:       entries,
+	}, nil
 }
 
 // ---------------------------------------------------------------------------
