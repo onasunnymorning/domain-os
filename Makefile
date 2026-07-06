@@ -9,11 +9,17 @@
 # Variables
 BRANCH := $(shell git branch --show-current)
 TAG := $(subst /,-,$(BRANCH))
-GIT_SHA := $(shell git rev-parse $(BRANCH))
+GIT_SHA := $(shell git rev-parse HEAD)
+VERSION := $(shell cat VERSION)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 DOPPLER := doppler run --
 DOCKER_COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
 COMPOSE_CI_FILE := docker-compose-ci.yml
+LDFLAGS := -s -w \
+  -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=$(VERSION) \
+  -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=$(GIT_SHA) \
+  -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
 help: ## Show this help message
 	@echo 'Domain OS - Makefile Commands'
@@ -122,7 +128,10 @@ test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (req
 		| xargs docker network rm 2>/dev/null || true
 	@docker volume rm domain-os_temporal_pgdata 2>/dev/null || true
 	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
-	@docker build -t geapex/domain-os:$(TAG) --build-arg GIT_SHA=$(BRANCH) .
+	@docker build -t geapex/domain-os:$(TAG) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) .
 	@echo "Starting integration test containers (will run Postman tests via Newman)..."
 	@export BRANCH=$(TAG) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) \
 		$(DOCKER_COMPOSE) -p domain-os --profile essential -f $(COMPOSE_CI_FILE) \
@@ -256,6 +265,7 @@ ci-security: ## Run security scans (govulncheck + npm audit + Trivy)
 	@echo "🔒 Running Trivy image scan..."
 	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/domain-os:$(TAG)
 	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/unified-worker:$(TAG)
+	@trivy image --severity CRITICAL,HIGH --exit-code 1 geapex/mcp-server:$(TAG)
 	@echo "✅ Security scans passed!"
 
 ###################
@@ -263,22 +273,38 @@ ci-security: ## Run security scans (govulncheck + npm audit + Trivy)
 ###################
 
 build: ## Build the main API Docker image
-	@echo "Building API image for branch $(BRANCH)..."
-	@docker build -t geapex/domain-os:$(TAG) --build-arg GIT_SHA=$(BRANCH) .
+	@echo "Building API image for branch $(BRANCH) version $(VERSION)..."
+	@docker build -t geapex/domain-os:$(TAG) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) .
 
 build-epp: ## Build the EPP server Docker image
-	@echo "Building EPP server image for branch $(BRANCH)..."
-	@docker build -t geapex/epp-server:$(TAG) -f Dockerfile.epp --build-arg GIT_SHA=$(BRANCH) .
+	@echo "Building EPP server image for branch $(BRANCH) version $(VERSION)..."
+	@docker build -t geapex/epp-server:$(TAG) -f Dockerfile.epp \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) .
 
-build-whois: ## Build the WHOIS/EPP client API Docker image
-	@echo "Building WHOIS/EPP client API image for branch $(BRANCH)..."
-	@docker build -t geapex/epp-client-api:$(TAG) -f ./cmd/api/epp-client/Dockerfile --build-arg GIT_SHA=$(BRANCH) .
+build-whois: ## Build the WHOIS server Docker image
+	@echo "Building WHOIS server image for branch $(BRANCH) version $(VERSION)..."
+	@docker build -t geapex/whois:$(TAG) -f ./cmd/whois/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) .
 
 build-worker: ## Build the unified worker Docker image
-	@echo "Building Unified Worker image for branch $(BRANCH)..."
-	@docker build -t geapex/unified-worker:$(TAG) -f ./cmd/workers/unified/Dockerfile --build-arg GIT_SHA=$(BRANCH) .
+	@echo "Building Unified Worker image for branch $(BRANCH) version $(VERSION)..."
+	@docker build -t geapex/unified-worker:$(TAG) -f ./cmd/workers/unified/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) .
 
-build-all: build build-worker build-epp build-whois ## Build all Docker images
+build-mcp: ## Build the MCP server Docker image
+	@echo "Building MCP server image for branch $(BRANCH)..."
+	@docker build -t geapex/mcp-server:$(TAG) -f Dockerfile.mcp .
+
+build-all: build build-worker build-epp build-whois build-mcp ## Build all Docker images
 
 push: build ## Build and push main API image to Docker Hub
 	@echo "Pushing API image to Docker Hub..."

@@ -60,10 +60,16 @@ RUN if [ "$SKIP_SWAG" = "true" ]; then \
     fi
 # build binary
 WORKDIR /
-ARG GIT_SHA
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o ryAdminAPI ./cmd/api/ry-admin
+    go build -tags dynamic -ldflags="-s -w \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -o ryAdminAPI ./cmd/api/ry-admin
 # RUN upx --brute /ryAdminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 

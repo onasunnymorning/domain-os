@@ -106,6 +106,7 @@ import { DOMAIN_ARCHIVAL_DOC_MARKDOWN } from '../constants/domainArchivalDoc';
 import { EVENT_CONSUMER_DOC_MARKDOWN } from '../constants/eventConsumerDoc';
 import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc';
 import { WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN } from '../constants/workerQueueArchitectureDoc';
+import { AGENT_ALPACA_DOC_MARKDOWN } from '../constants/agentAlpacaDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
   {
@@ -179,6 +180,18 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN,
+  },
+  {
+    key: 'agent-alpaca',
+    name: 'Agent Alpaca & MCP Server',
+    description: 'AI support agent, MCP tool server, shared tool contract, transports, and configuration',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['alpaca', 'agent', 'mcp', 'ai', 'claude', 'tools', 'support', 'ask', 'askg', 'model-context-protocol', 'stdio', 'http'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: AGENT_ALPACA_DOC_MARKDOWN,
   },
 ];
 

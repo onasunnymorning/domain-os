@@ -7,9 +7,16 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Then copy the rest of the source
 COPY . .
 ENV GOTOOLCHAIN=auto
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/unified-worker ./cmd/workers/unified
+    CGO_ENABLED=0 go build -ldflags="-s -w \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -o /out/unified-worker ./cmd/workers/unified
 
 FROM alpine:3.21.4
 RUN apk upgrade --no-cache

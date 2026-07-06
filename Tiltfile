@@ -1,3 +1,6 @@
+# Read version from the single source of truth
+version = str(local('cat VERSION', quiet=True)).strip()
+
 # Get the current branch
 branch = str(local('git branch --show-current', quiet=True)).strip()
 # Sanitize branch name for use as a Docker image tag (replace '/' with '-')
@@ -26,6 +29,7 @@ if tilt_mode == 'docker':
     docker_build('geapex/whois:'          + tag, '.', dockerfile='./cmd/whois/Dockerfile')
     docker_build('geapex/epp-server:'     + tag, '.', dockerfile='Dockerfile.epp')
     docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
+    docker_build('geapex/mcp-server:'     + tag, '.', dockerfile='Dockerfile.mcp')
 
     dc_resource('db',               labels=['infrastructure'])
     dc_resource('redis',            labels=['infrastructure'])
@@ -40,6 +44,7 @@ if tilt_mode == 'docker':
     dc_resource('unified-worker',   labels=['app'],  resource_deps=['db', 'temporal'])
     dc_resource('epp-server',       labels=['app'],  auto_init=False)
     dc_resource('whois',            labels=['app'],  auto_init=False)
+    dc_resource('mcp-server',       labels=['app'],  auto_init=False, resource_deps=['db'])
     dc_resource('admin-init',       labels=['init'], trigger_mode=TRIGGER_MODE_MANUAL, resource_deps=['admin-api'])
 
 else:
@@ -110,6 +115,15 @@ else:
         labels=['init'],
     )
 
+    local_resource(
+        'mcp-server',
+        serve_cmd=DOPPLER_NATIVE + ' MCP_TRANSPORT=http MCP_PORT=3001 go run ./cmd/mcp',
+        deps=['./internal', './pkg', './cmd/mcp'],
+        labels=['app'],
+        resource_deps=['db'],
+        auto_init=False,
+    )
+
 # ─── Frontend: always native (Next.js dev server) ─────────────────────────────
 local_resource(
     'frontend',
@@ -119,7 +133,7 @@ local_resource(
         'NEXT_PUBLIC_API_TOKEN':       os.getenv('ADMIN_TOKEN', 'devtoken'),
         'NEXT_PUBLIC_AUTH0_ENABLED':   'false',
         'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # native temporal CLI UI; docker mode uses :8081
-        'NEXT_PUBLIC_APP_VERSION':     'dev',
+        'NEXT_PUBLIC_APP_VERSION':     version + '-dev',
     },
     deps=[
         'frontend/package.json',

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	appservices "github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/askg"
@@ -57,7 +58,7 @@ func inLambda() bool {
 
 // setSwaggerInfo sets the swagger API documentation variables based on the environment variables. These are used to generate the swagger documentation, such as version, address, host, etc.
 func setSwaggerInfo(cfg *config.AdminApiConfig) {
-	docs.SwaggerInfo.Version = fmt.Sprintf("%s-%s", cfg.Version, cfg.GitSHA)
+	docs.SwaggerInfo.Version = fmt.Sprintf("%s+%s", buildinfo.Version, buildinfo.GitSHA)
 	docs.SwaggerInfo.Host = fmt.Sprintf("%s:%s", cfg.ApiHost, cfg.ApiPort)
 	docs.SwaggerInfo.Title = cfg.ApiName
 }
@@ -111,9 +112,7 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-var (
-	GitSHA string // GitSHA is the git commit hash set by the build process Ref. https://stackoverflow.com/a/1132237
-)
+
 
 // @title Domain OS Admin API
 // @license.name Geoffrey De Prins All rights reserved
@@ -125,8 +124,9 @@ func main() {
 	}
 
 	// Load the APP configuration and log it
-	cfg := config.LoadConfig(GitSHA)
+	cfg := config.LoadConfig(buildinfo.GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
+	logger.Info("Build info", zap.String("version", buildinfo.Version), zap.String("git_sha", buildinfo.GitSHA), zap.String("build_date", buildinfo.BuildDate))
 
 	// Check for init-registrars command
 	if len(os.Args) > 1 && os.Args[1] == "init-registrars" {

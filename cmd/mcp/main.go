@@ -2,12 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	mcpserver "github.com/onasunnymorning/domain-os/internal/interface/mcp"
@@ -26,6 +32,8 @@ func run() int {
 	// Structured logging also goes to stderr.
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
+
+	logger.Info("MCP server build info", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "build_date", buildinfo.BuildDate)
 
 	// Set up context with signal handling for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -70,11 +78,82 @@ func run() int {
 		nil, // dnsRecRepo — not used by GetTLDByName
 	)
 
-	// Create and run the MCP server over stdio.
+	// Create the MCP server adapter.
 	server := mcpserver.NewServer(domainService, tldService)
-	slog.Info("Starting domain-os MCP server (stdio)")
-	if err := server.Run(ctx); err != nil {
-		slog.Error("MCP server exited with error", "error", err)
+
+	// Select transport based on MCP_TRANSPORT env var.
+	// - "stdio" (default): JSON-RPC over stdin/stdout, for local IDE use
+	// - "http": Streamable HTTP on MCP_PORT (default 3001), for container deployment
+	transport := strings.ToLower(os.Getenv("MCP_TRANSPORT"))
+	if transport == "" {
+		transport = "stdio"
+	}
+
+	switch transport {
+	case "stdio":
+		slog.Info("Starting domain-os MCP server", "transport", "stdio", "version", mcpserver.Version)
+		if err := server.Run(ctx); err != nil {
+			slog.Error("MCP server exited with error", "error", err)
+			return 1
+		}
+
+	case "http":
+		port := os.Getenv("MCP_PORT")
+		if port == "" {
+			port = "3001"
+		}
+		addr := fmt.Sprintf(":%s", port)
+
+		// Get the configured MCP protocol server with all tools registered.
+		mcpSrv := server.MCPServer()
+
+		// Create the Streamable HTTP handler. Stateless mode is ideal for a
+		// read-only tool server — each request creates a temporary session,
+		// no session management overhead.
+		handler := mcp.NewStreamableHTTPHandler(
+			func(r *http.Request) *mcp.Server { return mcpSrv },
+			&mcp.StreamableHTTPOptions{
+				Stateless: true,
+				Logger:    logger,
+			},
+		)
+
+		mux := http.NewServeMux()
+		mux.Handle("/mcp", handler)
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, `{"status":"ok","version":"%s"}`, mcpserver.Version)
+		})
+
+		httpServer := &http.Server{
+			Addr:    addr,
+			Handler: mux,
+		}
+
+		// Graceful shutdown: when context is cancelled, shut down the HTTP server.
+		go func() {
+			<-ctx.Done()
+			slog.Info("Shutting down MCP HTTP server")
+			if err := httpServer.Shutdown(context.Background()); err != nil {
+				slog.Error("HTTP server shutdown error", "error", err)
+			}
+		}()
+
+		slog.Info("Starting domain-os MCP server",
+			"transport", "http",
+			"addr", addr,
+			"version", mcpserver.Version,
+		)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("MCP HTTP server exited with error", "error", err)
+			return 1
+		}
+
+	default:
+		slog.Error("Unknown MCP_TRANSPORT value — must be 'stdio' or 'http'",
+			"transport", transport,
+		)
 		return 1
 	}
 

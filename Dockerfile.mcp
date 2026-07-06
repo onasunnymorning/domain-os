@@ -1,0 +1,71 @@
+# Dockerfile for MCP (Model Context Protocol) Server
+# Multi-stage build to keep the final image small.
+#
+# The MCP server exposes domain-os read-only tools over Streamable HTTP,
+# allowing AI models and MCP clients to query registry state.
+
+# Stage 1: Build the MCP server binary
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+RUN go mod verify
+
+# Copy source code
+COPY cmd/mcp/ ./cmd/mcp/
+COPY internal/ ./internal/
+COPY pkg/ ./pkg/
+
+# Build the MCP server binary
+# CGO is disabled for a fully static binary
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+    -o mcp-server \
+    ./cmd/mcp
+
+# Stage 2: Create minimal runtime image
+FROM alpine:3.21.4
+
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates tzdata
+
+# Create non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /build/mcp-server /app/mcp-server
+
+# Ensure the user owns the binary
+RUN chown -R appuser:appgroup /app && chmod +x /app/mcp-server
+
+# Switch to non-root user
+USER appuser
+
+# Default to HTTP transport for container deployments
+ENV MCP_TRANSPORT=http
+ENV MCP_PORT=3001
+
+EXPOSE 3001
+
+# Health check against the /healthz endpoint
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3001/healthz || exit 1
+
+CMD ["/app/mcp-server"]
