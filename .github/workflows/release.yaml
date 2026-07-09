@@ -26,6 +26,9 @@ jobs:
           - name: mcp-server
             context: .
             file: ./Dockerfile.mcp
+          - name: domain-os-frontend
+            context: ./frontend
+            file: ./frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4
 

@@ -49,7 +49,7 @@ type Spec5SweepActivities struct {
 
 // NewSpec5SweepActivities initializes dependencies from environment variables.
 func NewSpec5SweepActivities() (*Spec5SweepActivities, error) {
-	s3c, err := storage.NewS3ClientFromEnv()
+	s3c, err := storage.NewReportsS3Client()
 	if err != nil {
 		return nil, fmt.Errorf("NewSpec5SweepActivities: failed to initialize S3 client: %w. Check that MinIO is running and MinIO credentials are set", err)
 	}
@@ -187,7 +187,7 @@ JOIN candidates c ON d.name = c.name
 		activity.RecordHeartbeat(ctx, fmt.Sprintf("uploading CSV artifact for %s to S3", tld))
 		err = a.S3Client.UploadStream(ctx, artifactKey, bytes.NewReader(buf.Bytes()), "text/csv")
 		if err != nil {
-			return Spec5SweepResult{}, fmt.Errorf("SweepSpec5Labels: failed to upload CSV artifact to S3 at key %s: %w. Ensure MinIO is running and ESCROW_BUCKET is configured", artifactKey, err)
+			return Spec5SweepResult{}, fmt.Errorf("SweepSpec5Labels: failed to upload CSV artifact to S3 at key %s: %w. Ensure MinIO is running and STORAGE_REPORTS_BUCKET is configured", artifactKey, err)
 		}
 
 		activity.RecordHeartbeat(ctx, fmt.Sprintf("presigning download URL for %s", tld))

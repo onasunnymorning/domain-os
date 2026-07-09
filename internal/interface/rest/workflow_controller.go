@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -846,7 +847,12 @@ func (c *WorkflowController) GetDownloadURL(ctx *gin.Context) {
 		return
 	}
 
-	s3, err := storage.NewS3ClientFromEnv()
+	// Storage keys are spread across multiple buckets (escrow, event logs,
+	// reports, temp artifacts) and this endpoint serves generic workflow
+	// result keys without knowing which bucket produced them. Check each
+	// bucket for the key and presign against whichever one has it, falling
+	// back to escrow (the historical default) if none report a match.
+	s3, err := findBucketForKey(ctx.Request.Context(), key)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create storage client: " + err.Error()})
 		return
@@ -859,5 +865,36 @@ func (c *WorkflowController) GetDownloadURL(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+// findBucketForKey returns an S3 client for whichever storage bucket
+// actually contains key, checking escrow, event logs, reports, and temp
+// artifacts in that order. Falls back to the escrow client (the historical
+// single-bucket default) if the key isn't found in any of them, so a
+// missing-key error still surfaces from PresignGet/Exists rather than here.
+func findBucketForKey(ctx context.Context, key string) (*storage.S3Client, error) {
+	constructors := []func() (*storage.S3Client, error){
+		storage.NewS3ClientFromEnv,
+		storage.NewEventLogsS3Client,
+		storage.NewReportsS3Client,
+		storage.NewTempS3Client,
+	}
+	var fallback *storage.S3Client
+	for i, newClient := range constructors {
+		s3c, err := newClient()
+		if err != nil {
+			continue
+		}
+		if i == 0 {
+			fallback = s3c
+		}
+		if exists, err := s3c.Exists(ctx, key); err == nil && exists {
+			return s3c, nil
+		}
+	}
+	if fallback != nil {
+		return fallback, nil
+	}
+	return storage.NewS3ClientFromEnv()
 }
 

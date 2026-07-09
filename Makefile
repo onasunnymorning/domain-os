@@ -228,10 +228,18 @@ ci-preflight: ## Kill any stale test containers that could conflict with CI (tes
 	@docker rm -f testdb testdb-api testdb-cov 2>/dev/null || true
 	@echo "✅ Pre-flight clean complete."
 
-ci-envcheck: ## Check env var registry for drift (new vars must be registered)
+ci-envcheck: ## Check env var registry and deployment contract for drift
 	@echo "🔍 Checking env var registry drift..."
 	@go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions' ./internal/config/...
 	@echo "✅ Env var registry is in sync with code."
+	@echo "🔍 Checking deployment contract drift..."
+	@if ! go test -run 'TestContractDrift' ./internal/config/...; then \
+		echo "⚠️  Contract drift detected! Automatically regenerating deploy/contract.json..."; \
+		$(MAKE) generate-contract; \
+		echo "❌ contract.json has been updated. Please review the changes, commit them, and run make ci-local again."; \
+		exit 1; \
+	fi
+	@echo "✅ deploy/contract.json is in sync with env registry."
 
 ci-lint: ## Run all linters (Go + Frontend)
 	@echo "🔍 Running Go vet..."
@@ -241,6 +249,10 @@ ci-lint: ## Run all linters (Go + Frontend)
 	@echo "🔍 Running frontend linters..."
 	@cd frontend && npm run lint
 	@echo "✅ All linters passed!"
+
+generate-contract: ## Regenerate deploy/contract.json from env registry + service metadata
+	@go run ./cmd/tools/gencontract > deploy/contract.json
+	@echo "✅ deploy/contract.json regenerated"
 
 ci-test-backend: ## Run Go tests matching CI (with race detector + DB health wait)
 	@echo "🧪 Starting test database..."

@@ -86,7 +86,10 @@ var Registry = []EnvVar{
 	{Name: "MINIO_SECRET_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3 secret access key"},
 	{Name: "MINIO_USE_SSL", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Use TLS for S3 connections"},
 	{Name: "MINIO_PUBLIC_ENDPOINT", Services: []Service{ServiceAPI}, Description: "Public S3 endpoint for presigned URLs (if different from MINIO_ENDPOINT)"},
-	{Name: "ESCROW_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "escrow", Description: "S3 bucket name for escrow data"},
+	{Name: "STORAGE_ESCROW_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "escrow", Description: "S3 bucket name for RDE/BRDA escrow deposits (contains PII — kept isolated per bucket-storage-strategy)"},
+	{Name: "STORAGE_EVENT_LOGS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "event-logs", Description: "S3 bucket name for gzip JSONL event archive files (warm-tier event search + audit trail)"},
+	{Name: "STORAGE_REPORTS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "reports", Description: "S3 bucket name for Spec 5 compliance sweep CSVs and other generated reports. API needs it too for the generic workflow artifact download endpoint"},
+	{Name: "STORAGE_TEMP_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "temp-artifacts", Description: "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"},
 	{Name: "ESCROW_UPLOAD_DIR", Services: []Service{ServiceAPI}, Default: "/tmp/escrow-uploads", Description: "Local temp dir for escrow file uploads before S3 transfer"},
 
 	// ═══════════════════════════════════════════

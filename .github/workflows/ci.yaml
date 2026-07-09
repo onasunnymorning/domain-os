@@ -55,8 +55,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
-      - name: Check env var registry
-        run: go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions' ./internal/config/...
+      - name: Check env var registry and deployment contract
+        run: go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions|TestContractDrift' ./internal/config/...
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -159,6 +159,9 @@ jobs:
           - name: unified-worker
             context: .
             file: ./cmd/workers/unified/Dockerfile
+          - name: domain-os-frontend
+            context: ./frontend
+            file: ./frontend/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -213,6 +216,7 @@ jobs:
         image:
           - domain-os
           - unified-worker
+          - domain-os-frontend
     steps:
       - name: Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master
@@ -300,7 +304,7 @@ jobs:
 
       - name: Retag all images as latest
         run: |
-          for img in domain-os unified-worker; do
+          for img in domain-os unified-worker domain-os-frontend; do
             echo "Retagging geapex/${img}:${{ github.sha }} → :latest"
             ./crane tag "geapex/${img}:${{ github.sha }}" latest
           done

@@ -265,7 +265,7 @@ func main() {
 	// Event Search — unified search across hot (PG) and warm (S3) tiers
 	eventRepo := postgres.NewPostgresEventRepository(gormDB)
 	var archiveReader *storage.EventArchiveReader
-	s3Client, s3Err := storage.NewS3ClientFromEnv()
+	s3Client, s3Err := storage.NewEventLogsS3Client()
 	if s3Err != nil {
 		logger.Warn("S3 not configured — warm-tier event search disabled",
 			zap.Error(s3Err))

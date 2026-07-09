@@ -28,8 +28,9 @@ type EventRelayActivities struct {
 // and S3 dependencies. Follows the same DB init pattern as LifecycleActivities
 // and the S3 init pattern from SnapshotActivities.
 func NewEventRelayActivities() (*EventRelayActivities, error) {
-	// Initialize S3 client
-	s3c, err := storage.NewS3ClientFromEnv()
+	// Initialize S3 client, pointed at the event logs bucket (not escrow —
+	// event archives have a different retention/access profile).
+	s3c, err := storage.NewEventLogsS3Client()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize S3 for event relay activities: %w", err)
 	}

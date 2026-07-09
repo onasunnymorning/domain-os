@@ -163,7 +163,10 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
       { key: 'MINIO_SECRET_KEY', description: 'S3 secret access key', secret: true, services: ['API', 'Worker'] },
       { key: 'MINIO_USE_SSL', description: 'Enable TLS for S3 connections', secret: false, services: ['API', 'Worker'] },
       { key: 'MINIO_PUBLIC_ENDPOINT', description: 'Public presign endpoint (if different)', secret: false, services: ['API'] },
-      { key: 'ESCROW_BUCKET', description: 'Bucket name for escrow files', secret: false, services: ['API', 'Worker'] },
+      { key: 'STORAGE_ESCROW_BUCKET', description: 'Bucket for RDE/BRDA escrow deposits (PII)', secret: false, services: ['API', 'Worker'] },
+      { key: 'STORAGE_EVENT_LOGS_BUCKET', description: 'Bucket for gzip JSONL event archives', secret: false, services: ['API', 'Worker'] },
+      { key: 'STORAGE_REPORTS_BUCKET', description: 'Bucket for Spec 5 compliance sweep reports', secret: false, services: ['API', 'Worker'] },
+      { key: 'STORAGE_TEMP_BUCKET', description: 'Bucket for workflow-scoped staging artifacts', secret: false, services: ['API', 'Worker'] },
     ],
   },
   {

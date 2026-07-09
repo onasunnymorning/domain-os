@@ -26,14 +26,45 @@ type S3Client struct {
 	presignClient *minio.Client
 }
 
+// NewS3ClientFromEnv builds a client bound to the escrow bucket
+// (STORAGE_ESCROW_BUCKET, defaulting to "escrow"). This is the client used by
+// all escrow deposit/import/download code paths.
 func NewS3ClientFromEnv() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_ESCROW_BUCKET", "escrow")
+}
+
+// NewEventLogsS3Client builds a client bound to the event archive bucket
+// (STORAGE_EVENT_LOGS_BUCKET, defaulting to "event-logs").
+func NewEventLogsS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_EVENT_LOGS_BUCKET", "event-logs")
+}
+
+// NewReportsS3Client builds a client bound to the compliance reports bucket
+// (STORAGE_REPORTS_BUCKET, defaulting to "reports").
+func NewReportsS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_REPORTS_BUCKET", "reports")
+}
+
+// NewTempS3Client builds a client bound to the workflow artifact/staging
+// bucket (STORAGE_TEMP_BUCKET, defaulting to "temp-artifacts"). Used for
+// snapshot, backup, cleanup, and verification workflow outputs that aren't
+// regulatory records.
+func NewTempS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_TEMP_BUCKET", "temp-artifacts")
+}
+
+// NewS3ClientForBucket builds an S3 client whose bucket is read from
+// bucketEnvVar, falling back to defaultBucket when unset. Connection
+// settings (endpoint, credentials, SSL, public endpoint) always come from
+// the shared MINIO_* env vars — only the target bucket varies per client.
+func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error) {
 	endpoint := os.Getenv("MINIO_ENDPOINT")
 	accessKey := os.Getenv("MINIO_ACCESS_KEY")
 	secretKey := os.Getenv("MINIO_SECRET_KEY")
 	useSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
-	bucket := os.Getenv("ESCROW_BUCKET")
+	bucket := os.Getenv(bucketEnvVar)
 	if bucket == "" {
-		bucket = "escrow"
+		bucket = defaultBucket
 	}
 	public := strings.TrimSpace(os.Getenv("MINIO_PUBLIC_ENDPOINT"))
 

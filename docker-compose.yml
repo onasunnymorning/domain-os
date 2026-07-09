@@ -159,13 +159,16 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
-      # S3/MinIO settings for escrow
+      # S3/MinIO settings — bucket per data type (see docs: Bucket Storage Strategy)
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=http://localhost:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_USE_SSL=false
-      - ESCROW_BUCKET=escrow
+      - STORAGE_ESCROW_BUCKET=escrow
+      - STORAGE_EVENT_LOGS_BUCKET=event-logs
+      - STORAGE_REPORTS_BUCKET=reports
+      - STORAGE_TEMP_BUCKET=temp-artifacts
       - TEMPORAL_UI_URL=http://localhost:8081
       # Redis
       - REDIS_HOST=redis
@@ -291,12 +294,15 @@ services:
       - AUTH0_WORKER_CLIENT_ID=${AUTH0_WORKER_CLIENT_ID}
       - AUTH0_WORKER_CLIENT_SECRET=${AUTH0_WORKER_CLIENT_SECRET}
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
-      # S3/MinIO (escrow)
+      # S3/MinIO — bucket per data type (see docs: Bucket Storage Strategy)
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_USE_SSL=false
-      - ESCROW_BUCKET=escrow
+      - STORAGE_ESCROW_BUCKET=escrow
+      - STORAGE_EVENT_LOGS_BUCKET=event-logs
+      - STORAGE_REPORTS_BUCKET=reports
+      - STORAGE_TEMP_BUCKET=temp-artifacts
       # Postgres (TLD cleanup)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
@@ -331,7 +337,7 @@ services:
     networks:
       - dos
 
-  # MinIO client to create the bucket
+  # MinIO client to create the buckets (one per data type — see docs: Bucket Storage Strategy)
   minio-setup:
     image: minio/mc:latest
     restart: "no"
@@ -343,7 +349,10 @@ services:
       - MC_HOST_minio=http://minioadmin:minioadmin@minio:9000
     entrypoint: [ "/bin/sh", "-c" ]
     command: |
-      "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true"
+      "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true;
+       mc mb -p minio/event-logs || true;
+       mc mb -p minio/reports || true;
+       mc mb -p minio/temp-artifacts || true"
     networks:
       - dos
 
