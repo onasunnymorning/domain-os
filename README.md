@@ -266,7 +266,7 @@ domain-os/
 │   ├── infrastructure/     Database, Temporal, S3, auth adapters
 │   └── interface/          REST controllers, CLI handlers, MCP tools
 ├── frontend/               Next.js admin dashboard
-├── deploy/                 Deployment configs (Helm, Render, Pulumi)
+├── deploy/                 Deployment contract (contract.json) + Helm, Pulumi
 └── docs/                   Extended documentation
 ```
 
