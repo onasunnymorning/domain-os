@@ -16,7 +16,7 @@ tilt_mode = os.getenv('TILT_MODE', 'native').lower()
 
 # In native mode we use the 'dev_personal' Doppler config, which inherits from
 # 'dev' but overrides Docker-network hostnames with localhost equivalents:
-#   DB_HOST=localhost  REDIS_HOST=localhost  MINIO_ENDPOINT=localhost:9000
+#   DB_HOST=localhost  REDIS_HOST=localhost  STORAGE_ENDPOINT=localhost:9000
 # Set these via: doppler secrets set DB_HOST=localhost ... --config dev_personal
 DOPPLER_NATIVE = 'doppler run --config dev_personal --'
 DOPPLER_DOCKER = 'doppler run --'

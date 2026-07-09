@@ -160,11 +160,11 @@ services:
       - TEMPORAL_CLIENT_KEY=
       - TEMPORAL_CLIENT_CERT=
       # S3/MinIO settings — bucket per data type (see docs: Bucket Storage Strategy)
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=http://localhost:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_USE_SSL=false
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_USE_SSL=false
       - STORAGE_ESCROW_BUCKET=escrow
       - STORAGE_EVENT_LOGS_BUCKET=event-logs
       - STORAGE_REPORTS_BUCKET=reports
@@ -295,10 +295,10 @@ services:
       - AUTH0_WORKER_CLIENT_SECRET=${AUTH0_WORKER_CLIENT_SECRET}
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
       # S3/MinIO — bucket per data type (see docs: Bucket Storage Strategy)
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_USE_SSL=false
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_USE_SSL=false
       - STORAGE_ESCROW_BUCKET=escrow
       - STORAGE_EVENT_LOGS_BUCKET=event-logs
       - STORAGE_REPORTS_BUCKET=reports

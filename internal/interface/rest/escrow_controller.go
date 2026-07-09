@@ -62,7 +62,7 @@ type EscrowRunItem struct {
 	StagedDbURL string            `json:"stagedDbUrl,omitempty"`
 	Artifacts   map[string]string `json:"artifacts,omitempty"`
 	URL         string            `json:"url"`
-	// Direct, clickable links to key artifacts (when MINIO_PUBLIC_ENDPOINT is set and bucket is public)
+	// Direct, clickable links to key artifacts (when STORAGE_PUBLIC_ENDPOINT is set and bucket is public)
 	SummaryURL           string `json:"summaryUrl,omitempty"`
 	RunReportURL         string `json:"runReportUrl,omitempty"`
 	AnalysisURL          string `json:"analysisUrl,omitempty"`
@@ -338,7 +338,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 	if bucket == "" {
 		bucket = "escrow"
 	}
-	pub := strings.Trim(strings.TrimSpace(os.Getenv("MINIO_PUBLIC_ENDPOINT")), "\"'")
+	pub := strings.Trim(strings.TrimSpace(storage.PublicEndpoint()), "\"'")
 	if pub == "" {
 		pub = "http://localhost:9000"
 	}

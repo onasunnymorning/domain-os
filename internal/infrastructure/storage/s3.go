@@ -54,20 +54,84 @@ func NewTempS3Client() (*S3Client, error) {
 	return NewS3ClientForBucket("STORAGE_TEMP_BUCKET", "temp-artifacts")
 }
 
+// Supported values for STORAGE_AUTH_MODE.
+const (
+	// AuthModeStatic signs requests with a long-lived access key / secret pair.
+	// Used by local MinIO, Cloudflare R2 (scoped API tokens), and AWS S3 when
+	// no role is available.
+	AuthModeStatic = "static"
+	// AuthModeIAM sources short-lived credentials from the AWS environment.
+	// AWS S3 only — R2 and MinIO have no equivalent.
+	AuthModeIAM = "iam"
+)
+
+// storageCredentials builds the credential provider named by STORAGE_AUTH_MODE,
+// defaulting to static keys.
+//
+// Static mode fails fast rather than deferring an opaque 403 to the first
+// object call. IAM mode resolves, in order: EKS IRSA (AWS_WEB_IDENTITY_TOKEN_FILE
+// + AWS_ROLE_ARN), ECS task role (AWS_CONTAINER_CREDENTIALS_*), then EC2 IMDS.
+// The returned Credentials refreshes itself as tokens expire, so the clients
+// built from it are safe to hold for the process lifetime.
+func storageCredentials() (*credentials.Credentials, error) {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_AUTH_MODE")))
+	if mode == "" {
+		mode = AuthModeStatic
+	}
+
+	switch mode {
+	case AuthModeStatic:
+		accessKey := storageEnv(EnvAccessKey)
+		secretKey := storageEnv(EnvSecretKey)
+		if accessKey == "" || secretKey == "" {
+			return nil, fmt.Errorf("STORAGE_AUTH_MODE=%s requires both %s and %s to be set", AuthModeStatic, EnvAccessKey, EnvSecretKey)
+		}
+		return credentials.NewStaticV4(accessKey, secretKey, ""), nil
+
+	case AuthModeIAM:
+		// Retrieval is lazy and does not honour the caller's context: off AWS,
+		// the IMDS probe blocks ~30s before failing. Set this mode only where a
+		// credential source actually exists.
+		return credentials.NewIAM(""), nil
+
+	default:
+		return nil, fmt.Errorf("unknown STORAGE_AUTH_MODE %q: want %q or %q", mode, AuthModeStatic, AuthModeIAM)
+	}
+}
+
 // NewS3ClientForBucket builds an S3 client whose bucket is read from
-// bucketEnvVar, falling back to defaultBucket when unset. Connection
-// settings (endpoint, credentials, SSL, public endpoint) always come from
-// the shared MINIO_* env vars — only the target bucket varies per client.
+// bucketEnvVar, falling back to defaultBucket when unset. Connection settings
+// (endpoint, SSL, public endpoint, region) always come from the shared
+// STORAGE_* env vars, and credentials from STORAGE_AUTH_MODE — only the target
+// bucket varies per client.
 func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error) {
-	endpoint := os.Getenv("MINIO_ENDPOINT")
-	accessKey := os.Getenv("MINIO_ACCESS_KEY")
-	secretKey := os.Getenv("MINIO_SECRET_KEY")
-	useSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
+	endpoint := storageEnv(EnvEndpoint)
+	useSSL, _ := strconv.ParseBool(storageEnv(EnvUseSSL))
 	bucket := os.Getenv(bucketEnvVar)
 	if bucket == "" {
 		bucket = defaultBucket
 	}
-	public := strings.TrimSpace(os.Getenv("MINIO_PUBLIC_ENDPOINT"))
+	public := strings.TrimSpace(PublicEndpoint())
+
+	creds, err := storageCredentials()
+	if err != nil {
+		return nil, err
+	}
+
+	// SigV4 binds the signature to the region, so a wrong region yields
+	// SignatureDoesNotMatch on real S3. Set STORAGE_REGION to the bucket's
+	// region for S3, or "auto" for R2. Left empty, minio-go resolves the region
+	// itself via a bucket-location lookup — the historical behaviour, which
+	// MinIO and R2 both tolerate.
+	region := strings.TrimSpace(os.Getenv("STORAGE_REGION"))
+
+	// The presign client cannot rely on that lookup: its endpoint is the public
+	// hostname, which is often unreachable from inside the cluster. It falls
+	// back to us-east-1, as it always has.
+	presignRegion := region
+	if presignRegion == "" {
+		presignRegion = "us-east-1"
+	}
 
 	// Certificate verification is on by default. STORAGE_TLS_SKIP_VERIFY exists
 	// only for local MinIO with a self-signed cert; enabling it against a real
@@ -80,8 +144,9 @@ func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error)
 	httpClient := &http.Client{Transport: tr}
 
 	cli, err := minio.New(endpoint, &minio.Options{
-		Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
+		Creds:     creds,
 		Secure:    useSSL,
+		Region:    region,
 		Transport: httpClient.Transport,
 	})
 	if err != nil {
@@ -96,9 +161,9 @@ func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error)
 		pubEndpoint, pubSSL := parseEndpointURL(public)
 		if pubEndpoint != "" {
 			pc, err := minio.New(pubEndpoint, &minio.Options{
-				Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
+				Creds:     creds,
 				Secure:    pubSSL,
-				Region:    "us-east-1", // Avoids bucket location lookup (unreachable from Docker)
+				Region:    presignRegion,
 				Transport: httpClient.Transport,
 			})
 			if err != nil {
