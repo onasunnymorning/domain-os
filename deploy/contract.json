@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "app_version": "0.7.0",
-  "generated": "2026-07-09T21:03:55Z",
+  "generated": "2026-07-09T21:20:52Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
@@ -19,18 +19,8 @@
             "description": "PostgreSQL connection URL (Neon). Preferred over individual DB_* vars."
           },
           {
-            "name": "MINIO_ENDPOINT",
-            "description": "S3-compatible endpoint (hostname only, no https://)"
-          },
-          {
-            "name": "MINIO_ACCESS_KEY",
-            "secret": true,
-            "description": "S3 access key ID"
-          },
-          {
-            "name": "MINIO_SECRET_KEY",
-            "secret": true,
-            "description": "S3 secret access key"
+            "name": "STORAGE_ENDPOINT",
+            "description": "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"
           }
         ],
         "optional": [
@@ -148,13 +138,32 @@
             "description": "Temporal UI URL for workflow links"
           },
           {
-            "name": "MINIO_USE_SSL",
-            "default": "false",
-            "description": "Use TLS for S3 connections"
+            "name": "STORAGE_AUTH_MODE",
+            "default": "static",
+            "description": "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"
           },
           {
-            "name": "MINIO_PUBLIC_ENDPOINT",
-            "description": "Public S3 endpoint for presigned URLs (if different from MINIO_ENDPOINT)"
+            "name": "STORAGE_ACCESS_KEY",
+            "secret": true,
+            "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
+          },
+          {
+            "name": "STORAGE_SECRET_KEY",
+            "secret": true,
+            "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
+          },
+          {
+            "name": "STORAGE_USE_SSL",
+            "default": "false",
+            "description": "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"
+          },
+          {
+            "name": "STORAGE_REGION",
+            "description": "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"
+          },
+          {
+            "name": "STORAGE_PUBLIC_ENDPOINT",
+            "description": "Public S3 endpoint for presigned URLs (if different from STORAGE_ENDPOINT). Falls back to deprecated MINIO_PUBLIC_ENDPOINT"
           },
           {
             "name": "STORAGE_ESCROW_BUCKET",
@@ -362,18 +371,8 @@
             "description": "Auth0 M2M client secret for worker"
           },
           {
-            "name": "MINIO_ENDPOINT",
-            "description": "S3-compatible endpoint (hostname only, no https://)"
-          },
-          {
-            "name": "MINIO_ACCESS_KEY",
-            "secret": true,
-            "description": "S3 access key ID"
-          },
-          {
-            "name": "MINIO_SECRET_KEY",
-            "secret": true,
-            "description": "S3 secret access key"
+            "name": "STORAGE_ENDPOINT",
+            "description": "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"
           }
         ],
         "optional": [
@@ -478,9 +477,28 @@
             "description": "Temporal mTLS client cert PEM (legacy, use API key instead)"
           },
           {
-            "name": "MINIO_USE_SSL",
+            "name": "STORAGE_AUTH_MODE",
+            "default": "static",
+            "description": "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"
+          },
+          {
+            "name": "STORAGE_ACCESS_KEY",
+            "secret": true,
+            "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
+          },
+          {
+            "name": "STORAGE_SECRET_KEY",
+            "secret": true,
+            "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
+          },
+          {
+            "name": "STORAGE_USE_SSL",
             "default": "false",
-            "description": "Use TLS for S3 connections"
+            "description": "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"
+          },
+          {
+            "name": "STORAGE_REGION",
+            "description": "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"
           },
           {
             "name": "STORAGE_ESCROW_BUCKET",

@@ -53,7 +53,7 @@ This is **internal tooling** — every error message must be written for develop
 
 1. **State what failed** — identify the operation, phase, or component (e.g., "Failed to initialize multipart upload", not "Something went wrong").
 2. **Include the underlying cause** — always propagate the original error message. In Go: `fmt.Errorf("operation X: %w", err)`. In TypeScript: include `err.message` or `err.response.data.error`.
-3. **Explain likely causes** — for infrastructure errors (S3, Temporal, DB), include the 2-3 most common causes (e.g., "Check that MinIO is running and MINIO_ENDPOINT is configured").
+3. **Explain likely causes** — for infrastructure errors (S3, Temporal, DB), include the 2-3 most common causes (e.g., "Check that MinIO is running and STORAGE_ENDPOINT is configured").
 4. **Include diagnostic data** — add context that helps debugging: URLs, keys, IDs, HTTP status codes, hostnames. Truncate or redact secrets, but don't strip useful info.
 5. **Suggest next steps** — when possible, tell the user what to check or do (e.g., "For MinIO CORS issues, ensure MINIO_API_CORS_ALLOW_ORIGIN is set").
 

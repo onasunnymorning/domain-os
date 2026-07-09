@@ -91,7 +91,7 @@ type EventRelayResult struct {
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
 | FetchUnpublishedEvents timeout | Database slow or large result set | Retries up to 3 times | Check DB health, reduce batchSize |
-| ArchiveEventsToS3 failure | S3/MinIO unreachable or write error | Retries up to 3 times | Check MINIO_ENDPOINT, bucket permissions |
+| ArchiveEventsToS3 failure | S3/MinIO unreachable or write error | Retries up to 3 times | Check STORAGE_ENDPOINT, bucket permissions |
 | MarkEventsPublished failure | Database write error | Retries up to 3 times | Events will be re-fetched on next run (idempotent archive) |
 | Partial completion | Batch cap reached | Adds note with remaining count | Next scheduled run picks up remaining events |
 

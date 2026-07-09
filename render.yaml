@@ -62,15 +62,15 @@ services:
       # S3 (Cloudflare R2) — one bucket per data type (see docs: Bucket Storage
       # Strategy). API needs all four: presigned escrow/event-log downloads,
       # plus the generic workflow artifact download endpoint reads reports/temp.
-      - key: MINIO_ENDPOINT
+      - key: STORAGE_ENDPOINT
         sync: false
-      - key: MINIO_ACCESS_KEY
+      - key: STORAGE_ACCESS_KEY
         sync: false
-      - key: MINIO_SECRET_KEY
+      - key: STORAGE_SECRET_KEY
         sync: false
-      - key: MINIO_USE_SSL
+      - key: STORAGE_USE_SSL
         value: "true"
-      - key: MINIO_PUBLIC_ENDPOINT
+      - key: STORAGE_PUBLIC_ENDPOINT
         sync: false
       - key: STORAGE_ESCROW_BUCKET
         sync: false
@@ -150,13 +150,13 @@ services:
       - key: DATABASE_URL
         sync: false
       # S3 (Cloudflare R2) — one bucket per data type (see docs: Bucket Storage Strategy)
-      - key: MINIO_ENDPOINT
+      - key: STORAGE_ENDPOINT
         sync: false
-      - key: MINIO_ACCESS_KEY
+      - key: STORAGE_ACCESS_KEY
         sync: false
-      - key: MINIO_SECRET_KEY
+      - key: STORAGE_SECRET_KEY
         sync: false
-      - key: MINIO_USE_SSL
+      - key: STORAGE_USE_SSL
         value: "true"
       - key: STORAGE_ESCROW_BUCKET
         sync: false

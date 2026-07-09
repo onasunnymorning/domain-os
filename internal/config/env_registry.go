@@ -81,11 +81,17 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// STORAGE (S3 / MinIO / R2)
 	// ═══════════════════════════════════════════
-	{Name: "MINIO_ENDPOINT", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3-compatible endpoint (hostname only, no https://)"},
-	{Name: "MINIO_ACCESS_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3 access key ID"},
-	{Name: "MINIO_SECRET_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3 secret access key"},
-	{Name: "MINIO_USE_SSL", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Use TLS for S3 connections"},
-	{Name: "MINIO_PUBLIC_ENDPOINT", Services: []Service{ServiceAPI}, Description: "Public S3 endpoint for presigned URLs (if different from MINIO_ENDPOINT)"},
+	// The MINIO_* names these replaced are still honoured as a deprecated
+	// fallback for one release (see internal/infrastructure/storage/env.go).
+	// They are deliberately absent from this registry so they stay out of the
+	// generated deployment contract.
+	{Name: "STORAGE_ENDPOINT", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"},
+	{Name: "STORAGE_AUTH_MODE", Services: []Service{ServiceAPI, ServiceWorker}, Default: "static", Description: "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"},
+	{Name: "STORAGE_ACCESS_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"},
+	{Name: "STORAGE_SECRET_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"},
+	{Name: "STORAGE_USE_SSL", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"},
+	{Name: "STORAGE_REGION", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"},
+	{Name: "STORAGE_PUBLIC_ENDPOINT", Services: []Service{ServiceAPI}, Description: "Public S3 endpoint for presigned URLs (if different from STORAGE_ENDPOINT). Falls back to deprecated MINIO_PUBLIC_ENDPOINT"},
 	{Name: "STORAGE_ESCROW_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "escrow", Description: "S3 bucket name for RDE/BRDA escrow deposits (contains PII — kept isolated per bucket-storage-strategy)"},
 	{Name: "STORAGE_EVENT_LOGS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "event-logs", Description: "S3 bucket name for gzip JSONL event archive files (warm-tier event search + audit trail)"},
 	{Name: "STORAGE_REPORTS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "reports", Description: "S3 bucket name for Spec 5 compliance sweep CSVs and other generated reports. API needs it too for the generic workflow artifact download endpoint"},
