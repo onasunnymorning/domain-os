@@ -60,7 +60,7 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// API SERVER
 	// ═══════════════════════════════════════════
-	{Name: "API_URL", Services: []Service{ServiceWorker}, Description: "Full API URL (e.g. https://alp-api-test.onrender.com). Preferred over API_HOST+API_PORT."},
+	{Name: "API_URL", Services: []Service{ServiceWorker}, Description: "Full API URL (e.g. https://api.example.com). Preferred over API_HOST+API_PORT."},
 	{Name: "API_HOST", Services: []Service{ServiceAPI, ServiceWorker}, Default: "localhost", Description: "API bind host / target host for worker calls"},
 	{Name: "API_PORT", Services: []Service{ServiceAPI, ServiceWorker}, Default: "8080", Description: "API bind port / target port for worker calls"},
 	{Name: "API_NAME", Services: []Service{ServiceAPI}, Default: "Domain OS Admin API", Description: "API name for Swagger docs"},

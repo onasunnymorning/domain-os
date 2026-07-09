@@ -138,7 +138,7 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | **Adding** a new `posthog.capture()` event | Add to the event inventory table in `frontend/lib/constants/posthogAnalyticsDoc.ts` |
 | **Removing** an event | Remove from the event inventory table |
 | **Changing** PostHog SDK config (e.g. `instrumentation-client.ts`, `next.config.ts` rewrites) | Update the Architecture and Configuration sections in the doc |
-| **Adding/changing** PostHog-related environment variables | Update all three: (1) the doc, (2) the Cloud page env vars, (3) `frontend/Dockerfile`, (4) `render.yaml` |
+| **Adding/changing** PostHog-related environment variables | Update all three: (1) the doc, (2) the Cloud page env vars, (3) `frontend/Dockerfile` |
 
 ### PostHog files to keep in sync
 
@@ -151,7 +151,6 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | `frontend/lib/api/search.ts` | ⌘K search index (`STATIC_DOCS` entry for `posthog-analytics`) |
 | `frontend/.env.local` | Local dev env vars (`NEXT_PUBLIC_POSTHOG_*`) |
 | `frontend/Dockerfile` | Build args for `NEXT_PUBLIC_POSTHOG_*` |
-| `render.yaml` | Render deployment env vars for `NEXT_PUBLIC_POSTHOG_*` |
 
 ## Cloud Infrastructure Page (Definition of Done)
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "app_version": "0.7.0",
-  "generated": "2026-07-09T21:20:52Z",
+  "generated": "2026-07-09T21:33:51Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
@@ -439,7 +439,7 @@
           },
           {
             "name": "API_URL",
-            "description": "Full API URL (e.g. https://alp-api-test.onrender.com). Preferred over API_HOST+API_PORT."
+            "description": "Full API URL (e.g. https://api.example.com). Preferred over API_HOST+API_PORT."
           },
           {
             "name": "API_HOST",
