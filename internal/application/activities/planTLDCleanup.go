@@ -39,7 +39,7 @@ type TLDCleanupActivities struct {
 
 // NewTLDCleanupActivities creates a new activities struct with initialized dependencies
 func NewTLDCleanupActivities() (*TLDCleanupActivities, error) {
-	s3c, err := storage.NewS3ClientFromEnv()
+	s3c, err := storage.NewTempS3Client()
 	if err != nil {
 		return nil, err
 	}

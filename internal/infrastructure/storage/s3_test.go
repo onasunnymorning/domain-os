@@ -75,7 +75,7 @@ func TestNewS3ClientFromEnv_PresignClientFallback(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "test")
 	t.Setenv("MINIO_USE_SSL", "false")
 	t.Setenv("MINIO_PUBLIC_ENDPOINT", "")
-	t.Setenv("ESCROW_BUCKET", "test-bucket")
+	t.Setenv("STORAGE_ESCROW_BUCKET", "test-bucket")
 
 	s3c, err := NewS3ClientFromEnv()
 	if err != nil {
@@ -97,7 +97,7 @@ func TestNewS3ClientFromEnv_PresignClientSeparate(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "minioadmin")
 	t.Setenv("MINIO_USE_SSL", "false")
 	t.Setenv("MINIO_PUBLIC_ENDPOINT", "http://localhost:9000")
-	t.Setenv("ESCROW_BUCKET", "escrow")
+	t.Setenv("STORAGE_ESCROW_BUCKET", "escrow")
 
 	s3c, err := NewS3ClientFromEnv()
 	if err != nil {
@@ -115,7 +115,7 @@ func TestNewS3ClientFromEnv_DefaultBucket(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "test")
 	t.Setenv("MINIO_USE_SSL", "false")
 	t.Setenv("MINIO_PUBLIC_ENDPOINT", "")
-	t.Setenv("ESCROW_BUCKET", "")
+	t.Setenv("STORAGE_ESCROW_BUCKET", "")
 
 	s3c, err := NewS3ClientFromEnv()
 	if err != nil {

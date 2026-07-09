@@ -208,3 +208,48 @@ When creating a new workflow, assign it to the correct queue based on its worklo
 - Workflow registry: `internal/application/workflows/workflow_registry.go`
 - Bootstrap schedules: `internal/infrastructure/bootstrap/ensure.go`
 - In-app documentation: `/docs/worker-queue-architecture`
+
+## Deployment Contract (Definition of Done)
+
+The file `deploy/contract.json` is the **machine-readable interface** between this application repo and any infrastructure repo that deploys domain-os. It is **generated** from `internal/config/contract.go` — never edit it by hand.
+
+### When to regenerate
+
+Run `make generate-contract` after any of these changes:
+
+| Change | Why it matters |
+|--------|---------------|
+| Adding/removing/renaming an env var in `env_registry.go` | Infra repo may reference the var by name |
+| Changing `Required` from `false` to `true` | Infra repo must now provide a value |
+| Changing a `Default` value | Infra repo's assumptions about defaults may break |
+| Changing a service port or health check in `contract.go` | Infra repo's probes/listeners will fail |
+| Adding or removing a service/image in `contract.go` | Infra repo needs to add/remove a deployment |
+| Bumping the `VERSION` file | Contract's `app_version` must match |
+
+The CI test `TestContractDrift` (run via `make ci-envcheck`) will fail if the committed `contract.json` doesn't match what the generator produces. Fix it by running `make generate-contract`.
+
+### What breaks the contract (for infra repo consumers)
+
+These changes are **breaking** — they require coordinated updates in the infra repo:
+
+- **New required env var** — infra must supply a value or deployment fails at startup
+- **Removed env var** — infra should stop setting it (harmless but noisy)
+- **Changed port** — infra must update service/ingress/listener config
+- **Changed health check path** — infra must update readiness/liveness probes
+- **Renamed or removed image** — infra must update image references
+- **New service** — infra must create a new deployment/service/task
+
+These changes are **non-breaking** — infra repo doesn't need updates:
+
+- New optional env var with a sensible default
+- Changed description text
+- New default value for an optional var (existing deployments keep working)
+- Version bump (infra pins to a tag, bumps at its own pace)
+
+### Reference
+
+- Contract source: `internal/config/contract.go` (types + `GenerateContract()`)
+- Service metadata: `serviceMetaRegistry` in `internal/config/contract.go`
+- Generator CLI: `cmd/tools/gencontract/main.go`
+- Generated output: `deploy/contract.json`
+- Drift test: `internal/config/contract_test.go`

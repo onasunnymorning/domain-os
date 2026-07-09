@@ -1,5 +1,5 @@
 # The main Build image to build all our binaries
-FROM golang:1.26.4-alpine AS build
+FROM golang:1.26.5-alpine AS build
 
 WORKDIR /
 ENV CGO_ENABLED=0

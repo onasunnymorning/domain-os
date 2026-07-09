@@ -133,6 +133,21 @@ export default function DocsIndexPage() {
                         </CardHeader>
                       </Card>
                     </Link>
+                    <Link href="/docs/bucket-storage" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-orange-500/30 hover:bg-orange-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Database className="h-4 w-4 text-orange-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              Bucket Storage Strategy
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            Architectural recommendations, naming standards, and split criteria for S3-compatible object storage.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
 
                     <Link href="/docs/domain-archival" className="group block">
                       <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-orange-500/30 hover:bg-orange-500/[0.01]">

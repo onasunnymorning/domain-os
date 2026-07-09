@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
@@ -8,6 +9,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/worker"
 )
@@ -26,6 +28,10 @@ func main() {
 	// Self-healing infrastructure: ensure all schedules exist.
 	// Idempotent — safe to run on every startup/deploy.
 	bootstrap.EnsureTemporalInfrastructure(client)
+
+	// Self-healing infrastructure: ensure all storage buckets exist.
+	// Idempotent — safe to run on every startup/deploy.
+	storage.EnsureBuckets(context.Background())
 
 	// --- Workers Setup ---
 

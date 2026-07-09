@@ -31,7 +31,7 @@ services:
       - key: API_NAME
         value: "AlpacaNames TEST API"
       - key: API_VERSION
-        value: "0.1.0-test"
+        value: "test"
       - key: GIN_MODE
         value: "release"
       # DB migration on startup
@@ -59,7 +59,9 @@ services:
         value: "alp-test.fclnj"
       - key: TEMPORAL_API_KEY
         sync: false
-      # S3 (Cloudflare R2) — API needs access for presigned URLs and escrow uploads
+      # S3 (Cloudflare R2) — one bucket per data type (see docs: Bucket Storage
+      # Strategy). API needs all four: presigned escrow/event-log downloads,
+      # plus the generic workflow artifact download endpoint reads reports/temp.
       - key: MINIO_ENDPOINT
         sync: false
       - key: MINIO_ACCESS_KEY
@@ -70,7 +72,13 @@ services:
         value: "true"
       - key: MINIO_PUBLIC_ENDPOINT
         sync: false
-      - key: ESCROW_BUCKET
+      - key: STORAGE_ESCROW_BUCKET
+        sync: false
+      - key: STORAGE_EVENT_LOGS_BUCKET
+        sync: false
+      - key: STORAGE_REPORTS_BUCKET
+        sync: false
+      - key: STORAGE_TEMP_BUCKET
         sync: false
 
   # ── Next.js Frontend ────────────────────────────────────
@@ -96,7 +104,7 @@ services:
         value: "https://api.alpaca-test"
       # Version
       - key: NEXT_PUBLIC_APP_VERSION
-        value: "0.1.0-test"
+        value: "0.7.0-test"
       # External tool URLs — baked at build time
       - key: NEXT_PUBLIC_TEMPORAL_UI_URL
         value: "https://cloud.temporal.io/namespaces/alp-test.fclnj/workflows"
@@ -141,7 +149,7 @@ services:
       # Direct DB (Neon)
       - key: DATABASE_URL
         sync: false
-      # S3 (Cloudflare R2)
+      # S3 (Cloudflare R2) — one bucket per data type (see docs: Bucket Storage Strategy)
       - key: MINIO_ENDPOINT
         sync: false
       - key: MINIO_ACCESS_KEY
@@ -150,6 +158,12 @@ services:
         sync: false
       - key: MINIO_USE_SSL
         value: "true"
-      - key: ESCROW_BUCKET
+      - key: STORAGE_ESCROW_BUCKET
+        sync: false
+      - key: STORAGE_EVENT_LOGS_BUCKET
+        sync: false
+      - key: STORAGE_REPORTS_BUCKET
+        sync: false
+      - key: STORAGE_TEMP_BUCKET
         sync: false
 

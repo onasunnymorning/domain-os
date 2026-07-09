@@ -117,7 +117,7 @@ s3://escrow/
 - **Partitioned by day** for efficient date-range queries
 - **JSONL format**: One JSON object per line, gzip compressed
 - **File naming**: \`events-{unix-timestamp}-{count}.jsonl.gz\`
-- **Bucket**: Shares the existing \`escrow\` bucket (configured via \`ESCROW_BUCKET\` env var)
+- **Bucket**: Its own bucket, isolated from escrow (configured via \`STORAGE_EVENT_LOGS_BUCKET\` env var — see [Bucket Storage Strategy](/docs/bucket-storage))
 
 ## Event Record Schema
 

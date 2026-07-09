@@ -107,6 +107,7 @@ import { EVENT_CONSUMER_DOC_MARKDOWN } from '../constants/eventConsumerDoc';
 import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc';
 import { WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN } from '../constants/workerQueueArchitectureDoc';
 import { AGENT_ALPACA_DOC_MARKDOWN } from '../constants/agentAlpacaDoc';
+import { BUCKET_STORAGE_DOC_MARKDOWN } from '../constants/bucketStorageDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
   {
@@ -144,6 +145,18 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: EVENT_CONSUMER_DOC_MARKDOWN,
+  },
+  {
+    key: 'bucket-storage',
+    name: 'Bucket Storage Strategy',
+    description: 'Architectural recommendations, naming standards, and split criteria for S3-compatible object storage',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['storage', 's3', 'minio', 'r2', 'buckets', 'escrow', 'reports', 'logs', 'lifecycle', 'retention', 'security', 'pii'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: BUCKET_STORAGE_DOC_MARKDOWN,
   },
   {
     key: 'posthog-analytics',

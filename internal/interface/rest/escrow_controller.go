@@ -334,7 +334,7 @@ func (c *EscrowController) ListImports(ctx *gin.Context) {
 	}
 
 	// Build helpers for public URLs
-	bucket := strings.TrimSpace(os.Getenv("ESCROW_BUCKET"))
+	bucket := strings.TrimSpace(os.Getenv("STORAGE_ESCROW_BUCKET"))
 	if bucket == "" {
 		bucket = "escrow"
 	}
