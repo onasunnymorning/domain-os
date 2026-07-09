@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -32,7 +34,14 @@ func (s *S3Client) EnsureBucket(ctx context.Context) error {
 // Failures are logged and skipped rather than returned, matching the
 // self-healing startup pattern used by bootstrap.EnsureTemporalInfrastructure —
 // a missing bucket shouldn't prevent the service from starting.
+//
+// Disabled unless STORAGE_AUTO_CREATE_BUCKETS is set. Production buckets are
+// provisioned out-of-band, and least-privilege credentials are not granted
+// CreateBucket — leaving this on would warn on every boot forever.
 func EnsureBuckets(ctx context.Context) {
+	if enabled, _ := strconv.ParseBool(os.Getenv("STORAGE_AUTO_CREATE_BUCKETS")); !enabled {
+		return
+	}
 	constructors := map[string]func() (*S3Client, error){
 		"escrow":     NewS3ClientFromEnv,
 		"event-logs": NewEventLogsS3Client,

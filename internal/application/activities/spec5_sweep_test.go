@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/stretchr/testify/suite"
@@ -24,10 +23,6 @@ func (m *mockSweepStorage) UploadStream(ctx context.Context, key string, reader 
 	}
 	m.uploads[key] = data
 	return nil
-}
-
-func (m *mockSweepStorage) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	return "http://mock-s3-presigned-url/" + key, nil
 }
 
 type Spec5SweepActivitiesTestSuite struct {
@@ -93,7 +88,6 @@ func (s *Spec5SweepActivitiesTestSuite) TestSweepSpec5Labels_Success() {
 	s.Require().True(exists)
 	s.Equal(int64(1), comResult.Count)
 	s.NotEmpty(comResult.ArtifactKey)
-	s.NotEmpty(comResult.DownloadURL)
 
 	// net TLD checks
 	netResult, exists := res.TLDResults["net"]

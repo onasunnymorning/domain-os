@@ -1,8 +1,56 @@
 package storage
 
 import (
+	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+// TestTLSVerificationEnforced pins the security contract of STORAGE_TLS_SKIP_VERIFY:
+// certificate verification is on unless explicitly disabled. httptest.NewTLSServer
+// serves a self-signed cert, so a verifying client must reject it.
+func TestTLSVerificationEnforced(t *testing.T) {
+	srv := httptest.NewTLSServer(nil)
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "https://")
+
+	setEnv := func(t *testing.T, skipVerify string) *S3Client {
+		t.Helper()
+		t.Setenv("MINIO_ENDPOINT", host)
+		t.Setenv("MINIO_ACCESS_KEY", "test")
+		t.Setenv("MINIO_SECRET_KEY", "test")
+		t.Setenv("MINIO_USE_SSL", "true")
+		t.Setenv("MINIO_PUBLIC_ENDPOINT", "")
+		t.Setenv("STORAGE_TLS_SKIP_VERIFY", skipVerify)
+		c, err := NewS3ClientForBucket("STORAGE_TEST_BUCKET", "test")
+		if err != nil {
+			t.Fatalf("NewS3ClientForBucket: %v", err)
+		}
+		return c
+	}
+
+	t.Run("rejects self-signed cert by default", func(t *testing.T) {
+		c := setEnv(t, "")
+		_, err := c.Exists(context.Background(), "some-key")
+		if err == nil {
+			t.Fatal("expected TLS verification to reject the self-signed cert, got nil error")
+		}
+		if !strings.Contains(err.Error(), "x509") && !strings.Contains(err.Error(), "certificate") {
+			t.Fatalf("expected a certificate verification error, got: %v", err)
+		}
+	})
+
+	t.Run("accepts self-signed cert when explicitly skipped", func(t *testing.T) {
+		c := setEnv(t, "true")
+		// The bare TLS server is not S3, so the request fails on the response —
+		// but it must get past the TLS handshake, i.e. no certificate error.
+		_, err := c.Exists(context.Background(), "some-key")
+		if err != nil && (strings.Contains(err.Error(), "x509") || strings.Contains(err.Error(), "certificate")) {
+			t.Fatalf("STORAGE_TLS_SKIP_VERIFY=true should bypass cert verification, got: %v", err)
+		}
+	})
+}
 
 func TestParseEndpointURL(t *testing.T) {
 	tests := []struct {

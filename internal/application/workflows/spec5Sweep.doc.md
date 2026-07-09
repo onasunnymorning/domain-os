@@ -56,7 +56,6 @@ type Spec5SweepResult struct {
 type Spec5SweepTLDResult struct {
 	Count       int64  `json:"count"`                 // Number of matching domains found
 	ArtifactKey string `json:"artifactKey,omitempty"` // S3 key of the matching domains CSV
-	DownloadURL string `json:"downloadUrl,omitempty"` // Presigned S3 GET URL
 }
 ```
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "app_version": "0.7.0",
-  "generated": "2026-07-08T15:54:35Z",
+  "generated": "2026-07-09T21:03:55Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
@@ -175,6 +175,16 @@
             "name": "STORAGE_TEMP_BUCKET",
             "default": "temp-artifacts",
             "description": "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TLS_SKIP_VERIFY",
+            "default": "false",
+            "description": "Disable TLS certificate verification for S3 connections. Local development against self-signed MinIO only — never enable against R2/S3"
+          },
+          {
+            "name": "STORAGE_AUTO_CREATE_BUCKETS",
+            "default": "false",
+            "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
           },
           {
             "name": "ESCROW_UPLOAD_DIR",
@@ -491,6 +501,16 @@
             "name": "STORAGE_TEMP_BUCKET",
             "default": "temp-artifacts",
             "description": "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TLS_SKIP_VERIFY",
+            "default": "false",
+            "description": "Disable TLS certificate verification for S3 connections. Local development against self-signed MinIO only — never enable against R2/S3"
+          },
+          {
+            "name": "STORAGE_AUTO_CREATE_BUCKETS",
+            "default": "false",
+            "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
           },
           {
             "name": "OPENEXCHANGERATES_APP_ID",

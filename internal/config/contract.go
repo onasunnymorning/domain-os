@@ -129,12 +129,6 @@ var infraRegistry = []InfraComponent{
 // secretPatterns are substrings in env var names that indicate secrets.
 var secretPatterns = []string{"SECRET", "PASSWORD", "TOKEN", "CERT", "KEY", "LICENSE"}
 
-// secretExclusions are env var names that match secret patterns but are NOT secrets.
-var secretExclusions = map[string]bool{
-	"MINIO_ACCESS_KEY":     false, // access key IDs are secrets
-	"NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN": false, // public token
-}
-
 // isSecret returns true if the env var name looks like a secret.
 func isSecret(name string) bool {
 	// Check if it's a NEXT_PUBLIC_ var — these are never secrets (baked into client JS)
