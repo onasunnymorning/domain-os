@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -29,16 +28,18 @@ type Spec5SweepResult struct {
 }
 
 // Spec5SweepTLDResult holds matching counts and download details for a specific TLD.
+// Only the artifact key is stored; callers presign a short-lived download URL on
+// demand via the storage download endpoint. Presigned URLs signed with temporary
+// credentials die when the session token expires, so they must not be persisted
+// in workflow results.
 type Spec5SweepTLDResult struct {
 	Count       int64  `json:"count"`
 	ArtifactKey string `json:"artifactKey,omitempty"`
-	DownloadURL string `json:"downloadUrl,omitempty"`
 }
 
 // SweepStorageAPI defines the S3 operations needed by the sweep activity.
 type SweepStorageAPI interface {
 	UploadStream(ctx context.Context, key string, reader io.Reader, contentType string) error
-	PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error)
 }
 
 // Spec5SweepActivities holds GORM and S3 dependencies.
@@ -190,16 +191,9 @@ JOIN candidates c ON d.name = c.name
 			return Spec5SweepResult{}, fmt.Errorf("SweepSpec5Labels: failed to upload CSV artifact to S3 at key %s: %w. Ensure MinIO is running and STORAGE_REPORTS_BUCKET is configured", artifactKey, err)
 		}
 
-		activity.RecordHeartbeat(ctx, fmt.Sprintf("presigning download URL for %s", tld))
-		downloadURL, err := a.S3Client.PresignGet(ctx, artifactKey, 7*24*time.Hour)
-		if err != nil {
-			return Spec5SweepResult{}, fmt.Errorf("SweepSpec5Labels: failed to generate presigned download URL for S3 key %s: %w", artifactKey, err)
-		}
-
 		tldResults[tld] = Spec5SweepTLDResult{
 			Count:       int64(len(matches)),
 			ArtifactKey: artifactKey,
-			DownloadURL: downloadURL,
 		}
 	}
 

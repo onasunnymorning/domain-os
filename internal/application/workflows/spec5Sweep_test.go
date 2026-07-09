@@ -28,7 +28,6 @@ func (s *Spec5SweepWorkflowTestSuite) Test_Spec5SweepWorkflow_Success() {
 			"com": {
 				Count:       1,
 				ArtifactKey: "spec5-sweep/wf-123/com-matching-spec5.csv",
-				DownloadURL: "http://mock-s3-presigned-url/",
 			},
 		},
 	}

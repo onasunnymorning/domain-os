@@ -90,6 +90,8 @@ var Registry = []EnvVar{
 	{Name: "STORAGE_EVENT_LOGS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "event-logs", Description: "S3 bucket name for gzip JSONL event archive files (warm-tier event search + audit trail)"},
 	{Name: "STORAGE_REPORTS_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "reports", Description: "S3 bucket name for Spec 5 compliance sweep CSVs and other generated reports. API needs it too for the generic workflow artifact download endpoint"},
 	{Name: "STORAGE_TEMP_BUCKET", Services: []Service{ServiceAPI, ServiceWorker}, Default: "temp-artifacts", Description: "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"},
+	{Name: "STORAGE_TLS_SKIP_VERIFY", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Disable TLS certificate verification for S3 connections. Local development against self-signed MinIO only — never enable against R2/S3"},
+	{Name: "STORAGE_AUTO_CREATE_BUCKETS", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"},
 	{Name: "ESCROW_UPLOAD_DIR", Services: []Service{ServiceAPI}, Default: "/tmp/escrow-uploads", Description: "Local temp dir for escrow file uploads before S3 transfer"},
 
 	// ═══════════════════════════════════════════

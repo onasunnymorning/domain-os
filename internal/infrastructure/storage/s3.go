@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -68,8 +69,14 @@ func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error)
 	}
 	public := strings.TrimSpace(os.Getenv("MINIO_PUBLIC_ENDPOINT"))
 
-	// Allow self-signed in dev when not using SSL or custom certs
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	// Certificate verification is on by default. STORAGE_TLS_SKIP_VERIFY exists
+	// only for local MinIO with a self-signed cert; enabling it against a real
+	// provider (R2/S3) exposes every object and credential to interception.
+	skipVerify, _ := strconv.ParseBool(os.Getenv("STORAGE_TLS_SKIP_VERIFY"))
+	if skipVerify {
+		log.Printf("[storage] WARNING: STORAGE_TLS_SKIP_VERIFY is set — TLS certificate verification is DISABLED. Never use this outside local development.")
+	}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}
 	httpClient := &http.Client{Transport: tr}
 
 	cli, err := minio.New(endpoint, &minio.Options{
