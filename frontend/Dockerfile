@@ -27,6 +27,12 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Patch base-image OS packages, and drop the bundled npm CLI: the runtime only
+# executes `node server.js`, and npm's bundled deps (tar, minimatch, cross-spawn,
+# sigstore, …) are the sole source of HIGH CVEs in this image.
+RUN apk upgrade --no-cache && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # App version is genuinely build-time metadata. Stamping it as a runtime ENV in
 # this stage lets PublicEnvScript pick it up like any other NEXT_PUBLIC_* var,
 # while still allowing an override with `docker run -e`.

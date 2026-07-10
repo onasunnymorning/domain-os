@@ -30,7 +30,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
       -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
-FROM alpine:3.21.3 AS whois-server
+FROM alpine:3.21.4 AS whois-server
+
+# Patch base-image OS packages against known CVEs
+RUN apk upgrade --no-cache
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
