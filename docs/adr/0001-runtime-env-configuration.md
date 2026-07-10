@@ -134,4 +134,3 @@ artifact promotion and means the tested image is never the deployed image.
 - Lint rule: `frontend/eslint.config.mjs`
 - Contract source: `internal/config/contract.go`, `internal/config/env_registry.go`
 - Generated contract: `deploy/contract.json`
-- In-app guide: `/docs/runtime-env`

@@ -103,7 +103,7 @@ These are set in:
 - **Container environment** in every deployed environment
 
 They are read at container start via \`getPostHogToken()\` / \`getPostHogHost()\` in
-\`lib/env.ts\`, not baked into the bundle — see [Runtime Environment Variables](/docs/runtime-env).
+\`lib/env.ts\`, not baked into the bundle.
 When the token is absent at runtime, \`instrumentation-client.ts\` skips \`posthog.init()\` entirely.
 
 > **Note:** The API key is a write-only ingest key. It is intentionally readable by the browser — this is the standard PostHog pattern.

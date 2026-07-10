@@ -33,12 +33,11 @@ uses `next-runtime-env` so that all `NEXT_PUBLIC_*` values resolve at container 
 
 ### Adding a new frontend env var
 
-All four, in the same change:
+All three, in the same change:
 
 1. `frontend/lib/env.ts` — an accessor function with a sensible default
 2. `internal/config/env_registry.go` — a `ServiceFrontend` entry
 3. `make generate-contract` — regenerates `deploy/contract.json` (never hand-edit)
-4. `frontend/app/cloud/page.tsx` — a row in `envVarsByCategory`
 
 Also update `example.env`, and `frontend/.env.local` if local dev needs a value.
 
@@ -61,7 +60,7 @@ Also update `example.env`, and `frontend/.env.local` if local dev needs a value.
 ### Reference
 
 - Decision record: `docs/adr/0001-runtime-env-configuration.md`
-- In-app documentation: `/docs/runtime-env`
+- Variable inventory: `deploy/contract.json` (generated from `internal/config/env_registry.go`)
 
 ## Dependency Management
 
@@ -180,7 +179,6 @@ Do **not** create docs for trivial changes (bug fixes, UI tweaks, dependency bum
 | PostHog Analytics | `/docs/posthog-analytics` | Event tracking, session recordings, error capture |
 | Database Index Strategy | `/docs/database-index-strategy` | PostgreSQL indexing for scale, storage budgets, query optimization |
 | Event Consumer Cloud | `/docs/event-consumer` | Tiered event lifecycle, relay workflows, S3 archival, pruning |
-| Runtime Environment Variables | `/docs/runtime-env` | `NEXT_PUBLIC_*` injection at container start, the `process.env` ban, adding a var |
 
 Workflow documentation (sidecar `.doc.md` files) is served automatically from the workflow registry — see the "Workflow Documentation" section above.
 
@@ -195,7 +193,7 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | **Adding** a new `posthog.capture()` event | Add to the event inventory table in `frontend/lib/constants/posthogAnalyticsDoc.ts` |
 | **Removing** an event | Remove from the event inventory table |
 | **Changing** PostHog SDK config (e.g. `instrumentation-client.ts`, `next.config.ts` rewrites) | Update the Architecture and Configuration sections in the doc |
-| **Adding/changing** PostHog-related environment variables | Update all four: (1) the doc, (2) the Cloud page env vars, (3) `frontend/lib/env.ts`, (4) `internal/config/env_registry.go` + `make generate-contract` |
+| **Adding/changing** PostHog-related environment variables | Update all three: (1) the doc, (2) `frontend/lib/env.ts`, (3) `internal/config/env_registry.go` + `make generate-contract` |
 
 ### PostHog files to keep in sync
 
@@ -204,30 +202,10 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | `frontend/instrumentation-client.ts` | PostHog SDK init (capture settings, proxy config) |
 | `frontend/next.config.ts` | Reverse proxy rewrites for `/ingest` |
 | `frontend/lib/constants/posthogAnalyticsDoc.ts` | In-app documentation (event inventory, architecture, config) |
-| `frontend/app/cloud/page.tsx` | Cloud Infrastructure page (service card + env vars in the `Analytics (PostHog)` tab) |
 | `frontend/lib/api/search.ts` | ⌘K search index (`STATIC_DOCS` entry for `posthog-analytics`) |
 | `frontend/.env.local` | Local dev env vars (`NEXT_PUBLIC_POSTHOG_*`) |
 | `frontend/lib/env.ts` | `getPostHogToken()` / `getPostHogHost()` accessors |
 | `frontend/instrumentation-client.ts` | Skips `posthog.init()` when the token is absent at runtime |
-
-## Cloud Infrastructure Page (Definition of Done)
-
-The Cloud Infrastructure page (`frontend/app/cloud/page.tsx`) is the single source of truth for external services and environment variables. Keep it in sync:
-
-### When to update the Cloud page
-
-| Operation | Cloud Page Action |
-|-----------|------------------|
-| **Adding** a new external service (SaaS, managed DB, etc.) | Add a service card to the `services` array with name, description, icon, URL, and key items |
-| **Adding** a new environment variable | Add to the appropriate category in `envVarsByCategory` — or create a new category if needed |
-| **Removing** a service or env var | Remove the corresponding entry |
-| **Changing** an env var's purpose or scope | Update `description` and `services` fields |
-
-### Rules for env var entries
-
-- Mark vars as `secret: true` if they contain credentials, API keys with write/read access, or connection strings with passwords
-- `NEXT_PUBLIC_*` vars are **not** secrets (they're baked into the client bundle)
-- The `services` array should list which deployment targets use the var: `'API'`, `'Frontend'`, or `'Worker'`
 
 ## Temporal Worker & Queue Architecture
 
