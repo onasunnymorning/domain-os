@@ -11,7 +11,7 @@ This guide explains how to build and run the EPP server as a containerized servi
 make -f Makefile.epp-server docker-build
 
 # Or manually
-docker build -f Dockerfile.epp -t gprins/epp-server:latest .
+docker build -f Dockerfile.epp -t gprins/domain-os-epp:latest .
 ```
 
 ### 2. Start the EPP Stack (Redis + EPP Server)
@@ -102,7 +102,7 @@ epp-server:
   build:
     context: .
     dockerfile: Dockerfile.epp
-  image: gprins/epp-server:${BRANCH:-latest}
+  image: gprins/domain-os-epp:${BRANCH:-latest}
   restart: unless-stopped
   profiles: [essential, full]
   depends_on:
@@ -367,11 +367,11 @@ export BRANCH=production
 # Build optimized image
 docker build -f Dockerfile.epp \
   --build-arg GIT_SHA=$(git rev-parse HEAD) \
-  -t gprins/epp-server:${BRANCH} \
+  -t gprins/domain-os-epp:${BRANCH} \
   .
 
 # Tag for registry
-docker tag gprins/epp-server:${BRANCH} registry.example.com/epp-server:${BRANCH}
+docker tag gprins/domain-os-epp:${BRANCH} registry.example.com/epp-server:${BRANCH}
 
 # Push to registry
 docker push registry.example.com/epp-server:${BRANCH}
@@ -382,7 +382,7 @@ docker push registry.example.com/epp-server:${BRANCH}
 ```yaml
 # docker-compose.prod.yml
 epp-server:
-  image: gprins/epp-server:production
+  image: gprins/domain-os-epp:production
   restart: always
   deploy:
     replicas: 3

@@ -51,7 +51,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.epp
-    image: gprins/epp-server:${BRANCH:-latest}
+    image: gprins/domain-os-epp:${BRANCH:-latest}
     restart: unless-stopped
     profiles: [ essential, full ]
     depends_on:
@@ -115,7 +115,7 @@ services:
   # Core API container
   admin-api:
     build: .
-    image: "gprins/domain-os:${BRANCH}"
+    image: "gprins/domain-os-api:${BRANCH}"
     restart: always
     profiles: [ essential, full ]
     healthcheck:
@@ -181,7 +181,7 @@ services:
 
   # Admin Init (One-off task to sync registrars on startup)
   admin-init:
-    image: "gprins/domain-os:${BRANCH}"
+    image: "gprins/domain-os-api:${BRANCH}"
     restart: "no" # Run once and stop
     profiles: [ essential, full ]
     depends_on:
@@ -270,7 +270,7 @@ services:
     build:
       context: .
       dockerfile: ./cmd/workers/unified/Dockerfile
-    image: gprins/unified-worker:${BRANCH}
+    image: gprins/domain-os-worker:${BRANCH}
     restart: unless-stopped
     profiles: [ essential, full ]
     depends_on:
@@ -358,7 +358,7 @@ services:
 
   # Whois container
   whois:
-    image: "gprins/whois:${BRANCH}"
+    image: "gprins/domain-os-whois:${BRANCH}"
     restart: always
     profiles: [ full ]
     depends_on:
@@ -386,7 +386,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mcp
-    image: "gprins/mcp-server:${BRANCH}"
+    image: "gprins/domain-os-mcp:${BRANCH}"
     restart: unless-stopped
     profiles: [ full ]
     depends_on:

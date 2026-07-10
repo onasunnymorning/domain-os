@@ -80,7 +80,7 @@ type serviceMeta struct {
 var serviceMetaRegistry = []serviceMeta{
 	{
 		ContractName: "admin-api",
-		Image:        "gprins/domain-os",
+		Image:        "gprins/domain-os-api",
 		Port:         8080,
 		Protocol:     "http",
 		HealthCheck:  &HealthCheck{Type: "http", Path: "/ping", Port: 8080},
@@ -88,14 +88,14 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "unified-worker",
-		Image:        "gprins/unified-worker",
+		Image:        "gprins/domain-os-worker",
 		Protocol:     "",
 		HealthCheck:  &HealthCheck{Type: "temporal-heartbeat"},
 		Services:     []Service{ServiceWorker},
 	},
 	{
 		ContractName: "epp-server",
-		Image:        "gprins/epp-server",
+		Image:        "gprins/domain-os-epp",
 		Port:         700,
 		Protocol:     "tls",
 		HealthCheck:  &HealthCheck{Type: "tcp", Port: 700},
@@ -103,7 +103,7 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "whois",
-		Image:        "gprins/whois",
+		Image:        "gprins/domain-os-whois",
 		Port:         43,
 		Protocol:     "tcp",
 		HealthCheck:  &HealthCheck{Type: "tcp", Port: 43},
@@ -111,7 +111,7 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "mcp-server",
-		Image:        "gprins/mcp-server",
+		Image:        "gprins/domain-os-mcp",
 		Port:         3001,
 		Protocol:     "http",
 		HealthCheck:  &HealthCheck{Type: "http", Path: "/healthz", Port: 3001},

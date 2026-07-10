@@ -2,13 +2,13 @@
 
 api:
   replicaCount: 1
-  image: gprins/domain-os
+  image: gprins/domain-os-api
   tag: latest
   imagePullPolicy: IfNotPresent
 
 unifiedworker:
   replicaCount: 1
-  image: gprins/unified-worker
+  image: gprins/domain-os-worker
   tag: latest
   imagePullPolicy: IfNotPresent
 

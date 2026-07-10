@@ -1,10 +1,10 @@
 {
   "schema_version": "2",
   "app_version": "0.7.0",
-  "generated": "2026-07-10T16:01:30Z",
+  "generated": "2026-07-10T16:21:57Z",
   "services": {
     "admin-api": {
-      "image": "gprins/domain-os",
+      "image": "gprins/domain-os-api",
       "port": 8080,
       "protocol": "http",
       "env_injection": "runtime",
@@ -247,7 +247,7 @@
       }
     },
     "epp-server": {
-      "image": "gprins/epp-server",
+      "image": "gprins/domain-os-epp",
       "port": 700,
       "protocol": "tls",
       "env_injection": "runtime",
@@ -356,7 +356,7 @@
       }
     },
     "mcp-server": {
-      "image": "gprins/mcp-server",
+      "image": "gprins/domain-os-mcp",
       "port": 3001,
       "protocol": "http",
       "env_injection": "runtime",
@@ -413,7 +413,7 @@
       }
     },
     "unified-worker": {
-      "image": "gprins/unified-worker",
+      "image": "gprins/domain-os-worker",
       "env_injection": "runtime",
       "health_check": {
         "type": "temporal-heartbeat"
@@ -602,7 +602,7 @@
       }
     },
     "whois": {
-      "image": "gprins/whois",
+      "image": "gprins/domain-os-whois",
       "port": 43,
       "protocol": "tcp",
       "env_injection": "runtime",
