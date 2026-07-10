@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -12,7 +13,7 @@ import (
 
 // RenewDomain takes a domain name and sends a POST request to the admin API to renew the domain.
 // If force is true, it will call the /domains/{name}/renew/force endpoint instead of /domains/{name}/renew.
-func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bool) error {
+func RenewDomain(ctx context.Context, correlationID string, cmd commands.RenewDomainCommand, force bool) error {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/renew", BASEURL, cmd.Name)
 	if force {
 		ENDPOINT = fmt.Sprintf("%s/domains/%s/renew/force", BASEURL, cmd.Name)
@@ -34,11 +35,10 @@ func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bo
 		return fmt.Errorf("failed to create URL: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonData))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonData), correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -52,7 +52,7 @@ func RenewDomain(correlationID string, cmd commands.RenewDomainCommand, force bo
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return httpResponseError(resp, body)
 	}
 
 	return nil

@@ -222,143 +222,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/agent/chat": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Send a message to the AI agent and receive a response",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "agent"
-                ],
-                "summary": "Chat with AI agent",
-                "parameters": [
-                    {
-                        "description": "Chat request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/service.ChatRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/service.ChatResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/agent/chat/stream": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Send a message to the AI agent and receive a streaming response",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "agent"
-                ],
-                "summary": "Chat with AI agent (streaming)",
-                "parameters": [
-                    {
-                        "description": "Chat request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/service.ChatRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/agent/health": {
-            "get": {
-                "description": "Check if agent service is running",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "agent"
-                ],
-                "summary": "Agent health check",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/dnssec": {
             "get": {
                 "description": "Runs dnsviz to generate an interactive map of DNSSEC trust chains for the provided domain",
@@ -1632,6 +1495,56 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/domains/{name}/events": {
+            "get": {
+                "description": "List lifecycle events for a domain",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Domains"
+                ],
+                "summary": "List events for a domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain Name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.DomainEvent"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
@@ -5343,6 +5256,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/workflows/active": {
+            "get": {
+                "description": "Returns all currently running Temporal workflow executions",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "List active workflows",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.activeWorkflowsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/launch": {
+            "post": {
+                "description": "Starts a Temporal workflow of the specified type with the given parameters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Launch a workflow",
+                "parameters": [
+                    {
+                        "description": "Launch parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.launchWorkflowRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/rest.launchWorkflowResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workflows/registrars/sync": {
             "post": {
                 "description": "Starts the Temporal workflow that bootstraps or syncs registrars depending on system state",
@@ -5371,6 +5365,76 @@ const docTemplate = `{
                         "description": "Accepted",
                         "schema": {
                             "$ref": "#/definitions/rest.startWorkflowResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/registry": {
+            "get": {
+                "description": "Returns metadata for all available workflow types including steps, tags, and configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Get workflow registry",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.workflowRegistryResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/storage/download": {
+            "get": {
+                "description": "Returns a presigned GET URL for the specified storage key",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Get download URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Storage key",
+                        "name": "key",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -5427,6 +5491,207 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/tlds/{tldName}/cleanup/confirm": {
+            "post": {
+                "description": "Sends the ConfirmTLDCleanup signal to a running TLD cleanup workflow",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Confirm or reject TLD cleanup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "TLD Name",
+                        "name": "tldName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Confirmation",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.confirmTLDCleanupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{workflowId}/result": {
+            "get": {
+                "description": "Returns the result of a completed workflow, or status if still running",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Get workflow result",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow ID",
+                        "name": "workflowId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{workflowId}/signal": {
+            "post": {
+                "description": "Sends a named signal with payload to a running workflow (used for human-in-the-loop confirmations)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Signal a workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow ID",
+                        "name": "workflowId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Signal details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.signalWorkflowRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{workflowId}/status": {
+            "get": {
+                "description": "Returns the current status and metadata of a specific workflow execution",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Get workflow status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow ID",
+                        "name": "workflowId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.workflowStatusResponse"
                         }
                     },
                     "500": {
@@ -6048,19 +6313,16 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "algorithm": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "flags": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
                 },
                 "protocol": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "publicKey": {
                     "type": "string"
@@ -6071,22 +6333,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "algorithm": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "digest": {
                     "type": "string"
                 },
                 "digestType": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
                 },
                 "keyTag": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 }
             }
         },
@@ -6105,24 +6364,20 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "class": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "name": {
                     "type": "string"
                 },
                 "rdlength": {
                     "description": "Length of data after header.",
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "rrtype": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "ttl": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 }
             }
         },
@@ -6130,8 +6385,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "expire": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
@@ -6140,23 +6394,19 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "minttl": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "ns": {
                     "type": "string"
                 },
                 "refresh": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "retry": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 },
                 "serial": {
-                    "type": "integer",
-                    "format": "int32"
+                    "type": "integer"
                 }
             }
         },
@@ -6485,6 +6735,39 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.DomainEvent": {
+            "type": "object",
+            "properties": {
+                "correlation_id": {
+                    "type": "string"
+                },
+                "data": {
+                    "description": "DomainLifeCycleEvent, RegistrarLifecycleEvent, etc."
+                },
+                "id": {
+                    "description": "UUID v4",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "\"domain-os/api\", \"domain-os/worker\", \"domain-os/epp\"",
+                    "type": "string"
+                },
+                "subject": {
+                    "description": "\"example.com\", \"REG-001\"",
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "\"domain.registered\", \"domain.renewed\", \"registrar.created\"",
+                    "type": "string"
+                }
+            }
+        },
         "entities.DomainGrandFathering": {
             "type": "object",
             "properties": {
@@ -6620,8 +6903,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "rate": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "targetCurrency": {
                     "type": "string"
@@ -6836,11 +7118,6 @@ const docTemplate = `{
                 "NNDNStateMirrored": "A mirrored IDN variant of a domain name.",
                 "NNDNStateWithheld": "Potentially a future registrable domain."
             },
-            "x-enum-descriptions": [
-                "Indicates the NNDN is not available for registration.",
-                "Potentially a future registrable domain.",
-                "A mirrored IDN variant of a domain name."
-            ],
             "x-enum-varnames": [
                 "NNDNStateBlocked",
                 "NNDNStateWithheld",
@@ -7004,8 +7281,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "label": {
                     "type": "string"
@@ -7014,20 +7290,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "registrationAmount": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "renewalAmount": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "restoreAmount": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "transferAmount": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 }
             }
         },
@@ -7223,14 +7495,29 @@ const docTemplate = `{
                 "clID": {
                     "type": "string"
                 },
+                "domainCount": {
+                    "type": "integer"
+                },
                 "gurID": {
                     "type": "integer"
+                },
+                "ianastatus": {
+                    "$ref": "#/definitions/entities.IANARegistrarStatus"
                 },
                 "name": {
                     "type": "string"
                 },
                 "status": {
                     "$ref": "#/definitions/entities.RegistrarStatus"
+                },
+                "tldcount": {
+                    "type": "integer"
+                },
+                "tldlist": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -7332,6 +7619,10 @@ const docTemplate = `{
                 },
                 "CreatedAt": {
                     "type": "string"
+                },
+                "DomainCount": {
+                    "description": "DomainCount represents the domain count of this TLD for a specific context (like a registrar)",
+                    "type": "integer"
                 },
                 "EnableDNS": {
                     "description": "EnableDNS is a boolean indicating if the TLD has DNS enabled",
@@ -7614,8 +7905,7 @@ const docTemplate = `{
             "properties": {
                 "count": {
                     "description": "Count is the number of objects that were counted",
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "filter": {
                     "description": "Filter is the filter that was applied to the count"
@@ -7679,6 +7969,107 @@ const docTemplate = `{
                 }
             }
         },
+        "rest.activeWorkflowItem": {
+            "type": "object",
+            "properties": {
+                "runId": {
+                    "type": "string"
+                },
+                "startTime": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workflowType": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.activeWorkflowsResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/rest.activeWorkflowItem"
+                    }
+                }
+            }
+        },
+        "rest.confirmTLDCleanupRequest": {
+            "type": "object",
+            "required": [
+                "workflowId"
+            ],
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.launchWorkflowRequest": {
+            "type": "object",
+            "required": [
+                "workflowType"
+            ],
+            "properties": {
+                "params": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "workflowType": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.launchWorkflowResponse": {
+            "type": "object",
+            "properties": {
+                "runId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflows.WorkflowStep"
+                    }
+                },
+                "url": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.signalWorkflowRequest": {
+            "type": "object",
+            "required": [
+                "signalName"
+            ],
+            "properties": {
+                "payload": {},
+                "signalName": {
+                    "type": "string"
+                }
+            }
+        },
         "rest.startRegistrarSyncRequest": {
             "type": "object",
             "properties": {
@@ -7716,75 +8107,103 @@ const docTemplate = `{
                 }
             }
         },
-        "service.ChatRequest": {
+        "rest.workflowRegistryResponse": {
             "type": "object",
-            "required": [
-                "message"
-            ],
             "properties": {
-                "conversation_id": {
-                    "type": "string"
+                "count": {
+                    "type": "integer"
                 },
-                "history": {
+                "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/service.Message"
+                        "$ref": "#/definitions/workflows.WorkflowMeta"
                     }
+                }
+            }
+        },
+        "rest.workflowStatusResponse": {
+            "type": "object",
+            "properties": {
+                "closeTime": {
+                    "type": "string"
                 },
-                "message": {
+                "runId": {
+                    "type": "string"
+                },
+                "startTime": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "workflowId": {
                     "type": "string"
                 }
             }
         },
-        "service.ChatResponse": {
+        "workflows.WorkflowMeta": {
             "type": "object",
             "properties": {
-                "actions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/service.NavigationAction"
-                    }
-                },
-                "conversation_id": {
+                "category": {
+                    "description": "\"data-pipeline\" | \"lifecycle\" | \"operations\"",
                     "type": "string"
                 },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "service.Message": {
-            "type": "object",
-            "properties": {
-                "content": {
+                "description": {
                     "type": "string"
                 },
-                "role": {
+                "docMarkdown": {
                     "type": "string"
-                }
-            }
-        },
-        "service.NavigationAction": {
-            "type": "object",
-            "properties": {
-                "autoNavigate": {
-                    "description": "Auto-navigate without user click",
+                },
+                "hasSignal": {
                     "type": "boolean"
                 },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "queue": {
+                    "type": "string"
+                },
+                "scheduleInfo": {
+                    "description": "e.g., \"Every hour\"",
+                    "type": "string"
+                },
+                "scheduled": {
+                    "type": "boolean"
+                },
+                "signalName": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflows.WorkflowStep"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "workflows.WorkflowStep": {
+            "type": "object",
+            "properties": {
+                "activityName": {
+                    "description": "Temporal activity name for progress tracking",
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
                 "label": {
-                    "description": "Button label",
-                    "type": "string"
-                },
-                "path": {
-                    "description": "Navigation path",
-                    "type": "string"
-                },
-                "type": {
-                    "description": "Always \"navigate\"",
-                    "type": "string"
-                },
-                "variant": {
-                    "description": "Button variant: default, outline, secondary",
                     "type": "string"
                 }
             }

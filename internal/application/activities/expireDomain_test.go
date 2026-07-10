@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ func (suite *ExpireDomainTestSuite) TestExpireDomain_Success() {
 		Body:       io.NopCloser(bytes.NewBufferString("")),
 	}
 
-	err := ExpireDomain("testCorrelationID", "example.com")
+	err := ExpireDomain(context.Background(), "testCorrelationID", "example.com")
 	suite.NoError(err, "Expected no error for successful response")
 }
 
@@ -44,15 +45,15 @@ func (suite *ExpireDomainTestSuite) TestExpireDomain_BadRequest() {
 		Body:       io.NopCloser(bytes.NewBufferString("Bad Request")),
 	}
 
-	err := ExpireDomain("testCorrelationID", "example.com")
+	err := ExpireDomain(context.Background(), "testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "unexpected status code: 400", "Error should include status code")
+	suite.Contains(err.Error(), "(400)", "Error should include status code")
 }
 
 func (suite *ExpireDomainTestSuite) TestExpireDomain_NetworkError() {
 	suite.mockTransport.Err = fmt.Errorf("network error")
 
-	err := ExpireDomain("testCorrelationID", "example.com")
+	err := ExpireDomain(context.Background(), "testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for network failure")
 	suite.Contains(err.Error(), "request failed", "Error should indicate request failure")
 }
@@ -63,7 +64,7 @@ func (suite *ExpireDomainTestSuite) TestExpireDomain_ReadBodyError() {
 		Body:       io.NopCloser(&errorReader{}), // Simulate a read error
 	}
 
-	err := ExpireDomain("testCorrelationID", "example.com")
+	err := ExpireDomain(context.Background(), "testCorrelationID", "example.com")
 	suite.Error(err, "Expected an error for body read failure")
 	suite.Contains(err.Error(), "failed to read response", "Error should indicate body read failure")
 }

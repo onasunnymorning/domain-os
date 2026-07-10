@@ -16,6 +16,7 @@
 
 # ENV
 .env
+.env.tilt
 .env.backup
 
 # Terraform
@@ -35,6 +36,11 @@ gke_gcloud_auth_plugin_cache
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Node deps. frontend/.gitignore only anchors /node_modules to that directory,
+# so a root node_modules (e.g. from an npm command run outside frontend/) was
+# never ignored. Its vitest cache used to get committed.
+node_modules/
+
 # Go workspace file
 go.work
 
@@ -44,6 +50,7 @@ go.work
 # Local scrap files
 scraps/
 local/
+backups/
 
 # Omit the local generated docs (we do need them locally so that code validation will not complain)
 docs/*.json

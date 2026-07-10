@@ -1,12 +1,14 @@
 package activities
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
 
-func SetRegistrarStatus(correlationID, clid, status string) error {
+func SetRegistrarStatus(ctx context.Context, correlationID, clid, status string) error {
 	ENDPOINT := fmt.Sprintf("%s/registrars/%s/status/%s", BASEURL, clid, strings.ToLower(status))
 
 	// Set up an API client
@@ -20,11 +22,10 @@ func SetRegistrarStatus(correlationID, clid, status string) error {
 	}
 
 	// Create the request
-	req, err := http.NewRequest("PUT", URL.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)
@@ -34,7 +35,8 @@ func SetRegistrarStatus(correlationID, clid, status string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to set registrar status through API: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

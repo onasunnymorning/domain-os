@@ -30,7 +30,7 @@ func TestDirectDBImporter_ImportNNDNs_NoTable(t *testing.T) {
 
 	// Test graceful handle or error
 	// Since we removed graceful handle, it should ERROR!
-	_, _, err = importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
+	_, _, _, err = importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
 	require.Error(t, err, "Expected error when nndns table does not exist")
 	require.Contains(t, err.Error(), "no such table: nndns")
 }
@@ -56,8 +56,54 @@ func TestDirectDBImporter_ImportNNDNs_EmptyTable(t *testing.T) {
 	}
 
 	// This should run without errors since it has 0 items and no conflicts
-	total, skipped, err := importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
+	total, inserted, updated, err := importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
 	require.NoError(t, err, "Should not error on empty correctly-structured table")
 	require.Equal(t, int64(0), total)
-	require.Equal(t, int64(0), skipped)
+	require.Equal(t, int64(0), inserted)
+	require.Equal(t, int64(0), updated)
+}
+
+func TestDirectDBImporter_ImportHosts_NoTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/test_staged_no_hosts.db"
+	defer os.Remove(dbPath)
+
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	importer, err := services.NewDirectDBImporter()
+	if err != nil || importer == nil {
+		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
+	}
+
+	_, _, _, err = importer.ImportHosts(context.Background(), db, nil, "", func(processed string) {})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no such table: hosts")
+}
+
+func TestDirectDBImporter_ImportHosts_EmptyTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/test_staged_hosts_empty.db"
+	defer os.Remove(dbPath)
+
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec("CREATE TABLE hosts (name TEXT PRIMARY KEY, clid TEXT, crrr TEXT, uprr TEXT);")
+	require.NoError(t, err)
+	_, err = db.Exec("CREATE TABLE host_addresses (host_name TEXT, ip_address TEXT);")
+	require.NoError(t, err)
+
+	importer, err := services.NewDirectDBImporter()
+	if err != nil || importer == nil {
+		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
+	}
+
+	total, inserted, updated, err := importer.ImportHosts(context.Background(), db, nil, "", func(processed string) {})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), total)
+	require.Equal(t, int64(0), inserted)
+	require.Equal(t, int64(0), updated)
 }

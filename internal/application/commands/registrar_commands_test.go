@@ -85,6 +85,8 @@ func TestCreateCreateRegistrarCommandFromIANARegistrar(t *testing.T) {
 		wantName          string
 		wantGurID         int
 		wantRdap          string
+		wantStatus        string
+		wantIANAStatus    entities.IANARegistrarStatus
 		errStringcontains string
 	}{
 		{
@@ -109,6 +111,94 @@ func TestCreateCreateRegistrarCommandFromIANARegistrar(t *testing.T) {
 			},
 			wantErr:           true,
 			errStringcontains: "invalid GurID for registrar",
+		},
+		{
+			name: "Accredited registrar sets status to ok",
+			registrar: entities.IANARegistrar{
+				GurID:   200,
+				Name:    "Accredited Corp",
+				Status:  entities.IANARegistrarStatusAccredited,
+				RdapURL: "https://rdap.accredited.com/",
+			},
+			wantErr:        false,
+			wantClID:       "200-accredited-c",
+			wantName:       "Accredited Corp",
+			wantGurID:      200,
+			wantRdap:       "https://rdap.accredited.com/",
+			wantStatus:     string(entities.RegistrarStatusOK),
+			wantIANAStatus: entities.IANARegistrarStatusAccredited,
+		},
+		{
+			name: "Terminated registrar sets status to terminated",
+			registrar: entities.IANARegistrar{
+				GurID:   300,
+				Name:    "Terminated LLC",
+				Status:  entities.IANARegistrarStatusTerminated,
+				RdapURL: "https://rdap.terminated.com/",
+			},
+			wantErr:        false,
+			wantClID:       "300-terminated-l",
+			wantName:       "Terminated LLC",
+			wantGurID:      300,
+			wantRdap:       "https://rdap.terminated.com/",
+			wantStatus:     string(entities.RegistrarStatusTerminated),
+			wantIANAStatus: entities.IANARegistrarStatusTerminated,
+		},
+		{
+			name: "Reserved special GurID 9995 sets status to ok",
+			registrar: entities.IANARegistrar{
+				GurID:  9995,
+				Name:   "Reserved for Pre-Delegation Testing transactions #1 reporting",
+				Status: entities.IANARegistrarStatusReserved,
+			},
+			wantErr:        false,
+			wantClID:       "9995-pdt-1",
+			wantName:       "Reserved for Pre-Delegation Testing transactions #1 reporting",
+			wantGurID:      9995,
+			wantStatus:     string(entities.RegistrarStatusOK),
+			wantIANAStatus: entities.IANARegistrarStatusReserved,
+		},
+		{
+			name: "Reserved special GurID 9996 sets status to ok",
+			registrar: entities.IANARegistrar{
+				GurID:  9996,
+				Name:   "Reserved for Pre-Delegation Testing transactions #2 reporting",
+				Status: entities.IANARegistrarStatusReserved,
+			},
+			wantErr:        false,
+			wantClID:       "9996-pdt-2",
+			wantName:       "Reserved for Pre-Delegation Testing transactions #2 reporting",
+			wantGurID:      9996,
+			wantStatus:     string(entities.RegistrarStatusOK),
+			wantIANAStatus: entities.IANARegistrarStatusReserved,
+		},
+		{
+			name: "Reserved special GurID 9997 sets status to ok",
+			registrar: entities.IANARegistrar{
+				GurID:  9997,
+				Name:   "Reserved for ICANN's Registry SLA Monitoring System transactions reporting",
+				Status: entities.IANARegistrarStatusReserved,
+			},
+			wantErr:        false,
+			wantClID:       "9997-sla-monitor",
+			wantName:       "Reserved for ICANN's Registry SLA Monitoring System transactions reporting",
+			wantGurID:      9997,
+			wantStatus:     string(entities.RegistrarStatusOK),
+			wantIANAStatus: entities.IANARegistrarStatusReserved,
+		},
+		{
+			name: "Reserved non-special GurID leaves status empty",
+			registrar: entities.IANARegistrar{
+				GurID:  9998,
+				Name:   "Reserved Registrar",
+				Status: entities.IANARegistrarStatusReserved,
+			},
+			wantErr:        false,
+			wantClID:       "9998-reserved-re",
+			wantName:       "Reserved Registrar",
+			wantGurID:      9998,
+			wantStatus:     "",
+			wantIANAStatus: entities.IANARegistrarStatusReserved,
 		},
 	}
 
@@ -141,7 +231,112 @@ func TestCreateCreateRegistrarCommandFromIANARegistrar(t *testing.T) {
 				if cmd.RdapBaseURL != tt.wantRdap {
 					t.Errorf("unexpected RdapBaseURL: got %q, want %q", cmd.RdapBaseURL, tt.wantRdap)
 				}
-				// etc... check other fields if needed
+				// Verify status mapping
+				if cmd.Status != tt.wantStatus {
+					t.Errorf("unexpected Status: got %q, want %q", cmd.Status, tt.wantStatus)
+				}
+				if cmd.IANAStatus != tt.wantIANAStatus {
+					t.Errorf("unexpected IANAStatus: got %q, want %q", cmd.IANAStatus, tt.wantIANAStatus)
+				}
+				// Verify PostalInfo is populated
+				if cmd.PostalInfo[0] == nil {
+					t.Error("PostalInfo[0] should not be nil")
+				}
+				// Verify placeholder email
+				if cmd.Email != "i.need@2be.replaced" {
+					t.Errorf("unexpected Email: got %q, want %q", cmd.Email, "i.need@2be.replaced")
+				}
+			}
+		})
+	}
+}
+
+func TestCompareIANARegistrarStatusWithRarStatus(t *testing.T) {
+	tests := []struct {
+		name              string
+		iana              entities.IANARegistrar
+		rar               entities.RegistrarListItem
+		wantNil           bool
+		wantNewStatus     string
+		wantNewIANAStatus string
+	}{
+		{
+			name: "both in sync - accredited/ok",
+			iana: entities.IANARegistrar{GurID: 1, Status: entities.IANARegistrarStatusAccredited},
+			rar: entities.RegistrarListItem{
+				ClID:       "1-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusAccredited,
+			},
+			wantNil: true,
+		},
+		{
+			name: "both in sync - terminated/terminated",
+			iana: entities.IANARegistrar{GurID: 2, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "2-test",
+				Status:     entities.RegistrarStatusTerminated,
+				IANAStatus: entities.IANARegistrarStatusTerminated,
+			},
+			wantNil: true,
+		},
+		{
+			name: "platform status drift - terminated IANA but ok platform",
+			iana: entities.IANARegistrar{GurID: 3, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "3-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusTerminated,
+			},
+			wantNil:       false,
+			wantNewStatus: "terminated",
+		},
+		{
+			name: "IANA status drift only - platform correct but IANA stale",
+			iana: entities.IANARegistrar{GurID: 4, Status: entities.IANARegistrarStatusAccredited},
+			rar: entities.RegistrarListItem{
+				ClID:       "4-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusUnknown,
+			},
+			wantNil:           false,
+			wantNewStatus:     "",
+			wantNewIANAStatus: "Accredited",
+		},
+		{
+			name: "both statuses drift",
+			iana: entities.IANARegistrar{GurID: 5, Status: entities.IANARegistrarStatusTerminated},
+			rar: entities.RegistrarListItem{
+				ClID:       "5-test",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusAccredited,
+			},
+			wantNil:           false,
+			wantNewStatus:     "terminated",
+			wantNewIANAStatus: "Terminated",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := CompareIANARegistrarStatusWithRarStatus(tt.iana, tt.rar)
+
+			if tt.wantNil {
+				if cmd != nil {
+					t.Fatalf("expected nil result, got %+v", cmd)
+				}
+				return
+			}
+
+			if cmd == nil {
+				t.Fatalf("expected non-nil result, got nil")
+			}
+
+			if cmd.NewStatus != tt.wantNewStatus {
+				t.Errorf("NewStatus: got %q, want %q", cmd.NewStatus, tt.wantNewStatus)
+			}
+			if cmd.NewIANAStatus != tt.wantNewIANAStatus {
+				t.Errorf("NewIANAStatus: got %q, want %q", cmd.NewIANAStatus, tt.wantNewIANAStatus)
 			}
 		})
 	}

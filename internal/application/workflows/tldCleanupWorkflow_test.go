@@ -67,6 +67,13 @@ func (s *TLDCleanupWorkflowTestSuite) SetupTest() {
 	err = postgres.AutoMigrate(db)
 	s.Require().NoError(err)
 
+	// Clean tables before seeding to avoid unique constraint violations
+	db.Exec("DELETE FROM domain_hosts")
+	db.Exec("DELETE FROM domains")
+	db.Exec("DELETE FROM hosts")
+	db.Exec("DELETE FROM contacts")
+	db.Exec("DELETE FROM tlds")
+
 	s.tldActs = &activities.TLDCleanupActivities{
 		DB:       db,
 		S3Client: s.mockS3,

@@ -24,10 +24,13 @@ type CreateRegistrarCommand struct {
 }
 
 // UpdateRegistrarStatusCommand represents a command to update the status of a registrar.
+// It can carry updates for platform status, IANA status, or both.
 type UpdateRegistrarStatusCommand struct {
-	ClID      string
-	NewStatus string
-	OldStatus string
+	ClID          string
+	NewStatus     string
+	OldStatus     string
+	NewIANAStatus string
+	OldIANAStatus string
 }
 
 // ChunkCreateRegistrarCommands returns a channel that yields slices of size chunkSize.
@@ -55,30 +58,41 @@ func ChunkCreateRegistrarCommands(cmds []CreateRegistrarCommand, chunkSize int) 
 	return ch
 }
 
-// CompareIANARegistrarStatusWithRarStatus compares the status of an IANA registrar with a platform registrar.
-// If the status is different, it returns a command to update the status.
+// CompareIANARegistrarStatusWithRarStatus compares both the platform status and IANA status
+// of an IANA registrar with a platform registrar. If either status differs, it returns
+// a command to update both statuses. Returns nil when both are already in sync.
 func CompareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar entities.RegistrarListItem) *UpdateRegistrarStatusCommand {
-	// if the status is the same, return nil
-	if strings.EqualFold(ianaRar.Status.String(), rar.Status.String()) {
-		return nil
+	// Determine expected platform status from IANA status
+	expectedPlatformStatus := strings.ToLower(ianaRar.Status.String())
+	if expectedPlatformStatus == "accredited" {
+		expectedPlatformStatus = "ok"
 	}
-	// if the status is accredited (iana) and ok (platform), return nil
-	if strings.EqualFold(ianaRar.Status.String(), "accredited") && strings.EqualFold(rar.Status.String(), "ok") {
+
+	// Check if platform status needs updating
+	platformStatusChanged := !strings.EqualFold(expectedPlatformStatus, rar.Status.String())
+
+	// Check if IANA status needs updating
+	ianaStatusChanged := !strings.EqualFold(ianaRar.Status.String(), string(rar.IANAStatus))
+
+	// Nothing to do if both are in sync
+	if !platformStatusChanged && !ianaStatusChanged {
 		return nil
 	}
 
-	// if the status is different, return a command to update the status
-	newStatus := strings.ToLower(ianaRar.Status.String())
-	// IANA uses "accredited" for "ok" status
-	if newStatus == "accredited" {
-		newStatus = "ok"
+	cmd := &UpdateRegistrarStatusCommand{
+		ClID:          rar.ClID.String(),
+		OldStatus:     rar.Status.String(),
+		OldIANAStatus: string(rar.IANAStatus),
 	}
 
-	return &UpdateRegistrarStatusCommand{
-		ClID:      rar.ClID.String(),
-		NewStatus: newStatus,
-		OldStatus: rar.Status.String(),
+	if platformStatusChanged {
+		cmd.NewStatus = expectedPlatformStatus
 	}
+	if ianaStatusChanged {
+		cmd.NewIANAStatus = ianaRar.Status.String()
+	}
+
+	return cmd
 }
 
 func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistrar) (*CreateRegistrarCommand, error) {
@@ -118,7 +132,7 @@ func CreateCreateRegistrarCommandFromIANARegistrar(ianaRar entities.IANARegistra
 	case entities.IANARegistrarStatusTerminated:
 		cmd.Status = string(entities.RegistrarStatusTerminated)
 	case entities.IANARegistrarStatusReserved:
-		if ianaRar.GurID == 9995 || ianaRar.GurID == 9996 {
+		if entities.IsSpecialReservedGurID(ianaRar.GurID) {
 			cmd.Status = string(entities.RegistrarStatusOK)
 		}
 	}

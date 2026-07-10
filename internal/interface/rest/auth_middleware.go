@@ -39,7 +39,6 @@ func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gi
 				return
 			}
 			c.Set("userid", "legacy-admin")
-			c.Next()
 		}
 	}
 
@@ -90,7 +89,5 @@ func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gi
 		if validatedClaims, ok := claims.(*validator.ValidatedClaims); ok {
 			c.Set("userid", validatedClaims.RegisteredClaims.Subject)
 		}
-
-		c.Next()
 	}
 }

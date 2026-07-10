@@ -2,13 +2,13 @@
 
 api:
   replicaCount: 1
-  image: geapex/domain-os
+  image: gprins/domain-os-api
   tag: latest
   imagePullPolicy: IfNotPresent
 
 unifiedworker:
   replicaCount: 1
-  image: geapex/unified-worker
+  image: gprins/domain-os-worker
   tag: latest
   imagePullPolicy: IfNotPresent
 
@@ -35,11 +35,9 @@ app:
   API_NAME: "domain-os"
 
 temporal:
-  TMPIO_HOST_PORT: "temporal:7233" # Assume temporal running in docker desktop or k8s
-  TMPIO_NAME_SPACE: "default"
-  TMPIO_QUEUE: "domain-lifecycle"
-  TMPIO_SYNC_QUEUE: "escrow-import"
-  ESCROW_QUEUE: "escrow-import"
+  TEMPORAL_HOST_PORT: "temporal:7233"
+  TEMPORAL_NAMESPACE: "default"
+  TEMPORAL_API_KEY: ""
 
 prometheus:
   enabled: "false"

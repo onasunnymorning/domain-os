@@ -47,8 +47,8 @@ func (suite *MarkDomainForDeletionTestSuite) TestMarkDomainForDeletion_BadReques
 
 	err := MarkDomainForDeletion("example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "failed to mark domain for deletion", "Error should indicate failure to mark domain for deletion")
-	suite.Contains(err.Error(), "400", "Error should include HTTP status code")
+	suite.Contains(err.Error(), "(400)", "Error should include HTTP status code")
+	suite.Contains(err.Error(), "Bad Request", "Error should include response body")
 }
 
 func (suite *MarkDomainForDeletionTestSuite) TestMarkDomainForDeletion_NetworkError() {

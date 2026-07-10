@@ -1,25 +1,103 @@
 package workflows
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-
-	"go.uber.org/zap"
 )
 
-// ExpiryLoop ref: https://www.notion.so/apex-domains/Domain-lifecycle-18200bd9d73849e6abfe2e616f1a3443?pvs=4#2e597291f85a43699422a7ac5f122bc8
-func ExpiryLoop(ctx workflow.Context) error {
-	// Set up our logger
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+const (
+	// maxFailureSamples caps the number of individual failure records stored in the result,
+	// aligned with the QA report sampledItems cap of 50.
+	maxFailureSamples = 50
+)
 
-	// Get the workflow ID
+// ExpiryLoopParams defines the input parameters for the ExpiryLoop workflow.
+type ExpiryLoopParams struct {
+	BatchSize             int        `json:"batchSize,omitempty"`
+	ConcurrencyLimit      int        `json:"concurrencyLimit,omitempty"`
+	DryRun                bool       `json:"dryRun,omitempty"`
+	ReferenceTimeOverride *time.Time `json:"referenceTimeOverride,omitempty"`
+}
+
+// ExpiryLoopResult is the structured output of the ExpiryLoop workflow.
+// It reports what happened during the run so operators can observe outcomes
+// without digging through logs.
+type ExpiryLoopResult struct {
+	StartedAt      time.Time           `json:"startedAt"`
+	CompletedAt    time.Time           `json:"completedAt"`
+	ReferenceTime  time.Time           `json:"referenceTime"`
+	TotalFound     int64               `json:"totalFound"`
+	TotalProcessed int                 `json:"totalProcessed"`
+	AutoRenewed    int                 `json:"autoRenewed"`
+	Expired        int                 `json:"expired"`
+	Failed         int                 `json:"failed"`
+	Skipped        int                 `json:"skipped"`
+	Notes          []string            `json:"notes"`
+	Failures       []ExpiryLoopFailure `json:"failures,omitempty"`
+}
+
+// ExpiryLoopFailure records a single domain processing failure.
+type ExpiryLoopFailure struct {
+	DomainName string `json:"domainName"`
+	Operation  string `json:"operation"` // "auto-renew-check", "auto-renew", "expire"
+	Error      string `json:"error"`
+}
+
+// addFailure appends a failure record, respecting the maxFailureSamples cap.
+// The Failed counter is always incremented regardless of cap.
+func (r *ExpiryLoopResult) addFailure(domainName, operation, errMsg string) {
+	r.Failed++
+	if len(r.Failures) < maxFailureSamples {
+		r.Failures = append(r.Failures, ExpiryLoopFailure{
+			DomainName: domainName,
+			Operation:  operation,
+			Error:      errMsg,
+		})
+	}
+}
+
+// ExpiryLoop ref: https://www.notion.so/apex-domains/Domain-lifecycle-18200bd9d73849e6abfe2e616f1a3443?pvs=4#2e597291f85a43699422a7ac5f122bc8
+func ExpiryLoop(ctx workflow.Context, params ExpiryLoopParams) (ExpiryLoopResult, error) {
+	started := workflow.Now(ctx)
+	result := ExpiryLoopResult{
+		StartedAt: started,
+	}
+
+	// Register a query handler so the Temporal UI can observe progress in real-time.
+	err := workflow.SetQueryHandler(ctx, "progress", func() (ExpiryLoopResult, error) {
+		return result, nil
+	})
+	if err != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to register query handler: "+err.Error())
+		return result, err
+	}
+
+	// Get the workflow ID for correlation
 	workflowID := getWorkflowID(ctx)
-	logger.Debug("Starting expiry loop", zap.String("workflow_id", workflowID))
+
+
+	// Lock a single reference time for the entire run to eliminate TOCTOU races
+	// between count and list queries.
+	var referenceTime time.Time
+	if params.ReferenceTimeOverride != nil {
+		referenceTime = *params.ReferenceTimeOverride
+	} else {
+		referenceTime = workflow.Now(ctx).UTC()
+	}
+	result.ReferenceTime = referenceTime
+
+	// Build the query with a locked reference time — both count and list will use the same cutoff.
+	query := queries.ExpiringDomainsQuery{
+		Before: referenceTime,
+	}
 
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
@@ -27,87 +105,147 @@ func ExpiryLoop(ctx workflow.Context) error {
 		BackoffCoefficient:     2.0,
 		MaximumInterval:        10 * time.Minute,
 		MaximumAttempts:        3, // 0 is unlimited retries
-		NonRetryableErrorTypes: []string{"none"},
 	}
 
 	options := workflow.ActivityOptions{
 		// Timeout options specify when to automatically timeout Activity functions.
 		StartToCloseTimeout: time.Minute,
-		// Optionally provide a customized RetryPolicy.
-		// Temporal retries failed Activities by default.
-		RetryPolicy: retrypolicy,
+		RetryPolicy:         retrypolicy,
 	}
 
 	// Apply the options.
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// See if there are any domains that are expiring
+	// Step 1: Count expired domains
 	domainCount := &response.CountResult{}
-	GetExpiredDomainCountError := workflow.ExecuteActivity(ctx, activities.GetExpiredDomainCount, workflowID).Get(ctx, domainCount)
-	if GetExpiredDomainCountError != nil {
-		return GetExpiredDomainCountError
+	getExpiredDomainCountError := workflow.ExecuteActivity(ctx, activities.GetExpiredDomainCount, workflowID, query).Get(ctx, domainCount)
+	if getExpiredDomainCountError != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to count expired domains: "+getExpiredDomainCountError.Error())
+		return result, getExpiredDomainCountError
 	}
-	logger.Info(
-		"Found expired domains",
-		zap.Int64("domain_count", domainCount.Count),
-		zap.String("workflow_id", workflowID),
-	)
-	// If there are no domains to expire, sleep for 5 mins and check again
+	result.TotalFound = domainCount.Count
+
+	// If there are no domains to expire, return early with a note
 	if domainCount.Count == 0 {
-		return nil
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "No expired domains found")
+		return result, nil
 	}
 
-	// Get the list of domains that are expiring
+	// Step 2: List the expired domains
 	domains := []response.DomainExpiryItem{}
-	GetExpiredDomainsError := workflow.ExecuteActivity(ctx, activities.ListExpiringDomains, workflowID).Get(ctx, &domains)
-	if GetExpiredDomainsError != nil {
-		return GetExpiredDomainsError
+	getExpiredDomainsError := workflow.ExecuteActivity(ctx, activities.ListExpiringDomains, workflowID, query).Get(ctx, &domains)
+	if getExpiredDomainsError != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to list expired domains: "+getExpiredDomainsError.Error())
+		return result, getExpiredDomainsError
 	}
 
-	// For each domain that is expiring, either renew or delete
-	for _, domain := range domains {
-		// Check if the domain is eligible for auto-renew
-		var canautorenew bool
-		canAutoRenewErr := workflow.ExecuteActivity(ctx, activities.CheckDomainCanAutoRenew, workflowID, domain.Name).Get(ctx, &canautorenew)
-		if canAutoRenewErr != nil {
-			logger.Error(
-				"Failed to check if domain is eligible for auto-renew",
-				zap.String("domain_name", domain.Name),
-				zap.Error(canAutoRenewErr),
-				zap.Any("domain", domain),
-				zap.String("workflow_id", workflowID),
-			)
-			continue
-		}
-		if canautorenew {
-			// Try and auto-renew the domain
-			autoRenewErr := workflow.ExecuteActivity(ctx, activities.AutoRenewDomain, workflowID, domain.Name).Get(ctx, nil)
-			if autoRenewErr != nil {
-				logger.Error(
-					"Failed to auto-renew domain",
-					zap.String("domain_name", domain.Name),
-					zap.Error(autoRenewErr),
-					zap.Any("domain", domain),
-					zap.String("workflow_id", workflowID),
-				)
-				continue
-			}
+	if len(domains) == 0 {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "No expired domains found in list")
+		return result, nil
+	}
+
+	// Step 3: Batch check auto-renew eligibility
+	domainNames := make([]string, len(domains))
+	for i, d := range domains {
+		domainNames[i] = d.Name
+	}
+
+	var batchCheckResult activities.CheckDomainsCanAutoRenewResult
+	batchCheckErr := workflow.ExecuteActivity(ctx, activities.CheckDomainsCanAutoRenew, workflowID, domainNames).Get(ctx, &batchCheckResult)
+	if batchCheckErr != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to batch check auto-renew eligibility: "+batchCheckErr.Error())
+		return result, batchCheckErr
+	}
+
+	// Record any check failures from the batch activity
+	for _, fail := range batchCheckResult.CheckFailures {
+		result.addFailure(fail.DomainName, "auto-renew-check", fail.Error)
+		result.TotalProcessed++
+	}
+
+	// Dry run short circuit
+	if params.DryRun {
+		result.TotalProcessed += len(batchCheckResult.EligibleForAutoRenew) + len(batchCheckResult.EligibleForExpiry)
+		result.AutoRenewed = len(batchCheckResult.EligibleForAutoRenew)
+		result.Expired = len(batchCheckResult.EligibleForExpiry)
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Dry run completed: no state changes made")
+		return result, nil
+	}
+
+	// Step 4a: Batch auto-renew
+	if len(batchCheckResult.EligibleForAutoRenew) > 0 {
+		var autoRenewBatch services.BatchResult
+		batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Minute,
+			HeartbeatTimeout:    2 * time.Minute,
+			RetryPolicy:         retrypolicy,
+		})
+		autoRenewErr := workflow.ExecuteActivity(batchCtx, "BatchAutoRenewDomains", workflowID, batchCheckResult.EligibleForAutoRenew, 1).Get(ctx, &autoRenewBatch)
+		if autoRenewErr != nil {
+			result.addFailure("batch-auto-renew", "auto-renew", autoRenewErr.Error())
 		} else {
-			// If the domain is not eligible for auto-renew, it should expire
-			expireErr := workflow.ExecuteActivity(ctx, activities.ExpireDomain, workflowID, domain.Name).Get(ctx, nil)
-			if expireErr != nil {
-				logger.Error(
-					"Failed to expire domain",
-					zap.String("domain_name", domain.Name),
-					zap.Error(expireErr),
-					zap.Any("domain", domain),
-					zap.String("workflow_id", workflowID),
-				)
-				continue
+			result.AutoRenewed = len(autoRenewBatch.Succeeded)
+			result.TotalProcessed += len(autoRenewBatch.Succeeded) + len(autoRenewBatch.Failed)
+			for _, f := range autoRenewBatch.Failed {
+				result.addFailure(f.DomainName, "auto-renew", f.Error)
 			}
-			continue
 		}
 	}
 
-	return nil
+	// Step 4b: Batch expire
+	if len(batchCheckResult.EligibleForExpiry) > 0 {
+		var expireBatch services.BatchResult
+		batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Minute,
+			HeartbeatTimeout:    2 * time.Minute,
+			RetryPolicy:         retrypolicy,
+		})
+		expireErr := workflow.ExecuteActivity(batchCtx, "BatchExpireDomains", workflowID, batchCheckResult.EligibleForExpiry).Get(ctx, &expireBatch)
+		if expireErr != nil {
+			result.addFailure("batch-expire", "expire", expireErr.Error())
+		} else {
+			result.Expired = len(expireBatch.Succeeded)
+			result.TotalProcessed += len(expireBatch.Succeeded) + len(expireBatch.Failed)
+			for _, f := range expireBatch.Failed {
+				result.addFailure(f.DomainName, "expire", f.Error)
+			}
+		}
+	}
+
+	result.CompletedAt = workflow.Now(ctx)
+
+	// Add summary note
+	if result.Failed > 0 {
+		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
+		if result.Failed > maxFailureSamples {
+			result.Notes = append(result.Notes, "Failure details capped at "+itoa(maxFailureSamples)+
+				" samples; total failures: "+itoa(result.Failed))
+		}
+	}
+
+	// Check if we hit the batch cap and should continue-as-new to drain the remainder
+	if int64(len(domains)) < domainCount.Count {
+		result.Notes = append(result.Notes, "Batch cap reached: listed "+
+			itoa(len(domains))+" of "+itoa64(domainCount.Count)+
+			" expired domains. Continuing processing in a new run.")
+		return result, workflow.NewContinueAsNewError(ctx, ExpiryLoop, params)
+	}
+
+	return result, nil
+}
+
+// itoa converts an int to string.
+func itoa(n int) string {
+	return strconv.Itoa(n)
+}
+
+// itoa64 converts an int64 to string.
+func itoa64(n int64) string {
+	return strconv.FormatInt(n, 10)
 }

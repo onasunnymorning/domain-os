@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -49,7 +50,7 @@ func TestRenewDomain(t *testing.T) {
 	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	// Call the function under test
-	err := RenewDomain("test-correlation-id", testCommand, false)
+	err := RenewDomain(context.Background(), "test-correlation-id", testCommand, false)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -92,7 +93,7 @@ func TestRenewDomain_Force(t *testing.T) {
 	os.Setenv("ADMIN_TOKEN", "test-token")
 
 	// Call the function under test
-	err := RenewDomain("test-correlation-id", testCommand, true)
+	err := RenewDomain(context.Background(), "test-correlation-id", testCommand, true)
 
 	// Assertions
 	assert.NoError(t, err)

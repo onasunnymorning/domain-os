@@ -30,9 +30,19 @@ func TestDomainSuite(t *testing.T) {
 func (s *DomainSuite) SetupSuite() {
 	s.db = setupTestDB()
 
-	// Create a registrar
-	rar, _ := entities.NewRegistrar("domaintestRar", "goBro Inc.", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
+	s.db.Exec("DELETE FROM domains")
+	s.db.Exec("DELETE FROM hosts")
+	s.db.Exec("DELETE FROM contacts")
+	s.db.Exec("DELETE FROM tlds WHERE ry_id = ?", "DomainSuiteRy")
+
 	repo := NewGormRegistrarRepository(s.db)
+	_ = repo.Delete(context.Background(), "domaintestRar")
+
+	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_ = roRepo.DeleteByRyID(context.Background(), "DomainSuiteRy")
+
+	// Create a registrar
+	rar, _ := entities.NewRegistrar("domaintestRar", "domainRarName", "email@gobro.com", 199, getValidRegistrarPostalInfoArr())
 	createdRar, err := repo.Create(context.Background(), rar)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdRar)
@@ -40,7 +50,7 @@ func (s *DomainSuite) SetupSuite() {
 
 	// Create a Registry Operator
 	ro, _ := entities.NewRegistryOperator("DomainSuiteRy", "DomainSuiteRy", "me@my.email")
-	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	roRepo = NewGORMRegistryOperatorRepository(s.db)
 	_, err = roRepo.Create(context.Background(), ro)
 	s.Require().NoError(err)
 	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
@@ -54,10 +64,25 @@ func (s *DomainSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.tld = tld.Name.String()
 
+	// Create an active GA phase for the TLD so activeGAPhaseFilter passes
+	phaseRepo := NewGormPhaseRepository(s.db)
+	gaPhase, err := entities.NewPhase("GA1", "GA", time.Now().AddDate(0, 0, -1).UTC())
+	s.Require().NoError(err)
+	gaPhase.TLDName = entities.DomainName(s.tld)
+	_, err = phaseRepo.CreatePhase(context.Background(), gaPhase)
+	s.Require().NoError(err)
+
 	// Create a 5 more TLDs
 	for i := 0; i < 5; i++ {
 		tld, _ := entities.NewTLD(fmt.Sprintf("domaintesttld%d", i), "DomainSuiteRy")
 		err = tldRepo.Create(context.Background(), tld)
+		s.Require().NoError(err)
+
+		// Each TLD needs an active GA phase
+		gaPhase, err := entities.NewPhase("GA1", "GA", time.Now().AddDate(0, 0, -1).UTC())
+		s.Require().NoError(err)
+		gaPhase.TLDName = entities.DomainName(fmt.Sprintf("domaintesttld%d", i))
+		_, err = phaseRepo.CreatePhase(context.Background(), gaPhase)
 		s.Require().NoError(err)
 	}
 
@@ -798,6 +823,107 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	s.Require().Error(err)
 
 }
+
+// TestDomainRepository_NullBooleanHandling verifies that lifecycle queries correctly
+// handle NULL boolean columns. In PostgreSQL, NULL != false, so queries using
+// "column = false" silently exclude rows where the column is NULL. This is the
+// real-world state for escrow-imported data where pending flags are never explicitly
+// set. The fix uses COALESCE(column, false) to treat NULL as false.
+func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+
+	repo := NewDomainRepository(tx)
+
+	// --- Setup: create 3 domains with explicit false values (GORM default) ---
+	for i := 0; i < 3; i++ {
+		roid := fmt.Sprintf("99%d_DOM-APEX", i)
+		name := fmt.Sprintf("null-test-%d.domaintesttld", i)
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		s.Require().NoError(err)
+		domain.ClID = "domaintestRar"
+		domain.TLDName = "domaintesttld"
+		domain.RegistrantID = "myTestContact007"
+		domain.AdminID = "myTestContact007"
+		domain.TechID = "myTestContact007"
+		domain.BillingID = "myTestContact007"
+		// Expired yesterday
+		domain.ExpiryDate = time.Now().AddDate(0, 0, -1).UTC()
+
+		_, err = repo.Create(context.Background(), domain)
+		s.Require().NoError(err)
+	}
+
+	// --- Baseline: with explicit false, queries work fine ---
+	before := time.Now().AddDate(0, 0, 1).UTC()
+	count, err := repo.CountExpiringDomains(context.Background(), before, "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count, "baseline: should find 3 domains with explicit false pending flags")
+
+	domains, err := repo.ListExpiringDomains(context.Background(), before, 25, "domaintestRar", "domaintesttld", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains), "baseline: should list 3 domains with explicit false pending flags")
+
+	// --- Simulate escrow-imported data: set pending columns to NULL via raw SQL ---
+	err = tx.Exec(`
+		UPDATE domains
+		SET pending_delete = NULL, pending_renew = NULL, pending_restore = NULL
+		WHERE name LIKE 'null-test-%'
+	`).Error
+	s.Require().NoError(err)
+
+	// Verify the columns are actually NULL
+	var nullCount int64
+	err = tx.Table("domains").
+		Where("name LIKE 'null-test-%'").
+		Where("pending_delete IS NULL").
+		Where("pending_renew IS NULL").
+		Where("pending_restore IS NULL").
+		Count(&nullCount).Error
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), nullCount, "sanity check: all 3 domains should have NULL pending flags")
+
+	// --- Core assertion: queries must still find domains with NULL pending flags ---
+	count, err = repo.CountExpiringDomains(context.Background(), before, "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), count, "COALESCE: CountExpiringDomains must find domains with NULL pending flags")
+
+	domains, err = repo.ListExpiringDomains(context.Background(), before, 25, "domaintestRar", "domaintesttld", "")
+	s.Require().NoError(err)
+	s.Require().Equal(3, len(domains), "COALESCE: ListExpiringDomains must find domains with NULL pending flags")
+
+	// --- Also test purgeable queries with NULL pending_delete ---
+	// Set one domain to have a valid purge date and pending_delete = NULL
+	err = tx.Exec(`
+		UPDATE domains
+		SET purge_date = ?, pending_delete = NULL
+		WHERE name = 'null-test-0.domaintesttld'
+	`, time.Now().AddDate(0, 0, -1).UTC()).Error
+	s.Require().NoError(err)
+
+	// pending_delete is NULL so it should NOT be considered purgeable
+	// (COALESCE(NULL, false) = false, and we need pending_delete = true for purgeable)
+	purgeCount, err := repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), purgeCount, "COALESCE: domain with NULL pending_delete should NOT be purgeable")
+
+	// Now set pending_delete to true — it SHOULD be purgeable
+	err = tx.Exec(`
+		UPDATE domains
+		SET pending_delete = true
+		WHERE name = 'null-test-0.domaintesttld'
+	`).Error
+	s.Require().NoError(err)
+
+	purgeCount, err = repo.CountPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), "domaintestRar", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), purgeCount, "domain with pending_delete = true should be purgeable")
+
+	purgeList, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), 25, "domaintestRar", "", "domaintesttld")
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(purgeList), "ListPurgeableDomains must find domain with pending_delete = true")
+}
+
 
 func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	// Create a couple of domains with different expiry dates

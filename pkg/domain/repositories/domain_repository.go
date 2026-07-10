@@ -29,6 +29,9 @@ type DomainRepository interface {
 	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error
+	GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error)
+	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
+	ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error)
 }
 
 // MockDomainRepository is the mock implementation of the DomainRepository
@@ -52,6 +55,15 @@ func (m *MockDomainRepository) BulkCreate(ctx context.Context, domains []*entiti
 func (m *MockDomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
 	args := m.Called(ctx, name, preloadHosts)
 	return args.Get(0).(*entities.Domain), args.Error(1)
+}
+
+// GetDomainsByNames retrieves multiple domains by their names
+func (m *MockDomainRepository) GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error) {
+	args := m.Called(ctx, names, preloadHosts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Domain), args.Error(1)
 }
 
 // UpdateDomain updates a domain
@@ -136,4 +148,22 @@ func (m *MockDomainRepository) ListRestoredDomains(ctx context.Context, pageSize
 func (m *MockDomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
 	args := m.Called(ctx, clid, tld)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+// ListEventsByDomain lists events by domain name
+func (m *MockDomainRepository) ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error) {
+	args := m.Called(ctx, domainName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]entities.DomainEvent), args.Error(1)
+}
+
+// ListRecentEvents lists the most recent events across all subjects
+func (m *MockDomainRepository) ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error) {
+	args := m.Called(ctx, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]entities.DomainEvent), args.Error(1)
 }

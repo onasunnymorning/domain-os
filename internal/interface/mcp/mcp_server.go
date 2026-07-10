@@ -1,6 +1,10 @@
 // Package mcp provides an MCP (Model Context Protocol) server adapter for
-// domain-os. It exposes read-only registry tools over stdio, allowing AI
-// models to query domain state through the standard MCP protocol.
+// domain-os. It exposes read-only registry tools, allowing AI models to
+// query domain state through the standard MCP protocol.
+//
+// The adapter supports two transports:
+//   - stdio: for local use by AI IDEs (e.g. Claude Desktop, Cursor)
+//   - Streamable HTTP: for containerised deployment accessible over the network
 //
 // This is an inbound adapter in the interface layer, peer to the REST and
 // EPP adapters. It calls existing application services and contains no
@@ -118,12 +122,16 @@ func NewServer(domainService interfaces.DomainService, tldService interfaces.TLD
 	}
 }
 
-// Run creates the MCP protocol server, registers all tools, and runs it over
-// stdio. It blocks until the context is cancelled or the transport closes.
-func (s *Server) Run(ctx context.Context) error {
+// Version is the MCP server version reported to clients during initialization.
+const Version = "0.3.0"
+
+// MCPServer creates the underlying MCP protocol server with all tools
+// registered. The caller chooses the transport — stdio for local IDE use,
+// or StreamableHTTPHandler for containerised network access.
+func (s *Server) MCPServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "domain-os-mcp",
-		Version: "0.2.0",
+		Version: Version,
 	}, nil)
 
 	destructive := false
@@ -147,7 +155,15 @@ func (s *Server) Run(ctx context.Context) error {
 		Annotations: readOnlyAnnotations,
 	}, s.GetTLD)
 
-	return server.Run(ctx, &mcp.StdioTransport{})
+	return server
+}
+
+// Run creates the MCP protocol server, registers all tools, and runs it over
+// stdio. It blocks until the context is cancelled or the transport closes.
+// For network (HTTP) transport, use MCPServer() directly with
+// mcp.NewStreamableHTTPHandler.
+func (s *Server) Run(ctx context.Context) error {
+	return s.MCPServer().Run(ctx, &mcp.StdioTransport{})
 }
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,17 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, Globe, Users, Server, Contact, HardDrive } from 'lucide-react';
+import {
+  Building2,
+  Globe,
+  Users,
+  Server,
+  Contact,
+  HardDrive,
+  Activity,
+  Database,
+  ExternalLink,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRegistryOperatorsCount } from '@/lib/hooks/useRegistryOperators';
 import { useTLDsCount } from '@/lib/hooks/useTLDs';
@@ -10,129 +19,203 @@ import { useRegistrarCount } from '@/lib/hooks/useRegistrars';
 import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useContactCount } from '@/lib/hooks/useContacts';
 import { useHostCount } from '@/lib/hooks/useHosts';
+import { format } from 'date-fns';
+import { getTemporalUiUrl, getStorageUiUrl } from '@/lib/env';
+import { EventFeed } from '@/components/dashboard/EventFeed';
+import { QuickActions } from '@/components/dashboard/QuickActions';
+import { WelcomeToast } from '@/components/dashboard/WelcomeToast';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function formatCount(n: number | undefined): string {
+  if (n === undefined) return '—';
+  return n.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Stat pill config
+// ---------------------------------------------------------------------------
+
+const STAT_PILLS = [
+  {
+    name: 'Registry Operators',
+    short: 'ROs',
+    icon: Building2,
+    href: '/registry-operators',
+    color: 'text-orange-600 dark:text-orange-400',
+  },
+  {
+    name: 'TLDs',
+    short: 'TLDs',
+    icon: Globe,
+    href: '/tlds',
+    color: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    name: 'Registrars',
+    short: 'Registrars',
+    icon: Users,
+    href: '/registrars',
+    color: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    name: 'Domains',
+    short: 'Domains',
+    icon: Server,
+    href: '/domains',
+    color: 'text-violet-600 dark:text-violet-400',
+  },
+  {
+    name: 'Contacts',
+    short: 'Contacts',
+    icon: Contact,
+    href: '/contacts',
+    color: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    name: 'Hosts',
+    short: 'Hosts',
+    icon: HardDrive,
+    href: '/hosts',
+    color: 'text-rose-600 dark:text-rose-400',
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function Home() {
-  const { data: countData, isLoading: isLoadingCount } = useRegistryOperatorsCount();
-  const { data: tldCountData, isLoading: isLoadingTldCount } = useTLDsCount();
-  const { data: registrarCountData, isLoading: isLoadingRegistrarCount } = useRegistrarCount();
-  const { data: domainCountData, isLoading: isLoadingDomainCount } = useDomainCount();
-  const { data: contactCountData, isLoading: isLoadingContactCount } = useContactCount();
-  const { data: hostCountData, isLoading: isLoadingHostCount } = useHostCount();
+  // External links resolve at runtime, so they are built per render.
+  const resources = [
+    {
+      name: 'Temporal',
+      href: getTemporalUiUrl(),
+      icon: Activity,
+    },
+    {
+      name: 'Storage',
+      href: getStorageUiUrl(),
+      icon: Database,
+    },
+  ].filter((r) => r.href);
 
-  const stats = [
-    {
-      name: 'Registry Operators',
-      value: isLoadingCount ? '...' : countData?.Count?.toString() ?? '0',
-      icon: Building2,
-      href: '/registry-operators',
-      description: 'Manage registry operators'
-    },
-    {
-      name: 'TLDs',
-      value: isLoadingTldCount ? '...' : tldCountData?.Count?.toString() ?? '0',
-      icon: Globe,
-      href: '/tlds',
-      description: 'Top-level domains'
-    },
-    {
-      name: 'Registrars',
-      value: isLoadingRegistrarCount ? '...' : registrarCountData?.Count?.toString() ?? '0',
-      icon: Users,
-      href: '/registrars',
-      description: 'Domain registrars'
-    },
-    {
-      name: 'Domains',
-      value: isLoadingDomainCount ? '...' : domainCountData?.Count?.toString() ?? '0',
-      icon: Server,
-      href: '/domains',
-      description: 'Registered domains'
-    },
-    {
-      name: 'Contacts',
-      value: isLoadingContactCount ? '...' : contactCountData?.Count?.toString() ?? '0',
-      icon: Contact,
-      href: '/contacts',
-      description: 'Registered contacts'
-    },
-    {
-      name: 'Hosts',
-      value: isLoadingHostCount ? '...' : hostCountData?.Count?.toString() ?? '0',
-      icon: HardDrive,
-      href: '/hosts',
-      description: 'Registered hosts'
-    },
+  const { data: roCount, isLoading: loadingRO } = useRegistryOperatorsCount();
+  const { data: tldCount, isLoading: loadingTLD } = useTLDsCount();
+  const { data: registrarCount, isLoading: loadingRegistrar } = useRegistrarCount();
+  const { data: domainCount, isLoading: loadingDomain } = useDomainCount();
+  const { data: contactCount, isLoading: loadingContact } = useContactCount();
+  const { data: hostCount, isLoading: loadingHost } = useHostCount();
+
+  const counts = [
+    roCount?.Count,
+    tldCount?.Count,
+    registrarCount?.Count,
+    domainCount?.Count,
+    contactCount?.Count,
+    hostCount?.Count,
+  ];
+
+  const loadings = [
+    loadingRO,
+    loadingTLD,
+    loadingRegistrar,
+    loadingDomain,
+    loadingContact,
+    loadingHost,
   ];
 
   return (
     <DashboardLayout>
+      <WelcomeToast />
+
       <div className="space-y-8">
+        {/* ---------------------------------------------------------------- */}
+        {/* Greeting — minimal, one line                                      */}
+        {/* ---------------------------------------------------------------- */}
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">
-            Welcome to Alpaca Names
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {getGreeting()}
           </h1>
-          <p className="text-muted-foreground">
-            Registry Admin
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {format(new Date(), 'EEEE, MMMM do, yyyy')}
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {stats.map((stat) => (
-            <Link key={stat.name} href={stat.href}>
-              <Card className="hover:bg-accent transition-colors cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    {stat.name}
-                  </CardTitle>
-                  <stat.icon className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {stat.description}
-                  </p>
-                </CardContent>
-              </Card>
+        {/* ---------------------------------------------------------------- */}
+        {/* Stat pills — compact horizontal row                               */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="flex flex-wrap gap-3">
+          {STAT_PILLS.map((stat, i) => (
+            <Link
+              key={stat.name}
+              href={stat.href}
+              className="group flex items-center gap-2 rounded-full border bg-card px-4 py-2 transition-all duration-200 hover:border-primary/30 hover:shadow-sm"
+              title={stat.name}
+            >
+              <stat.icon className={`h-3.5 w-3.5 ${stat.color}`} />
+              <span className="text-xs font-medium text-muted-foreground">
+                {stat.short}
+              </span>
+              {loadings[i] ? (
+                <Skeleton className="h-4 w-8 rounded" />
+              ) : (
+                <span className="text-sm font-semibold tabular-nums">
+                  {formatCount(counts[i])}
+                </span>
+              )}
             </Link>
           ))}
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>
-              Create records quickly
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link
-                href="/domains/create"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-              >
-                Create Domain
-              </Link>
-              <Link
-                href="/tlds/create"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-              >
-                Create TLD
-              </Link>
-              <Link
-                href="/registrars/create"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-              >
-                Create Registrar
-              </Link>
-              <Link
-                href="/registry-operators/create"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-              >
-                Create Registry Operator
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+        {/* ---------------------------------------------------------------- */}
+        {/* Main content: Events feed + Quick Actions sidebar                 */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Event feed — takes 2 cols */}
+          <div className="lg:col-span-2">
+            <EventFeed />
+          </div>
+
+          {/* Right sidebar — Quick Actions + Resources */}
+          <div className="space-y-6">
+            <QuickActions />
+
+            {/* Resources — minimal */}
+            {resources.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Resources
+                </h3>
+                <div className="space-y-1">
+                  {resources.map((res) => (
+                    <a
+                      key={res.name}
+                      href={res.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent/50"
+                    >
+                      <res.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="flex-1 text-foreground/80">{res.name}</span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

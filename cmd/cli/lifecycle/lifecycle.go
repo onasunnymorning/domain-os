@@ -3,34 +3,21 @@ package main
 // This CLI tool allows you to run domain lifecycle operations.
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"log"
 	"os"
 	"runtime"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/application/schedules"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/pborman/uuid"
 	"github.com/urfave/cli/v2"
 )
 
-const (
-	ScheduleTypeExpiry   = "expiry"
-	ScheduleTypePurge    = "purge"
-	ScheduleTypeUpdateFX = "updatefx"
-	ScheduleTypeRestore  = "restore"
-)
 
-var (
-	SupportedScheduleTypes = []string{ScheduleTypeExpiry, ScheduleTypePurge, ScheduleTypeUpdateFX, ScheduleTypeRestore}
-)
 
 func main() {
 	start := time.Now()
@@ -82,26 +69,6 @@ func main() {
 				Action:  restore,
 			},
 
-			{
-				Name:      "schedule",
-				Aliases:   []string{"s", "sch"},
-				Usage:     "manage temporal schedules for domain lifecycle operations",
-				UsageText: "Use this command to created/delete temporal schedules for domain lifecycle operations",
-				Subcommands: []*cli.Command{
-					{
-						Name:    "create",
-						Aliases: []string{"c", "cr"},
-						Usage:   "create temporal schedules (expiry and purge)",
-						Action:  createTemporalSchedules,
-					},
-					{
-						Name:    "delete",
-						Aliases: []string{"d", "del"},
-						Usage:   "delete temporal schedules (expiry and purge)",
-						Action:  deleteTemporalSchedules,
-					},
-				},
-			},
 		},
 	}
 
@@ -122,7 +89,7 @@ func main() {
 func expire(c *cli.Context) error {
 	// Query the API for the amount of expired domains
 	log.Println("Querying expired domain count...")
-	countResult, err := activities.GetExpiredDomainCount(getCorrelationIDFromContext(c), queries.ExpiringDomainsQuery{})
+	countResult, err := activities.GetExpiredDomainCount(context.Background(), getCorrelationIDFromContext(c), queries.ExpiringDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -141,7 +108,7 @@ func expire(c *cli.Context) error {
 		return err
 	}
 	log.Println("Querying expired domains...")
-	domains, err := activities.ListExpiringDomains(getCorrelationIDFromContext(c), *q)
+	domains, err := activities.ListExpiringDomains(context.Background(), getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -151,7 +118,7 @@ func expire(c *cli.Context) error {
 	log.Println("Processing expired domains...")
 	for _, domain := range domains {
 		// Try and auto-renew the domain
-		err := activities.AutoRenewDomain(getCorrelationIDFromContext(c), domain.Name)
+		err := activities.AutoRenewDomain(context.Background(), getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			// If the domain is not eligible for auto-renew, it should be marked for deletion
 			if strings.Contains(err.Error(), "auto renew is not enabled") {
@@ -177,7 +144,7 @@ func purge(c *cli.Context) error {
 
 	// Query the API for the amount of purgeable domains
 	log.Println("Querying purgeable domain count...")
-	countResult, err := activities.GetPurgeableDomainCount(getCorrelationIDFromContext(c), queries.PurgeableDomainsQuery{})
+	countResult, err := activities.GetPurgeableDomainCount(context.Background(), getCorrelationIDFromContext(c), queries.PurgeableDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -196,7 +163,7 @@ func purge(c *cli.Context) error {
 	}
 	log.Println("Querying purgeable domains...")
 
-	domains, err := activities.ListPurgeableDomains(getCorrelationIDFromContext(c), *q)
+	domains, err := activities.ListPurgeableDomains(context.Background(), getCorrelationIDFromContext(c), *q)
 	if err != nil {
 		return err
 	}
@@ -206,7 +173,7 @@ func purge(c *cli.Context) error {
 	log.Println("Processing purgeable domains...")
 	for _, domain := range domains {
 		// Premanently delete the domain
-		err := activities.PurgeDomain(getCorrelationIDFromContext(c), domain.Name)
+		err := activities.PurgeDomain(context.Background(), getCorrelationIDFromContext(c), domain.Name)
 		if err != nil {
 			log.Printf("Failed to delete domain %s: %s\n", domain.Name, err)
 			continue
@@ -217,94 +184,6 @@ func purge(c *cli.Context) error {
 	return nil
 }
 
-// createTemporalExpirySchedule automates the creation of a temporal schedule as defined in schedules.CreateExpiryScheduleHourly. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
-func createTemporalExpirySchedule(cfg *temporal.TemporalClientconfig) error {
-	// Create the schedule
-	scheduleID, err := schedules.CreateExpiryScheduleHourly(*cfg)
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-// createTemporalPurgeSchedule automates the creation of a temporal schedule as defined in schedules.CreatePurgeScheduleHourly. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
-func createTemporalPurgeSchedule(cfg *temporal.TemporalClientconfig) error {
-	// Create the schedule
-	scheduleID, err := schedules.CreatePurgeScheduleHourly(*cfg)
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-// createTemporalRestoreSchedule automates the creation of a temporal schedule as defined in schedules.CreateRestoreScheduleDaily. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
-func createTemporalRestoreSchedule(cfg *temporal.TemporalClientconfig) error {
-	// Create the schedule
-	scheduleID, err := schedules.CreateRestoreScheduleDaily(*cfg)
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-// createTemporalUpdateFXSchedule automates the creation of a temporal schedule as defined in schedules.CreateUpdateFXScheduleDaily. Use this to set up the schedules when deploying an instance of the application. Note that the environment variables must be set for this to work and there is no facility yet to updated/delete schedules. Use the temporal web UI to manage schedules.
-func createTemporalUpdateFXSchedule(cfg *temporal.TemporalClientconfig) error {
-	// Create the schedule
-	scheduleID, err := schedules.CreateUpdateFXScheduleDaily(*cfg)
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-// createTemporalSchedules is a CLI command that creates a temporal schedule for domain lifecycle operations. It takes a single argument, either 'expiry' or 'purge', to specify the type of schedule to create.
-func createTemporalSchedules(c *cli.Context) error {
-	// Check if the first argument is a valid schedule (expiry or purge)
-	if !slices.Contains(SupportedScheduleTypes, c.Args().First()) {
-		log.Println("Invalid schedule type. Must be one of:", SupportedScheduleTypes)
-		return cli.ShowCommandHelp(c, "create")
-	}
-
-	// Create a temporal client config
-	cfg := &temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
-	}
-
-	switch c.Args().First() {
-	case "expiry":
-		return createTemporalExpirySchedule(cfg)
-	case "purge":
-		return createTemporalPurgeSchedule(cfg)
-	case "updatefx":
-		cfg.WorkerQueue = os.Getenv("TMPIO_SYNC_QUEUE")
-		return createTemporalUpdateFXSchedule(cfg)
-	case "restore":
-		return createTemporalRestoreSchedule(cfg)
-	}
-
-	return errors.New("invalid schedule type")
-}
-
-func deleteTemporalSchedules(c *cli.Context) error {
-	fmt.Println("Not implemented")
-	return nil
-}
 
 func getCorrelationIDFromContext(c *cli.Context) string {
 	if c.App.Metadata["correlationID"] != nil {
@@ -317,7 +196,7 @@ func restore(c *cli.Context) error {
 	correlationID := "lifecycle-cli-" + uuid.New()
 	log.Println("Correlation ID for this command:", correlationID)
 	// trigger the restore workflow activities
-	restoredDomains, err := activities.ListRestoredDomains(correlationID, &queries.RestoredDomainsQuery{})
+	restoredDomains, err := activities.ListRestoredDomains(context.Background(), correlationID, &queries.RestoredDomainsQuery{})
 	if err != nil {
 		return err
 	}
@@ -332,7 +211,7 @@ func restore(c *cli.Context) error {
 		}
 
 		// Renew the domain
-		err := activities.RenewDomain(correlationID, cmd, false)
+		err := activities.RenewDomain(context.Background(), correlationID, cmd, false)
 		if err != nil {
 			return err
 		}

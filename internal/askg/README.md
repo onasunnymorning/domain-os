@@ -76,7 +76,7 @@ export DB_USER=postgres DB_PASS=... DB_HOST=localhost DB_PORT=5432 DB_NAME=domin
 go run ./cmd/askg "What is the status of example.best?"
 
 # Override model (optional)
-ASKG_MODEL=claude-sonnet-4-6 go run ./cmd/askg "Is example.best in redemption?"
+LLM_MODEL=claude-sonnet-4-6 go run ./cmd/askg "Is example.best in redemption?"
 ```
 
 ### Programmatic
@@ -87,7 +87,7 @@ cfg := askg.Config{
     APIKey: os.Getenv("ANTHROPIC_API_KEY"),
 }
 
-executor := askg.NewInProcessToolExecutor(domainService, tldService, logger)
+executor := askg.NewInProcessToolExecutor(domainService, tldService, nil, logger)
 provider := anthropic.NewAdapter(cfg)
 orch := askg.NewOrchestrator(provider, executor, cfg, logger)
 
@@ -101,7 +101,7 @@ result, err := orch.Ask(ctx, "What is the status of example.best?",
 |-------------|---------|-------------|
 | `ANTHROPIC_API_KEY` | (required) | Anthropic API key |
 | `ANTHROPIC_BASE_URL` | (Anthropic default) | Override API base URL |
-| `ASKG_MODEL` | `claude-sonnet-4-6` | Main model for tool-use |
+| `LLM_MODEL` | `claude-sonnet-4-6` | Main model for tool-use |
 | `ASKG_CLASSIFIER_MODEL` | `claude-haiku-4-5` | Cheaper model for intent classification (future) |
 | `ASKG_USER_ID` | `cli-user` | Staff member identity for audit logging |
 | `DB_USER`, `DB_PASS`, etc. | — | Database credentials (same as other servers) |

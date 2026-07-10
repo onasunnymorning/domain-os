@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,80 +21,197 @@ import (
 type S3Client struct {
 	client *minio.Client
 	bucket string
-	// publicEndpoint is the externally reachable endpoint for presigned URLs (e.g., http://localhost:9000)
-	// If empty, the SDK's internal endpoint host will be used as-is.
-	publicEndpoint string
+	// presignClient is configured with the public endpoint so that presigned URLs
+	// have correct S3 V4 signatures for the host the browser will actually use.
+	// If no public endpoint is set, this falls back to client.
+	presignClient *minio.Client
 }
 
+// NewS3ClientFromEnv builds a client bound to the escrow bucket
+// (STORAGE_ESCROW_BUCKET, defaulting to "escrow"). This is the client used by
+// all escrow deposit/import/download code paths.
 func NewS3ClientFromEnv() (*S3Client, error) {
-	endpoint := os.Getenv("MINIO_ENDPOINT")
-	accessKey := os.Getenv("MINIO_ACCESS_KEY")
-	secretKey := os.Getenv("MINIO_SECRET_KEY")
-	useSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
-	bucket := os.Getenv("ESCROW_BUCKET")
-	if bucket == "" {
-		bucket = "escrow"
-	}
-	public := strings.TrimSpace(os.Getenv("MINIO_PUBLIC_ENDPOINT"))
+	return NewS3ClientForBucket("STORAGE_ESCROW_BUCKET", "escrow")
+}
 
-	// Allow self-signed in dev when not using SSL or custom certs
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+// NewEventLogsS3Client builds a client bound to the event archive bucket
+// (STORAGE_EVENT_LOGS_BUCKET, defaulting to "event-logs").
+func NewEventLogsS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_EVENT_LOGS_BUCKET", "event-logs")
+}
+
+// NewReportsS3Client builds a client bound to the compliance reports bucket
+// (STORAGE_REPORTS_BUCKET, defaulting to "reports").
+func NewReportsS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_REPORTS_BUCKET", "reports")
+}
+
+// NewTempS3Client builds a client bound to the workflow artifact/staging
+// bucket (STORAGE_TEMP_BUCKET, defaulting to "temp-artifacts"). Used for
+// snapshot, backup, cleanup, and verification workflow outputs that aren't
+// regulatory records.
+func NewTempS3Client() (*S3Client, error) {
+	return NewS3ClientForBucket("STORAGE_TEMP_BUCKET", "temp-artifacts")
+}
+
+// Supported values for STORAGE_AUTH_MODE.
+const (
+	// AuthModeStatic signs requests with a long-lived access key / secret pair.
+	// Used by local MinIO, Cloudflare R2 (scoped API tokens), and AWS S3 when
+	// no role is available.
+	AuthModeStatic = "static"
+	// AuthModeIAM sources short-lived credentials from the AWS environment.
+	// AWS S3 only — R2 and MinIO have no equivalent.
+	AuthModeIAM = "iam"
+)
+
+// storageCredentials builds the credential provider named by STORAGE_AUTH_MODE,
+// defaulting to static keys.
+//
+// Static mode fails fast rather than deferring an opaque 403 to the first
+// object call. IAM mode resolves, in order: EKS IRSA (AWS_WEB_IDENTITY_TOKEN_FILE
+// + AWS_ROLE_ARN), ECS task role (AWS_CONTAINER_CREDENTIALS_*), then EC2 IMDS.
+// The returned Credentials refreshes itself as tokens expire, so the clients
+// built from it are safe to hold for the process lifetime.
+func storageCredentials() (*credentials.Credentials, error) {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_AUTH_MODE")))
+	if mode == "" {
+		mode = AuthModeStatic
+	}
+
+	switch mode {
+	case AuthModeStatic:
+		accessKey := storageEnv(EnvAccessKey)
+		secretKey := storageEnv(EnvSecretKey)
+		if accessKey == "" || secretKey == "" {
+			return nil, fmt.Errorf("STORAGE_AUTH_MODE=%s requires both %s and %s to be set", AuthModeStatic, EnvAccessKey, EnvSecretKey)
+		}
+		return credentials.NewStaticV4(accessKey, secretKey, ""), nil
+
+	case AuthModeIAM:
+		// Retrieval is lazy and does not honour the caller's context: off AWS,
+		// the IMDS probe blocks ~30s before failing. Set this mode only where a
+		// credential source actually exists.
+		return credentials.NewIAM(""), nil
+
+	default:
+		return nil, fmt.Errorf("unknown STORAGE_AUTH_MODE %q: want %q or %q", mode, AuthModeStatic, AuthModeIAM)
+	}
+}
+
+// NewS3ClientForBucket builds an S3 client whose bucket is read from
+// bucketEnvVar, falling back to defaultBucket when unset. Connection settings
+// (endpoint, SSL, public endpoint, region) always come from the shared
+// STORAGE_* env vars, and credentials from STORAGE_AUTH_MODE — only the target
+// bucket varies per client.
+func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error) {
+	endpoint := storageEnv(EnvEndpoint)
+	useSSL, _ := strconv.ParseBool(storageEnv(EnvUseSSL))
+	bucket := os.Getenv(bucketEnvVar)
+	if bucket == "" {
+		bucket = defaultBucket
+	}
+	public := strings.TrimSpace(PublicEndpoint())
+
+	creds, err := storageCredentials()
+	if err != nil {
+		return nil, err
+	}
+
+	// SigV4 binds the signature to the region, so a wrong region yields
+	// SignatureDoesNotMatch on real S3. Set STORAGE_REGION to the bucket's
+	// region for S3, or "auto" for R2. Left empty, minio-go resolves the region
+	// itself via a bucket-location lookup — the historical behaviour, which
+	// MinIO and R2 both tolerate.
+	region := strings.TrimSpace(os.Getenv("STORAGE_REGION"))
+
+	// The presign client cannot rely on that lookup: its endpoint is the public
+	// hostname, which is often unreachable from inside the cluster. It falls
+	// back to us-east-1, as it always has.
+	presignRegion := region
+	if presignRegion == "" {
+		presignRegion = "us-east-1"
+	}
+
+	// Certificate verification is on by default. STORAGE_TLS_SKIP_VERIFY exists
+	// only for local MinIO with a self-signed cert; enabling it against a real
+	// provider (R2/S3) exposes every object and credential to interception.
+	skipVerify, _ := strconv.ParseBool(os.Getenv("STORAGE_TLS_SKIP_VERIFY"))
+	if skipVerify {
+		log.Printf("[storage] WARNING: STORAGE_TLS_SKIP_VERIFY is set — TLS certificate verification is DISABLED. Never use this outside local development.")
+	}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}
 	httpClient := &http.Client{Transport: tr}
 
 	cli, err := minio.New(endpoint, &minio.Options{
-		Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
+		Creds:     creds,
 		Secure:    useSSL,
+		Region:    region,
 		Transport: httpClient.Transport,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &S3Client{client: cli, bucket: bucket, publicEndpoint: public}, nil
+	// Build a second client for presigning that uses the public endpoint.
+	// S3 V4 signatures include the Host header, so presigned URLs must be
+	// signed against the host the browser will actually reach.
+	presignCli := cli
+	if public != "" {
+		pubEndpoint, pubSSL := parseEndpointURL(public)
+		if pubEndpoint != "" {
+			pc, err := minio.New(pubEndpoint, &minio.Options{
+				Creds:     creds,
+				Secure:    pubSSL,
+				Region:    presignRegion,
+				Transport: httpClient.Transport,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("creating presign client for %s: %w", pubEndpoint, err)
+			}
+			presignCli = pc
+		}
+	}
+
+	return &S3Client{client: cli, bucket: bucket, presignClient: presignCli}, nil
 }
 
-// PresignPut returns a presigned PUT URL for the specified key
-func (s *S3Client) PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expiry)
+// parseEndpointURL extracts host:port and SSL flag from a URL string.
+// Accepts "http://localhost:9000", "https://s3.example.com", or "localhost:9000".
+// Strips literal quotes (common docker-compose YAML mistake).
+func parseEndpointURL(raw string) (endpoint string, useSSL bool) {
+	raw = strings.Trim(raw, `"'`)
+	u, err := url.Parse(raw)
 	if err != nil {
-		return "", err
+		return raw, false
 	}
-	// If a public endpoint is provided, rewrite the URL's scheme/host to be externally reachable
-	if s.publicEndpoint != "" {
-		if pub, err := url.Parse(s.publicEndpoint); err == nil {
-			if pub.Scheme != "" {
-				u.Scheme = pub.Scheme
-			}
-			// If MINIO_PUBLIC_ENDPOINT may be provided without scheme (host:port), set default http
-			if u.Scheme == "" {
-				u.Scheme = "http"
-			}
-			if pub.Host != "" {
-				u.Host = pub.Host
-			} else if pub.Path != "" {
-				// Handle values like "localhost:9000" which end up in Path when scheme is missing
-				u.Host = strings.TrimPrefix(pub.Path, "/")
-			}
-		}
-	} else {
-		// Dev-friendly fallback: if the SDK host points to an internal docker name like "minio",
-		// rewrite it to localhost:9000 so the browser can reach it directly.
-		// This avoids common misconfig where MINIO_PUBLIC_ENDPOINT isn't set in dev.
-		if strings.HasPrefix(strings.ToLower(u.Host), "minio") || strings.HasSuffix(u.Host, ":9000") {
-			u.Scheme = "http"
-			// Preserve port when present; default to 9000
-			host := u.Host
-			if strings.Contains(host, ":") {
-				parts := strings.Split(host, ":")
-				port := parts[len(parts)-1]
-				if port == "" {
-					port = "9000"
-				}
-				u.Host = "localhost:" + port
-			} else {
-				u.Host = "localhost:9000"
-			}
-		}
+	useSSL = u.Scheme == "https"
+	if u.Host != "" {
+		return u.Host, useSSL
+	}
+	// url.Parse("localhost:9000") puts it in Path with empty Host
+	if u.Path != "" {
+		return strings.TrimPrefix(u.Path, "/"), false
+	}
+	return raw, false
+}
+
+// PresignPut returns a presigned PUT URL for the specified key.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.presignClient.PresignedPutObject(ctx, s.bucket, key, expiry)
+	if err != nil {
+		return "", fmt.Errorf("PresignPut(key=%s): %w", key, err)
+	}
+	return u.String(), nil
+}
+
+// PresignGet returns a presigned GET URL for the specified key.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.presignClient.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
+	if err != nil {
+		return "", fmt.Errorf("PresignGet(key=%s): %w", key, err)
 	}
 	return u.String(), nil
 }
@@ -124,10 +243,39 @@ func (s *S3Client) DownloadToFile(ctx context.Context, key string) (string, erro
 	return dstPath, nil
 }
 
+// GetObjectStream returns a streaming reader for the object.
+// The caller MUST close the returned ReadCloser when done.
+// This avoids writing the entire object to disk (unlike DownloadToFile).
+func (s *S3Client) GetObjectStream(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("GetObjectStream(%s): %w", key, err)
+	}
+	info, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, 0, fmt.Errorf("GetObjectStream(%s) stat: %w", key, err)
+	}
+	return obj, info.Size, nil
+}
+
 // UploadFile uploads a local file to the bucket at the given key
 func (s *S3Client) UploadFile(ctx context.Context, key, path, contentType string) error {
 	_, err := s.client.FPutObject(ctx, s.bucket, key, path, minio.PutObjectOptions{ContentType: contentType})
 	return err
+}
+
+// CopyObject performs a server-side copy of srcKey to dstKey within the same bucket.
+// No data is downloaded — the copy happens entirely on the S3/MinIO server.
+func (s *S3Client) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	_, err := s.client.CopyObject(ctx,
+		minio.CopyDestOptions{Bucket: s.bucket, Object: dstKey},
+		minio.CopySrcOptions{Bucket: s.bucket, Object: srcKey},
+	)
+	if err != nil {
+		return fmt.Errorf("CopyObject(src=%s, dst=%s): %w", srcKey, dstKey, err)
+	}
+	return nil
 }
 
 // ListObjectKeys lists object keys under a given prefix. If recursive is true, it descends into sub-prefixes.
@@ -190,4 +338,67 @@ func (s *S3Client) DownloadStream(ctx context.Context, key string) (io.ReadClose
 	}
 	// Note: It's the caller's responsibility to close the returned io.ReadCloser
 	return obj, nil
+}
+
+// =============================================================================
+// Multipart Upload — browser-direct large file uploads (S3-compatible)
+// =============================================================================
+
+// MultipartCompletePart identifies a successfully uploaded part by its number and ETag.
+type MultipartCompletePart struct {
+	PartNumber int
+	ETag       string
+}
+
+// InitMultipartUpload starts a new multipart upload and returns the upload ID.
+func (s *S3Client) InitMultipartUpload(ctx context.Context, key string) (string, error) {
+	core := minio.Core{Client: s.client}
+	uploadID, err := core.NewMultipartUpload(ctx, s.bucket, key, minio.PutObjectOptions{
+		ContentType: "application/octet-stream",
+	})
+	if err != nil {
+		return "", fmt.Errorf("InitMultipartUpload: %w", err)
+	}
+	return uploadID, nil
+}
+
+// PresignUploadPart returns a presigned PUT URL for uploading a single part.
+// The browser PUTs the chunk data directly to this URL.
+// Uses the presign client so the V4 signature matches the public host.
+func (s *S3Client) PresignUploadPart(ctx context.Context, key, uploadID string, partNumber int, expiry time.Duration) (string, error) {
+	params := url.Values{
+		"partNumber": {strconv.Itoa(partNumber)},
+		"uploadId":   {uploadID},
+	}
+	u, err := s.presignClient.Presign(ctx, "PUT", s.bucket, key, expiry, params)
+	if err != nil {
+		return "", fmt.Errorf("PresignUploadPart(key=%s, part=%d): %w", key, partNumber, err)
+	}
+	return u.String(), nil
+}
+
+// CompleteMultipartUpload finalizes a multipart upload by assembling all parts.
+func (s *S3Client) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []MultipartCompletePart) error {
+	core := minio.Core{Client: s.client}
+	completeParts := make([]minio.CompletePart, len(parts))
+	for i, p := range parts {
+		completeParts[i] = minio.CompletePart{
+			PartNumber: p.PartNumber,
+			ETag:       p.ETag,
+		}
+	}
+	_, err := core.CompleteMultipartUpload(ctx, s.bucket, key, uploadID, completeParts, minio.PutObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("CompleteMultipartUpload: %w", err)
+	}
+	return nil
+}
+
+// AbortMultipartUpload cancels an in-progress multipart upload and cleans up parts.
+func (s *S3Client) AbortMultipartUpload(ctx context.Context, key, uploadID string) error {
+	core := minio.Core{Client: s.client}
+	if err := core.AbortMultipartUpload(ctx, s.bucket, key, uploadID); err != nil {
+		return fmt.Errorf("AbortMultipartUpload: %w", err)
+	}
+	return nil
 }

@@ -13,7 +13,7 @@ import (
 )
 
 // GetRegistrarListItems queries an API for all Registrar List Items, following pagination links until there are no more.
-func GetRegistrarListItems(correlationID string, batchsize int) ([]entities.RegistrarListItem, error) {
+func GetRegistrarListItems(ctx context.Context, correlationID string, batchsize int) ([]entities.RegistrarListItem, error) {
 	// Example: create a dedicated HTTP client with a timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -35,7 +35,7 @@ func GetRegistrarListItems(correlationID string, batchsize int) ([]entities.Regi
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchRegistrarsPage(context.Background(), client, currentURL, GetBearerToken())
+		apiResponse, err := fetchRegistrarsPage(ctx, client, currentURL, GetBearerToken(), correlationID)
 		if err != nil {
 			return nil, err
 		}
@@ -70,14 +70,13 @@ func GetRegistrarListItems(correlationID string, batchsize int) ([]entities.Regi
 
 // fetchRegistrarsPage fetches a single page of IANA registrars from the provided URL.
 // It handles sending the request, reading the response, checking the status code, and unmarshaling JSON.
-func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string) (*response.ListItemResult, error) {
+func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, bearerToken string, correlationID string) (*response.ListItemResult, error) {
 	// Create the request with context for cancellation/timeouts
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	req, err := prepareRequest(ctx, http.MethodGet, urlStr, nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	// Attach bearer token (e.g., "Bearer abc123")
-	req.Header.Add("Authorization", bearerToken)
 
 	// Execute the request
 	resp, err := client.Do(req)
@@ -95,7 +94,7 @@ func fetchRegistrarsPage(ctx context.Context, client *http.Client, urlStr, beare
 
 	// Check for non-200 response codes
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Unmarshal into a local struct to avoid interface unmarshalling errors for Filter

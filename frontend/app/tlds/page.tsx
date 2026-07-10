@@ -3,13 +3,13 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTLDs, useDeleteTLD } from '@/lib/hooks/useTLDs';
-import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useRegistryOperators } from '@/lib/hooks/useRegistryOperators';
 import { formatCompactNumber } from '@/lib/utils/numberUtils';
 import { TLDActivePhases } from '@/components/tlds/TLDActivePhases';
+import { TLDCreateDialog } from '@/components/tlds/TLDCreateDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+
 import { 
   Select,
   SelectContent,
@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Globe, Plus, Trash2, X } from 'lucide-react';
+import { Globe, Plus, X, Download } from 'lucide-react';
+import { WorkflowShortcuts } from '@/components/shared/WorkflowShortcuts';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 
 import { ListPageLayout } from '@/components/shared/ListPageLayout';
@@ -33,23 +34,6 @@ export default function TLDsPage() {
   );
 }
 
-// Lightweight, per-row async cell for domain count
-function DomainCountCell({ tldName }: { tldName: string }) {
-  const { data, isLoading, isError } = useDomainCount({ tld_equals: tldName });
-  if (isLoading) return <Skeleton className="h-4 w-10 inline-block" />;
-  if (isError) return <span className="text-muted-foreground">—</span>;
-  const count = data?.Count;
-  const formattedTime = data?.Timestamp ? `As of ${new Date(data.Timestamp).toLocaleString()}` : '';
-  const exactCount = typeof count === 'number' ? count.toLocaleString() : '';
-  const titleText = [exactCount, formattedTime].filter(Boolean).join(' | ');
-
-  return (
-    <span className="cursor-help border-b border-dotted border-muted-foreground/50 pb-0.5" title={titleText || undefined}>
-      {typeof count === 'number' ? formatCompactNumber(count) : '—'}
-    </span>
-  );
-}
-
 function TLDsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -57,6 +41,7 @@ function TLDsPageInner() {
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [ryidFilter, setRyidFilter] = useState<string>(searchParams.get('ryid_equals') || '');
   const [tldToDelete, setTldToDelete] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   
   const debouncedSearch = useDebounce(searchTerm, 300);
   
@@ -79,7 +64,7 @@ function TLDsPageInner() {
   const confirmDelete = () => {
     if (tldToDelete) {
       deleteTLD({ name: tldToDelete, keepTLDAndPhases: false } as any);
-      setTldToDelete(null); // Dialog will implicitly close since tldToDelete becomes null
+      setTldToDelete(null);
     }
   };
 
@@ -92,14 +77,56 @@ function TLDsPageInner() {
     }
   };
 
-  const tlds = data?.Data || [];
+  // Sort by domain count descending
+  const tlds = [...(data?.Data || [])].sort(
+    (a, b) => (b.DomainCount ?? 0) - (a.DomainCount ?? 0)
+  );
+
+  const handleExportCSV = () => {
+    const headers = ['TLD Name', 'Domains Count', 'DNS Status', 'Escrow Status', 'Registry Operator ID'];
+    const rows = tlds.map(t => [
+      t.Name,
+      t.DomainCount ?? 0,
+      t.EnableDNS ? 'Enabled' : 'Disabled',
+      t.AllowEscrowImport ? 'Enabled' : 'Disabled',
+      t.RyID || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `tlds_export.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const columns: ColumnDef<any>[] = [
     {
       header: 'Name',
       accessor: 'Name',
-      className: 'font-medium',
+      className: 'font-semibold text-base',
       cell: (tld) => <span title={tld.UName || undefined}>{tld.Name}</span>
+    },
+    {
+      header: 'Domains',
+      cell: (tld) => (
+        <span className="cursor-help border-b border-dotted border-muted-foreground/50 pb-0.5"
+              title={typeof tld.DomainCount === 'number' ? tld.DomainCount.toLocaleString() : undefined}>
+          {typeof tld.DomainCount === 'number' ? formatCompactNumber(tld.DomainCount) : '—'}
+        </span>
+      )
+    },
+    {
+      header: 'Registrars',
+      cell: (tld) => <span>{tld.RegistrarCount ?? 0}</span>
     },
     {
       header: 'Type',
@@ -112,28 +139,8 @@ function TLDsPageInner() {
       )
     },
     {
-      header: 'Domains',
-      cell: (tld) => <DomainCountCell tldName={tld.Name} />
-    },
-    {
-      header: 'Registry Operator',
+      header: 'RO',
       accessor: 'RyID'
-    },
-    {
-      header: 'DNS',
-      cell: (tld) => tld.EnableDNS ? (
-        <Badge variant="secondary" className="bg-green-100 text-green-800">Enabled</Badge>
-      ) : (
-        <Badge variant="outline">Disabled</Badge>
-      )
-    },
-    {
-      header: 'Escrow Import',
-      cell: (tld) => tld.AllowEscrowImport ? (
-        <Badge variant="secondary" className="bg-green-100 text-green-800">Enabled</Badge>
-      ) : (
-        <Badge variant="outline">Disabled</Badge>
-      )
     },
     {
       header: 'Active Phases',
@@ -144,25 +151,21 @@ function TLDsPageInner() {
       )
     },
     {
-      header: 'Actions',
-      className: 'text-right',
-      cell: (tld) => (
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              setTldToDelete(tld.Name);
-            }}
-            disabled={isDeleting}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-            <span className="sr-only">Delete</span>
-          </Button>
-        </div>
+      header: 'DNS',
+      cell: (tld) => tld.EnableDNS ? (
+        <Badge variant="secondary" className="bg-green-100 text-green-800">Enabled</Badge>
+      ) : (
+        <Badge variant="outline">Disabled</Badge>
       )
-    }
+    },
+    {
+      header: 'Escrow',
+      cell: (tld) => tld.AllowEscrowImport ? (
+        <Badge variant="secondary" className="bg-green-100 text-green-800">Enabled</Badge>
+      ) : (
+        <Badge variant="outline">Disabled</Badge>
+      )
+    },
   ];
 
   const filters = (
@@ -252,9 +255,11 @@ function TLDsPageInner() {
     <ListPageLayout
       icon={Globe}
       title="TLDs"
-      description="Manage top-level domains in the registry"
+      headerActions={
+        <WorkflowShortcuts workflowKeys={['escrow-import', 'tld-cleanup']} />
+      }
       actionButton={
-        <Button onClick={() => router.push('/tlds/create')}>
+        <Button onClick={() => setCreateOpen(true)} className="h-9">
           <Plus className="mr-2 h-4 w-4" />
           Create TLD
         </Button>
@@ -269,6 +274,18 @@ function TLDsPageInner() {
         keyExtractor={(row) => row.Name}
         isLoading={isLoading}
         onRowClick={(row) => router.push(`/tlds/${row.Name}`)}
+        headerActions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={tlds.length === 0}
+            className="h-9 font-medium"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        }
         emptyState={
           <div className="text-center py-12">
             <Globe className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -279,7 +296,7 @@ function TLDsPageInner() {
                 : 'Get started by creating your first TLD'}
             </p>
             {!searchTerm && !typeFilter && !ryidFilter && (
-              <Button onClick={() => router.push('/tlds/create')} className="mt-4">
+              <Button onClick={() => setCreateOpen(true)} className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
                 Create TLD
               </Button>
@@ -292,10 +309,13 @@ function TLDsPageInner() {
         open={!!tldToDelete}
         onOpenChange={(open) => !open && setTldToDelete(null)}
         title="Are you sure?"
-        description={`This will permanently delete the TLD "${tldToDelete}" and all associated data.\n\nNote: TLDs with active phases cannot be deleted.`}
+        description={`This will start a background Temporal cleanup workflow to safely delete the TLD "${tldToDelete}" and its associated domains, hosts, and contacts.\n\nYou will be guided to review and approve the deletion counts in the workflow control center.`}
         onConfirm={confirmDelete}
         isDeleting={isDeleting}
       />
+
+      {/* Create dialog */}
+      <TLDCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
     </ListPageLayout>
   );
 }

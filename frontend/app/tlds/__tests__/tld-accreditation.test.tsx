@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock IntersectionObserver
+global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+  takeRecords: vi.fn(),
+}));
+
 // Mock React's experimental `use` to synchronously resolve the Next.js params Promise
 vi.mock('react', async (orig) => {
   const actual = await (orig() as any);
@@ -65,29 +74,32 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
       isPending: false,
     } as any);
 
-    // Accredited registrars list for this TLD
-    vi.mocked(accHooks.useTLDRegistrars).mockReturnValue({
-      data: {
-        Data: [
-          { ClID: 'REG-OK', Name: 'Ok Registrar', Status: 'ok' },
-          { ClID: 'REG-TERM', Name: 'Term Registrar', Status: 'terminated' },
-        ],
-      },
-      isLoading: false,
-    } as any);
-
-    // Registrar search results when opening accredit modal
-    vi.mocked(regHooks.useRegistrars).mockReturnValue({
-      data: {
-        Data: [
-          { ClID: 'REG-SEARCH-OK', Name: 'Search Ok', Status: 'ok' },
-          { ClID: 'REG-SEARCH-RO', Name: 'Search Readonly', Status: 'readonly' },
-          { ClID: 'REG-SEARCH-TERM', Name: 'Search Terminated', Status: 'terminated' },
-        ],
-      },
-      isLoading: false,
-      error: null,
-    } as any);
+    // Registrar search results and main TLD accredited registrars list
+    vi.mocked(regHooks.useRegistrars).mockImplementation((params) => {
+      if (params && params.tld === 'example') {
+        return {
+          data: {
+            Data: [
+              { ClID: 'REG-OK', Name: 'Ok Registrar', Status: 'ok' },
+              { ClID: 'REG-TERM', Name: 'Term Registrar', Status: 'terminated' },
+            ],
+          },
+          isLoading: false,
+          error: null,
+        } as any;
+      }
+      return {
+        data: {
+          Data: [
+            { ClID: 'REG-SEARCH-OK', Name: 'Search Ok', Status: 'ok' },
+            { ClID: 'REG-SEARCH-RO', Name: 'Search Readonly', Status: 'readonly' },
+            { ClID: 'REG-SEARCH-TERM', Name: 'Search Terminated', Status: 'terminated' },
+          ],
+        },
+        isLoading: false,
+        error: null,
+      } as any;
+    });
 
     // Default mutations: succeed
     vi.mocked(accHooks.useAccreditForTLD).mockReturnValue({
@@ -108,9 +120,21 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
     } as any);
   });
 
+  // Helper: switch to the Registrars tab and wait for content to mount
+  const switchToRegistrarsTab = async () => {
+    // The tab accessible name includes the count badge text (e.g., "Registrars 2")
+    const tabs = screen.getAllByRole('tab');
+    const registrarsTab = tabs.find(t => t.textContent?.includes('Registrars'));
+    expect(registrarsTab).toBeDefined();
+    fireEvent.click(registrarsTab!);
+    // Wait for tab content to become interactive
+    await screen.findByRole('button', { name: /Accredit registrar/i });
+  };
+
   it('opens accredit modal, enforces eligibility, and accredits successfully', async () => {
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open the accredit modal
     fireEvent.click(screen.getByRole('button', { name: /Accredit registrar/i }));
@@ -149,6 +173,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
 
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     fireEvent.click(screen.getByRole('button', { name: /Accredit registrar/i }));
 
@@ -164,6 +189,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
   it('enforces confirmation and de-accredits successfully', async () => {
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open de-accredit dialog for a registrar
     fireEvent.click(screen.getAllByRole('button', { name: /De-accredit/i })[0]);
@@ -201,6 +227,7 @@ describe('TLDDetailPage accreditation and de-accreditation flows', () => {
 
     const wrapper = createWrapper();
     render(<TLDDetailPage params={Promise.resolve({ name: 'example' })} />, { wrapper });
+    await switchToRegistrarsTab();
 
     // Open de-accredit dialog
     fireEvent.click(screen.getAllByRole('button', { name: /De-accredit/i })[0]);

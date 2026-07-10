@@ -1,12 +1,15 @@
 import React from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 
 export interface ListPageLayoutProps {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
-  description: string;
+  /** @deprecated Prefer omitting — titles should be self-explanatory */
+  description?: string;
   actionButton?: React.ReactNode;
+  /** Rendered inline to the right of the title (e.g. WorkflowShortcuts) */
+  headerActions?: React.ReactNode;
   filters?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -16,6 +19,7 @@ export function ListPageLayout({
   title,
   description,
   actionButton,
+  headerActions,
   filters,
   children
 }: ListPageLayoutProps) {
@@ -24,24 +28,22 @@ export function ListPageLayout({
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Icon className="h-8 w-8" />
               {title}
             </h1>
-            <p className="text-muted-foreground mt-2">{description}</p>
+            {headerActions}
           </div>
-          {actionButton && <div>{actionButton}</div>}
+          <div className="flex items-center gap-3">
+            {actionButton}
+          </div>
         </div>
 
         {/* Filters */}
         {filters && (
           <Card>
-            <CardHeader>
-              <CardTitle>Filters</CardTitle>
-              <CardDescription>Search and filter {title.toLowerCase()}</CardDescription>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {filters}
             </CardContent>
           </Card>

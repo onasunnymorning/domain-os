@@ -20,6 +20,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
@@ -50,7 +51,7 @@ func run() int {
 	// Load config from environment
 	cfg := askg.Config{
 		Provider:        "anthropic",
-		Model:           envOrDefault("ASKG_MODEL", anthropicprovider.DefaultModel),
+		Model:           envOrDefault("LLM_MODEL", anthropicprovider.DefaultModel),
 		ClassifierModel: envOrDefault("ASKG_CLASSIFIER_MODEL", anthropicprovider.DefaultClassifier),
 		MaxIterations:   askg.DefaultMaxIterations,
 		APIKey:          os.Getenv("ANTHROPIC_API_KEY"),
@@ -94,8 +95,25 @@ func run() int {
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	tldService := services.NewTLDService(tldRepo, nil)
 
-	// Create the tool executor and model provider
-	executor := askg.NewInProcessToolExecutor(domainService, tldService, logger)
+	// Create the tool executor with optional KnowledgeService
+	var knowledgeSvc interfaces.KnowledgeService
+	projectRoot := os.Getenv("KNOWLEDGE_BASE_DIR")
+	if projectRoot == "" {
+		projectRoot, _ = os.Getwd()
+	}
+	ks, ksErr := services.NewKnowledgeService(projectRoot)
+	if ksErr != nil {
+		slog.Warn("KnowledgeService not available — answer_system_question tool disabled",
+			"error", ksErr,
+			"project_root", projectRoot)
+	} else {
+		knowledgeSvc = ks
+		slog.Info("KnowledgeService loaded",
+			"docs", ks.DocCount(),
+			"chunks", ks.ChunkCount())
+	}
+
+	executor := askg.NewInProcessToolExecutor(domainService, tldService, knowledgeSvc, logger)
 	provider := anthropicprovider.NewAdapter(cfg)
 
 	// Create the orchestrator

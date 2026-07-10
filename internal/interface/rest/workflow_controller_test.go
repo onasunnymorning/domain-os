@@ -5,19 +5,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
 func TestStartRegistrarSync_Returns500WhenTemporalConfigInvalid(t *testing.T) {
-	// Ensure env vars are empty or invalid so Temporal client creation fails fast
-	_ = os.Unsetenv("TMPIO_HOST_PORT")
-	_ = os.Unsetenv("TMPIO_NAME_SPACE")
-	_ = os.Unsetenv("TMPIO_KEY")
-	_ = os.Unsetenv("TMPIO_CERT")
-	_ = os.Unsetenv("TMPIO_QUEUE")
+	// Point Temporal at an unreachable address to guarantee connection failure.
+	// Note: simply unsetting env vars doesn't work — the SDK defaults empty
+	// HostPort to localhost:7233 which succeeds if a local server is running.
+	t.Setenv("TEMPORAL_HOST_PORT", "localhost:1") // port 1 is unreachable
+	t.Setenv("TEMPORAL_NAMESPACE", "")
+	t.Setenv("TEMPORAL_CLIENT_KEY", "")
+	t.Setenv("TEMPORAL_CLIENT_CERT", "")
+	t.Setenv("TEMPORAL_API_KEY", "")
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -24,19 +24,49 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDomains, useDomainCount } from "@/lib/hooks/useDomains";
 import { useRegistrars } from "@/lib/hooks/useRegistrars";
 import { useTLDs } from "@/lib/hooks/useTLDs";
 import { DomainListParams } from "@/lib/types/domain";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser, SlidersHorizontal } from "lucide-react";
+import { Server, Search, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Eraser, SlidersHorizontal, X, Download } from "lucide-react";
+import { getDomains } from "@/lib/api/domains";
+import { WorkflowShortcuts } from "@/components/shared/WorkflowShortcuts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
+import { CopyButton } from "@/components/ui/copy-button";
 
 // Shared labels and help text
 import { STATUS_LABELS, STATUS_DESCRIPTIONS, RGP_LABELS, RGP_DESCRIPTIONS } from "@/lib/constants/domainStatus";
+
+// ---------------------------------------------------------------------------
+// Badge color helpers for status and grace period badges
+// ---------------------------------------------------------------------------
+
+function getStatusBadgeColor(key: string): string {
+  if (key === 'OK') return 'border-emerald-500/40 text-emerald-600 bg-emerald-500/10';
+  if (key === 'Inactive') return 'border-zinc-500/40 text-zinc-500 bg-zinc-500/10';
+  if (key.includes('Hold')) return 'border-red-500/40 text-red-600 bg-red-500/10';
+  if (key.startsWith('Pending')) return 'border-amber-500/40 text-amber-600 bg-amber-500/10';
+  if (key.includes('Prohibited')) return 'border-blue-500/40 text-blue-600 bg-blue-500/10';
+  return 'border-muted-foreground/30 text-muted-foreground';
+}
+
+function getRGPBadgeColor(key: string): string {
+  switch (key) {
+    case 'addPeriodEnd': return 'bg-sky-500/15 text-sky-700 border border-sky-500/30';
+    case 'autoRenewPeriodEnd': return 'bg-teal-500/15 text-teal-700 border border-teal-500/30';
+    case 'renewPeriodEnd': return 'bg-indigo-500/15 text-indigo-700 border border-indigo-500/30';
+    case 'transferLockPeriodEnd': return 'bg-violet-500/15 text-violet-700 border border-violet-500/30';
+    case 'redemptionPeriodEnd': return 'bg-orange-500/15 text-orange-700 border border-orange-500/30';
+    case 'purgeDate': return 'bg-red-500/15 text-red-700 border border-red-500/30';
+    default: return '';
+  }
+}
+
 
 export default function DomainsPage() {
   return (
@@ -81,6 +111,68 @@ function DomainsPageInner() {
   const [pageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      // 1. Fetch filtered domains (large page size, matching current filters)
+      const exportParams: DomainListParams = {
+        pagesize: 10000,
+      };
+      const q = (debouncedName || "").trim();
+      if (q) {
+        if (exactMatch) {
+          exportParams.name_equals = q;
+        } else {
+          exportParams.name_like = q;
+        }
+      }
+      if (clidFilter) exportParams.clid_equals = clidFilter;
+      if (tldFilter) exportParams.tld_equals = tldFilter;
+      if (roidMin) exportParams.roid_greater_than = roidMin;
+      if (roidMax) exportParams.roid_less_than = roidMax;
+      if (createdAfter) exportParams.created_after = `${createdAfter}T00:00:00Z`;
+      if (createdBefore) exportParams.created_before = `${createdBefore}T23:59:59Z`;
+      if (expiresAfter) exportParams.expires_after = `${expiresAfter}T00:00:00Z`;
+      if (expiresBefore) exportParams.expires_before = `${expiresBefore}T23:59:59Z`;
+
+      const res = await getDomains(exportParams);
+      const domains = res.Data || [];
+
+      // 2. Generate CSV content
+      const headers = ['Domain Name', 'TLD', 'Registrar (ClID)', 'Created At', 'Expiry Date', 'Status', 'RGP Status'];
+      const rows = domains.map(d => [
+        d.Name,
+        d.TLDName,
+        d.ClID,
+        d.CreatedAt || '',
+        d.ExpiryDate || '',
+        d.Status || '',
+        d.RGPStatus || ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // 3. Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `domains_export.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export domains CSV:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -141,17 +233,13 @@ function DomainsPageInner() {
   const tldOptions = (tldData?.Data ?? []).map((t) => ({ value: t.Name, label: t.Name }));
 
   // Simple client-side search text for dropdowns
-  const [searchRegistrarByClid, setSearchRegistrarByClid] = useState(false);
   const [clidSearch, setClidSearch] = useState("");
   const [tldSearch, setTldSearch] = useState("");
 
   const filteredRegistrarOptions = registrarOptions.filter((o) => {
     if (!clidSearch) return true;
     const term = clidSearch.toLowerCase();
-    if (searchRegistrarByClid) {
-      return o.value.toLowerCase().includes(term);
-    }
-    return o.nameTerm.toLowerCase().includes(term);
+    return o.value.toLowerCase().includes(term) || o.nameTerm.toLowerCase().includes(term);
   });
   const filteredTldOptions = tldOptions.filter((o) =>
     o.label.toLowerCase().includes(tldSearch.toLowerCase())
@@ -214,16 +302,17 @@ function DomainsPageInner() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Server className="h-8 w-8" />
               Domains
+              {countData?.Count !== undefined && (
+                <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                  {Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(countData.Count)}
+                </span>
+              )}
             </h1>
-            <p className="text-muted-foreground mt-2 font-medium">
-              {countData?.Count 
-                ? `${Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(countData.Count)} total` 
-                : "- total"}
-            </p>
+            <WorkflowShortcuts workflowKeys={['expiry-loop', 'purge-loop', 'restore-workflow']} />
           </div>
           <div>
             <Link href="/domains/create">
@@ -254,13 +343,22 @@ function DomainsPageInner() {
                   </div>
                 </div>
                 <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search domains..."
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
-                    className="pl-9 h-9"
+                    className="pl-9 pr-8 h-9"
                   />
+                  {nameQuery && (
+                    <button
+                      onClick={() => setNameQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      type="button"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -275,22 +373,11 @@ function DomainsPageInner() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-2" align="start">
-                    <div className="flex items-center justify-between mb-2 px-1">
-                      <span className="text-xs font-medium text-muted-foreground">Search by {searchRegistrarByClid ? "ClID" : "Name"}</span>
-                      <div className="flex items-center gap-1.5">
-                        <label htmlFor="search-clid" className="text-[10px] text-muted-foreground cursor-pointer uppercase tracking-wider">
-                          Use ClID
-                        </label>
-                        <Switch
-                          id="search-clid"
-                          checked={searchRegistrarByClid}
-                          onCheckedChange={setSearchRegistrarByClid}
-                          className="scale-75 origin-right"
-                        />
-                      </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-muted-foreground">Search by ClID or name</span>
                     </div>
                     <Input
-                      placeholder={searchRegistrarByClid ? "Search ClID..." : "Search name..."}
+                      placeholder="Search registrar..."
                       value={clidSearch}
                       onChange={(e) => setClidSearch(e.target.value)}
                       className="mb-2"
@@ -376,7 +463,7 @@ function DomainsPageInner() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className={showAdvanced ? "bg-muted" : ""}
+                  className={showAdvanced ? "bg-muted h-9" : "h-9"}
                 >
                   <SlidersHorizontal className="h-4 w-4 mr-2" />
                   Advanced Filters
@@ -387,7 +474,7 @@ function DomainsPageInner() {
                   onClick={resetFilters}
                   aria-label="Reset filters"
                   title="Clear all filters and search"
-                  className="justify-start"
+                  className="justify-start h-9"
                 >
                   <Eraser className="h-4 w-4 mr-2" /> Reset filters
                 </Button>
@@ -477,7 +564,24 @@ function DomainsPageInner() {
             {!error && (
               <>
                 {data?.Meta && data?.Data && data.Data.length > 0 && (
-                  <div className="mb-4 flex justify-end">
+                  <div className="mb-4 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                      className="h-9 font-medium"
+                      title={
+                        (data?.Data?.length ?? 0) === 0
+                          ? "No domains to export"
+                          : exporting
+                          ? "Exporting to CSV..."
+                          : "Export filtered domain list to CSV"
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {exporting ? 'Exporting...' : 'Export CSV'}
+                    </Button>
                     <PaginationButtons />
                   </div>
                 )}
@@ -487,31 +591,10 @@ function DomainsPageInner() {
                     <TableRow>
                       <TableHead>Domain</TableHead>
                       <TableHead className="w-40">Registrar</TableHead>
-                      <TableHead className="w-40">Created</TableHead>
-                      <TableHead className="w-40">Updated</TableHead>
-                      <TableHead className="w-48">Expires</TableHead>
-                      <TableHead className="w-[26rem]">
-                        <div className="flex items-center gap-1">
-                          Status
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button aria-label="Status help" className="inline-flex items-center text-muted-foreground hover:text-foreground">
-                                <HelpCircle className="h-4 w-4" />
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-80 p-3 text-sm" align="start">
-                              <div className="mb-2 font-medium">What do these mean?</div>
-                              <div className="space-y-2 max-h-64 overflow-auto pr-2">
-                                {Object.keys(STATUS_LABELS).map((k) => (
-                                  <div key={k} className="flex items-start gap-2">
-                                    <Badge variant="outline" className="text-xs whitespace-nowrap">{STATUS_LABELS[k]}</Badge>
-                                    <span className="text-muted-foreground">{STATUS_DESCRIPTIONS[k]}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
+                      <TableHead className="w-36">Created</TableHead>
+                      <TableHead className="w-40">Expires</TableHead>
+                      <TableHead className="w-[22rem]">
+                        Status
                       </TableHead>
                       <TableHead className="w-[22rem]">
                         <div className="flex items-center gap-1">
@@ -543,7 +626,7 @@ function DomainsPageInner() {
                       Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell>
-                            <Skeleton className="h-4 w-44" />
+                            <Skeleton className="h-5 w-48" />
                           </TableCell>
                           <TableCell>
                             <Skeleton className="h-5 w-24" />
@@ -555,26 +638,21 @@ function DomainsPageInner() {
                             <Skeleton className="h-4 w-28" />
                           </TableCell>
                           <TableCell>
-                            <Skeleton className="h-4 w-28" />
-                          </TableCell>
-                          <TableCell>
                             <div className="flex gap-1 flex-wrap py-1">
                               <Skeleton className="h-5 w-14" />
                               <Skeleton className="h-5 w-16" />
-                              <Skeleton className="h-5 w-20" />
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap py-1">
                               <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-24" />
                             </div>
                           </TableCell>
                         </TableRow>
                       ))}
                     {!isLoading && (!data?.Data || data.Data.length === 0) && (
                       <TableRow>
-                        <TableCell className="py-8 text-center text-muted-foreground" colSpan={7}>
+                        <TableCell className="py-8 text-center text-muted-foreground" colSpan={6}>
                           No domains found
                         </TableCell>
                       </TableRow>
@@ -595,65 +673,82 @@ function DomainsPageInner() {
                           }}
                           title={`Open ${d.Name}`}
                         >
-                          <TableCell className="font-medium">
-                            <Link className="hover:underline" href={`/domains/${encodeURIComponent(d.Name)}`}>
-                              {d.Name}
-                            </Link>
+                        <TableCell>
+                            <div className="flex items-center gap-1.5 group/name">
+                              <Link className="hover:underline" href={`/domains/${encodeURIComponent(d.Name)}`}>
+                                <span className="text-lg font-light" style={{ fontFamily: 'var(--font-console)' }}>{d.Name}</span>
+                              </Link>
+                              <CopyButton
+                                value={d.Name}
+                                variant="none"
+                                className="shrink-0 rounded p-0.5 text-muted-foreground/0 group-hover/name:text-muted-foreground hover:!text-foreground transition-colors"
+                                iconClassName="h-3.5 w-3.5"
+                                tooltip="Copy domain name"
+                              />
+                            </div>
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <Link href={`/registrars/${encodeURIComponent(d.ClID)}`} className="inline-block">
-                              <Badge variant="outline" className="hover:underline" title={`View registrar ${d.ClID}`}>
+                              <Badge variant="outline" className="hover:underline font-medium" title={`View registrar ${d.ClID}`}>
                                 {d.ClID}
                               </Badge>
                             </Link>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
                             {d.CreatedAt ? formatDistanceToNow(new Date(d.CreatedAt), { addSuffix: true }) : "-"}
                           </TableCell>
-                          <TableCell>
-                            {d.UpdatedAt ? formatDistanceToNow(new Date(d.UpdatedAt), { addSuffix: true }) : "-"}
-                          </TableCell>
-                          <TableCell>
+                          <TableCell className="text-sm">
                             {d.ExpiryDate ? formatDistanceToNow(new Date(d.ExpiryDate), { addSuffix: true }) : "-"}
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
-                              {(() => {
-                                const s: any = (d as any).Status || {};
-                                const entries = Object.entries(s).filter(([, v]) => Boolean(v));
-                                if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
-                                return entries.map(([k]) => {
-                                  const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
-                                  const title = STATUS_DESCRIPTIONS[k] || label;
-                                  return (
-                                    <Badge key={k} variant="outline" className="text-xs" title={title}>
-                                      {label}
-                                    </Badge>
-                                  );
-                                });
-                              })()}
+                              <TooltipProvider delayDuration={150}>
+                                {(() => {
+                                  const s: any = (d as any).Status || {};
+                                  const entries = Object.entries(s).filter(([, v]) => Boolean(v));
+                                  if (entries.length === 0) return <span className="text-muted-foreground">-</span>;
+                                  return entries.map(([k]) => {
+                                    const label = STATUS_LABELS[k] || (k === 'OK' ? 'OK' : k.replace(/([a-z])([A-Z])/g, '$1 $2'));
+                                    const desc = STATUS_DESCRIPTIONS[k] || label;
+                                    const color = getStatusBadgeColor(k);
+                                    return (
+                                      <Tooltip key={k}>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className={`text-[10px] cursor-help border ${color}`}>
+                                            {label}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center" className="max-w-xs text-xs">
+                                          <div className="font-semibold">{label}</div>
+                                          <div className="text-muted-foreground">{desc}</div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    );
+                                  });
+                                })()}
+                              </TooltipProvider>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
                               {(() => {
                                 const r: any = (d as any).RGPStatus || {};
-                                const labels: string[] = [];
+                                const active: { label: string; key: string }[] = [];
                                 const inFuture = (v?: string) => {
                                   if (!v) return false;
                                   const t = new Date(v).getTime();
                                   return Number.isFinite(t) && t > Date.now();
                                 };
-                                if (inFuture(r.addPeriodEnd)) labels.push(RGP_LABELS.addPeriodEnd);
-                                if (inFuture(r.autoRenewPeriodEnd)) labels.push(RGP_LABELS.autoRenewPeriodEnd);
-                                if (inFuture(r.renewPeriodEnd)) labels.push(RGP_LABELS.renewPeriodEnd);
-                                if (inFuture(r.transferLockPeriodEnd)) labels.push(RGP_LABELS.transferLockPeriodEnd);
-                                if (inFuture(r.redemptionPeriodEnd)) labels.push(RGP_LABELS.redemptionPeriodEnd);
-                                if (inFuture(r.purgeDate)) labels.push(RGP_LABELS.purgeDate);
-                                if (labels.length === 0) return <span className="text-muted-foreground">-</span>;
-                                return labels.map((lbl) => (
-                                  <Badge key={lbl} variant="secondary" className="text-xs" title={RGP_DESCRIPTIONS[lbl] || lbl}>
-                                    {lbl}
+                                if (inFuture(r.addPeriodEnd)) active.push({ label: RGP_LABELS.addPeriodEnd, key: 'addPeriodEnd' });
+                                if (inFuture(r.autoRenewPeriodEnd)) active.push({ label: RGP_LABELS.autoRenewPeriodEnd, key: 'autoRenewPeriodEnd' });
+                                if (inFuture(r.renewPeriodEnd)) active.push({ label: RGP_LABELS.renewPeriodEnd, key: 'renewPeriodEnd' });
+                                if (inFuture(r.transferLockPeriodEnd)) active.push({ label: RGP_LABELS.transferLockPeriodEnd, key: 'transferLockPeriodEnd' });
+                                if (inFuture(r.redemptionPeriodEnd)) active.push({ label: RGP_LABELS.redemptionPeriodEnd, key: 'redemptionPeriodEnd' });
+                                if (inFuture(r.purgeDate)) active.push({ label: RGP_LABELS.purgeDate, key: 'purgeDate' });
+                                if (active.length === 0) return <span className="text-muted-foreground">-</span>;
+                                return active.map(({ label, key }) => (
+                                  <Badge key={key} variant="secondary" className={`text-[10px] ${getRGPBadgeColor(key)}`} title={RGP_DESCRIPTIONS[label] || label}>
+                                    {label}
                                   </Badge>
                                 ));
                               })()}

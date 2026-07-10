@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 )
 
 // GetPurgeableDomainCount takes a PurgeableDomainsQuery and returns the number of domains that have expired and are past the grace period (ExpiryDate is in the past or before the supplied date). It gets these through the admin API.
-func GetPurgeableDomainCount(correlationID string, query queries.PurgeableDomainsQuery) (*response.CountResult, error) {
+func GetPurgeableDomainCount(ctx context.Context, correlationID string, query queries.PurgeableDomainsQuery) (*response.CountResult, error) {
 	// COUNT_ENDPOINT := fmt.Sprintf("http://%s:%s/domains/expiring/count", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	COUNT_ENDPOINT := fmt.Sprintf("%s/domains/purgeable/count", BASEURL)
 
@@ -27,11 +28,10 @@ func GetPurgeableDomainCount(correlationID string, query queries.PurgeableDomain
 	}
 
 	// check the total amount of domains to renew
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -44,7 +44,7 @@ func GetPurgeableDomainCount(correlationID string, query queries.PurgeableDomain
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch domain count (%d): %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Parse the result

@@ -1,0 +1,14 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        "frontend/package.json",
+        "deploy/helm/dos/Chart.yaml",
+        "deploy/helm/v2/admin-api/Chart.yaml",
+        "deploy/helm/v2/workers/Chart.yaml"
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannregistrars"
 )
 
@@ -10,7 +11,7 @@ import (
 // This file conatinas complementary information to the IANA registrar list.
 // It is useful only once, during system init, to enrich the IANA registrar list
 // before importing registrars for the first time
-func GetICANNRegistrars(correlationID, filename string) ([]icannregistrars.CSVRegistrar, error) {
+func GetICANNRegistrars(ctx context.Context, correlationID, filename string) ([]icannregistrars.CSVRegistrar, error) {
 	rars, err := icannregistrars.GetICANNCSVRegistrarsFromFile(filename)
 	if err != nil {
 		return nil, err

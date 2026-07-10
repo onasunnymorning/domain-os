@@ -7,10 +7,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RegistrarsPage from '../page';
 import * as registrarHooks from '@/lib/hooks/useRegistrars';
+import * as tldHooks from '@/lib/hooks/useTLDs';
 import { RegistrarStatus, IANARegistrarStatus } from '@/lib/types/registrar';
 
 // Mock the hooks and components
 vi.mock('@/lib/hooks/useRegistrars');
+vi.mock('@/lib/hooks/useTLDs');
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
@@ -39,6 +41,12 @@ describe('RegistrarsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    // Setup default mock for TLDs
+    vi.mocked(tldHooks.useTLDs).mockReturnValue({
+      data: { Data: [{ Name: 'com' }, { Name: 'net' }] },
+      isLoading: false,
+    } as any);
+
     // Setup default mocks for System Registrars
     vi.mocked(registrarHooks.useRegistrars).mockReturnValue({
       data: { Data: [], Meta: undefined },
@@ -83,19 +91,21 @@ describe('RegistrarsPage', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
       // DashboardLayout is rendered (check for its structure instead of testid)
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
 
     it('should display page header with correct title', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
 
     it('should display page description', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      expect(screen.getByText(/Manage.*registrars/i)).toBeInTheDocument();
+      // Description was removed per "no stating the obvious" UI rule
+      // Verify the page renders with the Create Registrar action instead
+      expect(screen.getByText('Create Registrar')).toBeInTheDocument();
     });
   });
 
@@ -175,7 +185,7 @@ describe('RegistrarsPage', () => {
 
       // Loading state shows skeleton rows in a table, not pagination buttons
       // Verify the page renders without crashing in loading state
-      expect(screen.getByText('Registrar Management')).toBeInTheDocument();
+      expect(screen.getByText('Registrars')).toBeInTheDocument();
     });
   });
 
@@ -209,7 +219,7 @@ describe('RegistrarsPage', () => {
     it('should have accessible heading hierarchy', () => {
       render(<RegistrarsPage />, { wrapper: createWrapper() });
       
-      const heading = screen.getByRole('heading', { name: 'Registrar Management' });
+      const heading = screen.getByRole('heading', { name: 'Registrars' });
       expect(heading).toBeInTheDocument();
     });
   });

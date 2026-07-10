@@ -31,6 +31,7 @@ func (s *PriceSuite) SetupSuite() {
 	// Create a Registry Operator
 	ro, _ := entities.NewRegistryOperator("PriceSuiteRo", "PriceSuiteRo", "PriceSuiteRo@my.email")
 	roRepo := NewGORMRegistryOperatorRepository(s.db)
+	_ = roRepo.DeleteByRyID(context.Background(), ro.RyID.String())
 	_, err := roRepo.Create(context.Background(), ro)
 	s.Require().NoError(err)
 	createdRo, err := roRepo.GetByRyID(context.Background(), ro.RyID.String())
@@ -70,6 +71,10 @@ func (s *PriceSuite) TearDownSuite() {
 	if s.PhaseName != "" {
 		repo := NewGormPhaseRepository(s.db)
 		_ = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, s.PhaseName)
+	}
+	if s.ry != nil {
+		roRepo := NewGORMRegistryOperatorRepository(s.db)
+		_ = roRepo.DeleteByRyID(context.Background(), s.ry.RyID.String())
 	}
 }
 

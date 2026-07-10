@@ -27,9 +27,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNNDNs, useNNDNCount } from "@/lib/hooks/useNNDNs";
 import { useTLDs } from "@/lib/hooks/useTLDs";
-import { NNDNListParams } from "@/lib/api/nndns";
+import { getNNDNs, NNDNListParams } from "@/lib/api/nndns";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { ServerOff, Search, ChevronDown, ChevronLeft, ChevronRight, Eraser, SlidersHorizontal } from "lucide-react";
+import { ServerOff, Search, ChevronDown, ChevronLeft, ChevronRight, Eraser, SlidersHorizontal, X, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NNDNsPage() {
@@ -65,6 +65,69 @@ function NNDNsPageInner() {
   const [pageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      // 1. Fetch filtered NNDNs (large page size, matching current filters)
+      const exportParams: NNDNListParams = {
+        pagesize: 10000,
+      };
+      
+      const qName = (nameQuery || "").trim();
+      if (qName) {
+        exportParams.name_like = qName;
+      }
+
+      if (tldFilter) {
+        exportParams.tld_equals = tldFilter;
+      }
+
+      const qReason = (reasonLike || "").trim();
+      if (qReason) {
+        if (exactReasonMatch) {
+          exportParams.reason_equals = qReason;
+        } else {
+          exportParams.reason_like = qReason;
+        }
+      }
+
+      const res = await getNNDNs(exportParams);
+      const nndns = res.Data || [];
+
+      // 2. Generate CSV content
+      const headers = ['Blocked Name', 'Unicode Name', 'TLD', 'State', 'Reason', 'Created At'];
+      const rows = nndns.map(n => [
+        n.Name,
+        n.UName || '',
+        n.TLDName,
+        n.NameState || '',
+        n.Reason || '',
+        n.CreatedAt || ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // 3. Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `nndns_export.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export NNDN CSV:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Sync state to URL
   useEffect(() => {
@@ -173,25 +236,22 @@ function NNDNsPageInner() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <ServerOff className="h-8 w-8" />
-              NNDNs (Non-Standard Names)
+              Blocking
             </h1>
-            <p className="text-muted-foreground mt-2">
-              Browse and search non-standard constraints like withheld or blocked domains
-            </p>
           </div>
         </div>
 
         {/* Info Box */}
         <Card>
           <CardHeader>
-            <CardTitle>NNDN Directory</CardTitle>
+            <CardTitle>Blocked Names</CardTitle>
             <CardDescription>
-              Use the filters below to browse registry-blocked and IDN mirrored domains.
+              Registry-blocked and IDN mirrored domains
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">
-              Total NNDNs: <span className="font-semibold">{countData?.Count ?? "-"}</span>
+              Total: <span className="font-semibold">{countData?.Count ?? "-"}</span>
             </div>
           </CardContent>
         </Card>
@@ -206,13 +266,22 @@ function NNDNsPageInner() {
                   <span className="text-sm font-medium text-muted-foreground">Domain Name</span>
                 </div>
                 <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search NNDNs by name..."
+                    placeholder="Search blocked names..."
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
-                    className="pl-9 h-9"
+                    className="pl-9 pr-8 h-9"
                   />
+                  {nameQuery && (
+                    <button
+                      onClick={() => setNameQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      type="button"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -269,7 +338,7 @@ function NNDNsPageInner() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className={showAdvanced ? "bg-muted" : ""}
+                  className={showAdvanced ? "bg-muted h-9" : "h-9"}
                 >
                   <SlidersHorizontal className="h-4 w-4 mr-2" />
                   Advanced Filters
@@ -280,7 +349,7 @@ function NNDNsPageInner() {
                   onClick={resetFilters}
                   aria-label="Reset filters"
                   title="Clear all filters and search"
-                  className="justify-start"
+                  className="justify-start h-9"
                 >
                   <Eraser className="h-4 w-4 mr-2" /> Reset filters
                 </Button>
@@ -325,14 +394,31 @@ function NNDNsPageInner() {
           <CardContent className="pt-6">
             {error && (
               <div className="text-center py-8 text-red-600">
-                Error loading NNDNs: {(error as any)?.message || "Unknown error"}
+                Error loading blocked names: {(error as any)?.message || "Unknown error"}
               </div>
             )}
 
             {!error && (
               <>
                 {data?.Meta && data?.Data && data.Data.length > 0 && (
-                  <div className="mb-4 flex justify-end">
+                  <div className="mb-4 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      disabled={exporting || (data?.Data?.length ?? 0) === 0}
+                      className="h-9 font-medium"
+                      title={
+                        (data?.Data?.length ?? 0) === 0
+                          ? "No blocked names to export"
+                          : exporting
+                          ? "Exporting to CSV..."
+                          : "Export filtered blocked names list to CSV"
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {exporting ? 'Exporting...' : 'Export CSV'}
+                    </Button>
                     <PaginationButtons />
                   </div>
                 )}
@@ -365,7 +451,7 @@ function NNDNsPageInner() {
                     {!isLoading && (!data?.Data || data.Data.length === 0) && (
                       <TableRow>
                         <TableCell className="py-8 text-center text-muted-foreground" colSpan={7}>
-                          No NNDNs found
+                          No blocked names found
                         </TableCell>
                       </TableRow>
                     )}
@@ -404,7 +490,7 @@ function NNDNsPageInner() {
             {data?.Meta && data?.Data && data.Data.length > 0 && (
               <div className="mt-4 flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">
-                  Showing {data.Data.length} NNDN{data.Data.length !== 1 ? "s" : ""}
+                  Showing {data.Data.length} blocked name{data.Data.length !== 1 ? "s" : ""}
                 </div>
                 <PaginationButtons />
               </div>

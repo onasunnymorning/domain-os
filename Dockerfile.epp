@@ -2,7 +2,7 @@
 # Multi-stage build to keep the final image small
 
 # Stage 1: Build the EPP server binary
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 WORKDIR /build
 
@@ -11,7 +11,8 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 RUN go mod verify
 
 # Copy source code
@@ -20,17 +21,26 @@ COPY internal/ ./internal/
 
 # Build the EPP server binary
 # CGO is disabled for a fully static binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s -extldflags "-static"' \
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -extldflags '-static' \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
     -a \
     -o epp-server \
     ./cmd/epp
 
 # Stage 2: Create minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.21.4
 
-# Install runtime dependencies
-RUN apk --no-cache add \
+# Patch base-image OS packages, then install runtime dependencies
+RUN apk upgrade --no-cache && \
+    apk --no-cache add \
     ca-certificates \
     tzdata \
     netcat-openbsd \

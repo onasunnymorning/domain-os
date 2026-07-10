@@ -8,10 +8,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"log/slog"
 	"math/big"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/beevik/etree"
@@ -53,6 +56,8 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+
+	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "build_date", buildinfo.BuildDate)
 
 	// Initialize Redis client
 	redisHost := os.Getenv("REDIS_HOST")
@@ -126,13 +131,19 @@ func main() {
 		MaxMessageSize: 1000, // uint32 type in new library
 	}
 
+	eppPort := 700
+	if p := os.Getenv("EPP_PORT"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil {
+			eppPort = parsed
+		}
+	}
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		Port: 700,
+		Port: eppPort,
 	})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Listening on port 700")
+	fmt.Printf("Listening on port %d\n", eppPort)
 
 	if err := server.Serve(listener); err != nil {
 		panic(err)

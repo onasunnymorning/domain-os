@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-func CountRegistrars(correlationID string) (*response.CountResult, error) {
+func CountRegistrars(ctx context.Context, correlationID string) (*response.CountResult, error) {
 	ENDPOINT := fmt.Sprintf("%s/registrars/count", BASEURL)
 
 	// Set up an API client
@@ -23,11 +24,10 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 	}
 
 	// Create the request
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)
@@ -41,7 +41,7 @@ func CountRegistrars(correlationID string) (*response.CountResult, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	countResult := &response.CountResult{}

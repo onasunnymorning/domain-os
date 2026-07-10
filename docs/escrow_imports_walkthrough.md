@@ -8,27 +8,27 @@ The workflow now consists of 5 distinct stages, each passing state via S3 Assets
 
 ```mermaid
 flowchart TB
-    Start((Start)) --> A[ParseAndAssetize]
-    A -->|AssetKeys| B[CollateAssets]
-    B -->|Ryde.db Key| C[RegistrarMap]
-    C -->|Ryde.db Key| D[StageImport]
+    Start((Start)) --> A[ParseAndExtractAssets]
+    A -->|AssetKeys| B[BuildStagingDatabase]
+    B -->|Ryde.db Key| C[ResolveRegistrars]
+    C -->|Ryde.db Key| D[ApplyRegistrarMappings]
     D -->|Staged.db Key| E[ExecuteImport]
     E --> End((Done))
 ```
 
 ## Implementation Details
 
-### 1. ParseAndAssetize (Activity)
+### 1. ParseAndExtractAssets (Activity)
 *   **Input**: XML Object Key
 *   **Output**: List of CSV Asset Keys
 *   **Action**: Streams XML, generates CSVs for each entity type, uploads to S3. Replaces `StreamingAnalysis`.
 
-### 2. CollateAssets (Activity)
+### 2. BuildStagingDatabase (Activity)
 *   **Input**: Asset Keys
 *   **Output**: `ryde.db` Key
 *   **Action**: Ingests CSV assets into a monolithic SQLite database (`ryde.db`).
 
-### 3. RegistrarMap (Activity)
+### 3. ResolveRegistrars (Activity)
 *   **Input**: `ryde.db` Key, Overrides
 *   **Output**: `ryde.db` Key (Updated)
 *   **Action**: 
@@ -38,7 +38,7 @@ flowchart TB
     4. Persists mappings to `registrar_mapping` table in `ryde.db`.
     5. Uploads updated DB.
 
-### 4. StageImport (Activity)
+### 4. ApplyRegistrarMappings (Activity)
 *   **Input**: `ryde.db` Key
 *   **Output**: `staged.db` Key
 *   **Action**:

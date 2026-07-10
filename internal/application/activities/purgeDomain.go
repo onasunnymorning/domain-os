@@ -1,13 +1,14 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 )
 
 // PurgeDomain purges (deletes) a domain from the system.
-func PurgeDomain(correlationID, domainName string) error {
+func PurgeDomain(ctx context.Context, correlationID, domainName string) error {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/purge", BASEURL, domainName)
 
 	// Set up an API client
@@ -23,11 +24,10 @@ func PurgeDomain(correlationID, domainName string) error {
 	}
 
 	// Delete the domain
-	req, err := http.NewRequest("DELETE", URL.String(), nil)
+	req, err := prepareRequest(ctx, "DELETE", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -40,7 +40,7 @@ func PurgeDomain(correlationID, domainName string) error {
 	}
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil
