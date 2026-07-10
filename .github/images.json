@@ -1,0 +1,8 @@
+[
+  { "name": "domain-os",          "context": ".",          "file": "./Dockerfile" },
+  { "name": "unified-worker",     "context": ".",          "file": "./cmd/workers/unified/Dockerfile" },
+  { "name": "epp-server",         "context": ".",          "file": "./Dockerfile.epp" },
+  { "name": "whois",              "context": ".",          "file": "./cmd/whois/Dockerfile" },
+  { "name": "mcp-server",         "context": ".",          "file": "./Dockerfile.mcp" },
+  { "name": "domain-os-frontend", "context": "./frontend", "file": "./frontend/Dockerfile" }
+]

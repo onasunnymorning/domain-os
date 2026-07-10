@@ -33,11 +33,11 @@ ENV NODE_ENV=production
 RUN apk upgrade --no-cache && \
     rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
-# App version is genuinely build-time metadata. Stamping it as a runtime ENV in
-# this stage lets PublicEnvScript pick it up like any other NEXT_PUBLIC_* var,
-# while still allowing an override with `docker run -e`.
-ARG NEXT_PUBLIC_APP_VERSION="dev"
-ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
+# NEXT_PUBLIC_APP_VERSION is intentionally NOT baked in. next-runtime-env reads
+# it from the container environment at startup (see lib/env.ts), so a single
+# image serves every version and releases are promoted by digest rather than
+# rebuilt. The deployment sets it; the contract declares it for the frontend.
+# See docs/adr/0001-runtime-env-configuration.md and docs/ci-cd.md.
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
