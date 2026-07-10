@@ -2,13 +2,13 @@
 
 api:
   replicaCount: 1
-  image: geapex/domain-os
+  image: gprins/domain-os
   tag: latest
   imagePullPolicy: IfNotPresent
 
 unifiedworker:
   replicaCount: 1
-  image: geapex/unified-worker
+  image: gprins/unified-worker
   tag: latest
   imagePullPolicy: IfNotPresent
 

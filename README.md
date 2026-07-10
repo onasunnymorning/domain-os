@@ -60,12 +60,12 @@ graph LR
 
 | Service | Port | Docker Image | Health Check |
 |---|---|---|---|
-| Admin API | 8080 | `geapex/domain-os` | `GET /ping` |
-| Unified Worker | — | `geapex/unified-worker` | Temporal heartbeat |
-| EPP Server | 700 | `geapex/epp-server` | TCP connect |
-| WHOIS Server | 43 | `geapex/whois` | TCP connect |
-| MCP Server | 3001 | `geapex/mcp-server` | `GET /healthz` |
-| Frontend | 3000 | `geapex/domain-os-frontend` | — |
+| Admin API | 8080 | `gprins/domain-os` | `GET /ping` |
+| Unified Worker | — | `gprins/unified-worker` | Temporal heartbeat |
+| EPP Server | 700 | `gprins/epp-server` | TCP connect |
+| WHOIS Server | 43 | `gprins/whois` | TCP connect |
+| MCP Server | 3001 | `gprins/mcp-server` | `GET /healthz` |
+| Frontend | 3000 | `gprins/domain-os-frontend` | — |
 
 ### Infrastructure Dependencies
 

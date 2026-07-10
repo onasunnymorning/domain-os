@@ -1,10 +1,10 @@
 {
   "schema_version": "2",
   "app_version": "0.7.0",
-  "generated": "2026-07-10T01:46:19Z",
+  "generated": "2026-07-10T15:50:42Z",
   "services": {
     "admin-api": {
-      "image": "geapex/domain-os",
+      "image": "gprins/domain-os",
       "port": 8080,
       "protocol": "http",
       "env_injection": "runtime",
@@ -247,7 +247,7 @@
       }
     },
     "epp-server": {
-      "image": "geapex/epp-server",
+      "image": "gprins/epp-server",
       "port": 700,
       "protocol": "tls",
       "env_injection": "runtime",
@@ -287,7 +287,7 @@
       }
     },
     "frontend": {
-      "image": "geapex/domain-os-frontend",
+      "image": "gprins/domain-os-frontend",
       "port": 3000,
       "protocol": "http",
       "env_injection": "runtime",
@@ -356,7 +356,7 @@
       }
     },
     "mcp-server": {
-      "image": "geapex/mcp-server",
+      "image": "gprins/mcp-server",
       "port": 3001,
       "protocol": "http",
       "env_injection": "runtime",
@@ -413,7 +413,7 @@
       }
     },
     "unified-worker": {
-      "image": "geapex/unified-worker",
+      "image": "gprins/unified-worker",
       "env_injection": "runtime",
       "health_check": {
         "type": "temporal-heartbeat"
@@ -602,7 +602,7 @@
       }
     },
     "whois": {
-      "image": "geapex/whois",
+      "image": "gprins/whois",
       "port": 43,
       "protocol": "tcp",
       "env_injection": "runtime",

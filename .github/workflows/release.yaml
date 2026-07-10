@@ -59,9 +59,9 @@ jobs:
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             NEXT_PUBLIC_APP_VERSION=${{ steps.version.outputs.version }}
           tags: |
-            geapex/${{ matrix.image.name }}:${{ steps.version.outputs.version }}
-            geapex/${{ matrix.image.name }}:${{ github.sha }}
-            geapex/${{ matrix.image.name }}:latest
+            gprins/${{ matrix.image.name }}:${{ steps.version.outputs.version }}
+            gprins/${{ matrix.image.name }}:${{ github.sha }}
+            gprins/${{ matrix.image.name }}:latest
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 

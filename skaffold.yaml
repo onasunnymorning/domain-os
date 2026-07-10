@@ -6,7 +6,7 @@ build:
   local:
     push: false
   artifacts:
-    - image: geapex/domain-os
+    - image: gprins/domain-os
       context: .
       docker:
         dockerfile: Dockerfile
@@ -16,7 +16,7 @@ build:
             dest: .
           - src: 'cmd/api/**/*.go'
             dest: .
-    - image: geapex/unified-worker
+    - image: gprins/unified-worker
       context: .
       docker:
         dockerfile: cmd/workers/unified/Dockerfile
@@ -26,7 +26,7 @@ build:
             dest: .
           - src: 'cmd/workers/unified/**/*.go'
             dest: .
-    - image: geapex/whois
+    - image: gprins/whois
       context: .
       docker:
         dockerfile: cmd/whois/Dockerfile
@@ -44,8 +44,8 @@ manifests:
         valuesFiles:
           - deploy/helm/dos/values-local.yaml
         setValues:
-          api.image: geapex/domain-os
-          unifiedworker.image: geapex/unified-worker
+          api.image: gprins/domain-os
+          unifiedworker.image: gprins/unified-worker
 
 
 

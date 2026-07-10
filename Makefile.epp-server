@@ -69,8 +69,8 @@ clean:
 # Build Docker image
 docker-build:
 	@echo "Building EPP server Docker image..."
-	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
-	@echo "✓ Docker image built: geapex/epp-server:latest"
+	docker build -f Dockerfile.epp -t gprins/epp-server:latest .
+	@echo "✓ Docker image built: gprins/epp-server:latest"
 
 # Run EPP server with Docker Compose
 docker-run:
@@ -97,7 +97,7 @@ docker-shell:
 # Run full stack (all essential services: DB, Redis, Admin API, EPP Server)
 docker-stack:
 	@echo "Building EPP server image..."
-	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	docker build -f Dockerfile.epp -t gprins/epp-server:latest .
 	@echo "Starting full EPP stack (all essential services)..."
 	BRANCH=latest doppler run -- docker compose --profile essential up -d
 	@echo "✓ EPP stack is running"
@@ -111,7 +111,7 @@ docker-stack:
 # Run minimal stack (just Redis + EPP server for testing)
 docker-stack-minimal:
 	@echo "Building EPP server image..."
-	docker build -f Dockerfile.epp -t geapex/epp-server:latest .
+	docker build -f Dockerfile.epp -t gprins/epp-server:latest .
 	@echo "Starting minimal EPP stack (Redis + EPP Server only)..."
 	BRANCH=latest doppler run -- docker compose --profile essential up -d redis epp-server
 	@echo "✓ Minimal EPP stack is running"

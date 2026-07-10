@@ -30,7 +30,7 @@ services:
 
 # Core API container
   admin-api:
-    image: "geapex/domain-os:${BRANCH}"
+    image: "gprins/domain-os:${BRANCH}"
     restart: "no"
     profiles: [essential, full]
     healthcheck:
@@ -116,7 +116,7 @@ services:
     build:
       context: .
       dockerfile: ./cmd/workers/unified/Dockerfile
-    image: geapex/unified-worker:${BRANCH}
+    image: gprins/unified-worker:${BRANCH}
     restart: "no"
     profiles: [essential, full]
     depends_on:
