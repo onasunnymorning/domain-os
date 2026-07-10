@@ -30,9 +30,9 @@ and consumed by every workflow that needs it. `internal/config`'s
 file lists exactly the services in the [deployment contract](../deploy/contract.json),
 so a service can never be added to the contract but forgotten in the pipeline.
 
-All six images publish under the `gprins/` Docker Hub namespace:
-`domain-os`, `unified-worker`, `epp-server`, `whois`, `mcp-server`,
-`domain-os-frontend`.
+All six images publish under the `gprins/` Docker Hub namespace, each named
+`domain-os-<role>`: `domain-os-api`, `domain-os-worker`, `domain-os-epp`,
+`domain-os-whois`, `domain-os-mcp`, `domain-os-frontend`.
 
 ## Workflows
 
