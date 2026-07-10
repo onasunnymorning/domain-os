@@ -34,8 +34,6 @@ export const getTemporalNamespace = () => env('NEXT_PUBLIC_TEMPORAL_NAMESPACE') 
 
 export const getStorageUiUrl = () => env('NEXT_PUBLIC_STORAGE_UI_URL') || 'http://localhost:9001';
 
-export const getGrafanaUrl = () => env('NEXT_PUBLIC_GRAFANA_URL') || '';
-
 export const getPostHogToken = () => env('NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN') || '';
 
 export const getPostHogHost = () => env('NEXT_PUBLIC_POSTHOG_HOST') || 'https://us.i.posthog.com';

@@ -1,7 +1,7 @@
 {
   "schema_version": "2",
   "app_version": "0.7.0",
-  "generated": "2026-07-10T01:27:35Z",
+  "generated": "2026-07-10T01:46:19Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
@@ -338,10 +338,6 @@
             "name": "NEXT_PUBLIC_TEMPORAL_NAMESPACE",
             "default": "default",
             "description": "Temporal namespace used to build schedule deep-links"
-          },
-          {
-            "name": "NEXT_PUBLIC_GRAFANA_URL",
-            "description": "Grafana dashboard URL"
           },
           {
             "name": "NEXT_PUBLIC_STORAGE_UI_URL",

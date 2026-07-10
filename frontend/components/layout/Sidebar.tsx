@@ -14,8 +14,7 @@ import {
   Server,
   ChevronLeft,
   ServerOff,
-  Zap,
-  Cloud
+  Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
@@ -29,7 +28,6 @@ const navigation = [
   { name: 'Domains', href: '/domains', icon: Server },
   { name: 'Blocking', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
-  { name: 'Cloud', href: '/cloud', icon: Cloud },
   { name: 'Documentation', href: '/docs', icon: FileText },
 ];
 
