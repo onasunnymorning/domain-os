@@ -80,7 +80,7 @@ type serviceMeta struct {
 var serviceMetaRegistry = []serviceMeta{
 	{
 		ContractName: "admin-api",
-		Image:        "geapex/domain-os",
+		Image:        "gprins/domain-os",
 		Port:         8080,
 		Protocol:     "http",
 		HealthCheck:  &HealthCheck{Type: "http", Path: "/ping", Port: 8080},
@@ -88,14 +88,14 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "unified-worker",
-		Image:        "geapex/unified-worker",
+		Image:        "gprins/unified-worker",
 		Protocol:     "",
 		HealthCheck:  &HealthCheck{Type: "temporal-heartbeat"},
 		Services:     []Service{ServiceWorker},
 	},
 	{
 		ContractName: "epp-server",
-		Image:        "geapex/epp-server",
+		Image:        "gprins/epp-server",
 		Port:         700,
 		Protocol:     "tls",
 		HealthCheck:  &HealthCheck{Type: "tcp", Port: 700},
@@ -103,7 +103,7 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "whois",
-		Image:        "geapex/whois",
+		Image:        "gprins/whois",
 		Port:         43,
 		Protocol:     "tcp",
 		HealthCheck:  &HealthCheck{Type: "tcp", Port: 43},
@@ -111,7 +111,7 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "mcp-server",
-		Image:        "geapex/mcp-server",
+		Image:        "gprins/mcp-server",
 		Port:         3001,
 		Protocol:     "http",
 		HealthCheck:  &HealthCheck{Type: "http", Path: "/healthz", Port: 3001},
@@ -119,7 +119,7 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 	{
 		ContractName: "frontend",
-		Image:        "geapex/domain-os-frontend",
+		Image:        "gprins/domain-os-frontend",
 		Port:         3000,
 		Protocol:     "http",
 		// Unauthenticated route handler; GET / would work but sits behind the

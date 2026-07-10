@@ -25,11 +25,11 @@ if tilt_mode == 'docker':
     # ─── Docker Mode: everything runs as containers ───────────────────────────
     docker_compose('./docker-compose.yml', profiles=['full'], env_file='.env.tilt')
 
-    docker_build('geapex/domain-os:'      + tag, '.', dockerfile='Dockerfile',                        build_args={'SKIP_SWAG': 'true'})
-    docker_build('geapex/whois:'          + tag, '.', dockerfile='./cmd/whois/Dockerfile')
-    docker_build('geapex/epp-server:'     + tag, '.', dockerfile='Dockerfile.epp')
-    docker_build('geapex/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
-    docker_build('geapex/mcp-server:'     + tag, '.', dockerfile='Dockerfile.mcp')
+    docker_build('gprins/domain-os:'      + tag, '.', dockerfile='Dockerfile',                        build_args={'SKIP_SWAG': 'true'})
+    docker_build('gprins/whois:'          + tag, '.', dockerfile='./cmd/whois/Dockerfile')
+    docker_build('gprins/epp-server:'     + tag, '.', dockerfile='Dockerfile.epp')
+    docker_build('gprins/unified-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
+    docker_build('gprins/mcp-server:'     + tag, '.', dockerfile='Dockerfile.mcp')
 
     dc_resource('db',               labels=['infrastructure'])
     dc_resource('redis',            labels=['infrastructure'])

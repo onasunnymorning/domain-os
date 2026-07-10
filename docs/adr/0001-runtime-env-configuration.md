@@ -7,7 +7,7 @@
 
 ## Context
 
-The frontend is a Next.js App Router application shipped as `geapex/domain-os-frontend`.
+The frontend is a Next.js App Router application shipped as `gprins/domain-os-frontend`.
 Next.js replaces every `process.env.NEXT_PUBLIC_*` reference with a string literal
 at `next build` time. Any value read that way is therefore frozen into the JS
 bundle when the image is built.
