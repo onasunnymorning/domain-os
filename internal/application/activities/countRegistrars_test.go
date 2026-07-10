@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,10 +83,10 @@ func TestCountRegistrars(t *testing.T) {
 			}()
 
 			// Invoke the function under test
-			countResult, err := CountRegistrars(tc.correlationID)
+			countResult, err := CountRegistrars(context.Background(), tc.correlationID)
 
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("CountRegistrars() error = %v, wantErr %v", err, tc.wantErr)
+				t.Fatalf("CountRegistrars(context.Background(), ) error = %v, wantErr %v", err, tc.wantErr)
 			}
 
 			// If no error is expected, verify the returned count

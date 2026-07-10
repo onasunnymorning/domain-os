@@ -2,6 +2,7 @@ package rest
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 )
 
 // PingController is a controller for the ping endpoint
@@ -19,5 +20,10 @@ func NewPingController(e *gin.Engine) *PingController {
 
 // Ping is the handler for the ping endpoint
 func (ctrl *PingController) Ping(ctx *gin.Context) {
-	ctx.JSON(200, gin.H{"message": "pong"})
+	ctx.JSON(200, gin.H{
+		"message":    "pong",
+		"version":    buildinfo.Version,
+		"git_sha":    buildinfo.GitSHA,
+		"build_date": buildinfo.BuildDate,
+	})
 }

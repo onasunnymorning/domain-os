@@ -43,6 +43,18 @@ func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, prelo
 
 	tld := FromDBTLD(dbtld)
 
+	// Count the registrars and domains
+	var registrarCount int64
+	var domainCount int64
+	if err := repo.db.WithContext(ctx).Table("accreditations").Where("tld_name = ?", name).Count(&registrarCount).Error; err != nil {
+		return nil, err
+	}
+	if err := repo.db.WithContext(ctx).Table("domains").Where("tld_name = ?", name).Count(&domainCount).Error; err != nil {
+		return nil, err
+	}
+	tld.RegistrarCount = int(registrarCount)
+	tld.DomainCount = int(domainCount)
+
 	return tld, nil
 }
 
@@ -68,15 +80,30 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 	return nil
 }
 
-// List returns a list of all TLDs. TLDs are ordered alphabetically by name and user pagination is supported by pagesize and cursor(name)
+type dbTLDListItem struct {
+	TLD
+	RegistrarCount int `gorm:"column:registrar_count"`
+	DomainCount    int `gorm:"column:domain_count"`
+}
+
 func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
-	// Get a query object ordering by name (PK used for cursor pagination)
-	dbQuery := repo.db.WithContext(ctx).Order("name ASC")
+	// Base query on tlds table
+	dbQuery := repo.db.WithContext(ctx).Table("tlds")
+
+	// Select optimized query fields using correlated subqueries to avoid scanning/grouping the entire domains table
+	selectFields := "tlds.*, " +
+		"(SELECT COUNT(*) FROM accreditations WHERE accreditations.tld_name = tlds.name) as registrar_count, " +
+		"(SELECT COUNT(*) FROM domains WHERE domains.tld_name = tlds.name) as domain_count"
+	dbQuery = dbQuery.Select(selectFields)
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
-		dbQuery = dbQuery.Where("name > ?", params.PageCursor)
+		dbQuery = dbQuery.Where("tlds.name > ?", params.PageCursor)
 	}
+
+	// Order by name ASC for cursor pagination
+	dbQuery = dbQuery.Order("tlds.name ASC")
+
 	var err error
 	if params.Filter != nil {
 		// cast interface to ListTldsFilter
@@ -96,28 +123,30 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	dbQuery = dbQuery.Limit(params.PageSize + 1) // Fetch one more than the page size to determine if there is a next page
 
 	// Execute the query
-	dbtlds := []*TLD{}
-	err = dbQuery.Find(&dbtlds).Error
+	var rows []*dbTLDListItem
+	err = dbQuery.Scan(&rows).Error
 	if err != nil {
 		return nil, "", err
 	}
 
 	// Check if there is a next page
-	hasMore := len(dbtlds) == params.PageSize+1
+	hasMore := len(rows) == params.PageSize+1
 	if hasMore {
 		// Return only up to Pagesize
-		dbtlds = dbtlds[:params.PageSize]
+		rows = rows[:params.PageSize]
 	}
 
 	// Map the DBTLDs to TLDs
-	tlds := make([]*entities.TLD, len(dbtlds))
-	for i, dbtld := range dbtlds {
-		tlds[i] = FromDBTLD(dbtld)
+	tlds := make([]*entities.TLD, len(rows))
+	for i, row := range rows {
+		tlds[i] = FromDBTLD(&row.TLD)
+		tlds[i].RegistrarCount = row.RegistrarCount
+		tlds[i].DomainCount = row.DomainCount
 	}
 
 	// Set the cursor to the last name in the list
 	var newCursor string
-	if hasMore {
+	if hasMore && len(tlds) > 0 {
 		newCursor = tlds[len(tlds)-1].Name.String()
 	}
 

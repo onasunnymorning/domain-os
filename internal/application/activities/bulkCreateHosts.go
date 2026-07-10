@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 )
 
 // BulkCreateHosts calls the admin API to create multiple hosts in one request.
-func BulkCreateHosts(correlationID string, cmds []commands.CreateHostCommand) error {
+func BulkCreateHosts(ctx context.Context, correlationID string, cmds []commands.CreateHostCommand) error {
 	ENDPOINT := fmt.Sprintf("%s/hosts/bulk", BASEURL)
 
 	client := http.Client{}
@@ -27,11 +28,10 @@ func BulkCreateHosts(correlationID string, cmds []commands.CreateHostCommand) er
 		return fmt.Errorf("failed to marshal command: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonBody), correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

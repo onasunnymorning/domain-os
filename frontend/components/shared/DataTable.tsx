@@ -20,6 +20,7 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   emptyState?: React.ReactNode;
   error?: React.ReactNode;
+  headerActions?: React.ReactNode;
 }
 
 export function DataTable<T>({
@@ -31,13 +32,17 @@ export function DataTable<T>({
   isLoading,
   onRowClick,
   emptyState,
-  error
+  error,
+  headerActions
 }: DataTableProps<T>) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div className="space-y-1">
+          <CardTitle>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+        {headerActions && <div>{headerActions}</div>}
       </CardHeader>
       <CardContent>
         {error && (

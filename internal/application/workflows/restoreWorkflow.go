@@ -1,126 +1,121 @@
 package workflows
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
-	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-	"go.uber.org/zap"
 )
 
-func RestoreWorkflow(ctx workflow.Context) error {
-	// SETUP
-	// Set up our logger
-	logger, _ := zap.NewDevelopment()
-	defer logger.Sync()
+// RestoreLoopResult is the structured output of the RestoreWorkflow.
+type RestoreLoopResult struct {
+	StartedAt      time.Time        `json:"startedAt"`
+	CompletedAt    time.Time        `json:"completedAt"`
+	TotalFound     int              `json:"totalFound"`
+	TotalProcessed int              `json:"totalProcessed"`
+	Restored       int              `json:"restored"`
+	Failed         int              `json:"failed"`
+	Notes          []string         `json:"notes"`
+	Failures       []RestoreFailure `json:"failures,omitempty"`
+}
 
-	// Get the workflow ID
+// RestoreFailure records a single restore failure.
+type RestoreFailure struct {
+	DomainName string `json:"domainName"`
+	Error      string `json:"error"`
+}
+
+func (r *RestoreLoopResult) addFailure(domainName, errMsg string) {
+	r.Failed++
+	if len(r.Failures) < maxFailureSamples {
+		r.Failures = append(r.Failures, RestoreFailure{
+			DomainName: domainName,
+			Error:      errMsg,
+		})
+	}
+}
+
+func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error) {
+	started := workflow.Now(ctx)
+	result := RestoreLoopResult{
+		StartedAt: started,
+	}
+
+	// Register a query handler so progress is visible
+	err := workflow.SetQueryHandler(ctx, "progress", func() (RestoreLoopResult, error) {
+		return result, nil
+	})
+	if err != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to register query handler: "+err.Error())
+		return result, err
+	}
+
 	workflowID := getWorkflowID(ctx)
-	logger.Debug("Starting expiry loop", zap.String("workflow_id", workflowID))
 
-	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
-		InitialInterval:        time.Second,
-		BackoffCoefficient:     2.0,
-		MaximumInterval:        10 * time.Minute,
-		MaximumAttempts:        3, // 0 is unlimited retries
-		NonRetryableErrorTypes: []string{"none"},
+		InitialInterval:    time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    10 * time.Minute,
+		MaximumAttempts:    3,
 	}
 
 	options := workflow.ActivityOptions{
-		// Timeout options specify when to automatically timeout Activity functions.
 		StartToCloseTimeout: time.Minute,
-		// Optionally provide a customized RetryPolicy.
-		// Temporal retries failed Activities by default.
-		RetryPolicy: retrypolicy,
+		RetryPolicy:         retrypolicy,
 	}
-
-	// Apply the options.
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// WORKFLOW
-
-	// Get the list of domains that are PendingRestore
+	// Step 1: List restored domains
 	domainList := []response.DomainRestoredItem{}
 	listErr := workflow.ExecuteActivity(ctx, activities.ListRestoredDomains, workflowID).Get(ctx, &domainList)
 	if listErr != nil {
-		return listErr
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Failed to list restored domains: "+listErr.Error())
+		return result, listErr
 	}
 
-	logger.Info(
-		fmt.Sprintf("Found %d PendingRestore domains", len(domainList)),
-		zap.Int("domain_count", len(domainList)),
-		zap.String("workflow_id", workflowID),
-	)
+	result.TotalFound = len(domainList)
 
-	logger.Debug(
-		"domainList",
-		zap.Any("DomainRestoredItems", domainList),
-	)
-
-	// Anything that happens in this loop should log an error, but not break the loop so that individual domains can fail without stopping the workflow
-	// Make sure logs are surfaced to be handled and fixed
-	for _, domain := range domainList {
-		logger.Debug(
-			"within loop, working on:",
-			zap.Any("DomainRestoredItem", domain),
-		)
-		// Create the renew command
-		cmd := commands.RenewDomainCommand{
-			Name:  domain.Name,
-			ClID:  domain.ClID,
-			Years: 1,
-		}
-		logger.Debug(
-			"renew command created",
-			zap.Any("RenewDomainCommand", cmd),
-		)
-
-		// Unset the PendingRestore status
-		unsetStatusCommand := commands.ToggleDomainStatusCommand{
-			DomainName:    cmd.Name,
-			Status:        entities.DomainStatusPendingRestore,
-			CorrelationID: workflowID,
-		}
-		unSetStatusErr := workflow.ExecuteActivity(ctx, activities.UnSetDomainStatus, unsetStatusCommand).Get(ctx, nil)
-		if unSetStatusErr != nil {
-			logger.Warn(
-				"failed to unset PendingRestore status",
-				zap.String("domain_name", cmd.Name),
-				zap.String("workflow_id", workflowID),
-				zap.Error(unSetStatusErr),
-			)
-		}
-
-		// Force-Renew the domain
-		forceRenewErr := workflow.ExecuteActivity(ctx, activities.RenewDomain, workflowID, cmd, true).Get(ctx, nil)
-		if forceRenewErr != nil {
-			logger.Error(
-				"failed to force a renew as part of the restore process",
-				zap.String("domain_name", cmd.Name),
-				zap.String("workflow_id", workflowID),
-				zap.Error(forceRenewErr),
-			)
-
-			// if the renew fails, set the domain status to PendingRestore again so we can try again later
-			setStatusErr := workflow.ExecuteActivity(ctx, activities.SetDomainStatus, unsetStatusCommand).Get(ctx, nil)
-			if setStatusErr != nil {
-				logger.Error(
-					"failed to re-set PendingRestore status after failed renew as part of the restore process",
-					zap.String("domain_name", cmd.Name),
-					zap.String("workflow_id", workflowID),
-					zap.Error(setStatusErr),
-				)
-			}
-
-		}
-
+	if len(domainList) == 0 {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "No restored domains found")
+		return result, nil
 	}
 
-	return nil
+	// Step 2: Batch restore
+	domainNames := make([]string, len(domainList))
+	for i, d := range domainList {
+		domainNames[i] = d.Name
+	}
+
+	var restoreBatch services.BatchResult
+	batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 30 * time.Minute,
+		HeartbeatTimeout:    2 * time.Minute,
+		RetryPolicy:         retrypolicy,
+	})
+	restoreErr := workflow.ExecuteActivity(batchCtx, "BatchRestoreDomains", workflowID, domainNames).Get(ctx, &restoreBatch)
+	if restoreErr != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Batch restore failed: "+restoreErr.Error())
+		return result, restoreErr
+	}
+
+	result.Restored = len(restoreBatch.Succeeded)
+	result.TotalProcessed = len(restoreBatch.Succeeded) + len(restoreBatch.Failed)
+	for _, f := range restoreBatch.Failed {
+		result.addFailure(f.DomainName, f.Error)
+	}
+
+	result.CompletedAt = workflow.Now(ctx)
+
+	if result.Failed > 0 {
+		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
+	}
+
+	return result, nil
 }

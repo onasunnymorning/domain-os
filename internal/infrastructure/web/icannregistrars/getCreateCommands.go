@@ -40,8 +40,8 @@ func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 	// Loop over the IANARegistrars and create a CreateRegistrarCommand for each, enriched with the contact information from the CSVRegistrars
 	for _, irar := range icannRegistrars {
 
-		// Skip reserved registrars except the testing ones (9995, 9996)
-		if irar.Status == entities.IANARegistrarStatusReserved && !(irar.GurID == 9995 || irar.GurID == 9996) {
+		// Skip reserved registrars except the special reserved ones (9995, 9996, 9997)
+		if irar.Status == entities.IANARegistrarStatusReserved && !entities.IsSpecialReservedGurID(irar.GurID) {
 			log.Printf("[WARN] Registrar %s with GurID %d is reserved, skipping\n", irar.Name, irar.GurID)
 			skipped = append(skipped, strconv.Itoa(irar.GurID)+" - "+irar.Name)
 			continue
@@ -77,8 +77,8 @@ func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 		case entities.IANARegistrarStatusTerminated:
 			cmd.Status = string(entities.RegistrarStatusTerminated)
 		case entities.IANARegistrarStatusReserved:
-			if irar.GurID == 9995 || irar.GurID == 9996 {
-				// Force OK for testing registrars
+			if entities.IsSpecialReservedGurID(irar.GurID) {
+				// Force OK for special reserved registrars
 				cmd.Status = string(entities.RegistrarStatusOK)
 			}
 		}

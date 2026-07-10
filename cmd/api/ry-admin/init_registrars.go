@@ -52,13 +52,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	logger.Info("No registrars found. Triggering SyncRegistrarsWorkflow...")
 
 	// Connect to Temporal
-	tCfg := temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
-	}
+	tCfg := temporal.NewClientConfigFromEnv(temporal.QueueScheduled)
 
 	cli, err := temporal.GetTemporalClient(tCfg)
 	if err != nil {
@@ -71,7 +65,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		TaskQueue: tCfg.WorkerQueue,
 	}
 
-	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsWorkflow, 100)
+	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{})
 	if err != nil {
 		logger.Fatal("Failed to start workflow", zap.Error(err))
 	}

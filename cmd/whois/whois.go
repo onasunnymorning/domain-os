@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"log"
 	"net"
 	"os"
@@ -24,6 +26,7 @@ const (
 )
 
 func main() {
+	log.Printf("whois-server version=%s sha=%s built=%s", buildinfo.Version, buildinfo.GitSHA, buildinfo.BuildDate)
 	// Set up a context to handle signals for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

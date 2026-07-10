@@ -1,0 +1,685 @@
+{
+  "schema_version": "2",
+  "app_version": "0.7.0",
+  "generated": "2026-07-10T16:21:57Z",
+  "services": {
+    "admin-api": {
+      "image": "gprins/domain-os-api",
+      "port": 8080,
+      "protocol": "http",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "http",
+        "path": "/ping",
+        "port": 8080
+      },
+      "env_vars": {
+        "required": [
+          {
+            "name": "DATABASE_URL",
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
+          },
+          {
+            "name": "STORAGE_ENDPOINT",
+            "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
+          }
+        ],
+        "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          },
+          {
+            "name": "AUTO_MIGRATE",
+            "default": "false",
+            "description": "Run GORM AutoMigrate on startup"
+          },
+          {
+            "name": "AUTH0_ENABLED",
+            "default": "false",
+            "description": "Enable Auth0 JWT validation"
+          },
+          {
+            "name": "AUTH0_DOMAIN",
+            "description": "Auth0 tenant domain (e.g. dev-xxx.us.auth0.com)"
+          },
+          {
+            "name": "AUTH0_AUDIENCE",
+            "description": "Auth0 API identifier (e.g. https://api.alpaca-test)"
+          },
+          {
+            "name": "ADMIN_TOKEN",
+            "secret": true,
+            "description": "Legacy bearer token (fallback when Auth0 disabled)"
+          },
+          {
+            "name": "API_HOST",
+            "default": "localhost",
+            "description": "API bind host / target host for worker calls"
+          },
+          {
+            "name": "API_PORT",
+            "default": "8080",
+            "description": "API bind port / target port for worker calls"
+          },
+          {
+            "name": "API_NAME",
+            "default": "Domain OS Admin API",
+            "description": "API name for Swagger docs"
+          },
+          {
+            "name": "API_VERSION",
+            "default": "0.0.0",
+            "description": "API version for Swagger docs"
+          },
+          {
+            "name": "GIN_MODE",
+            "default": "debug",
+            "description": "Gin framework mode (debug/release)"
+          },
+          {
+            "name": "CORS_ALLOWED_ORIGINS",
+            "default": "http://localhost:3000",
+            "description": "Comma-separated allowed origins for CORS"
+          },
+          {
+            "name": "TEMPORAL_HOST_PORT",
+            "default": "localhost:7233",
+            "description": "Temporal server address"
+          },
+          {
+            "name": "TEMPORAL_NAMESPACE",
+            "default": "default",
+            "description": "Temporal namespace"
+          },
+          {
+            "name": "TEMPORAL_API_KEY",
+            "secret": true,
+            "description": "Temporal Cloud API key (replaces mTLS certs)"
+          },
+          {
+            "name": "TEMPORAL_CLIENT_KEY",
+            "secret": true,
+            "description": "Temporal mTLS client key PEM (legacy, use API key instead)"
+          },
+          {
+            "name": "TEMPORAL_CLIENT_CERT",
+            "secret": true,
+            "description": "Temporal mTLS client cert PEM (legacy, use API key instead)"
+          },
+          {
+            "name": "TEMPORAL_UI_URL",
+            "default": "http://localhost:8233",
+            "description": "Temporal UI URL for workflow links"
+          },
+          {
+            "name": "STORAGE_AUTH_MODE",
+            "default": "static",
+            "description": "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"
+          },
+          {
+            "name": "STORAGE_ACCESS_KEY",
+            "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
+            "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
+          },
+          {
+            "name": "STORAGE_SECRET_KEY",
+            "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
+            "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
+          },
+          {
+            "name": "STORAGE_USE_SSL",
+            "default": "false",
+            "description": "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"
+          },
+          {
+            "name": "STORAGE_REGION",
+            "description": "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"
+          },
+          {
+            "name": "STORAGE_PUBLIC_ENDPOINT",
+            "description": "Public S3 endpoint for presigned URLs (if different from STORAGE_ENDPOINT). Falls back to deprecated MINIO_PUBLIC_ENDPOINT"
+          },
+          {
+            "name": "STORAGE_ESCROW_BUCKET",
+            "default": "escrow",
+            "description": "S3 bucket name for RDE/BRDA escrow deposits (contains PII — kept isolated per bucket-storage-strategy)"
+          },
+          {
+            "name": "STORAGE_EVENT_LOGS_BUCKET",
+            "default": "event-logs",
+            "description": "S3 bucket name for gzip JSONL event archive files (warm-tier event search + audit trail)"
+          },
+          {
+            "name": "STORAGE_REPORTS_BUCKET",
+            "default": "reports",
+            "description": "S3 bucket name for Spec 5 compliance sweep CSVs and other generated reports. API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TEMP_BUCKET",
+            "default": "temp-artifacts",
+            "description": "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TLS_SKIP_VERIFY",
+            "default": "false",
+            "description": "Disable TLS certificate verification for S3 connections. Local development against self-signed MinIO only — never enable against R2/S3"
+          },
+          {
+            "name": "STORAGE_AUTO_CREATE_BUCKETS",
+            "default": "false",
+            "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
+          },
+          {
+            "name": "ESCROW_UPLOAD_DIR",
+            "default": "/tmp/escrow-uploads",
+            "description": "Local temp dir for escrow file uploads before S3 transfer"
+          },
+          {
+            "name": "NEW_RELIC_ENABLED",
+            "default": "false",
+            "description": "Enable New Relic APM"
+          },
+          {
+            "name": "NEW_RELIC_LICENSE_KEY",
+            "secret": true,
+            "description": "New Relic license key"
+          },
+          {
+            "name": "PROMETHEUS_ENABLED",
+            "default": "false",
+            "description": "Enable Prometheus metrics endpoint"
+          },
+          {
+            "name": "LOG_DOMAIN_EVENTS",
+            "default": "true",
+            "description": "Log domain lifecycle events"
+          },
+          {
+            "name": "ANTHROPIC_API_KEY",
+            "secret": true,
+            "description": "Anthropic API key for AI agent (Agent Alpaca)"
+          },
+          {
+            "name": "ANTHROPIC_BASE_URL",
+            "description": "Anthropic API base URL override"
+          },
+          {
+            "name": "LLM_MODEL",
+            "default": "claude-sonnet-4-6",
+            "description": "LLM model name for the AI agent (e.g. claude-sonnet-4-6)"
+          },
+          {
+            "name": "KNOWLEDGE_BASE_DIR",
+            "description": "Root directory for knowledge base docs (docs/index.yaml). Falls back to working directory."
+          }
+        ]
+      }
+    },
+    "epp-server": {
+      "image": "gprins/domain-os-epp",
+      "port": 700,
+      "protocol": "tls",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "tcp",
+        "port": 700
+      },
+      "env_vars": {
+        "required": [],
+        "optional": [
+          {
+            "name": "LOG_LEVEL",
+            "default": "info",
+            "description": "Log level (debug/info/warn/error)"
+          },
+          {
+            "name": "EPP_PORT",
+            "default": "700",
+            "description": "EPP server TCP listen port"
+          },
+          {
+            "name": "REDIS_HOST",
+            "default": "localhost",
+            "description": "Redis host for EPP session store"
+          },
+          {
+            "name": "REDIS_PORT",
+            "default": "6379",
+            "description": "Redis port"
+          },
+          {
+            "name": "REDIS_PASSWORD",
+            "secret": true,
+            "description": "Redis password (empty = no auth)"
+          }
+        ]
+      }
+    },
+    "frontend": {
+      "image": "gprins/domain-os-frontend",
+      "port": 3000,
+      "protocol": "http",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "http",
+        "path": "/api/health",
+        "port": 3000
+      },
+      "env_vars": {
+        "required": [
+          {
+            "name": "NEXT_PUBLIC_API_URL",
+            "description": "Backend API URL (read at container start)"
+          }
+        ],
+        "optional": [
+          {
+            "name": "NEXT_PUBLIC_API_TOKEN",
+            "description": "Static API token fallback when Auth0 is disabled. Publicly readable in the browser — never a real secret"
+          },
+          {
+            "name": "NEXT_PUBLIC_AUTH0_ENABLED",
+            "default": "false",
+            "description": "Enable Auth0 login flow"
+          },
+          {
+            "name": "NEXT_PUBLIC_AUTH0_DOMAIN",
+            "description": "Auth0 tenant domain for SPA login"
+          },
+          {
+            "name": "NEXT_PUBLIC_AUTH0_CLIENT_ID",
+            "description": "Auth0 SPA application client ID"
+          },
+          {
+            "name": "NEXT_PUBLIC_AUTH0_AUDIENCE",
+            "description": "Auth0 API identifier for token audience"
+          },
+          {
+            "name": "NEXT_PUBLIC_APP_VERSION",
+            "default": "0.0.0",
+            "description": "App version displayed in UI. Injected at container start by next-runtime-env (not baked into the image); the deployment sets it to the release version"
+          },
+          {
+            "name": "NEXT_PUBLIC_TEMPORAL_UI_URL",
+            "description": "Temporal Cloud UI URL for workflow links"
+          },
+          {
+            "name": "NEXT_PUBLIC_TEMPORAL_NAMESPACE",
+            "default": "default",
+            "description": "Temporal namespace used to build schedule deep-links"
+          },
+          {
+            "name": "NEXT_PUBLIC_STORAGE_UI_URL",
+            "description": "S3 storage browser URL"
+          },
+          {
+            "name": "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN",
+            "description": "PostHog project token. Publicly readable in the browser — never a real secret"
+          },
+          {
+            "name": "NEXT_PUBLIC_POSTHOG_HOST",
+            "default": "https://us.i.posthog.com",
+            "description": "PostHog ingestion host"
+          }
+        ]
+      }
+    },
+    "mcp-server": {
+      "image": "gprins/domain-os-mcp",
+      "port": 3001,
+      "protocol": "http",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "http",
+        "path": "/healthz",
+        "port": 3001
+      },
+      "env_vars": {
+        "required": [],
+        "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          },
+          {
+            "name": "MCP_TRANSPORT",
+            "default": "stdio",
+            "description": "MCP transport mode: 'stdio' for local IDE, 'http' for container deployment"
+          },
+          {
+            "name": "MCP_PORT",
+            "default": "3001",
+            "description": "HTTP listen port when MCP_TRANSPORT=http"
+          }
+        ]
+      }
+    },
+    "unified-worker": {
+      "image": "gprins/domain-os-worker",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "temporal-heartbeat"
+      },
+      "env_vars": {
+        "required": [
+          {
+            "name": "DATABASE_URL",
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
+          },
+          {
+            "name": "AUTH0_WORKER_CLIENT_SECRET",
+            "secret": true,
+            "description": "Auth0 M2M client secret for worker"
+          },
+          {
+            "name": "STORAGE_ENDPOINT",
+            "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
+          }
+        ],
+        "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          },
+          {
+            "name": "AUTH0_ENABLED",
+            "default": "false",
+            "description": "Enable Auth0 JWT validation"
+          },
+          {
+            "name": "AUTH0_DOMAIN",
+            "description": "Auth0 tenant domain (e.g. dev-xxx.us.auth0.com)"
+          },
+          {
+            "name": "AUTH0_AUDIENCE",
+            "description": "Auth0 API identifier (e.g. https://api.alpaca-test)"
+          },
+          {
+            "name": "AUTH0_WORKER_CLIENT_ID",
+            "description": "Auth0 M2M client ID for worker (preferred over AUTH0_CLIENT_ID)"
+          },
+          {
+            "name": "AUTH0_CLIENT_ID",
+            "description": "Auth0 client ID fallback (if WORKER variant not set)"
+          },
+          {
+            "name": "AUTH0_CLIENT_SECRET",
+            "secret": true,
+            "description": "Auth0 client secret fallback (if WORKER variant not set)"
+          },
+          {
+            "name": "ADMIN_TOKEN",
+            "secret": true,
+            "description": "Legacy bearer token (fallback when Auth0 disabled)"
+          },
+          {
+            "name": "API_URL",
+            "description": "Full API URL (e.g. https://api.example.com). Preferred over API_HOST+API_PORT."
+          },
+          {
+            "name": "API_HOST",
+            "default": "localhost",
+            "description": "API bind host / target host for worker calls"
+          },
+          {
+            "name": "API_PORT",
+            "default": "8080",
+            "description": "API bind port / target port for worker calls"
+          },
+          {
+            "name": "TEMPORAL_HOST_PORT",
+            "default": "localhost:7233",
+            "description": "Temporal server address"
+          },
+          {
+            "name": "TEMPORAL_NAMESPACE",
+            "default": "default",
+            "description": "Temporal namespace"
+          },
+          {
+            "name": "TEMPORAL_API_KEY",
+            "secret": true,
+            "description": "Temporal Cloud API key (replaces mTLS certs)"
+          },
+          {
+            "name": "TEMPORAL_CLIENT_KEY",
+            "secret": true,
+            "description": "Temporal mTLS client key PEM (legacy, use API key instead)"
+          },
+          {
+            "name": "TEMPORAL_CLIENT_CERT",
+            "secret": true,
+            "description": "Temporal mTLS client cert PEM (legacy, use API key instead)"
+          },
+          {
+            "name": "STORAGE_AUTH_MODE",
+            "default": "static",
+            "description": "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"
+          },
+          {
+            "name": "STORAGE_ACCESS_KEY",
+            "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
+            "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
+          },
+          {
+            "name": "STORAGE_SECRET_KEY",
+            "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
+            "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
+          },
+          {
+            "name": "STORAGE_USE_SSL",
+            "default": "false",
+            "description": "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"
+          },
+          {
+            "name": "STORAGE_REGION",
+            "description": "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"
+          },
+          {
+            "name": "STORAGE_ESCROW_BUCKET",
+            "default": "escrow",
+            "description": "S3 bucket name for RDE/BRDA escrow deposits (contains PII — kept isolated per bucket-storage-strategy)"
+          },
+          {
+            "name": "STORAGE_EVENT_LOGS_BUCKET",
+            "default": "event-logs",
+            "description": "S3 bucket name for gzip JSONL event archive files (warm-tier event search + audit trail)"
+          },
+          {
+            "name": "STORAGE_REPORTS_BUCKET",
+            "default": "reports",
+            "description": "S3 bucket name for Spec 5 compliance sweep CSVs and other generated reports. API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TEMP_BUCKET",
+            "default": "temp-artifacts",
+            "description": "S3 bucket name for workflow-scoped staging artifacts (snapshots, backups, cleanup manifests, verification reports). API needs it too for the generic workflow artifact download endpoint"
+          },
+          {
+            "name": "STORAGE_TLS_SKIP_VERIFY",
+            "default": "false",
+            "description": "Disable TLS certificate verification for S3 connections. Local development against self-signed MinIO only — never enable against R2/S3"
+          },
+          {
+            "name": "STORAGE_AUTO_CREATE_BUCKETS",
+            "default": "false",
+            "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
+          },
+          {
+            "name": "OPENEXCHANGERATES_APP_ID",
+            "secret": true,
+            "description": "OpenExchangeRates API key for FX sync"
+          }
+        ]
+      }
+    },
+    "whois": {
+      "image": "gprins/domain-os-whois",
+      "port": 43,
+      "protocol": "tcp",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "tcp",
+        "port": 43
+      },
+      "env_vars": {
+        "required": [],
+        "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          }
+        ]
+      }
+    }
+  },
+  "infrastructure": [
+    {
+      "name": "postgresql",
+      "port": 5432,
+      "used_by": [
+        "admin-api",
+        "unified-worker",
+        "whois",
+        "mcp-server"
+      ]
+    },
+    {
+      "name": "redis",
+      "port": 6379,
+      "used_by": [
+        "epp-server"
+      ]
+    },
+    {
+      "name": "temporal",
+      "port": 7233,
+      "used_by": [
+        "admin-api",
+        "unified-worker"
+      ]
+    },
+    {
+      "name": "s3",
+      "used_by": [
+        "admin-api",
+        "unified-worker"
+      ]
+    }
+  ]
+}

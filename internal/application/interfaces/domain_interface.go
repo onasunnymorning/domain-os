@@ -60,4 +60,7 @@ type DomainService interface {
 	// Status Manipulation
 	SetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
 	UnSetStatus(ctx context.Context, name, status string) (*entities.Domain, error)
+
+	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
+	ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error)
 }

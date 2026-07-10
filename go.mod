@@ -1,6 +1,6 @@
 module github.com/onasunnymorning/domain-os
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/Rhymond/go-money v1.0.10
@@ -19,7 +19,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-pg/pg/v10 v10.15.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/lib/pq v1.10.9
 	github.com/likexian/gokit v0.25.15
 	github.com/likexian/whois v1.15.5
@@ -159,7 +159,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/arch v0.9.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect

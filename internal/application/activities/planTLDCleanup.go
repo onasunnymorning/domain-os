@@ -39,19 +39,24 @@ type TLDCleanupActivities struct {
 
 // NewTLDCleanupActivities creates a new activities struct with initialized dependencies
 func NewTLDCleanupActivities() (*TLDCleanupActivities, error) {
-	s3c, err := storage.NewS3ClientFromEnv()
+	s3c, err := storage.NewTempS3Client()
 	if err != nil {
 		return nil, err
 	}
-	dbCfg := postgres.Config{
-		User:    os.Getenv("DB_USER"),
-		Pass:    os.Getenv("DB_PASS"),
-		Host:    os.Getenv("DB_HOST"),
-		Port:    os.Getenv("DB_PORT"),
-		DBName:  os.Getenv("DB_NAME"),
-		SSLmode: os.Getenv("DB_SSLMODE"),
+	var db *gorm.DB
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		db, err = postgres.NewConnectionFromURL(dbURL, false)
+	} else {
+		dbCfg := postgres.Config{
+			User:    os.Getenv("DB_USER"),
+			Pass:    os.Getenv("DB_PASS"),
+			Host:    os.Getenv("DB_HOST"),
+			Port:    os.Getenv("DB_PORT"),
+			DBName:  os.Getenv("DB_NAME"),
+			SSLmode: os.Getenv("DB_SSLMODE"),
+		}
+		db, err = postgres.NewConnection(dbCfg)
 	}
-	db, err := postgres.NewConnection(dbCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +77,7 @@ func (a *TLDCleanupActivities) PlanTLDCleanup(ctx context.Context, args PlanTLDC
 	s3c := a.S3Client
 	db := a.DB
 
-	manifestKey := fmt.Sprintf("escrow/%s/cleanup/%s_manifest.csv", args.TLD, args.WorkflowID)
+	manifestKey := fmt.Sprintf("%s/manifest.csv", args.WorkflowID)
 
 	pr, pw := io.Pipe()
 

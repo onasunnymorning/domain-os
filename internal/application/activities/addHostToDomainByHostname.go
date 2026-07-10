@@ -1,13 +1,14 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 )
 
 // AddHostToDomainByHostname calls the admin API to link a host (by name) to a domain.
-func AddHostToDomainByHostname(correlationID, domainName, hostName string) error {
+func AddHostToDomainByHostname(ctx context.Context, correlationID, domainName, hostName string) error {
 	// Normalize: trim any trailing dots that may appear in escrow files
 	cleanHost := strings.TrimRight(hostName, ".")
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/hostname/%s", BASEURL, domainName, cleanHost)
@@ -21,11 +22,10 @@ func AddHostToDomainByHostname(correlationID, domainName, hostName string) error
 		return fmt.Errorf("failed to add query params: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", URL.String(), nil)
+	req, err := prepareRequest(ctx, "POST", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {

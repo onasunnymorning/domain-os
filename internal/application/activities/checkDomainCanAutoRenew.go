@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 )
 
 // CheckDomainCanAutoRenew checks if a domain can be auto-renewed based on the current GA Phase and owning Registrar settings
-func CheckDomainCanAutoRenew(correlationID string, domainName string) (bool, error) {
+func CheckDomainCanAutoRenew(ctx context.Context, correlationID string, domainName string) (bool, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/canautorenew", BASEURL, domainName)
 
 	client := http.Client{}
@@ -23,11 +24,10 @@ func CheckDomainCanAutoRenew(correlationID string, domainName string) (bool, err
 		return false, fmt.Errorf("failed to create URL: %w", err)
 	}
 
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -41,7 +41,7 @@ func CheckDomainCanAutoRenew(correlationID string, domainName string) (bool, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(body))
+		return false, httpResponseError(resp, body)
 	}
 
 	canAutoRenewResponse := &response.CanAutoRenewResponse{}

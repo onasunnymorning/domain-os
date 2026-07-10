@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-func UpdateDomain(correlationID string, domain entities.Domain) (*entities.Domain, error) {
+func UpdateDomain(ctx context.Context, correlationID string, domain entities.Domain) (*entities.Domain, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/", BASEURL, domain.Name.String())
 
 	// set the correlation ID
@@ -31,11 +32,10 @@ func UpdateDomain(correlationID string, domain entities.Domain) (*entities.Domai
 	client := http.Client{}
 
 	// Update the domain
-	req, err := http.NewRequest("PUT", URL.String(), bytes.NewBuffer(jsonData))
+	req, err := prepareRequest(ctx, "PUT", URL.String(), bytes.NewBuffer(jsonData), correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -49,7 +49,7 @@ func UpdateDomain(correlationID string, domain entities.Domain) (*entities.Domai
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to update domain (%d): %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Parse the result

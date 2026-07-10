@@ -45,7 +45,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 	}
 	defer manifestStream.Close()
 
-	backupKey := fmt.Sprintf("escrow/%s/cleanup/%s_backup.jsonl", args.TLD, args.WorkflowID)
+	backupKey := fmt.Sprintf("%s/backup.jsonl", args.WorkflowID)
 	pr, pw := io.Pipe()
 
 	errChan := make(chan error, 1)

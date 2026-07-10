@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -56,9 +57,15 @@ func (s *EventPublisherSuite) TestPublish() {
 	pub := NewPostgresEventPublisher(s.db, logger, true)
 
 	data := map[string]string{"key": "value"}
-	event := entities.NewDomainEvent("test-source", "domain.registered", "test-domain.com", data)
+	event := entities.NewDomainEvent("test-source", "domain.registered", "test-domain.com", "Domain test-domain.com registered", data)
 	event.TraceID = "trace-123"
 	event.CorrelationID = "corr-456"
+
+	event.Command = map[string]string{"action": "register"}
+	event.BeforeState = map[string]string{"status": "pending"}
+	event.AfterState = map[string]string{"status": "registered"}
+	event.Actor = "user-999"
+	event.RoID = "12345_DOM-APEX"
 
 	err := pub.Publish(context.Background(), event)
 	s.Require().NoError(err)
@@ -76,6 +83,11 @@ func (s *EventPublisherSuite) TestPublish() {
 	s.Equal("test-domain.com", record.Subject)
 	s.Equal("trace-123", record.TraceID)
 	s.Equal("corr-456", record.CorrelationID)
+	s.JSONEq(`{"action": "register"}`, string(record.Command))
+	s.JSONEq(`{"status": "pending"}`, string(record.BeforeState))
+	s.JSONEq(`{"status": "registered"}`, string(record.AfterState))
+	s.Equal("user-999", record.Actor)
+	s.Equal("12345_DOM-APEX", record.RoID)
 	s.False(record.Published)
 
 	// Test mapping back
@@ -85,15 +97,21 @@ func (s *EventPublisherSuite) TestPublish() {
 	s.Equal(event.Source, mappedEvent.Source)
 	s.Equal(event.Type, mappedEvent.Type)
 	s.Equal(event.Subject, mappedEvent.Subject)
+	s.Equal(event.Description, mappedEvent.Description)
 	s.Equal(event.TraceID, mappedEvent.TraceID)
 	s.Equal(event.CorrelationID, mappedEvent.CorrelationID)
+	s.JSONEq(`{"action": "register"}`, string(mappedEvent.Command.(json.RawMessage)))
+	s.JSONEq(`{"status": "pending"}`, string(mappedEvent.BeforeState.(json.RawMessage)))
+	s.JSONEq(`{"status": "registered"}`, string(mappedEvent.AfterState.(json.RawMessage)))
+	s.Equal(event.Actor, mappedEvent.Actor)
+	s.Equal(event.RoID, mappedEvent.RoID)
 
 	// Toggle logEvents = false
 	core2 := &mockCore{}
 	logger2 := zap.New(core2)
 	pubDisabledLogs := NewPostgresEventPublisher(s.db, logger2, false)
 
-	event2 := entities.NewDomainEvent("test-source", "domain.renewed", "test-domain2.com", data)
+	event2 := entities.NewDomainEvent("test-source", "domain.renewed", "test-domain2.com", "Domain test-domain2.com renewed", data)
 	err = pubDisabledLogs.Publish(context.Background(), event2)
 	s.Require().NoError(err)
 	s.Require().Equal(0, core2.writeCount) // No logs generated!

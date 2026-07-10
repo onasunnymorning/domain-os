@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func TestSetDomainStatus(t *testing.T) {
 			},
 			mockStatusCode: http.StatusInternalServerError,
 			mockResponse:   `{"error": "internal server error"}`,
-			expectedError:  "unexpected status code: 500, response: {\"error\": \"internal server error\"}",
+			expectedError:  "(500) {\"error\": \"internal server error\"}",
 			expectedDomain: nil,
 		},
 		{
@@ -83,7 +84,7 @@ func TestSetDomainStatus(t *testing.T) {
 
 			BASEURL = mockServer.URL
 
-			domain, err := SetDomainStatus(tt.cmd)
+			domain, err := SetDomainStatus(context.Background(), tt.cmd)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

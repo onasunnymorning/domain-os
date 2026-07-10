@@ -199,6 +199,10 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 				return DeleteTLDAssetsResult{}, err
 			}
 
+			if err := db.Exec("DELETE FROM accreditations WHERE tld_name = ?", entityID).Error; err != nil {
+				return DeleteTLDAssetsResult{}, err
+			}
+
 			if err := db.Exec("DELETE FROM tlds WHERE name = ?", entityID).Error; err != nil {
 				return DeleteTLDAssetsResult{}, err
 			}

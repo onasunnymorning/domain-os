@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RegistrarStatus, IANARegistrarStatus } from '@/lib/types/registrar';
 import { Switch } from '@/components/ui/switch';
+import posthog from 'posthog-js';
 
 // Minimal payload based on swagger commands.CreateRegistrarCommand
 // Required: ClID, Name, Email, PostalInfo[ { Type, Address{ CC, City, ... } } ]
@@ -136,8 +137,16 @@ export default function CreateRegistrarPage() {
       const created = await mutateAsync(payload as any);
       toast.success('Registrar created successfully');
       const clid = created?.ClID || values.ClID;
+      posthog.capture('registrar_created', {
+        clid,
+        name: values.Name,
+        iana_status: values.IANAStatus,
+        status: values.Status,
+        country: values.CC,
+      });
       router.push(`/registrars/${encodeURIComponent(clid)}`);
     } catch (error: any) {
+      posthog.captureException(error);
       toast.error(error?.response?.data?.error || 'Failed to create registrar');
     }
   };

@@ -1,13 +1,14 @@
 package activities
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 )
 
 // UpdateFX updates the FX rate for a given currency.
-func UpdateFX(correlationID, cur string) error {
+func UpdateFX(ctx context.Context, correlationID, cur string) error {
 	ENDPOINT := fmt.Sprintf("%s/sync/fx/%s", BASEURL, cur)
 
 	// Set up an API client
@@ -21,11 +22,10 @@ func UpdateFX(correlationID, cur string) error {
 	}
 
 	// Get the FX rate
-	req, err := http.NewRequest("PUT", URL.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -38,7 +38,7 @@ func UpdateFX(correlationID, cur string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

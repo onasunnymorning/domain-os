@@ -69,7 +69,7 @@ func TestContactService_UpdateContact_PreservesCreatedAt(t *testing.T) {
 		},
 	}
 
-	service := NewContactService(repo, RoidService{})
+	service := NewContactService(repo, RoidService{}, nil)
 
 	// 2. Simulate an incoming update payload where CreatedAt is zero
 	incomingUpdate := &entities.Contact{

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
-import { createDomain, getDomains, getDomainCount, getDomainByName, getDomainDNS, updateDomain, setDropCatch, unsetDropCatch, getQuote } from "@/lib/api/domains";
+import { createDomain, getDomains, getDomainCount, getDomainByName, getDomainDNS, updateDomain, setDropCatch, unsetDropCatch, getQuote, getDomainEvents } from "@/lib/api/domains";
 import { DomainListParams, DomainCreateRequest, QuoteRequest } from "@/lib/types/domain";
 
 export function useDomains(params?: DomainListParams) {
@@ -110,3 +110,12 @@ export function useDomainQuotes(payloads: QuoteRequest[]) {
     })),
   });
 }
+
+export function useDomainEvents(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["domain", name, "events"],
+    queryFn: () => getDomainEvents(name),
+    enabled: enabled && !!name,
+  });
+}
+

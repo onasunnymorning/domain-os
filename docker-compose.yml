@@ -3,7 +3,7 @@ services:
   db:
     image: postgres:16.1
     restart: always
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 3s
@@ -31,7 +31,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -51,7 +51,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.epp
-    image: geapex/epp-server:${BRANCH:-latest}
+    image: gprins/domain-os-epp:${BRANCH:-latest}
     restart: unless-stopped
     profiles: [ essential, full ]
     depends_on:
@@ -115,7 +115,7 @@ services:
   # Core API container
   admin-api:
     build: .
-    image: "geapex/domain-os:${BRANCH}"
+    image: "gprins/domain-os-api:${BRANCH}"
     restart: always
     profiles: [ essential, full ]
     healthcheck:
@@ -126,8 +126,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # msg-broker:
-      #   condition: service_healthy
     develop:
       watch:
         - action: rebuild
@@ -140,9 +138,8 @@ services:
       - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
       - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
       - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENEXCHANGERATES_APP_ID=${OPENEXCHANGERATES_APP_ID}
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -156,20 +153,27 @@ services:
       - AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
       - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002}
       # Temporal Client (dev: temporalite, no TLS)
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
-      - TMPIO_KEY=
-      - TMPIO_CERT=
-      # S3/MinIO settings for escrow
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT="http://localhost:9000"
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_USE_SSL=false
-      - ESCROW_BUCKET=escrow
-      - TMPIO_UI_URL=http://localhost:8081
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
+      # S3/MinIO settings — bucket per data type (see docs: Bucket Storage Strategy)
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_USE_SSL=false
+      - STORAGE_ESCROW_BUCKET=escrow
+      - STORAGE_EVENT_LOGS_BUCKET=event-logs
+      - STORAGE_REPORTS_BUCKET=reports
+      - STORAGE_TEMP_BUCKET=temp-artifacts
+      - TEMPORAL_UI_URL=http://localhost:8081
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
     ports:
       - ${API_PORT:-8080}:${API_PORT:-8080}
     networks:
@@ -177,7 +181,7 @@ services:
 
   # Admin Init (One-off task to sync registrars on startup)
   admin-init:
-    image: "geapex/domain-os:${BRANCH}"
+    image: "gprins/domain-os-api:${BRANCH}"
     restart: "no" # Run once and stop
     profiles: [ essential, full ]
     depends_on:
@@ -189,23 +193,24 @@ services:
         condition: service_healthy # Wait for migrations / full startup 
     command: [ "/ryAdminAPI", "init-registrars" ]
     environment:
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_QUEUE=domain-lifecycle
-      - TMPIO_KEY=
-      - TMPIO_CERT=
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
       - ADMIN_TOKEN=${ADMIN_TOKEN:-devtoken}
       # Minimal envs needed for DB/Temporal
     networks:
       - dos
 
-  # Temporal stack (dev) - Postgres + Temporal Server + UI
+
+
+  # ── Docker mode: production-parity stack (dedicated Postgres + auto-setup) ──
   temporal-postgres:
     image: postgres:14
     restart: unless-stopped
@@ -254,7 +259,7 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
-      - 8081:8080 # UI on host 8081 to avoid conflict with admin-api 8080
+      - 8081:8080
     depends_on:
       - temporal
     networks:
@@ -265,7 +270,7 @@ services:
     build:
       context: .
       dockerfile: ./cmd/workers/unified/Dockerfile
-    image: geapex/unified-worker:${BRANCH}
+    image: gprins/domain-os-worker:${BRANCH}
     restart: unless-stopped
     profiles: [ essential, full ]
     depends_on:
@@ -275,14 +280,10 @@ services:
         condition: service_started
     environment:
       # Temporal client
-      - TMPIO_HOST_PORT=temporal:7233
-      - TMPIO_NAME_SPACE=default
-      - TMPIO_KEY=
-      - TMPIO_CERT=
-      # Task queues
-      - TMPIO_QUEUE=domain-lifecycle
-      - ESCROW_QUEUE=escrow-import
-      - TMPIO_SYNC_QUEUE=sync
+      - TEMPORAL_HOST_PORT=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_CLIENT_KEY=
+      - TEMPORAL_CLIENT_CERT=
       # API connection
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
@@ -293,14 +294,17 @@ services:
       - AUTH0_WORKER_CLIENT_ID=${AUTH0_WORKER_CLIENT_ID}
       - AUTH0_WORKER_CLIENT_SECRET=${AUTH0_WORKER_CLIENT_SECRET}
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
-      # S3/MinIO (escrow)
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_USE_SSL=false
-      - ESCROW_BUCKET=escrow
+      # S3/MinIO — bucket per data type (see docs: Bucket Storage Strategy)
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_USE_SSL=false
+      - STORAGE_ESCROW_BUCKET=escrow
+      - STORAGE_EVENT_LOGS_BUCKET=event-logs
+      - STORAGE_REPORTS_BUCKET=reports
+      - STORAGE_TEMP_BUCKET=temp-artifacts
       # Postgres (TLD cleanup)
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -313,10 +317,12 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
+      # CORS: allow browser-direct uploads from any origin (presigned multipart)
+      - MINIO_API_CORS_ALLOW_ORIGIN=*
     command: server /data --console-address ":9001"
     ports:
       - 9000:9000
@@ -331,11 +337,11 @@ services:
     networks:
       - dos
 
-  # MinIO client to create the bucket
+  # MinIO client to create the buckets (one per data type — see docs: Bucket Storage Strategy)
   minio-setup:
     image: minio/mc:latest
     restart: "no"
-    profiles: [ essential, full ]
+    profiles: [ infra, essential, full ]
     depends_on:
       minio:
         condition: service_healthy
@@ -343,13 +349,16 @@ services:
       - MC_HOST_minio=http://minioadmin:minioadmin@minio:9000
     entrypoint: [ "/bin/sh", "-c" ]
     command: |
-      "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true"
+      "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true;
+       mc mb -p minio/event-logs || true;
+       mc mb -p minio/reports || true;
+       mc mb -p minio/temp-artifacts || true"
     networks:
       - dos
 
   # Whois container
   whois:
-    image: "geapex/whois:${BRANCH}"
+    image: "gprins/domain-os-whois:${BRANCH}"
     restart: always
     profiles: [ full ]
     depends_on:
@@ -362,7 +371,7 @@ services:
         - action: rebuild
           path: ./cmd/whois
     environment:
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
@@ -371,6 +380,38 @@ services:
       - 43:43
     networks:
       - dos
+
+  # MCP (Model Context Protocol) Server — read-only AI tool server
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: "gprins/domain-os-mcp:${BRANCH}"
+    restart: unless-stopped
+    profiles: [ full ]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3001/healthz || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    environment:
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=3001
+    ports:
+      - 3001:3001
+    networks:
+      - dos
+
   # Frontend Admin Container
   # admin-frontend:
   #   image: "admin-dash:delete"
@@ -390,42 +431,6 @@ services:
   #     - dos
 
 
-  # Metabase container
-  metabase:
-    image: metabase/metabase:v0.52.5
-    profiles: [ essential, full ]
-    restart: unless-stopped
-    ports:
-      - 3001:3000
-    environment:
-      - MB_DB_FILE=/metabase-data/metabase.db
-    volumes:
-      - metabase_data:/metabase-data
-    networks:
-      - dos
-
-  # Metabase Initializer (Sidecar)
-  metabase-init:
-    image: python:3.9-slim
-    profiles: [ essential, full ]
-    depends_on:
-      - metabase
-    volumes:
-      - ./scripts/metabase:/app
-    working_dir: /app
-    environment:
-      - METABASE_URL=http://metabase:3000
-      - MB_ADMIN_EMAIL=admin@domain-os.local
-      - MB_ADMIN_PASS=admin1234
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-    command: >
-      sh -c "pip install requests && python metabase_control.py"
-    networks:
-      - dos
 
 networks:
   dos:
@@ -439,8 +444,6 @@ volumes:
   redis_data:
     driver: local
   temporal_pgdata:
-    driver: local
-  metabase_data:
     driver: local
   minio_data:
     driver: local

@@ -380,34 +380,34 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	noopHeartbeat := func(s string) {} // CLI doesn't need heartbeat callbacks
 
 	log.Println("Importing Contacts...")
-	cTotal, cSkip, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	cTotal, cInserted, cUpdated, cSkipped, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportContacts failed: %w", err)
 	}
-	log.Printf("Contacts: %d imported, %d skipped", cTotal, cSkip)
+	log.Printf("Contacts: %d total, %d inserted, %d updated, %d skipped", cTotal, cInserted, cUpdated, cSkipped)
 
 	log.Println("Importing Hosts...")
-	hTotal, hSkip, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	hTotal, hInserted, hUpdated, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportHosts failed: %w", err)
 	}
-	log.Printf("Hosts: %d imported, %d skipped", hTotal, hSkip)
+	log.Printf("Hosts: %d total, %d inserted, %d updated", hTotal, hInserted, hUpdated)
 
 	log.Println("Importing Domains...")
 	// TLD is assumed ac.uk from context, but maybe verify/pass?
 	// The importer needs tld arg.
-	dTotal, dSkip, err := importer.ImportDomains(ctx, sqliteDB, "ac.uk", clidMap, "", noopHeartbeat)
+	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, "ac.uk", clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportDomains failed: %w", err)
 	}
-	log.Printf("Domains: %d imported, %d skipped", dTotal, dSkip)
+	log.Printf("Domains: %d total, %d inserted, %d updated", dTotal, dInserted, dUpdated)
 
 	log.Println("Linking Domain Hosts...")
-	lTotal, err := importer.LinkDomainHosts(ctx, sqliteDB, "", noopHeartbeat)
+	lTotal, lInserted, err := importer.LinkDomainHosts(ctx, sqliteDB, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("LinkDomainHosts failed: %w", err)
 	}
-	log.Printf("Links created: %d", lTotal)
+	log.Printf("Links: %d total, %d inserted", lTotal, lInserted)
 
 	// Save Run Report
 	reportPath := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_runreport.json"

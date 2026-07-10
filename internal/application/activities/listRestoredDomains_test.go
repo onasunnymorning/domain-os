@@ -1,8 +1,8 @@
 package activities
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,7 +42,7 @@ func TestListRestoredDomains(t *testing.T) {
 			query:          &queries.RestoredDomainsQuery{},
 			mockResponse:   `{"error":"something went wrong"}`,
 			mockStatusCode: http.StatusInternalServerError,
-			expectedError:  fmt.Errorf("failed to fetch domain count (500): {\"error\":\"something went wrong\"}"),
+			expectedError:  errors.New("(500) {\"error\":\"something went wrong\"}"),
 			expectedResult: nil,
 		},
 		{
@@ -66,7 +66,7 @@ func TestListRestoredDomains(t *testing.T) {
 
 			BASEURL = server.URL
 
-			result, err := ListRestoredDomains(tt.correlationID, tt.query)
+			result, err := ListRestoredDomains(context.Background(), tt.correlationID, tt.query)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

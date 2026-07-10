@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -15,10 +16,10 @@ type DiffPlanResult struct {
 }
 
 // DiffAndPlanRegistrars compares IANA registrars with existing platform registrars and produces a plan
-// - Creates: new registrars to create (skips Reserved except GurIDs 9995 and 9996)
-// - Updates: status updates where IANA status and platform status differ (forces OK for GurIDs 9995/9996)
+// - Creates: new registrars to create (skips Reserved except special reserved GurIDs 9995, 9996, 9997)
+// - Updates: status updates where IANA status and platform status differ (forces OK for special reserved GurIDs)
 // - SkippedReserved: count of reserved registrars skipped
-func DiffAndPlanRegistrars(correlationID string, iana []entities.IANARegistrar, existing []entities.RegistrarListItem) (DiffPlanResult, error) {
+func DiffAndPlanRegistrars(ctx context.Context, correlationID string, iana []entities.IANARegistrar, existing []entities.RegistrarListItem) (DiffPlanResult, error) {
 	result := DiffPlanResult{
 		Creates: []commands.CreateRegistrarCommand{},
 		Updates: []commands.UpdateRegistrarStatusCommand{},
@@ -37,8 +38,8 @@ func DiffAndPlanRegistrars(correlationID string, iana []entities.IANARegistrar, 
 		if r, ok := existingMap[clidStr]; ok {
 			// Consider status update
 			if cmd := commands.CompareIANARegistrarStatusWithRarStatus(i, r); cmd != nil {
-				// Exception for the 9995 and 9996 IANA Registrars (force OK)
-				if i.GurID == 9995 || i.GurID == 9996 {
+				// Exception for special reserved IANA Registrars (9995, 9996, 9997) — force OK
+				if entities.IsSpecialReservedGurID(i.GurID) {
 					cmd.NewStatus = string(entities.RegistrarStatusOK)
 				}
 				result.Updates = append(result.Updates, *cmd)
@@ -47,7 +48,7 @@ func DiffAndPlanRegistrars(correlationID string, iana []entities.IANARegistrar, 
 		}
 
 		// Not found: consider create
-		if strings.EqualFold(i.Status.String(), string(entities.IANARegistrarStatusReserved)) && !(i.GurID == 9995 || i.GurID == 9996) {
+		if strings.EqualFold(i.Status.String(), string(entities.IANARegistrarStatusReserved)) && !entities.IsSpecialReservedGurID(i.GurID) {
 			result.SkippedReserved++
 			continue
 		}

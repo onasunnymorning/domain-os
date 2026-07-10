@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"io"
@@ -51,7 +52,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_Success() {
 		StatusCode: http.StatusOK,
 	}
 
-	err := AutoRenewDomain("test1", "example.com")
+	err := AutoRenewDomain(context.Background(), "test1", "example.com")
 	suite.NoError(err, "Expected no error for successful auto-renewal")
 }
 
@@ -61,15 +62,15 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_BadRequest() {
 		Body:       io.NopCloser(bytes.NewBufferString(`Bad Request`)),
 	}
 
-	err := AutoRenewDomain("test2", "example.com")
+	err := AutoRenewDomain(context.Background(), "test2", "example.com")
 	suite.Error(err, "Expected an error for bad request")
-	suite.Contains(err.Error(), "unexpected status code: 400")
+	suite.Contains(err.Error(), "(400)")
 }
 
 func (suite *AutoRenewTestSuite) TestAutoRenewDomain_NetworkError() {
 	suite.mockTransport.Err = errors.New("request failed: network error")
 
-	err := AutoRenewDomain("test3", "example.com")
+	err := AutoRenewDomain(context.Background(), "test3", "example.com")
 	suite.Error(err, "Expected an error for network issues")
 	suite.Contains(err.Error(), "request failed: network error")
 }
@@ -80,7 +81,7 @@ func (suite *AutoRenewTestSuite) TestAutoRenewDomain_URLError() {
 
 	suite.mockTransport.Err = errors.New("failed to create request: url error")
 
-	err := AutoRenewDomain("test14", "example.com")
+	err := AutoRenewDomain(context.Background(), "test14", "example.com")
 	suite.Error(err, "Expected an error for network issues")
 	suite.Contains(err.Error(), "failed to create request: url error")
 }

@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,14 +11,14 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 )
 
-func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarCommand) error {
+func BulkCreateRegistrars(ctx context.Context, correlationID string, cmds []commands.CreateRegistrarCommand) error {
 	ENDPOINT := fmt.Sprintf("%s/registrars/bulk", BASEURL)
 
 	// Set up an API client
 	client := http.Client{}
 
 	// set the correlation ID
-	qParams := map[string]string{"correlationID": correlationID}
+	qParams := map[string]string{"correlation_id": correlationID}
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {
 		return fmt.Errorf("failed to add query params: %w", err)
@@ -30,11 +31,10 @@ func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarC
 	}
 
 	// Create the request
-	req, err := http.NewRequest("POST", URL.String(), bytes.NewBuffer(jsonBody))
+	req, err := prepareRequest(ctx, "POST", URL.String(), bytes.NewBuffer(jsonBody), correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)
@@ -50,7 +50,7 @@ func BulkCreateRegistrars(correlationID string, cmds []commands.CreateRegistrarC
 			return fmt.Errorf("failed to read body of failed api request: %w", err)
 		}
 
-		return fmt.Errorf("error bulk creating registrars: %d: %s", resp.StatusCode, string(body))
+		return httpResponseError(resp, body)
 	}
 
 	return nil

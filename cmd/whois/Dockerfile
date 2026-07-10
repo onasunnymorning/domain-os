@@ -1,6 +1,7 @@
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.5-alpine AS build
 
 WORKDIR /
+ENV CGO_ENABLED=0
 
 # Install UPX for binary compression
 RUN apk add upx
@@ -8,7 +9,8 @@ RUN apk add upx
 # Go dependencies
 COPY go.mod ./
 COPY go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY ./internal ./internal
@@ -16,11 +18,22 @@ COPY ./pkg ./pkg
 COPY ./cmd/whois/ ./cmd/whois/
 
 FROM build AS build-whois
-ARG GIT_SHA
-RUN go build -tags dynamic -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o whoisServer /cmd/whois/whois.go
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go build -tags dynamic -ldflags="-s -w \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -o whoisServer /cmd/whois/whois.go
 
 # Create API release image
-FROM alpine:3.21.3 AS whois-server
+FROM alpine:3.21.4 AS whois-server
+
+# Patch base-image OS packages against known CVEs
+RUN apk upgrade --no-cache
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

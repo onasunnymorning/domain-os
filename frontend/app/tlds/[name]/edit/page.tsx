@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import posthog from 'posthog-js';
 
 interface Props {
   params: Promise<{ name: string }>;
@@ -58,21 +59,14 @@ export default function EditTLDPage({ params }: Props) {
 
   const handleDelete = () => {
     deleteTLD({ name, keepTLDAndPhases }, {
-      onSuccess: (data: any) => {
+      onSuccess: () => {
+        posthog.capture('tld_deleted', {
+          tld_name: tldName,
+          keep_tld_and_phases: keepTLDAndPhases,
+        });
         setDeleteOpen(false);
         setDeleteConfirmText('');
         setKeepTLDAndPhases(false);
-        if (data?.url) {
-          toast.success(`Cleanup workflow started for ${tldName}`, {
-            action: {
-              label: 'View in Temporal',
-              onClick: () => window.open(data.url, '_blank'),
-            },
-            duration: 10000,
-          });
-        } else {
-          toast.success(`Cleanup workflow started for ${tldName}`);
-        }
         router.push('/tlds');
       },
     });
@@ -95,8 +89,17 @@ export default function EditTLDPage({ params }: Props) {
   }, [tld, isLoading, form]);
 
   const onSubmit = async (values: FormValues) => {
-    await updateTLD({ name: tldName, data: values });
-    router.push(`/tlds/${encodeURIComponent(tldName)}`);
+    try {
+      await updateTLD({ name: tldName, data: values });
+      posthog.capture('tld_updated', {
+        tld_name: tldName,
+        allow_escrow_import: values.AllowEscrowImport,
+      });
+      router.push(`/tlds/${encodeURIComponent(tldName)}`);
+    } catch (error) {
+      posthog.captureException(error);
+      throw error;
+    }
   };
 
   return (
@@ -181,7 +184,7 @@ export default function EditTLDPage({ params }: Props) {
                     <DialogHeader>
                       <DialogTitle>Delete TLD {tld.Name}</DialogTitle>
                       <DialogDescription>
-                        This will cleanly orchestrate the deletion of TLD &quot;{tld.Name}&quot; and all of its associated orphaned metadata, domains, contacts, and hosts by starting a background Temporal workflow. This action is carefully executed but cannot be undone.
+                        This will start a background Temporal cleanup workflow to safely delete the TLD &quot;{tld.Name}&quot; and its associated records. You will be guided to review and approve the deletion counts in the workflow control center.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">

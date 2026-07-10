@@ -4,8 +4,9 @@ import { useDomainDNS } from "@/lib/hooks/useDomains";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { Copy, Terminal } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CopyButton } from "@/components/ui/copy-button";
 
 interface DnsLookupModalProps {
   domainName: string;
@@ -17,14 +18,7 @@ export function DnsLookupModal({ domainName, trigger }: DnsLookupModalProps) {
   // Only fetch data when the modal is open
   const { data: hosts, isLoading, error } = useDomainDNS(domainName, open);
 
-  const handleCopy = async () => {
-    if (!hosts) return;
-    try {
-      await navigator.clipboard.writeText(hosts.join("\n"));
-    } catch (e) {
-      console.error("Failed to copy", e);
-    }
-  };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -62,13 +56,13 @@ export function DnsLookupModal({ domainName, trigger }: DnsLookupModalProps) {
 
           {!isLoading && !error && hosts !== undefined && (
             <div className="bg-muted text-xs p-4 pt-10 overflow-x-auto group min-h-[140px]">
-              <button
-                onClick={handleCopy}
+              <CopyButton
+                value={hosts.join("\n")}
+                variant="none"
                 className="absolute top-2 right-2 p-1.5 z-10 text-muted-foreground hover:text-foreground bg-background/50 hover:bg-background rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                title="Copy text"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
+                tooltip="Copy text"
+                iconClassName="h-4 w-4"
+              />
               {hosts.length === 0 ? (
                 <div className="text-muted-foreground italic h-full flex items-center justify-center">No NS records found</div>
               ) : (

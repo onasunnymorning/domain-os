@@ -14,6 +14,9 @@ type ListRegistrarsFilter struct {
 	StatusEquals     string
 	IANAStatusEquals string
 	AutorenewEquals  string
+	TLD              string
+	SortBy           string
+	SortOrder        string
 }
 
 // ToQueryParams converts the Filter to a query string that can be appended to the URL
@@ -42,6 +45,15 @@ func (f ListRegistrarsFilter) ToQueryParams() string {
 	}
 	if f.AutorenewEquals != "" {
 		queryString += "&autorenew_equals=" + f.AutorenewEquals
+	}
+	if f.TLD != "" {
+		queryString += "&tld=" + f.TLD
+	}
+	if f.SortBy != "" {
+		queryString += "&sort_by=" + f.SortBy
+	}
+	if f.SortOrder != "" {
+		queryString += "&sort_order=" + f.SortOrder
 	}
 	return queryString
 }

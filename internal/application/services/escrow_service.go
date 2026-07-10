@@ -977,7 +977,9 @@ func CountLines(r io.Reader) (int, error) {
 	return count, err
 }
 
-// getUniqueContactIDs Extracts the contact IDs from the contact file and returns them as a map
+// getUniqueContactIDs streams through the contacts CSV row-by-row and
+// collects column-0 (contact ID) into a set. Only the ID strings are
+// retained — the full CSV rows are never held in memory.
 func (svc *XMLEscrowService) getUniqueContactIDs() (map[string]bool, error) {
 	contactIDs := make(map[string]bool)
 	f, err := os.Open(svc.GetDepositFileNameWoExtension() + "-contacts.csv")
@@ -986,12 +988,23 @@ func (svc *XMLEscrowService) getUniqueContactIDs() (map[string]bool, error) {
 	}
 	defer f.Close()
 	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
+
+	// Skip header
+	if _, err := r.Read(); err != nil {
 		return contactIDs, err
 	}
-	for _, record := range records {
-		contactIDs[record[0]] = true
+
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return contactIDs, err
+		}
+		if len(record) > 0 {
+			contactIDs[record[0]] = true
+		}
 	}
 	return contactIDs, nil
 }
@@ -1006,7 +1019,9 @@ func (svc *XMLEscrowService) LoadUniqueContactIDs() error {
 	return nil
 }
 
-// LookForMissingContacts Looks if all the uniqueContactIDs used on domains are present in the contact file. It saves the results in the escrow object
+// LookForMissingContacts checks whether every contact ID referenced by
+// domains (in -uniqueDomainContactIDs.csv) actually exists in the
+// contacts file. Both CSVs are streamed row-by-row — no ReadAll().
 func (svc *XMLEscrowService) LookForMissingContacts() error {
 	var err error
 	svc.uniqueContactIDs, err = svc.getUniqueContactIDs()
@@ -1019,20 +1034,23 @@ func (svc *XMLEscrowService) LookForMissingContacts() error {
 	}
 	defer f.Close()
 	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
+
+	// Skip header
+	if _, err := r.Read(); err != nil {
 		return err
 	}
+
 	errorCount := 0
 	missingContactIDs := []string{}
-	// Skip the header row (first record) if records exist
-	startIndex := 0
-	if len(records) > 0 {
-		startIndex = 1 // Skip header row
-	}
-	for i := startIndex; i < len(records); i++ {
-		record := records[i]
-		if !svc.uniqueContactIDs[record[0]] {
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if len(record) > 0 && !svc.uniqueContactIDs[record[0]] {
 			errorCount++
 			missingContactIDs = append(missingContactIDs, record[0])
 		}

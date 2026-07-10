@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 // GetDomain retrieves a domain entity based on the provided domain name.
 // It constructs an API endpoint URL, sets the necessary query parameters (adds correlation-id), and makes an HTTP GET request
 // to fetch the domain details. The response is then unmarshaled into an entities.Domain object.
-func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
+func GetDomain(ctx context.Context, correlationID, domainName string) (*entities.Domain, error) {
 	if domainName == "" {
 		return nil, fmt.Errorf("domain name cannot be empty")
 	}
@@ -30,11 +31,10 @@ func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
 	}
 
 	// Delete the domain
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -47,7 +47,7 @@ func GetDomain(correlationID, domainName string) (*entities.Domain, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("(%d) %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	var domain entities.Domain

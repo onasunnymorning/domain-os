@@ -83,17 +83,9 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 		return
 	}
 
-	// Get the Event from the context
-	// event := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	event := entities.NewEvent("domain-os", "admin", "CREATE", "Contact", "", ctx.Request.URL.RequestURI())
-	// Set the event details.command
-	event.Details.Command = req
-
 	// Create the contact
 	contact, err := ctrl.contactService.CreateContact(ctx.Request.Context(), &req)
 	if err != nil {
-		event.Details.Error = err.Error()
 		if errors.Is(err, entities.ErrInvalidContact) ||
 			errors.Is(err, entities.ErrContactAlreadyExists) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -102,9 +94,6 @@ func (ctrl *ContactController) CreateContact(ctx *gin.Context) {
 		}
 		return
 	}
-	// Set the event details.after and objectID
-	event.Details.After = contact
-	event.ObjectID = contact.RoID.String()
 
 	ctx.JSON(http.StatusCreated, contact)
 }
@@ -162,23 +151,12 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 		return
 	}
 
-	// Get the Event from the context
-	// e := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	e := entities.NewEvent("domain-os", "admin", "UPDATE", "Contact", ctx.Param("id"), ctx.Request.URL.RequestURI())
-	// Set the event details.command
-	e.Details.Command = req
-
 	// Look up the contact
 	c, err := ctrl.contactService.GetContactByID(ctx.Request.Context(), ctx.Param("id"))
 	if err != nil {
-		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Set the event details.before
-	e.Details.Before = c
 
 	// Make the changes
 	c.Email = req.Email
@@ -198,19 +176,15 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 	// Validate the changes
 	_, err = c.IsValid()
 	if err != nil {
-		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	contact, err := ctrl.contactService.UpdateContact(ctx.Request.Context(), c)
 	if err != nil {
-		e.Details.Error = err.Error()
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	e.Details.After = contact
 
 	ctx.JSON(http.StatusOK, contact)
 }
@@ -227,22 +201,16 @@ func (ctrl *ContactController) UpdateContact(ctx *gin.Context) {
 // @Router /contacts/{id} [delete]
 func (ctrl *ContactController) DeleteContactByID(ctx *gin.Context) {
 	id := ctx.Param("id")
-	// e := GetEventFromContext(ctx)
-	// Temporarily disable this to overcome infra issues with message broker
-	e := entities.NewEvent("domain-os", "admin", "DELETE", "Contact", id, ctx.Request.URL.RequestURI())
 
 	err := ctrl.contactService.DeleteContactByID(ctx.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, entities.ErrContactNotFound) {
 			ctx.JSON(http.StatusNoContent, nil)
 		} else {
-			e.Details.Error = err.Error()
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
 	}
-
-	e.Details.Before = id
 
 	ctx.JSON(http.StatusNoContent, nil)
 }

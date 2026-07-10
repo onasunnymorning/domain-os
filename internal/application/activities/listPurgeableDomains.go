@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,7 @@ import (
 )
 
 // ListPurgeableDomains takes an PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and are past the grace period (PurgeDate is in the past or before the supplied date). It gets these through the admin API.
-func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
+func ListPurgeableDomains(ctx context.Context, correlationID string, query queries.PurgeableDomainsQuery) ([]response.DomainExpiryItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/purgeable", BASEURL)
 
 	// set the correlation ID and pagesize
@@ -28,11 +29,10 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	client := http.Client{}
 
 	// Retrieve the list of domains
-	req, err := http.NewRequest("GET", URL.String(), nil)
+	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -45,7 +45,7 @@ func ListPurgeableDomains(correlationID string, query queries.PurgeableDomainsQu
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch domain count (%d): %s", resp.StatusCode, body)
+		return nil, httpResponseError(resp, body)
 	}
 
 	// Parse the result

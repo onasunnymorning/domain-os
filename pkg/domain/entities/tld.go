@@ -53,8 +53,12 @@ type TLD struct {
 	EnableDNS bool `json:"EnableDNS"`
 	// Phases is a slice of phases for the TLD
 	Phases    []Phase   `json:"Phases"`
-	CreatedAt time.Time `json:"CreatedAt"`
-	UpdatedAt time.Time `json:"UpdatedAt"`
+	// DomainCount represents the domain count of this TLD for a specific context (like a registrar)
+	DomainCount int       `json:"DomainCount"`
+	// RegistrarCount represents the number of accredited registrars for this TLD
+	RegistrarCount int       `json:"RegistrarCount"`
+	CreatedAt      time.Time `json:"CreatedAt"`
+	UpdatedAt      time.Time `json:"UpdatedAt"`
 }
 
 // NewTLD returns a pointer to a TLD struct or an error (ErrInvalidDomainName) if the domain name is invalid. It will set the Uname and TLDType fields.

@@ -1,13 +1,15 @@
 package activities
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 )
 
 // SetRegistrarIANAStatus updates the IANA status of a registrar via REST endpoint.
 // If the registrar is not found (404), this is treated as a no-op and not an error.
-func SetRegistrarIANAStatus(correlationID, clid, ianaStatus string) error {
+func SetRegistrarIANAStatus(ctx context.Context, correlationID, clid, ianaStatus string) error {
 	ENDPOINT := fmt.Sprintf("%s/registrars/%s/iana_status/%s", BASEURL, clid, ianaStatus)
 
 	// Set up an API client
@@ -21,11 +23,10 @@ func SetRegistrarIANAStatus(correlationID, clid, ianaStatus string) error {
 	}
 
 	// Create the request
-	req, err := http.NewRequest("PUT", URL.String(), nil)
+	req, err := prepareRequest(ctx, "PUT", URL.String(), nil, correlationID)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
 
 	// Hit the endpoint
 	resp, err := client.Do(req)
@@ -39,7 +40,8 @@ func SetRegistrarIANAStatus(correlationID, clid, ianaStatus string) error {
 		return nil
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to set registrar IANA status through API: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return httpResponseError(resp, body)
 	}
 
 	return nil

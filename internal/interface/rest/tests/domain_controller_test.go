@@ -160,6 +160,20 @@ var _ = Describe("DomainController", Ordered, func() {
 		Expect(domain.Status.ClientHold).To(BeFalse())
 	})
 
+	It("should list events for the domain", func() {
+		resp := api.GET(fmt.Sprintf("/domains/%s/events", domainName))
+		Expect(resp.Code).To(Equal(http.StatusOK))
+
+		var events []entities.DomainEvent
+		err := DecodeJSON(resp, &events)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).NotTo(BeEmpty())
+
+		// Verify event properties
+		Expect(events[0].Subject).To(Equal(domainName))
+		Expect(events[0].Source).To(Equal("domain-os/api"))
+	})
+
 	It("should delete the domain", func() {
 		resp := api.DELETE(fmt.Sprintf("/domains/%s", domainName))
 		Expect(resp.Code).To(Equal(http.StatusNoContent))

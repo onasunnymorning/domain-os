@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"context"
 	"bytes"
 	"io"
 	"net/http"
@@ -34,7 +35,7 @@ func (suite *UpdateFXTestSuite) TestPurgeDomain_Success() {
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	err := UpdateFX("testCorrelationID", "usd")
+	err := UpdateFX(context.Background(), "testCorrelationID", "usd")
 	suite.NoError(err, "Expected no error for successful FX sync")
 }
 
@@ -45,7 +46,7 @@ func (suite *UpdateFXTestSuite) TestPurgeDomain_BadRequest() {
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 
-	err := UpdateFX("testCorrelationID", "m")
+	err := UpdateFX(context.Background(), "testCorrelationID", "m")
 	suite.Error(err, "Expected an error for bad request")
 	suite.Contains(err.Error(), "500", "error retrieving FX rates")
 }

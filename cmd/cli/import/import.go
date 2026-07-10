@@ -1,30 +1,19 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"log"
 	"os"
 	"runtime"
-	"slices"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/schedules"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )
 
-const (
-	ScheduleTypeSyncRegistrars = "sync-registrars"
-)
 
-var (
-	supportedScheduleTypes = []string{
-		ScheduleTypeSyncRegistrars,
-	}
-)
 
 func main() {
 	start := time.Now()
@@ -73,14 +62,6 @@ func main() {
 					},
 				},
 			},
-			{
-				Name:      "schedule",
-				Aliases:   []string{"s", "sch"},
-				Usage:     "import schedules {schedulename}",
-				UsageText: "Use this command to import (create) temporal schedules",
-				Action:    importSchedule,
-				// TODO: port this over from the lifecycle cli tool
-			},
 		},
 	}
 
@@ -98,10 +79,6 @@ func main() {
 	log.Printf("[DEBUG] Maximum memory usage: %d Mbytes\n", maxAlloc/1024/1024)
 }
 
-func notImplemented(c *cli.Context) error {
-	return cli.Exit("Not implemented", 1)
-}
-
 func importRegistrars(c *cli.Context) error {
 	// check for a chunk size
 	if c.Int("chunksize") < 1 || c.Int("chunksize") > 1000 {
@@ -111,7 +88,7 @@ func importRegistrars(c *cli.Context) error {
 	correlationID := "cli-import-registrars-" + time.Now().Format("20060102150405")
 	log.Println("[INFO] Correlation ID:", correlationID)
 	// Get a count of the registrars in the system
-	count, err := activities.CountRegistrars(correlationID)
+	count, err := activities.CountRegistrars(context.Background(), correlationID)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -123,28 +100,28 @@ func importRegistrars(c *cli.Context) error {
 
 	// Get the ICANN registrars
 	log.Printf("[INFO] Getting ICANN registrars from file: %s\n", c.String("filename"))
-	icannRars, err := activities.GetICANNRegistrars(correlationID, c.String("filename"))
+	icannRars, err := activities.GetICANNRegistrars(context.Background(), correlationID, c.String("filename"))
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Sync our IANA registrar list
 	log.Println("[INFO] Syncing IANA registrars...")
-	syncErr := activities.SyncIanaRegistrars(correlationID)
+	syncErr := activities.SyncIanaRegistrars(context.Background(), correlationID)
 	if syncErr != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the IANA registrars
 	log.Println("[INFO] Getting IANA registrars...")
-	ianaRars, err := activities.GetIANARegistrars(correlationID, 100)
+	ianaRars, err := activities.GetIANARegistrars(context.Background(), correlationID, 100)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
 	// Get the create commands
 	log.Println("[INFO] Creating registrar CREATE commands...")
-	createCommands, err := activities.MakeCreateRegistrarCommands(correlationID, icannRars, ianaRars)
+	createCommands, err := activities.MakeCreateRegistrarCommands(context.Background(), correlationID, icannRars, ianaRars)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -155,7 +132,7 @@ func importRegistrars(c *cli.Context) error {
 	pbar := progressbar.New(len(createCommands))
 	// Process the commands in chunks of 100
 	for chunk := range commands.ChunkCreateRegistrarCommands(createCommands, c.Int("chunksize")) {
-		if err := activities.BulkCreateRegistrars(correlationID, chunk); err != nil {
+		if err := activities.BulkCreateRegistrars(context.Background(), correlationID, chunk); err != nil {
 			return cli.Exit(err, 1)
 		}
 		pbar.Add(len(chunk))
@@ -164,32 +141,4 @@ func importRegistrars(c *cli.Context) error {
 	log.Println("")
 	log.Printf("[INFO] %d Registrars imported successfully\n", len(createCommands))
 	return nil
-}
-
-func importSchedule(c *cli.Context) error {
-	// Validate input
-	if !slices.Contains(supportedScheduleTypes, c.Args().First()) {
-		return cli.Exit(fmt.Sprintf("[ERROR] Unsupported schedule type: %s. Currently supporting %v", c.Args().First(), supportedScheduleTypes), 1)
-	}
-
-	// Create the schedule
-	scheduleID, err := schedules.CreateSyncRegistrarScheduleDaily(getTemporalClientConfig())
-	if err != nil {
-		return err
-	}
-
-	log.Println("Created schedule with ID:", scheduleID)
-
-	return nil
-}
-
-func getTemporalClientConfig() temporal.TemporalClientconfig {
-	// Create a temporal client config
-	return temporal.TemporalClientconfig{
-		HostPort:    os.Getenv("TMPIO_HOST_PORT"),
-		Namespace:   os.Getenv("TMPIO_NAME_SPACE"),
-		ClientKey:   os.Getenv("TMPIO_KEY"),
-		ClientCert:  os.Getenv("TMPIO_CERT"),
-		WorkerQueue: os.Getenv("TMPIO_QUEUE"),
-	}
 }

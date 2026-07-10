@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -75,6 +76,9 @@ type StreamingXMLEscrowService struct {
 	*XMLEscrowService
 	// CSV writers for streaming output
 	csvWriters *StreamingCSVWriters
+	// reader is an optional streaming source for the XML data.
+	// When set, streamXML reads from this instead of opening Deposit.FileName.
+	reader io.Reader
 }
 
 // NewStreamingXMLEscrowService creates a new streaming service wrapper
@@ -89,6 +93,34 @@ func NewStreamingXMLEscrowService(xmlFilename string) (*StreamingXMLEscrowServic
 	}
 
 	// Initialize CSV writers
+	if err := service.initializeCSVWriters(); err != nil {
+		return nil, err
+	}
+
+	return service, nil
+}
+
+// NewStreamingXMLEscrowServiceFromReader creates a streaming service that reads
+// XML from an io.Reader (e.g. S3 stream → gzip.Reader) instead of a local file.
+// outputDir is where the output CSV files are written. baseName is the stem used
+// for naming CSVs (e.g. "best_2026-06-24_full_S1_R0").
+// fileSize is the compressed or original size for progress logging (0 if unknown).
+func NewStreamingXMLEscrowServiceFromReader(reader io.Reader, outputDir, baseName string, fileSize int64) (*StreamingXMLEscrowService, error) {
+	// Build a minimal base service — no file on disk to stat
+	base := &XMLEscrowService{
+		RegistrarMapping: entities.NewRegistrarMapping(),
+		uniqueContactIDs: make(map[string]bool),
+	}
+	// Set a synthetic FileName so GetDepositFileNameWoExtension() derives
+	// correct CSV paths: outputDir/baseName.xml → outputDir/baseName-*.csv
+	base.Deposit.FileName = filepath.Join(outputDir, baseName+".xml")
+	base.Deposit.FileSize = fileSize
+
+	service := &StreamingXMLEscrowService{
+		XMLEscrowService: base,
+		reader:           reader,
+	}
+
 	if err := service.initializeCSVWriters(); err != nil {
 		return nil, err
 	}
@@ -132,17 +164,26 @@ func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool, token st
 
 // Removed complex handler system in favor of simple direct processing
 
-// streamXML performs the single-pass streaming through the XML file
+// streamXML performs the single-pass streaming through the XML data.
+// When svc.reader is set (via NewStreamingXMLEscrowServiceFromReader), the XML
+// is read directly from the stream (e.g. S3 → gzip → here) without touching disk.
+// Otherwise it opens the file at Deposit.FileName (legacy path).
 func (svc *StreamingXMLEscrowService) streamXML(heartbeat HeartbeatFunc) error {
-	file, err := os.Open(svc.Deposit.FileName)
-	if err != nil {
-		return err
+	var xmlReader io.Reader
+	if svc.reader != nil {
+		xmlReader = svc.reader
+		log.Printf("Streaming XML from reader (size hint: %d MB)...", svc.Deposit.FileSize/1024/1024)
+	} else {
+		file, err := os.Open(svc.Deposit.FileName)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		xmlReader = file
+		log.Printf("Streaming through %s...", svc.Deposit.FileName)
 	}
-	defer file.Close()
 
-	decoder := xml.NewDecoder(file)
-
-	log.Printf("Streaming through %s...\n", svc.Deposit.FileName)
+	decoder := xml.NewDecoder(xmlReader)
 
 	// Simple counters for each tag type
 	var depositFound, headerFound bool

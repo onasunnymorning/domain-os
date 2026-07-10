@@ -1,0 +1,45 @@
+name: Scheduled Image Scan
+
+# Base images (alpine, node, golang) accrue new CVEs continuously. The merge
+# gate in ci.yaml only re-scans when something is pushed, so a quiet week can
+# leave :latest silently vulnerable — and a CVE published overnight can ambush
+# an unrelated PR. This weekly non-blocking scan surfaces that drift on a
+# schedule instead. It reports (exit-code 0) rather than gates; fixing means
+# bumping a base image or rebuilding, done via a normal PR.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      names: ${{ steps.set.outputs.names }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set
+        run: echo "names=$(jq -c '[.[].name]' .github/images.json)" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: Trivy scan ${{ matrix.image }}:latest
+    runs-on: ubuntu-latest
+    needs: [matrix]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.matrix.outputs.names) }}
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: gprins/${{ matrix.image }}:latest
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH

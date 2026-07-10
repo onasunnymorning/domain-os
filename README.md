@@ -30,10 +30,58 @@ Registry backends operate in a high-volume, low-margin environment. The legacy s
 | **Admin REST API** | Full CRUD for domains, TLDs, registrars, contacts, hosts, pricing, DNSSEC, and more. Swagger docs included. |
 | **EPP Server** | RFC 5730-compliant EPP on port 700 with TLS. Redis-backed session and rate limiting. |
 | **WHOIS Server** | Standard port 43 WHOIS. |
+| **MCP Server** | Model Context Protocol server exposing registry tools for AI agents (stdio + HTTP). |
 | **Temporal Workflows** | Durable, automated lifecycle management — expiry, purge, restore, registrar sync, escrow import, FX updates. |
 | **Admin Dashboard** | Next.js web UI for registry operators, TLDs, registrars, domains, and escrow imports. |
 | **CLI Tools** | Command-line utilities for EPP testing, escrow operations, data import, lifecycle management, and more. |
 | **Multi-TLD Support** | Registry operators, TLD phases, pricing engines with premium labels and FX conversion. |
+
+---
+
+## Service Topology
+
+The system consists of 6 deployable services plus shared infrastructure:
+
+```mermaid
+graph LR
+    FE["Frontend<br/>:3000"] -->|HTTP| API["Admin API<br/>:8080"]
+    API -->|SQL| PG[(PostgreSQL<br/>:5432)]
+    API -->|S3| S3[(S3 / MinIO<br/>:9000)]
+    API -->|gRPC| TMP["Temporal<br/>:7233"]
+    WK["Unified Worker"] -->|SQL| PG
+    WK -->|gRPC| TMP
+    WK -->|S3| S3
+    EPP["EPP Server<br/>:700"] -->|Redis| RD[(Redis<br/>:6379)]
+    WH["WHOIS<br/>:43"] -->|SQL| PG
+    MCP["MCP Server<br/>:3001"] -->|SQL| PG
+```
+
+### Services
+
+| Service | Port | Docker Image | Health Check |
+|---|---|---|---|
+| Admin API | 8080 | `gprins/domain-os-api` | `GET /ping` |
+| Unified Worker | — | `gprins/domain-os-worker` | Temporal heartbeat |
+| EPP Server | 700 | `gprins/domain-os-epp` | TCP connect |
+| WHOIS Server | 43 | `gprins/domain-os-whois` | TCP connect |
+| MCP Server | 3001 | `gprins/domain-os-mcp` | `GET /healthz` |
+| Frontend | 3000 | `gprins/domain-os-frontend` | — |
+
+### Infrastructure Dependencies
+
+| Component | Default Port | Used By |
+|---|---|---|
+| PostgreSQL | 5432 | API, Worker, WHOIS, MCP |
+| Redis | 6379 | EPP Server |
+| Temporal | 7233 | API (start workflows), Worker (execute workflows) |
+| S3 / MinIO | 9000 | API (presigned URLs), Worker (escrow, snapshots, events) |
+
+### Versioning
+
+All services share a single version from the [`VERSION`](VERSION) file at the repo root. Version info is injected at build time via the [`internal/buildinfo`](internal/buildinfo/buildinfo.go) package and is available at runtime through:
+
+- **API**: `GET /ping` → returns `version`, `git_sha`, `build_date`
+- **All services**: Logged at startup
 
 ---
 
@@ -83,14 +131,14 @@ Each box is an **Activity** — a single Go function that does one thing. The **
 
 ### Activities — the building blocks
 
-There are **65+ activity implementations** across the codebase. Each is a focused function: `AutoRenewDomain`, `PurgeDomain`, `IngestContacts`, `BackupTLDAssets`, `ValidateInput`, `UpdateFX`, etc.
+There are **65+ activity implementations** across the codebase. Each is a focused function: `AutoRenewDomain`, `PurgeDomain`, `IngestContacts`, `BackupTLDAssets`, `ValidateEscrowSource`, `UpdateFX`, etc.
 
 Activities are grouped by concern:
 
 | Group | Activities | Examples |
 |---|---|---|
 | **Domain Lifecycle** | ~15 | `AutoRenewDomain`, `ExpireDomain`, `PurgeDomain`, `RenewDomain`, `SetDomainStatus` |
-| **Escrow Import** | ~10 | `ValidateInput`, `ParseAndAssetize`, `CollateAssets`, `RegistrarMap`, `StageImport`, `IngestDomains`, `IngestContacts` |
+| **Escrow Import** | ~10 | `ValidateEscrowSource`, `ParseAndExtractAssets`, `BuildStagingDatabase`, `ResolveRegistrars`, `ApplyRegistrarMappings`, `IngestDomains`, `IngestContacts` |
 | **Registrar Sync** | ~8 | `SyncIanaRegistrars`, `GetICANNRegistrars`, `DiffAndPlanRegistrars`, `CreateRegistrar`, `SetRegistrarStatus` |
 | **TLD Cleanup** | ~5 | `CheckTLDCanBeDeleted`, `PlanTLDCleanup`, `BackupTLDAssets`, `DeleteTLDAssets` |
 | **FX** | 1 | `UpdateFX` |
@@ -137,11 +185,12 @@ For the full architecture document, see [architecture.md](architecture.md).
 | **Cache** | Redis |
 | **Object Storage** | MinIO (S3-compatible) |
 | **EPP Protocol** | Custom TLS server on port 700 |
+| **MCP Protocol** | Streamable HTTP + stdio |
 | **Frontend** | Next.js 15, React 19, TypeScript, Tailwind CSS, Radix UI |
 | **Auth** | Auth0 |
-| **Observability** | Prometheus, Grafana, Temporal UI, Metabase |
-| **Secrets** | Doppler (or .env) |
-| **CI** | GitHub Actions |
+| **Observability** | Prometheus, Grafana, Temporal UI, PostHog |
+| **Secrets** | Doppler |
+| **CI/CD** | GitHub Actions |
 
 Full stack details in [stack.md](stack.md).
 
@@ -199,15 +248,27 @@ make shell-db          # PostgreSQL shell
 
 ---
 
-## Services
+## Project structure
 
-| Service | Port | Docker Image |
-|---|---|---|
-| Admin API | 8080 | `geapex/domain-os` |
-| EPP Server | 700 | `geapex/epp-server` |
-| WHOIS / EPP Client API | 8081 | `geapex/epp-client-api` |
-| Unified Temporal Worker | — | `geapex/unified-worker` |
-| Frontend Dashboard | 3000 | (dev server) |
+```
+domain-os/
+├── cmd/                    Application entry points
+│   ├── api/ry-admin/       Admin REST API
+│   ├── epp/                EPP server
+│   ├── whois/              WHOIS server
+│   ├── mcp/                MCP server (AI tool interface)
+│   ├── workers/unified/    Temporal worker (all workflows)
+│   └── cli/                CLI tools
+├── pkg/domain/             Domain entities & repository interfaces
+├── internal/
+│   ├── application/        Workflows, activities, services
+│   ├── buildinfo/          Build-time version metadata
+│   ├── infrastructure/     Database, Temporal, S3, auth adapters
+│   └── interface/          REST controllers, CLI handlers, MCP tools
+├── frontend/               Next.js admin dashboard
+├── deploy/                 Deployment contract (contract.json) + Helm, Pulumi
+└── docs/                   Extended documentation
+```
 
 ---
 
@@ -222,29 +283,6 @@ The project has tests at multiple levels:
 
 ---
 
-## Project structure
-
-```
-domain-os/
-├── cmd/                    Application entry points
-│   ├── api/ry-admin/       Admin REST API
-│   ├── api/epp-client/     WHOIS / EPP client API
-│   ├── epp/                EPP server
-│   ├── whois/              WHOIS server
-│   ├── workers/unified/    Temporal worker (all workflows)
-│   └── cli/                CLI tools
-├── pkg/domain/             Domain entities & repository interfaces
-├── internal/
-│   ├── application/        Workflows, activities, services
-│   ├── infrastructure/     Database, Temporal, S3, auth adapters
-│   └── interface/          REST controllers, CLI handlers
-├── frontend/               Next.js admin dashboard
-├── docs/                   Extended documentation
-└── deploy/                 Deployment configs
-```
-
----
-
 ## Documentation
 
 Extended documentation lives in [`/docs`](docs/):
@@ -256,6 +294,7 @@ Extended documentation lives in [`/docs`](docs/):
 - [Escrow Import Walkthrough](docs/escrow-import-walkthrough.md) — step-by-step import guide
 - [Domain Status Overview](docs/domain-status-overview.md) — status model reference
 - [API Integration Testing](docs/api-integration-testing-guide.md) — testing against the real API
+- [CI/CD & Image Publishing](docs/ci-cd.md) — how images are built, scanned, published, and released
 
 ---
 

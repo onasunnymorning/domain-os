@@ -21,6 +21,7 @@ import { ChevronDown, ArrowLeft, PlusCircle } from "lucide-react";
 import { DomainCreateRequest } from "@/lib/types/domain";
 import { Checkbox } from "@/components/ui/checkbox";
 import { generateAuthInfo } from "@/lib/utils/authinfo";
+import posthog from "posthog-js";
 
 const formSchema = z.object({
   Label: z
@@ -143,8 +144,15 @@ export default function CreateDomainPage() {
       const created = await mutateAsync(payload);
       toast.success("Domain created successfully");
       const name = (created as any)?.Name || fullName;
+      posthog.capture('domain_created', {
+        domain_name: name,
+        tld: values.TLD,
+        registrar_clid: values.ClID,
+        enforce_phase_policy: values.EnforcePhasePolicy,
+      });
       router.push(`/domains/${encodeURIComponent(name)}`);
     } catch (error: any) {
+      posthog.captureException(error);
       toast.error(error?.response?.data?.error || "Failed to create domain");
     }
   };

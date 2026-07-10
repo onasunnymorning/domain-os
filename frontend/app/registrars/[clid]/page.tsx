@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useRegistrar } from "@/lib/hooks/useRegistrars";
 import { useRegistrarAccreditations, useAccreditRegistrar, useDeaccreditRegistrar } from "@/lib/hooks/useAccreditations";
+import { formatCompactNumber } from "@/lib/utils/numberUtils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -19,6 +20,7 @@ import type { TLD } from "@/lib/api/tlds";
 import { RegistrarDomainCountWidget } from "@/components/registrars/RegistrarDomainCountWidget";
 import { RegistrarLifecycleWidget } from "@/components/registrars/RegistrarLifecycleWidget";
 import { RegistrarTLDCountWidget } from "@/components/registrars/RegistrarTLDCountWidget";
+import posthog from "posthog-js";
 
 export default function RegistrarDetailPage() {
   const params = useParams();
@@ -149,6 +151,7 @@ export default function RegistrarDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead className="w-28">Domains</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Unicode Name</TableHead>
                     <TableHead>Registry Operator</TableHead>
@@ -162,6 +165,9 @@ export default function RegistrarDetailPage() {
                         <Link href={`/tlds/${encodeURIComponent(tld.Name)}`} className="text-primary hover:underline">
                           {tld.Name}
                         </Link>
+                      </TableCell>
+                      <TableCell className="font-mono" title={(tld.DomainCount ?? 0).toLocaleString()}>
+                        {formatCompactNumber(tld.DomainCount ?? 0)}
                       </TableCell>
                       <TableCell><TLDTypeBadge type={tld.Type} /></TableCell>
                       <TableCell>
@@ -237,6 +243,11 @@ export default function RegistrarDetailPage() {
                             disabled={accreditMutation.isPending}
                             onClick={async () => {
                               await accreditMutation.mutateAsync(tld.Name);
+                              posthog.capture('tld_accredited_to_registrar', {
+                                registrar_clid: clid,
+                                tld_name: tld.Name,
+                                tld_type: tld.Type,
+                              });
                               setAddOpen(false);
                               setSearch("");
                             }}
@@ -288,6 +299,10 @@ export default function RegistrarDetailPage() {
                   setDeaccError(null);
                   try {
                     await deaccreditMutation.mutateAsync(selectedTLD.Name);
+                    posthog.capture('tld_deaccredited_from_registrar', {
+                      registrar_clid: clid,
+                      tld_name: selectedTLD.Name,
+                    });
                     setDeaccOpen(false);
                     setConfirmText("");
                     setSelectedTLD(null);
