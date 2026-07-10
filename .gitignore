@@ -36,6 +36,11 @@ gke_gcloud_auth_plugin_cache
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Node deps. frontend/.gitignore only anchors /node_modules to that directory,
+# so a root node_modules (e.g. from an npm command run outside frontend/) was
+# never ignored. Its vitest cache used to get committed.
+node_modules/
+
 # Go workspace file
 go.work
 

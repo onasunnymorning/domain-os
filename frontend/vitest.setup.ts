@@ -30,6 +30,14 @@ if (!global.localStorage || typeof global.localStorage.clear !== 'function') {
   } as Storage;
 }
 
+// Mock next-runtime-env so env() reads process.env instead of window.__ENV,
+// which is only populated by <PublicEnvScript /> during a real page render.
+// This keeps vi.stubEnv('NEXT_PUBLIC_*', ...) working in tests.
+vi.mock('next-runtime-env', () => ({
+  env: (key: string) => process.env[key],
+  PublicEnvScript: () => null,
+}));
+
 // Mock Auth0 globally so ProtectedRoute renders children instead of a spinner
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(() => ({

@@ -5,6 +5,7 @@ import { ThemeProvider } from 'next-themes';
 import { useState, type ReactNode } from 'react';
 import { Auth0Provider } from '@auth0/auth0-react';
 import { TokenSync } from './providers/token-sync';
+import { getAuth0Domain, getAuth0ClientId, getAuth0Audience } from '@/lib/env';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -19,9 +20,9 @@ export function Providers({ children }: { children: ReactNode }) {
       })
   );
 
-  const domain = process.env.NEXT_PUBLIC_AUTH0_DOMAIN || '';
-  const clientId = process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID || '';
-  const audience = process.env.NEXT_PUBLIC_AUTH0_AUDIENCE || '';
+  const domain = getAuth0Domain();
+  const clientId = getAuth0ClientId();
+  const audience = getAuth0Audience();
 
   // Redirect URI for Auth0
   const redirectUri = typeof window !== 'undefined' ? window.location.origin : '';

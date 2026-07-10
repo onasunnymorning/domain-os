@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiClient, setAuthToken } from '../../lib/api/client';
+import { isAuthEnabled } from '@/lib/env';
 import { DnssecGraph } from '../../components/dnssec/DnssecGraph';
 import { mapDNSVizToReactFlow } from '../../lib/dnssec';
 import { Node, Edge } from '@xyflow/react';
@@ -38,7 +39,7 @@ function DnssecContent() {
     setSelectedNode(null);
 
     try {
-      const authEnabled = process.env.NEXT_PUBLIC_AUTH0_ENABLED !== 'false';
+      const authEnabled = isAuthEnabled();
       if (authEnabled) {
         try {
           const token = await getAccessTokenSilently();

@@ -1,4 +1,5 @@
-import { apiClient } from './client';
+import { resolveAuthToken } from './client';
+import { getApiUrl } from '@/lib/env';
 
 // ---------------------------------------------------------------------------
 // Types matching the Go Result struct
@@ -43,26 +44,23 @@ export interface AgentSSEEvent {
  *
  * Uses native `fetch` (not axios) because we need to read the response as a
  * streaming ReadableStream for SSE parsing. The base URL and auth token are
- * extracted from the shared apiClient configuration so all requests go through
- * the same origin with the same credentials.
+ * resolved through the same helpers the apiClient interceptor uses, so all
+ * requests go through the same origin with the same credentials.
  */
 export async function askAgent(
   question: string,
   onEvent: (event: AgentSSEEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const baseURL = apiClient.defaults.baseURL || '';
-  const authHeader =
-    apiClient.defaults.headers?.common?.['Authorization'] as string | undefined ??
-    (apiClient.defaults.headers?.['Authorization'] as string | undefined) ??
-    '';
+  const baseURL = getApiUrl();
+  const token = resolveAuthToken();
 
   const response = await fetch(`${baseURL}/agent/ask`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
-      ...(authHeader ? { Authorization: authHeader } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ question }),
     signal,

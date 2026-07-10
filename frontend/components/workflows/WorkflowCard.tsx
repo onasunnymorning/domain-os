@@ -7,9 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { WorkflowMeta } from '@/lib/api/workflows';
-import { TEMPORAL_UI_URL } from '@/lib/constants/external-urls';
-
-const TEMPORAL_NAMESPACE = process.env.NEXT_PUBLIC_TEMPORAL_NAMESPACE || 'default';
+import { getTemporalUiUrl, getTemporalNamespace } from '@/lib/env';
 
 interface WorkflowCardProps {
   workflow: WorkflowMeta;
@@ -23,6 +21,7 @@ const categoryIcons: Record<string, React.ElementType> = {
 
 export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
   const Icon = categoryIcons[workflow.category] || Zap;
+  const scheduleUrl = `${getTemporalUiUrl()}/namespaces/${getTemporalNamespace()}/schedules/${workflow.scheduleId}`;
 
   return (
     <Card
@@ -62,7 +61,7 @@ export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
               <>
                 <span className="text-muted-foreground/50">·</span>
                 <a
-                  href={`${TEMPORAL_UI_URL}/namespaces/${TEMPORAL_NAMESPACE}/schedules/${workflow.scheduleId}`}
+                  href={scheduleUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors"

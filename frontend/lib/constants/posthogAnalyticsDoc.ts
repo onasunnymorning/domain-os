@@ -100,10 +100,13 @@ Pre-built dashboards created during setup:
 
 These are set in:
 - \`.env.local\` for local development
-- **Render dashboard** for production (via \`render.yaml\` blueprint)
-- **Dockerfile** build args for Docker builds
+- **Container environment** in every deployed environment
 
-> **Note:** The API key is a write-only ingest key. It is intentionally exposed in the client bundle — this is the standard PostHog pattern.
+They are read at container start via \`getPostHogToken()\` / \`getPostHogHost()\` in
+\`lib/env.ts\`, not baked into the bundle — see [Runtime Environment Variables](/docs/runtime-env).
+When the token is absent at runtime, \`instrumentation-client.ts\` skips \`posthog.init()\` entirely.
+
+> **Note:** The API key is a write-only ingest key. It is intentionally readable by the browser — this is the standard PostHog pattern.
 
 ### Reverse Proxy (Ad-blocker Bypass)
 
