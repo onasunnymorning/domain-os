@@ -1,7 +1,7 @@
 {
   "schema_version": "2",
   "app_version": "0.7.0",
-  "generated": "2026-07-10T15:50:42Z",
+  "generated": "2026-07-10T16:01:30Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os",
@@ -328,7 +328,7 @@
           {
             "name": "NEXT_PUBLIC_APP_VERSION",
             "default": "0.0.0",
-            "description": "App version displayed in UI. Stamped as an image ENV at build; overridable at runtime"
+            "description": "App version displayed in UI. Injected at container start by next-runtime-env (not baked into the image); the deployment sets it to the release version"
           },
           {
             "name": "NEXT_PUBLIC_TEMPORAL_UI_URL",

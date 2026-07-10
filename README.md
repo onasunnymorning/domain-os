@@ -294,6 +294,7 @@ Extended documentation lives in [`/docs`](docs/):
 - [Escrow Import Walkthrough](docs/escrow-import-walkthrough.md) — step-by-step import guide
 - [Domain Status Overview](docs/domain-status-overview.md) — status model reference
 - [API Integration Testing](docs/api-integration-testing-guide.md) — testing against the real API
+- [CI/CD & Image Publishing](docs/ci-cd.md) — how images are built, scanned, published, and released
 
 ---
 
