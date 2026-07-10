@@ -277,6 +277,8 @@ Run `make generate-contract` after any of these changes:
 | Change | Why it matters |
 |--------|---------------|
 | Adding/removing/renaming an env var in `env_registry.go` | Infra repo may reference the var by name |
+| Changing `Secret` on an env var | Infra repo moves it between a secret store and a plaintext env var |
+| Changing which `Service`s an env var declares | Changes both the service's env list and the derived `infrastructure[].used_by` |
 | Changing `Required` from `false` to `true` | Infra repo must now provide a value |
 | Changing a `Default` value | Infra repo's assumptions about defaults may break |
 | Changing a service port or health check in `contract.go` | Infra repo's probes/listeners will fail |
@@ -284,9 +286,35 @@ Run `make generate-contract` after any of these changes:
 | Changing a service's `BuildTime` flag in `contract.go` | Flips `env_injection`; infra must move vars between build args and container env |
 | Bumping the `VERSION` file | Contract's `app_version` must match |
 
-Each service carries an `env_injection` field: `"runtime"` (infra sets container
-env) or `"build"` (infra must pass `docker build --build-arg`). It is derived from
-`serviceMeta.BuildTime`. Every service is currently `"runtime"`.
+### Invariants the generator enforces
+
+These are guarded by tests in `internal/config/contract_test.go` — don't work around them.
+
+- **`Secret` is declared explicitly per env var, never inferred from the name.**
+  A name heuristic fails silently and in the unsafe direction: `"PASSWORD"` is not
+  a substring of `DB_PASS`, and `DATABASE_URL` embeds a password while matching no
+  pattern at all. `TestSecretsAreExplicit` still uses the old heuristic as a *lower
+  bound* — a new var named `*_SECRET`/`*_TOKEN`/… cannot ship with `Secret` unset.
+- **`NEXT_PUBLIC_*` can never be `Secret`.** Those values are served to every
+  browser in `window.__ENV`. `isSecret()` forces `false` and a test asserts it.
+- **`infrastructure[].used_by` is derived from the env registry**, not hand-written:
+  a service uses postgresql iff it declares `DATABASE_URL` or `DB_HOST`, redis iff
+  `REDIS_HOST`, and so on. Add the right `Service` to an env var and `used_by`
+  follows. This is why `mcp-server` and `whois` both need `ServiceWhois`/`ServiceMCP`
+  on the `DB_*` vars they read.
+- **Every deployable service must have a `health_check`** — infra cannot build an
+  ALB target group without a probe target.
+- `env_injection` is `"runtime"` (infra sets container env) or `"build"` (infra must
+  pass `docker build --build-arg`), derived from `serviceMeta.BuildTime`. Every
+  service is currently `"runtime"`.
+- `required_when` expresses a conditional requirement (`"STORAGE_AUTH_MODE=static"`)
+  that the boolean `Required` cannot. Such vars are emitted under `optional`.
+
+### Adding a new service
+
+Add a `Service` constant in `env_registry.go`, a `serviceMeta` entry in
+`contract.go` **with a health check**, and declare that `Service` on every env var
+the binary reads. A service with an empty `Services` slice gets no env vars.
 
 The CI test `TestContractDrift` (run via `make ci-envcheck`) will fail if the committed `contract.json` doesn't match what the generator produces. Fix it by running `make generate-contract`.
 
@@ -307,6 +335,16 @@ These changes are **non-breaking** — infra repo doesn't need updates:
 - Changed description text
 - New default value for an optional var (existing deployments keep working)
 - Version bump (infra pins to a tag, bumps at its own pace)
+
+### Schema versions
+
+Bump `SchemaVersion` in `GenerateContract()` when the *shape* of the JSON changes,
+and record it here. Consumers pin on it.
+
+| Version | Changes |
+|---|---|
+| `1` | Initial contract. |
+| `2` | Added `services[].env_injection`, `services[].health_check` on `frontend` (`/api/health`) and `whois` (tcp/43), and `env_vars[].required_when`. Removed the misleading `port: 9000` from the `s3` infrastructure entry (`port` is now `omitempty`). **`secret` values changed**: `DB_PASS`, `DATABASE_URL`, and `OPENEXCHANGERATES_APP_ID` now correctly report `secret: true`. `mcp-server` and `whois` now declare the `DB_*` vars they actually read. |
 
 ### Reference
 

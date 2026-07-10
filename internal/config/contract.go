@@ -44,16 +44,22 @@ type ContractEnvVars struct {
 
 // ContractEnvVar describes a single environment variable in the contract.
 type ContractEnvVar struct {
-	Name        string `json:"name"`
-	Default     string `json:"default,omitempty"`
-	Secret      bool   `json:"secret,omitempty"`
-	Description string `json:"description"`
+	Name    string `json:"name"`
+	Default string `json:"default,omitempty"`
+	Secret  bool   `json:"secret,omitempty"`
+	// RequiredWhen is set when the variable is required only under a condition,
+	// in the form "OTHER_VAR=value". Such vars appear under `optional`.
+	RequiredWhen string `json:"required_when,omitempty"`
+	Description  string `json:"description"`
 }
 
 // InfraComponent describes a shared infrastructure dependency.
+// Port is omitted when the component has no single well-known port — S3 is
+// reached at whatever STORAGE_ENDPOINT names, on 443 for AWS/R2 and 9000 for
+// a local MinIO, so publishing either number would mislead.
 type InfraComponent struct {
 	Name   string   `json:"name"`
-	Port   int      `json:"port"`
+	Port   int      `json:"port,omitempty"`
 	UsedBy []string `json:"used_by"`
 }
 
@@ -100,8 +106,8 @@ var serviceMetaRegistry = []serviceMeta{
 		Image:        "geapex/whois",
 		Port:         43,
 		Protocol:     "tcp",
-		HealthCheck:  nil,
-		Services:     []Service{},
+		HealthCheck:  &HealthCheck{Type: "tcp", Port: 43},
+		Services:     []Service{ServiceWhois},
 	},
 	{
 		ContractName: "mcp-server",
@@ -116,8 +122,10 @@ var serviceMetaRegistry = []serviceMeta{
 		Image:        "geapex/domain-os-frontend",
 		Port:         3000,
 		Protocol:     "http",
-		HealthCheck:  nil,
-		Services:     []Service{ServiceFrontend},
+		// Unauthenticated route handler; GET / would work but sits behind the
+		// Auth0 gate and renders the full React shell on every ALB probe.
+		HealthCheck: &HealthCheck{Type: "http", Path: "/api/health", Port: 3000},
+		Services:    []Service{ServiceFrontend},
 		// NEXT_PUBLIC_* vars are injected at container start by next-runtime-env,
 		// so the image is environment-agnostic and infra sets plain container env.
 		// See docs/adr/0001-runtime-env-configuration.md
@@ -125,30 +133,55 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 }
 
-// infraRegistry defines the shared infrastructure components and which services use them.
-var infraRegistry = []InfraComponent{
-	{Name: "postgresql", Port: 5432, UsedBy: []string{"admin-api", "unified-worker", "whois", "mcp-server"}},
-	{Name: "redis", Port: 6379, UsedBy: []string{"epp-server"}},
-	{Name: "temporal", Port: 7233, UsedBy: []string{"admin-api", "unified-worker"}},
-	{Name: "s3", Port: 9000, UsedBy: []string{"admin-api", "unified-worker"}},
+// infraComponentSpec declares a shared infrastructure component. UsedBy is not
+// listed here: it is derived from the env registry, so the two cannot drift.
+// A service uses the component iff it declares any of ProbeVars.
+type infraComponentSpec struct {
+	Name      string
+	Port      int      // 0 = no single well-known port
+	ProbeVars []string // declaring any of these means "uses this component"
 }
 
-// secretPatterns are substrings in env var names that indicate secrets.
-var secretPatterns = []string{"SECRET", "PASSWORD", "TOKEN", "CERT", "KEY", "LICENSE"}
+var infraSpecs = []infraComponentSpec{
+	{Name: "postgresql", Port: 5432, ProbeVars: []string{"DATABASE_URL", "DB_HOST"}},
+	{Name: "redis", Port: 6379, ProbeVars: []string{"REDIS_HOST"}},
+	{Name: "temporal", Port: 7233, ProbeVars: []string{"TEMPORAL_HOST_PORT"}},
+	// No port: the endpoint is whatever STORAGE_ENDPOINT names (443 for AWS/R2,
+	// 9000 for a local MinIO). Publishing one of those would mislead consumers.
+	{Name: "s3", Port: 0, ProbeVars: []string{"STORAGE_ENDPOINT"}},
+}
 
-// isSecret returns true if the env var name looks like a secret.
-func isSecret(name string) bool {
-	// Check if it's a NEXT_PUBLIC_ var — these are never secrets (baked into client JS)
+// nameLooksSecret reports whether an env var name matches the legacy substring
+// heuristic. It no longer decides the contract — EnvVar.Secret does — but
+// TestSecretsAreExplicit uses it as a lower bound, so a newly added var whose
+// name screams "credential" cannot ship with Secret unset.
+//
+// The heuristic is kept only for that guard because it fails in the unsafe
+// direction: "PASSWORD" is not a substring of "DB_PASS", and "DATABASE_URL"
+// embeds a password while matching nothing at all.
+func nameLooksSecret(name string) bool {
 	if strings.HasPrefix(name, "NEXT_PUBLIC_") {
 		return false
 	}
 	upper := strings.ToUpper(name)
-	for _, pattern := range secretPatterns {
+	for _, pattern := range []string{"SECRET", "PASSWORD", "TOKEN", "CERT", "KEY", "LICENSE"} {
 		if strings.Contains(upper, pattern) {
 			return true
 		}
 	}
 	return false
+}
+
+// isSecret reports whether a variable is credential material.
+//
+// NEXT_PUBLIC_* values are served to every browser in window.__ENV, so they can
+// never be secret regardless of how they are declared. Everything else is taken
+// verbatim from the registry's explicit Secret field.
+func isSecret(v EnvVar) bool {
+	if strings.HasPrefix(v.Name, "NEXT_PUBLIC_") {
+		return false
+	}
+	return v.Secret
 }
 
 // GenerateContract builds the deployment contract from the env var registry
@@ -199,16 +232,12 @@ func GenerateContract(versionFilePath string) (*Contract, error) {
 			}
 		}
 
-		// WHOIS uses DB vars directly but has no Service constant in the registry
-		// (its env vars are under ServiceAPI/ServiceWorker). Handle this via the
-		// service meta's Services list — WHOIS has an empty Services slice, so
-		// DB vars won't auto-map. We handle WHOIS separately below.
-
 		contractVar := ContractEnvVar{
-			Name:        envVar.Name,
-			Default:     envVar.Default,
-			Secret:      isSecret(envVar.Name),
-			Description: envVar.Description,
+			Name:         envVar.Name,
+			Default:      envVar.Default,
+			Secret:       isSecret(envVar),
+			RequiredWhen: envVar.RequiredWhen,
+			Description:  envVar.Description,
 		}
 
 		for contractName := range contractServices {
@@ -224,22 +253,8 @@ func GenerateContract(versionFilePath string) (*Contract, error) {
 		}
 	}
 
-	// WHOIS reads DB_* vars directly — add them manually since WHOIS
-	// has no Service constant in the env registry (it shares the DB vars
-	// with ServiceAPI/ServiceWorker but needs its own copy in the contract).
-	whoisDBVars := []string{"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE"}
-	regMap := RegistryMap()
-	for _, name := range whoisDBVars {
-		if envVar, ok := regMap[name]; ok {
-			contractVar := ContractEnvVar{
-				Name:        envVar.Name,
-				Default:     envVar.Default,
-				Secret:      isSecret(envVar.Name),
-				Description: envVar.Description,
-			}
-			groups["whois"].optional = append(groups["whois"].optional, contractVar)
-		}
-	}
+	// whois and mcp-server declare ServiceWhois / ServiceMCP on the DB_* vars they
+	// read, so no special-casing is needed here any more.
 
 	// Build the contract
 	services := make(map[string]ServiceContract, len(serviceMetaRegistry))
@@ -271,12 +286,61 @@ func GenerateContract(versionFilePath string) (*Contract, error) {
 	}
 
 	contract := &Contract{
-		SchemaVersion:  "1",
+		SchemaVersion:  "2",
 		AppVersion:     version,
 		Generated:      time.Now().UTC().Format(time.RFC3339),
 		Services:       services,
-		Infrastructure: infraRegistry,
+		Infrastructure: buildInfrastructure(serviceToContract),
 	}
 
 	return contract, nil
+}
+
+// buildInfrastructure derives each component's used_by from the env registry: a
+// service uses a component iff it declares one of the component's probe vars.
+// Deriving it means infra and env can no longer disagree about, say, whether
+// mcp-server talks to Postgres.
+func buildInfrastructure(serviceToContract map[Service]string) []InfraComponent {
+	// contract service name -> set of env var names it declares
+	declared := make(map[string]map[string]bool)
+	for _, envVar := range Registry {
+		for _, svc := range envVar.Services {
+			if svc == ServiceCLI {
+				continue
+			}
+			name, ok := serviceToContract[svc]
+			if !ok {
+				continue
+			}
+			if declared[name] == nil {
+				declared[name] = make(map[string]bool)
+			}
+			declared[name][envVar.Name] = true
+		}
+	}
+
+	// Stable output order: follow serviceMetaRegistry, not Go's map iteration.
+	orderedServices := make([]string, 0, len(serviceMetaRegistry))
+	for _, meta := range serviceMetaRegistry {
+		orderedServices = append(orderedServices, meta.ContractName)
+	}
+
+	components := make([]InfraComponent, 0, len(infraSpecs))
+	for _, spec := range infraSpecs {
+		usedBy := []string{}
+		for _, svcName := range orderedServices {
+			for _, probe := range spec.ProbeVars {
+				if declared[svcName][probe] {
+					usedBy = append(usedBy, svcName)
+					break
+				}
+			}
+		}
+		components = append(components, InfraComponent{
+			Name:   spec.Name,
+			Port:   spec.Port,
+			UsedBy: usedBy,
+		})
+	}
+	return components
 }
