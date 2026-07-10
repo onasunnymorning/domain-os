@@ -17,16 +17,31 @@ const (
 	ServiceFrontend Service = "frontend"
 	ServiceEPP      Service = "epp"
 	ServiceMCP      Service = "mcp"
+	ServiceWhois    Service = "whois"
 	ServiceCLI      Service = "cli"
 )
 
 // EnvVar documents a single environment variable.
 type EnvVar struct {
-	Name        string    // Variable name (e.g. "DATABASE_URL")
-	Services    []Service // Which services use this var
-	Required    bool      // If true, must be explicitly set (no sensible default)
-	Default     string    // Default value when not required (empty = no default)
-	Description string    // Human-readable description
+	Name     string    // Variable name (e.g. "DATABASE_URL")
+	Services []Service // Which services use this var
+	Required bool      // If true, must be explicitly set (no sensible default)
+	Default  string    // Default value when not required (empty = no default)
+
+	// Secret marks the value as credential material. Deployment tooling uses it
+	// to decide between a secret-store reference and a plaintext env var, so it
+	// is declared explicitly per variable rather than inferred from the name.
+	// A name heuristic fails silently and in the unsafe direction: "DB_PASS" does
+	// not contain "PASSWORD", and "DATABASE_URL" embeds a password but matches
+	// nothing at all. TestSecretsAreExplicit guards against the next such miss.
+	Secret bool
+
+	// RequiredWhen expresses a conditional requirement that Required cannot,
+	// in the form "OTHER_VAR=value" (e.g. "STORAGE_AUTH_MODE=static"). It is
+	// advisory: the contract emits it so consumers can validate their own config.
+	RequiredWhen string
+
+	Description string // Human-readable description
 }
 
 // Registry is the canonical list of all environment variables used by domain-os.
@@ -36,13 +51,16 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// DATABASE
 	// ═══════════════════════════════════════════
-	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "PostgreSQL connection URL (Neon). Preferred over individual DB_* vars."},
-	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "postgres", Description: "PostgreSQL user (local/docker-compose fallback)"},
-	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "postgres", Description: "PostgreSQL password (local/docker-compose fallback)"},
-	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "localhost", Description: "PostgreSQL host (local/docker-compose fallback)"},
-	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "5432", Description: "PostgreSQL port (local/docker-compose fallback)"},
-	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "domain_os", Description: "PostgreSQL database name (local/docker-compose fallback)"},
-	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Default: "disable", Description: "PostgreSQL SSL mode"},
+	// DATABASE_URL is only understood by admin-api and unified-worker. whois and
+	// mcp-server construct their DSN from the individual DB_* vars — see
+	// cmd/whois/whois.go and cmd/mcp/main.go — so they must be given those.
+	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."},
+	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Description: "PostgreSQL user (local/docker-compose fallback)"},
+	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Secret: true, Description: "PostgreSQL password (local/docker-compose fallback)"},
+	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "localhost", Description: "PostgreSQL host (local/docker-compose fallback)"},
+	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "5432", Description: "PostgreSQL port (local/docker-compose fallback)"},
+	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "domain_os", Description: "PostgreSQL database name (local/docker-compose fallback)"},
+	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "disable", Description: "PostgreSQL SSL mode"},
 	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Run GORM AutoMigrate on startup"},
 
 	// ═══════════════════════════════════════════
@@ -52,10 +70,10 @@ var Registry = []EnvVar{
 	{Name: "AUTH0_DOMAIN", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Auth0 tenant domain (e.g. dev-xxx.us.auth0.com)"},
 	{Name: "AUTH0_AUDIENCE", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Auth0 API identifier (e.g. https://api.alpaca-test)"},
 	{Name: "AUTH0_WORKER_CLIENT_ID", Services: []Service{ServiceWorker}, Description: "Auth0 M2M client ID for worker (preferred over AUTH0_CLIENT_ID)"},
-	{Name: "AUTH0_WORKER_CLIENT_SECRET", Services: []Service{ServiceWorker}, Required: true, Description: "Auth0 M2M client secret for worker"},
+	{Name: "AUTH0_WORKER_CLIENT_SECRET", Services: []Service{ServiceWorker}, Required: true, Secret: true, Description: "Auth0 M2M client secret for worker"},
 	{Name: "AUTH0_CLIENT_ID", Services: []Service{ServiceWorker}, Description: "Auth0 client ID fallback (if WORKER variant not set)"},
-	{Name: "AUTH0_CLIENT_SECRET", Services: []Service{ServiceWorker}, Description: "Auth0 client secret fallback (if WORKER variant not set)"},
-	{Name: "ADMIN_TOKEN", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Description: "Legacy bearer token (fallback when Auth0 disabled)"},
+	{Name: "AUTH0_CLIENT_SECRET", Services: []Service{ServiceWorker}, Secret: true, Description: "Auth0 client secret fallback (if WORKER variant not set)"},
+	{Name: "ADMIN_TOKEN", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Secret: true, Description: "Legacy bearer token (fallback when Auth0 disabled)"},
 
 	// ═══════════════════════════════════════════
 	// API SERVER
@@ -73,9 +91,9 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	{Name: "TEMPORAL_HOST_PORT", Services: []Service{ServiceAPI, ServiceWorker}, Default: "localhost:7233", Description: "Temporal server address"},
 	{Name: "TEMPORAL_NAMESPACE", Services: []Service{ServiceAPI, ServiceWorker}, Default: "default", Description: "Temporal namespace"},
-	{Name: "TEMPORAL_API_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Temporal Cloud API key (replaces mTLS certs)"},
-	{Name: "TEMPORAL_CLIENT_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Temporal mTLS client key PEM (legacy, use API key instead)"},
-	{Name: "TEMPORAL_CLIENT_CERT", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Temporal mTLS client cert PEM (legacy, use API key instead)"},
+	{Name: "TEMPORAL_API_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, Description: "Temporal Cloud API key (replaces mTLS certs)"},
+	{Name: "TEMPORAL_CLIENT_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, Description: "Temporal mTLS client key PEM (legacy, use API key instead)"},
+	{Name: "TEMPORAL_CLIENT_CERT", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, Description: "Temporal mTLS client cert PEM (legacy, use API key instead)"},
 	{Name: "TEMPORAL_UI_URL", Services: []Service{ServiceAPI}, Default: "http://localhost:8233", Description: "Temporal UI URL for workflow links"},
 
 	// ═══════════════════════════════════════════
@@ -85,10 +103,13 @@ var Registry = []EnvVar{
 	// fallback for one release (see internal/infrastructure/storage/env.go).
 	// They are deliberately absent from this registry so they stay out of the
 	// generated deployment contract.
-	{Name: "STORAGE_ENDPOINT", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"},
+	// Required in every auth mode, including iam. The S3 client is minio-go, not
+	// the AWS SDK: minio.New rejects an empty endpoint and never derives one from
+	// the region. For AWS S3 use the regional hostname, e.g. s3.us-east-1.amazonaws.com.
+	{Name: "STORAGE_ENDPOINT", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Description: "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.<region>.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"},
 	{Name: "STORAGE_AUTH_MODE", Services: []Service{ServiceAPI, ServiceWorker}, Default: "static", Description: "How to obtain S3 credentials: \"static\" (access key + secret; MinIO, R2, S3) or \"iam\" (short-lived credentials from EKS IRSA, ECS task role, or EC2 IMDS; AWS S3 only)"},
-	{Name: "STORAGE_ACCESS_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"},
-	{Name: "STORAGE_SECRET_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"},
+	{Name: "STORAGE_ACCESS_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, RequiredWhen: "STORAGE_AUTH_MODE=static", Description: "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"},
+	{Name: "STORAGE_SECRET_KEY", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, RequiredWhen: "STORAGE_AUTH_MODE=static", Description: "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"},
 	{Name: "STORAGE_USE_SSL", Services: []Service{ServiceAPI, ServiceWorker}, Default: "false", Description: "Use TLS for S3 connections. Falls back to deprecated MINIO_USE_SSL"},
 	{Name: "STORAGE_REGION", Services: []Service{ServiceAPI, ServiceWorker}, Description: "S3 region for SigV4 signing. Set to the bucket's region for AWS S3, \"auto\" for R2. Empty lets the client resolve it via a bucket-location lookup"},
 	{Name: "STORAGE_PUBLIC_ENDPOINT", Services: []Service{ServiceAPI}, Description: "Public S3 endpoint for presigned URLs (if different from STORAGE_ENDPOINT). Falls back to deprecated MINIO_PUBLIC_ENDPOINT"},
@@ -104,7 +125,7 @@ var Registry = []EnvVar{
 	// OBSERVABILITY
 	// ═══════════════════════════════════════════
 	{Name: "NEW_RELIC_ENABLED", Services: []Service{ServiceAPI}, Default: "false", Description: "Enable New Relic APM"},
-	{Name: "NEW_RELIC_LICENSE_KEY", Services: []Service{ServiceAPI}, Description: "New Relic license key"},
+	{Name: "NEW_RELIC_LICENSE_KEY", Services: []Service{ServiceAPI}, Secret: true, Description: "New Relic license key"},
 	{Name: "PROMETHEUS_ENABLED", Services: []Service{ServiceAPI}, Default: "false", Description: "Enable Prometheus metrics endpoint"},
 	{Name: "LOG_DOMAIN_EVENTS", Services: []Service{ServiceAPI}, Default: "true", Description: "Log domain lifecycle events"},
 	{Name: "LOG_LEVEL", Services: []Service{ServiceEPP}, Default: "info", Description: "Log level (debug/info/warn/error)"},
@@ -115,7 +136,7 @@ var Registry = []EnvVar{
 	{Name: "EPP_PORT", Services: []Service{ServiceEPP}, Default: "700", Description: "EPP server TCP listen port"},
 	{Name: "REDIS_HOST", Services: []Service{ServiceEPP}, Default: "localhost", Description: "Redis host for EPP session store"},
 	{Name: "REDIS_PORT", Services: []Service{ServiceEPP}, Default: "6379", Description: "Redis port"},
-	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP}, Description: "Redis password (empty = no auth)"},
+	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP}, Secret: true, Description: "Redis password (empty = no auth)"},
 
 	// ═══════════════════════════════════════════
 	// MCP SERVER
@@ -126,8 +147,8 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// EXTERNAL APIs
 	// ═══════════════════════════════════════════
-	{Name: "OPENEXCHANGERATES_APP_ID", Services: []Service{ServiceWorker}, Description: "OpenExchangeRates API key for FX sync"},
-	{Name: "ANTHROPIC_API_KEY", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Anthropic API key for AI agent (Agent Alpaca)"},
+	{Name: "OPENEXCHANGERATES_APP_ID", Services: []Service{ServiceWorker}, Secret: true, Description: "OpenExchangeRates API key for FX sync"},
+	{Name: "ANTHROPIC_API_KEY", Services: []Service{ServiceAPI, ServiceCLI}, Secret: true, Description: "Anthropic API key for AI agent (Agent Alpaca)"},
 	{Name: "ANTHROPIC_BASE_URL", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Anthropic API base URL override"},
 	{Name: "LLM_MODEL", Services: []Service{ServiceAPI, ServiceCLI}, Default: "claude-sonnet-4-6", Description: "LLM model name for the AI agent (e.g. claude-sonnet-4-6)"},
 	{Name: "KNOWLEDGE_BASE_DIR", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Root directory for knowledge base docs (docs/index.yaml). Falls back to working directory."},

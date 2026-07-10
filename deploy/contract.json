@@ -1,7 +1,7 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "app_version": "0.7.0",
-  "generated": "2026-07-10T00:37:38Z",
+  "generated": "2026-07-10T01:27:35Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
@@ -17,11 +17,12 @@
         "required": [
           {
             "name": "DATABASE_URL",
-            "description": "PostgreSQL connection URL (Neon). Preferred over individual DB_* vars."
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
           },
           {
             "name": "STORAGE_ENDPOINT",
-            "description": "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"
+            "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
           }
         ],
         "optional": [
@@ -33,6 +34,7 @@
           {
             "name": "DB_PASS",
             "default": "postgres",
+            "secret": true,
             "description": "PostgreSQL password (local/docker-compose fallback)"
           },
           {
@@ -146,11 +148,13 @@
           {
             "name": "STORAGE_ACCESS_KEY",
             "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
             "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
           },
           {
             "name": "STORAGE_SECRET_KEY",
             "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
             "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
           },
           {
@@ -287,6 +291,11 @@
       "port": 3000,
       "protocol": "http",
       "env_injection": "runtime",
+      "health_check": {
+        "type": "http",
+        "path": "/api/health",
+        "port": 3000
+      },
       "env_vars": {
         "required": [
           {
@@ -364,6 +373,37 @@
         "required": [],
         "optional": [
           {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name (local/docker-compose fallback)"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          },
+          {
             "name": "MCP_TRANSPORT",
             "default": "stdio",
             "description": "MCP transport mode: 'stdio' for local IDE, 'http' for container deployment"
@@ -386,7 +426,8 @@
         "required": [
           {
             "name": "DATABASE_URL",
-            "description": "PostgreSQL connection URL (Neon). Preferred over individual DB_* vars."
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
           },
           {
             "name": "AUTH0_WORKER_CLIENT_SECRET",
@@ -395,7 +436,7 @@
           },
           {
             "name": "STORAGE_ENDPOINT",
-            "description": "S3-compatible endpoint (hostname only, no https://). Falls back to deprecated MINIO_ENDPOINT"
+            "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
           }
         ],
         "optional": [
@@ -407,6 +448,7 @@
           {
             "name": "DB_PASS",
             "default": "postgres",
+            "secret": true,
             "description": "PostgreSQL password (local/docker-compose fallback)"
           },
           {
@@ -507,11 +549,13 @@
           {
             "name": "STORAGE_ACCESS_KEY",
             "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
             "description": "S3 access key ID. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_ACCESS_KEY"
           },
           {
             "name": "STORAGE_SECRET_KEY",
             "secret": true,
+            "required_when": "STORAGE_AUTH_MODE=static",
             "description": "S3 secret access key. Required when STORAGE_AUTH_MODE=static; must be unset for iam. Falls back to deprecated MINIO_SECRET_KEY"
           },
           {
@@ -555,6 +599,7 @@
           },
           {
             "name": "OPENEXCHANGERATES_APP_ID",
+            "secret": true,
             "description": "OpenExchangeRates API key for FX sync"
           }
         ]
@@ -565,6 +610,10 @@
       "port": 43,
       "protocol": "tcp",
       "env_injection": "runtime",
+      "health_check": {
+        "type": "tcp",
+        "port": 43
+      },
       "env_vars": {
         "required": [],
         "optional": [
@@ -576,6 +625,7 @@
           {
             "name": "DB_PASS",
             "default": "postgres",
+            "secret": true,
             "description": "PostgreSQL password (local/docker-compose fallback)"
           },
           {
@@ -630,7 +680,6 @@
     },
     {
       "name": "s3",
-      "port": 9000,
       "used_by": [
         "admin-api",
         "unified-worker"
