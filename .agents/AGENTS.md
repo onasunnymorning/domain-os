@@ -7,6 +7,62 @@
 - When adding a new secret (e.g. an API key), instruct the user to add it via `doppler secrets set KEY=value` — do not create `.env` files or suggest `export` commands.
 - Docker Compose services receive secrets via `${VAR}` interpolation from Doppler-managed `.env` files. Do not inline secret values in `docker-compose.yml`.
 
+## Runtime Environment Variables (Frontend)
+
+**Never use `process.env` in frontend code.** Next.js inlines every
+`process.env.NEXT_PUBLIC_*` reference into the JS bundle at `next build` time, which
+freezes the value into the image and means one image per environment. The frontend
+uses `next-runtime-env` so that all `NEXT_PUBLIC_*` values resolve at container start.
+
+### The rule
+
+| Instead of | Use |
+|---|---|
+| `process.env.NEXT_PUBLIC_API_URL` | `getApiUrl()` from `frontend/lib/env.ts` |
+| Adding a new `process.env` read anywhere | A new accessor in `frontend/lib/env.ts` |
+
+- `frontend/lib/env.ts` is the **only** place that touches the environment. It wraps
+  `env()` from `next-runtime-env`.
+- **The only allowed `process.env` is `process.env.NODE_ENV`** — a build-time
+  constant, not runtime configuration.
+- An ESLint `no-restricted-syntax` rule in `frontend/eslint.config.mjs` fails the
+  build on any other `process.env` access. Do not disable it; add an accessor.
+- Accessors are **functions, not constants**, and callers must read them **inside** a
+  component or handler. A module-scope read captures the value once per process and,
+  in a server component, evaluates outside a request scope.
+
+### Adding a new frontend env var
+
+All four, in the same change:
+
+1. `frontend/lib/env.ts` — an accessor function with a sensible default
+2. `internal/config/env_registry.go` — a `ServiceFrontend` entry
+3. `make generate-contract` — regenerates `deploy/contract.json` (never hand-edit)
+4. `frontend/app/cloud/page.tsx` — a row in `envVarsByCategory`
+
+Also update `example.env`, and `frontend/.env.local` if local dev needs a value.
+
+### Hard constraints
+
+- **Nothing secret may carry the `NEXT_PUBLIC_` prefix.** Every such value is
+  serialised into `window.__ENV` in the HTML of every response and is readable by
+  anyone with a browser. `isSecret()` in `internal/config/contract.go` classifies all
+  `NEXT_PUBLIC_*` vars as non-secret on purpose.
+- **Do not add `NEXT_PUBLIC_*` build args to `frontend/Dockerfile`.** Infra sets
+  plain container env. The one exception is `NEXT_PUBLIC_APP_VERSION`, stamped as an
+  `ENV` in the runner stage because the version is genuinely build-time metadata.
+- **Do not remove the `next-runtime-env` entry from `overrides` in
+  `frontend/package.json`.** The package declares `next` and `react` as both
+  `dependencies` and `peerDependencies`; without the override npm installs a nested
+  vulnerable `next@14` tree and `npm audit` goes from 0 to 2 high-severity findings.
+- Tests mock `next-runtime-env` in `frontend/vitest.setup.ts` so `vi.stubEnv` keeps
+  working. Without the mock, `env()` looks for `window.__ENV` in jsdom and throws.
+
+### Reference
+
+- Decision record: `docs/adr/0001-runtime-env-configuration.md`
+- In-app documentation: `/docs/runtime-env`
+
 ## Dependency Management
 
 - Whenever changing a dependency (Go modules, npm packages, Docker base images), always run the full CI pipeline via `make ci-local` before committing. This runs lint, backend tests, frontend tests, and security scans (govulncheck, npm audit, Trivy image scan) to ensure no known vulnerabilities are introduced.
@@ -124,6 +180,7 @@ Do **not** create docs for trivial changes (bug fixes, UI tweaks, dependency bum
 | PostHog Analytics | `/docs/posthog-analytics` | Event tracking, session recordings, error capture |
 | Database Index Strategy | `/docs/database-index-strategy` | PostgreSQL indexing for scale, storage budgets, query optimization |
 | Event Consumer Cloud | `/docs/event-consumer` | Tiered event lifecycle, relay workflows, S3 archival, pruning |
+| Runtime Environment Variables | `/docs/runtime-env` | `NEXT_PUBLIC_*` injection at container start, the `process.env` ban, adding a var |
 
 Workflow documentation (sidecar `.doc.md` files) is served automatically from the workflow registry — see the "Workflow Documentation" section above.
 
@@ -138,7 +195,7 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | **Adding** a new `posthog.capture()` event | Add to the event inventory table in `frontend/lib/constants/posthogAnalyticsDoc.ts` |
 | **Removing** an event | Remove from the event inventory table |
 | **Changing** PostHog SDK config (e.g. `instrumentation-client.ts`, `next.config.ts` rewrites) | Update the Architecture and Configuration sections in the doc |
-| **Adding/changing** PostHog-related environment variables | Update all three: (1) the doc, (2) the Cloud page env vars, (3) `frontend/Dockerfile` |
+| **Adding/changing** PostHog-related environment variables | Update all four: (1) the doc, (2) the Cloud page env vars, (3) `frontend/lib/env.ts`, (4) `internal/config/env_registry.go` + `make generate-contract` |
 
 ### PostHog files to keep in sync
 
@@ -150,7 +207,8 @@ PostHog is the frontend analytics layer. Every change to event tracking, the Pos
 | `frontend/app/cloud/page.tsx` | Cloud Infrastructure page (service card + env vars in the `Analytics (PostHog)` tab) |
 | `frontend/lib/api/search.ts` | ⌘K search index (`STATIC_DOCS` entry for `posthog-analytics`) |
 | `frontend/.env.local` | Local dev env vars (`NEXT_PUBLIC_POSTHOG_*`) |
-| `frontend/Dockerfile` | Build args for `NEXT_PUBLIC_POSTHOG_*` |
+| `frontend/lib/env.ts` | `getPostHogToken()` / `getPostHogHost()` accessors |
+| `frontend/instrumentation-client.ts` | Skips `posthog.init()` when the token is absent at runtime |
 
 ## Cloud Infrastructure Page (Definition of Done)
 
@@ -223,7 +281,12 @@ Run `make generate-contract` after any of these changes:
 | Changing a `Default` value | Infra repo's assumptions about defaults may break |
 | Changing a service port or health check in `contract.go` | Infra repo's probes/listeners will fail |
 | Adding or removing a service/image in `contract.go` | Infra repo needs to add/remove a deployment |
+| Changing a service's `BuildTime` flag in `contract.go` | Flips `env_injection`; infra must move vars between build args and container env |
 | Bumping the `VERSION` file | Contract's `app_version` must match |
+
+Each service carries an `env_injection` field: `"runtime"` (infra sets container
+env) or `"build"` (infra must pass `docker build --build-arg`). It is derived from
+`serviceMeta.BuildTime`. Every service is currently `"runtime"`.
 
 The CI test `TestContractDrift` (run via `make ci-envcheck`) will fail if the committed `contract.json` doesn't match what the generator produces. Fix it by running `make generate-contract`.
 

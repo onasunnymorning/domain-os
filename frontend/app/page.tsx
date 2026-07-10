@@ -20,7 +20,7 @@ import { useDomainCount } from '@/lib/hooks/useDomains';
 import { useContactCount } from '@/lib/hooks/useContacts';
 import { useHostCount } from '@/lib/hooks/useHosts';
 import { format } from 'date-fns';
-import { TEMPORAL_UI_URL, STORAGE_UI_URL } from '@/lib/constants/external-urls';
+import { getTemporalUiUrl, getStorageUiUrl } from '@/lib/env';
 import { EventFeed } from '@/components/dashboard/EventFeed';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { WelcomeToast } from '@/components/dashboard/WelcomeToast';
@@ -91,25 +91,25 @@ const STAT_PILLS = [
   },
 ] as const;
 
-// Resources (external links)
-const resources = [
-  {
-    name: 'Temporal',
-    href: TEMPORAL_UI_URL,
-    icon: Activity,
-  },
-  {
-    name: 'Storage',
-    href: STORAGE_UI_URL,
-    icon: Database,
-  },
-].filter((r) => r.href);
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function Home() {
+  // External links resolve at runtime, so they are built per render.
+  const resources = [
+    {
+      name: 'Temporal',
+      href: getTemporalUiUrl(),
+      icon: Activity,
+    },
+    {
+      name: 'Storage',
+      href: getStorageUiUrl(),
+      icon: Database,
+    },
+  ].filter((r) => r.href);
+
   const { data: roCount, isLoading: loadingRO } = useRegistryOperatorsCount();
   const { data: tldCount, isLoading: loadingTLD } = useTLDsCount();
   const { data: registrarCount, isLoading: loadingRegistrar } = useRegistrarCount();

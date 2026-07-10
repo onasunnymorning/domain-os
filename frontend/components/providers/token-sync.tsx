@@ -4,6 +4,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect } from 'react';
 import { setAuthToken } from '@/lib/api/client';
 import posthog from 'posthog-js';
+import { isAuthEnabled } from '@/lib/env';
 
 /**
  * TokenSync component handles fetching the Auth0 access token and 
@@ -15,7 +16,7 @@ export function TokenSync() {
     const { getAccessTokenSilently, isAuthenticated, isLoading, user } = useAuth0();
 
     useEffect(() => {
-        const authEnabled = process.env.NEXT_PUBLIC_AUTH0_ENABLED !== 'false';
+        const authEnabled = isAuthEnabled();
 
         const updateToken = async () => {
             if (!authEnabled) {

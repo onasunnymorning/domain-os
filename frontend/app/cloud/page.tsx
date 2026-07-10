@@ -3,6 +3,7 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getTemporalUiUrl, getStorageUiUrl } from '@/lib/env';
 import {
   Cloud,
   Database,
@@ -17,7 +18,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-const services = [
+const getServices = () => [
   {
     name: 'GitHub',
     description: 'Source code repository and CI/CD',
@@ -49,7 +50,7 @@ const services = [
     name: 'Temporal Cloud',
     description: 'Workflow orchestration — background jobs and pipelines',
     icon: Activity,
-    url: process.env.NEXT_PUBLIC_TEMPORAL_UI_URL || 'https://cloud.temporal.io/',
+    url: getTemporalUiUrl() || 'https://cloud.temporal.io/',
     color: 'text-indigo-400',
     bgColor: 'bg-indigo-400/10',
     items: ['domain-lifecycle', 'escrow-import', 'sync'],
@@ -76,7 +77,7 @@ const services = [
     name: 'Cloudflare R2',
     description: 'Object storage — escrow files and backups',
     icon: HardDrive,
-    url: process.env.NEXT_PUBLIC_STORAGE_UI_URL || 'https://dash.cloudflare.com/',
+    url: getStorageUiUrl() || 'https://dash.cloudflare.com/',
     color: 'text-amber-400',
     bgColor: 'bg-amber-400/10',
     items: ['Escrow deposits', 'TLD backups'],
@@ -138,7 +139,7 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
       { key: 'NEXT_PUBLIC_AUTH0_DOMAIN', description: 'Auth0 tenant domain (frontend)', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_AUTH0_CLIENT_ID', description: 'Auth0 SPA client ID', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_AUTH0_AUDIENCE', description: 'Auth0 API audience (frontend)', secret: false, services: ['Frontend'] },
-      { key: 'NEXT_PUBLIC_API_TOKEN', description: 'Static API token fallback (baked at build)', secret: true, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_API_TOKEN', description: 'Static API token fallback — served to every browser, so it must be low-privilege', secret: false, services: ['Frontend'] },
     ],
   },
   {
@@ -174,9 +175,10 @@ const envVarsByCategory: { category: string; icon: React.ElementType; color: str
     icon: Rocket,
     color: 'text-emerald-500',
     vars: [
-      { key: 'NEXT_PUBLIC_API_URL', description: 'API base URL (baked at build time)', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_API_URL', description: 'API base URL (read at container start)', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_APP_VERSION', description: 'Displayed app version', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_TEMPORAL_UI_URL', description: 'Link to Temporal Cloud UI', secret: false, services: ['Frontend'] },
+      { key: 'NEXT_PUBLIC_TEMPORAL_NAMESPACE', description: 'Namespace used for schedule deep-links', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_STORAGE_UI_URL', description: 'Link to storage dashboard', secret: false, services: ['Frontend'] },
       { key: 'NEXT_PUBLIC_GRAFANA_URL', description: 'Link to Grafana dashboard', secret: false, services: ['Frontend'] },
     ],
@@ -222,6 +224,8 @@ const serviceColors: Record<string, string> = {
 };
 
 export default function CloudPage() {
+  const services = getServices();
+
   return (
     <DashboardLayout>
       <div className="space-y-6">

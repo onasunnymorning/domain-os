@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench, BarChart3, Archive, Cpu, Bot } from 'lucide-react';
+import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench, BarChart3, Archive, Cpu, Bot, Variable } from 'lucide-react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -144,6 +144,22 @@ export default function DocsIndexPage() {
                           </div>
                           <CardDescription className="text-xs leading-relaxed line-clamp-3">
                             Architectural recommendations, naming standards, and split criteria for S3-compatible object storage.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+
+                    <Link href="/docs/runtime-env" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-sky-500/30 hover:bg-sky-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Variable className="h-4 w-4 text-sky-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              Runtime Environment Variables
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            How NEXT_PUBLIC_* values are injected at container start, and why process.env is banned in frontend code.
                           </CardDescription>
                         </CardHeader>
                       </Card>

@@ -108,6 +108,7 @@ import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc
 import { WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN } from '../constants/workerQueueArchitectureDoc';
 import { AGENT_ALPACA_DOC_MARKDOWN } from '../constants/agentAlpacaDoc';
 import { BUCKET_STORAGE_DOC_MARKDOWN } from '../constants/bucketStorageDoc';
+import { RUNTIME_ENV_DOC_MARKDOWN } from '../constants/runtimeEnvDoc';
 
 const STATIC_DOCS: WorkflowMeta[] = [
   {
@@ -157,6 +158,18 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: BUCKET_STORAGE_DOC_MARKDOWN,
+  },
+  {
+    key: 'runtime-env',
+    name: 'Runtime Environment Variables',
+    description: 'How NEXT_PUBLIC_* values are injected at container start, why process.env is banned, and how to add a new variable',
+    queue: '',
+    category: 'infrastructure',
+    tags: ['env', 'environment', 'config', 'next-runtime-env', 'process.env', 'NEXT_PUBLIC', 'deployment', 'contract', 'docker', 'build'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: RUNTIME_ENV_DOC_MARKDOWN,
   },
   {
     key: 'posthog-analytics',

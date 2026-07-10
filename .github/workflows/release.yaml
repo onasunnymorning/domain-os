@@ -57,6 +57,7 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            NEXT_PUBLIC_APP_VERSION=${{ steps.version.outputs.version }}
           tags: |
             geapex/${{ matrix.image.name }}:${{ steps.version.outputs.version }}
             geapex/${{ matrix.image.name }}:${{ github.sha }}

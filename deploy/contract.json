@@ -1,12 +1,13 @@
 {
   "schema_version": "1",
   "app_version": "0.7.0",
-  "generated": "2026-07-09T21:33:51Z",
+  "generated": "2026-07-10T00:37:38Z",
   "services": {
     "admin-api": {
       "image": "geapex/domain-os",
       "port": 8080,
       "protocol": "http",
+      "env_injection": "runtime",
       "health_check": {
         "type": "http",
         "path": "/ping",
@@ -245,6 +246,7 @@
       "image": "geapex/epp-server",
       "port": 700,
       "protocol": "tls",
+      "env_injection": "runtime",
       "health_check": {
         "type": "tcp",
         "port": 700
@@ -284,14 +286,19 @@
       "image": "geapex/domain-os-frontend",
       "port": 3000,
       "protocol": "http",
+      "env_injection": "runtime",
       "env_vars": {
         "required": [
           {
             "name": "NEXT_PUBLIC_API_URL",
-            "description": "Backend API URL (baked at build time)"
+            "description": "Backend API URL (read at container start)"
           }
         ],
         "optional": [
+          {
+            "name": "NEXT_PUBLIC_API_TOKEN",
+            "description": "Static API token fallback when Auth0 is disabled. Publicly readable in the browser — never a real secret"
+          },
           {
             "name": "NEXT_PUBLIC_AUTH0_ENABLED",
             "default": "false",
@@ -312,11 +319,16 @@
           {
             "name": "NEXT_PUBLIC_APP_VERSION",
             "default": "0.0.0",
-            "description": "App version displayed in UI"
+            "description": "App version displayed in UI. Stamped as an image ENV at build; overridable at runtime"
           },
           {
             "name": "NEXT_PUBLIC_TEMPORAL_UI_URL",
             "description": "Temporal Cloud UI URL for workflow links"
+          },
+          {
+            "name": "NEXT_PUBLIC_TEMPORAL_NAMESPACE",
+            "default": "default",
+            "description": "Temporal namespace used to build schedule deep-links"
           },
           {
             "name": "NEXT_PUBLIC_GRAFANA_URL",
@@ -325,6 +337,15 @@
           {
             "name": "NEXT_PUBLIC_STORAGE_UI_URL",
             "description": "S3 storage browser URL"
+          },
+          {
+            "name": "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN",
+            "description": "PostHog project token. Publicly readable in the browser — never a real secret"
+          },
+          {
+            "name": "NEXT_PUBLIC_POSTHOG_HOST",
+            "default": "https://us.i.posthog.com",
+            "description": "PostHog ingestion host"
           }
         ]
       }
@@ -333,6 +354,7 @@
       "image": "geapex/mcp-server",
       "port": 3001,
       "protocol": "http",
+      "env_injection": "runtime",
       "health_check": {
         "type": "http",
         "path": "/healthz",
@@ -356,6 +378,7 @@
     },
     "unified-worker": {
       "image": "geapex/unified-worker",
+      "env_injection": "runtime",
       "health_check": {
         "type": "temporal-heartbeat"
       },
@@ -541,6 +564,7 @@
       "image": "geapex/whois",
       "port": 43,
       "protocol": "tcp",
+      "env_injection": "runtime",
       "env_vars": {
         "required": [],
         "optional": [

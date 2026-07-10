@@ -3,6 +3,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
+import { isAuthEnabled } from '@/lib/env';
 
 interface ProtectedRouteProps {
     children: ReactNode;
@@ -16,7 +17,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
     const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
     const router = useRouter();
-    const authEnabled = process.env.NEXT_PUBLIC_AUTH0_ENABLED !== 'false';
+    const authEnabled = isAuthEnabled();
 
     useEffect(() => {
         if (!authEnabled) return;

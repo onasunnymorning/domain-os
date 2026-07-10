@@ -18,11 +18,15 @@ type Contract struct {
 
 // ServiceContract describes a single deployable service.
 type ServiceContract struct {
-	Image       string          `json:"image"`
-	Port        int             `json:"port,omitempty"`
-	Protocol    string          `json:"protocol,omitempty"`
-	HealthCheck *HealthCheck    `json:"health_check,omitempty"`
-	EnvVars     ContractEnvVars `json:"env_vars"`
+	Image    string `json:"image"`
+	Port     int    `json:"port,omitempty"`
+	Protocol string `json:"protocol,omitempty"`
+	// EnvInjection is "runtime" when env vars are read by the running container,
+	// or "build" when they must be supplied as docker build args. Infra repos
+	// must not pass "build" vars as container env, or vice versa.
+	EnvInjection string          `json:"env_injection"`
+	HealthCheck  *HealthCheck    `json:"health_check,omitempty"`
+	EnvVars      ContractEnvVars `json:"env_vars"`
 }
 
 // HealthCheck describes how to check if a service is healthy.
@@ -62,7 +66,7 @@ type serviceMeta struct {
 	Protocol     string       // "http", "tls", "tcp", or ""
 	HealthCheck  *HealthCheck // nil if no health check
 	Services     []Service    // Which Service constants map to this deployable
-	BuildTime    bool         // If true, env vars are build-time args (frontend)
+	BuildTime    bool         // If true, env vars must be supplied as docker build args rather than container env
 }
 
 // serviceMetaRegistry maps Service constants to their deployable service metadata.
@@ -114,7 +118,10 @@ var serviceMetaRegistry = []serviceMeta{
 		Protocol:     "http",
 		HealthCheck:  nil,
 		Services:     []Service{ServiceFrontend},
-		BuildTime:    true,
+		// NEXT_PUBLIC_* vars are injected at container start by next-runtime-env,
+		// so the image is environment-agnostic and infra sets plain container env.
+		// See docs/adr/0001-runtime-env-configuration.md
+		BuildTime: false,
 	},
 }
 
@@ -238,11 +245,16 @@ func GenerateContract(versionFilePath string) (*Contract, error) {
 	services := make(map[string]ServiceContract, len(serviceMetaRegistry))
 	for _, meta := range serviceMetaRegistry {
 		g := groups[meta.ContractName]
+		envInjection := "runtime"
+		if meta.BuildTime {
+			envInjection = "build"
+		}
 		svc := ServiceContract{
-			Image:       meta.Image,
-			Port:        meta.Port,
-			Protocol:    meta.Protocol,
-			HealthCheck: meta.HealthCheck,
+			Image:        meta.Image,
+			Port:         meta.Port,
+			Protocol:     meta.Protocol,
+			EnvInjection: envInjection,
+			HealthCheck:  meta.HealthCheck,
 			EnvVars: ContractEnvVars{
 				Required: g.required,
 				Optional: g.optional,

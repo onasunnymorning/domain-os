@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { toast } from 'sonner';
+import { isAuthEnabled } from '@/lib/env';
 
 /**
  * WelcomeToast — fires a personalized greeting toast once per browser session.
@@ -12,7 +13,7 @@ export function WelcomeToast() {
   const { user, isAuthenticated } = useAuth0();
 
   useEffect(() => {
-    const authEnabled = process.env.NEXT_PUBLIC_AUTH0_ENABLED !== 'false';
+    const authEnabled = isAuthEnabled();
     if (!authEnabled || !isAuthenticated || !user) return;
 
     const key = 'dashboard-welcomed';

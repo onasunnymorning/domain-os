@@ -1,20 +1,11 @@
 import axios from 'axios';
+import { getApiUrl, getApiToken } from '@/lib/env';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || '';
-
-// Debug logging
-console.log('API Client Configuration:', {
-  baseURL: API_BASE_URL,
-  hasToken: !!API_TOKEN,
-  tokenLength: API_TOKEN?.length || 0
-});
-
+// baseURL and the fallback token are resolved per request, not at module load:
+// this module is imported before window.__ENV exists on the client.
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_TOKEN}`,
   },
 });
 
@@ -28,11 +19,21 @@ export const setAuthToken = (token: string | null) => {
   dynamicToken = token;
 };
 
+/**
+ * Resolves the bearer token for a request.
+ * Priority: 1. Dynamically set token, 2. localStorage, 3. Environment variable.
+ *
+ * Exported so non-axios callers (SSE via fetch) authenticate identically.
+ */
+export const resolveAuthToken = (): string =>
+  dynamicToken || (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) || getApiToken();
+
 // Request interceptor for auth
 apiClient.interceptors.request.use(
   (config) => {
-    // Priority: 1. Dynamically set token, 2. localStorage, 3. Environment variable
-    const token = dynamicToken || (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null) || API_TOKEN;
+    config.baseURL = getApiUrl();
+
+    const token = resolveAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

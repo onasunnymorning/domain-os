@@ -134,16 +134,24 @@ var Registry = []EnvVar{
 
 	// ═══════════════════════════════════════════
 	// FRONTEND (NEXT_PUBLIC_*)
+	//
+	// These are read at container start by next-runtime-env, not baked into the
+	// JS bundle. Infra must set them on the running frontend container, not as
+	// docker build args. See docs/adr/0001-runtime-env-configuration.md
 	// ═══════════════════════════════════════════
-	{Name: "NEXT_PUBLIC_API_URL", Services: []Service{ServiceFrontend}, Required: true, Description: "Backend API URL (baked at build time)"},
+	{Name: "NEXT_PUBLIC_API_URL", Services: []Service{ServiceFrontend}, Required: true, Description: "Backend API URL (read at container start)"},
+	{Name: "NEXT_PUBLIC_API_TOKEN", Services: []Service{ServiceFrontend}, Description: "Static API token fallback when Auth0 is disabled. Publicly readable in the browser — never a real secret"},
 	{Name: "NEXT_PUBLIC_AUTH0_ENABLED", Services: []Service{ServiceFrontend}, Default: "false", Description: "Enable Auth0 login flow"},
 	{Name: "NEXT_PUBLIC_AUTH0_DOMAIN", Services: []Service{ServiceFrontend}, Description: "Auth0 tenant domain for SPA login"},
 	{Name: "NEXT_PUBLIC_AUTH0_CLIENT_ID", Services: []Service{ServiceFrontend}, Description: "Auth0 SPA application client ID"},
 	{Name: "NEXT_PUBLIC_AUTH0_AUDIENCE", Services: []Service{ServiceFrontend}, Description: "Auth0 API identifier for token audience"},
-	{Name: "NEXT_PUBLIC_APP_VERSION", Services: []Service{ServiceFrontend}, Default: "0.0.0", Description: "App version displayed in UI"},
+	{Name: "NEXT_PUBLIC_APP_VERSION", Services: []Service{ServiceFrontend}, Default: "0.0.0", Description: "App version displayed in UI. Stamped as an image ENV at build; overridable at runtime"},
 	{Name: "NEXT_PUBLIC_TEMPORAL_UI_URL", Services: []Service{ServiceFrontend}, Description: "Temporal Cloud UI URL for workflow links"},
+	{Name: "NEXT_PUBLIC_TEMPORAL_NAMESPACE", Services: []Service{ServiceFrontend}, Default: "default", Description: "Temporal namespace used to build schedule deep-links"},
 	{Name: "NEXT_PUBLIC_GRAFANA_URL", Services: []Service{ServiceFrontend}, Description: "Grafana dashboard URL"},
 	{Name: "NEXT_PUBLIC_STORAGE_UI_URL", Services: []Service{ServiceFrontend}, Description: "S3 storage browser URL"},
+	{Name: "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", Services: []Service{ServiceFrontend}, Description: "PostHog project token. Publicly readable in the browser — never a real secret"},
+	{Name: "NEXT_PUBLIC_POSTHOG_HOST", Services: []Service{ServiceFrontend}, Default: "https://us.i.posthog.com", Description: "PostHog ingestion host"},
 
 	// ═══════════════════════════════════════════
 	// RUNTIME DETECTION (read-only, set by platform)
