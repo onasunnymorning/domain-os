@@ -36,10 +36,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     ./cmd/epp
 
 # Stage 2: Create minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.21.4
 
-# Install runtime dependencies
-RUN apk --no-cache add \
+# Patch base-image OS packages, then install runtime dependencies
+RUN apk upgrade --no-cache && \
+    apk --no-cache add \
     ca-certificates \
     tzdata \
     netcat-openbsd \
