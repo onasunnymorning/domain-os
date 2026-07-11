@@ -57,7 +57,7 @@ func main() {
 		Level: logLevel,
 	}))
 
-	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "build_date", buildinfo.BuildDate)
+	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA)
 
 	// Initialize Redis client
 	redisHost := os.Getenv("REDIS_HOST")
