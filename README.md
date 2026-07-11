@@ -78,9 +78,9 @@ graph LR
 
 ### Versioning
 
-All services share a single version from the [`VERSION`](VERSION) file at the repo root. Version info is injected at build time via the [`internal/buildinfo`](internal/buildinfo/buildinfo.go) package and is available at runtime through:
+All services share a single version derived from the git tag (`v*`, managed by release-please) — there is no committed version file. CI stamps it into every binary at build time via `git describe` and the [`internal/buildinfo`](internal/buildinfo/buildinfo.go) package, available at runtime through:
 
-- **API**: `GET /ping` → returns `version`, `git_sha`, `build_date`
+- **API**: `GET /ping` → returns `version`, `git_sha`
 - **All services**: Logged at startup
 
 ---
