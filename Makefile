@@ -10,7 +10,7 @@
 BRANCH := $(shell git branch --show-current)
 TAG := $(subst /,-,$(BRANCH))
 GIT_SHA := $(shell git rev-parse HEAD)
-VERSION := $(shell cat VERSION)
+VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev)
 DOPPLER := doppler run --
 DOCKER_COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
