@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [0.8.2](https://github.com/onasunnymorning/domain-os/compare/v0.8.1...v0.8.2) (2026-07-11)
+
+
+### Bug Fixes
+
+* **db:** escape credentials when building the postgres DSN ([3f6ec93](https://github.com/onasunnymorning/domain-os/commit/3f6ec93798c4858a11e35488278260f5929e2da2))
+
 ## [0.8.1](https://github.com/onasunnymorning/domain-os/compare/v0.8.0...v0.8.1) (2026-07-11)
 
 
