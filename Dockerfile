@@ -1,5 +1,7 @@
-# The main Build image to build all our binaries
-FROM golang:1.26.5-alpine AS build
+# The main Build image to build all our binaries.
+# Pinned to the native build platform so Go cross-compiles to the target arch
+# (GOARCH below) instead of running under QEMU emulation on the arm64 leg.
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
 
 WORKDIR /
 ENV CGO_ENABLED=0
@@ -62,13 +64,13 @@ RUN if [ "$SKIP_SWAG" = "true" ]; then \
 WORKDIR /
 ARG VERSION=dev
 ARG GIT_SHA=unknown
-ARG BUILD_DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -tags dynamic -ldflags="-s -w \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags dynamic -ldflags="-s -w \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o ryAdminAPI ./cmd/api/ry-admin
 # RUN upx --brute /ryAdminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
