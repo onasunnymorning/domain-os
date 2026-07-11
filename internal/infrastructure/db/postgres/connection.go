@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 
 	_ "github.com/lib/pq"     // Standard postgres driver (in case we need to create the database)
@@ -121,8 +122,25 @@ type Config struct {
 	AutoMigrate bool
 }
 
+// buildDSN assembles a postgres connection URL from cfg. It uses net/url so
+// credentials containing URL-reserved characters (:, @, /, ?, #, space, …) —
+// which RDS- and Secrets Manager-generated passwords routinely include — are
+// percent-escaped rather than corrupting the URL. Interpolating cfg.Pass raw
+// makes the parser read the password bytes as the host/port and fail with
+// "invalid port ... after host", panicking every deployment on startup.
+func buildDSN(cfg Config) string {
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.User, cfg.Pass),
+		Host:     fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
+		Path:     "/" + cfg.DBName,
+		RawQuery: "sslmode=" + url.QueryEscape(cfg.SSLmode),
+	}
+	return u.String()
+}
+
 func NewConnection(cfg Config) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.DBName, cfg.SSLmode)
+	dsn := buildDSN(cfg)
 	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
