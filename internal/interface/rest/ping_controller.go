@@ -21,9 +21,8 @@ func NewPingController(e *gin.Engine) *PingController {
 // Ping is the handler for the ping endpoint
 func (ctrl *PingController) Ping(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
-		"message":    "pong",
-		"version":    buildinfo.Version,
-		"git_sha":    buildinfo.GitSHA,
-		"build_date": buildinfo.BuildDate,
+		"message": "pong",
+		"version": buildinfo.Version,
+		"git_sha": buildinfo.GitSHA,
 	})
 }

@@ -1,4 +1,4 @@
-FROM golang:1.26.5-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
 WORKDIR /app
 # Leverage layer caching: download deps first
 COPY go.mod go.sum ./
@@ -9,13 +9,13 @@ COPY . .
 ENV GOTOOLCHAIN=auto
 ARG VERSION=dev
 ARG GIT_SHA=unknown
-ARG BUILD_DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 go build -ldflags="-s -w \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o /out/unified-worker ./cmd/workers/unified
 
 FROM alpine:3.21.4

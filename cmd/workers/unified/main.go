@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	log.Printf("unified-worker version=%s sha=%s built=%s", buildinfo.Version, buildinfo.GitSHA, buildinfo.BuildDate)
+	log.Printf("unified-worker version=%s sha=%s", buildinfo.Version, buildinfo.GitSHA)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 

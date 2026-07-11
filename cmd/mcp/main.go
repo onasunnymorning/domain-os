@@ -33,7 +33,7 @@ func run() int {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
 
-	logger.Info("MCP server build info", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "build_date", buildinfo.BuildDate)
+	logger.Info("MCP server build info", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA)
 
 	// Set up context with signal handling for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
