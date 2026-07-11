@@ -32,8 +32,7 @@ func TestContractDrift(t *testing.T) {
 	}
 
 	// Generate the expected contract
-	versionFile := filepath.Join(root, "VERSION")
-	expected, err := config.GenerateContract(versionFile)
+	expected, err := config.GenerateContract()
 	if err != nil {
 		t.Fatalf("GenerateContract failed: %v", err)
 	}
@@ -44,11 +43,6 @@ func TestContractDrift(t *testing.T) {
 	// Schema version
 	if committed.SchemaVersion != expected.SchemaVersion {
 		t.Errorf("schema_version: committed=%q expected=%q", committed.SchemaVersion, expected.SchemaVersion)
-	}
-
-	// App version
-	if committed.AppVersion != expected.AppVersion {
-		t.Errorf("app_version: committed=%q expected=%q\n\nThe VERSION file was bumped but contract.json was not regenerated.", committed.AppVersion, expected.AppVersion)
 	}
 
 	// Services — compare as normalized JSON for stable comparison
@@ -126,8 +120,7 @@ func TestSecretsAreExplicit(t *testing.T) {
 // TestInfraUsedByIsDerived pins the facts that infra tooling keys on, so a
 // change to a service's DB access shows up here rather than in a deploy.
 func TestInfraUsedByIsDerived(t *testing.T) {
-	root := findProjectRoot(t)
-	c, err := config.GenerateContract(filepath.Join(root, "VERSION"))
+	c, err := config.GenerateContract()
 	if err != nil {
 		t.Fatalf("GenerateContract failed: %v", err)
 	}
@@ -163,8 +156,7 @@ func TestInfraUsedByIsDerived(t *testing.T) {
 // TestEveryDeployableServiceHasAHealthCheck — an ALB/ECS target group needs a
 // probe target for every service it fronts.
 func TestEveryDeployableServiceHasAHealthCheck(t *testing.T) {
-	root := findProjectRoot(t)
-	c, err := config.GenerateContract(filepath.Join(root, "VERSION"))
+	c, err := config.GenerateContract()
 	if err != nil {
 		t.Fatalf("GenerateContract failed: %v", err)
 	}
