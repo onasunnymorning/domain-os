@@ -1,4 +1,12 @@
 <a name="unreleased"></a>
+## [0.8.1](https://github.com/onasunnymorning/domain-os/compare/v0.8.0...v0.8.1) (2026-07-11)
+
+
+### Performance Improvements
+
+* **ci:** cross-compile Go images for arm64 and drop BUILD_DATE ([25a014b](https://github.com/onasunnymorning/domain-os/commit/25a014b2e209afe70b7785c309dcd1d430f75a4f))
+* **ci:** cross-compile Go images for arm64 and drop BUILD_DATE ([09ce22f](https://github.com/onasunnymorning/domain-os/commit/09ce22f4d8c63477e83efe9337796a8f4cd271f6))
+
 ## 0.8.0 (2026-07-11)
 
 
