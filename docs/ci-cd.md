@@ -2,64 +2,75 @@
 
 How container images are built, scanned, published, and released.
 
-## The model: build once on main, promote by digest
+## The model: build the release, deploy versions
 
-Every push to `main` builds each service image, scans it, and publishes it to
-Docker Hub under an **immutable `:<sha>` tag**. That image is the artifact — it
-is what the tests ran against and what deployments should pin.
+We deploy tagged **releases**, not individual commits, so images are built and
+published exactly once — when a release is cut. Between releases, `main` merges
+run tests only and publish nothing.
 
-When a release is cut, nothing is rebuilt. The exact `:<sha>` image that `main`
-already built and scanned is **retagged** to `:<version>`. Docker builds are not
-reproducible (base images move, `npm ci` and `go mod` resolve against live
-registries), so rebuilding at release time would ship bits that were never
-tested. Retagging a digest makes that impossible and is also far faster.
+- **Pull requests** run the full test suite and build every image (amd64) to
+  prove it still builds and is CVE-clean. These images are loaded locally and
+  scanned, never pushed.
+- **Pushes to `main`** run tests only.
+- **Releases** (cut by release-please) build every image multi-arch, push
+  `:<version>` and `:latest`, and scan.
 
 | Tag | Meaning | Mutable? | Set by |
 | --- | --- | --- | --- |
-| `:<sha>` | Exactly what CI built for that commit | No | `ci.yaml` (main only) |
-| `:latest` | Newest successful `main` build | Yes | `ci.yaml` `retag` job |
-| `:<version>` (e.g. `0.7.1`) | A cut release | No | `release-please.yaml` `promote` job |
+| `:<version>` (e.g. `0.8.1`) | An immutable release | No | `release-please.yaml` → `release-build` |
+| `:latest` | The most recent release | Yes | same |
 
-Deployments should pin `:<sha>` or `:<version>`, never `:latest`.
+Deployments pin `:<version>`, or use `:latest` to track the current release.
+
+This replaced an earlier "build on every `main` push, promote the digest at
+release" model. That guarantees every commit is a deployable artifact, but when
+the deploy unit is the release it just means building the same code two or three
+times per release cycle — so we build the thing we actually ship, once.
 
 ## Images
 
 The image list is defined once in [`.github/images.json`](../.github/images.json)
-and consumed by every workflow that needs it. `internal/config`'s
-`TestCIImageMatrixMatchesContract` (run by the `envcheck` CI job) asserts this
-file lists exactly the services in the [deployment contract](../deploy/contract.json),
+and shared by `ci.yaml` and the release build. `internal/config`'s
+`TestCIImageMatrixMatchesContract` (run by the `envcheck` job) asserts this file
+lists exactly the services in the [deployment contract](../deploy/contract.json),
 so a service can never be added to the contract but forgotten in the pipeline.
 
 All six images publish under the `gprins/` Docker Hub namespace, each named
 `domain-os-<role>`: `domain-os-api`, `domain-os-worker`, `domain-os-epp`,
 `domain-os-whois`, `domain-os-mcp`, `domain-os-frontend`.
 
+## Version
+
+The version comes from the git tag (release-please owns tags) via
+`git describe`, not a committed file — see the README's *Versioning* section. CI
+stamps it into each binary (build-arg → `buildinfo.Version`, surfaced at
+`/ping`), and the release build tags the images with it.
+
 ## Workflows
 
-### `ci.yaml` — on every push to `main` and every PR
+### `ci.yaml` — every PR and every push to `main`
 
-- **Tests & checks**: secret scan, lint, env/contract drift, Go unit tests, Go
-  API integration tests, frontend tests.
-- **`build-images`** (matrix over `images.json`): builds each image and runs a
-  Trivy scan gated on `CRITICAL`/`HIGH`.
-  - On `main`: multi-arch (`amd64`+`arm64`), pushed as `:<sha>`.
-  - On PRs: `amd64`-only, **not pushed** — loaded locally and scanned, so PRs
-    never write to the registry and fork PRs without secrets still pass.
-- **`retag`** (main only): retags each `:<sha>` as `:latest`.
+- **Tests & checks** (both PRs and `main`): secret scan, lint, env/contract
+  drift, Go unit + API integration tests, frontend tests.
+- **`build-images`** (feature PRs only): builds each image `amd64`, loads it
+  locally, and Trivy-scans (`CRITICAL`/`HIGH`). Never pushes — no Docker Hub
+  login required, so fork PRs pass. Skipped on `main` pushes (tests only) and on
+  release-please's version-bump PRs (no source changes to validate).
 
-### `release-please.yaml` — on push to `main`
+### `release-please.yaml` — push to `main`
 
 - **`release-please`**: maintains the release PR; on merge, creates the GitHub
   release, tag, and changelog, and bumps the version.
-- **`promote`** (only when a release was created): waits for the release
-  commit's `:<sha>` images (CI builds them in parallel) and retags each to
-  `:<version>`. No rebuild.
+- **`release-build`** (only when a release is created): builds every image
+  multi-arch (`amd64`+`arm64`), pushes `:<version>` and `:latest`, and scans.
+  This is the only place images are published.
 
 ### `trivy-scheduled.yaml` — Mondays 06:00 UTC (and manual)
 
-Non-blocking (`exit-code: 0`) Trivy scan of every `:latest` image, so base-image
-CVE drift surfaces on a schedule instead of ambushing an unrelated PR. Fixing a
-finding means bumping a base image (or adding `apk upgrade`) via a normal PR.
+Non-blocking (`exit-code: 0`) Trivy scan of every `:latest` image (= the latest
+release), so base-image CVE drift surfaces on a schedule instead of ambushing a
+release. Fixing a finding means bumping a base image (or adding `apk upgrade`)
+via a normal PR.
 
 ## Required GitHub configuration
 
@@ -67,7 +78,7 @@ Set these on the repository (Settings → Secrets and variables → Actions):
 
 | Name | Kind | Value | Used by |
 | --- | --- | --- | --- |
-| `DOCKERHUB_USERNAME` | **Variable** | `gprins` | Docker Hub login (push/retag/promote/scan) |
+| `DOCKERHUB_USERNAME` | **Variable** | `gprins` | Docker Hub login for the release build |
 | `DOCKERHUB_TOKEN` | **Secret** | Docker Hub access token | same |
 | `GITHUB_TOKEN` | Automatic | — | secret scan, release-please (injected by Actions) |
 
@@ -75,6 +86,7 @@ Set these on the repository (Settings → Secrets and variables → Actions):
 repository **variable** (`vars.`) — it shows up unmasked in logs, which makes a
 failed push readable. Only `DOCKERHUB_TOKEN` is a secret. No `GITLEAKS_LICENSE`
 is needed because the repo is under a personal account, not an organization.
+Pull requests need neither — they build and scan without pushing.
 
 ### Rotating the Docker Hub token
 
@@ -83,10 +95,10 @@ is needed because the repo is under a personal account, not an organization.
 2. Update the `DOCKERHUB_TOKEN` repository secret.
 3. Revoke the old token.
 
-## Why release promotion lives in `release-please.yaml`
+## Why the release build lives in `release-please.yaml`
 
 A separate workflow triggered by the release tag would never fire: GitHub does
 not trigger workflow runs from events created by the default `GITHUB_TOKEN`, and
-release-please creates its tag with that token. Running `promote` as a job in
-the same workflow as the release-please action sidesteps this entirely — no PAT,
-no second workflow, no cross-workflow event to break.
+release-please creates its tag with that token. Running `release-build` as a job
+in the same workflow as the release-please action sidesteps this entirely — no
+PAT, no second workflow, no cross-workflow event to break.
