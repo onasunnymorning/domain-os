@@ -126,7 +126,7 @@ func main() {
 	// Load the APP configuration and log it
 	cfg := config.LoadConfig(buildinfo.GitSHA)
 	logger.Info("Starting Admin API with following config", zap.Any("config", cfg))
-	logger.Info("Build info", zap.String("version", buildinfo.Version), zap.String("git_sha", buildinfo.GitSHA), zap.String("build_date", buildinfo.BuildDate))
+	logger.Info("Build info", zap.String("version", buildinfo.Version), zap.String("git_sha", buildinfo.GitSHA))
 
 	// Check for init-registrars command
 	if len(os.Args) > 1 && os.Args[1] == "init-registrars" {

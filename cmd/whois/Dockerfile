@@ -1,4 +1,4 @@
-FROM golang:1.26.5-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
 
 WORKDIR /
 ENV CGO_ENABLED=0
@@ -20,13 +20,13 @@ COPY ./cmd/whois/ ./cmd/whois/
 FROM build AS build-whois
 ARG VERSION=dev
 ARG GIT_SHA=unknown
-ARG BUILD_DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -tags dynamic -ldflags="-s -w \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags dynamic -ldflags="-s -w \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA} \
-      -X github.com/onasunnymorning/domain-os/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o whoisServer /cmd/whois/whois.go
 
 # Create API release image

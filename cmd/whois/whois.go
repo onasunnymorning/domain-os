@@ -26,7 +26,7 @@ const (
 )
 
 func main() {
-	log.Printf("whois-server version=%s sha=%s built=%s", buildinfo.Version, buildinfo.GitSHA, buildinfo.BuildDate)
+	log.Printf("whois-server version=%s sha=%s", buildinfo.Version, buildinfo.GitSHA)
 	// Set up a context to handle signals for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
