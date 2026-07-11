@@ -44,7 +44,7 @@ func TestCIImageMatrixMatchesContract(t *testing.T) {
 		ciNames[e.Name] = true
 	}
 
-	c, err := config.GenerateContract(filepath.Join(root, "VERSION"))
+	c, err := config.GenerateContract()
 	if err != nil {
 		t.Fatalf("GenerateContract: %v", err)
 	}

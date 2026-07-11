@@ -173,6 +173,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags so `git describe` can resolve the version
       - name: Set up QEMU
         if: github.ref == 'refs/heads/main'
         uses: docker/setup-qemu-action@v3
@@ -197,10 +199,13 @@ jobs:
             echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
           fi
 
+      # Version is derived from the git tag (release-please owns tags), not a
+      # committed file. On a tagged commit this is e.g. 0.8.0; between releases
+      # it is 0.8.0-<n>-g<sha>; with no tags it falls back to the short sha.
       - name: Read version
         id: version
         run: |
-          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "version=$(git describe --tags --always | sed 's/^v//')" >> "$GITHUB_OUTPUT"
 
       # Push :<sha> only on main. On PRs, load the (single-arch) image into the
       # local daemon so the Trivy step below can scan it without a registry push.

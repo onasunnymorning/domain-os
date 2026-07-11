@@ -48,8 +48,9 @@ Also update `example.env`, and `frontend/.env.local` if local dev needs a value.
   anyone with a browser. `isSecret()` in `internal/config/contract.go` classifies all
   `NEXT_PUBLIC_*` vars as non-secret on purpose.
 - **Do not add `NEXT_PUBLIC_*` build args to `frontend/Dockerfile`.** Infra sets
-  plain container env. The one exception is `NEXT_PUBLIC_APP_VERSION`, stamped as an
-  `ENV` in the runner stage because the version is genuinely build-time metadata.
+  plain container env and `next-runtime-env` reads them at container start — this
+  includes `NEXT_PUBLIC_APP_VERSION`, which is injected at runtime like the rest,
+  not baked into the image, so the frontend image is version-agnostic.
 - **Do not remove the `next-runtime-env` entry from `overrides` in
   `frontend/package.json`.** The package declares `next` and `react` as both
   `dependencies` and `peerDependencies`; without the override npm installs a nested
@@ -262,7 +263,6 @@ Run `make generate-contract` after any of these changes:
 | Changing a service port or health check in `contract.go` | Infra repo's probes/listeners will fail |
 | Adding or removing a service/image in `contract.go` | Infra repo needs to add/remove a deployment |
 | Changing a service's `BuildTime` flag in `contract.go` | Flips `env_injection`; infra must move vars between build args and container env |
-| Bumping the `VERSION` file | Contract's `app_version` must match |
 
 ### Invariants the generator enforces
 
