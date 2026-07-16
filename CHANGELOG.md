@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [0.8.3](https://github.com/onasunnymorning/domain-os/compare/v0.8.2...v0.8.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* harden DB credential handling, surface auth failures, and clean up deploy contract ([19e603d](https://github.com/onasunnymorning/domain-os/commit/19e603d9e006263dffad77d54db0696ae1700226))
+
 ## [0.8.2](https://github.com/onasunnymorning/domain-os/compare/v0.8.1...v0.8.2) (2026-07-11)
 
 
