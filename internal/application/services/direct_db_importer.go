@@ -48,19 +48,13 @@ type DirectDBImporter struct {
 
 func NewDirectDBImporter() (*DirectDBImporter, error) {
 	// Initialize Postgres connection
-	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars (local/docker-compose)
+	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars
+	// (the production credential path on AWS ECS, also used locally)
 	var pgURL string
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
 		pgURL = sanitizePGURLForGoPG(dbURL)
 	} else {
-		pgURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-			getEnv("DB_USER", "postgres"),
-			getEnv("DB_PASS", "postgres"),
-			getEnv("DB_HOST", "localhost"),
-			getEnv("DB_PORT", "5432"),
-			getEnv("DB_NAME", "domain_os"),
-			getEnv("DB_SSLMODE", "disable"),
-		)
+		pgURL = fallbackPGURL()
 	}
 
 	opt, err := pg.ParseURL(pgURL)
@@ -1052,6 +1046,22 @@ func (s *DirectDBImporter) AccreditRegistrars(ctx context.Context, sqliteDB *sql
 
 	log.Printf("AccreditRegistrars: Finished. Total new accreditations: %d", total)
 	return total, nil
+}
+
+// fallbackPGURL assembles a postgres URL from the individual DB_* env vars.
+// It uses net/url so credentials containing URL-reserved characters
+// (:, @, /, ?, #, …) — which RDS- and Secrets Manager-generated passwords
+// routinely include — are percent-escaped rather than corrupting the URL,
+// mirroring buildDSN in internal/infrastructure/db/postgres/connection.go.
+func fallbackPGURL() string {
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(getEnv("DB_USER", "postgres"), getEnv("DB_PASS", "postgres")),
+		Host:     fmt.Sprintf("%s:%s", getEnv("DB_HOST", "localhost"), getEnv("DB_PORT", "5432")),
+		Path:     "/" + getEnv("DB_NAME", "domain_os"),
+		RawQuery: "sslmode=" + url.QueryEscape(getEnv("DB_SSLMODE", "disable")),
+	}
+	return u.String()
 }
 
 // sanitizePGURLForGoPG strips query parameters that go-pg/pg doesn't support.

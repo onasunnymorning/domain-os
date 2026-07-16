@@ -46,13 +46,20 @@ func init() {
 	)
 }
 
-// GetBearerToken returns a valid bearer token for API requests
-func GetBearerToken() string {
+// GetBearerToken returns a valid bearer token for API requests.
+// A token-acquisition failure is returned to the caller rather than silently
+// swallowed: the old fallback sent an empty bearer, which the API rejected
+// with "Authorization header missing or malformed" — hiding the real cause
+// (a failed Auth0 client_credentials grant). ADMIN_TOKEN remains a fallback,
+// but only when it is actually set.
+func GetBearerToken() (string, error) {
 	token, err := tokenManager.GetAccessToken()
 	if err != nil {
-		log.Printf("⚠️ Failed to get access token: %v", err)
-		// Fallback to empty string or existing ADMIN_TOKEN if crucial
-		return fmt.Sprintf("Bearer %s", os.Getenv("ADMIN_TOKEN"))
+		if fallback := os.Getenv("ADMIN_TOKEN"); fallback != "" {
+			log.Printf("⚠️ Failed to get Auth0 access token, falling back to ADMIN_TOKEN: %v", err)
+			return fmt.Sprintf("Bearer %s", fallback), nil
+		}
+		return "", fmt.Errorf("failed to acquire Auth0 access token (and no ADMIN_TOKEN fallback is set): %w", err)
 	}
-	return fmt.Sprintf("Bearer %s", token)
+	return fmt.Sprintf("Bearer %s", token), nil
 }

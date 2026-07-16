@@ -18,7 +18,11 @@ func MarkDomainForDeletion(domainName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Add("Authorization", GetBearerToken())
+	token, err := GetBearerToken()
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Authorization", token)
 
 	resp, err := client.Do(req)
 	if err != nil {

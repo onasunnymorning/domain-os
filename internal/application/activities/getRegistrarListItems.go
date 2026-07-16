@@ -32,10 +32,15 @@ func GetRegistrarListItems(ctx context.Context, correlationID string, batchsize 
 	var allRegistrars []entities.RegistrarListItem
 	currentURL := initialURL.String()
 
+	token, err := GetBearerToken()
+	if err != nil {
+		return nil, err
+	}
+
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchRegistrarsPage(ctx, client, currentURL, GetBearerToken(), correlationID)
+		apiResponse, err := fetchRegistrarsPage(ctx, client, currentURL, token, correlationID)
 		if err != nil {
 			return nil, err
 		}

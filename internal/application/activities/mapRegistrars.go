@@ -71,7 +71,10 @@ func (a *EscrowImportActivities) MapRegistrars(ctx context.Context, args MapRegi
 	svc.Deposit.FileName = filepath.Join(safeDir, safeBaseName)
 
 	// 4. Perform MapRegistrars with Overrides
-	token := GetBearerToken()
+	token, err := GetBearerToken()
+	if err != nil {
+		return MapRegistrarsResult{}, err
+	}
 
 	if err := svc.MapRegistrars(token, args.Overrides); err != nil {
 		return MapRegistrarsResult{}, fmt.Errorf("failed to map registrars: %w", err)

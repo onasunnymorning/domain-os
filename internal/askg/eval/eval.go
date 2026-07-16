@@ -146,7 +146,7 @@ type EvalConfig struct {
 func DefaultEvalConfig() EvalConfig {
 	return EvalConfig{
 		N:             3,
-		Model:         "claude-sonnet-4-6",
+		Model:         "claude-sonnet-5",
 		JudgeModel:    "claude-haiku-4-5",
 		MaxIterations: 10,
 	}

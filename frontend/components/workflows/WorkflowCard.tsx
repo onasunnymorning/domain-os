@@ -21,7 +21,10 @@ const categoryIcons: Record<string, React.ElementType> = {
 
 export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
   const Icon = categoryIcons[workflow.category] || Zap;
-  const scheduleUrl = `${getTemporalUiUrl()}/namespaces/${getTemporalNamespace()}/schedules/${workflow.scheduleId}`;
+  const temporalUiUrl = getTemporalUiUrl();
+  const scheduleUrl = temporalUiUrl
+    ? `${temporalUiUrl}/namespaces/${getTemporalNamespace()}/schedules/${workflow.scheduleId}`
+    : '';
 
   return (
     <Card
@@ -60,16 +63,20 @@ export function WorkflowCard({ workflow, onLaunch }: WorkflowCardProps) {
             {workflow.scheduleId && (
               <>
                 <span className="text-muted-foreground/50">·</span>
-                <a
-                  href={scheduleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors"
-                  title={`View schedule "${workflow.scheduleId}" in Temporal`}
-                >
+                {scheduleUrl ? (
+                  <a
+                    href={scheduleUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                    title={`View schedule "${workflow.scheduleId}" in Temporal`}
+                  >
+                    <span className="font-mono">{workflow.scheduleId}</span>
+                    <ExternalLink className="size-2.5" />
+                  </a>
+                ) : (
                   <span className="font-mono">{workflow.scheduleId}</span>
-                  <ExternalLink className="size-2.5" />
-                </a>
+                )}
               </>
             )}
           </div>

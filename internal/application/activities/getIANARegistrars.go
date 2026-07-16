@@ -33,10 +33,15 @@ func GetIANARegistrars(ctx context.Context, correlationID string, batchsize int)
 	var allRegistrars []entities.IANARegistrar
 	currentURL := initialURL.String()
 
+	token, err := GetBearerToken()
+	if err != nil {
+		return nil, err
+	}
+
 	// Loop until no NextLink is returned
 	for currentURL != "" {
 		// Fetch the current page
-		apiResponse, err := fetchIANARegistrarsPage(ctx, client, currentURL, GetBearerToken(), correlationID)
+		apiResponse, err := fetchIANARegistrarsPage(ctx, client, currentURL, token, correlationID)
 		if err != nil {
 			return nil, err
 		}
