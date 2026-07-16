@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-07-11T17:24:02Z",
+  "generated": "2026-07-16T21:28:30Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -15,41 +15,41 @@
       "env_vars": {
         "required": [
           {
-            "name": "DATABASE_URL",
-            "secret": true,
-            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
-          },
-          {
             "name": "STORAGE_ENDPOINT",
             "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
           }
         ],
         "optional": [
           {
+            "name": "DATABASE_URL",
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."
+          },
+          {
             "name": "DB_USER",
             "default": "postgres",
-            "description": "PostgreSQL user (local/docker-compose fallback)"
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PASS",
             "default": "postgres",
             "secret": true,
-            "description": "PostgreSQL password (local/docker-compose fallback)"
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_HOST",
             "default": "localhost",
-            "description": "PostgreSQL host (local/docker-compose fallback)"
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PORT",
             "default": "5432",
-            "description": "PostgreSQL port (local/docker-compose fallback)"
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_NAME",
             "default": "domain_os",
-            "description": "PostgreSQL database name (local/docker-compose fallback)"
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_SSLMODE",
@@ -235,8 +235,8 @@
           },
           {
             "name": "LLM_MODEL",
-            "default": "claude-sonnet-4-6",
-            "description": "LLM model name for the AI agent (e.g. claude-sonnet-4-6)"
+            "default": "claude-sonnet-5",
+            "description": "LLM model name for the AI agent (e.g. claude-sonnet-5)"
           },
           {
             "name": "KNOWLEDGE_BASE_DIR",
@@ -370,28 +370,28 @@
           {
             "name": "DB_USER",
             "default": "postgres",
-            "description": "PostgreSQL user (local/docker-compose fallback)"
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PASS",
             "default": "postgres",
             "secret": true,
-            "description": "PostgreSQL password (local/docker-compose fallback)"
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_HOST",
             "default": "localhost",
-            "description": "PostgreSQL host (local/docker-compose fallback)"
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PORT",
             "default": "5432",
-            "description": "PostgreSQL port (local/docker-compose fallback)"
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_NAME",
             "default": "domain_os",
-            "description": "PostgreSQL database name (local/docker-compose fallback)"
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_SSLMODE",
@@ -420,11 +420,6 @@
       "env_vars": {
         "required": [
           {
-            "name": "DATABASE_URL",
-            "secret": true,
-            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."
-          },
-          {
             "name": "AUTH0_WORKER_CLIENT_SECRET",
             "secret": true,
             "description": "Auth0 M2M client secret for worker"
@@ -436,30 +431,35 @@
         ],
         "optional": [
           {
+            "name": "DATABASE_URL",
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."
+          },
+          {
             "name": "DB_USER",
             "default": "postgres",
-            "description": "PostgreSQL user (local/docker-compose fallback)"
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PASS",
             "default": "postgres",
             "secret": true,
-            "description": "PostgreSQL password (local/docker-compose fallback)"
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_HOST",
             "default": "localhost",
-            "description": "PostgreSQL host (local/docker-compose fallback)"
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PORT",
             "default": "5432",
-            "description": "PostgreSQL port (local/docker-compose fallback)"
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_NAME",
             "default": "domain_os",
-            "description": "PostgreSQL database name (local/docker-compose fallback)"
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_SSLMODE",
@@ -615,28 +615,28 @@
           {
             "name": "DB_USER",
             "default": "postgres",
-            "description": "PostgreSQL user (local/docker-compose fallback)"
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PASS",
             "default": "postgres",
             "secret": true,
-            "description": "PostgreSQL password (local/docker-compose fallback)"
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_HOST",
             "default": "localhost",
-            "description": "PostgreSQL host (local/docker-compose fallback)"
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_PORT",
             "default": "5432",
-            "description": "PostgreSQL port (local/docker-compose fallback)"
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_NAME",
             "default": "domain_os",
-            "description": "PostgreSQL database name (local/docker-compose fallback)"
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
           },
           {
             "name": "DB_SSLMODE",

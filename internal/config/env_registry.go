@@ -54,12 +54,17 @@ var Registry = []EnvVar{
 	// DATABASE_URL is only understood by admin-api and unified-worker. whois and
 	// mcp-server construct their DSN from the individual DB_* vars — see
 	// cmd/whois/whois.go and cmd/mcp/main.go — so they must be given those.
-	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker}, Required: true, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Preferred over individual DB_* vars."},
-	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Description: "PostgreSQL user (local/docker-compose fallback)"},
-	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Secret: true, Description: "PostgreSQL password (local/docker-compose fallback)"},
-	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "localhost", Description: "PostgreSQL host (local/docker-compose fallback)"},
-	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "5432", Description: "PostgreSQL port (local/docker-compose fallback)"},
-	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "domain_os", Description: "PostgreSQL database name (local/docker-compose fallback)"},
+	//
+	// DATABASE_URL and the DB_* set are alternatives: every service that accepts
+	// DATABASE_URL falls back to DB_* when it is unset, so neither is Required on
+	// its own. The DB_* set is the production credential path on AWS ECS — a
+	// secret-store password injected as DB_PASS never has to survive URL parsing.
+	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."},
+	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
+	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
+	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
 	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "disable", Description: "PostgreSQL SSL mode"},
 	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Run GORM AutoMigrate on startup"},
 
@@ -150,7 +155,7 @@ var Registry = []EnvVar{
 	{Name: "OPENEXCHANGERATES_APP_ID", Services: []Service{ServiceWorker}, Secret: true, Description: "OpenExchangeRates API key for FX sync"},
 	{Name: "ANTHROPIC_API_KEY", Services: []Service{ServiceAPI, ServiceCLI}, Secret: true, Description: "Anthropic API key for AI agent (Agent Alpaca)"},
 	{Name: "ANTHROPIC_BASE_URL", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Anthropic API base URL override"},
-	{Name: "LLM_MODEL", Services: []Service{ServiceAPI, ServiceCLI}, Default: "claude-sonnet-4-6", Description: "LLM model name for the AI agent (e.g. claude-sonnet-4-6)"},
+	{Name: "LLM_MODEL", Services: []Service{ServiceAPI, ServiceCLI}, Default: "claude-sonnet-5", Description: "LLM model name for the AI agent (e.g. claude-sonnet-5)"},
 	{Name: "KNOWLEDGE_BASE_DIR", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Root directory for knowledge base docs (docs/index.yaml). Falls back to working directory."},
 
 	// ═══════════════════════════════════════════

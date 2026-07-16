@@ -117,7 +117,7 @@ All tools are annotated as \`ReadOnlyHint: true\`, \`DestructiveHint: false\`, \
 |---------------------|---------|-------------|
 | \`ANTHROPIC_API_KEY\` | — | Required to enable the feature |
 | \`ANTHROPIC_BASE_URL\` | Anthropic default | Optional API base URL override |
-| \`ASKG_MODEL\` | \`claude-sonnet-4-6\` | Model for tool-use reasoning |
+| \`ASKG_MODEL\` | \`claude-sonnet-5\` | Model for tool-use reasoning |
 | \`ASKG_CLASSIFIER_MODEL\` | \`claude-haiku-4-5\` | *(Future)* Cheaper model for intent routing |
 | \`ASKG_MAX_ITERATIONS\` | \`10\` | Max tool-call loop iterations |
 
