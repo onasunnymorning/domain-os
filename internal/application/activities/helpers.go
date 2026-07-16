@@ -68,7 +68,11 @@ func prepareRequest(ctx context.Context, method, urlStr string, body io.Reader, 
 		return nil, err
 	}
 
-	req.Header.Add("Authorization", GetBearerToken())
+	token, err := GetBearerToken()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Authorization", token)
 
 	if correlationID != "" {
 		req.Header.Add("X-Correlation-ID", correlationID)

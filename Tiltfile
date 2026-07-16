@@ -133,6 +133,7 @@ local_resource(
         'NEXT_PUBLIC_API_TOKEN':       os.getenv('ADMIN_TOKEN', 'devtoken'),
         'NEXT_PUBLIC_AUTH0_ENABLED':   'false',
         'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # native temporal CLI UI; docker mode uses :8081
+        'NEXT_PUBLIC_STORAGE_UI_URL':  'http://localhost:9001',   # MinIO console from docker-compose
         'NEXT_PUBLIC_APP_VERSION':     version + '-dev',
     },
     deps=[

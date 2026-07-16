@@ -77,6 +77,6 @@ func TestBuildInputSchema_NilInput(t *testing.T) {
 }
 
 func TestDefaultModelConstants(t *testing.T) {
-	assert.Equal(t, "claude-sonnet-4-6", DefaultModel)
+	assert.Equal(t, "claude-sonnet-5", DefaultModel)
 	assert.Equal(t, "claude-haiku-4-5", DefaultClassifier)
 }
