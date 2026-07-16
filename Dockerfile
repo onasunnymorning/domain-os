@@ -92,6 +92,13 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Copy our static executable
 COPY --from=build-admin-api /ryAdminAPI /ryAdminAPI
 
+# Knowledge base for the AI agent's answer_system_question tool.
+# NewKnowledgeService loads $KNOWLEDGE_BASE_DIR/docs/index.yaml; without these
+# the API logs "KnowledgeService not available" and disables the tool.
+# Copied from the build context (not the build stage, where swag overwrote /docs).
+COPY ./docs /kb/docs
+ENV KNOWLEDGE_BASE_DIR=/kb
+
 # Ensure the user owns the binary
 RUN chown -R appuser:appgroup /ryAdminAPI && chmod +x /ryAdminAPI
 

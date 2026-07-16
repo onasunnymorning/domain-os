@@ -235,7 +235,10 @@ func (a *EscrowImportActivities) StreamingAnalysis(ctx context.Context, args Str
 		return StreamingAnalysisResult{}, fmt.Errorf("streaming service init failed: %w", err)
 	}
 	// Fetch fresh token for MapRegistrars
-	token := GetBearerToken()
+	token, err := GetBearerToken()
+	if err != nil {
+		return StreamingAnalysisResult{}, err
+	}
 
 	// Create a heartbeat wrapper
 	heartbeat := func(details ...interface{}) {
@@ -2855,7 +2858,11 @@ func (a *EscrowImportActivities) ParseAndExtractAssets(ctx context.Context, args
 	}
 
 	// Run analysis (generates local CSVs in outputDir)
-	if err := svc.StreamAnalyze(false, GetBearerToken(), heartbeat); err != nil {
+	token, err := GetBearerToken()
+	if err != nil {
+		return ParseAndExtractAssetsResult{}, err
+	}
+	if err := svc.StreamAnalyze(false, token, heartbeat); err != nil {
 		return ParseAndExtractAssetsResult{}, fmt.Errorf("stream analyze failed: %w", err)
 	}
 
@@ -3117,14 +3124,10 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	}
 
 	// Mapping Logic
-	// ... (rest is same context)
-
-	// ... inside the loop ...
-	// Instead of showing the whole file, I will just replace the loop body logic where "missing" is handled.
-	// But ReplaceFileContent needs context. I will fetch the file content to be sure.
-
-	// Mapping Logic
-	token := GetBearerToken()
+	token, err := GetBearerToken()
+	if err != nil {
+		return ResolveRegistrarsResult{}, err
+	}
 	client := &http.Client{Timeout: 10 * time.Second}
 	baseURL := buildAdminAPIURL()
 

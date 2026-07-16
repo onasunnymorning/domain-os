@@ -69,7 +69,11 @@ func adminAPIGet(client *http.Client, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", GetBearerToken())
+	token, err := GetBearerToken()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", token)
 	return client.Do(req)
 }
 

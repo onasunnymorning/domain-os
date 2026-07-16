@@ -12,7 +12,7 @@ type Config struct {
 	Provider string `json:"provider"`
 
 	// Model is the provider-scoped model identifier for the main
-	// tool-use model (e.g. "claude-sonnet-4-6").
+	// tool-use model (e.g. "claude-sonnet-5").
 	Model string `json:"model"`
 
 	// ClassifierModel is an optional cheaper/faster model for the

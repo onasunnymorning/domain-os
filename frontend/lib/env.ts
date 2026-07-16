@@ -28,11 +28,18 @@ export const getAuth0Audience = () => env('NEXT_PUBLIC_AUTH0_AUDIENCE') || '';
 
 export const getAppVersion = () => env('NEXT_PUBLIC_APP_VERSION') || '1.0.0';
 
-export const getTemporalUiUrl = () => env('NEXT_PUBLIC_TEMPORAL_UI_URL') || 'http://localhost:8081';
+/**
+ * External tool URLs have no localhost fallback: in a deployed environment an
+ * unset value used to render silently broken localhost links. Callers must
+ * treat '' as "not configured" and hide the corresponding control. Local dev
+ * sets these explicitly (Tiltfile / .env.local).
+ */
+export const getTemporalUiUrl = () => env('NEXT_PUBLIC_TEMPORAL_UI_URL') || '';
 
+/** 'default' is Temporal's actual default namespace, so it is a safe fallback. */
 export const getTemporalNamespace = () => env('NEXT_PUBLIC_TEMPORAL_NAMESPACE') || 'default';
 
-export const getStorageUiUrl = () => env('NEXT_PUBLIC_STORAGE_UI_URL') || 'http://localhost:9001';
+export const getStorageUiUrl = () => env('NEXT_PUBLIC_STORAGE_UI_URL') || '';
 
 export const getPostHogToken = () => env('NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN') || '';
 

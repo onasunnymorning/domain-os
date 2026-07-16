@@ -16,9 +16,9 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/askg"
 )
 
-// Default model identifiers — pinned from Anthropic's current docs (June 2026).
+// Default model identifiers — pinned from Anthropic's current docs (July 2026).
 const (
-	DefaultModel      = "claude-sonnet-4-6"
+	DefaultModel      = "claude-sonnet-5"
 	DefaultClassifier = "claude-haiku-4-5"
 )
 
