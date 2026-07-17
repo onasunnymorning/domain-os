@@ -16,6 +16,9 @@ type ExpiringDomainsQuery struct {
 	Before time.Time
 	ClID   entities.ClIDType
 	TLD    entities.DomainName
+	// PageSize caps the number of results returned per page. Zero means the
+	// caller's default applies.
+	PageSize int
 }
 
 // NewExpiringDomainsQuery creates a new instance of ExpiringDomainsQuery. It will return an error if the ClID or date are invalid. It expects date to be in dd-mm-yyyy format. Both date and clid can be empty strings ("").

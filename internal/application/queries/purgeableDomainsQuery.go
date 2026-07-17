@@ -7,14 +7,20 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-// ExpiringDomainsQuery represents a query to get a list of expiring domains.
+// PurgeableDomainsQuery represents a query to get a list of purgeable domains:
+// domains that are pendingDelete and whose purge date falls on or before the
+// cutoff time (Before).
 type PurgeableDomainsQuery struct {
-	After time.Time
-	ClID  entities.ClIDType
-	TLD   entities.DomainName
+	// Before is the cutoff: domains with purge_date <= Before match.
+	Before time.Time
+	ClID   entities.ClIDType
+	TLD    entities.DomainName
+	// PageSize caps the number of results returned per page. Zero means the
+	// caller's default applies.
+	PageSize int
 }
 
-// NewExpiringDomainsQuery creates a new instance of ExpiringDomainsQuery. It will return an error if the ClID or date are invalid. It expects date to be in dd-mm-yyyy format. Both date and clid can be empty strings ("").
+// NewPurgeableDomainsQuery creates a new instance of PurgeableDomainsQuery. It will return an error if the ClID or date are invalid. It expects date to be in RFC3339 or yyyy-mm-dd format. Date, clid and tld can be empty strings (""); an empty date defaults to the current time.
 func NewPurgeableDomainsQuery(clid, date, tld string) (*PurgeableDomainsQuery, error) {
 	validatedDate, err := parseTimeDefault(date)
 	if err != nil {
@@ -29,8 +35,8 @@ func NewPurgeableDomainsQuery(clid, date, tld string) (*PurgeableDomainsQuery, e
 		return nil, err
 	}
 	return &PurgeableDomainsQuery{
-		After: validatedDate,
-		ClID:  validatedClID,
-		TLD:   *validatedTLD,
+		Before: validatedDate,
+		ClID:   validatedClID,
+		TLD:    *validatedTLD,
 	}, nil
 }

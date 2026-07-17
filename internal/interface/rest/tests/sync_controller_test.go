@@ -107,11 +107,11 @@ var _ = Describe("SyncController", Ordered, func() {
 	})
 
 	// ================================================================== //
-	//  Spec 8: Sync FX rates (conditional on API key)                     //
+	//  Spec 8: Sync FX rates (hits the live Frankfurter API — opt-in)     //
 	// ================================================================== //
-	It("should sync FX rates when OPENEXCHANGERATES_APP_ID is set", func() {
-		if os.Getenv("OPENEXCHANGERATES_APP_ID") == "" {
-			Skip("OPENEXCHANGERATES_APP_ID not set — skipping FX sync test")
+	It("should sync FX rates from Frankfurter when live tests are enabled", func() {
+		if os.Getenv("RUN_LIVE_FX_TESTS") == "" {
+			Skip("RUN_LIVE_FX_TESTS not set — skipping live Frankfurter FX sync test")
 		}
 
 		resp := api.PUT("/sync/fx/USD", nil)

@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-07-16T21:28:30Z",
+  "generated": "2026-07-17T01:47:19Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -591,11 +591,6 @@
             "name": "STORAGE_AUTO_CREATE_BUCKETS",
             "default": "false",
             "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
-          },
-          {
-            "name": "OPENEXCHANGERATES_APP_ID",
-            "secret": true,
-            "description": "OpenExchangeRates API key for FX sync"
           }
         ]
       }

@@ -128,10 +128,21 @@ func main() {
 	// --- Activities Registration ---
 
 	// 1. Basic/Standalone Activities
-	
+
 	// UpdateFX (Fast Ops + Drain Data)
+	// activities.UpdateFX (HTTP) is deprecated — registered only to drain
+	// in-flight executions. New runs use FXActivities.UpdateFXRates below.
 	fastOpsWorker.RegisterActivity(activities.UpdateFX)
 	drainDataWorker.RegisterActivity(activities.UpdateFX)
+
+	// FX Rates Activities (Fast Ops + Drain Data)
+	fxActs, err := activities.NewFXActivities()
+	if err != nil {
+		log.Printf("WARNING: FX activities not available (DB not configured): %v", err)
+	} else {
+		fastOpsWorker.RegisterActivity(fxActs)
+		drainDataWorker.RegisterActivity(fxActs)
+	}
 
 	// SyncSpec5 (Scheduled + Drain Data)
 	scheduledWorker.RegisterActivity(activities.SyncSpec5)
@@ -143,7 +154,7 @@ func main() {
 
 	// Registrar & Basic Lifecycle activities
 	// These are split between Scheduled/Lifecycle (new) and Drain Lifecycle (deprecated)
-	
+
 	// Scheduled Registrar Activities
 	registrarActs := []interface{}{
 		activities.SyncIanaRegistrars,

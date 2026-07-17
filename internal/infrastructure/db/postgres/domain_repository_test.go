@@ -919,11 +919,10 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 	s.Require().NoError(err)
 	s.Require().Equal(int64(1), purgeCount, "domain with pending_delete = true should be purgeable")
 
-	purgeList, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), 25, "domaintestRar", "", "domaintesttld")
+	purgeList, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 1).UTC(), 25, "domaintestRar", "domaintesttld", "")
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(purgeList), "ListPurgeableDomains must find domain with pending_delete = true")
 }
-
 
 func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	// Create a couple of domains with different expiry dates
@@ -959,7 +958,7 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	}
 
 	// List domains that are pending delete (0 as of now)
-	domains, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "", "domaintesttld")
+	domains, err := repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "domaintesttld", "")
 	s.Require().NoError(err)
 	s.Require().Equal(0, len(domains))
 
@@ -982,16 +981,16 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	s.Require().Equal(int64(0), count)
 
 	// Now add a cursor and list the last domain
-	domains, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), 25, "domaintestRar", expecteddomains[1].RoID.String(), "domaintesttld")
+	domains, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 5), 25, "domaintestRar", "domaintesttld", expecteddomains[1].RoID.String())
 	s.Require().NoError(err)
 	s.Require().Equal(1, len(domains))
 
 	// Cause an error due to invalid roid
-	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "1234_CONT-APEX", "domaintesttld")
+	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "domaintesttld", "1234_CONT-APEX")
 	s.Require().ErrorIs(err, entities.ErrInvalidRoid)
 
 	// Cause an error due to invalid roid int64
-	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "ABCD_DOM-APEX", "domaintesttld")
+	_, err = repo.ListPurgeableDomains(context.Background(), time.Now().AddDate(0, 0, 0), 25, "domaintestRar", "domaintesttld", "ABCD_DOM-APEX")
 	s.Require().Error(err)
 
 }

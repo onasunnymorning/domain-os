@@ -6,6 +6,9 @@ import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 type RestoredDomainsQuery struct {
 	ClID entities.ClIDType
 	TLD  entities.DomainName
+	// PageSize caps the number of results returned per page. Zero means the
+	// caller's default applies.
+	PageSize int
 }
 
 // NewRestoredDomainsQuery creates a new instance of RestoredDomainsQuery after validating the provided

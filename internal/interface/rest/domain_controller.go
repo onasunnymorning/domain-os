@@ -1037,12 +1037,23 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 	})
 }
 
+// purgeCutoffParam returns the purge cutoff time from the request. The
+// canonical parameter is "before" (domains with purge_date <= before match);
+// the legacy name "after" is still accepted for backwards compatibility — it
+// always carried these exact semantics despite its misleading name.
+func purgeCutoffParam(ctx *gin.Context) string {
+	if v := ctx.Query("before"); v != "" {
+		return v
+	}
+	return ctx.Query("after")
+}
+
 // CountPurgeableDomains godoc
 // @Summary Count purgeable domains
 // @Description Counts domains that are purgeable. This means they are pending delete and the applicable grace period has expired. You can optionally filter by registrar ClID and TLD.
 // @Tags Domains
 // @Produce json
-// @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
+// @Param before query string false "Count domains whose purge date falls on or before the provided time in RFC3339 format (optional, default=current UTC time). The legacy parameter name 'after' is also accepted."
 // @Param clid query string false "Registrar ClID (optional, default=empty=all registrars)"
 // @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Success 200 {object} response.CountResult
@@ -1050,7 +1061,7 @@ func (ctrl *DomainController) CountExpiringDomains(ctx *gin.Context) {
 // @Router /domains/purgeable/count [get]
 func (ctrl *DomainController) CountPurgeableDomains(ctx *gin.Context) {
 
-	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), ctx.Query("after"), ctx.Query("tld"))
+	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), purgeCutoffParam(ctx), ctx.Query("tld"))
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -1168,7 +1179,7 @@ func (ctrl *DomainController) ListRestoredDomains(ctx *gin.Context) {
 // @Description Lists domains that are purgeable. This means they are pending delete and the applicable grace period has expired. You can optionally filter by registrar ClID and TLD.
 // @Tags Domains
 // @Produce json
-// @Param after query int false "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)"
+// @Param before query string false "List domains whose purge date falls on or before the provided time in RFC3339 format (optional, default=current UTC time). The legacy parameter name 'after' is also accepted."
 // @Param clid query string false "Registrar ClID (optional)"
 // @Param tld query string false "TLD Name (optional, default=empty=all TLDs)"
 // @Param pageSize query int false "Page Size"
@@ -1182,7 +1193,7 @@ func (ctrl *DomainController) ListPurgeableDomains(ctx *gin.Context) {
 	// Prepare the response
 	resp := response.ListItemResult{}
 
-	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), ctx.Query("after"), ctx.Query("tld"))
+	q, err := queries.NewPurgeableDomainsQuery(ctx.Query("clid"), purgeCutoffParam(ctx), ctx.Query("tld"))
 	if err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -1418,4 +1429,3 @@ func (ctrl *DomainController) ListDomainEvents(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, events)
 }
-

@@ -41,10 +41,10 @@ type launchWorkflowRequest struct {
 }
 
 type launchWorkflowResponse struct {
-	WorkflowID string                 `json:"workflowId"`
-	RunID      string                 `json:"runId"`
-	Status     string                 `json:"status"`
-	URL        string                 `json:"url"`
+	WorkflowID string                   `json:"workflowId"`
+	RunID      string                   `json:"runId"`
+	Status     string                   `json:"status"`
+	URL        string                   `json:"url"`
 	Steps      []workflows.WorkflowStep `json:"steps"`
 }
 
@@ -362,9 +362,19 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{loopParams}
 
 	case "update-fx":
+		var fxParams workflows.UpdateFXParams
+		if req.Params != nil {
+			if bcs, ok := req.Params["baseCurrencies"].([]interface{}); ok {
+				for _, v := range bcs {
+					if c, ok := v.(string); ok {
+						fxParams.BaseCurrencies = append(fxParams.BaseCurrencies, c)
+					}
+				}
+			}
+		}
 		wfID = fmt.Sprintf("update-fx-%s", ts)
 		workflow = workflows.UpdateFX
-		args = nil
+		args = []interface{}{fxParams}
 
 	case "sync-spec5":
 		wfID = fmt.Sprintf("sync-spec5-%s", ts)
@@ -398,9 +408,6 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
 				loopParams.BatchSize = int(bs)
 			}
-			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
-				loopParams.ConcurrencyLimit = int(cl)
-			}
 			if dr, ok := req.Params["dryRun"].(bool); ok {
 				loopParams.DryRun = dr
 			}
@@ -420,9 +427,6 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
 				loopParams.BatchSize = int(bs)
 			}
-			if cl, ok := req.Params["concurrencyLimit"].(float64); ok && cl > 0 {
-				loopParams.ConcurrencyLimit = int(cl)
-			}
 			if dr, ok := req.Params["dryRun"].(bool); ok {
 				loopParams.DryRun = dr
 			}
@@ -437,9 +441,15 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{loopParams}
 
 	case "restore-workflow":
+		var loopParams workflows.RestoreLoopParams
+		if req.Params != nil {
+			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
+				loopParams.BatchSize = int(bs)
+			}
+		}
 		wfID = fmt.Sprintf("restore-workflow-%s", ts)
 		workflow = workflows.RestoreWorkflow
-		args = nil
+		args = []interface{}{loopParams}
 
 	case "take-snapshot":
 		var snapParams workflows.TakeSnapshotParams
@@ -897,4 +907,3 @@ func findBucketForKey(ctx context.Context, key string) (*storage.S3Client, error
 	}
 	return storage.NewS3ClientFromEnv()
 }
-
