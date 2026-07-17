@@ -1,14 +1,28 @@
 package workflows
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
+
+// RestoreLoopParams defines the input parameters for the RestoreWorkflow.
+// The workflow tolerates being started without arguments (zero values apply),
+// which keeps existing schedules and manual triggers compatible.
+type RestoreLoopParams struct {
+	// BatchSize caps how many domains are listed and processed per run
+	// (default: 1000, the admin API maximum page size).
+	BatchSize int `json:"batchSize,omitempty"`
+	// ContinuationCount tracks how many times this run has continued-as-new.
+	// Managed by the workflow — leave zero when starting a run.
+	ContinuationCount int `json:"continuationCount,omitempty"`
+}
 
 // RestoreLoopResult is the structured output of the RestoreWorkflow.
 type RestoreLoopResult struct {
@@ -18,6 +32,7 @@ type RestoreLoopResult struct {
 	TotalProcessed int              `json:"totalProcessed"`
 	Restored       int              `json:"restored"`
 	Failed         int              `json:"failed"`
+	Skipped        int              `json:"skipped"`
 	Notes          []string         `json:"notes"`
 	Failures       []RestoreFailure `json:"failures,omitempty"`
 }
@@ -38,7 +53,15 @@ func (r *RestoreLoopResult) addFailure(domainName, errMsg string) {
 	}
 }
 
-func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error) {
+// RestoreWorkflow completes restoration for domains in pendingRestore state:
+// each domain has PendingRestore unset and is force-renewed for one year in a
+// single write. The batch activity is idempotent under retries — domains whose
+// restore was already completed are reported as Skipped.
+//
+// The list is processed one page per run. When a full page was returned there
+// may be more pendingRestore domains, so the workflow continues-as-new — but
+// only when the run made progress and the continuation cap is not exceeded.
+func RestoreWorkflow(ctx workflow.Context, params RestoreLoopParams) (RestoreLoopResult, error) {
 	started := workflow.Now(ctx)
 	result := RestoreLoopResult{
 		StartedAt: started,
@@ -69,9 +92,12 @@ func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error) {
 	}
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// Step 1: List restored domains
+	// Step 1: List restored domains (one page per run)
+	query := &queries.RestoredDomainsQuery{
+		PageSize: params.BatchSize,
+	}
 	domainList := []response.DomainRestoredItem{}
-	listErr := workflow.ExecuteActivity(ctx, activities.ListRestoredDomains, workflowID).Get(ctx, &domainList)
+	listErr := workflow.ExecuteActivity(ctx, activities.ListRestoredDomains, workflowID, query).Get(ctx, &domainList)
 	if listErr != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Failed to list restored domains: "+listErr.Error())
@@ -106,7 +132,8 @@ func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error) {
 	}
 
 	result.Restored = len(restoreBatch.Succeeded)
-	result.TotalProcessed = len(restoreBatch.Succeeded) + len(restoreBatch.Failed)
+	result.Skipped = len(restoreBatch.Skipped)
+	result.TotalProcessed = len(restoreBatch.Succeeded) + len(restoreBatch.Skipped) + len(restoreBatch.Failed)
 	for _, f := range restoreBatch.Failed {
 		result.addFailure(f.DomainName, f.Error)
 	}
@@ -117,5 +144,36 @@ func RestoreWorkflow(ctx workflow.Context) (RestoreLoopResult, error) {
 		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
 	}
 
+	// A full page means there may be more pendingRestore domains waiting.
+	// Drain them with continue-as-new, guarded against hot loops.
+	fullPage := len(domainList) >= pageSizeOrDefaultWorkflow(params.BatchSize)
+	if fullPage {
+		progressed := result.Restored+result.Skipped > 0
+		if !progressed {
+			result.Notes = append(result.Notes, "Full page processed without progress — "+
+				"not continuing to avoid a hot loop. Remaining domains will be retried on the next scheduled run.")
+			return result, nil
+		}
+		if params.ContinuationCount >= maxContinuationRuns {
+			result.Notes = append(result.Notes, "Continuation cap reached ("+strconv.Itoa(maxContinuationRuns)+
+				" runs) — remaining domains will be picked up by the next scheduled run.")
+			return result, nil
+		}
+		result.Notes = append(result.Notes, "Full page of "+strconv.Itoa(len(domainList))+
+			" restored domains processed — continuing in a new run to drain the remainder.")
+		nextParams := params
+		nextParams.ContinuationCount++
+		return result, workflow.NewContinueAsNewError(ctx, RestoreWorkflow, nextParams)
+	}
+
 	return result, nil
+}
+
+// pageSizeOrDefaultWorkflow mirrors the activity-side page size defaulting so
+// the workflow can detect a full page deterministically.
+func pageSizeOrDefaultWorkflow(requested int) int {
+	if requested > 0 {
+		return requested
+	}
+	return 1000 // activities.BATCHSIZE — kept literal to avoid importing activity state into workflow code
 }

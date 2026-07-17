@@ -106,6 +106,50 @@ func toBatchFailures(svcFailures []services.BatchFailure) []BatchFailure {
 	return out
 }
 
+// --- Batch read activities ---
+
+// BatchCheckAutoRenewEligibility partitions a batch of expired domains into
+// auto-renew and expiry candidates via the service layer in chunked, batched
+// DB lookups. It replaces the deprecated per-domain HTTP eligibility check
+// (CheckDomainsCanAutoRenew), which issued one admin-API round-trip per domain.
+//
+// The activity is read-only and safe to retry. Heartbeats are sent between
+// chunks so Temporal knows the activity is alive.
+func (a *LifecycleActivities) BatchCheckAutoRenewEligibility(ctx context.Context, correlationID string, domainNames []string) (services.EligibilityPartition, error) {
+	result := services.EligibilityPartition{
+		EligibleForAutoRenew: []string{},
+		EligibleForExpiry:    []string{},
+		Skipped:              []string{},
+		Failures:             []services.BatchFailure{},
+	}
+
+	if len(domainNames) == 0 {
+		return result, nil
+	}
+
+	for i := 0; i < len(domainNames); i += defaultBatchChunkSize {
+		end := i + defaultBatchChunkSize
+		if end > len(domainNames) {
+			end = len(domainNames)
+		}
+		chunk := domainNames[i:end]
+
+		part := a.DomainService.PartitionExpiredDomains(ctx, chunk)
+		result.EligibleForAutoRenew = append(result.EligibleForAutoRenew, part.EligibleForAutoRenew...)
+		result.EligibleForExpiry = append(result.EligibleForExpiry, part.EligibleForExpiry...)
+		result.Skipped = append(result.Skipped, part.Skipped...)
+		result.Failures = append(result.Failures, part.Failures...)
+
+		activity.RecordHeartbeat(ctx, fmt.Sprintf("checked %d/%d domains", end, len(domainNames)))
+
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+	}
+
+	return result, nil
+}
+
 // --- Batch write activities ---
 
 // BatchAutoRenewDomains auto-renews domains in batch via the service layer.
@@ -244,5 +288,3 @@ func (a *LifecycleActivities) BatchRestoreDomains(ctx context.Context, correlati
 
 	return result, nil
 }
-
-

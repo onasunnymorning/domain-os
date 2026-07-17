@@ -60,6 +60,7 @@ func desiredSchedules() []scheduleSpec {
 			Queue:         temporal.QueueLifecycle,
 			Interval:      4 * time.Hour,
 			Offset:        time.Hour,
+			Args:          []interface{}{workflows.RestoreLoopParams{}},
 			CatchupWindow: 4 * time.Hour,
 			Note:          "Restores domains every 4 hours — managed by bootstrap",
 		},

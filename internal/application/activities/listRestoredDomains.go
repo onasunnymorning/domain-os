@@ -15,11 +15,20 @@ import (
 func ListRestoredDomains(ctx context.Context, correlationID string, q *queries.RestoredDomainsQuery) ([]response.DomainRestoredItem, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/restored", BASEURL)
 
-	// set the correlation ID and pagesize
+	// Serialize the query
 	qParams := make(map[string]string)
-	qParams["correlationID"] = correlationID
-	// This is probably a good place to start if you are looking to optimize
-	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+	qParams["correlation_id"] = correlationID
+	pageSize := 0
+	if q != nil {
+		pageSize = q.PageSize
+		if q.ClID.String() != "" {
+			qParams["clid"] = q.ClID.String()
+		}
+		if q.TLD.String() != "" {
+			qParams["tld"] = q.TLD.String()
+		}
+	}
+	qParams["pagesize"] = fmt.Sprintf("%d", pageSizeOrDefault(pageSize))
 
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {

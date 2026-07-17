@@ -63,7 +63,7 @@ func TestNewPurgeableDomainsQuery(t *testing.T) {
 				assert.NotNil(t, query)
 				if tt.date != "" {
 					expectedDate, _ := time.Parse("2006-01-02", tt.date)
-					assert.Equal(t, expectedDate, query.After)
+					assert.Equal(t, expectedDate, query.Before)
 				}
 				if tt.clid != "" {
 					assert.Equal(t, entities.ClIDType(tt.clid), query.ClID)
