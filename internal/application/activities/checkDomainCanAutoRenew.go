@@ -11,6 +11,9 @@ import (
 )
 
 // CheckDomainCanAutoRenew checks if a domain can be auto-renewed based on the current GA Phase and owning Registrar settings
+//
+// Deprecated: kept registered for in-flight workflow executions on the drain
+// queues. New code must use LifecycleActivities.BatchCheckAutoRenewEligibility.
 func CheckDomainCanAutoRenew(ctx context.Context, correlationID string, domainName string) (bool, error) {
 	ENDPOINT := fmt.Sprintf("%s/domains/%s/canautorenew", BASEURL, domainName)
 

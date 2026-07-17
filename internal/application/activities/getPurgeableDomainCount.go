@@ -6,28 +6,37 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 )
 
-// GetPurgeableDomainCount takes a PurgeableDomainsQuery and returns the number of domains that have expired and are past the grace period (ExpiryDate is in the past or before the supplied date). It gets these through the admin API.
+// GetPurgeableDomainCount takes a PurgeableDomainsQuery and returns the number of domains that have PendingDelete set and whose purge date falls on or before the query cutoff (Before). It gets these through the admin API.
 func GetPurgeableDomainCount(ctx context.Context, correlationID string, query queries.PurgeableDomainsQuery) (*response.CountResult, error) {
-	// COUNT_ENDPOINT := fmt.Sprintf("http://%s:%s/domains/expiring/count", os.Getenv("API_HOST"), os.Getenv("API_PORT"))
 	COUNT_ENDPOINT := fmt.Sprintf("%s/domains/purgeable/count", BASEURL)
 
 	// Set up an API client
 	client := http.Client{}
 
-	// set the correlation ID
+	// Serialize the full query so count and list evaluate the same cutoff.
 	qParams := make(map[string]string)
-	qParams["correlationID"] = correlationID
+	qParams["correlation_id"] = correlationID
+	if !query.Before.IsZero() {
+		qParams["before"] = query.Before.Format(time.RFC3339)
+	}
+	if query.ClID.String() != "" {
+		qParams["clid"] = query.ClID.String()
+	}
+	if query.TLD.String() != "" {
+		qParams["tld"] = query.TLD.String()
+	}
 	URL, err := getURLAndSetQueryParams(COUNT_ENDPOINT, qParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add query params: %w", err)
 	}
 
-	// check the total amount of domains to renew
+	// check the total amount of domains to purge
 	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

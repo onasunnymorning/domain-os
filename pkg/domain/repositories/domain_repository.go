@@ -24,8 +24,8 @@ type DomainRepository interface {
 	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
-	ListPurgeableDomains(ctx context.Context, after time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
-	CountPurgeableDomains(ctx context.Context, after time.Time, clid, tld string) (int64, error)
+	ListPurgeableDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
+	CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error

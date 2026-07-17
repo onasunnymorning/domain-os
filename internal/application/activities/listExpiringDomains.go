@@ -27,9 +27,15 @@ func ListExpiringDomains(ctx context.Context, correlationID string, query querie
 	// Set up query parameters
 	qParams := make(map[string]string)
 	qParams["correlation_id"] = correlationID
-	qParams["pagesize"] = fmt.Sprintf("%d", BATCHSIZE)
+	qParams["pagesize"] = fmt.Sprintf("%d", pageSizeOrDefault(query.PageSize))
 	if !query.Before.IsZero() {
 		qParams["before"] = query.Before.Format(time.RFC3339)
+	}
+	if query.ClID.String() != "" {
+		qParams["clid"] = query.ClID.String()
+	}
+	if query.TLD.String() != "" {
+		qParams["tld"] = query.TLD.String()
 	}
 	URL, err := getURLAndSetQueryParams(ENDPOINT, qParams)
 	if err != nil {

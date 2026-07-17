@@ -23,7 +23,7 @@ type WorkflowMeta struct {
 	Name         string         `json:"name"`
 	Description  string         `json:"description"`
 	Queue        string         `json:"queue"`
-	Category     string         `json:"category"`               // "data" | "lifecycle"
+	Category     string         `json:"category"` // "data" | "lifecycle"
 	Tags         []string       `json:"tags"`
 	HasSignal    bool           `json:"hasSignal"`
 	SignalName   string         `json:"signalName,omitempty"`
@@ -130,7 +130,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			Description:  "Pulls the XML Spec5 reserved names from ICANN and refreshes the database",
 			Queue:        temporal.QueueScheduled,
 			Category:     "data",
-			Tags:        []string{"data", "spec5", "sync", "GO"},
+			Tags:         []string{"data", "spec5", "sync", "GO"},
 			Scheduled:    true,
 			ScheduleInfo: "Daily",
 			ScheduleID:   "sync-spec5",
@@ -153,7 +153,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 				{Key: "lock-reference-time", Label: "Lock Reference Time"},
 				{Key: "count-expired", Label: "Count Expired", ActivityName: "GetExpiredDomainCount"},
 				{Key: "list-expiring", Label: "List Expiring", ActivityName: "ListExpiringDomains"},
-				{Key: "batch-check-autorenew", Label: "Batch Check Auto-Renew", ActivityName: "CheckDomainsCanAutoRenew"},
+				{Key: "batch-check-autorenew", Label: "Batch Check Auto-Renew", ActivityName: "BatchCheckAutoRenewEligibility"},
 				{Key: "batch-auto-renew", Label: "Batch Auto-Renew", ActivityName: "BatchAutoRenewDomains"},
 				{Key: "batch-expire", Label: "Batch Expire", ActivityName: "BatchExpireDomains"},
 			},
@@ -179,7 +179,7 @@ func GetWorkflowRegistry() []WorkflowMeta {
 		{
 			Key:          "restore-workflow",
 			Name:         "Restore Domains",
-			Description:  "Processes restored domains by unsetting status and forcing renewal",
+			Description:  "Completes restores: unsets pendingRestore and force-renews in a single write",
 			Queue:        temporal.QueueLifecycle,
 			Category:     "lifecycle",
 			Tags:         []string{"lifecycle", "GO"},
