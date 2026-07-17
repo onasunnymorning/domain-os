@@ -112,15 +112,15 @@ func GetWorkflowRegistry() []WorkflowMeta {
 		{
 			Key:          "update-fx",
 			Name:         "Update FX Rates",
-			Description:  "Fetches and updates foreign exchange rates",
+			Description:  "Fetches exchange rates from Frankfurter for every phase base currency and replaces them atomically",
 			Queue:        temporal.QueueFastOps,
 			Category:     "data",
 			Tags:         []string{"data", "GO"},
 			Scheduled:    true,
-			ScheduleInfo: "Every hour",
+			ScheduleInfo: "Daily at 18:00 UTC",
 			ScheduleID:   "update-fx",
 			Steps: []WorkflowStep{
-				{Key: "update-exchange-rates", Label: "Update Exchange Rates", ActivityName: "UpdateFX"},
+				{Key: "update-fx-rates", Label: "Update FX Rates (fetch → replace per base)", ActivityName: "UpdateFXRates"},
 			},
 			docFile: "updateFX.doc.md",
 		},

@@ -362,9 +362,19 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{loopParams}
 
 	case "update-fx":
+		var fxParams workflows.UpdateFXParams
+		if req.Params != nil {
+			if bcs, ok := req.Params["baseCurrencies"].([]interface{}); ok {
+				for _, v := range bcs {
+					if c, ok := v.(string); ok {
+						fxParams.BaseCurrencies = append(fxParams.BaseCurrencies, c)
+					}
+				}
+			}
+		}
 		wfID = fmt.Sprintf("update-fx-%s", ts)
 		workflow = workflows.UpdateFX
-		args = nil
+		args = []interface{}{fxParams}
 
 	case "sync-spec5":
 		wfID = fmt.Sprintf("sync-spec5-%s", ts)

@@ -78,10 +78,11 @@ func desiredSchedules() []scheduleSpec {
 			ID:            "update-fx",
 			Workflow:      workflows.UpdateFX,
 			Queue:         temporal.QueueFastOps,
-			Interval:      time.Hour,
-			Offset:        30 * time.Minute,
-			CatchupWindow: time.Hour,
-			Note:          "Updates FX rates hourly — managed by bootstrap",
+			Interval:      24 * time.Hour,
+			Offset:        18 * time.Hour, // 18:00 UTC — after the ECB reference publication (~14:15 UTC)
+			Args:          []interface{}{workflows.UpdateFXParams{}},
+			CatchupWindow: 24 * time.Hour,
+			Note:          "Updates FX rates daily from Frankfurter at 18:00 UTC — managed by bootstrap",
 		},
 		{
 			ID:            "sync-spec5",
