@@ -25,11 +25,18 @@ docker run --rm -d \
 echo "Waiting for database ($CONTAINER_NAME) to be ready..."
 for i in $(seq 1 30); do
   if docker exec "$CONTAINER_NAME" pg_isready -U postgres > /dev/null 2>&1; then
-    echo "Database ready!"
-    exit 0
+    # Verify the host port mapping is active using bash /dev/tcp
+    if (exec 3<>/dev/tcp/127.0.0.1/5432) >/dev/null 2>&1; then
+      exec 3>&-
+      echo "Database ready and accessible on host port 5432!"
+      exit 0
+    else
+      echo "Database ready inside container, waiting for host port forward..."
+    fi
   fi
   sleep 1
 done
 
-echo "ERROR: Database failed to start within 30 seconds!" >&2
+echo "ERROR: Database failed to start or host port 5432 was not bound within 30 seconds!" >&2
 exit 1
+

@@ -90,9 +90,8 @@ func TestSecretsAreExplicit(t *testing.T) {
 	// Names the heuristic cannot catch. These are the ones that fail unsafely:
 	// a deploy tool trusting `secret: false` would put them in a plaintext env var.
 	mustBeSecret := []string{
-		"DB_PASS",                  // "PASSWORD" is not a substring of "DB_PASS"
-		"DATABASE_URL",             // embeds the password; matches no pattern
-		"OPENEXCHANGERATES_APP_ID", // an API key; matches no pattern
+		"DB_PASS",      // "PASSWORD" is not a substring of "DB_PASS"
+		"DATABASE_URL", // embeds the password; matches no pattern
 	}
 	reg := config.RegistryMap()
 	for _, name := range mustBeSecret {

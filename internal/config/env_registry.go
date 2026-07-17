@@ -152,7 +152,6 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// EXTERNAL APIs
 	// ═══════════════════════════════════════════
-	{Name: "OPENEXCHANGERATES_APP_ID", Services: []Service{ServiceWorker}, Secret: true, Description: "OpenExchangeRates API key for FX sync"},
 	{Name: "ANTHROPIC_API_KEY", Services: []Service{ServiceAPI, ServiceCLI}, Secret: true, Description: "Anthropic API key for AI agent (Agent Alpaca)"},
 	{Name: "ANTHROPIC_BASE_URL", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Anthropic API base URL override"},
 	{Name: "LLM_MODEL", Services: []Service{ServiceAPI, ServiceCLI}, Default: "claude-sonnet-5", Description: "LLM model name for the AI agent (e.g. claude-sonnet-5)"},

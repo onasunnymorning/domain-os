@@ -80,11 +80,11 @@ func (ctrl *SyncController) SyncRegistrars(ctx *gin.Context) {
 }
 
 // SyncFX godoc
-// @Summary Sync FX from OpenFX to the database
-// @Description Reads in the exchange rates from OpenFX API (https://openexchangerates.org/) and refreshes the database.
-// @Description This will replace all FXRates in the database.
-// @Description Use this endpoint when there is an update to the exchange rates by OpenFX.
-// @Description Expect this endpoint to be slow, as it downloads and processes the JSON file from another server and then updates the database.
+// @Summary Sync FX rates from Frankfurter to the database
+// @Description Reads in the latest exchange rates from the Frankfurter API (https://frankfurter.dev/) and refreshes the database.
+// @Description This atomically replaces all FX rates for the given base currency. No API key is required.
+// @Description The scheduled update-fx workflow does this daily for every phase base currency; use this endpoint for ad-hoc refreshes.
+// @Description Expect this endpoint to be slower than a local read, as it queries an external API before updating the database.
 // @Tags Sync
 // @Produce json
 // @Param currency path string true "The base currency to sync"

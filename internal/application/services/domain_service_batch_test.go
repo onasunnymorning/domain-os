@@ -142,9 +142,46 @@ func TestBatchExpireDomains_DomainNotFound(t *testing.T) {
 
 	assert.Len(t, result.Succeeded, 1)
 	assert.Contains(t, result.Succeeded, "alpha.com")
-	assert.Len(t, result.Failed, 1)
-	assert.Equal(t, "missing.com", result.Failed[0].DomainName)
-	assert.Contains(t, result.Failed[0].Error, "not found")
+	// A missing domain is not an error: it was deleted between listing and
+	// processing (or purged by an earlier retry) — the batch converges.
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "missing.com")
+}
+
+func TestBatchExpireDomains_AlreadyPendingDelete_Skipped(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		tldRepo,
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	// Domain already expired by a previous (partially completed) attempt
+	dom := newTestDomain("done.com", "rar1", "1003_DOM-APEX", time.Now().UTC().AddDate(0, 0, -1))
+	dom.Status.OK = false
+	dom.Status.PendingDelete = true
+	names := []string{"done.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	result := svc.BatchExpireDomains(context.Background(), names)
+
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "done.com")
+	// No write must have happened — this is the retry-idempotency guarantee
+	domRepo.AssertNotCalled(t, "UpdateDomain", mock.Anything, mock.Anything)
 }
 
 func TestBatchExpireDomains_PartialFailure(t *testing.T) {
@@ -393,10 +430,13 @@ func TestBatchPurgeDomains_DomainNotFound(t *testing.T) {
 
 	result := svc.BatchPurgeDomains(context.Background(), names)
 
+	// Already purged (e.g. by an earlier retry of the same batch) — a no-op,
+	// not a failure. This is what makes purge retries converge.
 	assert.Empty(t, result.Succeeded)
-	assert.Len(t, result.Failed, 1)
-	assert.Equal(t, "ghost.com", result.Failed[0].DomainName)
-	assert.Contains(t, result.Failed[0].Error, "not found")
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "ghost.com")
+	domRepo.AssertNotCalled(t, "DeleteDomainByName", mock.Anything, mock.Anything)
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -543,10 +583,44 @@ func TestBatchAutoRenewDomains_DomainNotFound(t *testing.T) {
 
 	result := svc.BatchAutoRenewDomains(context.Background(), names, 1)
 
+	// Deleted between listing and processing — a no-op, not a failure.
 	assert.Empty(t, result.Succeeded)
-	assert.Len(t, result.Failed, 1)
-	assert.Equal(t, "ghost.com", result.Failed[0].DomainName)
-	assert.Contains(t, result.Failed[0].Error, "not found")
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "ghost.com")
+}
+
+func TestBatchAutoRenewDomains_FutureExpiry_Skipped(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		new(mockTLDRepository),
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	// The domain's expiry is in the future: an earlier (partially completed)
+	// attempt already renewed it. Retrying the batch must NOT renew it again.
+	dom := newTestDomain("alreadyrenewed.com", "rar1", "3003_DOM-APEX", time.Now().UTC().AddDate(1, 0, 0))
+	names := []string{"alreadyrenewed.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	result := svc.BatchAutoRenewDomains(context.Background(), names, 1)
+
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "alreadyrenewed.com")
+	// No write and no billing event — the double-renewal guard
+	domRepo.AssertNotCalled(t, "UpdateDomain", mock.Anything, mock.Anything)
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -619,13 +693,79 @@ func TestBatchRestoreDomains_DomainNotFound(t *testing.T) {
 
 	result := svc.BatchRestoreDomains(context.Background(), names)
 
+	// Deleted between listing and processing — a no-op, not a failure.
 	assert.Empty(t, result.Succeeded)
-	assert.Len(t, result.Failed, 1)
-	assert.Equal(t, "nothere.com", result.Failed[0].DomainName)
-	assert.Contains(t, result.Failed[0].Error, "not found")
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "nothere.com")
 }
 
-func TestBatchRestoreDomains_UnsetStatusFails(t *testing.T) {
+// newPendingRestoreDomain builds a domain in pendingRestore state with an
+// expiry date in the recent past, as left behind by Domain.Restore().
+func newPendingRestoreDomain(name, clid, roid string) *entities.Domain {
+	d, _ := entities.NewDomain(roid, name, clid, "Auth1234!@")
+	d.ExpiryDate = time.Now().UTC().AddDate(0, 0, -20)
+	d.Status.OK = false
+	d.Status.PendingRestore = true
+	return d
+}
+
+// newTestTLDWithGAPhaseAndPrice builds a TLD whose GA phase carries a USD
+// price point so quote generation succeeds.
+func newTestTLDWithGAPhaseAndPrice(tldName string) *entities.TLD {
+	tld := newTestTLDWithGAPhase(tldName)
+	price, _ := entities.NewPrice("USD", 1000, 1000, 1000, 1000)
+	_, _ = tld.Phases[0].AddPrice(*price)
+	return tld
+}
+
+func TestBatchRestoreDomains_Success_SingleAtomicWrite(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+	eventPub := new(batchMockEventPublisher)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		tldRepo,
+		new(mockNNDNRepository),
+		eventPub,
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	dom := newPendingRestoreDomain("restoreme.com", "rar1", "4002_DOM-APEX")
+	expiryBefore := dom.ExpiryDate
+	names := []string{"restoreme.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	tld := newTestTLDWithGAPhaseAndPrice("com")
+	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+
+	// GetQuote fetches the domain again internally
+	domRepo.On("GetDomainByName", mock.Anything, "restoreme.com", false).Return(dom, nil)
+
+	domRepo.On("UpdateDomain", mock.Anything, mock.AnythingOfType("*entities.Domain")).Return(dom, nil)
+	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
+
+	result := svc.BatchRestoreDomains(context.Background(), names)
+
+	assert.Len(t, result.Succeeded, 1)
+	assert.Contains(t, result.Succeeded, "restoreme.com")
+	assert.Empty(t, result.Failed)
+	assert.Empty(t, result.Skipped)
+
+	// Both mutations landed in ONE write — no half-restored state is possible
+	domRepo.AssertNumberOfCalls(t, "UpdateDomain", 1)
+	assert.False(t, dom.Status.PendingRestore, "PendingRestore must be unset")
+	assert.Equal(t, expiryBefore.AddDate(1, 0, 0), dom.ExpiryDate, "expiry must be extended by exactly 1 year")
+}
+
+func TestBatchRestoreDomains_NotPendingRestore_Skipped(t *testing.T) {
 	domRepo := new(repositories.MockDomainRepository)
 
 	svc := newTestBatchDomainService(
@@ -640,19 +780,240 @@ func TestBatchRestoreDomains_UnsetStatusFails(t *testing.T) {
 		new(mockFXRepository),
 	)
 
-	// Domain exists in the batch lookup
-	dom := newTestDomain("restore-fail.com", "rar1", "4001_DOM-APEX", time.Now().UTC().AddDate(0, 1, 0))
-	names := []string{"restore-fail.com"}
+	// Restore already completed by an earlier (retried) attempt
+	dom := newTestDomain("alreadydone.com", "rar1", "4003_DOM-APEX", time.Now().UTC().AddDate(1, 0, 0))
+	names := []string{"alreadydone.com"}
+
 	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
 		Return([]*entities.Domain{dom}, nil)
 
-	// UnSetStatus calls GetDomainByName internally — make it fail
-	domRepo.On("GetDomainByName", mock.Anything, "restore-fail.com", false).
-		Return((*entities.Domain)(nil), errors.New("domain vanished"))
+	result := svc.BatchRestoreDomains(context.Background(), names)
+
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
+	assert.Len(t, result.Skipped, 1)
+	assert.Contains(t, result.Skipped, "alreadydone.com")
+	// No write and no second force-renew — the retry-idempotency guarantee
+	domRepo.AssertNotCalled(t, "UpdateDomain", mock.Anything, mock.Anything)
+}
+
+func TestBatchRestoreDomains_QuoteFails_NoStateChange(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		tldRepo,
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	dom := newPendingRestoreDomain("quotefail.com", "rar1", "4004_DOM-APEX")
+	names := []string{"quotefail.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	tld := newTestTLDWithGAPhaseAndPrice("com")
+	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+
+	// GetQuote fetches the domain internally — make it fail
+	domRepo.On("GetDomainByName", mock.Anything, "quotefail.com", false).
+		Return((*entities.Domain)(nil), errors.New("db timeout"))
 
 	result := svc.BatchRestoreDomains(context.Background(), names)
 
 	assert.Empty(t, result.Succeeded)
 	assert.Len(t, result.Failed, 1)
-	assert.Contains(t, result.Failed[0].Error, "unset PendingRestore failed")
+	assert.Contains(t, result.Failed[0].Error, "quote failed")
+	// Quote failure must not mutate the domain
+	assert.True(t, dom.Status.PendingRestore, "PendingRestore must remain set")
+	domRepo.AssertNotCalled(t, "UpdateDomain", mock.Anything, mock.Anything)
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// PartitionExpiredDomains
+// ────────────────────────────────────────────────────────────────────────────────
+
+func TestPartitionExpiredDomains_EmptyList(t *testing.T) {
+	svc := newTestBatchDomainService(
+		new(repositories.MockDomainRepository),
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		new(mockTLDRepository),
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	result := svc.PartitionExpiredDomains(context.Background(), []string{})
+
+	assert.Empty(t, result.EligibleForAutoRenew)
+	assert.Empty(t, result.EligibleForExpiry)
+	assert.Empty(t, result.Skipped)
+	assert.Empty(t, result.Failures)
+}
+
+func TestPartitionExpiredDomains_Mixed(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+	rarRepo := new(repositories.MockRegistrarRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		rarRepo,
+		tldRepo,
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	expired := time.Now().UTC().AddDate(0, 0, -1)
+
+	// Eligible: expired, renewable status, registrar opted in
+	domRenew := newTestDomain("renew.com", "rar-on", "6001_DOM-APEX", expired)
+	// Expiry route: registrar opted out
+	domExpireRar := newTestDomain("expire-rar.com", "rar-off", "6002_DOM-APEX", expired)
+	// Expiry route: status prohibits renewal
+	domProhibited := newTestDomain("prohibited.com", "rar-on", "6003_DOM-APEX", expired)
+	domProhibited.Status.OK = false
+	domProhibited.Status.ClientRenewProhibited = true
+	// Skipped: already renewed by an earlier attempt
+	domFuture := newTestDomain("future.com", "rar-on", "6004_DOM-APEX", time.Now().UTC().AddDate(1, 0, 0))
+	// Skipped: already expired (pendingDelete)
+	domPD := newTestDomain("pendingdelete.com", "rar-on", "6005_DOM-APEX", expired)
+	domPD.Status.OK = false
+	domPD.Status.PendingDelete = true
+
+	names := []string{"renew.com", "expire-rar.com", "prohibited.com", "future.com", "pendingdelete.com", "ghost.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{domRenew, domExpireRar, domProhibited, domFuture, domPD}, nil)
+
+	tld := newTestTLDWithGAPhase("com")
+	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+
+	rarOn := &entities.Registrar{ClID: entities.ClIDType("rar-on"), Autorenew: true}
+	rarOff := &entities.Registrar{ClID: entities.ClIDType("rar-off"), Autorenew: false}
+	rarRepo.On("GetByClID", mock.Anything, "rar-on", false).Return(rarOn, nil)
+	rarRepo.On("GetByClID", mock.Anything, "rar-off", false).Return(rarOff, nil)
+
+	result := svc.PartitionExpiredDomains(context.Background(), names)
+
+	assert.Equal(t, []string{"renew.com"}, result.EligibleForAutoRenew)
+	assert.ElementsMatch(t, []string{"expire-rar.com", "prohibited.com"}, result.EligibleForExpiry)
+	assert.ElementsMatch(t, []string{"future.com", "pendingdelete.com", "ghost.com"}, result.Skipped)
+	assert.Empty(t, result.Failures)
+
+	// Lookups must be amortized: one TLD fetch, one registrar fetch per ClID
+	tldRepo.AssertNumberOfCalls(t, "GetByName", 1)
+	rarRepo.AssertNumberOfCalls(t, "GetByClID", 2)
+}
+
+func TestPartitionExpiredDomains_PhaseDisallowsAutoRenew(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		tldRepo,
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	dom := newTestDomain("noar.com", "rar1", "6006_DOM-APEX", time.Now().UTC().AddDate(0, 0, -1))
+	names := []string{"noar.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	tld := newTestTLDWithGAPhase("com")
+	tld.Phases[0].Policy.AllowAutoRenew = ptrBool(false)
+	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+
+	result := svc.PartitionExpiredDomains(context.Background(), names)
+
+	assert.Empty(t, result.EligibleForAutoRenew)
+	assert.Equal(t, []string{"noar.com"}, result.EligibleForExpiry)
+	assert.Empty(t, result.Failures)
+}
+
+func TestPartitionExpiredDomains_RegistrarLookupFails(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	tldRepo := new(mockTLDRepository)
+	rarRepo := new(repositories.MockRegistrarRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		rarRepo,
+		tldRepo,
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	dom := newTestDomain("lookupfail.com", "rar1", "6007_DOM-APEX", time.Now().UTC().AddDate(0, 0, -1))
+	names := []string{"lookupfail.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return([]*entities.Domain{dom}, nil)
+
+	tld := newTestTLDWithGAPhase("com")
+	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+
+	rarRepo.On("GetByClID", mock.Anything, "rar1", false).
+		Return((*entities.Registrar)(nil), errors.New("registrar db down"))
+
+	result := svc.PartitionExpiredDomains(context.Background(), names)
+
+	assert.Empty(t, result.EligibleForAutoRenew)
+	assert.Empty(t, result.EligibleForExpiry)
+	assert.Len(t, result.Failures, 1)
+	assert.Equal(t, "lookupfail.com", result.Failures[0].DomainName)
+	assert.Contains(t, result.Failures[0].Error, "registrar lookup failed")
+}
+
+func TestPartitionExpiredDomains_FetchError(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		new(mockTLDRepository),
+		new(mockNNDNRepository),
+		new(batchMockEventPublisher),
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	names := []string{"a.com", "b.com"}
+	domRepo.On("GetDomainsByNames", mock.Anything, names, false).
+		Return(nil, errors.New("database unavailable"))
+
+	result := svc.PartitionExpiredDomains(context.Background(), names)
+
+	assert.Len(t, result.Failures, 2)
+	for _, f := range result.Failures {
+		assert.Contains(t, f.Error, "batch fetch failed")
+	}
 }

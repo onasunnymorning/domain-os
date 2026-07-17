@@ -18,20 +18,26 @@ const (
 
 // PurgeLoopParams defines the input parameters for the PurgeLoop workflow.
 type PurgeLoopParams struct {
+	// BatchSize caps how many domains are listed and processed per run
+	// (default: 1000, the admin API maximum page size).
 	BatchSize             int        `json:"batchSize,omitempty"`
-	ConcurrencyLimit      int        `json:"concurrencyLimit,omitempty"`
 	DryRun                bool       `json:"dryRun,omitempty"`
 	ReferenceTimeOverride *time.Time `json:"referenceTimeOverride,omitempty"`
+	// ContinuationCount tracks how many times this run has continued-as-new.
+	// Managed by the workflow — leave zero when starting a run.
+	ContinuationCount int `json:"continuationCount,omitempty"`
 }
 
 // PurgeLoopResult is the structured output of the PurgeLoop workflow.
 type PurgeLoopResult struct {
 	StartedAt      time.Time          `json:"startedAt"`
 	CompletedAt    time.Time          `json:"completedAt"`
+	ReferenceTime  time.Time          `json:"referenceTime"`
 	TotalFound     int64              `json:"totalFound"`
 	TotalProcessed int                `json:"totalProcessed"`
 	Purged         int                `json:"purged"`
 	Failed         int                `json:"failed"`
+	Skipped        int                `json:"skipped"`
 	Notes          []string           `json:"notes"`
 	Failures       []PurgeLoopFailure `json:"failures,omitempty"`
 }
@@ -53,13 +59,20 @@ func (r *PurgeLoopResult) addFailure(domainName, errMsg string) {
 	}
 }
 
-// PurgeLoop orchestrates domain purging operations.
+// PurgeLoop permanently deletes domains that are pendingDelete and whose purge
+// date has passed.
+//
+// The run locks a single reference time which both the count and list queries
+// evaluate (serialized as the `before` cutoff), eliminating TOCTOU races. The
+// batch purge activity is idempotent under retries: already-purged domains are
+// reported as Skipped. Continue-as-new only fires when the run made progress
+// and the continuation cap has not been reached, so a poison batch cannot spin
+// the workflow in a hot loop.
 func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, error) {
 	started := workflow.Now(ctx)
 	result := PurgeLoopResult{
 		StartedAt: started,
 	}
-
 
 	// Register a query handler so progress is visible in the UI
 	err := workflow.SetQueryHandler(ctx, "progress", func() (PurgeLoopResult, error) {
@@ -73,12 +86,11 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 
 	workflowID := getWorkflowID(ctx)
 
-
 	retrypolicy := &temporal.RetryPolicy{
-		InitialInterval:        time.Second,
-		BackoffCoefficient:     2.0,
-		MaximumInterval:        10 * time.Minute,
-		MaximumAttempts:        3, // 0 is unlimited retries
+		InitialInterval:    time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    10 * time.Minute,
+		MaximumAttempts:    3, // 0 is unlimited retries
 	}
 
 	options := workflow.ActivityOptions{
@@ -90,18 +102,23 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 	// Apply the options.
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// Step 1: Count purgeable domains
+	// Lock a single reference time for the entire run.
 	var referenceTime time.Time
 	if params.ReferenceTimeOverride != nil {
 		referenceTime = *params.ReferenceTimeOverride
 	} else {
 		referenceTime = workflow.Now(ctx).UTC()
 	}
+	result.ReferenceTime = referenceTime
 
+	// Both count and list serialize this cutoff to the admin API, so they
+	// evaluate the same instant.
 	query := queries.PurgeableDomainsQuery{
-		After: referenceTime,
+		Before:   referenceTime,
+		PageSize: params.BatchSize,
 	}
 
+	// Step 1: Count purgeable domains
 	domainCount := &response.CountResult{}
 	countErr := workflow.ExecuteActivity(ctx, activities.GetPurgeableDomainCount, workflowID, query).Get(ctx, domainCount)
 	if countErr != nil {
@@ -159,7 +176,8 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		result.addFailure("batch-purge", purgeErr.Error())
 	} else {
 		result.Purged = len(purgeBatch.Succeeded)
-		result.TotalProcessed = len(purgeBatch.Succeeded) + len(purgeBatch.Failed)
+		result.Skipped = len(purgeBatch.Skipped)
+		result.TotalProcessed = len(purgeBatch.Succeeded) + len(purgeBatch.Skipped) + len(purgeBatch.Failed)
 		for _, f := range purgeBatch.Failed {
 			result.addFailure(f.DomainName, f.Error)
 		}
@@ -176,12 +194,28 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		}
 	}
 
-	// Check if we hit the batch cap and should continue-as-new to drain the remainder
+	// Check if we hit the batch cap and should continue-as-new to drain the remainder.
 	if int64(len(domains)) < domainCount.Count {
+		// Only continue when this run actually made progress — failed domains
+		// stay in the query result set, so continuing without progress would
+		// spin the workflow in a hot loop over the same poison batch.
+		progressed := result.Purged+result.Skipped > 0
+		if !progressed {
+			result.Notes = append(result.Notes, "Batch cap reached but no progress was made this run — "+
+				"not continuing to avoid a hot loop. Remaining domains will be retried on the next scheduled run.")
+			return result, nil
+		}
+		if params.ContinuationCount >= maxContinuationRuns {
+			result.Notes = append(result.Notes, "Continuation cap reached ("+strconv.Itoa(maxContinuationRuns)+
+				" runs) — remaining domains will be picked up by the next scheduled run.")
+			return result, nil
+		}
 		result.Notes = append(result.Notes, "Batch cap reached: listed "+
 			strconv.Itoa(len(domains))+" of "+strconv.FormatInt(domainCount.Count, 10)+
 			" purgeable domains. Continuing processing in a new run.")
-		return result, workflow.NewContinueAsNewError(ctx, PurgeLoop, params)
+		nextParams := params
+		nextParams.ContinuationCount++
+		return result, workflow.NewContinueAsNewError(ctx, PurgeLoop, nextParams)
 	}
 
 	return result, nil

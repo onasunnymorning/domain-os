@@ -1639,12 +1639,12 @@ func (s *DomainService) CountExpiringDomains(ctx context.Context, q *queries.Exp
 
 // ListPurgeableDomains returns a list of purgeable domains. This means the domain has PendingDelete and the grace period has expired (RGPStatus.Purgedate is in the past)
 func (s *DomainService) ListPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery, pageSize int, cursor string) ([]*entities.Domain, error) {
-	return s.domainRepository.ListPurgeableDomains(ctx, q.After, pageSize, q.ClID.String(), q.TLD.String(), cursor)
+	return s.domainRepository.ListPurgeableDomains(ctx, q.Before, pageSize, q.ClID.String(), q.TLD.String(), cursor)
 }
 
 // CountPurgeableDomains returns the number of purgeable domains
 func (s *DomainService) CountPurgeableDomains(ctx context.Context, q *queries.PurgeableDomainsQuery) (int64, error) {
-	return s.domainRepository.CountPurgeableDomains(ctx, q.After, q.ClID.String(), q.TLD.String())
+	return s.domainRepository.CountPurgeableDomains(ctx, q.Before, q.ClID.String(), q.TLD.String())
 }
 
 // ListRestoredDomains returns a list of domains that have pendingRestore status
@@ -1979,8 +1979,15 @@ func (s *DomainService) ListRecentEvents(ctx context.Context, limit int) ([]enti
 }
 
 // BatchResult captures outcomes for batch operations.
+//
+// Skipped records domains for which the operation was a no-op because the
+// domain is already in the target state (or no longer exists). This is what
+// makes batch lifecycle operations safe to retry: Temporal re-executes the
+// whole activity on timeout/failure, and any domain processed by an earlier
+// partial attempt lands in Skipped instead of being transitioned twice.
 type BatchResult struct {
 	Succeeded []string       `json:"succeeded"`
+	Skipped   []string       `json:"skipped,omitempty"`
 	Failed    []BatchFailure `json:"failed"`
 }
 
@@ -1992,6 +1999,10 @@ type BatchFailure struct {
 
 // BatchExpireDomains expires multiple domains in a single batch, grouping by TLD
 // to amortize TLD+phase lookups. Individual domain failures do not stop the batch.
+//
+// Idempotent under retries: domains that are already pendingDelete (expired by
+// a previous partial attempt) and domains that no longer exist are reported as
+// Skipped, not re-transitioned and not failed.
 func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string) BatchResult {
 	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
 
@@ -2019,7 +2030,14 @@ func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string
 	for _, n := range names {
 		dom, ok := domMap[n]
 		if !ok {
-			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: "domain not found"})
+			// The domain was deleted between listing and processing (or by an
+			// earlier retry of this batch) — nothing left to expire.
+			result.Skipped = append(result.Skipped, n)
+			continue
+		}
+		if dom.Status.PendingDelete {
+			// Already expired — an earlier (partially completed) attempt got here.
+			result.Skipped = append(result.Skipped, n)
 			continue
 		}
 		tldName := dom.Name.ParentDomain()
@@ -2092,6 +2110,13 @@ func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string
 // BatchAutoRenewDomains auto-renews multiple domains in a single batch, grouping
 // by TLD and caching registrar lookups by ClID. Individual domain failures do not
 // stop the batch.
+//
+// Idempotent under retries: callers only feed this method domains whose expiry
+// date has passed, so a domain whose expiry date is in the future was already
+// renewed by an earlier (partially completed) attempt. Such domains — and
+// domains that no longer exist — are reported as Skipped rather than renewed
+// again. This guard is what prevents a retried activity from stacking extra
+// renewal years (and duplicate billing events) onto the same domain.
 func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []string, years int) BatchResult {
 	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
 
@@ -2119,7 +2144,16 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 	for _, n := range names {
 		dom, ok := domMap[n]
 		if !ok {
-			result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: "domain not found"})
+			// The domain was deleted between listing and processing — nothing to renew.
+			result.Skipped = append(result.Skipped, n)
+			continue
+		}
+		if dom.ExpiryDate.After(time.Now().UTC()) {
+			// Idempotency guard: callers only feed expired domains into this
+			// method. An expiry date in the future means an earlier (partially
+			// completed) attempt already renewed this domain — do not stack
+			// another renewal (and another billing event) on top.
+			result.Skipped = append(result.Skipped, n)
 			continue
 		}
 		tldName := dom.Name.ParentDomain()
@@ -2233,6 +2267,10 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 
 // BatchPurgeDomains purges multiple domains in a single batch, with hosts
 // preloaded. Individual domain failures do not stop the batch.
+//
+// Idempotent under retries: a domain that no longer exists was purged by an
+// earlier (partially completed) attempt or deleted concurrently — it is
+// reported as Skipped, not failed.
 func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string) BatchResult {
 	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
 
@@ -2258,7 +2296,8 @@ func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string)
 	for _, name := range names {
 		dom, ok := domMap[name]
 		if !ok {
-			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: "domain not found"})
+			// Already purged (by an earlier retry) or deleted concurrently.
+			result.Skipped = append(result.Skipped, name)
 			continue
 		}
 
@@ -2323,9 +2362,20 @@ func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string)
 	return result
 }
 
+// restoreRenewalYears is the number of years a domain is force-renewed for when
+// its restore is completed. Restores always renew for exactly one year.
+const restoreRenewalYears = 1
+
 // BatchRestoreDomains completes restoration for multiple domains by unsetting
-// PendingRestore and force-renewing each domain. Individual domain failures do
-// not stop the batch.
+// PendingRestore and force-renewing each domain in a single write. Individual
+// domain failures do not stop the batch.
+//
+// Both mutations (status change + renewal) are applied to the entity in memory
+// and persisted with one UpdateDomain call, so a crash can never leave a domain
+// half-restored (the previous implementation issued two independent writes with
+// manual compensation). Idempotent under retries: domains that are no longer
+// pendingRestore — already completed by an earlier attempt — and domains that
+// no longer exist are reported as Skipped.
 func (svc *DomainService) BatchRestoreDomains(ctx context.Context, names []string) BatchResult {
 	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
 
@@ -2333,7 +2383,7 @@ func (svc *DomainService) BatchRestoreDomains(ctx context.Context, names []strin
 		return result
 	}
 
-	// Fetch all domains in one query to get ClID for renew commands
+	// Fetch all domains in one query
 	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, false)
 	if err != nil {
 		for _, n := range names {
@@ -2348,41 +2398,231 @@ func (svc *DomainService) BatchRestoreDomains(ctx context.Context, names []strin
 		domMap[d.Name.String()] = d
 	}
 
-	for _, name := range names {
-		dom, ok := domMap[name]
+	// Group names by TLD to cache phase lookups
+	byTLD := make(map[string][]string)
+	for _, n := range names {
+		dom, ok := domMap[n]
 		if !ok {
-			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: "domain not found"})
+			// The domain was deleted between listing and processing.
+			result.Skipped = append(result.Skipped, n)
 			continue
 		}
-
-		// Unset PendingRestore status
-		_, err := svc.UnSetStatus(ctx, name, entities.DomainStatusPendingRestore)
-		if err != nil {
-			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("unset PendingRestore failed: %v", err)})
+		if !dom.Status.PendingRestore {
+			// Restore already completed by an earlier (partially completed) attempt.
+			result.Skipped = append(result.Skipped, n)
 			continue
 		}
+		tldName := dom.Name.ParentDomain()
+		byTLD[tldName] = append(byTLD[tldName], n)
+	}
 
-		// Force-renew the domain
-		cmd := &commands.RenewDomainCommand{
-			Name:  name,
-			ClID:  dom.ClID.String(),
-			Years: 1,
-		}
-		_, err = svc.RenewDomain(ctx, cmd, true)
+	// Process each TLD group
+	for tldName, tldNames := range byTLD {
+		// Lookup TLD+phase once per group — restores always use the current GA phase
+		tld, err := svc.tldRepo.GetByName(ctx, tldName, true)
 		if err != nil {
-			// Re-set PendingRestore on failure so the domain stays in a consistent state
-			_, setErr := svc.SetStatus(ctx, name, entities.DomainStatusPendingRestore)
-			errMsg := fmt.Sprintf("renew failed: %v", err)
-			if setErr != nil {
-				errMsg += fmt.Sprintf("; re-setting PendingRestore also failed: %v", setErr)
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("TLD lookup failed: %v", err)})
 			}
-			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: errMsg})
+			continue
+		}
+		phase, err := tld.GetCurrentGAPhase()
+		if err != nil {
+			for _, n := range tldNames {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: fmt.Sprintf("GA phase lookup failed: %v", err)})
+			}
 			continue
 		}
 
-		result.Succeeded = append(result.Succeeded, name)
+		for _, name := range tldNames {
+			dom := domMap[name]
+
+			// Create the lifecycle event carrying the renewal quote (billing)
+			event, err := entities.NewDomainLifeCycleEvent(
+				dom.ClID.String(),
+				"",
+				dom.Name.ParentDomain(),
+				dom.Name.String(),
+				restoreRenewalYears,
+				entities.TransactionTypeRenewal,
+			)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("lifecycle event creation failed: %v", err)})
+				continue
+			}
+
+			// Quote before mutating — a quote failure must not change state
+			quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+				DomainName:      dom.Name.String(),
+				ClID:            dom.ClID.String(),
+				TransactionType: entities.TransactionTypeRenewal,
+				Currency:        phase.Policy.BaseCurrency,
+				Years:           restoreRenewalYears,
+				PhaseName:       phase.Name.String(),
+			})
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("quote failed: %v", err)})
+				continue
+			}
+			event.Quote = *quote
+
+			// Save previous state
+			prevState := dom.DeepCopy()
+
+			// Apply both mutations in memory, then persist with a single write
+			if err := dom.UnSetStatus(entities.DomainStatusPendingRestore); err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("unset PendingRestore failed: %v", err)})
+				continue
+			}
+			if err := dom.ForceRenew(restoreRenewalYears, false, phase); err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("renew failed: %v", err)})
+				continue
+			}
+
+			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			if err != nil {
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
+				continue
+			}
+			event.DomainRoID = updatedDomain.RoID.String()
+
+			// Publish event
+			msg := fmt.Sprintf("Domain %s restore completed: renewed for %d year(s)", name, restoreRenewalYears)
+			svc.publishDomainEvent(ctx, "domain.renewed", msg, event, nil, updatedDomain, prevState)
+
+			result.Succeeded = append(result.Succeeded, name)
+		}
 	}
 
 	return result
 }
 
+// EligibilityPartition is the outcome of partitioning a set of expired domains
+// into their next lifecycle transition.
+type EligibilityPartition struct {
+	// EligibleForAutoRenew lists domains that should be auto-renewed.
+	EligibleForAutoRenew []string `json:"eligibleForAutoRenew"`
+	// EligibleForExpiry lists domains that should be expired (moved to pendingDelete).
+	EligibleForExpiry []string `json:"eligibleForExpiry"`
+	// Skipped lists domains that need no transition (already renewed, already
+	// pendingDelete, or no longer existing).
+	Skipped []string `json:"skipped,omitempty"`
+	// Failures lists domains whose eligibility could not be determined.
+	Failures []BatchFailure `json:"failures,omitempty"`
+}
+
+// PartitionExpiredDomains decides, for a batch of expired domains, whether each
+// should be auto-renewed or expired. It applies the same rules as CanAutoRenew
+// (domain status allows renewal, GA phase policy allows auto-renew, registrar
+// has opted in) but resolves them with batched lookups: one domain fetch, one
+// TLD+phase lookup per TLD, and one registrar lookup per ClID — replacing the
+// previous per-domain HTTP round-trips.
+//
+// Domains that need no transition (already renewed by a previous attempt,
+// already pendingDelete, or deleted concurrently) are reported as Skipped.
+func (svc *DomainService) PartitionExpiredDomains(ctx context.Context, names []string) EligibilityPartition {
+	result := EligibilityPartition{
+		EligibleForAutoRenew: []string{},
+		EligibleForExpiry:    []string{},
+		Skipped:              []string{},
+		Failures:             []BatchFailure{},
+	}
+
+	if len(names) == 0 {
+		return result
+	}
+
+	// Fetch all domains in one query
+	domains, err := svc.domainRepository.GetDomainsByNames(ctx, names, false)
+	if err != nil {
+		for _, n := range names {
+			result.Failures = append(result.Failures, BatchFailure{DomainName: n, Error: fmt.Sprintf("batch fetch failed: %v", err)})
+		}
+		return result
+	}
+
+	// Index by name for fast lookup
+	domMap := make(map[string]*entities.Domain, len(domains))
+	for _, d := range domains {
+		domMap[d.Name.String()] = d
+	}
+
+	// Caches to amortize lookups across the batch
+	type phaseLookup struct {
+		phase *entities.Phase
+		err   error
+	}
+	phaseCache := make(map[string]phaseLookup)
+	rarCache := make(map[string]*entities.Registrar)
+
+	now := time.Now().UTC()
+
+	for _, name := range names {
+		dom, ok := domMap[name]
+		if !ok {
+			result.Skipped = append(result.Skipped, name)
+			continue
+		}
+		// Already renewed (expiry in the future) or already expired
+		// (pendingDelete) — no transition needed.
+		if dom.ExpiryDate.After(now) || dom.Status.PendingDelete {
+			result.Skipped = append(result.Skipped, name)
+			continue
+		}
+
+		// A domain whose status prohibits renewal moves to expiry —
+		// mirrors CanAutoRenew returning false.
+		if !dom.CanBeRenewed() {
+			result.EligibleForExpiry = append(result.EligibleForExpiry, name)
+			continue
+		}
+
+		// Resolve the current GA phase (cached per TLD)
+		tldName := dom.Name.ParentDomain()
+		pl, ok := phaseCache[tldName]
+		if !ok {
+			tld, err := svc.tldRepo.GetByName(ctx, tldName, true)
+			if err != nil {
+				pl = phaseLookup{err: fmt.Errorf("TLD lookup failed: %w", err)}
+			} else {
+				phase, err := tld.GetCurrentGAPhase()
+				if err != nil {
+					pl = phaseLookup{err: fmt.Errorf("GA phase lookup failed: %w", err)}
+				} else {
+					pl = phaseLookup{phase: phase}
+				}
+			}
+			phaseCache[tldName] = pl
+		}
+		if pl.err != nil {
+			result.Failures = append(result.Failures, BatchFailure{DomainName: name, Error: pl.err.Error()})
+			continue
+		}
+
+		// Phase policy must allow auto-renew
+		if pl.phase.Policy.AllowAutoRenew != nil && !*pl.phase.Policy.AllowAutoRenew {
+			result.EligibleForExpiry = append(result.EligibleForExpiry, name)
+			continue
+		}
+
+		// Registrar must have opted in to auto-renew (cached per ClID)
+		clid := dom.ClID.String()
+		rar, ok := rarCache[clid]
+		if !ok {
+			rar, err = svc.rarRepo.GetByClID(ctx, clid, false)
+			if err != nil {
+				result.Failures = append(result.Failures, BatchFailure{DomainName: name, Error: fmt.Sprintf("registrar lookup failed: %v", err)})
+				continue
+			}
+			rarCache[clid] = rar
+		}
+		if !rar.Autorenew {
+			result.EligibleForExpiry = append(result.EligibleForExpiry, name)
+			continue
+		}
+
+		result.EligibleForAutoRenew = append(result.EligibleForAutoRenew, name)
+	}
+
+	return result
+}

@@ -1,8 +1,8 @@
 package activities
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -16,9 +16,13 @@ import (
 type MockRoundTripper struct {
 	Response *http.Response
 	Err      error
+	// LastRequest records the most recent request so tests can assert on
+	// serialized query parameters.
+	LastRequest *http.Request
 }
 
 func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.LastRequest = req
 	return m.Response, m.Err
 }
 

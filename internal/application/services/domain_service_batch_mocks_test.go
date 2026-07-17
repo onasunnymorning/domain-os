@@ -152,6 +152,14 @@ func (m *mockPhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize i
 	return args.Get(0).([]*entities.Phase), args.Error(1)
 }
 
+func (m *mockPhaseRepository) ListDistinctBaseCurrencies(ctx context.Context) ([]string, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
+
 // ── mockPremiumLabelRepository ─────────────────────────────────────────────────
 
 type mockPremiumLabelRepository struct {

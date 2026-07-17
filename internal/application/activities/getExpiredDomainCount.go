@@ -24,7 +24,16 @@ func GetExpiredDomainCount(ctx context.Context, correlationID string, query quer
 	if !query.Before.IsZero() {
 		qParams["before"] = query.Before.Format(time.RFC3339)
 	}
+	if query.ClID.String() != "" {
+		qParams["clid"] = query.ClID.String()
+	}
+	if query.TLD.String() != "" {
+		qParams["tld"] = query.TLD.String()
+	}
 	URL, err := getURLAndSetQueryParams(COUNT_ENDPOINT, qParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add query params: %w", err)
+	}
 
 	req, err := prepareRequest(ctx, "GET", URL.String(), nil, correlationID)
 	if err != nil {

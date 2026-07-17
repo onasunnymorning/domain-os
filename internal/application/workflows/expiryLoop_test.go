@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -24,6 +25,12 @@ func (s *ExpiryLoopWorkflowTestSuite) SetupTest() {
 	s.env.RegisterWorkflow(ExpiryLoop)
 
 	// Register stub functions for string-based batch activities so the test env can resolve them
+	s.env.RegisterActivityWithOptions(
+		func(ctx context.Context, correlationID string, domainNames []string) (services.EligibilityPartition, error) {
+			return services.EligibilityPartition{}, nil
+		},
+		activity.RegisterOptions{Name: "BatchCheckAutoRenewEligibility"},
+	)
 	s.env.RegisterActivityWithOptions(
 		func(ctx context.Context, correlationID string, domainNames []string, years int) (services.BatchResult, error) {
 			return services.BatchResult{}, nil
@@ -63,14 +70,14 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 	}
 	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
-	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
+	partition := services.EligibilityPartition{
 		EligibleForAutoRenew: []string{"renew1.com", "renew2.com"},
 		EligibleForExpiry:    []string{"expire1.com", "expire2.com"},
-		CheckFailures: []activities.CheckFailure{
+		Failures: []services.BatchFailure{
 			{DomainName: "failcheck.com", Error: "some check error"},
 		},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"renew1.com", "renew2.com", "expire1.com", "expire2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, []string{"renew1.com", "renew2.com", "expire1.com", "expire2.com"}).Return(partition, nil)
 
 	// Batch auto-renew: renew2.com fails
 	s.env.OnActivity("BatchAutoRenewDomains", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
@@ -88,7 +95,7 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 		},
 	}, nil)
 
-	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{ConcurrencyLimit: 2})
+	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -99,6 +106,7 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 	s.Equal(1, result.AutoRenewed)
 	s.Equal(1, result.Expired)
 	s.Equal(3, result.Failed) // 1 check fail + 1 renew fail + 1 expire fail = 3
+	s.Equal(0, result.Skipped)
 
 	// Validate failure details
 	failures := make(map[string]ExpiryLoopFailure)
@@ -113,6 +121,45 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_Success_Mixed() {
 	s.Equal("expire", failures["expire2.com"].Operation)
 }
 
+func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_SkippedAreCounted() {
+	// Domains already handled by a previous (retried) attempt come back as Skipped
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 3}, nil)
+
+	domains := []response.DomainExpiryItem{
+		{Name: "renew1.com"},
+		{Name: "alreadyrenewed.com"},
+		{Name: "expire1.com"},
+	}
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
+
+	partition := services.EligibilityPartition{
+		EligibleForAutoRenew: []string{"renew1.com"},
+		EligibleForExpiry:    []string{"expire1.com"},
+		Skipped:              []string{"alreadyrenewed.com"},
+	}
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, mock.Anything).Return(partition, nil)
+
+	s.env.OnActivity("BatchAutoRenewDomains", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{"renew1.com"},
+	}, nil)
+	s.env.OnActivity("BatchExpireDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{},
+		Skipped:   []string{"expire1.com"}, // expired by a concurrent attempt between partition and write
+	}, nil)
+
+	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result ExpiryLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(1, result.AutoRenewed)
+	s.Equal(0, result.Expired)
+	s.Equal(2, result.Skipped) // 1 from partition + 1 from batch expire
+	s.Equal(0, result.Failed)
+	s.Equal(3, result.TotalProcessed)
+}
+
 func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_DryRun() {
 	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 2}, nil)
 
@@ -122,11 +169,11 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_DryRun() {
 	}
 	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
-	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
+	partition := services.EligibilityPartition{
 		EligibleForAutoRenew: []string{"domain1.com"},
 		EligibleForExpiry:    []string{"domain2.com"},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(partition, nil)
 
 	// In dry run, write activities must NOT be called. If they are, it will panic because they are not mocked.
 
@@ -154,11 +201,11 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_ContinueAsNew() {
 	}
 	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
 
-	batchCheckRes := activities.CheckDomainsCanAutoRenewResult{
+	partition := services.EligibilityPartition{
 		EligibleForAutoRenew: []string{},
 		EligibleForExpiry:    []string{"domain1.com", "domain2.com"},
 	}
-	s.env.OnActivity(activities.CheckDomainsCanAutoRenew, mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(batchCheckRes, nil)
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, []string{"domain1.com", "domain2.com"}).Return(partition, nil)
 
 	s.env.OnActivity("BatchExpireDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
 		Succeeded: []string{"domain1.com", "domain2.com"},
@@ -172,6 +219,82 @@ func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_ContinueAsNew() {
 	err := s.env.GetWorkflowError()
 	s.Require().Error(err)
 	s.Contains(err.Error(), "continue as new")
+}
+
+func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_NoProgress_DoesNotContinueAsNew() {
+	// Batch cap hit (count > listed) but every domain fails — the workflow
+	// must complete instead of continuing-as-new into a hot loop.
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
+
+	domains := []response.DomainExpiryItem{
+		{Name: "poison1.com"},
+		{Name: "poison2.com"},
+	}
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
+
+	partition := services.EligibilityPartition{
+		EligibleForExpiry: []string{"poison1.com", "poison2.com"},
+	}
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, mock.Anything).Return(partition, nil)
+
+	s.env.OnActivity("BatchExpireDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{},
+		Failed: []services.BatchFailure{
+			{DomainName: "poison1.com", Error: "boom"},
+			{DomainName: "poison2.com", Error: "boom"},
+		},
+	}, nil)
+
+	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	// Must complete WITHOUT a continue-as-new error
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result ExpiryLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(2, result.Failed)
+	foundNote := false
+	for _, n := range result.Notes {
+		if n == "Batch cap reached but no progress was made this run — not continuing to avoid a hot loop. Remaining domains will be retried on the next scheduled run." {
+			foundNote = true
+		}
+	}
+	s.True(foundNote, "expected the no-progress note, got: %v", result.Notes)
+}
+
+func (s *ExpiryLoopWorkflowTestSuite) Test_ExpiryLoop_ContinuationCap_StopsChain() {
+	// Progress is made and the batch cap is hit, but the continuation cap has
+	// been reached — the workflow must complete instead of continuing.
+	s.env.OnActivity(activities.GetExpiredDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 100}, nil)
+
+	domains := []response.DomainExpiryItem{
+		{Name: "domain1.com"},
+	}
+	s.env.OnActivity(activities.ListExpiringDomains, mock.Anything, mock.Anything, mock.Anything).Return(domains, nil)
+
+	partition := services.EligibilityPartition{
+		EligibleForExpiry: []string{"domain1.com"},
+	}
+	s.env.OnActivity("BatchCheckAutoRenewEligibility", mock.Anything, mock.Anything, mock.Anything).Return(partition, nil)
+
+	s.env.OnActivity("BatchExpireDomains", mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{
+		Succeeded: []string{"domain1.com"},
+	}, nil)
+
+	s.env.ExecuteWorkflow(ExpiryLoop, ExpiryLoopParams{ContinuationCount: maxContinuationRuns})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result ExpiryLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(1, result.Expired)
+	foundNote := false
+	for _, n := range result.Notes {
+		if strings.HasPrefix(n, "Continuation cap reached") {
+			foundNote = true
+		}
+	}
+	s.True(foundNote, "expected the continuation-cap note, got: %v", result.Notes)
 }
 
 func TestExpiryLoopWorkflowTestSuite(t *testing.T) {

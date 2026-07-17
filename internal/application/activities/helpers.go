@@ -35,6 +35,15 @@ func getURLAndSetQueryParams(uri string, queryParamsMap map[string]string) (*url
 	return endpointURL, nil
 }
 
+// pageSizeOrDefault returns the requested page size, falling back to the
+// package default (BATCHSIZE) when the request does not specify one.
+func pageSizeOrDefault(requested int) int {
+	if requested > 0 {
+		return requested
+	}
+	return BATCHSIZE
+}
+
 // httpResponseError returns an appropriate error for a non-OK HTTP response.
 // 4xx responses are wrapped as non-retryable (business logic errors that will
 // never succeed on retry). 5xx responses are returned as plain errors so
@@ -85,4 +94,3 @@ func prepareRequest(ctx context.Context, method, urlStr string, body io.Reader, 
 
 	return req, nil
 }
-

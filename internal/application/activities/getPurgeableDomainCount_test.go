@@ -1,14 +1,16 @@
 package activities
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -41,6 +43,31 @@ func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_Succe
 	suite.NoError(err, "Expected no error for successful response")
 	suite.NotNil(result, "Expected a valid response")
 	suite.Equal(int64(50), result.Count, "Expected count to match")
+}
+
+// TestGetPurgeableDomainCount_SerializesQuery is a regression test: a previous
+// version of this activity accepted the query but never put it on the wire.
+func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_SerializesQuery() {
+	body := `{"count": 0}`
+	suite.mockTransport.Response = &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}
+
+	cutoff := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	query := queries.PurgeableDomainsQuery{
+		Before: cutoff,
+		ClID:   entities.ClIDType("registrarX"),
+		TLD:    entities.DomainName("com"),
+	}
+	_, err := GetPurgeableDomainCount(context.Background(), "testCorrelationID", query)
+	suite.NoError(err)
+
+	suite.Require().NotNil(suite.mockTransport.LastRequest, "Expected the request to be captured")
+	params := suite.mockTransport.LastRequest.URL.Query()
+	suite.Equal(cutoff.Format(time.RFC3339), params.Get("before"), "Expected the reference time cutoff to be serialized")
+	suite.Equal("registrarX", params.Get("clid"), "Expected the ClID filter to be serialized")
+	suite.Equal("com", params.Get("tld"), "Expected the TLD filter to be serialized")
 }
 
 func (suite *GetPurgeableDomainCountTestSuite) TestGetPurgeableDomainCount_BadRequest() {

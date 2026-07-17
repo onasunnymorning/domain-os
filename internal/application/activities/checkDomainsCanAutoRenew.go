@@ -19,6 +19,11 @@ type CheckDomainsCanAutoRenewResult struct {
 }
 
 // CheckDomainsCanAutoRenew checks the auto-renew eligibility for multiple domains concurrently.
+//
+// Deprecated: this activity issues one admin-API HTTP request per domain and
+// is only kept registered so in-flight workflow executions on the drain queues
+// can complete. New code must use LifecycleActivities.BatchCheckAutoRenewEligibility,
+// which resolves eligibility with batched DB lookups.
 func CheckDomainsCanAutoRenew(ctx context.Context, correlationID string, domainNames []string) (CheckDomainsCanAutoRenewResult, error) {
 	var result CheckDomainsCanAutoRenewResult
 	result.EligibleForAutoRenew = []string{}

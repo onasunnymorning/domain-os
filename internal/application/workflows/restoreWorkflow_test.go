@@ -3,6 +3,7 @@ package workflows
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -37,7 +38,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_NoDomains() {
 	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return([]response.DomainRestoredItem{}, nil)
 
-	s.env.ExecuteWorkflow(RestoreWorkflow)
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -61,7 +62,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_Success() {
 			Failed:    []services.BatchFailure{},
 		}, nil)
 
-	s.env.ExecuteWorkflow(RestoreWorkflow)
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -90,7 +91,7 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_PartialFailure() {
 			},
 		}, nil)
 
-	s.env.ExecuteWorkflow(RestoreWorkflow)
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())
 
@@ -106,11 +107,94 @@ func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_PartialFailure() {
 	s.Contains(result.Notes, "Completed with failures — review the failures list for details")
 }
 
+func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_SkippedAreCounted() {
+	domains := []response.DomainRestoredItem{
+		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
+		{Name: "alreadydone.com", RoID: "ro2", ClID: "reg2"},
+	}
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
+		Return(domains, nil)
+
+	// alreadydone.com was completed by a previous (retried) attempt
+	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
+		Return(services.BatchResult{
+			Succeeded: []string{"restored1.com"},
+			Skipped:   []string{"alreadydone.com"},
+		}, nil)
+
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result RestoreLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(1, result.Restored)
+	s.Equal(1, result.Skipped)
+	s.Equal(0, result.Failed)
+	s.Equal(2, result.TotalProcessed)
+}
+
+func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_FullPage_ContinuesAsNew() {
+	// BatchSize 2 and exactly 2 results — a full page means more may be waiting
+	domains := []response.DomainRestoredItem{
+		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
+		{Name: "restored2.com", RoID: "ro2", ClID: "reg2"},
+	}
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
+		Return(domains, nil)
+
+	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
+		Return(services.BatchResult{
+			Succeeded: []string{"restored1.com", "restored2.com"},
+		}, nil)
+
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{BatchSize: 2})
+	s.Require().True(s.env.IsWorkflowCompleted())
+
+	err := s.env.GetWorkflowError()
+	s.Require().Error(err)
+	s.Contains(err.Error(), "continue as new")
+}
+
+func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_FullPage_NoProgress_DoesNotContinue() {
+	// Full page but nothing succeeded — must complete instead of hot-looping
+	domains := []response.DomainRestoredItem{
+		{Name: "poison1.com", RoID: "ro1", ClID: "reg1"},
+		{Name: "poison2.com", RoID: "ro2", ClID: "reg2"},
+	}
+	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
+		Return(domains, nil)
+
+	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
+		Return(services.BatchResult{
+			Succeeded: []string{},
+			Failed: []services.BatchFailure{
+				{DomainName: "poison1.com", Error: "boom"},
+				{DomainName: "poison2.com", Error: "boom"},
+			},
+		}, nil)
+
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{BatchSize: 2})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result RestoreLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(2, result.Failed)
+	foundNote := false
+	for _, n := range result.Notes {
+		if strings.HasPrefix(n, "Full page processed without progress") {
+			foundNote = true
+		}
+	}
+	s.True(foundNote, "expected the no-progress note, got: %v", result.Notes)
+}
+
 func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_ListError() {
 	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("API unavailable: connection refused"))
 
-	s.env.ExecuteWorkflow(RestoreWorkflow)
+	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().Error(s.env.GetWorkflowError())
 }
