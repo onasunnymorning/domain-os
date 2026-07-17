@@ -7,7 +7,11 @@ import (
 	"net/http"
 )
 
-// UpdateFX updates the FX rate for a given currency.
+// UpdateFX updates the FX rate for a given currency via the admin API.
+//
+// Deprecated: kept registered only so in-flight workflow executions on the
+// drain queues can complete. New code must use FXActivities.UpdateFXRates,
+// which talks to Frankfurter and the database directly.
 func UpdateFX(ctx context.Context, correlationID, cur string) error {
 	ENDPOINT := fmt.Sprintf("%s/sync/fx/%s", BASEURL, cur)
 

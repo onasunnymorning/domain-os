@@ -106,3 +106,20 @@ func (r *PhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize int, 
 	}
 	return phases, nil
 }
+
+// ListDistinctBaseCurrencies returns the distinct base currencies configured
+// across all phases. Used by the FX update workflow to determine which base
+// currencies need exchange rates for quoting.
+func (r *PhaseRepository) ListDistinctBaseCurrencies(ctx context.Context) ([]string, error) {
+	var currencies []string
+	err := r.db.WithContext(ctx).
+		Model(&Phase{}).
+		Distinct("base_currency").
+		Where("base_currency <> ''").
+		Order("base_currency ASC").
+		Pluck("base_currency", &currencies).Error
+	if err != nil {
+		return nil, err
+	}
+	return currencies, nil
+}

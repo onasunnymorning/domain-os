@@ -80,10 +80,12 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		s, ok := byID["update-fx"]
 		require.True(t, ok, "missing schedule update-fx")
 		assert.Equal(t, temporal.QueueFastOps, s.Queue)
-		assert.Equal(t, time.Hour, s.Interval)
-		assert.Equal(t, 30*time.Minute, s.Offset)
-		assert.Equal(t, time.Hour, s.CatchupWindow)
-		assert.Nil(t, s.Args)
+		assert.Equal(t, 24*time.Hour, s.Interval)
+		assert.Equal(t, 18*time.Hour, s.Offset, "runs at 18:00 UTC, after the ECB reference publication")
+		assert.Equal(t, 24*time.Hour, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.UpdateFXParams)
+		assert.True(t, ok, "UpdateFX args should be UpdateFXParams, got %T", s.Args[0])
 		assert.NotEmpty(t, s.Note)
 	})
 

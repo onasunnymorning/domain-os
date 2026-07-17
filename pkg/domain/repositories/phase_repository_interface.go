@@ -15,4 +15,6 @@ type PhaseRepository interface {
 	UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
 	ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error)
+	// ListDistinctBaseCurrencies returns the distinct base currencies configured across all phases.
+	ListDistinctBaseCurrencies(ctx context.Context) ([]string, error)
 }

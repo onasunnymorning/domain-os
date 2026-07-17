@@ -3,9 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/openfx"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
@@ -13,6 +12,12 @@ import (
 var (
 	ErrRetrievingFXRates = fmt.Errorf("error retrieving FX rates")
 )
+
+// FXRatesSource fetches the latest exchange rates for a base currency.
+// Implemented by frankfurter.Client; abstracted for testability.
+type FXRatesSource interface {
+	GetLatestRates(ctx context.Context, base string, quotes []string) ([]frankfurter.Rate, error)
+}
 
 // SyncService is a service for synchronizing data from external sources and storing it in the database
 // SyncService implements the SyncService interface
@@ -22,9 +27,10 @@ type SyncService struct {
 	IcannRepository     repositories.ICANNRepository
 	IanaRepository      repositories.IANARepository
 	FXRepository        repositories.FXRepository
+	fxRates             FXRatesSource
 }
 
-// NewSyncService returns a new Spec5Service
+// NewSyncService returns a new SyncService backed by the Frankfurter API for FX rates.
 func NewSyncService(
 	registrarRepository repositories.IANARegistrarRepository,
 	spec5Repository repositories.Spec5LabelRepository,
@@ -38,7 +44,13 @@ func NewSyncService(
 		IcannRepository:     icannRepository,
 		IanaRepository:      ianaRepository,
 		FXRepository:        fxRepository,
+		fxRates:             frankfurter.NewClient(),
 	}
+}
+
+// SetFXRatesSource overrides the FX rates source (used in tests).
+func (s *SyncService) SetFXRatesSource(src FXRatesSource) {
+	s.fxRates = src
 }
 
 // RefreshSpec5Labels deletes and recreates all Spec5Labels using the ICANN XML registry as a source
@@ -77,31 +89,37 @@ func (s *SyncService) RefreshIANARegistrars(ctx context.Context) error {
 	return nil
 }
 
-// RefreshFXRates deletes and recreates all FXRates using the Open Exchange Rates API as a source
+// RefreshFXRates atomically replaces all FX rates for the given base currency
+// using the Frankfurter API (https://frankfurter.dev/) as the source.
 func (s *SyncService) RefreshFXRates(ctx context.Context, baseCurrency string) error {
-	// Get the latest Rates from the Open Exchange Rates API
-	client := openfx.NewFxClient()
-	response, err := client.GetLatestRates(baseCurrency, []string{})
+	rates, err := s.fxRates.GetLatestRates(ctx, baseCurrency, nil)
 	if err != nil {
-		fmt.Println(err)
+		return fmt.Errorf("%w: %w", ErrRetrievingFXRates, err)
 	}
 
-	if len(response.Rates) == 0 {
-		return ErrRetrievingFXRates
+	fxs, err := frankfurterRatesToFX(rates)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRetrievingFXRates, err)
 	}
 
-	// Convert the response to a slice of postgres.FX structs
-	fxs := []*postgres.FX{}
-	for currency, rate := range response.Rates {
-		fx := &postgres.FX{
-			Date:   time.Unix(response.Timestamp, 0).UTC(),
-			Base:   response.Base,
-			Target: currency,
-			Rate:   rate,
-		}
-		fxs = append(fxs, fx)
-	}
-
-	// Replace the existing list of FXRates in the database with the new list
+	// Replace the existing rates for this base currency with the new list
 	return s.FXRepository.UpdateAll(ctx, fxs)
+}
+
+// frankfurterRatesToFX converts Frankfurter API rates to FX database records.
+func frankfurterRatesToFX(rates []frankfurter.Rate) ([]*postgres.FX, error) {
+	fxs := make([]*postgres.FX, 0, len(rates))
+	for _, r := range rates {
+		date, err := r.ParsedDate()
+		if err != nil {
+			return nil, fmt.Errorf("invalid rate date %q for %s/%s: %w", r.Date, r.Base, r.Quote, err)
+		}
+		fxs = append(fxs, &postgres.FX{
+			Date:   date,
+			Base:   r.Base,
+			Target: r.Quote,
+			Rate:   r.Rate,
+		})
+	}
+	return fxs, nil
 }
