@@ -243,9 +243,8 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			ScheduleInfo: "Every 5 minutes",
 			ScheduleID:   "event-relay",
 			Steps: []WorkflowStep{
-				{Key: "fetch-events", Label: "Fetch Unpublished Events", ActivityName: "FetchUnpublishedEvents"},
-				{Key: "archive-to-s3", Label: "Archive to S3", ActivityName: "ArchiveEventsToS3"},
-				{Key: "mark-published", Label: "Mark Published", ActivityName: "MarkEventsPublished"},
+				{Key: "relay-batch", Label: "Relay Event Batch (fetch → archive → mark)", ActivityName: "RelayEventBatch"},
+				{Key: "count-remaining", Label: "Count Remaining", ActivityName: "CountUnpublishedEvents"},
 				{Key: "count-remaining", Label: "Count Remaining", ActivityName: "CountUnpublishedEvents"},
 			},
 			docFile: "eventRelay.doc.md",

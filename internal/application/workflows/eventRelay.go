@@ -11,7 +11,7 @@ import (
 
 // EventRelayParams defines the input parameters for the EventRelay workflow.
 type EventRelayParams struct {
-	BatchSize  int `json:"batchSize,omitempty"`  // default 500
+	BatchSize  int `json:"batchSize,omitempty"`  // default 200
 	MaxBatches int `json:"maxBatches,omitempty"` // default 10 (safety cap per run)
 }
 

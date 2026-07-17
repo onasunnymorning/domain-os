@@ -60,6 +60,60 @@ func NewEventRelayActivities() (*EventRelayActivities, error) {
 	}, nil
 }
 
+// RelayEventBatchResult is the lightweight result of a single relay batch.
+// Only metadata crosses the Temporal boundary — the event payloads stay inside
+// the activity. Its JSON shape must match workflows.RelayBatchResult (the
+// workflows package imports this one, so the struct cannot be shared directly).
+type RelayEventBatchResult struct {
+	Archived int    `json:"archived"`
+	S3Key    string `json:"s3Key"`
+}
+
+// RelayEventBatch is the consolidated per-batch relay operation the EventRelay
+// workflow executes: fetch up to batchSize unpublished events, archive them to
+// S3 as gzip JSONL, and mark them published — all in one activity execution so
+// event payloads are never serialized through Temporal history.
+//
+// Delivery semantics are at-least-once: if marking fails after the S3 upload,
+// the activity errors and the retry re-fetches the same (still-unpublished)
+// events and uploads them under a new key. That can leave a duplicate archive
+// object in S3 but never loses or double-marks events.
+func (a *EventRelayActivities) RelayEventBatch(ctx context.Context, batchSize int) (RelayEventBatchResult, error) {
+	result := RelayEventBatchResult{}
+
+	if batchSize <= 0 {
+		batchSize = 200
+	}
+
+	// Step 1: fetch a batch of unpublished events
+	events, err := a.FetchUnpublishedEvents(ctx, batchSize)
+	if err != nil {
+		return result, fmt.Errorf("RelayEventBatch: %w", err)
+	}
+	if len(events) == 0 {
+		return result, nil
+	}
+
+	// Step 2: archive to S3
+	key, err := a.ArchiveEventsToS3(ctx, events)
+	if err != nil {
+		return result, fmt.Errorf("RelayEventBatch: %w", err)
+	}
+
+	// Step 3: mark the archived events as published
+	ids := make([]string, len(events))
+	for i, evt := range events {
+		ids[i] = evt.ID
+	}
+	if _, err := a.MarkEventsPublished(ctx, ids); err != nil {
+		return result, fmt.Errorf("RelayEventBatch: archived %d events to %s but failed to mark them published (retry will re-archive them): %w", len(events), key, err)
+	}
+
+	result.Archived = len(events)
+	result.S3Key = key
+	return result, nil
+}
+
 // FetchUnpublishedEvents queries the domain_events table for unpublished events
 // ordered by occurred_at ascending, limited to batchSize. Returns the events
 // converted to domain entities.
