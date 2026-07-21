@@ -17,7 +17,7 @@ type DiffPlanResult struct {
 
 // DiffAndPlanRegistrars compares IANA registrars with existing platform registrars and produces a plan
 // - Creates: new registrars to create (skips Reserved except special reserved GurIDs 9995, 9996, 9997)
-// - Updates: status updates where IANA status and platform status differ (forces OK for special reserved GurIDs)
+// - Updates: status updates where IANA status and platform status differ (special reserved GurIDs expect platform status OK)
 // - SkippedReserved: count of reserved registrars skipped
 func DiffAndPlanRegistrars(ctx context.Context, correlationID string, iana []entities.IANARegistrar, existing []entities.RegistrarListItem) (DiffPlanResult, error) {
 	result := DiffPlanResult{
@@ -36,12 +36,11 @@ func DiffAndPlanRegistrars(ctx context.Context, correlationID string, iana []ent
 		clidStr := clid.String()
 
 		if r, ok := existingMap[clidStr]; ok {
-			// Consider status update
+			// Consider status update. CompareIANARegistrarStatusWithRarStatus
+			// already accounts for special reserved registrars (9995, 9996,
+			// 9997) by expecting platform status "ok", so no override is needed
+			// here — and it returns nil (no update) once they are in sync.
 			if cmd := commands.CompareIANARegistrarStatusWithRarStatus(i, r); cmd != nil {
-				// Exception for special reserved IANA Registrars (9995, 9996, 9997) — force OK
-				if entities.IsSpecialReservedGurID(i.GurID) {
-					cmd.NewStatus = string(entities.RegistrarStatusOK)
-				}
 				result.Updates = append(result.Updates, *cmd)
 			}
 			continue
