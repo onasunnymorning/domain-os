@@ -57,8 +57,14 @@ func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.Crea
 		return err
 	}
 
-	// Log the registrar lifecycle events
+	// Log the registrar lifecycle events, recording which registrars were
+	// created so the batch is auditable from the event payload alone.
+	clids := make([]string, 0, len(cmds))
+	for _, cmd := range cmds {
+		clids = append(clids, cmd.ClID)
+	}
 	event := entities.NewRegistrarLifecycleEvent("", entities.RegistrarEventTypeCreate)
+	event.ClientIDs = clids
 	s.publishRegistrarEvent(ctx, "registrar.bulk_created", fmt.Sprintf("bulk created %d registrars", len(cmds)), event, cmds, rars, nil)
 
 	return nil
@@ -138,6 +144,13 @@ func (s *RegistrarService) SetStatus(ctx context.Context, clid string, status en
 	registrar, err := s.registrarRepository.GetByClID(ctx, clid, false)
 	if err != nil {
 		return err
+	}
+
+	// No-op guard: if the status already matches, skip the write and the
+	// lifecycle event. Avoids redundant "status set to X" events on every
+	// idempotent sync run (e.g. special reserved registrars re-forced to ok).
+	if strings.EqualFold(registrar.Status.String(), string(status)) {
+		return nil
 	}
 
 	// make a copy of the original

@@ -13,8 +13,13 @@ type RegistrarEventType string
 
 // RegistrarLifecycleEvent struct defines an event that is generated each time a registrar is created, updated or deleted
 type RegistrarLifecycleEvent struct {
-	// ClientID is the unique identifier of the client Registrar.ClID
+	// ClientID is the unique identifier of the client Registrar.ClID.
+	// For bulk operations this is empty; see ClientIDs instead.
 	ClientID string
+	// ClientIDs lists the Registrar.ClID values affected by a bulk operation
+	// (e.g. bulk create). It is omitted for single-registrar events so that
+	// operators can see exactly which registrars a batch touched.
+	ClientIDs []string `json:",omitempty"`
 	// Type is the type of event (e.g. CREATE, UPDATE, DELETE)
 	Type RegistrarEventType
 	// CorrelationID is the identifier allowing to group events together in a business context (e.g. registrar-sync-workflow-kdjsflkwr238fnelwkknk34ln5)
