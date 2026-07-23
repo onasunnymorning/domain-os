@@ -1,4 +1,18 @@
 <a name="unreleased"></a>
+## [0.8.4](https://github.com/onasunnymorning/domain-os/compare/v0.8.3...v0.8.4) (2026-07-23)
+
+
+### Bug Fixes
+
+* **deps:** bump grpc to v1.82.1 to clear Trivy HIGH finding ([0fa9ddb](https://github.com/onasunnymorning/domain-os/commit/0fa9ddb7d0b34f168c47ee30e8361eac5d17a0b8))
+* **escrow:** heartbeat every staging import phase ([727ffe3](https://github.com/onasunnymorning/domain-os/commit/727ffe3a9bf07058b835178c1b60a0b1b42bf304))
+* **escrow:** heartbeat every staging import phase ([93af07b](https://github.com/onasunnymorning/domain-os/commit/93af07b9937631e079c719454614ba45080fdf94))
+* **frontend:** hoist postcss override to clear high-severity advisory ([1434776](https://github.com/onasunnymorning/domain-os/commit/14347763425e50dee91b8fb5a0822d7d2a55a567))
+* **frontend:** override sharp to 0.35.x to clear npm audit gate ([099485c](https://github.com/onasunnymorning/domain-os/commit/099485ce5e160655873b842ef068aae8a1f1817c))
+* **frontend:** regenerate lockfile with npm 10 to match CI ([083e9f0](https://github.com/onasunnymorning/domain-os/commit/083e9f01a7dff35917f340217f63f2c3d38b6a19))
+* stop redundant registrar sync events and log bulk-created ClIDs ([f957633](https://github.com/onasunnymorning/domain-os/commit/f95763324c4e4da8b3f4d2283d559992b807bb19))
+* stop redundant registrar sync events and log bulk-created ClIDs ([e51a2e2](https://github.com/onasunnymorning/domain-os/commit/e51a2e2e79000aceb817cd4cc2fcbe8aa0fbb32a))
+
 ## [0.8.3](https://github.com/onasunnymorning/domain-os/compare/v0.8.2...v0.8.3) (2026-07-16)
 
 
