@@ -116,7 +116,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # Single source of truth for the Node version, shared with local dev
+          # (nvm) and frontend/package.json engines. The npm major that ships
+          # with it determines the package-lock.json shape, so a mismatch here
+          # breaks `npm ci` — see frontend/.nvmrc.
+          node-version-file: frontend/.nvmrc
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
