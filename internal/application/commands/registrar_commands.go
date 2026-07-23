@@ -67,6 +67,14 @@ func CompareIANARegistrarStatusWithRarStatus(ianaRar entities.IANARegistrar, rar
 	if expectedPlatformStatus == "accredited" {
 		expectedPlatformStatus = "ok"
 	}
+	// Special reserved registrars (9995, 9996, 9997) are permanently "Reserved"
+	// in IANA but are deliberately kept at platform status "ok" so they can
+	// transact. Their expected platform status is therefore "ok" — without this,
+	// the IANA-derived "reserved" would never equal the stored "ok" and the diff
+	// would emit a redundant status update on every sync run.
+	if entities.IsSpecialReservedGurID(ianaRar.GurID) {
+		expectedPlatformStatus = "ok"
+	}
 
 	// Check if platform status needs updating
 	platformStatusChanged := !strings.EqualFold(expectedPlatformStatus, rar.Status.String())

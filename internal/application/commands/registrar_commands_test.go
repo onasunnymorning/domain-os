@@ -315,6 +315,34 @@ func TestCompareIANARegistrarStatusWithRarStatus(t *testing.T) {
 			wantNewStatus:     "terminated",
 			wantNewIANAStatus: "Terminated",
 		},
+		{
+			// Special reserved registrar in steady state: IANA "Reserved" but
+			// platform deliberately "ok". Expected platform status is "ok", so
+			// there must be no diff — this is what stops the recurring
+			// "status set to ok" event on every sync run.
+			name: "special reserved in sync - reserved IANA but ok platform",
+			iana: entities.IANARegistrar{GurID: 9995, Status: entities.IANARegistrarStatusReserved},
+			rar: entities.RegistrarListItem{
+				ClID:       "9995-pdt-1",
+				Status:     entities.RegistrarStatusOK,
+				IANAStatus: entities.IANARegistrarStatusReserved,
+			},
+			wantNil: true,
+		},
+		{
+			// Special reserved registrar whose platform status drifted away
+			// from ok: expected platform status is "ok", so it is corrected
+			// back to ok (never to "reserved").
+			name: "special reserved drift - corrected back to ok",
+			iana: entities.IANARegistrar{GurID: 9997, Status: entities.IANARegistrarStatusReserved},
+			rar: entities.RegistrarListItem{
+				ClID:       "9997-sla-monitor",
+				Status:     entities.RegistrarStatusReadonly,
+				IANAStatus: entities.IANARegistrarStatusReserved,
+			},
+			wantNil:       false,
+			wantNewStatus: "ok",
+		},
 	}
 
 	for _, tt := range tests {

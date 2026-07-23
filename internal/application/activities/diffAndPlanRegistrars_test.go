@@ -163,6 +163,25 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		}
 	})
 
+	t.Run("no update for special GurID 9995 already in sync", func(t *testing.T) {
+		// Special reserved registrar already at platform status ok with IANA
+		// status Reserved: it is fully in sync and must NOT produce an update
+		// on every run (the recurring "status set to ok" noise).
+		i := iana(9995, "Pre-Delegation Testing", entities.IANARegistrarStatusReserved)
+		ex := existingFromIANA(i, entities.RegistrarStatusOK, entities.IANARegistrarStatusReserved)
+
+		plan, err := DiffAndPlanRegistrars(context.Background(), "corr", []entities.IANARegistrar{i}, []entities.RegistrarListItem{ex})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(plan.Updates) != 0 {
+			t.Fatalf("expected 0 updates for in-sync special GurID 9995, got %d", len(plan.Updates))
+		}
+		if len(plan.Creates) != 0 {
+			t.Fatalf("expected 0 creates for existing special GurID 9995, got %d", len(plan.Creates))
+		}
+	})
+
 	t.Run("create reserved for special GurID 9997", func(t *testing.T) {
 		i := iana(9997, "ICANN SLA Monitoring", entities.IANARegistrarStatusReserved)
 
