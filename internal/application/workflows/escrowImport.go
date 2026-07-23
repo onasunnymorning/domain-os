@@ -79,7 +79,10 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	aoStaging := workflow.ActivityOptions{
 		StartToCloseTimeout:    time.Hour * 2,
 		ScheduleToCloseTimeout: time.Hour * 4,
-		HeartbeatTimeout:       time.Minute * 5,
+		// The staging activities heartbeat every 30s while working, so 15m only
+		// trips on a genuine stall. It was 5m, which large escrows could exceed
+		// during a single slow step even while the activity was making progress.
+		HeartbeatTimeout: time.Minute * 15,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second * 5,
 			BackoffCoefficient: 2.0,
