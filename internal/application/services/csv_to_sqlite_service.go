@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
@@ -29,109 +31,474 @@ func NewCSVToSQLiteService(baseFilename string) *CSVToSQLiteService {
 	}
 }
 
-// ConvertToSQLite creates an SQLite database from the CSV files
+// Variables rather than constants so tests can shrink them; not modified at
+// runtime.
+var (
+	// heartbeatInterval is how often an import phase reports liveness. It must
+	// stay comfortably below the HeartbeatTimeout configured for the
+	// BuildStagingDatabase activity, since Temporal fails the activity when no
+	// heartbeat arrives within that window.
+	heartbeatInterval = 30 * time.Second
+
+	// commitBatchSize bounds how many rows accumulate before a commit. Loading a
+	// multi-million-row escrow inside one transaction grows the journal without
+	// limit and makes the whole build one all-or-nothing unit of work.
+	commitBatchSize = 50000
+)
+
+const (
+	// maxRowWarnings caps per-phase warning output so a systematically malformed
+	// file cannot emit millions of log lines.
+	maxRowWarnings = 20
+
+	// sqliteCacheKiB sets the per-connection page cache. Negative means KiB
+	// rather than pages, so this is ~128 MiB.
+	sqliteCacheKiB = -131072
+)
+
+// heartbeater throttles progress reports so import loops can call it on every
+// row without flooding the Temporal SDK.
+type heartbeater struct {
+	fn   HeartbeatFunc
+	last time.Time
+}
+
+// newHeartbeater accepts a nil fn, which makes every call a no-op. The CLI
+// converts CSVs without a Temporal activity context and passes nil.
+func newHeartbeater(fn HeartbeatFunc) *heartbeater {
+	return &heartbeater{fn: fn, last: time.Now()}
+}
+
+// beat reports progress if the throttle interval has elapsed since the last one.
+func (h *heartbeater) beat(phase string, count int) {
+	if h == nil || h.fn == nil || time.Since(h.last) < heartbeatInterval {
+		return
+	}
+	h.last = time.Now()
+	h.fn(phase, count)
+}
+
+// during runs fn while emitting heartbeats from a background goroutine. Use it
+// for work that blocks inside the driver and cannot report progress from the
+// inside, such as index builds and aggregate UPDATEs.
+func (h *heartbeater) during(phase string, fn func() error) error {
+	if h == nil || h.fn == nil {
+		return fn()
+	}
+
+	interval := heartbeatInterval
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				h.fn(phase)
+			}
+		}
+	}()
+
+	err := fn()
+	// Wait for the ticker goroutine to exit so no heartbeat can land after this
+	// returns; callers must be able to assume fn's phase is over.
+	close(done)
+	<-stopped
+	return err
+}
+
+// csvImportSpec describes one CSV file loaded into one table. Every phase runs
+// through importCSV so batching, heartbeating and malformed-row handling are
+// identical everywhere: a phase that reported no progress is what previously
+// stalled BuildStagingDatabase until Temporal timed it out.
+type csvImportSpec struct {
+	suffix    string // appended to baseFilename, e.g. "-contacts.csv"
+	label     string // used in log lines and heartbeat details
+	insertSQL string
+	minFields int
+	bind      func(record []string) []any
+}
+
+// escrowImports lists the CSV phases in load order. Contacts come first so the
+// downstream domain rows reference contacts that are already present.
+func escrowImports() []csvImportSpec {
+	return []csvImportSpec{
+		{
+			suffix:    "-contacts.csv",
+			label:     "contacts",
+			insertSQL: `INSERT INTO contacts (id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 10,
+			bind: func(r []string) []any {
+				return []any{r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]}
+			},
+		},
+		{
+			suffix:    "-contactPostalInfo.csv",
+			label:     "contact postal info records",
+			insertSQL: `INSERT INTO contact_postal_info (contact_id, type, name, org, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 11,
+			bind: func(r []string) []any {
+				return []any{r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]}
+			},
+		},
+		{
+			suffix:    "-contactStatuses.csv",
+			label:     "contact statuses",
+			insertSQL: `INSERT INTO contact_statuses (contact_id, status) VALUES (?, ?)`,
+			minFields: 2,
+			bind: func(r []string) []any {
+				return []any{r[0], r[1]}
+			},
+		},
+		{
+			suffix:    "-domains.csv",
+			label:     "domains",
+			insertSQL: `INSERT INTO domains (name, roid, uname, idntableid, originalname, registrant, clid, crrr, crdate, exdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 12,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11]}
+			},
+		},
+		{
+			suffix:    "-domainNameservers.csv",
+			label:     "domain-nameserver relationships",
+			insertSQL: `INSERT INTO domain_nameservers (domain_name, nameserver) VALUES (?, ?)`,
+			minFields: 2,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), strings.ToLower(r[1])}
+			},
+		},
+		{
+			suffix:    "-hosts.csv",
+			label:     "hosts",
+			insertSQL: `INSERT INTO hosts (name, roid, clid, crrr, crdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 7,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1], r[2], r[3], r[4], r[5], r[6]}
+			},
+		},
+		{
+			suffix:    "-hostAddresses.csv",
+			label:     "host addresses",
+			insertSQL: `INSERT INTO host_addresses (host_name, ip_address, ip_version) VALUES (?, ?, ?)`,
+			minFields: 3,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1], r[2]}
+			},
+		},
+		{
+			suffix:    "-domainStatuses.csv",
+			label:     "domain statuses",
+			insertSQL: `INSERT INTO domain_statuses (domain_name, status) VALUES (?, ?)`,
+			minFields: 2,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1]}
+			},
+		},
+		{
+			suffix:    "-domainRgpStatus.csv",
+			label:     "domain RGP statuses",
+			insertSQL: `INSERT INTO domain_rgp_statuses (domain_name, rgp_status) VALUES (?, ?)`,
+			minFields: 2,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1]}
+			},
+		},
+		{
+			suffix:    "-hostStatuses.csv",
+			label:     "host statuses",
+			insertSQL: `INSERT INTO host_statuses (host_name, status) VALUES (?, ?)`,
+			minFields: 2,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1]}
+			},
+		},
+		{
+			suffix:    "-registrars.csv",
+			label:     "registrars",
+			insertSQL: `INSERT INTO registrars (id, name, gurid, status, voice, fax, email, url, crdate, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 10,
+			bind: func(r []string) []any {
+				gurid := 0
+				if r[2] != "" {
+					if val, err := strconv.Atoi(r[2]); err == nil {
+						gurid = val
+					}
+				}
+				return []any{r[0], r[1], gurid, r[3], r[4], r[5], r[6], r[7], r[8], r[9]}
+			},
+		},
+		{
+			suffix:    "-registrarPostalInfo.csv",
+			label:     "registrar postal info records",
+			insertSQL: `INSERT INTO registrar_postal_info (registrar_id, type, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			minFields: 9,
+			bind: func(r []string) []any {
+				return []any{r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]}
+			},
+		},
+		{
+			suffix:    "-nndns.csv",
+			label:     "NNDNs",
+			insertSQL: `INSERT INTO nndns (aname, uname, idntableid, originalname, namestate, crdate) VALUES (?, ?, ?, ?, ?, ?)`,
+			minFields: 6,
+			bind: func(r []string) []any {
+				return []any{r[0], r[1], r[2], r[3], r[4], r[5]}
+			},
+		},
+	}
+}
+
+// sqliteDSN builds a DSN carrying bulk-load pragmas. The staging database is a
+// disposable artifact, rebuilt from the escrow CSVs on every attempt and thrown
+// away when the activity fails, so durability is worth trading for throughput.
+// Under the driver defaults the build is dominated by journal writes and fsyncs,
+// which cost far more on container storage than on a local SSD.
+func sqliteDSN(dbPath string) string {
+	q := url.Values{}
+	for _, pragma := range []string{
+		"journal_mode(off)",
+		"synchronous(off)",
+		"temp_store(memory)",
+		fmt.Sprintf("cache_size(%d)", sqliteCacheKiB),
+	} {
+		q.Add("_pragma", pragma)
+	}
+	return "file:" + dbPath + "?" + q.Encode()
+}
+
+// ConvertToSQLite creates an SQLite database from the CSV files. heartbeat may
+// be nil when running outside a Temporal activity, as the CLI does.
 func (svc *CSVToSQLiteService) ConvertToSQLite(dbPath string, heartbeat HeartbeatFunc) error {
 	log.Printf("Converting CSV files to SQLite database: %s", dbPath)
 
 	// Open/create SQLite database
 	var err error
-	svc.db, err = sql.Open("sqlite", dbPath)
+	svc.db, err = sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return fmt.Errorf("failed to open SQLite database: %w", err)
 	}
 	defer svc.db.Close()
+
+	// The pragmas above are per-connection, so hold the pool to a single
+	// connection. It also keeps the import from contending with itself.
+	svc.db.SetMaxOpenConns(1)
+
+	hb := newHeartbeater(heartbeat)
 
 	// Create database schema
 	if err := svc.createSchema(); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// Begin transaction for better performance
-	tx, err := svc.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Import data from CSV files
-	// Contacts first so downstream steps (domains) can reference them
-	if err := svc.importContacts(tx, heartbeat); err != nil {
-		return fmt.Errorf("failed to import contacts: %w", err)
+	for _, spec := range escrowImports() {
+		if err := svc.importCSV(spec, hb); err != nil {
+			return fmt.Errorf("failed to import %s: %w", spec.label, err)
+		}
 	}
 
-	if err := svc.importContactPostalInfo(tx); err != nil {
-		return fmt.Errorf("failed to import contact postal info: %w", err)
-	}
-
-	if err := svc.importContactStatuses(tx); err != nil {
-		return fmt.Errorf("failed to import contact statuses: %w", err)
-	}
-
-	if err := svc.importDomains(tx, heartbeat); err != nil {
-		return fmt.Errorf("failed to import domains: %w", err)
-	}
-
-	if err := svc.importDomainNameservers(tx); err != nil {
-		return fmt.Errorf("failed to import domain nameservers: %w", err)
-	}
-
-	if err := svc.importHosts(tx, heartbeat); err != nil {
-		return fmt.Errorf("failed to import hosts: %w", err)
-	}
-
-	if err := svc.importHostAddresses(tx); err != nil {
-		return fmt.Errorf("failed to import host addresses: %w", err)
-	}
-
-	if err := svc.importDomainStatuses(tx); err != nil {
-		return fmt.Errorf("failed to import domain statuses: %w", err)
-	}
-
-	if err := svc.importDomainRgpStatuses(tx); err != nil {
-		return fmt.Errorf("failed to import domain RGP statuses: %w", err)
-	}
-
-	if err := svc.importHostStatuses(tx); err != nil {
-		return fmt.Errorf("failed to import host statuses: %w", err)
-	}
-
-	if err := svc.importRegistrars(tx); err != nil {
-		return fmt.Errorf("failed to import registrars: %w", err)
-	}
-
-	if err := svc.importRegistrarPostalInfo(tx); err != nil {
-		return fmt.Errorf("failed to import registrar postal info: %w", err)
-	}
-
-	// Optionally import registrar mapping JSON so downstream import can map clids without extra files
-	if err := svc.importRegistrarMapping(tx); err != nil {
+	// Registrar mapping is JSON rather than CSV, and small enough to load in a
+	// single transaction. It references no other table, so its position here is
+	// not load-bearing.
+	if err := svc.withTx(svc.importRegistrarMapping); err != nil {
 		return fmt.Errorf("failed to import registrar mapping: %w", err)
 	}
 
-	if err := svc.importNNDNs(tx); err != nil {
-		return fmt.Errorf("failed to import NNDNs: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	// Create indexes for better query performance
-	if err := svc.createIndexes(); err != nil {
-		return fmt.Errorf("failed to create indexes: %w", err)
+	if err := svc.createIndexes(hb); err != nil {
+		return err
 	}
 
-	// Enrich registrar object counts from imported data tables.
+	// Enrich registrar object counts from imported data.
 	// The registrars CSV doesn't include domain/host/contact counts, so we
 	// compute them from the actual data. ResolveRegistrars now uses a LEFT JOIN
 	// query instead, but this keeps the DB self-consistent for other consumers.
-	if err := svc.enrichRegistrarCounts(); err != nil {
-		return fmt.Errorf("failed to enrich registrar counts: %w", err)
+	if err := svc.enrichRegistrarCounts(hb); err != nil {
+		return err
 	}
 
 	log.Printf("✅ Successfully created SQLite database with escrow data")
 	return nil
+}
+
+// withTx runs fn inside a transaction, committing on success.
+func (svc *CSVToSQLiteService) withTx(fn func(*sql.Tx) error) error {
+	tx, err := svc.db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// importCSV streams one CSV file into its table, committing in batches and
+// heartbeating on a timer.
+func (svc *CSVToSQLiteService) importCSV(spec csvImportSpec, hb *heartbeater) error {
+	csvFile := svc.baseFilename + spec.suffix
+	if !svc.fileExists(csvFile) {
+		log.Printf("⚠️  Skipping %s: %s not found", spec.label, csvFile)
+		return nil
+	}
+
+	file, err := os.Open(csvFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	// Rows are checked against spec.minFields below. Without this the reader
+	// aborts the entire file on the first row whose field count differs from
+	// the header's, which those per-row checks clearly did not intend.
+	reader.FieldsPerRecord = -1
+
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	batch, err := newInsertBatch(svc.db, spec.insertSQL)
+	if err != nil {
+		return err
+	}
+	defer batch.close()
+
+	phase := "importing " + spec.label
+	var inserted, skipped, failed int
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		// Heartbeat from the read loop rather than off successful inserts, so a
+		// run of skipped or failing rows still registers as liveness.
+		hb.beat(phase, inserted)
+
+		if len(record) < spec.minFields {
+			skipped++
+			continue
+		}
+
+		if err := batch.exec(spec.bind(record)); err != nil {
+			failed++
+			if failed <= maxRowWarnings {
+				log.Printf("Warning: failed to insert %s row (key=%q): %v", spec.label, record[0], err)
+			}
+			if failed == maxRowWarnings {
+				log.Printf("Warning: further %s insert errors suppressed", spec.label)
+			}
+			continue
+		}
+		inserted++
+
+		if err := batch.maybeFlush(); err != nil {
+			return fmt.Errorf("commit batch after %d rows: %w", inserted, err)
+		}
+	}
+
+	if err := batch.commit(); err != nil {
+		return err
+	}
+
+	log.Printf("✅ Imported %d %s", inserted, spec.label)
+	if skipped > 0 || failed > 0 {
+		log.Printf("⚠️  %s: skipped %d malformed row(s), %d insert error(s)", spec.label, skipped, failed)
+	}
+	return nil
+}
+
+// insertBatch owns the transaction and prepared statement for one import phase,
+// committing every commitBatchSize rows so the journal stays bounded.
+type insertBatch struct {
+	db      *sql.DB
+	query   string
+	tx      *sql.Tx
+	stmt    *sql.Stmt
+	pending int
+}
+
+func newInsertBatch(db *sql.DB, query string) (*insertBatch, error) {
+	b := &insertBatch{db: db, query: query}
+	if err := b.begin(); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func (b *insertBatch) begin() error {
+	tx, err := b.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(b.query)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	b.tx, b.stmt, b.pending = tx, stmt, 0
+	return nil
+}
+
+// exec reports only the row-level insert error; callers treat it as a skippable
+// bad row, so batch lifecycle errors must not surface here.
+func (b *insertBatch) exec(args []any) error {
+	if _, err := b.stmt.Exec(args...); err != nil {
+		return err
+	}
+	b.pending++
+	return nil
+}
+
+// maybeFlush commits and reopens once the batch is full.
+func (b *insertBatch) maybeFlush() error {
+	if b.pending < commitBatchSize {
+		return nil
+	}
+	if err := b.commit(); err != nil {
+		return err
+	}
+	return b.begin()
+}
+
+// commit finalises the open transaction, if any.
+func (b *insertBatch) commit() error {
+	if b.tx == nil {
+		return nil
+	}
+	tx, stmt := b.tx, b.stmt
+	b.tx, b.stmt, b.pending = nil, nil, 0
+	stmt.Close()
+	return tx.Commit()
+}
+
+// close rolls back anything still open; a no-op after a successful commit.
+func (b *insertBatch) close() {
+	if b.tx == nil {
+		return
+	}
+	tx, stmt := b.tx, b.stmt
+	b.tx, b.stmt, b.pending = nil, nil, 0
+	stmt.Close()
+	tx.Rollback()
 }
 
 // createSchema creates the database tables
@@ -299,8 +666,11 @@ func (svc *CSVToSQLiteService) createSchema() error {
 	return err
 }
 
-// createIndexes creates indexes for better query performance
-func (svc *CSVToSQLiteService) createIndexes() error {
+// createIndexes creates indexes for better query performance.
+// Each index is built inside a background heartbeat: on a multi-million-row
+// escrow a single CREATE INDEX can outlast the activity's heartbeat timeout on
+// its own, and it reports nothing while it runs.
+func (svc *CSVToSQLiteService) createIndexes(hb *heartbeater) error {
 	indexes := []string{
 		"CREATE INDEX IF NOT EXISTS idx_domain_nameservers_domain ON domain_nameservers(domain_name)",
 		"CREATE INDEX IF NOT EXISTS idx_domain_nameservers_ns ON domain_nameservers(nameserver)",
@@ -323,8 +693,12 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_contact_postal_contact ON contact_postal_info(contact_id)",
 	}
 
-	for _, indexSQL := range indexes {
-		if _, err := svc.db.Exec(indexSQL); err != nil {
+	for i, indexSQL := range indexes {
+		err := hb.during(fmt.Sprintf("creating index %d/%d", i+1, len(indexes)), func() error {
+			_, err := svc.db.Exec(indexSQL)
+			return err
+		})
+		if err != nil {
 			return fmt.Errorf("failed to create index: %w", err)
 		}
 	}
@@ -337,571 +711,22 @@ func (svc *CSVToSQLiteService) createIndexes() error {
 // on the registrars table by counting actual references in the data tables.
 // This ensures the counts reflect reality rather than relying on external
 // analysis files or stale metadata.
-func (svc *CSVToSQLiteService) enrichRegistrarCounts() error {
-	_, err := svc.db.Exec(`
-		UPDATE registrars SET
-			domain_count = COALESCE((SELECT COUNT(*) FROM domains WHERE clid = registrars.id), 0),
-			host_count = COALESCE((SELECT COUNT(*) FROM hosts WHERE clid = registrars.id), 0),
-			contact_count = COALESCE((SELECT COUNT(*) FROM contacts WHERE clid = registrars.id), 0)
-	`)
+func (svc *CSVToSQLiteService) enrichRegistrarCounts(hb *heartbeater) error {
+	// One correlated aggregate per registrar over the full data tables; like the
+	// index builds, it blocks without reporting progress.
+	err := hb.during("enriching registrar counts", func() error {
+		_, err := svc.db.Exec(`
+			UPDATE registrars SET
+				domain_count = COALESCE((SELECT COUNT(*) FROM domains WHERE clid = registrars.id), 0),
+				host_count = COALESCE((SELECT COUNT(*) FROM hosts WHERE clid = registrars.id), 0),
+				contact_count = COALESCE((SELECT COUNT(*) FROM contacts WHERE clid = registrars.id), 0)
+		`)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("enrichRegistrarCounts: %w", err)
 	}
 	log.Printf("✅ Enriched registrar counts from imported data")
-	return nil
-}
-
-// importDomains imports domain data from CSV
-func (svc *CSVToSQLiteService) importDomains(tx *sql.Tx, heartbeat HeartbeatFunc) error {
-	csvFile := svc.baseFilename + "-domains.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping domains: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO domains (name, roid, uname, idntableid, originalname, registrant, clid, crrr, crdate, exdate, uprr, "update")
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		if len(record) < 12 {
-			continue // Skip malformed records
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5],
-			record[6], record[7], record[8], record[9], record[10], record[11])
-		if err != nil {
-			log.Printf("Warning: failed to insert domain %s: %v", record[0], err)
-			continue
-		}
-		count++
-
-		if count%5000 == 0 && heartbeat != nil {
-			heartbeat("importing domains", count)
-		}
-	}
-
-	log.Printf("✅ Imported %d domains", count)
-	return nil
-}
-
-// importDomainNameservers imports domain nameserver relationships
-func (svc *CSVToSQLiteService) importDomainNameservers(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-domainNameservers.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping domain nameservers: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO domain_nameservers (domain_name, nameserver) VALUES (?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 2 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), strings.ToLower(record[1]))
-		if err != nil {
-			log.Printf("Warning: failed to insert domain nameserver %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d domain-nameserver relationships", count)
-	return nil
-}
-
-// importDomainStatuses imports domain status data
-func (svc *CSVToSQLiteService) importDomainStatuses(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-domainStatuses.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping domain statuses: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO domain_statuses (domain_name, status) VALUES (?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 2 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
-		if err != nil {
-			log.Printf("Warning: failed to insert domain status %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d domain statuses", count)
-	return nil
-}
-
-// importDomainRgpStatuses imports domain RGP status data from CSV
-func (svc *CSVToSQLiteService) importDomainRgpStatuses(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-domainRgpStatus.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping domain RGP statuses: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO domain_rgp_statuses (domain_name, rgp_status) VALUES (?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	count := 0
-	isFirst := true
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		if isFirst {
-			isFirst = false
-			continue // Skip header
-		}
-		if len(record) < 2 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
-		if err != nil {
-			log.Printf("Warning: failed to insert domain RGP status %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d domain RGP statuses", count)
-	return nil
-}
-
-// importHosts imports host data from CSV
-func (svc *CSVToSQLiteService) importHosts(tx *sql.Tx, heartbeat HeartbeatFunc) error {
-	csvFile := svc.baseFilename + "-hosts.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping hosts: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO hosts (name, roid, clid, crrr, crdate, uprr, \"update\") VALUES (?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 7 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2], record[3], record[4], record[5], record[6])
-		if err != nil {
-			log.Printf("Warning: failed to insert host %s: %v", record[0], err)
-			continue
-		}
-		count++
-
-		if count%5000 == 0 && heartbeat != nil {
-			heartbeat("importing hosts", count)
-		}
-	}
-
-	log.Printf("✅ Imported %d hosts", count)
-	return nil
-}
-
-// importHostAddresses imports host address data
-func (svc *CSVToSQLiteService) importHostAddresses(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-hostAddresses.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping host addresses: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO host_addresses (host_name, ip_address, ip_version) VALUES (?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 3 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1], record[2])
-		if err != nil {
-			log.Printf("Warning: failed to insert host address %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d host addresses", count)
-	return nil
-}
-
-// importHostStatuses imports host status data
-func (svc *CSVToSQLiteService) importHostStatuses(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-hostStatuses.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping host statuses: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO host_statuses (host_name, status) VALUES (?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 2 {
-			continue
-		}
-
-		_, err = stmt.Exec(strings.ToLower(record[0]), record[1])
-		if err != nil {
-			log.Printf("Warning: failed to insert host status %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d host statuses", count)
-	return nil
-}
-
-// Helper methods
-
-// importContacts imports contacts from CSV (linked contacts only)
-func (svc *CSVToSQLiteService) importContacts(tx *sql.Tx, heartbeat HeartbeatFunc) error {
-	csvFile := svc.baseFilename + "-contacts.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping contacts: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare(`INSERT INTO contacts (id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		if len(record) < 10 {
-			continue
-		}
-		if _, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9]); err != nil {
-			log.Printf("Warning: failed to insert contact %s: %v", record[0], err)
-			continue
-		}
-		count++
-
-		if count%5000 == 0 && heartbeat != nil {
-			heartbeat("importing contacts", count)
-		}
-	}
-
-	log.Printf("✅ Imported %d contacts", count)
-	return nil
-}
-
-// importContactStatuses imports contact statuses from CSV
-func (svc *CSVToSQLiteService) importContactStatuses(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-contactStatuses.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping contact statuses: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare(`INSERT INTO contact_statuses (contact_id, status) VALUES (?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if len(record) < 2 {
-			continue
-		}
-		if _, err = stmt.Exec(record[0], record[1]); err != nil {
-			log.Printf("Warning: failed to insert contact status %s -> %s: %v", record[0], record[1], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d contact statuses", count)
-	return nil
-}
-
-// importContactPostalInfo imports contact postal info from CSV
-func (svc *CSVToSQLiteService) importContactPostalInfo(tx *sql.Tx) error {
-	csvFile := svc.baseFilename + "-contactPostalInfo.csv"
-	if !svc.fileExists(csvFile) {
-		log.Printf("⚠️  Skipping contact postal info: %s not found", csvFile)
-		return nil
-	}
-
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare(`INSERT INTO contact_postal_info (contact_id, type, name, org, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		// Expect either 11 fields (with contact_id) or skip if not present
-		if len(record) < 11 {
-			continue
-		}
-		if _, err = stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9], record[10]); err != nil {
-			log.Printf("Warning: failed to insert contact postal info for %s: %v", record[0], err)
-			continue
-		}
-		count++
-	}
-
-	log.Printf("✅ Imported %d contact postal info records", count)
 	return nil
 }
 
@@ -1302,153 +1127,6 @@ func (svc *CSVToSQLiteService) GetDatabaseStats() (map[string]int, error) {
 	}
 
 	return stats, nil
-}
-
-// importRegistrars imports registrar data from CSV
-func (svc *CSVToSQLiteService) importRegistrars(tx *sql.Tx) error {
-	fileName := svc.baseFilename + "-registrars.csv"
-	if !svc.fileExists(fileName) {
-		log.Printf("⚠️  Registrars file not found: %s", fileName)
-		return nil
-	}
-
-	file, err := os.Open(fileName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO registrars (id, name, gurid, status, voice, fax, email, url, crdate, \"update\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	records, err := reader.ReadAll() // Still using ReadAll for registrars as they are small
-	if err != nil {
-		return err
-	}
-
-	for _, record := range records {
-		if len(record) >= 10 {
-			gurid := 0
-			if record[2] != "" {
-				if val, err := strconv.Atoi(record[2]); err == nil {
-					gurid = val
-				}
-			}
-			_, err := stmt.Exec(record[0], record[1], gurid, record[3], record[4], record[5], record[6], record[7], record[8], record[9])
-			if err != nil {
-				log.Printf("Error inserting registrar %s: %v", record[0], err)
-			}
-		}
-	}
-
-	log.Printf("✅ Imported %d registrars", len(records))
-	return nil
-}
-
-// importRegistrarPostalInfo imports registrar postal info data from CSV
-func (svc *CSVToSQLiteService) importRegistrarPostalInfo(tx *sql.Tx) error {
-	fileName := svc.baseFilename + "-registrarPostalInfo.csv"
-	if !svc.fileExists(fileName) {
-		log.Printf("⚠️  Registrar postal info file not found: %s", fileName)
-		return nil
-	}
-
-	file, err := os.Open(fileName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO registrar_postal_info (registrar_id, type, street1, street2, street3, city, state_province, postal_code, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	records, err := reader.ReadAll() // Small file
-	if err != nil {
-		return err
-	}
-
-	for _, record := range records {
-		if len(record) >= 9 {
-			_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8])
-			if err != nil {
-				log.Printf("Error inserting registrar postal info for %s: %v", record[0], err)
-			}
-		}
-	}
-
-	log.Printf("✅ Imported %d registrar postal info records", len(records))
-	return nil
-}
-
-// importNNDNs imports NNDN data from CSV
-func (svc *CSVToSQLiteService) importNNDNs(tx *sql.Tx) error {
-	fileName := svc.baseFilename + "-nndns.csv"
-	if !svc.fileExists(fileName) {
-		log.Printf("⚠️  NNDNs file not found: %s", fileName)
-		return nil
-	}
-
-	file, err := os.Open(fileName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stmt, err := tx.Prepare("INSERT INTO nndns (aname, uname, idntableid, originalname, namestate, crdate) VALUES (?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reader := csv.NewReader(file)
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
-
-	for _, record := range records {
-		if len(record) >= 6 {
-			_, err := stmt.Exec(record[0], record[1], record[2], record[3], record[4], record[5])
-			if err != nil {
-				log.Printf("Error inserting NNDN %s: %v", record[0], err)
-			}
-		}
-	}
-
-	log.Printf("✅ Imported %d NNDNs", len(records))
-	return nil
 }
 
 // Close closes the database connection
