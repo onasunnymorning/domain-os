@@ -910,17 +910,6 @@ func (svc *CSVToSQLiteService) fileExists(filename string) bool {
 	return err == nil
 }
 
-func (svc *CSVToSQLiteService) readCSV(filename string) ([][]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	return reader.ReadAll()
-}
-
 // importRegistrarMapping imports registrar mapping from JSON if present
 // Expected filename: baseFilename + "-registrarMapping.json" (or "-registrar-map.json" as a fallback)
 func (svc *CSVToSQLiteService) importRegistrarMapping(tx *sql.Tx) error {
