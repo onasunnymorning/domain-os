@@ -1,0 +1,10 @@
+# Toolchain versions for domain-os. Read by asdf and mise.
+#
+# These are the versions CI builds with and the versions `make doctor` checks
+# for. They are the single source of truth — go.mod carries the same Go version
+# in its `toolchain` directive, and frontend/.nvmrc carries the same Node major.
+#
+# Install everything with:  asdf install   (or:  mise install)
+
+golang 1.26.5
+nodejs 22
