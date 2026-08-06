@@ -1,0 +1,88 @@
+# Local development overrides.
+#
+# Layered on top of docker-compose.yml by `make dev`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml ...
+#
+# The base file describes the deployed topology. This file changes only what a
+# laptop needs differently, so the two never have to be kept in sync by hand.
+#
+# Three things happen here:
+#
+#   1. Privileged ports are remapped. EPP binds 700 and WHOIS binds 43 in the
+#      container; both are below 1024, which Docker Desktop on macOS publishes
+#      happily but which needs root or CAP_NET_BIND_SERVICE on Linux. Publishing
+#      them high means the same command works on both.
+#
+#   2. Every app image is built, never pulled. See docker-compose.yml — the
+#      images are tagged ${BRANCH}, and on a branch whose image was never
+#      published a pull is guaranteed to fail.
+#
+#   3. The database is seeded synthetically instead of from IANA. The base
+#      admin-init runs `init-registrars`, which fetches the live registrar list
+#      over the public internet. Local must boot offline, so it runs `seed`.
+
+services:
+  epp-server:
+    build:
+      args:
+        # The EPP server does not serve Swagger; skip generation.
+        SKIP_SWAG: "true"
+    # !override replaces the base list instead of appending to it. Without it
+    # compose publishes BOTH 700 and 7700, so the privileged port is still bound
+    # and the Linux-parity fix does nothing.
+    ports: !override
+      # 7700 on the host -> 700 in the container. Point an EPP client at 7700.
+      # Not 7000: macOS AirPlay Receiver (ControlCenter) listens there by
+      # default, so 7000 collides on a stock Mac.
+      - "7700:700"
+
+  whois:
+    ports: !override
+      # 4343 on the host -> 43 in the container. `whois -h localhost -p 4343 ...`
+      - "4343:43"
+
+  grafana:
+    ports: !override
+      # Grafana defaults to 3000, which is also the Next.js dev server default.
+      # Moving Grafana keeps `npm run dev` working without a PORT override.
+      - "3010:3000"
+
+  admin-api:
+    build:
+      args:
+        # Swagger regeneration adds minutes to a cold build and the local stack
+        # does not need the generated docs to serve requests.
+        SKIP_SWAG: "true"
+
+  # Replaces the base image's `init-registrars` with the offline seeder.
+  #
+  # init-registrars starts SyncRegistrarsWorkflow, which reaches
+  # https://www.iana.org/assignments/registrar-ids/registrar-ids.xml. That makes
+  # a first run fail on any machine that is offline, behind a corporate proxy, or
+  # simply on hotel wifi — and it produces no domains to work with even when it
+  # succeeds. `seed` writes a synthetic dataset directly and touches no network.
+  admin-init:
+    build:
+      args:
+        SKIP_SWAG: "true"
+    command: [ "/ryAdminAPI", "seed" ]
+    depends_on:
+      # Deliberately narrower than the base file, which also waits on Temporal.
+      # Seeding writes rows through the repositories and starts no workflow, so
+      # blocking on Temporal's ~60s start_period would add a minute to every
+      # cold run for nothing.
+      db:
+        condition: service_healthy
+      admin-api:
+        condition: service_healthy
+
+  unified-worker:
+    build:
+      args:
+        SKIP_SWAG: "true"
+
+  mcp-server:
+    build:
+      args:
+        SKIP_SWAG: "true"

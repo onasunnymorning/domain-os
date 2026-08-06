@@ -15,6 +15,27 @@ DOPPLER := doppler run --
 DOCKER_COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
 COMPOSE_CI_FILE := docker-compose-ci.yml
+COMPOSE_LOCAL_FILE := docker-compose.local.yml
+
+# The local stack. No Doppler: local development must work with nothing but a
+# checkout, Docker, and a copied .env — see docs/LOCAL_ENV_PHASE0_INVENTORY.md.
+# The override file forces local builds, remaps privileged ports, and swaps the
+# live IANA registrar fetch for the offline synthetic seeder.
+COMPOSE_LOCAL := $(DOCKER_COMPOSE) -f $(COMPOSE_FILE) -f $(COMPOSE_LOCAL_FILE)
+
+# Host port for the throwaway unit-test Postgres. Deliberately not 5432: that is
+# where `make dev` publishes the dev database, and the suite has to be runnable
+# while the dev stack is up.
+TEST_DB_PORT ?= 5433
+
+# One-shot services: they run a task to completion and exit, rather than staying
+# up. `docker compose up --wait` treats *any* container exit as a failure — even
+# exit 0 — so leaving these in the --wait set makes `make dev` return non-zero
+# on a completely successful run. They are held back with --scale N=0 and then
+# run to completion in list order (minio-setup provisions the buckets that later
+# steps expect). Add any new one-shot service here.
+ONESHOT_SERVICES := minio-setup admin-init
+ONESHOT_SCALE_ZERO := $(foreach s,$(ONESHOT_SERVICES),--scale $(s)=0)
 LDFLAGS := -s -w \
   -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=$(VERSION) \
   -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=$(GIT_SHA)
@@ -31,17 +52,63 @@ help: ## Show this help message
 # Development
 ###################
 
-dev: ## Start essential services (db, redis, epp-server, admin-api) for development
-	@echo "Starting essential services for development..."
-	@export BRANCH=$(TAG) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d
+dev: .env doctor-quiet ## Cold machine -> running stack, migrated and seeded
+	@echo "==> Building and starting the local stack (this takes a few minutes on a cold machine)..."
+	@# Long-running services first; the one-shots are held back — see
+	@# ONESHOT_SERVICES above for why.
+	@$(COMPOSE_LOCAL) --profile essential up -d --build --wait $(ONESHOT_SCALE_ZERO)
+	@echo "==> Provisioning buckets and seeding the database (synthetic data, no network)..."
+	@# Run each one-shot to completion, propagating its exit code. --no-deps
+	@# because everything they need is already healthy from the step above.
+	@for s in $(ONESHOT_SERVICES); do \
+		$(COMPOSE_LOCAL) --profile essential run --rm --no-deps $$s || exit 1; \
+	done
+	@echo ""
+	@echo "Stack is up and seeded."
+	@echo ""
+	@echo "  Admin API      http://localhost:8080          (Swagger at /swagger/index.html)"
+	@echo "  Temporal UI    http://localhost:8081"
+	@echo "  MinIO console  http://localhost:9001          (minioadmin / minioadmin)"
+	@echo "  Postgres       localhost:5432                 (make shell-db)"
+	@echo "  EPP            localhost:7700                 (container port 700)"
+	@echo ""
+	@echo "  Seeded: 1 TLD (.test), 6 registrars, 9 domains across lifecycle states."
+	@echo "  Next:   make test        run the suite against this stack"
+	@echo "          make dev-frontend  start the admin UI on :3002"
+
+# Creates .env on first run. Never overwrites an existing one, so your local
+# edits are safe; delete .env and re-run to get a clean copy.
+.env: .env.example
+	@if [ ! -f .env ]; then \
+		echo "==> No .env found; copying .env.example -> .env"; \
+		cp .env.example .env; \
+	else \
+		echo "==> .env is older than .env.example — new variables may have been added."; \
+		echo "    Compare with: diff <(sort .env) <(sort .env.example)"; \
+		touch .env; \
+	fi
+
+down: ## Stop services, retain volumes
+	@echo "==> Stopping the local stack (volumes retained)..."
+	@$(COMPOSE_LOCAL) --profile full down --remove-orphans
+	@echo "Stopped. Data is retained — 'make dev' resumes where you left off."
+
+reset: ## Destroy volumes and state; next 'make dev' is a first-ever run
+	@echo "==> Destroying the local stack and all its data..."
+	@$(COMPOSE_LOCAL) --profile full down -v --remove-orphans
+	@docker rm -f testdb testdb-api testdb-cov 2>/dev/null || true
+	@echo "Reset complete. The next 'make dev' starts from an empty database."
 
 dev-logs: ## Follow logs for all running services
-	$(DOPPLER) $(DOCKER_COMPOSE) logs -f
+	@$(COMPOSE_LOCAL) logs -f
+
+dev-doppler: ## Start the stack using Doppler for secrets (maintainer flow, needs a Doppler login)
+	@echo "Starting essential services via Doppler..."
+	@export BRANCH=$(TAG) && $(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d
 
 dev-build: ## Rebuild and start essential services
 	@echo "Building and starting services for branch $(BRANCH) with commit $(GIT_SHA)..."
-	@export BRANCH=$(TAG) && export GIT_SHA=$(GIT_SHA) && \
-	$(DOPPLER) $(DOCKER_COMPOSE) --profile essential up -d --build
+	@export GIT_SHA=$(GIT_SHA) && $(COMPOSE_LOCAL) --profile essential up -d --build --wait
 
 dev-frontend: ## Start the Next.js frontend development server
 	@echo "Starting frontend development server..."
@@ -54,6 +121,15 @@ local: ## Start local development with Tilt (Native/Hybrid Mode)
 local-docker: ## Start local development with Tilt (Docker Mode)
 	@echo "Starting Tilt local development environment (Docker Mode)..."
 	@TILT_MODE=docker $(DOPPLER) tilt up
+
+doctor: ## Preflight: Docker, ports, toolchain, .env — prints actionable failures
+	@bash scripts/doctor.sh
+
+# Same checks, silent unless something is actually broken. `make dev` depends on
+# this so a missing Docker daemon or a taken port is reported as itself, rather
+# than as a compose stack trace three minutes later.
+doctor-quiet:
+	@bash scripts/doctor.sh --quiet
 
 askg: ## Run Ask G support agent (usage: make askg Q="What is the status of example.best?")
 	@$(DOPPLER) sh -c 'DB_HOST=localhost go run ./cmd/askg "$(Q)"'
@@ -90,29 +166,33 @@ clean-docker: ## Nuclear cleanup of all domain-os Docker resources
 # Testing
 ###################
 
-test: test-unit ## Run unit tests (default)
+test: test-unit ## Full suite, green against the dev stack
 
-test-unit: ## Run unit tests with coverage
-	@echo "Starting test database..."
-	# Ensure any previous leftover test container is removed to avoid name conflicts
-	@docker rm -f testdb 2>/dev/null || true
-	@docker run --rm -d \
-		-e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
-		-e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
-		-e POSTGRES_PASSWORD=unittest \
-		-e POSTGRES_USER=postgres \
-		--name testdb \
-		-p 5432:5432 \
-		postgres:16.1 \
-		-c ssl=on \
-		-c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem \
-		-c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-	@echo "Running unit tests..."
-	@go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -html=coverage.out
-	@echo "Stopping test database..."
-	@docker stop testdb 2>/dev/null || true
-	# Extra safety: remove the container if it still exists for any reason
-	@docker rm -f testdb 2>/dev/null || true
+# Runs the whole suite against a throwaway Postgres.
+#
+# Two things here are deliberate:
+#
+#   * The test database is published on $(TEST_DB_PORT), not 5432. `make dev`
+#     holds 5432, and "run the tests right after starting the stack" has to work
+#     without stopping anything first.
+#
+#   * No `go tool cover -html`. That opens a browser window on success, which is
+#     wrong for a command people run to check their setup and wrong for anything
+#     non-interactive. Use `make test-coverage` when you want the HTML report.
+test-unit: ## Run unit tests with coverage (no browser; see test-coverage for HTML)
+	@echo "==> Starting throwaway test database on port $(TEST_DB_PORT)..."
+	@bash .github/scripts/setup-test-db.sh testdb $(TEST_DB_PORT)
+	@echo "==> Running tests..."
+	@TEST_DB_PORT=$(TEST_DB_PORT) go test ./... -coverpkg=./... -coverprofile=coverage.out; \
+		status=$$?; \
+		echo "==> Stopping test database..."; \
+		docker rm -f testdb >/dev/null 2>&1 || true; \
+		if [ $$status -eq 0 ]; then \
+			echo ""; \
+			go tool cover -func=coverage.out | tail -1; \
+			echo "Suite green."; \
+		fi; \
+		exit $$status
 
 test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (requires Doppler + API keys)
 	@echo "Running integration tests with Postman/Newman..."
@@ -237,6 +317,14 @@ ci-envcheck: ## Check env var registry and deployment contract for drift
 		exit 1; \
 	fi
 	@echo "✅ deploy/contract.json is in sync with env registry."
+	@echo "🔍 Checking .env.example drift..."
+	@if ! go test -run 'TestEnvExampleDrift' ./internal/config/...; then \
+		echo "⚠️  .env.example drift detected! Automatically regenerating..."; \
+		$(MAKE) generate-env-example; \
+		echo "❌ .env.example has been updated. Please review the changes, commit them, and run make ci-local again."; \
+		exit 1; \
+	fi
+	@echo "✅ .env.example is in sync with env registry."
 
 ci-lint: ## Run all linters (Go + Frontend)
 	@echo "🔍 Running Go vet..."
@@ -250,6 +338,10 @@ ci-lint: ## Run all linters (Go + Frontend)
 generate-contract: ## Regenerate deploy/contract.json from env registry + service metadata
 	@go run ./cmd/tools/gencontract > deploy/contract.json
 	@echo "✅ deploy/contract.json regenerated"
+
+generate-env-example: ## Regenerate .env.example from the env var registry
+	@go run ./cmd/tools/genenvexample > .env.example
+	@echo "✅ .env.example regenerated"
 
 ci-test-backend: ## Run Go tests matching CI (with race detector + DB health wait)
 	@echo "🧪 Starting test database..."
