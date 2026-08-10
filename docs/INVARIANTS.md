@@ -29,7 +29,9 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-04 | Evidence provenance mandatory on terminal agent outcomes | **B** | Invariants |
 | INV-05 | Reconciliation before record creation | **B** (process only) | Invariants |
 | INV-06 | Determinism boundaries around workflows | A | Invariants |
-| PROP-01…10 | Observed conventions | C | Proposed |
+| INV-07 | Errors are wrapped with `%w`, not `%v` | **B** | Invariants |
+| PROP-01…03, 05…10 | Observed conventions | C | Proposed |
+| ~~PROP-04~~ | Retired — promoted to INV-07 on 2026-08-10 | — | — |
 | UNR-01…03 | Contradictions | D | Unresolved |
 
 ---
@@ -129,6 +131,40 @@ Nondeterminism is correctly concentrated in `internal/application/activities/` (
 
 ---
 
+## INV-07 — Errors are wrapped with `%w`, not `%v`
+
+*Confirmed 2026-08-10. Promoted from `PROP-04`, which is retired.*
+
+**Rule.** An error included in a `fmt.Errorf` message is formatted with `%w`.
+
+**Why.** `%v` flattens an error to a string and breaks the chain, so no caller above it can use `errors.Is` or `errors.As`. This codebase defines 159 sentinel errors, mostly in `pkg/domain/entities` — every one of them is unmatchable through a `%v`. The cost is paid at the point someone tries to handle a specific failure and finds they can only string-match it.
+
+**Class: B — the convention is overwhelming, and 49 sites break it.**
+
+444 `fmt.Errorf(... %w ...)` sites against **49** non-wrapping ones. All 49 are in non-test code; test code is clean. (Count is `errorlint`'s with `errorf: true`, run against this SHA. A `%v`-only grep undercounts it at 31 — `errorlint` also catches `%s`-on-error and cases where the error is not the trailing argument.)
+
+**Violations — nine files, one holding half:**
+
+| Count | File |
+|---|---|
+| **25** | [`cmd/cli/registrars/importer/importRegistrars.go`](cmd/cli/registrars/importer/importRegistrars.go) |
+| 5 | [`internal/application/services/dnssec_service.go`](internal/application/services/dnssec_service.go) |
+| 4 | [`internal/infrastructure/web/icannregistrars/getCreateCommands.go`](internal/infrastructure/web/icannregistrars/getCreateCommands.go) |
+| 4 | [`internal/application/commands/registrar_commands.go`](internal/application/commands/registrar_commands.go) |
+| 3 | [`internal/infrastructure/web/ianaregistrars/iana_repository.go`](internal/infrastructure/web/ianaregistrars/iana_repository.go) |
+| 2 | [`pkg/domain/entities/domain.go:499`](pkg/domain/entities/domain.go#L499), [`:505`](pkg/domain/entities/domain.go#L505) |
+| 2 | [`internal/infrastructure/web/icannspec5/icann_repository.go`](internal/infrastructure/web/icannspec5/icann_repository.go) |
+| 2 | [`internal/infrastructure/web/icannregistrars/readFile.go`](internal/infrastructure/web/icannregistrars/readFile.go) |
+| 2 | [`cmd/cli/registrars/dbimporter/importRegistrarsDB.go`](cmd/cli/registrars/dbimporter/importRegistrarsDB.go) |
+
+By layer: `cmd/cli` 27 · `internal/infrastructure` 11 · `internal/application` 9 · `pkg/domain` 2.
+
+**The two in `pkg/domain/entities/domain.go` are the ones that matter.** An unwrapped error in the domain layer defeats `errors.Is` for every caller above it. The 25 in the CLI importer are the bulk of the work and the lowest stakes.
+
+Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning/domain-os/issues/404).
+
+---
+
 # Proposed — pending Geoff's confirmation
 
 **These are not rules.** They are consistent patterns found in the code, presented as questions. Answer each yes / no / no-longer. Nothing here should be cited in review until it has been promoted.
@@ -145,25 +181,8 @@ Only 8 explicit transaction sites exist, spread across three layers: services ([
 159 `Err… = errors.New(...)` declarations, concentrated in `pkg/domain/entities` (36 files). Outer layers barely declare any: services 4, queries 2, commands 2, and one apiece in rest / infrastructure-web / dns / db / api.
 **Q: Are sentinels meant to be a domain-vocabulary tool specifically, with outer layers wrapping rather than declaring?**
 
-### PROP-04 — Errors are wrapped with `%w`, not `%v`
-444 `fmt.Errorf(... %w ...)` against **49** non-wrapping sites in non-test code, and **zero** in test code. (Count is `errorlint`'s, run against this SHA — it catches `%s`-on-error and cases where the error is not the trailing argument, which a `%v`-only grep misses.)
-
-They are not scattered. Nine files hold all 49, and one holds half:
-
-| Count | File |
-|---|---|
-| 25 | [`cmd/cli/registrars/importer/importRegistrars.go`](cmd/cli/registrars/importer/importRegistrars.go) |
-| 5 | [`internal/application/services/dnssec_service.go`](internal/application/services/dnssec_service.go) |
-| 4 | [`internal/infrastructure/web/icannregistrars/getCreateCommands.go`](internal/infrastructure/web/icannregistrars/getCreateCommands.go) |
-| 4 | [`internal/application/commands/registrar_commands.go`](internal/application/commands/registrar_commands.go) |
-| 3 | [`internal/infrastructure/web/ianaregistrars/iana_repository.go`](internal/infrastructure/web/ianaregistrars/iana_repository.go) |
-| 2 | [`pkg/domain/entities/domain.go:499`](pkg/domain/entities/domain.go#L499), [`:505`](pkg/domain/entities/domain.go#L505) |
-| 2 | [`internal/infrastructure/web/icannspec5/icann_repository.go`](internal/infrastructure/web/icannspec5/icann_repository.go) |
-| 2 | [`internal/infrastructure/web/icannregistrars/readFile.go`](internal/infrastructure/web/icannregistrars/readFile.go) |
-| 2 | [`cmd/cli/registrars/dbimporter/importRegistrarsDB.go`](cmd/cli/registrars/dbimporter/importRegistrarsDB.go) |
-
-Concentration by layer: `cmd/cli` 27, `internal/infrastructure` 11, `internal/application` 9, `pkg/domain` 2. The two in the domain layer are the ones worth looking at first — an unwrapped error there cannot be matched with `errors.Is` by any caller.
-**Q: Is `%w` the rule, making these 49 a cleanup backlog?**
+### ~~PROP-04~~ — promoted, see [INV-07](#inv-07--errors-are-wrapped-with-w-not-v)
+Confirmed 2026-08-10. The ID `PROP-04` is retired and will not be reused.
 
 ### PROP-05 — Repository methods take `ctx` first
 121 of 124 interface methods in `pkg/domain/repositories/` lead with `ctx context.Context`. The three exceptions: [`idGenerator_interface.go:5`](pkg/domain/repositories/idGenerator_interface.go#L5), [`:6`](pkg/domain/repositories/idGenerator_interface.go#L6), [`iana_interface.go:8`](pkg/domain/repositories/iana_interface.go#L8).
@@ -289,10 +308,10 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-04 | yes | type change + analyser | M | Strongest fix is structural, not a lint: unexport `Result`'s fields and add `NewAnswer(...)`/`NewEscalation(...)` constructors that reject empty `Evidence` for `OutcomeAnswer`. A `Validate()` called at [`agent_controller.go:91`](internal/interface/rest/agent_controller.go#L91) is the cheap interim. |
 | INV-05 | partial | grep-level CI check | S | Cannot verify reconciliation happened. **Can** assert `entity_count_consistency` has `Severity: "error"` — i.e. pin the gate so it cannot be silently downgraded again. Genuine enforcement needs branching on `VerificationPassed`, which is a code fix, not a gate. |
 | INV-06 | **yes** | architecture test | **S** | Assert no file under `internal/application/workflows/` imports `net/http`, `math/rand`, `crypto/rand`, or a uuid package, and contains no `time.Now(`. A ~30-line Go test using `go/parser`. Currently holds at zero violations, so it lands green on day one. |
+| INV-07 | **yes** | lint (`errorlint`, `errorf: true`) | **S** | Verified against this SHA: `errorlint` is the linter that catches this — not `err113`/`wrapcheck`, which answer different questions. 49 offenders across 9 files to clear first; 25 are in one file. Enabling `errorlint`'s other two checks (`asserts`, `comparison`) raises the count to 87 — a separate cleanup with different risk, since `==` → `errors.Is` can change behaviour where a sentinel is compared by identity. Tracked in [#404](https://github.com/onasunnymorning/domain-os/issues/404). |
 | PROP-01 | no | code review | — | Placement is a judgement call. |
 | PROP-02 | partial | architecture test | M | Can assert every entity has a `New…` constructor returning `error`; cannot assert the validation is meaningful. |
 | PROP-03 | no | code review | — | |
-| PROP-04 | **yes** | lint (`errorlint`, `errorf: true`) | **S** | Verified: `errorlint` is the linter that catches this (not `err113`/`wrapcheck`, which answer different questions). 49 offenders across 9 files to clear first; 25 are in one file. |
 | PROP-05 | yes | architecture test | S | Parse `pkg/domain/repositories/`, assert param 0 is `context.Context`. 3 exceptions to allowlist or fix. |
 | PROP-06 | partial | architecture test | M | Detectable by signature shape; naming-dependent, so somewhat brittle. |
 | PROP-07 | no | code review | — | |
