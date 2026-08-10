@@ -146,8 +146,24 @@ Only 8 explicit transaction sites exist, spread across three layers: services ([
 **Q: Are sentinels meant to be a domain-vocabulary tool specifically, with outer layers wrapping rather than declaring?**
 
 ### PROP-04 — Errors are wrapped with `%w`, not `%v`
-444 `fmt.Errorf(... %w ...)` versus 31 `fmt.Errorf(... %v ..., err)` in non-test code. The 31 are not scattered — they cluster in the CLI importer ([`cmd/cli/registrars/importer/importRegistrars.go`](cmd/cli/registrars/importer/importRegistrars.go) — 14 sites at `:320, :442, :448, :483, :626, :630, :673, :677, :786, :813, :826, :877, :882, :888`), the web adapters ([`iana_repository.go:39,46,53`](internal/infrastructure/web/ianaregistrars/iana_repository.go#L39), [`icann_repository.go:41`](internal/infrastructure/web/icannspec5/icann_repository.go#L41), [`readFile.go:24,38`](internal/infrastructure/web/icannregistrars/readFile.go#L24), [`getCreateCommands.go:21,25`](internal/infrastructure/web/icannregistrars/getCreateCommands.go#L21)), [`registrar_commands.go:155,159`](internal/application/commands/registrar_commands.go#L155), and [`dnssec_service.go:29,39,45,51,56`](internal/application/services/dnssec_service.go#L29).
-**Q: Is `%w` the rule, making these 31 a cleanup backlog?**
+444 `fmt.Errorf(... %w ...)` against **49** non-wrapping sites in non-test code, and **zero** in test code. (Count is `errorlint`'s, run against this SHA — it catches `%s`-on-error and cases where the error is not the trailing argument, which a `%v`-only grep misses.)
+
+They are not scattered. Nine files hold all 49, and one holds half:
+
+| Count | File |
+|---|---|
+| 25 | [`cmd/cli/registrars/importer/importRegistrars.go`](cmd/cli/registrars/importer/importRegistrars.go) |
+| 5 | [`internal/application/services/dnssec_service.go`](internal/application/services/dnssec_service.go) |
+| 4 | [`internal/infrastructure/web/icannregistrars/getCreateCommands.go`](internal/infrastructure/web/icannregistrars/getCreateCommands.go) |
+| 4 | [`internal/application/commands/registrar_commands.go`](internal/application/commands/registrar_commands.go) |
+| 3 | [`internal/infrastructure/web/ianaregistrars/iana_repository.go`](internal/infrastructure/web/ianaregistrars/iana_repository.go) |
+| 2 | [`pkg/domain/entities/domain.go:499`](pkg/domain/entities/domain.go#L499), [`:505`](pkg/domain/entities/domain.go#L505) |
+| 2 | [`internal/infrastructure/web/icannspec5/icann_repository.go`](internal/infrastructure/web/icannspec5/icann_repository.go) |
+| 2 | [`internal/infrastructure/web/icannregistrars/readFile.go`](internal/infrastructure/web/icannregistrars/readFile.go) |
+| 2 | [`cmd/cli/registrars/dbimporter/importRegistrarsDB.go`](cmd/cli/registrars/dbimporter/importRegistrarsDB.go) |
+
+Concentration by layer: `cmd/cli` 27, `internal/infrastructure` 11, `internal/application` 9, `pkg/domain` 2. The two in the domain layer are the ones worth looking at first — an unwrapped error there cannot be matched with `errors.Is` by any caller.
+**Q: Is `%w` the rule, making these 49 a cleanup backlog?**
 
 ### PROP-05 — Repository methods take `ctx` first
 121 of 124 interface methods in `pkg/domain/repositories/` lead with `ctx context.Context`. The three exceptions: [`idGenerator_interface.go:5`](pkg/domain/repositories/idGenerator_interface.go#L5), [`:6`](pkg/domain/repositories/idGenerator_interface.go#L6), [`iana_interface.go:8`](pkg/domain/repositories/iana_interface.go#L8).
@@ -276,7 +292,7 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | PROP-01 | no | code review | — | Placement is a judgement call. |
 | PROP-02 | partial | architecture test | M | Can assert every entity has a `New…` constructor returning `error`; cannot assert the validation is meaningful. |
 | PROP-03 | no | code review | — | |
-| PROP-04 | **yes** | lint (`err113` / `wrapcheck`) | **S** | Already-available golangci linters; 31 known offenders to clear first. |
+| PROP-04 | **yes** | lint (`errorlint`, `errorf: true`) | **S** | Verified: `errorlint` is the linter that catches this (not `err113`/`wrapcheck`, which answer different questions). 49 offenders across 9 files to clear first; 25 are in one file. |
 | PROP-05 | yes | architecture test | S | Parse `pkg/domain/repositories/`, assert param 0 is `context.Context`. 3 exceptions to allowlist or fix. |
 | PROP-06 | partial | architecture test | M | Detectable by signature shape; naming-dependent, so somewhat brittle. |
 | PROP-07 | no | code review | — | |
