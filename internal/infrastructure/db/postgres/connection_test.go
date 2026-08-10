@@ -13,14 +13,30 @@ import (
 )
 
 const (
-	dbUser       = "postgres"
-	dbPass       = "unittest"
-	dbHost       = "127.0.0.1"
-	dbPortString = "5432"
-	dbPort       = 5432
-	dbName       = "dos_unittests"
-	sslmode      = "require"
+	dbUser  = "postgres"
+	dbPass  = "unittest"
+	dbName  = "dos_unittests"
+	sslmode = "require"
 )
+
+// Connection target for the throwaway test Postgres.
+//
+// Overridable via TEST_DB_HOST / TEST_DB_PORT, matching the convention already
+// used by internal/interface/rest/tests. The defaults are what CI uses
+// (.github/scripts/setup-test-db.sh publishes 5432), so CI behaviour is
+// unchanged; `make test` overrides the port so the test container can coexist
+// with a `make dev` stack already holding 5432.
+var (
+	dbHost       = testEnvOrDefault("TEST_DB_HOST", "127.0.0.1")
+	dbPortString = testEnvOrDefault("TEST_DB_PORT", "5432")
+)
+
+func testEnvOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
+}
 
 func setupTestDB() *gorm.DB {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPortString, dbName, sslmode)
@@ -45,7 +61,7 @@ func setupTestDB() *gorm.DB {
 }
 
 func createTestDB() {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=require", dbHost, dbPort, dbUser, dbPass)
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s sslmode=require", dbHost, dbPortString, dbUser, dbPass)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal(err)

@@ -115,7 +115,7 @@ services:
   # Core API container
   admin-api:
     build: .
-    image: "gprins/domain-os-api:${BRANCH}"
+    image: "gprins/domain-os-api:${BRANCH:-latest}"
     restart: always
     profiles: [ essential, full ]
     healthcheck:
@@ -136,8 +136,11 @@ services:
       - GIN_MODE=${GIN_MODE}
       - AUTO_MIGRATE=${AUTO_MIGRATE}
       - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
-      - NEWRELIC_LICENCE_KEY=${NEWRELIC_LICENCE_KEY}
-      - NEWRELIC_USER_KEY=${NEWRELIC_USER_KEY}
+      # The code reads NEW_RELIC_LICENSE_KEY (see ryAdminAPI.go and the env
+      # registry). This previously passed NEWRELIC_LICENCE_KEY and
+      # NEWRELIC_USER_KEY — neither name is read anywhere, so they were dead
+      # config that emitted an "is not set" warning on every compose command.
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY:-}
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
@@ -180,7 +183,12 @@ services:
 
   # Admin Init (One-off task to sync registrars on startup)
   admin-init:
-    image: "gprins/domain-os-api:${BRANCH}"
+    # Shares the API image. The build stanza mirrors admin-api's so this service
+    # can be built locally instead of only pulled — see the whois note above.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: "gprins/domain-os-api:${BRANCH:-latest}"
     restart: "no" # Run once and stop
     profiles: [ essential, full ]
     depends_on:
@@ -269,7 +277,7 @@ services:
     build:
       context: .
       dockerfile: ./cmd/workers/unified/Dockerfile
-    image: gprins/domain-os-worker:${BRANCH}
+    image: gprins/domain-os-worker:${BRANCH:-latest}
     restart: unless-stopped
     profiles: [ essential, full ]
     depends_on:
@@ -338,7 +346,9 @@ services:
 
   # MinIO client to create the buckets (one per data type — see docs: Bucket Storage Strategy)
   minio-setup:
-    image: minio/mc:latest
+    # Pinned, not :latest — a floating tag here means two collaborators can
+    # provision buckets with different mc versions on the same compose file.
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     restart: "no"
     profiles: [ infra, essential, full ]
     depends_on:
@@ -357,7 +367,12 @@ services:
 
   # Whois container
   whois:
-    image: "gprins/domain-os-whois:${BRANCH}"
+    # Without a build stanza this service can only ever pull. On any branch
+    # whose image has not been published, `docker compose up` fails here.
+    build:
+      context: .
+      dockerfile: ./cmd/whois/Dockerfile
+    image: "gprins/domain-os-whois:${BRANCH:-latest}"
     restart: always
     profiles: [ full ]
     depends_on:
@@ -385,7 +400,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mcp
-    image: "gprins/domain-os-mcp:${BRANCH}"
+    image: "gprins/domain-os-mcp:${BRANCH:-latest}"
     restart: unless-stopped
     profiles: [ full ]
     depends_on:
