@@ -211,15 +211,32 @@ The rule as stated does not map onto this codebase, and the code does three inco
 
 ## UNR-01 — The domain layer imports outward, while the docs say it cannot
 
-[`architecture.md:11`](architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](.cursorrules) makes that file binding on every agent working in this repo. **13 files in `pkg/domain/repositories/` import inward-layer packages:**
+[`architecture.md:11`](architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](.cursorrules) makes that file binding on every agent working in this repo. 13 files in `pkg/domain/repositories/` import inward-layer packages — **but they are two different problems with two different fixes, and only one is a real layering violation.**
 
-Importing `internal/application/queries` (11): [`domain_repository.go:8`](pkg/domain/repositories/domain_repository.go#L8), [`contact_repository.go:6`](pkg/domain/repositories/contact_repository.go#L6), [`host_repository.go:6`](pkg/domain/repositories/host_repository.go#L6), [`registrar_interface.go:6`](pkg/domain/repositories/registrar_interface.go#L6), [`tld_interface.go:6`](pkg/domain/repositories/tld_interface.go#L6), [`nndn_interface.go:6`](pkg/domain/repositories/nndn_interface.go#L6), [`premiumLabel_repository.go:6`](pkg/domain/repositories/premiumLabel_repository.go#L6), [`premiumList_repository.go:6`](pkg/domain/repositories/premiumList_repository.go#L6), [`registryOperator_repository.go:6`](pkg/domain/repositories/registryOperator_repository.go#L6), [`spec5Label_interface.go:6`](pkg/domain/repositories/spec5Label_interface.go#L6), [`tombstone_interface.go:6`](pkg/domain/repositories/tombstone_interface.go#L6).
+`pkg/domain/repositories/` is a genuine ports package: 26 interfaces, no adapters. (It does hold 4 mock implementations — [`MockDomainRepository`](pkg/domain/repositories/domain_repository.go#L38), [`MockRegistrarRepository`](pkg/domain/repositories/registrar_interface.go#L25), [`MockHostRepository`](pkg/domain/repositories/host_repository.go#L28), [`MockHostAddressRepository`](pkg/domain/repositories/hostAddress_repository.go#L17) — which is a separate, minor question about test doubles shipping in the port package.)
 
-Importing `internal/infrastructure/db/postgres` — the domain layer importing the database adapter, the sharpest two: [`tldDNSRecord_repository.go:6`](pkg/domain/repositories/tldDNSRecord_repository.go#L6), [`fx_interface.go:6`](pkg/domain/repositories/fx_interface.go#L6).
+### Group 1 — misfiled value types, not a layering violation (11 files)
 
-**`pkg/domain/entities/` is clean by contrast** — its only third-party imports are value-object libraries (`go-money` ×7, `uuid` ×6, `idna` ×3, `miekg/dns`, `countries`, `go-net`). No DB driver, no web framework. The leak is entirely in `repositories/`.
+These import `internal/application/queries` purely for pagination and filter parameter types: `ListItemsQuery`, `ListDomainsFilter`, `ListContactsFilter`, `ListHostsFilter`, `ListTldsFilter`, `ListNndnsFilter`, `ListTombstonesFilter`, `ListRegistryOperatorsFilter`, `ActiveDomainsWithHostsQuery`.
 
-**What needs deciding:** move the shared query/filter types into `pkg/domain` so the ports stop reaching inward, or retire the "dependency-free" claim from `architecture.md`. Right now the doc every agent is told to obey is contradicted by the code.
+Files: [`domain_repository.go:8`](pkg/domain/repositories/domain_repository.go#L8), [`contact_repository.go:6`](pkg/domain/repositories/contact_repository.go#L6), [`host_repository.go:6`](pkg/domain/repositories/host_repository.go#L6), [`registrar_interface.go:6`](pkg/domain/repositories/registrar_interface.go#L6), [`tld_interface.go:6`](pkg/domain/repositories/tld_interface.go#L6), [`nndn_interface.go:6`](pkg/domain/repositories/nndn_interface.go#L6), [`premiumLabel_repository.go:6`](pkg/domain/repositories/premiumLabel_repository.go#L6), [`premiumList_repository.go:6`](pkg/domain/repositories/premiumList_repository.go#L6), [`registryOperator_repository.go:6`](pkg/domain/repositories/registryOperator_repository.go#L6), [`spec5Label_interface.go:6`](pkg/domain/repositories/spec5Label_interface.go#L6), [`tombstone_interface.go:6`](pkg/domain/repositories/tombstone_interface.go#L6).
+
+**The dependency direction is not actually inverted here.** `go list -deps ./internal/application/queries` returns exactly one first-party package: `pkg/domain/entities`. No infrastructure, no GORM, no HTTP — its third-party deps are the same value-object libraries the entities use. These are domain-shaped value types that happen to be filed under `internal/application/`.
+
+**Fix is a move, not a redesign:** relocate the query/filter types to `pkg/domain` (e.g. `pkg/domain/queries`), and these 11 imports become legal with no signature changes. Cheap.
+
+### Group 2 — a real leak, and it is the expensive one (2 files)
+
+[`fx_interface.go:6`](pkg/domain/repositories/fx_interface.go#L6) and [`tldDNSRecord_repository.go:6`](pkg/domain/repositories/tldDNSRecord_repository.go#L6) import `internal/infrastructure/db/postgres` and type their method signatures against GORM persistence models.
+
+- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
+- **`TLDDNSRecordRepository` uses `postgres.TLDDNSRecord` in all three methods** ([`:11-13`](pkg/domain/repositories/tldDNSRecord_repository.go#L11)) — and there is **no** `entities.TLDDNSRecord`. That concept was never modelled in the domain at all; the persistence model is its only representation.
+
+**The concrete cost, measured:** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3`, and `lib/pq` — actual Postgres wire-protocol drivers, now reachable from the domain layer. **These two files alone cause that.** This is precisely the "no imports of database drivers" case `architecture.md:11` names.
+
+**Fix is real work:** introduce `entities.TLDDNSRecord`, use `entities.FX` on the write path, and add mappers in the postgres adapter.
+
+**What needs deciding:** confirm Group 1 is a package-placement mistake and schedule the move; and decide whether Group 2 gets modelled properly or the "dependency-free" claim is narrowed to `pkg/domain/entities` only — which is where it currently holds.
 
 ## UNR-02 — Two spellings of the correlation ID; the only reader is dead code with a passing test
 
@@ -266,7 +283,8 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | PROP-08 | yes | import lint (`depguard`) | S | Ban `log` in chosen packages once the direction is confirmed. Blocked on PROP-08's answer. |
 | PROP-09 | no | code review | — | |
 | PROP-10 | no | code review | — | |
-| UNR-01 | **yes** | import lint (`depguard`) | **S** | Deny `internal/**` imports from `pkg/domain/**`. 13 violations must be fixed or allowlisted first. |
+| UNR-01 grp 1 (11 files) | **yes** | import lint (`depguard`) | **S** | Gate is one deny-rule: no `internal/**` from `pkg/domain/**`. Blocked until the query/filter types move to `pkg/domain` — that move is itself S and mechanical. |
+| UNR-01 grp 2 (2 files) | yes | same deny-rule | M | Same gate catches it, but the fix is modelling work (`entities.TLDDNSRecord`, `entities.FX` on writes, mappers) — not a rename. Do this before turning the rule on, or allowlist the two files meanwhile. |
 | UNR-02 | partial | `staticcheck` SA1029 | S | Already detected by a linter that is already enabled — see the blocker below. |
 | UNR-03 | no | code review | — | Doc-vs-code drift is not mechanically checkable. |
 
