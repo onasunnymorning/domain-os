@@ -7,6 +7,21 @@ A domain name registry backend — the system that manages the lifecycle of doma
 
 ---
 
+## Quickstart
+
+Prerequisites: **Docker Desktop** and **Go 1.26.5** (`asdf install` reads `.tool-versions`).
+
+```bash
+git clone https://github.com/onasunnymorning/domain-os.git && cd domain-os
+cp .env.example .env      # no edits needed
+make dev                  # builds, starts, migrates, seeds — allow ~15 min cold
+make test                 # full suite, green
+```
+
+`make doctor` diagnoses a failed start. **Local development needs no cloud credentials** — no AWS, no Doppler, no Auth0, no network egress. See [Troubleshooting](#troubleshooting).
+
+---
+
 ## Why does this exist?
 
 Registry backends operate in a high-volume, low-margin environment. The legacy systems we've worked with tend to be monolithic, hard to adapt, and built on technology stacks that make change expensive. Policy changes, new TLD launches, infrastructure migrations — each of these becomes a project in itself.
@@ -200,43 +215,45 @@ Full stack details in [stack.md](stack.md).
 
 ### Prerequisites
 
-- Docker Desktop
-- Go 1.21+ (for local development)
-- Node.js 18+ (for frontend development)
-- [Doppler CLI](https://docs.doppler.com/docs/install-cli) for secrets (or use a `.env` file)
+Versions are pinned in `.tool-versions` (asdf/mise), `go.mod`, and `frontend/.nvmrc` — install them with `asdf install` rather than by hand.
 
-### Quick start with pre-built images
+- Docker Desktop (with Compose v2)
+- Go 1.26.5 — backend
+- Node.js 22 — frontend only; the backend and the test suite do not need it
 
-```bash
-BRANCH=latest docker compose --profile essential up
-```
+No cloud accounts. Doppler is used for staging and production secrets, but nothing in the local boot or test path reads it.
 
-This starts: PostgreSQL, Redis, Admin API, EPP Server, Temporal (server + UI), Unified Worker, MinIO, and Metabase.
+### The five targets that matter
 
-### Development setup
+| Target | What it does |
+|---|---|
+| `make dev` | Cold machine → running stack, migrated and seeded |
+| `make test` | Full suite against a throwaway database (safe to run while `make dev` is up) |
+| `make down` | Stop services, keep your data |
+| `make reset` | Destroy volumes and state — the next `make dev` is a first-ever run |
+| `make doctor` | Preflight: Docker, ports, toolchain, `.env`, disk. Run this first when something breaks |
 
-```bash
-# Copy the example env file
-cp example.env .env
+`make help` lists everything else.
 
-# Terminal 1: Start backend services
-make dev
+### What `make dev` gives you
 
-# Terminal 2: Start the frontend
-make dev-frontend
-```
+The stack comes up seeded with a synthetic dataset — no escrow data, no real registrants:
 
-### Useful commands
+- one TLD, `.test` (reserved by RFC 2606, so it can never collide with a real registration)
+- six registrars — four generated, plus the `9998`/`9999` operator accounts the TLD provisions
+- nine domains spanning the lifecycle states the workflows branch on: active, locked, add/renew/auto-renew grace, expiring, redemption, and pending delete
 
-```bash
-make help              # See all available commands
-make test              # Unit tests
-make test-integration  # Integration tests (requires running services)
-make dev-logs          # Tail service logs
-make stop              # Stop everything
-make clean             # Remove containers and volumes
-make shell-db          # PostgreSQL shell
-```
+| Service | URL |
+|---|---|
+| Admin API | http://localhost:8080 — Swagger at `/swagger/index.html` |
+| Temporal UI | http://localhost:8081 |
+| MinIO console | http://localhost:9001 — `minioadmin` / `minioadmin` |
+| Frontend | `make dev-frontend`, then http://localhost:3002 |
+| PostgreSQL | `localhost:5432` — or `make shell-db` |
+| EPP | `localhost:7700` (port 700 inside the container) |
+| WHOIS | `localhost:4343` (port 43 inside the container) |
+
+EPP and WHOIS are published high because 700 and 43 are privileged ports: Docker Desktop on macOS publishes them fine, but on Linux they need root. Publishing high means the same command works on both.
 
 ### Using the API
 
@@ -245,6 +262,26 @@ make shell-db          # PostgreSQL shell
 3. Set `baseUrl` and `token` environment variables in Postman
 4. Start creating resources:
    - Registry Operator → TLD → Phase → Registrars → Domains
+
+### Troubleshooting
+
+**Run `make doctor` first.** It checks Docker, ports, toolchain versions, `.env`, and disk, and prints the command that fixes whatever it finds. Most of what follows is what it will tell you.
+
+| Symptom | Cause and fix |
+|---|---|
+| `make dev` fails immediately, no output from Docker | Docker Desktop is not running. Start it and wait for the whale icon to settle. |
+| `port is already allocated`, port 5432 | Another Postgres — often a Homebrew `postgresql` service, or another project's stack. `brew services stop postgresql`, or `make down` in the other project. `make doctor` names the process holding it. |
+| `port is already allocated`, port 7700 or 8080 | Something else on your machine. `lsof -nP -iTCP:7700 -sTCP:LISTEN` names it. Note: port **7000** is deliberately not used — macOS AirPlay Receiver listens there, which is why EPP is published on 7700. |
+| First `make dev` takes 10–15 minutes | Expected. It builds three Go services and pulls eight images. Subsequent runs are seconds; only a first-ever run or a `make reset` pays this. |
+| `make test` fails on a database connection | The suite needs its own Postgres on port 5433, which `make test` starts for you. If 5433 is taken, override it: `make test TEST_DB_PORT=5455`. |
+| Tests fail but `make dev` is running | They shouldn't — the test database is on 5433 precisely so the two coexist. If you see a port collision, something else took 5433. |
+| App behaves as if a setting is missing | Your `.env` predates a newly added variable. `make doctor` warns when `.env` is older than `.env.example`. Compare with `diff <(sort .env) <(sort .env.example)`. |
+| `password authentication failed for user "postgres"` | You have a Postgres volume from an earlier install, created with a different password. Postgres only applies `POSTGRES_PASSWORD` when it initialises an *empty* data directory, so changing `DB_PASS` in `.env` has no effect on an existing volume. Fix: `make reset && make dev`. |
+| Database is in a weird state | `make reset && make dev` — destroys volumes and rebuilds from empty. This is expected to work at any time; if it doesn't, that's a bug. |
+| `make dev-frontend` fails on the Node version | The frontend needs Node 22 (`frontend/.nvmrc`). `nvm use` or `asdf install`. The backend and the test suite do not need Node at all. |
+| Something asks for a Doppler login | You ran a maintainer target. `make dev`, `make test`, `make down`, `make reset`, and `make doctor` never touch Doppler; `make dev-doppler`, `make askg`, and `make local` do. |
+
+**Local requires no cloud credentials and no network egress after the initial image pulls.** There is no AWS key, no Grafana Cloud token, no Auth0 tenant, and no Doppler login in the boot or test path. If something asks you for a credential, that is a bug — please report it rather than working around it.
 
 ---
 

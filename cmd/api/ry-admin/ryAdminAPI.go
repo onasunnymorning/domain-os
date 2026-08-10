@@ -134,6 +134,13 @@ func main() {
 		return
 	}
 
+	// Check for seed command. Unlike init-registrars, this reaches no network:
+	// it is the local-development path and must work fully offline.
+	if len(os.Args) > 1 && os.Args[1] == "seed" {
+		runSeed(cfg, logger)
+		return
+	}
+
 	// Try and determine the runtime environment
 	if !runningInDocker() {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
