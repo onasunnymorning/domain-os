@@ -10,9 +10,11 @@ Cite invariants by ID in review and in commit messages, e.g. "this violates INV-
 
 | ID | Section |
 |---|---|
-| `INV-01` … `INV-06` | Invariants — confirmed rules |
-| `PROP-01` … `PROP-10` | Proposed — **not rules.** Awaiting confirmation; do not enforce or cite as binding. |
+| `INV-01` … `INV-07` | Invariants — confirmed rules |
+| `PROP-01`…`PROP-03`, `PROP-05`…`PROP-10` | Proposed — **not rules.** Awaiting confirmation; do not enforce or cite as binding. |
 | `UNR-01` … `UNR-03`, and `INV-02` | Unresolved — known contradictions with no decision yet. If your change touches one, say so and ask rather than picking a side. |
+
+IDs are never reused. `PROP-04` is retired — it was promoted to `INV-07`.
 
 Two consequences worth knowing before you rely on CI:
 
