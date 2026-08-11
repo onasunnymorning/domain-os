@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/onasunnymorning/domain-os/internal/application/queries"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
@@ -197,7 +196,7 @@ type mockFXRepository struct {
 	mock.Mock
 }
 
-func (m *mockFXRepository) UpdateAll(ctx context.Context, fxs []*postgres.FX) error {
+func (m *mockFXRepository) UpdateAll(ctx context.Context, fxs []*entities.FX) error {
 	return m.Called(ctx, fxs).Error(0)
 }
 

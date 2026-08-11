@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
-	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -16,7 +16,7 @@ import (
 
 type mockFXStore struct{ mock.Mock }
 
-func (m *mockFXStore) UpdateAll(ctx context.Context, fxs []*postgres.FX) error {
+func (m *mockFXStore) UpdateAll(ctx context.Context, fxs []*entities.FX) error {
 	return m.Called(ctx, fxs).Error(0)
 }
 
@@ -57,7 +57,7 @@ func TestUpdateFXRates_ExplicitBases_Success(t *testing.T) {
 
 	rates.On("GetLatestRates", mock.Anything, "USD", []string(nil)).Return(testRates("USD"), nil)
 	rates.On("GetLatestRates", mock.Anything, "EUR", []string(nil)).Return(testRates("EUR"), nil)
-	store.On("UpdateAll", mock.Anything, mock.AnythingOfType("[]*postgres.FX")).Return(nil)
+	store.On("UpdateAll", mock.Anything, mock.AnythingOfType("[]*entities.FX")).Return(nil)
 
 	result, err := a.UpdateFXRates(context.Background(), "corr", []string{"USD", "EUR"})
 	require.NoError(t, err)

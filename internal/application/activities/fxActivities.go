@@ -7,6 +7,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
 )
@@ -19,7 +20,7 @@ type FXRatesSource interface {
 
 // fxStore is the subset of the FX repository the activities need.
 type fxStore interface {
-	UpdateAll(ctx context.Context, fxs []*postgres.FX) error
+	UpdateAll(ctx context.Context, fxs []*entities.FX) error
 }
 
 // baseCurrencyLister provides the distinct base currencies configured across phases.
@@ -126,7 +127,7 @@ func (a *FXActivities) UpdateFXRates(ctx context.Context, correlationID string, 
 			continue
 		}
 
-		fxs := make([]*postgres.FX, 0, len(rates))
+		fxs := make([]*entities.FX, 0, len(rates))
 		conversionFailed := false
 		for _, r := range rates {
 			date, err := r.ParsedDate()
@@ -135,11 +136,11 @@ func (a *FXActivities) UpdateFXRates(ctx context.Context, correlationID string, 
 				conversionFailed = true
 				break
 			}
-			fxs = append(fxs, &postgres.FX{
-				Date:   date,
-				Base:   r.Base,
-				Target: r.Quote,
-				Rate:   r.Rate,
+			fxs = append(fxs, &entities.FX{
+				Date:           date,
+				BaseCurrency:   r.Base,
+				TargetCurrency: r.Quote,
+				Rate:           r.Rate,
 			})
 		}
 		if conversionFailed {
