@@ -10,9 +10,10 @@ import (
 	"log"
 
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"golang.org/x/net/context"
 )
@@ -1758,10 +1759,10 @@ func (s *DomainService) publishDomainEvent(
 		return
 	}
 	// Populate trace_id and correlation_id if they exist
-	if traceID, ok := ctx.Value("trace_id").(string); ok {
+	if traceID, ok := appcontext.TraceID(ctx); ok {
 		event.TraceID = traceID
 	}
-	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+	if correlationID, ok := appcontext.CorrelationID(ctx); ok {
 		event.CorrelationID = correlationID
 	}
 
@@ -1777,7 +1778,7 @@ func (s *DomainService) publishDomainEvent(
 	domainEvent.Command = command
 	domainEvent.BeforeState = previousState
 	domainEvent.AfterState = newState
-	if actor, ok := ctx.Value("userid").(string); ok {
+	if actor, ok := appcontext.UserID(ctx); ok {
 		domainEvent.Actor = actor
 	}
 	if event != nil {

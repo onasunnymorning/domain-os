@@ -12,6 +12,7 @@ import (
 	dnsresolver "github.com/onasunnymorning/domain-os/internal/infrastructure/dns"
 
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
 )
@@ -125,15 +126,15 @@ func (DriftObservationRecord) TableName() string {
 // ---------------------------------------------------------------------------
 
 // GetSlavingConfig retrieves the zone slaving configuration from the database.
-func (a *SerialDriftActivities) GetSlavingConfig(ctx context.Context, tenantID, slavingID string) (*serialdrift.Config, error) {
+func (a *SerialDriftActivities) GetSlavingConfig(ctx context.Context, scope entities.OperatorID, slavingID string) (*serialdrift.Config, error) {
 	activity.RecordHeartbeat(ctx, "fetching slaving config")
 
 	var record ZoneSlavingRecord
 	result := a.db.WithContext(ctx).
-		Where("id = ? AND tenant_id = ?", slavingID, tenantID).
+		Where("id = ? AND tenant_id = ?", slavingID, scope).
 		First(&record)
 	if result.Error != nil {
-		return nil, fmt.Errorf("GetSlavingConfig(tenantID=%s, slavingID=%s): %w", tenantID, slavingID, result.Error)
+		return nil, fmt.Errorf("GetSlavingConfig(operator=%s, slavingID=%s): %w", scope, slavingID, result.Error)
 	}
 
 	return &serialdrift.Config{
@@ -176,7 +177,7 @@ func (a *SerialDriftActivities) PersistObservations(ctx context.Context, input s
 		// Create the run record
 		run := DriftRunRecord{
 			ID:           input.RunID,
-			TenantID:     input.TenantID,
+			TenantID:     input.TenantID.String(),
 			SlavingID:    input.SlavingID,
 			Zone:         input.Zone,
 			MasterSerial: input.MasterSerial,
@@ -222,7 +223,7 @@ func (a *SerialDriftActivities) RaiseAlert(ctx context.Context, input serialdrif
 
 // GetRecentHistory retrieves recent drift observations for stall detection.
 // Returns the most recent observations grouped by nameserver, ordered newest first.
-func (a *SerialDriftActivities) GetRecentHistory(ctx context.Context, tenantID, slavingID string, limit int) ([]serialdrift.ObservationHistoryEntry, error) {
+func (a *SerialDriftActivities) GetRecentHistory(ctx context.Context, scope entities.OperatorID, slavingID string, limit int) ([]serialdrift.ObservationHistoryEntry, error) {
 	activity.RecordHeartbeat(ctx, "fetching recent observation history")
 
 	var entries []serialdrift.ObservationHistoryEntry
@@ -236,9 +237,9 @@ func (a *SerialDriftActivities) GetRecentHistory(ctx context.Context, tenantID, 
 		WHERE r.tenant_id = ? AND r.slaving_id = ? AND o.is_master = false
 		ORDER BY r.created_at DESC
 		LIMIT ?
-	`, tenantID, slavingID, limit).Rows()
+	`, scope, slavingID, limit).Rows()
 	if err != nil {
-		return nil, fmt.Errorf("GetRecentHistory(tenantID=%s, slavingID=%s): %w", tenantID, slavingID, err)
+		return nil, fmt.Errorf("GetRecentHistory(operator=%s, slavingID=%s): %w", scope, slavingID, err)
 	}
 	defer rows.Close()
 

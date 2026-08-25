@@ -496,13 +496,13 @@ func (d *Domain) Expire(phase *Phase) error {
 	for _, status := range unsetStatuses {
 		err := d.UnSetStatus(status)
 		if err != nil {
-			return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to unset status %s: %s", status, err))
+			return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to unset status %s: %w", status, err))
 		}
 	}
 	// Set the domain status to PendingDelete
 	err := d.SetStatus(DomainStatusPendingDelete)
 	if err != nil {
-		return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to set pendingDelete: %s", err))
+		return errors.Join(ErrDomainExpiryFailed, fmt.Errorf("failed to set pendingDelete: %w", err))
 	}
 
 	// Set the redemption period end date based on the phase policy and expiration date

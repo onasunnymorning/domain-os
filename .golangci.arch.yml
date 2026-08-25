@@ -1,0 +1,127 @@
+# Architecture gate — enforced, and deliberately separate from .golangci.yml.
+#
+# The main lint config runs advisory (--issues-exit-code=0) because the seven
+# linters it enables have never had to pass and currently report ~1255 issues.
+# Clearing that backlog is tracked separately. This file exists so that the
+# architectural rules in docs/INVARIANTS.md do not have to wait for it: the
+# rules below hold today and are enforced today.
+#
+# Adding a violation here fails CI. If a violation is deliberate, allowlist it
+# in this file with a comment saying why and what will remove it.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errorlint
+    - staticcheck
+
+  settings:
+    # INV-07 — errors are wrapped with %w, not %v.
+    # Only the errorf check. The `asserts` and `comparison` checks find a
+    # further ~38 sites and are a separate decision, since changing `==` to
+    # errors.Is can alter behaviour where a sentinel is compared by identity.
+    errorlint:
+      errorf: true
+      asserts: false
+      comparison: false
+
+    # INV-15 — context values are carried on typed keys.
+    # SA1029 only: "should not use built-in type as key for value in
+    # context.WithValue". The rest of staticcheck is advisory in .golangci.yml
+    # and is not gated here.
+    staticcheck:
+      checks:
+        - SA1029
+
+    depguard:
+      rules:
+        # INV-14 — the domain layer does not import inward.
+        domain-layer:
+          files:
+            - "**/pkg/domain/**"
+            # Allowlisted, temporarily. Both type their signatures against GORM
+            # models and are the only reason pkg/domain/repositories reaches
+            # pgx and lib/pq. Fixes in flight: #400 (PR #405) and #401.
+            # Remove these two lines when those land — see UNR-01 group 2.
+            - "!**/pkg/domain/repositories/fx_interface.go"
+            - "!**/pkg/domain/repositories/tldDNSRecord_repository.go"
+          deny:
+            - pkg: github.com/onasunnymorning/domain-os/internal
+              desc: "the domain layer must not import inward (INV-14)"
+
+        # INV-03 — vendor LLM SDKs live only in the provider adapter.
+        llm-sdk-boundary:
+          files:
+            - "**/*.go"
+            - "!**/internal/askg/provider/**"
+          deny:
+            - pkg: github.com/anthropics/anthropic-sdk-go
+              desc: "vendor LLM SDKs belong only in internal/askg/provider (INV-03)"
+
+        # INV-12 — Temporal workflow code logs through the Temporal logger.
+        # Scoped to workflows only. Activities are excluded deliberately: some
+        # accept a *log.Logger as an injected dependency and some log at
+        # construction time, where no activity context exists yet.
+        temporal-workflow-logging:
+          files:
+            - "**/internal/application/workflows/**"
+          deny:
+            - pkg: log
+              desc: "workflows must log via workflow.GetLogger(ctx) (INV-12)"
+            - pkg: log/slog
+              desc: "workflows must log via workflow.GetLogger(ctx) (INV-12)"
+
+        # INV-01 — telemetry is never on the event delivery path.
+        outbox-no-telemetry:
+          files:
+            - "**/internal/application/workflows/eventRelay.go"
+            - "**/internal/application/activities/eventRelayActivities.go"
+            - "**/internal/infrastructure/db/postgres/event_publisher.go"
+          deny:
+            - pkg: go.opentelemetry.io
+              desc: "telemetry must not be load-bearing on the delivery path (INV-01)"
+            - pkg: github.com/newrelic/go-agent
+              desc: "telemetry must not be load-bearing on the delivery path (INV-01)"
+
+  exclusions:
+    paths:
+      - vendor
+      - testdata
+
+    rules:
+      # INV-07 backlog, allowlisted while #404 clears it. These 8 files hold
+      # the 47 remaining non-wrapping fmt.Errorf sites; the rule still guards
+      # every other file, so the backlog cannot grow outside them.
+      #
+      # The 2 sites in pkg/domain/entities/domain.go were fixed rather than
+      # excluded — an unwrapped error in the domain layer defeats errors.Is
+      # for every caller above it, so the domain layer is fully gated.
+      #
+      # Delete each line as its file is cleared. Counts are as of 2026-08-25.
+      - linters: [errorlint]
+        path: cmd/cli/registrars/importer/importRegistrars\.go          # 25
+      - linters: [errorlint]
+        path: internal/application/services/dnssec_service\.go          # 5
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannregistrars/getCreateCommands\.go  # 4
+      - linters: [errorlint]
+        path: internal/application/commands/registrar_commands\.go      # 4
+      - linters: [errorlint]
+        path: internal/infrastructure/web/ianaregistrars/iana_repository\.go     # 3
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannspec5/icann_repository\.go        # 2
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannregistrars/readFile\.go   # 2
+      - linters: [errorlint]
+        path: cmd/cli/registrars/dbimporter/importRegistrarsDB\.go       # 2
+
+issues:
+  # Every violation must be reported. The default caps identical messages at 3,
+  # which silently understates a broad breach.
+  max-same-issues: 0
+  max-issues-per-linter: 0

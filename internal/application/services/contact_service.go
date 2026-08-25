@@ -6,9 +6,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"golang.org/x/net/context"
 )
@@ -136,16 +137,16 @@ func (s *ContactService) publishContactEvent(
 		msg,
 		data,
 	)
-	if traceID, ok := ctx.Value("trace_id").(string); ok {
+	if traceID, ok := appcontext.TraceID(ctx); ok {
 		domainEvent.TraceID = traceID
 	}
-	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+	if correlationID, ok := appcontext.CorrelationID(ctx); ok {
 		domainEvent.CorrelationID = correlationID
 	}
 	domainEvent.Command = command
 	domainEvent.BeforeState = previousState
 	domainEvent.AfterState = newState
-	if actor, ok := ctx.Value("userid").(string); ok {
+	if actor, ok := appcontext.UserID(ctx); ok {
 		domainEvent.Actor = actor
 	}
 

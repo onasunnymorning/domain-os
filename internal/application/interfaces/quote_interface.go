@@ -3,8 +3,8 @@ package interfaces
 import (
 	"context"
 
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // QuoteService is the interface for the quote service
