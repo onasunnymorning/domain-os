@@ -4,7 +4,7 @@
 **Date:** 2026-08-10
 **Status:** Draft. Nothing here is settled. Expected review action is deletion and correction.
 
-**Resolutions since the analysis SHA.** `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25). All ten `PROP` candidates are now answered (2026-08-10 and 2026-08-25): six promoted to `INV-07`…`INV-13`, four retired without promotion — see the disposition table. Evidence for anything resolved after the analysis SHA is cited at HEAD rather than at that SHA.
+**Resolutions since the analysis SHA.** `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25). All ten `PROP` candidates are now answered (2026-08-10 and 2026-08-25): six promoted to `INV-07`…`INV-13`, four retired without promotion — see the disposition table. `UNR-01` → `INV-14`, Class B (2026-08-25, retired) — its group 1 was fixed by [#399](https://github.com/onasunnymorning/domain-os/issues/399). Evidence for anything resolved after the analysis SHA is cited at HEAD rather than at that SHA.
 
 This document exists so architectural review can be a link to a section ID instead of an essay.
 
@@ -19,7 +19,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | **C — Observed pattern** | A convention exists; whether it is deliberate is unknown. Stated as a question. |
 | **D — Contradiction** | Two parts of the repo do incompatible things. No rule proposed. |
 
-**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
+**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `UNR-01` has been retired into `INV-14`. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
 
 ## Index
 
@@ -39,7 +39,9 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-12 | Temporal code logs through the Temporal logger | A | Invariants |
 | INV-13 | `commands/` write inputs, `queries/` read filters | A | Invariants |
 | ~~PROP-01…10~~ | All retired — six promoted, four dropped | — | Disposition table |
-| UNR-01…03 | Contradictions | D | Unresolved |
+| INV-14 | Domain layer does not import inward | **B** | Invariants |
+| ~~UNR-01~~ | Retired — promoted to INV-14 on 2026-08-25 | — | — |
+| UNR-02…03 | Contradictions | D | Unresolved |
 
 ---
 
@@ -291,6 +293,30 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 *Note:* the read filters now live at [`pkg/domain/queries`](../pkg/domain/queries) following [#399](https://github.com/onasunnymorning/domain-os/issues/399), while commands remain under `internal/application/commands/`. This rule is about the write/read separation, not the parent directory, and was unaffected by that move.
 
+
+---
+
+## INV-14 — The domain layer does not import inward
+
+*Confirmed 2026-08-25. Promoted from `UNR-01`, which is retired.*
+
+**Rule.** No package under `pkg/domain/**` imports any `internal/**` package, or any persistence or transport machinery. Pure value-object libraries are permitted.
+
+**Why.** The domain defines the ports; the outer layers implement them. When a port's signature is typed against a GORM model, the dependency arrow reverses — the thing that is supposed to be swappable becomes the thing everything else is pinned to, and "swap Postgres for X" stops being an adapter change. It also drags the driver's whole transitive tree into the layer that should be cheapest to compile and test.
+
+**Note on wording.** [`architecture.md:11`](../architecture.md#L11) states the domain layer is "dependency-free (no imports of database drivers, HTTP frameworks, etc.)". Taken literally that is false and always has been: `pkg/domain/entities` imports `go-money` (11), `uuid` (7), `idna` (3), `miekg/dns` (2), `countries`, and `go-net` — all value-object libraries, all legitimate. **This invariant is the precise form of that claim**, and it is the form a `depguard` rule can encode. Where the two disagree, this one carries the evidence.
+
+**Class: B** — holds across `pkg/domain/entities` and `pkg/domain/queries` entirely, and in 24 of the 26 files in `pkg/domain/repositories`. Two violations, both with fixes identified.
+
+**Violations, individually:**
+
+1. **[`pkg/domain/repositories/fx_interface.go:6`](../pkg/domain/repositories/fx_interface.go#L6)** imports `internal/infrastructure/db/postgres`. The interface contradicts itself: [`UpdateAll(ctx, fxs []*postgres.FX)`](../pkg/domain/repositories/fx_interface.go#L13) takes the GORM model while [`ListByBaseCurrency`](../pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX` — writes speak Postgres, reads speak domain. [`entities.FX`](../pkg/domain/entities/fx.go#L18) already exists and carries real behaviour (a `Convert` method); it is simply unused on the write path. [`postgres.FX`](../internal/infrastructure/db/postgres/fx.go#L10) is a different shape — `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields. **Fix in flight: [PR #405](https://github.com/onasunnymorning/domain-os/pull/405)** (issue [#400](https://github.com/onasunnymorning/domain-os/issues/400)).
+
+2. **[`pkg/domain/repositories/tldDNSRecord_repository.go:6`](../pkg/domain/repositories/tldDNSRecord_repository.go#L6)** imports the same package and uses `postgres.TLDDNSRecord` in [all three methods](../pkg/domain/repositories/tldDNSRecord_repository.go#L11). There is no `entities.TLDDNSRecord` — the concept was never modelled in the domain, so the persistence model is its only representation. Domain behaviour already sits in the postgres package as a consequence: [`ToRR()`](../internal/infrastructure/db/postgres/tldDNSrecord.go#L105) and [`ConvertRRToDNSRecord`](../internal/infrastructure/db/postgres/tldDNSrecord.go#L259). **Blocked on a design decision: [#401](https://github.com/onasunnymorning/domain-os/issues/401).**
+
+**The cost, measured.** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies and `pkg/domain/queries` **20**. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3` and `lib/pq` — Postgres wire-protocol drivers, reachable from the domain layer. **Those two files alone account for the difference.** Resolving [#399](https://github.com/onasunnymorning/domain-os/issues/399) moved 11 other files out of violation and did not shift the number at all, which is what identifies these two as the real leak rather than a filing mistake.
+
+**When both land**, the `depguard` rule in [#403](https://github.com/onasunnymorning/domain-os/issues/403) can be enabled with no allowlist, and this invariant moves from B to A.
 ---
 
 # Proposed — resolved 2026-08-25
@@ -318,32 +344,11 @@ Contradictions. No rule proposed for any of these — they need a decision.
 
 `INV-02` was here and has left: it is resolved by [ADR-0006](adr/0006-tenancy-model.md) and now sits in Invariants as Class B. The ID is unchanged.
 
-## UNR-01 — The domain layer imports outward, while the docs say it cannot
+## ~~UNR-01~~ — promoted, see [INV-14](#inv-14--the-domain-layer-does-not-import-inward)
 
-[`architecture.md:11`](../architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](../.cursorrules) makes that file binding on every agent working in this repo. This started as 13 files in `pkg/domain/repositories/` importing inward-layer packages. They were two different problems with two different fixes, and only one was a real layering violation. **Group 1 (11 files) is now fixed; 2 remain.**
+Confirmed 2026-08-25. The ID `UNR-01` is retired and will not be reused.
 
-`pkg/domain/repositories/` is a genuine ports package: 26 interfaces, no adapters. (It does hold 4 mock implementations — [`MockDomainRepository`](../pkg/domain/repositories/domain_repository.go#L38), [`MockRegistrarRepository`](../pkg/domain/repositories/registrar_interface.go#L25), [`MockHostRepository`](../pkg/domain/repositories/host_repository.go#L28), [`MockHostAddressRepository`](../pkg/domain/repositories/hostAddress_repository.go#L17) — which is a separate, minor question about test doubles shipping in the port package.)
-
-### ~~Group 1~~ — misfiled value types (11 files) — **RESOLVED 2026-08-25**
-
-The 11 ports importing `internal/application/queries` were not an inverted dependency. `go list -deps` on that package returned exactly one first-party package — `pkg/domain/entities` — with no infrastructure, no GORM and no HTTP; its third-party deps were the same value-object libraries the entities already use. They were domain-shaped value types filed under `internal/application/`.
-
-Fixed by moving the whole package to [`pkg/domain/queries`](../pkg/domain/queries) ([#399](https://github.com/onasunnymorning/domain-os/issues/399)). The package name is unchanged, so the change was an import-path rewrite across 103 files with **no signature changes and no logic changes**. Full suite green.
-
-The move was safe as a whole-package move rather than a partial one because every type in it — the filters, `ListItemsQuery`, and value objects like `QuoteRequest` (which carries its own `Validate()`) — depends only on `pkg/domain/entities`.
-
-### Group 2 — a real leak, and it is the expensive one (2 files, still open)
-
-[`fx_interface.go:6`](../pkg/domain/repositories/fx_interface.go#L6) and [`tldDNSRecord_repository.go:6`](../pkg/domain/repositories/tldDNSRecord_repository.go#L6) import `internal/infrastructure/db/postgres` and type their method signatures against GORM persistence models.
-
-- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](../pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](../pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](../pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](../internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
-- **`TLDDNSRecordRepository` uses `postgres.TLDDNSRecord` in all three methods** ([`:11-13`](../pkg/domain/repositories/tldDNSRecord_repository.go#L11)) — and there is **no** `entities.TLDDNSRecord`. That concept was never modelled in the domain at all; the persistence model is its only representation.
-
-**The concrete cost, measured:** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3`, and `lib/pq` — actual Postgres wire-protocol drivers, now reachable from the domain layer. **These two files alone cause that** — the Group 1 move did not shift the number, which is exactly what identifies Group 2 as the real leak. This is precisely the "no imports of database drivers" case `architecture.md:11` names.
-
-**Fix is real work:** introduce `entities.TLDDNSRecord`, use `entities.FX` on the write path, and add mappers in the postgres adapter.
-
-**What needs deciding:** whether Group 2 gets modelled properly, or the "dependency-free" claim in `architecture.md` is narrowed to `pkg/domain/entities` only — which is where it currently holds. [`fx_interface.go`](../pkg/domain/repositories/fx_interface.go) is being addressed in [#400](https://github.com/onasunnymorning/domain-os/issues/400); [`tldDNSRecord_repository.go`](../pkg/domain/repositories/tldDNSRecord_repository.go) needs the modelling decision in [#401](https://github.com/onasunnymorning/domain-os/issues/401) first. Once both land, the `depguard` rule in [#403](https://github.com/onasunnymorning/domain-os/issues/403) can be switched on without an allowlist and UNR-01 closes.
+It entered as a Class D contradiction because 13 files were in violation for two unrelated reasons, and it was not clear there was a single rule underneath. There was. Group 1 (11 files) turned out to be misfiled value types and was fixed by a move ([#399](https://github.com/onasunnymorning/domain-os/issues/399)); group 2 (2 files) is a genuine leak with fixes identified. With the two causes separated, the rule is statable and the remaining violations are enumerable — which makes it Class B, not D.
 
 ## UNR-02 — Two spellings of the correlation ID; the only reader is dead code with a passing test
 
@@ -358,6 +363,8 @@ Related: all of these keys are **bare strings** used as `context.WithValue` keys
 ## UNR-03 — `architecture.md` and `stack.md` assert things the code does not do
 
 Both files are named by [`.cursorrules`](../.cursorrules) as authority every agent "must ALWAYS consult", so drift here propagates into agent behaviour.
+
+*The layering half of `architecture.md`'s claim is no longer in dispute — [INV-14](#inv-14--the-domain-layer-does-not-import-inward) states it precisely, including why "dependency-free" is the wrong wording. What remains here is factual drift:*
 
 1. [`architecture.md:22`](../architecture.md#L22) locates the domain layer at `internal/domain`, repeated at [`:24`](../architecture.md#L24), [`:25`](../architecture.md#L25), and in the repository rule at [`:51`](../architecture.md#L51). **That directory does not exist.** Entities and repositories are in `pkg/domain/`.
 2. [`stack.md`](../stack.md) lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing. There is no message broker: event delivery is the Postgres outbox plus S3 archive via Temporal (INV-01). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
@@ -388,15 +395,14 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-12 | **yes** | import lint (`depguard`) | **S** | Deny `log` and `log/slog` from `internal/application/workflows/**` and `internal/application/activities/**`. Workflows are already clean; 4 residual `log.*` calls in activities to clear first. **Not blocked** — the project-wide logging direction is a separate, still-open question ([#409](https://github.com/onasunnymorning/domain-os/issues/409)) and does not gate this rule. |
 | INV-13 | partial | architecture test | S | Can assert `commands/` and `queries/` contain no cross-imports and that no type is declared in both. Cannot assert a given type was filed in the right one. |
 | ~~PROP-09~~ | — | — | — | Retired without promotion. Migration tooling is an open decision, not an invariant — [#410](https://github.com/onasunnymorning/domain-os/issues/410). |
-| ~~UNR-01 grp 1~~ | — | — | — | **Resolved 2026-08-25** ([#399](https://github.com/onasunnymorning/domain-os/issues/399)) — the 11 files moved to `pkg/domain/queries`. Nothing left to gate here. |
-| UNR-01 grp 2 (2 files) | **yes** | import lint (`depguard`) | M | The gate is one deny-rule — no `internal/**` from `pkg/domain/**` — and group 1's move means these 2 files are now the only thing standing between the repo and switching it on. The fix is modelling work ([#401](https://github.com/onasunnymorning/domain-os/issues/401): `entities.TLDDNSRecord`; [#400](https://github.com/onasunnymorning/domain-os/issues/400): `entities.FX` on writes, in flight), not a rename. Land those, or allowlist the 2 files, then enable. |
+| INV-14 | **yes** | import lint (`depguard`) | **S** (rule) / M (violations) | One deny-rule: no `internal/**` from `pkg/domain/**`. The rule itself is a single config block; the work is clearing the 2 violations first — [#400](https://github.com/onasunnymorning/domain-os/issues/400) is in flight as [PR #405](https://github.com/onasunnymorning/domain-os/pull/405), [#401](https://github.com/onasunnymorning/domain-os/issues/401) needs a modelling decision. Land both (or allowlist the 2 files) and enable in [#403](https://github.com/onasunnymorning/domain-os/issues/403). Group 1's 11 files were cleared by [#399](https://github.com/onasunnymorning/domain-os/issues/399). |
 | UNR-02 | partial | `staticcheck` SA1029 | S | Already detected by a linter that is already enabled — see the blocker below. |
 | UNR-03 | no | code review | — | Doc-vs-code drift is not mechanically checkable. |
 
 **Two blockers that gate this entire table:**
 
 1. **CI lint is non-blocking.** [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) runs golangci-lint with `--issues-exit-code=0`. **Every lint-based mechanism above is inert until that flag is removed.** That single change is the prerequisite for roughly half this table.
-2. **No import-restriction linter is configured.** [`.golangci.yml`](../.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, INV-12, UNR-01) are `depguard` rules, so adding it once unlocks all four.
+2. **No import-restriction linter is configured.** [`.golangci.yml`](../.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, INV-12, INV-14) are `depguard` rules, so adding it once unlocks all four.
 
 The only architecture-shaped tests that exist today are the env-var drift checks (`TestEnvRegistryDrift`, `TestContractDrift`, `TestCIImageMatrixMatchesContract`, run at the `envcheck` job) — a working precedent for the architecture-test mechanism proposed for INV-06, INV-10 and INV-13.
 
