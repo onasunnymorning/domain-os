@@ -1,6 +1,6 @@
 module github.com/onasunnymorning/domain-os
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/Rhymond/go-money v1.0.10
