@@ -21,9 +21,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/lib/pq v1.10.9
-	github.com/likexian/gokit v0.25.15
-	github.com/likexian/whois v1.15.5
-	github.com/likexian/whois-parser v1.24.20
 	github.com/miekg/dns v1.1.61
 	github.com/minio/minio-go/v7 v7.0.69
 	github.com/modelcontextprotocol/go-sdk v1.6.1
