@@ -22,9 +22,9 @@ type PriceEngine struct {
 
 // NewPriceEngine creates a new PriceEngine. It needs to be instantiated with a Phase, Domain, FX, and a slice of optional PremiumLabels (for that specific Domain.Label)
 func NewPriceEngine(phase Phase, dom Domain, fx FX, pe []*PremiumLabel) *PriceEngine {
-	// if phase.Policy.BaseCurrency != fx.BaseCurrency {
-	// 	panic(ErrBaseCurrencyMismatch)
-	// }
+	// NOTE: a phase.Policy.BaseCurrency vs fx.BaseCurrency mismatch is not
+	// checked here. The check existed as a panic and was disabled; callers are
+	// currently trusted to pass a matching FX rate (ErrBaseCurrencyMismatch).
 	return &PriceEngine{
 		Phase:          phase,
 		PremiumEntries: pe,

@@ -199,7 +199,7 @@ func (svc *XMLEscrowService) AnalyzeRegistrarTags(expectedRegistrarCount int) er
 				_, err = registrar.ToEntity()
 				if err != nil {
 					errCount++
-					svc.Analysis.Warnings = append(svc.Analysis.Errors, fmt.Sprintf("Error parsing registrar entity for %s: %s", registrar.Name, err))
+					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error parsing registrar entity for %s: %s", registrar.Name, err))
 				}
 				// Add registrars to our inventory
 				svc.Registrars = append(svc.Registrars, registrar)
@@ -697,12 +697,14 @@ func (svc *XMLEscrowService) GetDepositFileNameWoExtension() string {
 func checkLineCount(filename string, expected int) {
 	file, err := os.OpenFile(filename, os.O_RDONLY, 0444)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("⚠️  WARNING could not open %s to verify its line count: %v\n", filename, err)
+		return
 	}
 	defer file.Close()
 	lineCount, err := CountLines(file)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("⚠️  WARNING could not count lines in %s: %v\n", filename, err)
+		return
 	}
 	var tip = ""
 	if lineCount != expected {
@@ -1137,9 +1139,10 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 			if err != nil {
 				return err
 			}
-			defer vResp.Body.Close()
+			vFound := vResp.StatusCode == http.StatusOK
+			vResp.Body.Close()
 
-			if vResp.StatusCode == http.StatusOK {
+			if vFound {
 				// If we have an override, and it exists, we trust it and update the mapping
 				rarMap := svc.RegistrarMapping[rar.ID]
 				rarMap.RegistrarClID = entities.ClIDType(overrideID)
@@ -1182,6 +1185,7 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 
 		// not found
 		if resp.StatusCode == 404 {
+			resp.Body.Close()
 			// If the registrar is in the deposit but not found:
 			// - If it has no domains: log as a WARNING so the import can continue
 			//   (still useful info if it has hosts/contacts attached)
@@ -1205,12 +1209,11 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 			continue
 		}
 
-		defer resp.Body.Close()
-
 		// success
 		if resp.StatusCode == 200 {
 			var responseRar entities.Registrar
 			err = json.NewDecoder(resp.Body).Decode(&responseRar)
+			resp.Body.Close()
 			if err != nil {
 				log.Printf("error decoding registrar: %s", err)
 			}
@@ -1223,6 +1226,7 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 		}
 
 		// other error
+		resp.Body.Close()
 		log.Printf("got a %s: %s", resp.Status, URL)
 		missing++
 		missingGurIDs = append(missingGurIDs, rar.GurID)
@@ -1282,9 +1286,6 @@ func (svc *XMLEscrowService) LoadDepositAnalysis(analysisFile, escrowFile string
 
 	if len(svc.Analysis.Warnings) != 0 {
 		log.Printf("⚠️  WARNING the analysis file shows there are %d warnings", len(svc.Analysis.Warnings))
-		// for _, w := range svc.Analysis.Warnings {
-		// 	log.Println(w)
-		// }
 		log.Println("Proceeding with import despite warnings in the analysis file.")
 	}
 

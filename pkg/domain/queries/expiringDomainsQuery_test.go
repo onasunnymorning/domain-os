@@ -77,14 +77,12 @@ func TestNewExpiringDomainsQuery(t *testing.T) {
 				}
 				if query == nil {
 					t.Error("Expected non-nil query, got nil")
-				} else {
+				} else if tc.date != "" {
 					// Additional checks can be added here
 					// For example, validate the parsed date
-					if tc.date != "" {
-						expectedDate, _ := time.Parse(time.DateOnly, tc.date)
-						if !query.Before.Equal(expectedDate) {
-							t.Errorf("Expected date '%v', got '%v'", expectedDate, query.Before)
-						}
+					expectedDate, _ := time.Parse(time.DateOnly, tc.date)
+					if !query.Before.Equal(expectedDate) {
+						t.Errorf("Expected date '%v', got '%v'", expectedDate, query.Before)
 					}
 				}
 			}

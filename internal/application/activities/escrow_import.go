@@ -472,16 +472,18 @@ func (a *EscrowImportActivities) ConvertToSQLite(ctx context.Context, args Conve
 			if oerr != nil {
 				return ConvertToSQLiteResult{}, oerr
 			}
-			defer in.Close()
 			out, cerr := os.Create(dst)
 			if cerr != nil {
+				in.Close()
 				return ConvertToSQLiteResult{}, cerr
 			}
 			if _, cerr = io.Copy(out, in); cerr != nil {
 				out.Close()
+				in.Close()
 				return ConvertToSQLiteResult{}, cerr
 			}
 			out.Close()
+			in.Close()
 			_ = os.Remove(tmpPath)
 		}
 	}

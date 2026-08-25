@@ -879,10 +879,8 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 				log.Printf("ERROR: Generated Contact ID '%s' is Invalid: %v", contactID, errID)
 			}
 
-			// IDEMPOTENCY CHECK
-			if existingContacts[contactID] {
-				// log.Printf("Skipping creation of contact %s (already exists)", contactID)
-			} else {
+			// IDEMPOTENCY CHECK — skip contacts that already exist
+			if !existingContacts[contactID] {
 				contacts[contactID] = commands.CreateContactCommand{
 					ID:         contactID,
 					ClID:       rarClID,
@@ -913,7 +911,6 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 				// If host exists for THIS registrar, skip creation.
 				key := fmt.Sprintf("%s|%s", strings.ToLower(hostName), rarClID)
 				if existingHosts[key] {
-					// log.Printf("Skipping creation of %s (already exists for %s)", hostName, rarClID)
 					continue
 				}
 

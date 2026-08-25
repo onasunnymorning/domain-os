@@ -102,9 +102,7 @@ func main() {
 		AddOrphan("//command", epp.NamespaceIETFEPP10.String()).
 		Add("logout", epp.NamespaceIETFEPP10.String()).String(), respondToLogoutCommand)
 	commandMux.BindCommand("check", epp.NamespaceIETFDomain10.String(), respondToDomainCheckCommand)
-	// commandMux.BindCommand("info", epp.NamespaceIETFContact10.String(),
-	// 	funcTharHandlesContactInfoCommand,
-	// )
+	// TODO: contact info is not bound — there is no handler for it yet.
 
 	server := &epp.Server{
 		HandleCommand: commandMux.Handle,

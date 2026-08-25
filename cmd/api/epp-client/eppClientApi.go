@@ -68,28 +68,6 @@ func (p *ClientPool) connectAndLogin(ctx context.Context) (*pkg.Client, error) {
 
 	log.Println("Keepalive activated")
 
-	// Create a login data object
-	// loginData := &pkg.LoginData{
-	// 	Username: "H1056502248-OTE",
-	// 	Password: "m8u5:}PKy[C1}dBJ",
-	// 	Namespaces: []string{
-	// 		"urn:ietf:params:xml:ns:host-1.0",
-	// 		"urn:ietf:params:xml:ns:contact-1.0",
-	// 		"urn:ietf:params:xml:ns:domain-1.0",
-	// 	},
-	// 	ExtensionNamespaces: []string{},
-	// 	Version:             "1.0",
-	// 	Lang:                "en",
-	// 	ClTrID:              "ABC-12345",
-	// }
-
-	// // Send the login command
-	// loginResponse, err := cl.SendCommandUsingTemplate("login.xml", loginData)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// fmt.Println(loginResponse)
-
 	return cl, nil
 }
 

@@ -314,7 +314,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		// Create JSON payload for heartbeat
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
 		heartbeat(payload)
 	}
 	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d, Skipped: %d", total, inserted, updated, skipped)
@@ -525,7 +525,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		lastKey = rawHosts[len(rawHosts)-1].Name
 		lastClID = rawHosts[len(rawHosts)-1].ClID
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestHosts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
@@ -769,7 +769,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			lastKey = entitiesBatch[len(entitiesBatch)-1].Name.String()
 		}
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
@@ -974,7 +974,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 
 		lastKey = currentBatchMaxKey
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestNNDNs: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)

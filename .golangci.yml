@@ -29,11 +29,25 @@ linters:
     # judgement (hugeParam, rangeValCopy) that was never agreed for this repo.
     # Re-enable a specific check via `enabled-checks` if it earns its place.
     #
-    # Note: `enabled-tags` ADDS to gocritic's default check set, so a handful of
-    # default style checks (ifElseChain, captLocal, ...) still run.
     gocritic:
       enabled-tags:
         - diagnostic
+      # `enabled-tags` ADDS to gocritic's default set rather than replacing it,
+      # so three style checks survived the narrowing above. They are the same
+      # kind of taste and are turned off for the same reason:
+      #   captLocal         — wants TLDName/XMLFilename/GitSHA lowercased. TLD,
+      #                       XML and RDE are initialisms all through a registry
+      #                       codebase; the current naming is deliberate.
+      #   singleCaseSwitch  — all 9 are `switch t.(type) { case xml.StartElement }`
+      #                       in the escrow decode loops, which is the pattern the
+      #                       encoding/xml docs themselves use.
+      #   ifElseChain       — if/else to switch. Taste.
+      # commentedOutCode is deliberately NOT disabled: it is a diagnostic check
+      # and dead commented-out code is a real maintenance hazard.
+      disabled-checks:
+        - captLocal
+        - singleCaseSwitch
+        - ifElseChain
 
     staticcheck:
       checks:

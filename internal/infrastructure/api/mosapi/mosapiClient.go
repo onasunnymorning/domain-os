@@ -101,16 +101,6 @@ func NewMosapiClientConfig() *MosapiConfig {
 		Entity:      EntityRegistry,
 		Environment: "OTE",
 	}
-
-	// return &MosapiConfig{
-	// 	TLD:         "build",
-	// 	AuthType:    AuthTypeBasic,
-	// 	Username:    "build_ry",
-	// 	Password:    "ntw{-N+k!H9X%h~^",
-	// 	Version:     V2,
-	// 	Entity:      EntityRegistry,
-	// 	Environment: "PROD",
-	// }
 }
 
 // BASEURL returns the base URL for the MOSAPICient given the current configuration. It supports PROD or OTE environments

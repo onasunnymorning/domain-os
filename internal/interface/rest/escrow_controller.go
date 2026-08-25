@@ -239,6 +239,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 }
 
 // StartIngestion triggers the EscrowIngestionWorkflow for a specific staged DB
+//
 // Deprecated: This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal.
 func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 	ctx.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal."})

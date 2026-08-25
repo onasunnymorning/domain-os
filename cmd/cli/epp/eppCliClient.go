@@ -66,18 +66,6 @@ func main() {
 			Default("epp-ote.centralnic.com").
 			String()
 
-		// cert = kingpin.
-		// 	Flag("cert", "path to the cert to use for tls").
-		// 	Short('c').
-		// 	Default("some-cert-path.cert").
-		// 	String()
-
-		// key = kingpin.
-		// 	Flag("key", "path to the key to use for tls").
-		// 	Short('k').
-		// 	Default("some-key-path.key").
-		// 	String()
-
 		keepAlive = kingpin.
 				Flag("keep-alive", "keep connection to the epp server alive").
 				Short('a').

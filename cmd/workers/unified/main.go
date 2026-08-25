@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 
@@ -290,6 +291,10 @@ func main() {
 
 	// Wait for any worker to exit (error or interrupt)
 	if err := <-errCh; err != nil {
-		log.Fatalln("worker exited with error:", err)
+		log.Println("worker exited with error:", err)
+		// os.Exit skips defers, so close the Temporal client explicitly. The
+		// deferred Close never runs on this path, so it is not closed twice.
+		client.Close()
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: the deferred Close is what the line above just did explicitly, precisely because os.Exit skips it.
 	}
 }
