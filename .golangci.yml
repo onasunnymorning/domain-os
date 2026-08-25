@@ -1,3 +1,11 @@
+# Main lint pass — BLOCKING as of #411.
+#
+# Architectural rules live in .golangci.arch.yml and are gated separately; see
+# docs/INVARIANTS.md. This file is the general-purpose pass.
+#
+# History: this config ran advisory (--issues-exit-code=0) until #411, at which
+# point it reported 1599 findings. ~1093 of those were removed by configuring
+# the linters properly (see each block below) and the residue was fixed.
 version: "2"
 
 run:
@@ -14,13 +22,47 @@ linters:
     - gosec
 
   settings:
+    # Only the `diagnostic` tag — checks that find likely bugs. The `style` and
+    # `performance` tags were enabled here from the start but never enforced,
+    # and they accounted for 408 of gocritic's 488 findings. Their content is
+    # taste (importShadow, paramTypeCombine, unnamedResult) or value-vs-pointer
+    # judgement (hugeParam, rangeValCopy) that was never agreed for this repo.
+    # Re-enable a specific check via `enabled-checks` if it earns its place.
+    #
+    # Note: `enabled-tags` ADDS to gocritic's default check set, so a handful of
+    # default style checks (ifElseChain, captLocal, ...) still run.
     gocritic:
       enabled-tags:
         - diagnostic
-        - style
-        - performance
+
+    gosec:
+      excludes:
+        # G104 duplicates errcheck, which owns unchecked errors here and unlike
+        # G104 can be configured per-function. Leaving both on double-reported
+        # 293 findings. This is a de-duplication, not a suppression.
+        - G104
 
   exclusions:
+    # Standard golangci-lint exclusions. For errcheck this covers Close, Flush,
+    # os.Remove/RemoveAll, os.Setenv and the fmt print family — 392 findings,
+    # all of them deferred cleanup where ignoring the error is the intent.
+    #
+    # Caveat worth knowing: `.*Close` also matches write-path closes, where the
+    # error is the "did the bytes land" signal. Those are not lint problems and
+    # are tracked separately.
+    presets:
+      - std-error-handling
+
     paths:
       - vendor
       - testdata
+
+issues:
+  # Report every finding. All three of these default to hiding things: the
+  # default caps identical messages at 3 and, less obviously, uniq-by-line
+  # keeps only ONE issue per source line across all linters. That last one hid
+  # 344 findings here — including all 293 gosec G104s, which shared lines with
+  # errcheck. Same rationale as .golangci.arch.yml.
+  uniq-by-line: false
+  max-same-issues: 0
+  max-issues-per-linter: 0
