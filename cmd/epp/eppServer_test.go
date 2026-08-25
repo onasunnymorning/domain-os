@@ -294,7 +294,7 @@ func TestLogConnection(t *testing.T) {
 
 	// We need a TLS connection, so let's create a minimal TLS config
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // #nosec G402 -- test-only: connects to a httptest server using a certificate generated in this test
 		Certificates:       []tls.Certificate{generateCertificate()},
 	}
 

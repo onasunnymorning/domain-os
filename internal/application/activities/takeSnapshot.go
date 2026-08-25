@@ -84,7 +84,7 @@ func (a *SnapshotActivities) TakeSnapshot(ctx context.Context, args TakeSnapshot
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- s3c.UploadStream(context.Background(), snapshotKey, pr, "application/jsonl")
+		errChan <- s3c.UploadStream(ctx, snapshotKey, pr, "application/jsonl")
 	}()
 
 	// Writer goroutine: iterate tables, query DB, encode JSONL

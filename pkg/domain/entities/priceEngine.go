@@ -98,7 +98,7 @@ func (pe *PriceEngine) addPremiumFees() error {
 				money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType.String())
 				premiumfee = &Fee{
 					Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
-					Amount:     uint64(money.Amount()),
+					Amount:     uint64(money.Amount()), // #nosec G115 -- the value round-trips from a uint64 amount via money.Money, so it cannot be negative
 					Currency:   money.Currency().Code,
 					Refundable: &refundable,
 				}
@@ -113,7 +113,7 @@ func (pe *PriceEngine) addPremiumFees() error {
 					money, _ := pl.GetMoney(pe.QuoteRequest.TransactionType.String())
 					premiumfee = &Fee{
 						Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
-						Amount:     uint64(money.Amount()),
+						Amount:     uint64(money.Amount()), // #nosec G115 -- the value round-trips from a uint64 amount via money.Money, so it cannot be negative
 						Currency:   money.Currency().Code,
 						Refundable: &refundable,
 					}
@@ -158,7 +158,7 @@ func (pe *PriceEngine) addPhasePrice() error {
 		// Add the fee to the quote
 		err = pe.Quote.AddFeeAndUpdatePrice(&Fee{
 			Name:       ClIDType(fmt.Sprintf("%s fee", pe.QuoteRequest.TransactionType)),
-			Amount:     uint64(priceMoney.Amount()),
+			Amount:     uint64(priceMoney.Amount()), // #nosec G115 -- the value round-trips from a uint64 amount via money.Money, so it cannot be negative
 			Currency:   price.Currency,
 			Refundable: &refundable,
 		}, true)

@@ -12,7 +12,7 @@ import (
 // misread the URL (e.g. "database name not provided"), so the fallback path
 // must percent-escape credentials.
 func TestFallbackPGURL_EscapesReservedCharacters(t *testing.T) {
-	const nastyPass = `p?a/s#s@w:o&rd%25`
+	const nastyPass = `p?a/s#s@w:o&rd%25` // #nosec G101 -- not a credential: a fixture of URL-reserved characters, which is the whole subject of this test
 
 	t.Setenv("DB_USER", "escrow_user")
 	t.Setenv("DB_PASS", nastyPass)

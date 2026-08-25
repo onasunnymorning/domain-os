@@ -86,6 +86,20 @@ linters:
         # 293 findings. This is a de-duplication, not a suppression.
         - G104
 
+        # G304 ("file inclusion via variable") assumes a program might open an
+        # attacker-supplied path. That is not the shape of this codebase: all 65
+        # findings were in the escrow/import pipeline, opening CSV, JSON and
+        # temp artifacts whose paths the pipeline itself builds from a base
+        # filename and a suffix. 53 distinct call shapes, one identical excuse —
+        # suppressing them site by site would be rubber-stamping.
+        #
+        # Exactly one place lets an external name reach the filesystem: the
+        # multipart upload in internal/interface/rest/escrow_controller.go. That
+        # one is guarded with filepath.Base before the join and is annotated
+        # there. Re-enable this rule if a second such path is ever added — the
+        # cheap check is `grep -rn 'os.Open\|os.Create\|os.ReadFile' internal/interface/`.
+        - G304
+
   exclusions:
     # Standard golangci-lint exclusions. For errcheck this covers Close, Flush,
     # os.Remove/RemoveAll, os.Setenv and the fmt print family — 392 findings,

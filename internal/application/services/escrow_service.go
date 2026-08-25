@@ -695,7 +695,7 @@ func (svc *XMLEscrowService) GetDepositFileNameWoExtension() string {
 
 // Checks if the number of lines in the file matches the expected number
 func checkLineCount(filename string, expected int) {
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0444)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0)
 	if err != nil {
 		log.Printf("⚠️  WARNING could not open %s to verify its line count: %v\n", filename, err)
 		return
@@ -1067,7 +1067,7 @@ func (svc *XMLEscrowService) SaveAnalysis() error {
 		return err
 	}
 	analysisFileName := svc.GetDepositFileNameWoExtension() + "-analysis.json"
-	os.WriteFile(analysisFileName, bytes, 0644)
+	os.WriteFile(analysisFileName, bytes, 0600)
 	log.Printf("✅  Saved analysis to: %s\n", analysisFileName)
 	return nil
 }
@@ -1079,7 +1079,7 @@ func (svc *XMLEscrowService) SaveImportResult() error {
 		return err
 	}
 	importFileName := svc.GetDepositFileNameWoExtension() + "-import.json"
-	os.WriteFile(importFileName, bytes, 0644)
+	os.WriteFile(importFileName, bytes, 0600)
 	log.Printf("✅  Saved import to: %s\n", importFileName)
 	return nil
 }

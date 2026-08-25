@@ -139,6 +139,8 @@ var Registry = []EnvVar{
 	// EPP / REDIS
 	// ═══════════════════════════════════════════
 	{Name: "EPP_PORT", Services: []Service{ServiceEPP}, Default: "700", Description: "EPP server TCP listen port"},
+	{Name: "EPP_USERNAME", Services: []Service{ServiceEPP, ServiceCLI}, Description: "EPP client login (clID) used by the epp-client API and the epp CLI. Was hardcoded to a CentralNic OTE account until #411"},
+	{Name: "EPP_PASSWORD", Services: []Service{ServiceEPP, ServiceCLI}, Secret: true, Description: "EPP client password. Was hardcoded alongside EPP_USERNAME until #411; that credential is in git history and should be rotated"},
 	{Name: "REDIS_HOST", Services: []Service{ServiceEPP}, Default: "localhost", Description: "Redis host for EPP session store"},
 	{Name: "REDIS_PORT", Services: []Service{ServiceEPP}, Default: "6379", Description: "Redis port"},
 	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP}, Secret: true, Description: "Redis password (empty = no auth)"},

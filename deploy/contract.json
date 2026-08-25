@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-07-17T01:47:19Z",
+  "generated": "2026-08-25T18:57:33Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -266,6 +266,15 @@
             "name": "EPP_PORT",
             "default": "700",
             "description": "EPP server TCP listen port"
+          },
+          {
+            "name": "EPP_USERNAME",
+            "description": "EPP client login (clID) used by the epp-client API and the epp CLI. Was hardcoded to a CentralNic OTE account until #411"
+          },
+          {
+            "name": "EPP_PASSWORD",
+            "secret": true,
+            "description": "EPP client password. Was hardcoded alongside EPP_USERNAME until #411; that credential is in git history and should be rotated"
           },
           {
             "name": "REDIS_HOST",

@@ -13,7 +13,7 @@ import (
 func TestBuildDSN_EscapesReservedCharacters(t *testing.T) {
 	cfg := Config{
 		User:    "alpaca_admin",
-		Pass:    `p@ss:w/rd?#`,
+		Pass:    `p@ss:w/rd?#`, // #nosec G101 -- not a credential: a fixture of URL-reserved characters, which is the whole subject of this test
 		Host:    "db.internal.example.com",
 		Port:    "5432",
 		DBName:  "alpaca",

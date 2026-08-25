@@ -89,7 +89,7 @@ func (a *TLDCleanupActivities) PlanTLDCleanup(ctx context.Context, args PlanTLDC
 	go func() {
 		defer close(errChan)
 		// Upload stream
-		errChan <- s3c.UploadStream(context.Background(), manifestKey, pr, "text/csv")
+		errChan <- s3c.UploadStream(ctx, manifestKey, pr, "text/csv")
 	}()
 
 	// Stream writer goroutine (writes lines to the pipe)
