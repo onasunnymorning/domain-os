@@ -315,7 +315,7 @@ func (a *EscrowImportActivities) StreamingAnalysis(ctx context.Context, args Str
 			// Upload to S3 under runPrefix targetName
 			objKey := runPrefix + "/" + targetName
 			// Choose content type based on file extension
-			ctype := "text/csv"
+			var ctype string
 			switch strings.ToLower(filepath.Ext(targetName)) {
 			case ".json":
 				ctype = "application/json"

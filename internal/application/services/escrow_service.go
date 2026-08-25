@@ -98,9 +98,6 @@ func (svc *XMLEscrowService) GetHeaderJSON() string {
 
 // Analyzes the deposit XML tag
 func (svc *XMLEscrowService) AnalyzeDepostTag() error {
-	// our found flag
-	found := false
-
 	d, err := svc.getXMLDecoder()
 	if err != nil {
 		return err
@@ -108,9 +105,6 @@ func (svc *XMLEscrowService) AnalyzeDepostTag() error {
 
 	log.Printf("Analyzing deposit tag in %s (this may take a while for a large file) ... \n", svc.Deposit.FileName)
 	for {
-		if found {
-			break
-		}
 		// Read the next token
 		t, tokenErr := d.Token()
 		if tokenErr != nil {
@@ -126,7 +120,6 @@ func (svc *XMLEscrowService) AnalyzeDepostTag() error {
 				if err := d.DecodeElement(&svc.Deposit, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				found = true
 				return nil
 			}
 		}
@@ -136,9 +129,6 @@ func (svc *XMLEscrowService) AnalyzeDepostTag() error {
 
 // AnalyzeHeaderTag Analyzes the header tag
 func (svc *XMLEscrowService) AnalyzeHeaderTag() error {
-	// our found flag
-	found := false
-
 	d, err := svc.getXMLDecoder()
 	if err != nil {
 		return err
@@ -146,9 +136,6 @@ func (svc *XMLEscrowService) AnalyzeHeaderTag() error {
 
 	log.Printf("Analyzing header tag in %s ... \n", svc.Deposit.FileName)
 	for {
-		if found {
-			break
-		}
 		// Read the next token
 		t, tokenErr := d.Token()
 		if tokenErr != nil {
@@ -164,7 +151,6 @@ func (svc *XMLEscrowService) AnalyzeHeaderTag() error {
 				if err := d.DecodeElement(&svc.Header, &se); err != nil {
 					return errors.Join(ErrDecodingXML, err)
 				}
-				found = true
 				return nil
 			}
 		}
@@ -2046,7 +2032,6 @@ func (svc *XMLEscrowService) DuplicateHostCommands(cmds []commands.CreateHostCom
 		clid := record[6]
 		domainClidMap[domain] = clid
 	}
-	records = nil
 
 	// Now loop over the hosts that appear on multiple domains and check if all the domains have the same clid as the host.
 	// If clids don't match we need to create a host command with the other clid as the sponsor (and keeping all other data the same)

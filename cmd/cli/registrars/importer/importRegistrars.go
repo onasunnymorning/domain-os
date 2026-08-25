@@ -407,50 +407,6 @@ func getBatch(url string) (*response.ListItemResult, error) {
 
 }
 
-// getIANARegsitrarStatus returns the status of the IANARegistrar with the given IANAID
-func getIANARegistrarStatus(ianaID int) (string, error) {
-	URL := BASE_URL + "/ianaregistrars/" + strconv.Itoa(ianaID)
-	var irar entities.IANARegistrar
-	// Make the request
-	resp, err := http.Get(URL)
-	if err != nil {
-		return "", errors.Join(fmt.Errorf("error getting IANA registrar via API(%s)", URL), err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("error getting IANA registrar: %v - %v", resp.Status, string(body))
-	}
-	// Unmarshal the result
-	err = json.Unmarshal(body, &irar)
-	if err != nil {
-		return "", errors.Join(errors.New("error unmarshaling response from API"), err)
-	}
-
-	return string(irar.Status), nil
-}
-
-// getCreateRegistrarCommandsFromFile returns a slice of commands to create the registrars
-func getCreateRegistrarCommandsFromFile(filename string) ([]commands.CreateRegistrarCommand, error) {
-
-	// Get the CSVRegistrars from the file
-	registrars, err := getCSVRegistrarsFromFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("error getting CSVRegistrars from file: %v", err)
-	}
-
-	// Convert the CSVRegistrars to CreateRegistrarCommands
-	createCommands, err := convertCSVRegistrarsToCommands(registrars)
-	if err != nil {
-		return nil, fmt.Errorf("error converting CSVRegistrars to CreateRegistrarCommands: %v", err)
-	}
-
-	return createCommands, nil
-}
-
 // getCSVRegistrarsFromFile reads the CSV file and returns a slice of CSVRegistrars
 func getCSVRegistrarsFromFile(filename string) ([]CSVRegistrar, error) {
 
@@ -495,64 +451,6 @@ func getCSVRegistrarsFromFile(filename string) ([]CSVRegistrar, error) {
 	return registrars, nil
 }
 
-// convertCSVRegistrarsToCommands converts a slice of CSVRegistrars to a slice of CreateRegistrarCommands
-func convertCSVRegistrarsToCommands(registrars []CSVRegistrar) ([]commands.CreateRegistrarCommand, error) {
-
-	// Covert to a slice of CreateRegistrarCommands
-	createCommands := make([]commands.CreateRegistrarCommand, len(registrars))
-	seenClid := make(map[string]bool)
-	seenName := make(map[string]bool)
-	for i, r := range registrars {
-		addr, err := r.Address()
-		if err != nil {
-			return nil, fmt.Errorf("error getting address for registrar %s: %v", r.Name, err)
-		}
-
-		clidName, err := r.CreateSlug()
-		if err != nil {
-			return nil, fmt.Errorf("error creating slug for registrar %s: %v", r.Name, err)
-		}
-		rarCmd := commands.CreateRegistrarCommand{
-			ClID:       clidName,
-			Name:       r.Name,
-			Email:      r.ContactEmail(),
-			Voice:      r.ContactPhone(),
-			GurID:      r.IANAID,
-			URL:        r.Link,
-			PostalInfo: [2]*entities.RegistrarPostalInfo{},
-		}
-
-		// if the Address is ASCII add an int postalinfo, else add a loc postalinfo
-		if isacii, _ := addr.IsASCII(); isacii {
-			rarCmd.PostalInfo[0] = &entities.RegistrarPostalInfo{
-				Type:    entities.PostalInfoEnumTypeINT,
-				Address: addr,
-			}
-		} else {
-			rarCmd.PostalInfo[0] = &entities.RegistrarPostalInfo{
-				Type:    entities.PostalInfoEnumTypeLOC,
-				Address: addr,
-			}
-		}
-
-		// Check for duplicate ClIDs
-		if seenClid[rarCmd.ClID] {
-			return nil, fmt.Errorf("duplicate Registrar.ClID: %s", rarCmd.ClID)
-		}
-		seenClid[rarCmd.ClID] = true
-
-		// Check duplicate Name
-		if seenName[rarCmd.Name] {
-			rarCmd.Name = rarCmd.Name + "-2"
-		}
-		seenName[rarCmd.ClID] = true
-
-		// Add the command to the slice
-		createCommands[i] = rarCmd
-	}
-	return createCommands, nil
-}
-
 // createRegistrars creates the registrars in the database from a slice of CreateRegistrarCommands
 func createRegistrars(createCommands []commands.CreateRegistrarCommand) error {
 
@@ -576,89 +474,6 @@ func createRegistrars(createCommands []commands.CreateRegistrarCommand) error {
 		bar.Add(1)
 	}
 	return nil
-}
-
-// updateRegistrarStatuses updates the status of the registrars in the database based on the IANARegistrars
-func updateRegistrarStatuses(createCommands []commands.CreateRegistrarCommand) error {
-
-	// Update the status of the newly creaed registrars to match the IANARegistrars' Status
-	bar := progressbar.Default(int64(len(createCommands)), "Setting Registrar Status")
-	for _, r := range createCommands {
-		status, err := getIANARegistrarStatus(r.GurID)
-		if err != nil {
-			log.Fatalf("[ERR] error getting IANA registrar status for %s: %v", r.Name, err)
-		}
-		// Map Accredited => ok
-		if status == "Accredited" {
-			status = "ok"
-		}
-
-		// Update that registrar's status
-		URL := BASE_URL + "/registrars/" + r.ClID + "/status/" + status
-		req, err := http.NewRequest(http.MethodPut, URL, nil)
-		if err != nil {
-			log.Fatalf("[ERR] error creating PUT request to update registrar status: %v", err)
-		}
-		// Create a new HTTP client
-		client := &http.Client{}
-		// Send the PUT request
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Fatalf("[ERR] error updating registrar status via API(%s): %v", URL, err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			log.Fatalf("[ERR] error updating registrar status: %v - %v", resp.Status, URL)
-		}
-
-		bar.Add(1)
-
-	}
-	return nil
-}
-
-// getCreateCommandsForTerminatedRegistrars returns a slice of CreateRegistrarCommands for the terminated registrars
-func getCreateCommandsForTerminatedRegistrars(irars []entities.IANARegistrar) ([]commands.CreateRegistrarCommand, error) {
-	var createCommands []commands.CreateRegistrarCommand
-	// dummy postalinfo
-	a, err := entities.NewAddress("Vichayitos", "PE")
-	if err != nil {
-		return nil, fmt.Errorf("error creating address: %v", err)
-	}
-	pi, err := entities.NewRegistrarPostalInfo(entities.PostalInfoEnumTypeINT, a)
-	if err != nil {
-		return nil, fmt.Errorf("error creating postalinfo: %v", err)
-	}
-	postalInfo := [2]*entities.RegistrarPostalInfo{
-		pi,
-	}
-	// loop over the IANARegistrars and find the terminated ones, create a CreateRegistrarCommand for these
-	for _, irar := range irars {
-		if irar.Status != "Terminated" {
-			continue
-		}
-		// Create a slug
-		csv := CSVRegistrar{
-			IANAID: irar.GurID,
-			Name:   irar.Name,
-		}
-		slug, err := csv.CreateSlug()
-		if err != nil {
-			return nil, fmt.Errorf("error creating slug for registrar %s: %v", irar.Name, err)
-		}
-		// Create a CreateRegistrarCommand
-		cmd := commands.CreateRegistrarCommand{
-			ClID:       slug,
-			Name:       irar.Name,
-			Email:      "i.need@2be.replaced",
-			GurID:      irar.GurID,
-			URL:        irar.RdapURL,
-			PostalInfo: postalInfo,
-		}
-		// Add the command to the slice
-		createCommands = append(createCommands, cmd)
-	}
-	return createCommands, nil
 }
 
 // getCreateCommands takes a slice of CSVRegistrars and a slice of IANARegistrars and returns a slice of CreateRegistrarCommands
@@ -856,42 +671,5 @@ func createRegistrar(cmd commands.CreateRegistrarCommand) error {
 		}
 		return fmt.Errorf("error creating registrar %s: %v - %v", cmd.Name, resp.Status, string(body))
 	}
-	return nil
-}
-
-// bulkCreateRegistrarsAPI creates registrars in BULK throug one API command
-func bulkCreateRegistrarsThroughAPI(total, chunkSize int, cmds []commands.CreateRegistrarCommand) error {
-	for i := 0; i < total; i += chunkSize {
-		// Determine the end of the current chunk
-		end := i + chunkSize
-		if end > total {
-			end = total
-		}
-
-		// Slice the commands to create a chunk
-		chunk := cmds[i:end]
-
-		URL := BASE_URL + "/registrars-bulk"
-		postBody, err := json.Marshal(chunk)
-		if err != nil {
-			return fmt.Errorf("error marshaling command: %v", err)
-		}
-
-		resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
-		if err != nil {
-			return fmt.Errorf("error sending create command to API: %v", err)
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("error reading response body: %v", err)
-		}
-
-		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("error creating registrars in bulk through API: %s", string(body))
-		}
-	}
-
 	return nil
 }

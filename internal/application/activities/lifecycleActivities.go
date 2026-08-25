@@ -94,18 +94,6 @@ const (
 	defaultBatchChunkSize = 200
 )
 
-// toBatchFailures converts service-layer BatchFailure to activity-layer BatchFailure.
-func toBatchFailures(svcFailures []services.BatchFailure) []BatchFailure {
-	out := make([]BatchFailure, len(svcFailures))
-	for i, f := range svcFailures {
-		out[i] = BatchFailure{
-			DomainName: f.DomainName,
-			Error:      f.Error,
-		}
-	}
-	return out
-}
-
 // --- Batch read activities ---
 
 // BatchCheckAutoRenewEligibility partitions a batch of expired domains into

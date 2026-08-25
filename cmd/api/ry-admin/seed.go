@@ -330,7 +330,7 @@ func (s *seeder) seedDomains(ctx context.Context) error {
 			return fmt.Errorf("hosts for %s: %w", name, err)
 		}
 
-		created, err := s.domain.Create(ctx, &commands.CreateDomainCommand{
+		_, err = s.domain.Create(ctx, &commands.CreateDomainCommand{
 			Name:         name,
 			ClID:         d.Registrar,
 			CrRr:         d.Registrar,
@@ -356,7 +356,7 @@ func (s *seeder) seedDomains(ctx context.Context) error {
 		}
 
 		// Re-read: AddHostToDomainByHostName has mutated status since Create.
-		created, err = s.domainRepo.GetDomainByName(ctx, name, false)
+		created, err := s.domainRepo.GetDomainByName(ctx, name, false)
 		if err != nil {
 			return fmt.Errorf("reload %s: %w", name, err)
 		}
