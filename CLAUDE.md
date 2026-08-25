@@ -35,3 +35,4 @@ See the enforcement assessment at the end of `docs/INVARIANTS.md` for which rule
 - [`architecture.md`](architecture.md) — structural overview: layers, entry points, patterns. Describes shape only and delegates every rule to `docs/INVARIANTS.md` by ID. Rewritten 2026-08-25; accurate as of then.
 - [`stack.md`](stack.md) — technology choices. **Contains at least one claim contradicted by the code (it names a message broker that does not exist); see `UNR-03`.** Where it disagrees with `docs/INVARIANTS.md`, the latter carries the evidence.
 - [`docs/adr/`](docs/adr/) — decision records.
+- [`docs/RSP_TESTING_NORTH_STAR.md`](docs/RSP_TESTING_NORTH_STAR.md) — working principle (not an invariant, not enforced) for aligning new test suites to ICANN's RST v2.0 case catalog as RDAP/DNS/RDE/IDN/SRS Gateway support gets built.
