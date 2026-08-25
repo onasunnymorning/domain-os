@@ -176,6 +176,6 @@ With this foundation, we can now implement:
 
 ## References
 
-- Implementation: `internal/domain/entities/phase.go`
-- Tests: `internal/domain/entities/phase_continuity_test.go`
+- Implementation: `pkg/domain/entities/phase.go`
+- Tests: `pkg/domain/entities/phase_continuity_test.go`
 - Related Docs: `EPP_PRODUCTION_ARCHITECTURE.md`, `PHASE_TIMELINE_COMPLETE.md`

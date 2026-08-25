@@ -19,7 +19,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | **C — Observed pattern** | A convention exists; whether it is deliberate is unknown. Stated as a question. |
 | **D — Contradiction** | Two parts of the repo do incompatible things. No rule proposed. |
 
-**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `UNR-01` has been retired into `INV-14`. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
+**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `UNR-01` has been retired into `INV-14`, and `UNR-03` was resolved by correcting the documents it described. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
 
 ## Index
 
@@ -41,7 +41,8 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | ~~PROP-01…10~~ | All retired — six promoted, four dropped | — | Disposition table |
 | INV-14 | Domain layer does not import inward | **B** | Invariants |
 | ~~UNR-01~~ | Retired — promoted to INV-14 on 2026-08-25 | — | — |
-| UNR-02…03 | Contradictions | D | Unresolved |
+| UNR-02 | Contradiction | D | Unresolved |
+| ~~UNR-03~~ | Retired — resolved 2026-08-25 | — | — |
 
 ---
 
@@ -57,7 +58,9 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 
 **Evidence.** Port: [`pkg/domain/repositories/event_publisher.go:9`](../pkg/domain/repositories/event_publisher.go#L9). Outbox row and flag: [`internal/infrastructure/db/postgres/domain_event.go:25`](../internal/infrastructure/db/postgres/domain_event.go#L25) (`Published bool` — comment reads "outbox relay flag"). Relay: [`internal/application/workflows/eventRelay.go:40`](../internal/application/workflows/eventRelay.go#L40), [`internal/application/activities/eventRelayActivities.go:80`](../internal/application/activities/eventRelayActivities.go#L80). `TraceID` on an event is a plain string read from `ctx.Value("trace_id")`, not a span handle — [`internal/application/services/domain_service.go:1761`](../internal/application/services/domain_service.go#L1761).
 
-**Caveat on the classification.** `go.opentelemetry.io` appears in `go.sum` only — zero first-party Go imports, nothing in `go.mod`'s require blocks. There is also no AMQP/Kafka/NATS/SNS/SQS anywhere. **This invariant currently holds because no telemetry infrastructure exists in application code at all**, not because a boundary is being defended. It is untested against the case it was written for. Treat it as A-by-vacancy.
+**Correction (2026-08-25).** An earlier draft of this entry called the invariant "A-by-vacancy", on the grounds that no telemetry existed in application code. **That was wrong.** Telemetry is present and wired at the composition root: **New Relic APM** ([`cmd/api/ry-admin/ryAdminAPI.go:75`](../cmd/api/ry-admin/ryAdminAPI.go#L75)), **Prometheus** metrics ([`:86`](../cmd/api/ry-admin/ryAdminAPI.go#L86)), and zap-based request logging via `gin-contrib/zap`. It is genuinely absent only from the delivery path — the relay workflow, the relay activities and the publisher import none of it. So this is a boundary actually being maintained, not an accident of scope, which makes the classification stronger rather than weaker.
+
+What is true is that **OpenTelemetry specifically** is unused: `go.opentelemetry.io` appears in `go.sum` only, with zero first-party imports. There is also no AMQP/Kafka/NATS/SNS/SQS anywhere — delivery is the outbox plus S3 archive via Temporal.
 
 **Two adjacent defects, surfaced not fixed:**
 1. **The outbox is not transactional.** The event insert is a separate `db.Create` ([`internal/infrastructure/db/postgres/event_publisher.go:46`](../internal/infrastructure/db/postgres/event_publisher.go#L46)) with no shared `tx` with the business write. A crash between the two loses the event.
@@ -350,31 +353,36 @@ Confirmed 2026-08-25. The ID `UNR-01` is retired and will not be reused.
 
 It entered as a Class D contradiction because 13 files were in violation for two unrelated reasons, and it was not clear there was a single rule underneath. There was. Group 1 (11 files) turned out to be misfiled value types and was fixed by a move ([#399](https://github.com/onasunnymorning/domain-os/issues/399)); group 2 (2 files) is a genuine leak with fixes identified. With the two causes separated, the rule is statable and the remaining violations are enumerable — which makes it Class B, not D.
 
-## UNR-02 — Two spellings of the correlation ID; the only reader is dead code with a passing test
+## UNR-02 — Bare-string context keys, and one spelling that never matched
 
-The middleware writes `"correlation_id"`: [`internal/interface/rest/stream_middleware.go:62`](../internal/interface/rest/stream_middleware.go#L62). The six producer services read `"correlation_id"` and work.
+**Half resolved 2026-08-25.** The dead reader is gone; the underlying convention question is still open.
 
-But [`internal/application/helpers/helpers.go:12`](../internal/application/helpers/helpers.go#L12) reads `"correlationID"` — camelCase — and would therefore never find the value. It is moot only because `getCorrelationID` is unexported and called from nothing but its own test. That test passes because it sets the camelCase key itself: [`helpers_test.go:18`](../internal/application/helpers/helpers_test.go#L18). So the test certifies the spelling production never writes.
+**Resolved — the duplicate spelling.** `internal/application/helpers/` contained a single unexported `getCorrelationID` that read `ctx.Value("correlationID")` in camelCase, while the middleware writes `correlation_id` in snake_case ([`stream_middleware.go:62`](../internal/interface/rest/stream_middleware.go#L62)). It would never have found the value. It was moot only because nothing imported the package — its sole caller was its own test, which passed because it set the camelCase key itself, thereby certifying a spelling production never writes. The whole package was dead and has been deleted.
 
-Related: all of these keys are **bare strings** used as `context.WithValue` keys, which is the `staticcheck` SA1029 pattern — currently unreported because lint is non-blocking in CI. The repo already has the typed-key idiom elsewhere: [`cmd/epp/eppServer.go:28`](../cmd/epp/eppServer.go#L28) defines `type contextKey string` and uses it properly.
+**Still open — bare strings as context keys.** Every remaining context key in the request path is an untyped string:
 
-**What needs deciding:** delete the dead helper, or fix its key and wire it up — and whether typed context keys become the standard.
+- Written at [`stream_middleware.go:52,57,62`](../internal/interface/rest/stream_middleware.go#L52) — `userid`, `trace_id`, `correlation_id`.
+- Read in all six producer services for event stamping, e.g. [`domain_service.go:1761,1764,1780`](../internal/application/services/domain_service.go#L1761).
 
-## UNR-03 — `stack.md` asserts things the code does not do
+This is the `staticcheck` SA1029 pattern: a bare string key can collide with any other package's key on the same context, and nothing type-checks the read. It goes unreported today only because lint is non-blocking in CI.
 
-`.cursorrules` names [`architecture.md`](../architecture.md) and [`stack.md`](../stack.md) as authority every agent "must ALWAYS consult", so drift in either propagates into agent behaviour.
+**The repo already has the correct idiom**, used consistently in the EPP server: [`cmd/epp/eppServer.go:28`](../cmd/epp/eppServer.go#L28) defines `type contextKey string` and keys everything through it. So the codebase does this two different ways, which is why this remains a Class D contradiction rather than a straightforward defect.
 
-**`architecture.md` — resolved 2026-08-25.** Rewritten to describe structure only, with rules delegated to this document by ID. The three defects it carried are gone:
+**What needs deciding:** whether typed context keys become the standard for the request path too, and if so where the shared key type lives.
 
-- It located the domain layer at `internal/domain`, a directory that has never existed — corrected to `pkg/domain/`.
-- It claimed the domain layer is "dependency-free", which was never true (`pkg/domain/entities` imports `go-money`, `uuid`, `idna`, `miekg/dns` and others, all legitimately). The precise, enforceable form is now [INV-14](#inv-14--the-domain-layer-does-not-import-inward).
-- Its "Repository Pattern (**Strict Enforcement**)" section asserted that direct database access is "strictly forbidden in the Application and Domain layers". **It is not.** Eleven files in `internal/application/` hold a `*gorm.DB` or `*sql.DB` directly — nine Temporal activities (escrow import, snapshot/seed, event relay, serial drift, TLD cleanup, spec5 sweep, tombstone backfill) and two services (`csv_to_sqlite_service.go`, `jisc_service.go`). Most are bulk data-movement paths where a row-oriented port is the wrong shape. The rewrite states this plainly instead of asserting a prohibition the code does not honour.
+## ~~UNR-03~~ — resolved 2026-08-25
 
-It also removed claims with no referent in the codebase: gRPC handlers (no first-party gRPC import exists — it is transitive via Temporal), payment-gateway adapters (the only external API adapters are Frankfurter FX and ICANN MoSAPI), and a `PostgresDomainRepository` type (the implementation is `postgres.DomainRepository`). Four entry points the document omitted entirely — EPP, WHOIS, MCP and the Temporal workers — are now listed.
+Both files are corrected. The ID is retired and will not be reused.
 
-**`stack.md` — still open.** It lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing; there is no message broker. Event delivery is the Postgres outbox plus S3 archive via Temporal ([INV-01](#inv-01--the-event-outbox-is-the-path-of-record-telemetry-is-never-load-bearing)). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
+`.cursorrules` named [`architecture.md`](../architecture.md) and [`stack.md`](../stack.md) as authority every agent "must ALWAYS consult", so drift in either propagated into agent behaviour. That is the reason this was worth tracking as a contradiction rather than a typo.
 
-**What needs deciding:** whether `stack.md` is corrected the same way, or retired in favour of `go.mod` plus this document. Until then it remains a file agents are instructed to treat as authoritative while it names a broker that does not exist.
+**`architecture.md`** — rewritten to describe structure only, delegating every rule to this document by ID. It had located the domain layer at `internal/domain` (a directory that has never existed); claimed the layer is "dependency-free" (never true — `pkg/domain/entities` imports `go-money`, `uuid`, `idna` and `miekg/dns`, all legitimately, and the precise form is now [INV-14](#inv-14--the-domain-layer-does-not-import-inward)); and asserted under a "**Strict Enforcement**" heading that direct database access is forbidden in the application layer, which it is not — eleven files there hold a `*gorm.DB` or `*sql.DB` directly, nine of them Temporal activities doing bulk data movement. It also carried claims with no referent: gRPC handlers, payment-gateway adapters, and a `PostgresDomainRepository` type. Four entry points it omitted — EPP, WHOIS, MCP, Temporal workers — are now listed.
+
+**`stack.md`** — rewritten against `go.mod` and `frontend/package.json`. It listed **RabbitMQ** as the message queue; there is no broker of any kind. Event delivery is the Postgres outbox plus S3 archive via Temporal ([INV-01](#inv-01--the-event-outbox-is-the-path-of-record-telemetry-is-never-load-bearing)). It also omitted most of what the backend actually depends on — EPP and WHOIS protocol libraries, Auth0, the Anthropic and MCP SDKs, Snowflake IDs, Swagger generation, and the observability stack.
+
+**`.cursorrules`** — rewritten. It restated "ALL data access must go through repositories", the same claim that was false in `architecture.md`, and pointed at the two narrative files as authority without mentioning this document. It now points here first and deliberately restates no rules.
+
+*Two related documents were checked and left alone as already accurate: [`docs/EPP_DOCKER_GUIDE.md`](EPP_DOCKER_GUIDE.md) marks RabbitMQ explicitly as "(future)", and [`docs/LOCAL_ENV_PHASE0_INVENTORY.md`](LOCAL_ENV_PHASE0_INVENTORY.md) already records that it does not exist in the repo. [`docs/EPP_PRODUCTION_ARCHITECTURE.md`](EPP_PRODUCTION_ARCHITECTURE.md) proposes RabbitMQ for a future audit-log design and is forward-looking rather than a claim about current state — worth a status banner, but not a contradiction.*
 
 ---
 
@@ -402,7 +410,7 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | ~~PROP-09~~ | — | — | — | Retired without promotion. Migration tooling is an open decision, not an invariant — [#410](https://github.com/onasunnymorning/domain-os/issues/410). |
 | INV-14 | **yes** | import lint (`depguard`) | **S** (rule) / M (violations) | One deny-rule: no `internal/**` from `pkg/domain/**`. The rule itself is a single config block; the work is clearing the 2 violations first — [#400](https://github.com/onasunnymorning/domain-os/issues/400) is in flight as [PR #405](https://github.com/onasunnymorning/domain-os/pull/405), [#401](https://github.com/onasunnymorning/domain-os/issues/401) needs a modelling decision. Land both (or allowlist the 2 files) and enable in [#403](https://github.com/onasunnymorning/domain-os/issues/403). Group 1's 11 files were cleared by [#399](https://github.com/onasunnymorning/domain-os/issues/399). |
 | UNR-02 | partial | `staticcheck` SA1029 | S | Already detected by a linter that is already enabled — see the blocker below. |
-| UNR-03 | no | code review | — | Doc-vs-code drift is not mechanically checkable. |
+| ~~UNR-03~~ | — | — | — | **Resolved 2026-08-25** — `architecture.md`, `stack.md` and `.cursorrules` corrected. Doc-vs-code drift is not mechanically checkable; the mitigation is that rules now live in one evidenced place and the narrative docs delegate to it. |
 
 **Two blockers that gate this entire table:**
 
