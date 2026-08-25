@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"log/slog"
@@ -22,15 +23,6 @@ import (
 	epp "gitlab.com/internetstiftelsen-oss/epp-lib"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
-)
-
-// contextKey is a custom type for context keys to avoid collisions.
-type contextKey string
-
-const (
-	connectionIDKey contextKey = "cid"
-	clientIPKey     contextKey = "clientIP"
-	registrarIDKey  contextKey = "registrarID"
 )
 
 // Global rate limiter (will be initialized in main)
@@ -224,8 +216,8 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	connectionID := fmt.Sprintf("conn-%d", time.Now().UnixNano())
 
 	// Add connection info to context
-	ctx = context.WithValue(ctx, connectionIDKey, connectionID)
-	ctx = context.WithValue(ctx, clientIPKey, clientIP)
+	ctx = appcontext.WithConnectionID(ctx, connectionID)
+	ctx = appcontext.WithClientIP(ctx, clientIP)
 
 	// Increment connection counter (only if rateLimiter is initialized)
 	if rateLimiter != nil {
@@ -241,7 +233,7 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	go func() {
 		<-ctx.Done()
 		// Get registrar ID from context if available
-		registrarID, _ := ctx.Value(registrarIDKey).(string)
+		registrarID, _ := appcontext.RegistrarID(ctx)
 
 		// Decrement connection counter (only if rateLimiter is initialized)
 		if rateLimiter != nil {
@@ -271,7 +263,7 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 	}
 
 	// Get client IP from context
-	clientIP, _ := ctx.Value(clientIPKey).(string)
+	clientIP, _ := appcontext.ClientIP(ctx)
 
 	// Check if account is locked (only if rateLimiter is initialized)
 	if rateLimiter != nil && username != "" {
@@ -316,7 +308,7 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 
 		// Store registrar ID in context for connection tracking
 		// In a real implementation, you'd extract this from your auth system
-		ctx = context.WithValue(ctx, registrarIDKey, username)
+		ctx = appcontext.WithRegistrarID(ctx, username)
 	}
 
 	// For now, accept any login and return success

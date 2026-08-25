@@ -21,8 +21,6 @@ import (
 // Using a string reference avoids importing the workflows package.
 const checkSerialDriftWorkflowName = "CheckSerialDriftWorkflow"
 
-
-
 // ZoneSlavingService provides application-level operations for zone slaving monitors.
 type ZoneSlavingService struct {
 	repo repositories.SerialDriftRepository
