@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
@@ -106,19 +106,19 @@ func (s *SyncService) RefreshFXRates(ctx context.Context, baseCurrency string) e
 	return s.FXRepository.UpdateAll(ctx, fxs)
 }
 
-// frankfurterRatesToFX converts Frankfurter API rates to FX database records.
-func frankfurterRatesToFX(rates []frankfurter.Rate) ([]*postgres.FX, error) {
-	fxs := make([]*postgres.FX, 0, len(rates))
+// frankfurterRatesToFX converts Frankfurter API rates to domain FX entities.
+func frankfurterRatesToFX(rates []frankfurter.Rate) ([]*entities.FX, error) {
+	fxs := make([]*entities.FX, 0, len(rates))
 	for _, r := range rates {
 		date, err := r.ParsedDate()
 		if err != nil {
 			return nil, fmt.Errorf("invalid rate date %q for %s/%s: %w", r.Date, r.Base, r.Quote, err)
 		}
-		fxs = append(fxs, &postgres.FX{
-			Date:   date,
-			Base:   r.Base,
-			Target: r.Quote,
-			Rate:   r.Rate,
+		fxs = append(fxs, &entities.FX{
+			Date:           date,
+			BaseCurrency:   r.Base,
+			TargetCurrency: r.Quote,
+			Rate:           r.Rate,
 		})
 	}
 	return fxs, nil

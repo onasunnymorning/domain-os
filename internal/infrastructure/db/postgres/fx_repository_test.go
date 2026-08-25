@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -28,24 +29,24 @@ func (s *FXSuite) TearDownSuite() {
 func (s *FXSuite) TestFX_UpdateAll() {
 	testTimeString := "2021-01-01T00:00:00Z"
 	testTime, _ := time.Parse(time.RFC3339, testTimeString)
-	fxs := []*FX{
+	fxs := []*entities.FX{
 		{
-			Date:   testTime,
-			Base:   "USD",
-			Target: "EUR",
-			Rate:   1.5,
+			Date:           testTime,
+			BaseCurrency:   "USD",
+			TargetCurrency: "EUR",
+			Rate:           1.5,
 		},
 		{
-			Date:   testTime,
-			Base:   "USD",
-			Target: "JPY",
-			Rate:   100.0,
+			Date:           testTime,
+			BaseCurrency:   "USD",
+			TargetCurrency: "JPY",
+			Rate:           100.0,
 		},
 		{
-			Date:   testTime,
-			Base:   "USD",
-			Target: "PEN",
-			Rate:   3.72312,
+			Date:           testTime,
+			BaseCurrency:   "USD",
+			TargetCurrency: "PEN",
+			Rate:           3.72312,
 		},
 	}
 
@@ -74,16 +75,16 @@ func (s *FXSuite) TestFX_UpdateAll_ReplacesOnlyGivenBase() {
 	day1, _ := time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
 	day2, _ := time.Parse(time.RFC3339, "2026-01-02T00:00:00Z")
 
-	s.Require().NoError(repo.UpdateAll(context.Background(), []*FX{
-		{Date: day1, Base: "GBP", Target: "EUR", Rate: 1.2},
+	s.Require().NoError(repo.UpdateAll(context.Background(), []*entities.FX{
+		{Date: day1, BaseCurrency: "GBP", TargetCurrency: "EUR", Rate: 1.2},
 	}))
-	s.Require().NoError(repo.UpdateAll(context.Background(), []*FX{
-		{Date: day1, Base: "CAD", Target: "EUR", Rate: 0.7},
+	s.Require().NoError(repo.UpdateAll(context.Background(), []*entities.FX{
+		{Date: day1, BaseCurrency: "CAD", TargetCurrency: "EUR", Rate: 0.7},
 	}))
 
 	// Replacing GBP must not touch CAD
-	s.Require().NoError(repo.UpdateAll(context.Background(), []*FX{
-		{Date: day2, Base: "GBP", Target: "EUR", Rate: 1.25},
+	s.Require().NoError(repo.UpdateAll(context.Background(), []*entities.FX{
+		{Date: day2, BaseCurrency: "GBP", TargetCurrency: "EUR", Rate: 1.25},
 	}))
 
 	gbp, err := repo.ListByBaseCurrency(context.Background(), "GBP")
@@ -120,5 +121,5 @@ func (s *FXSuite) TestFX_GetByBaseAndTargetCurrency_ReturnsLatest() {
 // index-out-of-range panic risk on fxs[0]).
 func (s *FXSuite) TestFX_UpdateAll_EmptyInput() {
 	repo := NewFXRepository(s.db)
-	s.Require().NoError(repo.UpdateAll(context.Background(), []*FX{}))
+	s.Require().NoError(repo.UpdateAll(context.Background(), []*entities.FX{}))
 }

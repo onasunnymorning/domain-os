@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -40,17 +40,17 @@ func TestRefreshFXRates_Success(t *testing.T) {
 		{Date: "2026-07-17", Base: "USD", Quote: "PEN", Rate: 3.3903},
 	}, nil)
 
-	var stored []*postgres.FX
-	fxRepo.On("UpdateAll", mock.Anything, mock.AnythingOfType("[]*postgres.FX")).
-		Run(func(args mock.Arguments) { stored = args.Get(1).([]*postgres.FX) }).
+	var stored []*entities.FX
+	fxRepo.On("UpdateAll", mock.Anything, mock.AnythingOfType("[]*entities.FX")).
+		Run(func(args mock.Arguments) { stored = args.Get(1).([]*entities.FX) }).
 		Return(nil)
 
 	err := svc.RefreshFXRates(context.Background(), "USD")
 	require.NoError(t, err)
 
 	require.Len(t, stored, 2)
-	assert.Equal(t, "USD", stored[0].Base)
-	assert.Equal(t, "EUR", stored[0].Target)
+	assert.Equal(t, "USD", stored[0].BaseCurrency)
+	assert.Equal(t, "EUR", stored[0].TargetCurrency)
 	assert.Equal(t, 0.87209, stored[0].Rate)
 	assert.Equal(t, time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC), stored[0].Date)
 }

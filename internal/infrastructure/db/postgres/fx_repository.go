@@ -23,17 +23,22 @@ func NewFXRepository(db *gorm.DB) *FXRepository {
 // rates in a single transaction. Running delete + insert atomically ensures a
 // failure can never leave the base currency without any rates (which would
 // make every quote in a non-base currency fail until the next sync).
-func (r *FXRepository) UpdateAll(ctx context.Context, fxs []*FX) error {
+func (r *FXRepository) UpdateAll(ctx context.Context, fxs []*entities.FX) error {
 	if len(fxs) == 0 {
 		return nil
 	}
+	dbFXs := make([]*FX, len(fxs))
+	for i, fx := range fxs {
+		dbFXs[i] = &FX{}
+		dbFXs[i].FromEntity(fx)
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Drop all records from the fx table for the given base currency
-		if err := tx.Where("base = ?", fxs[0].Base).Delete(&FX{}).Error; err != nil {
+		if err := tx.Where("base = ?", fxs[0].BaseCurrency).Delete(&FX{}).Error; err != nil {
 			return err
 		}
 		// Insert the new records
-		return tx.Create(&fxs).Error
+		return tx.Create(&dbFXs).Error
 	})
 }
 
