@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -100,4 +101,29 @@ func TestScopeTypesAreDistinct(t *testing.T) {
 	require.Equal(t, ClIDType("apex"), ClIDType(operator))
 	require.Equal(t, ClIDType("sh8013"), ClIDType(registrar))
 	require.NotEqual(t, operator.String(), registrar.String())
+}
+
+// TestScopeTypesMarshalAsPlainStrings pins the wire format. ADR-0006 converts
+// the serial-drift Temporal params from string to OperatorID on the strength of
+// the two being byte-identical on the wire; schedules created before that change
+// are still running, and their stored args must keep deserializing. A Marshaler
+// or a struct wrapper added to these types later would break them silently.
+func TestScopeTypesMarshalAsPlainStrings(t *testing.T) {
+	type params struct {
+		TenantID OperatorID `json:"tenantId"`
+	}
+
+	encoded, err := json.Marshal(params{TenantID: OperatorID("apex")})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tenantId":"apex"}`, string(encoded))
+
+	// A payload written before the type change — a plain JSON string — still
+	// decodes into the typed field.
+	var decoded params
+	require.NoError(t, json.Unmarshal([]byte(`{"tenantId":"apex"}`), &decoded))
+	require.Equal(t, OperatorID("apex"), decoded.TenantID)
+
+	registrar, err := json.Marshal(RegistrarClID("sh8013"))
+	require.NoError(t, err)
+	require.Equal(t, `"sh8013"`, string(registrar))
 }
