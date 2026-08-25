@@ -4,7 +4,7 @@
 **Date:** 2026-08-10
 **Status:** Draft. Nothing here is settled. Expected review action is deletion and correction.
 
-**Resolutions since the analysis SHA:** `PROP-04` → `INV-07` (2026-08-10, retired). `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25); its evidence is cited at HEAD rather than at the analysis SHA.
+**Resolutions since the analysis SHA.** `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25). All ten `PROP` candidates are now answered (2026-08-10 and 2026-08-25): six promoted to `INV-07`…`INV-13`, four retired without promotion — see the disposition table. Evidence for anything resolved after the analysis SHA is cited at HEAD rather than at that SHA.
 
 This document exists so architectural review can be a link to a section ID instead of an essay.
 
@@ -19,7 +19,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | **C — Observed pattern** | A convention exists; whether it is deliberate is unknown. Stated as a question. |
 | **D — Contradiction** | Two parts of the repo do incompatible things. No rule proposed. |
 
-**ID rules.** `INV-nn` are the confirmed invariants. `PROP-nn` are proposals awaiting confirmation — **they are not rules and must not be cited as rules.** `UNR-nn` are unresolved contradictions. IDs are stable and are never reused after retirement.
+**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
 
 ## Index
 
@@ -32,8 +32,13 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-05 | Reconciliation before record creation | **B** (process only) | Invariants |
 | INV-06 | Determinism boundaries around workflows | A | Invariants |
 | INV-07 | Errors are wrapped with `%w`, not `%v` | **B** | Invariants |
-| PROP-01…03, 05…10 | Observed conventions | C | Proposed |
-| ~~PROP-04~~ | Retired — promoted to INV-07 on 2026-08-10 | — | — |
+| INV-08 | Business validation lives in entity constructors | A | Invariants |
+| INV-09 | Domain declares sentinel errors; outer layers wrap | A | Invariants |
+| INV-10 | Repository methods take `ctx` first | **B** | Invariants |
+| INV-11 | List endpoints paginate by cursor, never offset | A | Invariants |
+| INV-12 | Temporal code logs through the Temporal logger | A | Invariants |
+| INV-13 | `commands/` write inputs, `queries/` read filters | A | Invariants |
+| ~~PROP-01…10~~ | All retired — six promoted, four dropped | — | Disposition table |
 | UNR-01…03 | Contradictions | D | Unresolved |
 
 ---
@@ -204,60 +209,106 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 ---
 
-# Proposed — pending Geoff's confirmation
+## INV-08 — Business validation lives in entity constructors, not at the edge
 
-**These are not rules.** They are consistent patterns found in the code, presented as questions. Answer each yes / no / no-longer. Nothing here should be cited in review until it has been promoted.
+**Rule.** Business rules are enforced by the entity constructor or its `Validate()` method. Handlers do not re-implement them.
 
-### PROP-01 — Transaction boundaries have no owner
-Only 8 explicit transaction sites exist, spread across three layers: services ([`jisc_service.go:52`](../internal/application/services/jisc_service.go#L52), [`:513`](../internal/application/services/jisc_service.go#L513), [`csv_to_sqlite_service.go:334`](../internal/application/services/csv_to_sqlite_service.go#L334), [`:448`](../internal/application/services/csv_to_sqlite_service.go#L448)), activities ([`serialDriftActivities.go:175`](../internal/application/activities/serialDriftActivities.go#L175), [`escrow_import.go:2602`](../internal/application/activities/escrow_import.go#L2602), [`:3143`](../internal/application/activities/escrow_import.go#L3143)), and repositories ([`fx_repository.go:30`](../internal/infrastructure/db/postgres/fx_repository.go#L30)). The entire core registry service set (domain, registrar, host, contact, tld, accreditation) opens none — which is also why INV-01's outbox write is not atomic with its business write.
-**Q: Should transaction ownership sit at one named layer, or is per-case placement intentional?**
+**Why.** One definition of "valid" means one place to change it and one place to test it. When the edge also enforces business rules, the two copies drift, and the domain's guarantee quietly becomes "valid *if* it arrived through the handler that checks".
 
-### PROP-02 — Validation lives in entity constructors, not at the edge
-30 `New<X>(...) (*X, error)` constructors and 24 `Validate()`/`IsValid()` methods across 74 files in `pkg/domain/entities/` (e.g. [`registrar.go:124`](../pkg/domain/entities/registrar.go#L124), [`contact.go:147`](../pkg/domain/entities/contact.go#L147), [`tld.go:65`](../pkg/domain/entities/tld.go#L65)). Against that, only **18** `binding:"..."` gin tags exist across the whole REST layer. The edge appears to trust the domain rather than duplicate its checks.
-**Q: Is "validation is the entity's job, handlers don't re-check" the rule?**
+**Class: A.**
 
-### PROP-03 — Sentinel errors are an entity-layer convention
-159 `Err… = errors.New(...)` declarations, concentrated in `pkg/domain/entities` (36 files). Outer layers barely declare any: services 4, queries 2, commands 2, and one apiece in rest / infrastructure-web / dns / db / api.
-**Q: Are sentinels meant to be a domain-vocabulary tool specifically, with outer layers wrapping rather than declaring?**
+**Evidence.** 33 `New<X>(...) (*X, error)` constructors and 26 `Validate()`/`IsValid()` methods across 75 files in `pkg/domain/entities/` — e.g. [`registrar.go:124`](../pkg/domain/entities/registrar.go#L124), [`contact.go:147`](../pkg/domain/entities/contact.go#L147), [`tld.go:65`](../pkg/domain/entities/tld.go#L65). Against that, the entire REST layer carries only 18 `binding:"..."` tags. The edge trusts the domain rather than duplicating it.
 
-### ~~PROP-04~~ — promoted, see [INV-07](#inv-07--errors-are-wrapped-with-w-not-v)
-Confirmed 2026-08-10. The ID `PROP-04` is retired and will not be reused.
+**Explicit carve-out — not a violation.** Gin `binding` tags for *presence and shape* (required field, parseable type) are permitted and expected. Rejecting a malformed request before it reaches the domain is a distinct concern from enforcing a business rule. This invariant governs business rules only; the 18 existing tags are not counted against it.
 
-### PROP-05 — Repository methods take `ctx` first
-121 of 124 interface methods in `pkg/domain/repositories/` lead with `ctx context.Context`. The three exceptions: [`idGenerator_interface.go:5`](../pkg/domain/repositories/idGenerator_interface.go#L5), [`:6`](../pkg/domain/repositories/idGenerator_interface.go#L6), [`iana_interface.go:8`](../pkg/domain/repositories/iana_interface.go#L8).
-**Q: Rule, with three to fix — or are the ID generator and IANA list legitimately context-free?**
+---
 
-### PROP-06 — Pagination is cursor-based, never offset
-Where repository interfaces paginate they use `pageSize int, pageCursor string`: [`ianaRegistrar_interface.go:12`](../pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](../pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](../pkg/domain/repositories/phase_repository_interface.go#L17). No `OFFSET`-style signature appears in the port layer.
-**Q: Is cursor pagination a rule for new list endpoints?**
+## INV-09 — The domain declares sentinel errors; outer layers wrap rather than declare
 
-### PROP-07 — Eager loading is expressed as a `preload…bool` parameter
-[`tld_interface.go:12`](../pkg/domain/repositories/tld_interface.go#L12) (`preloadAll`), [`registrar_interface.go:13`](../pkg/domain/repositories/registrar_interface.go#L13) (`preloadTLDs`), [`domain_repository.go:16`](../pkg/domain/repositories/domain_repository.go#L16) and [`:32`](../pkg/domain/repositories/domain_repository.go#L32) (`preloadHosts`). Each names a different relation, so the idiom is a boolean flag rather than a shared option type.
-**Q: Keep the boolean-flag idiom, or is this drifting toward a load-options struct?**
+**Rule.** `Err… = errors.New(...)` sentinels are domain vocabulary and live in `pkg/domain/entities`. Outer layers wrap them; they do not mint their own parallel set.
 
-### PROP-08 — Logging idiom is determined by layer
-**Four** idioms are in use. Non-test counts:
+**Why.** A sentinel is only useful if the caller can match it, and callers sit above the domain. Defining a second sentinel for the same condition in a service gives two ways to spell one failure, and the outer one is invisible to anyone holding the domain's. Together with [INV-07](#inv-07--errors-are-wrapped-with-w-not-v) this is one mechanism, not two: the domain names the failure, `%w` carries the name upward, and `errors.Is` works end to end. Documenting either half alone leaves the other unexplained.
 
-| Package | `log.*` | `slog.` | Temporal logger | `zap.` |
-|---|---|---|---|---|
-| `application/workflows` | 0 | 0 | **25** | 0 |
-| `application/activities` | 4 | 0 | **58** | 1 |
-| `askg` | 0 | **56** | 0 | 0 |
-| `application/services` | **209** | 17 | 0 | 0 |
-| `interface/rest` | 5 | 13 | 0 | 0 |
-| `infrastructure` | 24 | 2 | 0 | 8 |
-| `cmd` | — | — | 0 | **47** |
+**Class: A.**
 
-Temporal code is unambiguous and clean. Elsewhere the split reads as age rather than policy: the newest code (`askg`) is all-`slog`, the oldest (`services`) is all-`log.Printf`, and `zap` is confined to composition roots plus the two infrastructure types it is injected into ([`event_publisher.go:13`](../internal/infrastructure/db/postgres/event_publisher.go#L13), [`lifecycleActivities.go`](../internal/application/activities/lifecycleActivities.go)). There is no project logger wrapper type — `zap` is passed by dependency injection, `slog` and `log` are used package-globally.
-**Q: Is `slog` the direction of travel — and if so, what happens to the injected `zap` loggers, which are the only ones that are testable by injection?**
+**Evidence.** 165 sentinel declarations in non-test code, 37 files of them in `pkg/domain/entities`. Outer layers declare almost none: `internal/application/services` 4, `internal/interface/rest` 2, `internal/application/queries` 2, `internal/application/commands` 2, and one apiece in four `internal/infrastructure` packages.
 
-### PROP-09 — Schema is GORM `AutoMigrate`, env-gated, with no versioned migrations
-[`internal/infrastructure/db/postgres/connection.go:15`](../internal/infrastructure/db/postgres/connection.go#L15), gated by `AUTO_MIGRATE` (default `false` — [`internal/config/env_registry.go:69`](../internal/config/env_registry.go#L69)). Ownership is asserted in a comment at [`cmd/api/ry-admin/seed.go:114`](../cmd/api/ry-admin/seed.go#L114): "admin-api owns migration; we only ever write rows". There are **no** `.sql` migration files anywhere — the only SQL-ish init script is `docker/postgres-init/01-temporal.sh`. A note at [`connection.go:82`](../internal/infrastructure/db/postgres/connection.go#L82) records that AutoMigrate never drops indexes, so cleanup is manual.
-**Q: Is "one service owns AutoMigrate, no migration tool" the deliberate position?**
+---
 
-### PROP-10 — Write and read models are split into `commands/` and `queries/`
-`internal/application/commands/` holds per-aggregate command types; `internal/application/queries/` holds filters and read shapes. The split is consistently populated.
-**Q: Is this a CQRS commitment new work must follow, or a naming convention that happens to have held?**
+## INV-10 — Repository methods take `ctx` first
+
+**Rule.** Every method on a port in `pkg/domain/repositories/` takes `ctx context.Context` as its first parameter.
+
+**Why.** A repository call is the point where work leaves the process — for the database or the network. Without a context the caller cannot cancel it, time it out, or carry a deadline into it, so one slow dependency becomes an unbounded wait with nothing able to interrupt it.
+
+**Class: B** — 121 of 124 methods hold; one genuine violation, two legitimate exceptions.
+
+**Violation, cited individually:**
+
+- [`pkg/domain/repositories/iana_interface.go:8`](../pkg/domain/repositories/iana_interface.go#L8) — `ListRegistrars() ([]*entities.IANARegistrar, error)`. The implementation performs an HTTP fetch of the IANA XML registry: [`internal/infrastructure/web/ianaregistrars/iana_repository.go:33`](../internal/infrastructure/web/ianaregistrars/iana_repository.go#L33) calls `client.Get(repo.XMLRegistrarURL)`. With no context on the signature, no caller can cancel or bound it. This is exactly the case the rule exists for.
+
+**Explicit exceptions — not violations.** [`idGenerator_interface.go:5`](../pkg/domain/repositories/idGenerator_interface.go#L5) and [`:6`](../pkg/domain/repositories/idGenerator_interface.go#L6) — `GenerateID()` and `ListNode()` are pure in-memory snowflake operations ([`internal/infrastructure/snowflakeidgenerator/snowflake_idgenerator.go:20`](../internal/infrastructure/snowflakeidgenerator/snowflake_idgenerator.go#L20)). They perform no IO, cannot block, and threading a context through them would be churn with no benefit. They are allowlisted deliberately.
+
+---
+
+## INV-11 — List endpoints paginate by cursor, never by offset
+
+**Rule.** Pagination is expressed as `pageSize` plus an opaque `pageCursor`. No port or repository takes an offset.
+
+**Why.** Offset pagination re-scans every skipped row, so cost grows with depth — and it silently skips or repeats rows when the underlying set changes between pages. A registry accumulates large, actively-mutating tables, which is the case where both failures bite hardest.
+
+**Class: A** — holds universally; no violations found.
+
+**Evidence.** The shared shape is `ListItemsQuery{PageSize int, PageCursor string, Filter ListItemsFilter}` at [`internal/application/queries/listItemsInterface.go:10`](../internal/application/queries/listItemsInterface.go#L10), consumed by 11 ports in `pkg/domain/repositories/`. Three further methods take the pair directly: [`ianaRegistrar_interface.go:12`](../pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](../pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](../pkg/domain/repositories/phase_repository_interface.go#L17). A search for `Offset(` and `OFFSET` across `internal/infrastructure/db/postgres/` returns **zero** matches in non-test code.
+
+*Note:* [#399](https://github.com/onasunnymorning/domain-os/issues/399) relocates `ListItemsQuery` to `pkg/domain`. The rule is about the shape, not the package, and survives that move unchanged.
+
+---
+
+## INV-12 — Temporal workflows and activities log through the Temporal logger
+
+**Rule.** Code under `internal/application/workflows/` and `internal/application/activities/` logs via `workflow.GetLogger(ctx)` / `activity.GetLogger(ctx)`, not via the standard library or a package-global logger.
+
+**Why.** The Temporal logger is replay-aware: it suppresses duplicate emission when a workflow re-executes its history, and it tags entries with workflow and run IDs. A `log.Printf` in workflow scope both loses that correlation and re-prints on every replay, turning one logical event into many identical lines during an incident.
+
+**Class: A** — within the Temporal packages, which is the whole scope of this rule.
+
+**Evidence.** `internal/application/workflows/`: 25 `workflow.GetLogger` calls, **0** `log.*`, **0** `slog.`. `internal/application/activities/`: 58 `activity.GetLogger` calls against 4 residual `log.*`.
+
+**Scope limit — read this before citing it.** This invariant governs the Temporal packages *only*. The wider question — whether `slog` replaces the ~238 `log.*` calls elsewhere in the codebase, and what becomes of the injected `zap` loggers — is **not settled** and is not covered here. See the disposition table for `PROP-08`.
+
+---
+
+## INV-13 — `commands/` holds write inputs, `queries/` holds read filters
+
+**Rule.** Input DTOs for state-changing operations live in `internal/application/commands/`; filter and read-shape types live in `internal/application/queries/`.
+
+**Why.** The two kinds of type have different lifecycles — a command carries everything needed to validate and perform a write, a filter carries only what narrows a read — and keeping them in one package invites a type that quietly serves both and can no longer change for either.
+
+**Class: A** — the split is consistently populated.
+
+**This is a naming convention, not a CQRS commitment.** There is no separate read model, no read/write store split, and no event sourcing anywhere in this codebase. The package names resemble CQRS vocabulary; the architecture is not CQRS. Do not cite this invariant as authority for building a read model — that would be a new architectural decision needing its own ADR.
+
+*Note:* [#399](https://github.com/onasunnymorning/domain-os/issues/399) moves the query/filter types to `pkg/domain`. This rule is about the write/read separation, not the parent directory, and survives that move.
+
+---
+
+# Proposed — resolved 2026-08-25
+
+**This section is closed.** All ten Class C candidates have been answered. Six were promoted to invariants, four were retired without promotion. **No `PROP-nn` ID is live**, none should be cited in review, and none will be reused.
+
+| ID | Question asked | Outcome |
+|---|---|---|
+| `PROP-01` | Should transaction ownership sit at one named layer? | **Retired, not promoted.** No convention existed to confirm — 8 sites across 3 layers is an absence, not a pattern, and promoting one would have invented a rule rather than recorded one. The concrete finding it circled is `INV-01` defect 1 (the outbox write is not atomic with its business write), tracked in [#408](https://github.com/onasunnymorning/domain-os/issues/408). |
+| `PROP-02` | Is validation the entity's job? | **Promoted → [INV-08](#inv-08--business-validation-lives-in-entity-constructors-not-at-the-edge)**, Class A. |
+| `PROP-03` | Are sentinels domain vocabulary? | **Promoted → [INV-09](#inv-09--the-domain-declares-sentinel-errors-outer-layers-wrap-rather-than-declare)**, Class A. |
+| `PROP-04` | Is `%w` the rule? | **Promoted → [INV-07](#inv-07--errors-are-wrapped-with-w-not-v)**, Class B (2026-08-10). |
+| `PROP-05` | Is `ctx`-first a rule? | **Promoted → [INV-10](#inv-10--repository-methods-take-ctx-first)**, Class B — one real violation cited, two exceptions allowlisted. |
+| `PROP-06` | Is cursor pagination a rule? | **Promoted → [INV-11](#inv-11--list-endpoints-paginate-by-cursor-never-by-offset)**, Class A. Evidence was stronger than first recorded: the original entry cited 3 methods; the real figure is a shared query type used by 11 ports and zero offset usage anywhere. |
+| `PROP-07` | Keep the `preload…bool` idiom? | **Retired, not promoted.** Four sites naming four different relations is coincidence, not convention. Promoting it would have committed new code to a boolean-flag idiom that compounds badly as relations multiply. Dropped without replacement; revisit if it starts to hurt. |
+| `PROP-08` | Is `slog` the direction of travel? | **Split.** The Temporal half was real and is promoted → [INV-12](#inv-12--temporal-workflows-and-activities-log-through-the-temporal-logger), Class A. The project-wide `slog`-vs-`log` question is a direction to choose, not a pattern to observe, and is deferred to [#409](https://github.com/onasunnymorning/domain-os/issues/409). |
+| `PROP-09` | Is AutoMigrate-with-no-tool deliberate? | **Retired, not promoted.** This is a risk to decide on, not a convention to bless — writing it into the invariants would enshrine as intent something that cannot drop columns or indexes, cannot be reviewed as a diff, and has no down-path. Deferred to [#410](https://github.com/onasunnymorning/domain-os/issues/410), to settle before production traffic. |
+| `PROP-10` | Is the `commands`/`queries` split a CQRS commitment? | **Promoted → [INV-13](#inv-13--commands-holds-write-inputs-queries-holds-read-filters)**, Class A — but explicitly as a naming convention, *not* as CQRS. |
 
 ---
 
@@ -332,15 +383,13 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-05 | partial | grep-level CI check | S | Cannot verify reconciliation happened. **Can** assert `entity_count_consistency` has `Severity: "error"` — i.e. pin the gate so it cannot be silently downgraded again. Genuine enforcement needs branching on `VerificationPassed`, which is a code fix, not a gate. |
 | INV-06 | **yes** | architecture test | **S** | Assert no file under `internal/application/workflows/` imports `net/http`, `math/rand`, `crypto/rand`, or a uuid package, and contains no `time.Now(`. A ~30-line Go test using `go/parser`. Currently holds at zero violations, so it lands green on day one. |
 | INV-07 | **yes** | lint (`errorlint`, `errorf: true`) | **S** | Verified against this SHA: `errorlint` is the linter that catches this — not `err113`/`wrapcheck`, which answer different questions. 49 offenders across 9 files to clear first; 25 are in one file. Enabling `errorlint`'s other two checks (`asserts`, `comparison`) raises the count to 87 — a separate cleanup with different risk, since `==` → `errors.Is` can change behaviour where a sentinel is compared by identity. Tracked in [#404](https://github.com/onasunnymorning/domain-os/issues/404). |
-| PROP-01 | no | code review | — | Placement is a judgement call. |
-| PROP-02 | partial | architecture test | M | Can assert every entity has a `New…` constructor returning `error`; cannot assert the validation is meaningful. |
-| PROP-03 | no | code review | — | |
-| PROP-05 | yes | architecture test | S | Parse `pkg/domain/repositories/`, assert param 0 is `context.Context`. 3 exceptions to allowlist or fix. |
-| PROP-06 | partial | architecture test | M | Detectable by signature shape; naming-dependent, so somewhat brittle. |
-| PROP-07 | no | code review | — | |
-| PROP-08 | yes | import lint (`depguard`) | S | Ban `log` in chosen packages once the direction is confirmed. Blocked on PROP-08's answer. |
-| PROP-09 | no | code review | — | |
-| PROP-10 | no | code review | — | |
+| INV-08 | partial | architecture test | M | Can assert every entity type has a `New…` constructor returning `error`; cannot assert the validation inside it is meaningful, nor distinguish a business rule from a presence check at the edge. |
+| INV-09 | partial | architecture test | M | Can assert no `Err… = errors.New` outside `pkg/domain/entities` (13 current outliers to fix or allowlist). Cannot assert an outer-layer error *should* have been a domain sentinel — that stays review. |
+| INV-10 | **yes** | architecture test | **S** | Parse `pkg/domain/repositories/`, assert param 0 is `context.Context`. Allowlist the 2 `idGenerator` methods; the `iana_interface.go:8` violation should be fixed rather than allowlisted, since it is a live uncancellable HTTP call. |
+| INV-11 | partial | grep-level CI check | S | Cheapest reliable form is a grep asserting no `Offset(`/`OFFSET` appears in `internal/infrastructure/db/postgres/` — currently zero, so it lands green. Asserting the positive (every list method takes a cursor) is signature-shape matching and brittle. |
+| INV-12 | **yes** | import lint (`depguard`) | **S** | Deny `log` and `log/slog` from `internal/application/workflows/**` and `internal/application/activities/**`. Workflows are already clean; 4 residual `log.*` calls in activities to clear first. **Not blocked** — the project-wide logging direction is a separate, still-open question ([#409](https://github.com/onasunnymorning/domain-os/issues/409)) and does not gate this rule. |
+| INV-13 | partial | architecture test | S | Can assert `commands/` and `queries/` contain no cross-imports and that no type is declared in both. Cannot assert a given type was filed in the right one. |
+| ~~PROP-09~~ | — | — | — | Retired without promotion. Migration tooling is an open decision, not an invariant — [#410](https://github.com/onasunnymorning/domain-os/issues/410). |
 | UNR-01 grp 1 (11 files) | **yes** | import lint (`depguard`) | **S** | Gate is one deny-rule: no `internal/**` from `pkg/domain/**`. Blocked until the query/filter types move to `pkg/domain` — that move is itself S and mechanical. |
 | UNR-01 grp 2 (2 files) | yes | same deny-rule | M | Same gate catches it, but the fix is modelling work (`entities.TLDDNSRecord`, `entities.FX` on writes, mappers) — not a rename. Do this before turning the rule on, or allowlist the two files meanwhile. |
 | UNR-02 | partial | `staticcheck` SA1029 | S | Already detected by a linter that is already enabled — see the blocker below. |
@@ -349,8 +398,8 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 **Two blockers that gate this entire table:**
 
 1. **CI lint is non-blocking.** [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) runs golangci-lint with `--issues-exit-code=0`. **Every lint-based mechanism above is inert until that flag is removed.** That single change is the prerequisite for roughly half this table.
-2. **No import-restriction linter is configured.** [`.golangci.yml`](../.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, PROP-08, UNR-01) are `depguard` rules, so adding it once unlocks all four.
+2. **No import-restriction linter is configured.** [`.golangci.yml`](../.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, INV-12, UNR-01) are `depguard` rules, so adding it once unlocks all four.
 
-The only architecture-shaped tests that exist today are the env-var drift checks (`TestEnvRegistryDrift`, `TestContractDrift`, `TestCIImageMatrixMatchesContract`, run at the `envcheck` job) — a working precedent for the architecture-test mechanism proposed for INV-06 and PROP-05.
+The only architecture-shaped tests that exist today are the env-var drift checks (`TestEnvRegistryDrift`, `TestContractDrift`, `TestCIImageMatrixMatchesContract`, run at the `envcheck` job) — a working precedent for the architecture-test mechanism proposed for INV-06, INV-10 and INV-13.
 
 **Suggested first three, by value over effort:** INV-06 (architecture test, lands green immediately, protects the invariant that fails hardest in production) · INV-03 (one `depguard` block, also currently clean) · removing `--issues-exit-code=0` (unblocks everything else).
