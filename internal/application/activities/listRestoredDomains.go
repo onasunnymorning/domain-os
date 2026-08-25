@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 func ListRestoredDomains(ctx context.Context, correlationID string, q *queries.RestoredDomainsQuery) ([]response.DomainRestoredItem, error) {

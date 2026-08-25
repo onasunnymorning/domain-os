@@ -87,7 +87,7 @@ Single admin-plane derivation point: [`internal/interface/rest/tenant.go:39`](..
 
 Operator scope threaded and enforced, zone-slaving slice: interface [`zone_slaving_interface.go:27`](../internal/application/interfaces/zone_slaving_interface.go#L27) (all seven methods `(ctx, scope entities.OperatorID, ...)`), port [`serial_drift_repository.go:15`](../pkg/domain/repositories/serial_drift_repository.go#L15), SQL enforcement at [`internal/infrastructure/db/postgres/serial_drift_repository.go:43`](../internal/infrastructure/db/postgres/serial_drift_repository.go#L43) and 12 further sites — 13 `tenant_id = ?` predicates in that file, one for every scoped query — with the uniqueness index at [`zone_slaving.go:14`](../internal/infrastructure/db/postgres/zone_slaving.go#L14).
 
-The consumer-side chain is already in the schema and needs nothing: sponsorship columns above, accreditation as the bridge at [`accreditation_service.go:40`](../internal/application/services/accreditation_service.go#L40), and both filter hooks already present at [`listDomainsFilter.go:16,18`](../internal/application/queries/listDomainsFilter.go#L16) (`TldEquals`, `ClidEquals`).
+The consumer-side chain is already in the schema and needs nothing: sponsorship columns above, accreditation as the bridge at [`accreditation_service.go:40`](../internal/application/services/accreditation_service.go#L40), and both filter hooks already present at [`listDomainsFilter.go:16,18`](../pkg/domain/queries/listDomainsFilter.go#L16) (`TldEquals`, `ClidEquals`).
 
 **Where the rule does not yet reach, individually:**
 
@@ -231,7 +231,7 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 **Class: A.**
 
-**Evidence.** 165 sentinel declarations in non-test code, 37 files of them in `pkg/domain/entities`. Outer layers declare almost none: `internal/application/services` 4, `internal/interface/rest` 2, `internal/application/queries` 2, `internal/application/commands` 2, and one apiece in four `internal/infrastructure` packages.
+**Evidence.** 165 sentinel declarations in non-test code, 37 files of them in `pkg/domain/entities`. Outer layers declare almost none: `internal/application/services` 4, `internal/interface/rest` 2, `pkg/domain/queries` 2, `internal/application/commands` 2, and one apiece in four `internal/infrastructure` packages.
 
 ---
 
@@ -259,9 +259,9 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 **Class: A** — holds universally; no violations found.
 
-**Evidence.** The shared shape is `ListItemsQuery{PageSize int, PageCursor string, Filter ListItemsFilter}` at [`internal/application/queries/listItemsInterface.go:10`](../internal/application/queries/listItemsInterface.go#L10), consumed by 11 ports in `pkg/domain/repositories/`. Three further methods take the pair directly: [`ianaRegistrar_interface.go:12`](../pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](../pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](../pkg/domain/repositories/phase_repository_interface.go#L17). A search for `Offset(` and `OFFSET` across `internal/infrastructure/db/postgres/` returns **zero** matches in non-test code.
+**Evidence.** The shared shape is `ListItemsQuery{PageSize int, PageCursor string, Filter ListItemsFilter}` at [`pkg/domain/queries/listItemsInterface.go:10`](../pkg/domain/queries/listItemsInterface.go#L10), consumed by 11 ports in `pkg/domain/repositories/`. Three further methods take the pair directly: [`ianaRegistrar_interface.go:12`](../pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](../pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](../pkg/domain/repositories/phase_repository_interface.go#L17). A search for `Offset(` and `OFFSET` across `internal/infrastructure/db/postgres/` returns **zero** matches in non-test code.
 
-*Note:* [#399](https://github.com/onasunnymorning/domain-os/issues/399) relocates `ListItemsQuery` to `pkg/domain`. The rule is about the shape, not the package, and survives that move unchanged.
+*Note:* `ListItemsQuery` now lives at [`pkg/domain/queries`](../pkg/domain/queries) following [#399](https://github.com/onasunnymorning/domain-os/issues/399). The rule is about the shape, not the package, and was unaffected by that move.
 
 ---
 
@@ -281,7 +281,7 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 ## INV-13 — `commands/` holds write inputs, `queries/` holds read filters
 
-**Rule.** Input DTOs for state-changing operations live in `internal/application/commands/`; filter and read-shape types live in `internal/application/queries/`.
+**Rule.** Input DTOs for state-changing operations live in `internal/application/commands/`; filter and read-shape types live in `pkg/domain/queries/`.
 
 **Why.** The two kinds of type have different lifecycles — a command carries everything needed to validate and perform a write, a filter carries only what narrows a read — and keeping them in one package invites a type that quietly serves both and can no longer change for either.
 
@@ -289,7 +289,7 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 **This is a naming convention, not a CQRS commitment.** There is no separate read model, no read/write store split, and no event sourcing anywhere in this codebase. The package names resemble CQRS vocabulary; the architecture is not CQRS. Do not cite this invariant as authority for building a read model — that would be a new architectural decision needing its own ADR.
 
-*Note:* [#399](https://github.com/onasunnymorning/domain-os/issues/399) moves the query/filter types to `pkg/domain`. This rule is about the write/read separation, not the parent directory, and survives that move.
+*Note:* the read filters now live at [`pkg/domain/queries`](../pkg/domain/queries) following [#399](https://github.com/onasunnymorning/domain-os/issues/399), while commands remain under `internal/application/commands/`. This rule is about the write/read separation, not the parent directory, and was unaffected by that move.
 
 ---
 
@@ -320,32 +320,30 @@ Contradictions. No rule proposed for any of these — they need a decision.
 
 ## UNR-01 — The domain layer imports outward, while the docs say it cannot
 
-[`architecture.md:11`](../architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](../.cursorrules) makes that file binding on every agent working in this repo. 13 files in `pkg/domain/repositories/` import inward-layer packages — **but they are two different problems with two different fixes, and only one is a real layering violation.**
+[`architecture.md:11`](../architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](../.cursorrules) makes that file binding on every agent working in this repo. This started as 13 files in `pkg/domain/repositories/` importing inward-layer packages. They were two different problems with two different fixes, and only one was a real layering violation. **Group 1 (11 files) is now fixed; 2 remain.**
 
 `pkg/domain/repositories/` is a genuine ports package: 26 interfaces, no adapters. (It does hold 4 mock implementations — [`MockDomainRepository`](../pkg/domain/repositories/domain_repository.go#L38), [`MockRegistrarRepository`](../pkg/domain/repositories/registrar_interface.go#L25), [`MockHostRepository`](../pkg/domain/repositories/host_repository.go#L28), [`MockHostAddressRepository`](../pkg/domain/repositories/hostAddress_repository.go#L17) — which is a separate, minor question about test doubles shipping in the port package.)
 
-### Group 1 — misfiled value types, not a layering violation (11 files)
+### ~~Group 1~~ — misfiled value types (11 files) — **RESOLVED 2026-08-25**
 
-These import `internal/application/queries` purely for pagination and filter parameter types: `ListItemsQuery`, `ListDomainsFilter`, `ListContactsFilter`, `ListHostsFilter`, `ListTldsFilter`, `ListNndnsFilter`, `ListTombstonesFilter`, `ListRegistryOperatorsFilter`, `ActiveDomainsWithHostsQuery`.
+The 11 ports importing `internal/application/queries` were not an inverted dependency. `go list -deps` on that package returned exactly one first-party package — `pkg/domain/entities` — with no infrastructure, no GORM and no HTTP; its third-party deps were the same value-object libraries the entities already use. They were domain-shaped value types filed under `internal/application/`.
 
-Files: [`domain_repository.go:8`](../pkg/domain/repositories/domain_repository.go#L8), [`contact_repository.go:6`](../pkg/domain/repositories/contact_repository.go#L6), [`host_repository.go:6`](../pkg/domain/repositories/host_repository.go#L6), [`registrar_interface.go:6`](../pkg/domain/repositories/registrar_interface.go#L6), [`tld_interface.go:6`](../pkg/domain/repositories/tld_interface.go#L6), [`nndn_interface.go:6`](../pkg/domain/repositories/nndn_interface.go#L6), [`premiumLabel_repository.go:6`](../pkg/domain/repositories/premiumLabel_repository.go#L6), [`premiumList_repository.go:6`](../pkg/domain/repositories/premiumList_repository.go#L6), [`registryOperator_repository.go:6`](../pkg/domain/repositories/registryOperator_repository.go#L6), [`spec5Label_interface.go:6`](../pkg/domain/repositories/spec5Label_interface.go#L6), [`tombstone_interface.go:6`](../pkg/domain/repositories/tombstone_interface.go#L6).
+Fixed by moving the whole package to [`pkg/domain/queries`](../pkg/domain/queries) ([#399](https://github.com/onasunnymorning/domain-os/issues/399)). The package name is unchanged, so the change was an import-path rewrite across 103 files with **no signature changes and no logic changes**. Full suite green.
 
-**The dependency direction is not actually inverted here.** `go list -deps ./internal/application/queries` returns exactly one first-party package: `pkg/domain/entities`. No infrastructure, no GORM, no HTTP — its third-party deps are the same value-object libraries the entities use. These are domain-shaped value types that happen to be filed under `internal/application/`.
+The move was safe as a whole-package move rather than a partial one because every type in it — the filters, `ListItemsQuery`, and value objects like `QuoteRequest` (which carries its own `Validate()`) — depends only on `pkg/domain/entities`.
 
-**Fix is a move, not a redesign:** relocate the query/filter types to `pkg/domain` (e.g. `pkg/domain/queries`), and these 11 imports become legal with no signature changes. Cheap.
-
-### Group 2 — a real leak, and it is the expensive one (2 files)
+### Group 2 — a real leak, and it is the expensive one (2 files, still open)
 
 [`fx_interface.go:6`](../pkg/domain/repositories/fx_interface.go#L6) and [`tldDNSRecord_repository.go:6`](../pkg/domain/repositories/tldDNSRecord_repository.go#L6) import `internal/infrastructure/db/postgres` and type their method signatures against GORM persistence models.
 
-- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](../pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](../pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](../internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
+- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](../pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](../pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](../pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](../internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
 - **`TLDDNSRecordRepository` uses `postgres.TLDDNSRecord` in all three methods** ([`:11-13`](../pkg/domain/repositories/tldDNSRecord_repository.go#L11)) — and there is **no** `entities.TLDDNSRecord`. That concept was never modelled in the domain at all; the persistence model is its only representation.
 
-**The concrete cost, measured:** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3`, and `lib/pq` — actual Postgres wire-protocol drivers, now reachable from the domain layer. **These two files alone cause that.** This is precisely the "no imports of database drivers" case `architecture.md:11` names.
+**The concrete cost, measured:** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3`, and `lib/pq` — actual Postgres wire-protocol drivers, now reachable from the domain layer. **These two files alone cause that** — the Group 1 move did not shift the number, which is exactly what identifies Group 2 as the real leak. This is precisely the "no imports of database drivers" case `architecture.md:11` names.
 
 **Fix is real work:** introduce `entities.TLDDNSRecord`, use `entities.FX` on the write path, and add mappers in the postgres adapter.
 
-**What needs deciding:** confirm Group 1 is a package-placement mistake and schedule the move; and decide whether Group 2 gets modelled properly or the "dependency-free" claim is narrowed to `pkg/domain/entities` only — which is where it currently holds.
+**What needs deciding:** whether Group 2 gets modelled properly, or the "dependency-free" claim in `architecture.md` is narrowed to `pkg/domain/entities` only — which is where it currently holds. [`fx_interface.go`](../pkg/domain/repositories/fx_interface.go) is being addressed in [#400](https://github.com/onasunnymorning/domain-os/issues/400); [`tldDNSRecord_repository.go`](../pkg/domain/repositories/tldDNSRecord_repository.go) needs the modelling decision in [#401](https://github.com/onasunnymorning/domain-os/issues/401) first. Once both land, the `depguard` rule in [#403](https://github.com/onasunnymorning/domain-os/issues/403) can be switched on without an allowlist and UNR-01 closes.
 
 ## UNR-02 — Two spellings of the correlation ID; the only reader is dead code with a passing test
 
