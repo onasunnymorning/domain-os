@@ -10,11 +10,10 @@ Cite invariants by ID in review and in commit messages, e.g. "this violates INV-
 
 | ID | Section |
 |---|---|
-| `INV-01` … `INV-07` | Invariants — confirmed rules |
-| `PROP-01`…`PROP-03`, `PROP-05`…`PROP-10` | Proposed — **not rules.** Awaiting confirmation; do not enforce or cite as binding. |
+| `INV-01` … `INV-13` | Invariants — confirmed rules. The only IDs citable as rules. |
 | `UNR-01` … `UNR-03` | Unresolved — known contradictions with no decision yet. If your change touches one, say so and ask rather than picking a side. |
 
-IDs are never reused. `PROP-04` is retired — it was promoted to `INV-07`. `INV-02` has left the Unresolved list: it is resolved by [ADR-0006](docs/adr/0006-tenancy-model.md) and is now a Class B invariant.
+IDs are never reused. **The `PROP-nn` proposal space is fully retired** — all ten were answered on 2026-08-10 and 2026-08-25 (six promoted to `INV-07`…`INV-13`, four dropped); no `PROP` ID is live or citable, and the disposition table in `docs/INVARIANTS.md` records where each went. `INV-02` has left the Unresolved list: it is resolved by [ADR-0006](docs/adr/0006-tenancy-model.md) and is now a Class B invariant.
 
 Two consequences worth knowing before you rely on CI:
 
