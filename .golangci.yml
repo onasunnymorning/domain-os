@@ -131,6 +131,9 @@ linters:
     paths:
       - vendor
       - testdata
+      # Not tracked by git, so CI never sees it, but `make ci-lint` does once
+      # the frontend has been installed — some npm packages ship .go files.
+      - frontend/node_modules
 
 issues:
   # Report every finding. All three of these default to hiding things: the

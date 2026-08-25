@@ -1,10 +1,10 @@
 # Architecture gate — enforced, and deliberately separate from .golangci.yml.
 #
-# The main lint config runs advisory (--issues-exit-code=0) because the seven
-# linters it enables have never had to pass and currently report ~1255 issues.
-# Clearing that backlog is tracked separately. This file exists so that the
-# architectural rules in docs/INVARIANTS.md do not have to wait for it: the
-# rules below hold today and are enforced today.
+# This file exists so the architectural rules in docs/INVARIANTS.md never
+# depend on the state of the general-purpose lint backlog. That backlog was
+# cleared by #411 and .golangci.yml is blocking too, but the separation is
+# deliberate: these rules are reviewed, changed and reasoned about on their own
+# terms, and a future relaxation of the main config must not quietly relax them.
 #
 # Adding a violation here fails CI. If a violation is deliberate, allowlist it
 # in this file with a comment saying why and what will remove it.
@@ -32,8 +32,8 @@ linters:
 
     # INV-15 — context values are carried on typed keys.
     # SA1029 only: "should not use built-in type as key for value in
-    # context.WithValue". The rest of staticcheck is advisory in .golangci.yml
-    # and is not gated here.
+    # context.WithValue". The rest of staticcheck is configured separately in
+    # .golangci.yml and is not gated here.
     staticcheck:
       checks:
         - SA1029
@@ -92,19 +92,24 @@ linters:
     paths:
       - vendor
       - testdata
+      # Not tracked by git, so CI never sees it, but `make ci-lint` does once
+      # the frontend has been installed — some npm packages ship .go files.
+      - frontend/node_modules
 
     rules:
       # INV-07 backlog, allowlisted while #404 clears it. These 8 files hold
-      # the 47 remaining non-wrapping fmt.Errorf sites; the rule still guards
+      # the 37 remaining non-wrapping fmt.Errorf sites; the rule still guards
       # every other file, so the backlog cannot grow outside them.
       #
       # The 2 sites in pkg/domain/entities/domain.go were fixed rather than
       # excluded — an unwrapped error in the domain layer defeats errors.Is
       # for every caller above it, so the domain layer is fully gated.
       #
-      # Delete each line as its file is cleared. Counts are as of 2026-08-25.
+      # Delete each line as its file is cleared. Counts are as of 2026-08-25,
+      # after #411 removed six dead functions from importRegistrars.go and with
+      # them 10 of its 25 sites.
       - linters: [errorlint]
-        path: cmd/cli/registrars/importer/importRegistrars\.go          # 25
+        path: cmd/cli/registrars/importer/importRegistrars\.go          # 15
       - linters: [errorlint]
         path: internal/application/services/dnssec_service\.go          # 5
       - linters: [errorlint]
