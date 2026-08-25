@@ -1780,7 +1780,7 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			chunkPlaceholders := strings.Join(placeholders[i:end], ",")
 
 			// 1. Domain Statuses
-			stQuery := fmt.Sprintf(`SELECT domain_name, status FROM domain_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders)
+			stQuery := fmt.Sprintf(`SELECT domain_name, status FROM domain_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 			stRows, sErr := sqldb.Query(stQuery, chunkNames...)
 			if sErr == nil {
 				for stRows.Next() {
@@ -1833,7 +1833,7 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			}
 
 			// 2. RGP Statuses
-			rgpQuery := fmt.Sprintf(`SELECT domain_name, rgp_status FROM domain_rgp_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders)
+			rgpQuery := fmt.Sprintf(`SELECT domain_name, rgp_status FROM domain_rgp_statuses WHERE LOWER(domain_name) IN (%s)`, chunkPlaceholders) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 			rgpRows, rErr := sqldb.Query(rgpQuery, chunkNames...)
 			if rErr == nil {
 				for rgpRows.Next() {
@@ -2482,9 +2482,9 @@ type UnmappedRegistrar struct {
 
 	// Suggestion fields — pre-filled from escrow data for the inline create form.
 	// Operators should review and correct before submitting.
-	SuggestedEmail  string                       `json:"suggestedEmail,omitempty"`
-	SuggestedVoice  string                       `json:"suggestedVoice,omitempty"`
-	SuggestedURL    string                       `json:"suggestedUrl,omitempty"`
+	SuggestedEmail  string                        `json:"suggestedEmail,omitempty"`
+	SuggestedVoice  string                        `json:"suggestedVoice,omitempty"`
+	SuggestedURL    string                        `json:"suggestedUrl,omitempty"`
 	SuggestedPostal []UnmappedRegistrarPostalInfo `json:"suggestedPostal,omitempty"`
 }
 
@@ -2515,13 +2515,13 @@ type RejectedOverride struct {
 }
 
 type ResolveRegistrarsResult struct {
-	DBKey               string                // Updated db key
-	HasIssues           bool                  // True if any active registrar is unmapped
-	TotalRegistrars     int                   // Total registrars in escrow
-	MappedCount         int                   // Successfully mapped
-	UnmappedRegistrars  []UnmappedRegistrar   // Registrars that couldn't be auto-mapped
-	AutoFixedRegistrars []AutoFixedRegistrar  // Host-only registrars auto-resolved
-	RejectedOverrides   []RejectedOverride    // Overrides that were provided but rejected
+	DBKey               string               // Updated db key
+	HasIssues           bool                 // True if any active registrar is unmapped
+	TotalRegistrars     int                  // Total registrars in escrow
+	MappedCount         int                  // Successfully mapped
+	UnmappedRegistrars  []UnmappedRegistrar  // Registrars that couldn't be auto-mapped
+	AutoFixedRegistrars []AutoFixedRegistrar // Host-only registrars auto-resolved
+	RejectedOverrides   []RejectedOverride   // Overrides that were provided but rejected
 }
 
 // autoFixHostOnlyRegistrars resolves unmapped registrars that only manage hosts
@@ -2551,6 +2551,7 @@ func autoFixHostOnlyRegistrars(logger *log.Logger, db *sql.DB, hostOnly []Unmapp
 	// Step 1: Compute host → target registrar assignments.
 	// For each host from an unmapped registrar, find which mapped domain registrars
 	// reference it through domain_nameservers.
+	// #nosec G202 -- the concatenated text is a run of "?" placeholders built in this function; every value is bound as a parameter
 	rows, err := db.Query(`
 		SELECT h.name AS host_name, h.clID AS original_clid, d.clID AS target_registrar
 		FROM hosts h
@@ -2624,7 +2625,7 @@ func autoFixHostOnlyRegistrars(logger *log.Logger, db *sql.DB, hostOnly []Unmapp
 		}
 
 		// Copy hosts NOT from unmapped registrars (unchanged)
-		_, err = tx.Exec(`INSERT INTO hosts_fixed SELECT * FROM hosts WHERE clID NOT IN (`+inClause+`)`, args...)
+		_, err = tx.Exec(`INSERT INTO hosts_fixed SELECT * FROM hosts WHERE clID NOT IN (`+inClause+`)`, args...) // #nosec G202 -- the concatenated text is a run of "?" placeholders built in this function; every value is bound as a parameter
 		if err != nil {
 			return nil, fmt.Errorf("autoFixHostOnlyRegistrars: copy unaffected hosts: %w", err)
 		}
@@ -2645,6 +2646,7 @@ func autoFixHostOnlyRegistrars(logger *log.Logger, db *sql.DB, hostOnly []Unmapp
 		stmt.Close()
 
 		// Copy orphaned hosts (from unmapped registrars, not referenced by any domain) as-is
+		// #nosec G202 -- the concatenated text is a run of "?" placeholders built in this function; every value is bound as a parameter
 		_, err = tx.Exec(`INSERT OR IGNORE INTO hosts_fixed
 			SELECT * FROM hosts WHERE clID IN (`+inClause+`)
 			AND name NOT IN (SELECT DISTINCT nameserver FROM domain_nameservers)`, args...)
@@ -3136,7 +3138,9 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		"apiBaseURL", baseURL,
 		"overrideCount", len(args.Overrides),
 		"tokenPrefix", func() string {
-			if len(token) > 15 { return token[:15] + "..." }
+			if len(token) > 15 {
+				return token[:15] + "..."
+			}
 			return token
 		}(),
 	)
@@ -3535,7 +3539,7 @@ func (a *EscrowImportActivities) ApplyRegistrarMappings(ctx context.Context, arg
 				`%s = (SELECT registrar_clid FROM _mapping WHERE eid = TRIM(LOWER(%s.%s)))`,
 				col, table, col))
 		}
-
+ // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 		if len(setClauses) > 0 {
 			query := fmt.Sprintf("UPDATE %s SET %s", table, strings.Join(setClauses, ", "))
 			if res, err := db.Exec(query); err != nil {
@@ -3598,7 +3602,7 @@ type IngestContactsArgs struct {
 
 // IngestContactsResult outcome
 type IngestContactsResult struct {
-	Total   int64
+	Total    int64
 	Inserted int64
 	Updated  int64
 	Skipped  int64 // contacts present in staged DB but excluded (unmapped CLID / RoID failure)
@@ -3739,6 +3743,7 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 
 	for _, rq := range roles {
 		// Collect all distinct non-empty contact IDs for this role.
+		// #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a program-generated date); every caller-supplied value is bound as a parameter
 		query := fmt.Sprintf(
 			`SELECT DISTINCT TRIM(%s) FROM domains WHERE %s IS NOT NULL AND TRIM(%s) != ''`,
 			rq.column, rq.column, rq.column,
@@ -3816,6 +3821,7 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 					if len(result.SampledMissing) < sampleCap {
 						// Find a domain referencing this contact ID for context.
 						var domainName string
+						// #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a program-generated date); every caller-supplied value is bound as a parameter
 						sampleQ := fmt.Sprintf(
 							`SELECT name FROM domains WHERE TRIM(%s) = ? LIMIT 1`,
 							rq.column,
@@ -3862,7 +3868,6 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 	)
 	return result, nil
 }
-
 
 // IngestHostsArgs parameters
 type IngestHostsArgs struct {
@@ -4208,10 +4213,10 @@ type CleanOrphanedContactsArgs struct {
 
 // CleanedRegistrar records what was cleaned for a specific dead registrar
 type CleanedRegistrar struct {
-	EscrowID     string `json:"escrowId"`
-	Name         string `json:"name"`
-	Reassigned   int    `json:"reassigned"`   // Contacts reassigned to domain's registrar
-	Deleted      int    `json:"deleted"`       // Contacts deleted (unreferenced)
+	EscrowID   string `json:"escrowId"`
+	Name       string `json:"name"`
+	Reassigned int    `json:"reassigned"` // Contacts reassigned to domain's registrar
+	Deleted    int    `json:"deleted"`    // Contacts deleted (unreferenced)
 }
 
 // CleanOrphanedContactsResult output of the orphan cleanup activity
@@ -4378,7 +4383,6 @@ func (r *QAReport) AddCheck(check QACheck) {
 		r.Passed = false
 	}
 }
-
 
 // QAStagedDatabaseArgs input for the QA activity
 type QAStagedDatabaseArgs struct {
@@ -4735,7 +4739,7 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		futureDate := now.AddDate(10, 0, 0).Format("2006-01-02")
 
 		var count int
-		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s'`, futureDate)
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s'`, futureDate) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 		if err := db.QueryRow(query).Scan(&count); err != nil {
 			count = 0 // Non-fatal
 		}
@@ -4750,7 +4754,7 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 			check.Message = "No domains have expiry dates more than 10 years in the future"
 		} else {
 			check.Message = fmt.Sprintf("%d domains have expiry dates more than 10 years in the future", count)
-			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s' ORDER BY exdate DESC LIMIT 50`, futureDate)
+			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate > '%s' ORDER BY exdate DESC LIMIT 50`, futureDate) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 			if rows, err := db.Query(sampleQuery); err == nil {
 				var samples []map[string]string
 				for rows.Next() {
@@ -4772,7 +4776,7 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		pastDate := now.Format("2006-01-02")
 
 		var count int
-		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s'`, pastDate)
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s'`, pastDate) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 		if err := db.QueryRow(query).Scan(&count); err != nil {
 			count = 0 // Non-fatal
 		}
@@ -4787,7 +4791,7 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 			check.Message = "No domains have expiry dates in the past"
 		} else {
 			check.Message = fmt.Sprintf("%d domains have expiry dates in the past", count)
-			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s' ORDER BY exdate ASC LIMIT 50`, pastDate)
+			sampleQuery := fmt.Sprintf(`SELECT name, exdate FROM domains WHERE exdate IS NOT NULL AND exdate != '' AND exdate < '%s' ORDER BY exdate ASC LIMIT 50`, pastDate) // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 			if rows, err := db.Query(sampleQuery); err == nil {
 				var samples []map[string]string
 				for rows.Next() {
@@ -4947,13 +4951,27 @@ func decompressGzipFile(src string) (string, error) {
 	}
 	defer tmp.Close()
 
-	if _, err := io.Copy(tmp, gr); err != nil {
+	// Backstop against a gzip bomb filling the worker's disk. This is not a
+	// business limit on deposit size — raise maxDecompressedEscrowBytes if a
+	// legitimate deposit ever approaches it.
+	written, err := io.Copy(tmp, io.LimitReader(gr, maxDecompressedEscrowBytes+1))
+	if err != nil {
 		os.Remove(tmp.Name())
 		return "", err
+	}
+	if written > maxDecompressedEscrowBytes {
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("decompressed escrow exceeds %d bytes; refusing to continue", maxDecompressedEscrowBytes)
 	}
 
 	return tmp.Name(), nil
 }
+
+// maxDecompressedEscrowBytes bounds gzip expansion when decompressing a
+// deposit. Escrow files for large TLDs run to tens of GB uncompressed, so this
+// is set far above any real deposit; it exists only so a crafted archive cannot
+// expand without limit.
+const maxDecompressedEscrowBytes int64 = 2 << 40 // 2 TiB
 
 // moveFile moves src to dst. It tries os.Rename first (fast, same-device).
 // If Rename fails (e.g., cross-device, permission error), it falls back to

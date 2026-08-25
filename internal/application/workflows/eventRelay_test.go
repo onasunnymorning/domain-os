@@ -53,7 +53,7 @@ func (s *EventRelayWorkflowTestSuite) Test_EventRelay_ArchivesUntilDrained() {
 		func(ctx context.Context, batchSize int) (activities.RelayEventBatchResult, error) {
 			callCount++
 			if callCount <= 2 {
-				return activities.RelayEventBatchResult{Archived: 200, S3Key: "events/archive/key-" + string(rune('0'+callCount))}, nil
+				return activities.RelayEventBatchResult{Archived: 200, S3Key: "events/archive/key-" + string(rune('0'+callCount))}, nil // #nosec G115 -- bounded by the surrounding validation; see the assignment above
 			}
 			return activities.RelayEventBatchResult{}, nil
 		},

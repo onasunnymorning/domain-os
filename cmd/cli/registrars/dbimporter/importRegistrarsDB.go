@@ -114,7 +114,7 @@ func CreateRandomClID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 16)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[rand.Intn(len(charset))] // #nosec G404 -- not security material: a seed/load-test identifier, not a key, token or password
 	}
 	return string(b)
 }

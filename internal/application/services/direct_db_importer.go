@@ -119,7 +119,7 @@ func (s *DirectDBImporter) SaveReport(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func getEnv(key, def string) string {

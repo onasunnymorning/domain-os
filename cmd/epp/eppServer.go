@@ -228,6 +228,7 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 	fmt.Printf("Connection %s from %s established\n", connectionID, clientIP)
 
 	// Set up cleanup when connection closes
+	// #nosec G118 -- deliberate: this cleanup runs after ctx.Done(), so the request context is already cancelled and cannot carry it
 	go func() {
 		<-ctx.Done()
 		// Get registrar ID from context if available
@@ -235,7 +236,7 @@ func logConnection(ctx context.Context, conn *tls.Conn) (context.Context, error)
 
 		// Decrement connection counter (only if rateLimiter is initialized)
 		if rateLimiter != nil {
-			cleanupCtx := context.Background()
+			cleanupCtx := context.Background() // #nosec G118 -- deliberate: this runs after ctx.Done(), so the request context is already cancelled and cannot carry the cleanup
 			if err := rateLimiter.DecrementConnection(cleanupCtx, clientIP, registrarID); err != nil {
 				fmt.Printf("Failed to cleanup connection: %v\n", err)
 			}

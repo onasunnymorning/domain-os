@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -169,8 +170,8 @@ func main() {
 
 		// Create a login data object
 		loginData := &pkg.LoginData{
-			Username:            "H1056502248-OTE",
-			Password:            "m8u5:}PKy[C1}dBJ",
+			Username:            os.Getenv("EPP_USERNAME"),
+			Password:            os.Getenv("EPP_PASSWORD"),
 			Namespaces:          []string{},
 			ExtensionNamespaces: []string{},
 			Version:             "1.0",

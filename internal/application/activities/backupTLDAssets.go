@@ -50,7 +50,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- s3c.UploadStream(context.Background(), backupKey, pr, "application/jsonl")
+		errChan <- s3c.UploadStream(ctx, backupKey, pr, "application/jsonl")
 	}()
 
 	var count int64

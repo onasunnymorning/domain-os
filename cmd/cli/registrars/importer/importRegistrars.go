@@ -347,7 +347,7 @@ func getBatch(url string) (*response.ListItemResult, error) {
 	listResult.Data = &registrars
 
 	// Make the request
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec G107 -- the URL is built from the package BASE_URL constant plus a fixed path, not from external input
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("error getting IANA regsitrars via API(%s)", BASE_URL), err)
 	}
