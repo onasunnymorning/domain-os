@@ -3,14 +3,19 @@
 // to their own package to avoid import cycles between workflows and activities.
 package serialdrift
 
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
+
 // Params is the input to CheckSerialDriftWorkflow.
 // When SlavingID is set, the workflow loads config from the DB record.
 // When SlavingID is empty (ad-hoc run), the workflow uses the inline
 // MasterNS/SlaveNS fields instead.
 type Params struct {
-	TenantID  string `json:"tenantId"`
-	SlavingID string `json:"slavingId"`
-	Zone      string `json:"zone"`
+	// TenantID is the operator tenant scope for this run — a RegistryOperator
+	// RyID. Typed per ADR-0006; it serializes as a plain JSON string, so
+	// existing Temporal schedules and histories are unaffected.
+	TenantID  entities.OperatorID `json:"tenantId"`
+	SlavingID string              `json:"slavingId"`
+	Zone      string              `json:"zone"`
 
 	// Inline config — used when SlavingID is empty (ad-hoc runs from UI).
 	MasterNS        []string `json:"masterNS,omitempty"`
@@ -80,7 +85,7 @@ type ObservationResult struct {
 
 // PersistObservationsInput is the input to the PersistObservations activity.
 type PersistObservationsInput struct {
-	TenantID     string              `json:"tenantId"`
+	TenantID     entities.OperatorID `json:"tenantId"`
 	SlavingID    string              `json:"slavingId"`
 	RunID        string              `json:"runId"`
 	Zone         string              `json:"zone"`
@@ -95,8 +100,8 @@ type PersistObservationsInput struct {
 
 // RaiseAlertInput is the input to the RaiseAlert activity.
 type RaiseAlertInput struct {
-	TenantID  string `json:"tenantId"`
-	SlavingID string `json:"slavingId"`
-	RunID     string `json:"runId"`
-	Details   string `json:"details"`
+	TenantID  entities.OperatorID `json:"tenantId"`
+	SlavingID string              `json:"slavingId"`
+	RunID     string              `json:"runId"`
+	Details   string              `json:"details"`
 }
