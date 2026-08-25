@@ -10,6 +10,13 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
+// zoneSlavingController is the operator-scoped (administrative-plane) surface
+// for zone slaving monitors.
+//
+// Every handler derives its tenant scope through OperatorScopeFromRequest —
+// the single admin-plane derivation point required by ADR-0006. Handlers never
+// read the header themselves, so replacing the interim root-asserted header
+// with an Auth0 tenant claim touches one function, not six.
 type zoneSlavingController struct {
 	svc interfaces.ZoneSlavingService
 }
@@ -29,15 +36,6 @@ func NewZoneSlavingController(r *gin.Engine, svc interfaces.ZoneSlavingService, 
 	}
 }
 
-// getTenantID extracts the tenant ID from the X-Tenant-ID header or query param.
-func getTenantID(ctx *gin.Context) string {
-	tenantID := ctx.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = ctx.Query("tenant_id")
-	}
-	return tenantID
-}
-
 // parseSlavingID parses the :id path param as a UUID.
 func parseSlavingID(ctx *gin.Context) (uuid.UUID, error) {
 	idStr := ctx.Param("id")
@@ -54,16 +52,16 @@ func parseSlavingID(ctx *gin.Context) (uuid.UUID, error) {
 // @Tags ZoneSlavings
 // @Accept json
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID (RegistryOperator RyID)"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Param body body interfaces.CreateSlavingRequest true "Slaving configuration"
 // @Success 201 {object} entities.ZoneSlaving
 // @Failure 400
 // @Failure 500
 // @Router /zone-slavings [post]
 func (ctrl *zoneSlavingController) CreateSlaving(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -73,7 +71,7 @@ func (ctrl *zoneSlavingController) CreateSlaving(ctx *gin.Context) {
 		return
 	}
 
-	zs, err := ctrl.svc.CreateSlaving(ctx.Request.Context(), tenantID, req)
+	zs, err := ctrl.svc.CreateSlaving(ctx.Request.Context(), scope, req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidZoneSlaving) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -91,7 +89,7 @@ func (ctrl *zoneSlavingController) CreateSlaving(ctx *gin.Context) {
 // @Description Get a zone slaving monitor by ID
 // @Tags ZoneSlavings
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Param id path string true "Slaving ID (UUID)"
 // @Success 200 {object} entities.ZoneSlaving
 // @Failure 400
@@ -99,9 +97,9 @@ func (ctrl *zoneSlavingController) CreateSlaving(ctx *gin.Context) {
 // @Failure 500
 // @Router /zone-slavings/{id} [get]
 func (ctrl *zoneSlavingController) GetSlaving(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -111,7 +109,7 @@ func (ctrl *zoneSlavingController) GetSlaving(ctx *gin.Context) {
 		return
 	}
 
-	zs, err := ctrl.svc.GetSlaving(ctx.Request.Context(), tenantID, id)
+	zs, err := ctrl.svc.GetSlaving(ctx.Request.Context(), scope, id)
 	if err != nil {
 		if errors.Is(err, entities.ErrZoneSlavingNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -135,7 +133,7 @@ type updateStatusRequest struct {
 // @Tags ZoneSlavings
 // @Accept json
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Param id path string true "Slaving ID (UUID)"
 // @Param body body updateStatusRequest true "Action: complete or abandon"
 // @Success 200
@@ -144,9 +142,9 @@ type updateStatusRequest struct {
 // @Failure 500
 // @Router /zone-slavings/{id} [patch]
 func (ctrl *zoneSlavingController) UpdateSlavingStatus(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -164,9 +162,9 @@ func (ctrl *zoneSlavingController) UpdateSlavingStatus(ctx *gin.Context) {
 
 	switch req.Action {
 	case "complete":
-		err = ctrl.svc.CompleteSlaving(ctx.Request.Context(), tenantID, id)
+		err = ctrl.svc.CompleteSlaving(ctx.Request.Context(), scope, id)
 	case "abandon":
-		err = ctrl.svc.AbandonSlaving(ctx.Request.Context(), tenantID, id)
+		err = ctrl.svc.AbandonSlaving(ctx.Request.Context(), scope, id)
 	}
 
 	if err != nil {
@@ -183,22 +181,22 @@ func (ctrl *zoneSlavingController) UpdateSlavingStatus(ctx *gin.Context) {
 
 // ListActiveSlavings godoc
 // @Summary List active zone slaving monitors
-// @Description List all active zone slaving monitors for a tenant
+// @Description List all active zone slaving monitors for a registry operator
 // @Tags ZoneSlavings
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Success 200 {array} entities.ZoneSlaving
 // @Failure 400
 // @Failure 500
 // @Router /zone-slavings [get]
 func (ctrl *zoneSlavingController) ListActiveSlavings(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	slavings, err := ctrl.svc.ListActiveSlavings(ctx.Request.Context(), tenantID)
+	slavings, err := ctrl.svc.ListActiveSlavings(ctx.Request.Context(), scope)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list zone slaving monitors: " + err.Error()})
 		return
@@ -212,7 +210,7 @@ func (ctrl *zoneSlavingController) ListActiveSlavings(ctx *gin.Context) {
 // @Description Get the current migration confidence state for a zone slaving monitor
 // @Tags ZoneSlavings
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Param id path string true "Slaving ID (UUID)"
 // @Success 200 {object} entities.SlavingConfidenceRollup
 // @Failure 400
@@ -220,9 +218,9 @@ func (ctrl *zoneSlavingController) ListActiveSlavings(ctx *gin.Context) {
 // @Failure 500
 // @Router /zone-slavings/{id}/confidence [get]
 func (ctrl *zoneSlavingController) GetConfidenceRollup(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -232,7 +230,7 @@ func (ctrl *zoneSlavingController) GetConfidenceRollup(ctx *gin.Context) {
 		return
 	}
 
-	rollup, err := ctrl.svc.GetConfidenceRollup(ctx.Request.Context(), tenantID, id)
+	rollup, err := ctrl.svc.GetConfidenceRollup(ctx.Request.Context(), scope, id)
 	if err != nil {
 		if errors.Is(err, entities.ErrZoneSlavingNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -250,7 +248,7 @@ func (ctrl *zoneSlavingController) GetConfidenceRollup(ctx *gin.Context) {
 // @Description List serial observation history with cursor-based pagination
 // @Tags ZoneSlavings
 // @Produce json
-// @Param X-Tenant-ID header string true "Tenant ID"
+// @Param X-Tenant-ID header string true "Operator scope (RegistryOperator RyID)"
 // @Param id path string true "Slaving ID (UUID)"
 // @Param cursor query string false "Pagination cursor"
 // @Param pagesize query int false "Page size (default 25, max 200)"
@@ -259,9 +257,9 @@ func (ctrl *zoneSlavingController) GetConfidenceRollup(ctx *gin.Context) {
 // @Failure 500
 // @Router /zone-slavings/{id}/observations [get]
 func (ctrl *zoneSlavingController) ListObservations(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header or tenant_id query param is required"})
+	scope, err := OperatorScopeFromRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -283,7 +281,7 @@ func (ctrl *zoneSlavingController) ListObservations(ctx *gin.Context) {
 		return
 	}
 
-	observations, nextCursor, err := ctrl.svc.ListObservationHistory(ctx.Request.Context(), tenantID, id, pageSize, cursor)
+	observations, nextCursor, err := ctrl.svc.ListObservationHistory(ctx.Request.Context(), scope, id, pageSize, cursor)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list observations: " + err.Error()})
 		return

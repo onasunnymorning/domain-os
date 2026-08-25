@@ -1,10 +1,20 @@
 # Project Context & Rules
 
-You must ALWAYS consult the following files to understand the system architecture and technology choices:
-1. `architecture.md` - For DDD structure, repository patterns, and enforcement of rules (e.g., testing).
-2. `stack.md` - For the technology stack and specific library choices.
+Consult these before proposing structural changes:
 
-## Enforcement
-- **DDD**: strictly adhere to the separation of concerns.
-- **Repository Pattern**: ALL data access must go through repositories.
-- **Testing**: Enforce the testing strategy defined in architecture.md.
+1. **`docs/INVARIANTS.md`** — the architectural rules. This is the authority. Every rule carries `file:line` evidence and a class saying how well it actually holds (A: holds everywhere; B: intended, with violations listed individually). Cite rules by ID in review and commit messages, e.g. "this violates INV-03".
+2. **`architecture.md`** — structural overview: layers, entry points, patterns. Describes shape, not rules.
+3. **`stack.md`** — technology choices.
+
+Where any of these disagree, `docs/INVARIANTS.md` wins, because it carries the evidence.
+
+## Rules
+
+Do not restate the invariants here — a second copy drifts, and a drifted copy is worse than none. Read `docs/INVARIANTS.md`.
+
+Two things to know before relying on CI:
+
+- `golangci-lint` runs with `--issues-exit-code=0`, so lint findings do not fail the build.
+- No import-restriction linter is configured, so layering rules are not mechanically enforced.
+
+If a change touches an item in the **Unresolved** section, say so and ask rather than picking a side.

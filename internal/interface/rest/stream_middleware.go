@@ -1,10 +1,9 @@
 package rest
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -49,17 +48,17 @@ func ContextPropagationMiddleware() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		if uid, ok := c.Get("userid"); ok {
 			if uidStr, ok := uid.(string); ok && uidStr != "" {
-				ctx = context.WithValue(ctx, "userid", uidStr)
+				ctx = appcontext.WithUserID(ctx, uidStr)
 			}
 		}
 		if tid, ok := c.Get("trace_id"); ok {
 			if tidStr, ok := tid.(string); ok && tidStr != "" {
-				ctx = context.WithValue(ctx, "trace_id", tidStr)
+				ctx = appcontext.WithTraceID(ctx, tidStr)
 			}
 		}
 		if cid, ok := c.Get("correlation_id"); ok {
 			if cidStr, ok := cid.(string); ok && cidStr != "" {
-				ctx = context.WithValue(ctx, "correlation_id", cidStr)
+				ctx = appcontext.WithCorrelationID(ctx, cidStr)
 			}
 		}
 		c.Request = c.Request.WithContext(ctx)

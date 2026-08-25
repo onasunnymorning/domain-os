@@ -3,8 +3,8 @@ package repositories
 import (
 	"context"
 
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // RegistryOperatorRepository is an interface for the RegistryOperatorRepository

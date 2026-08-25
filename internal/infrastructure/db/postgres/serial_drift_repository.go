@@ -14,6 +14,11 @@ import (
 )
 
 // GormSerialDriftRepository implements repositories.SerialDriftRepository.
+//
+// Operator tenant isolation is enforced here, in SQL: every scoped query
+// carries `tenant_id = ?` bound to the entities.OperatorID passed in. Per
+// ADR-0006 the repository is the enforcement layer — services above it are not
+// trusted to filter, and no query may drop the predicate.
 type GormSerialDriftRepository struct {
 	db *gorm.DB
 }
@@ -35,9 +40,9 @@ func (r *GormSerialDriftRepository) CreateSlaving(ctx context.Context, s *entiti
 }
 
 // GetSlaving retrieves a ZoneSlaving by tenant and ID.
-func (r *GormSerialDriftRepository) GetSlaving(ctx context.Context, tenantID string, id uuid.UUID) (*entities.ZoneSlaving, error) {
+func (r *GormSerialDriftRepository) GetSlaving(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.ZoneSlaving, error) {
 	var rec ZoneSlavingRecord
-	err := r.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error
+	err := r.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", id, scope).First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrZoneSlavingNotFound
@@ -48,10 +53,10 @@ func (r *GormSerialDriftRepository) GetSlaving(ctx context.Context, tenantID str
 }
 
 // UpdateSlavingStatus sets the status of a ZoneSlaving record.
-func (r *GormSerialDriftRepository) UpdateSlavingStatus(ctx context.Context, tenantID string, id uuid.UUID, status entities.ZoneSlavingStatus) error {
+func (r *GormSerialDriftRepository) UpdateSlavingStatus(ctx context.Context, scope entities.OperatorID, id uuid.UUID, status entities.ZoneSlavingStatus) error {
 	result := r.db.WithContext(ctx).
 		Model(&ZoneSlavingRecord{}).
-		Where("id = ? AND tenant_id = ?", id, tenantID).
+		Where("id = ? AND tenant_id = ?", id, scope).
 		Updates(map[string]interface{}{
 			"status":     string(status),
 			"updated_at": time.Now().UTC(),
@@ -66,14 +71,14 @@ func (r *GormSerialDriftRepository) UpdateSlavingStatus(ctx context.Context, ten
 }
 
 // ListActiveSlavings returns all active ZoneSlaving records for a tenant.
-func (r *GormSerialDriftRepository) ListActiveSlavings(ctx context.Context, tenantID string) ([]*entities.ZoneSlaving, error) {
+func (r *GormSerialDriftRepository) ListActiveSlavings(ctx context.Context, scope entities.OperatorID) ([]*entities.ZoneSlaving, error) {
 	var records []ZoneSlavingRecord
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND status = ?", tenantID, string(entities.ZoneSlavingStatusActive)).
+		Where("tenant_id = ? AND status = ?", scope, string(entities.ZoneSlavingStatusActive)).
 		Order("created_at ASC").
 		Find(&records).Error
 	if err != nil {
-		return nil, fmt.Errorf("ListActiveSlavings(tenant=%s): %w", tenantID, err)
+		return nil, fmt.Errorf("ListActiveSlavings(tenant=%s): %w", scope, err)
 	}
 	result := make([]*entities.ZoneSlaving, len(records))
 	for i := range records {
@@ -138,7 +143,7 @@ func decodeObsCursor(cursor string) (time.Time, uuid.UUID, error) {
 }
 
 // ListObservations returns observations with cursor-based pagination (newest first).
-func (r *GormSerialDriftRepository) ListObservations(ctx context.Context, tenantID string, slavingID uuid.UUID, pageSize int, cursor string) ([]*entities.SerialObservation, string, error) {
+func (r *GormSerialDriftRepository) ListObservations(ctx context.Context, scope entities.OperatorID, slavingID uuid.UUID, pageSize int, cursor string) ([]*entities.SerialObservation, string, error) {
 	if pageSize <= 0 {
 		pageSize = 50
 	}
@@ -147,7 +152,7 @@ func (r *GormSerialDriftRepository) ListObservations(ctx context.Context, tenant
 	}
 
 	query := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID)
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID)
 
 	if cursor != "" {
 		cursorTime, cursorID, err := decodeObsCursor(cursor)
@@ -178,13 +183,13 @@ func (r *GormSerialDriftRepository) ListObservations(ctx context.Context, tenant
 }
 
 // GetRecentObservations returns the most recent observations for a slaving monitor.
-func (r *GormSerialDriftRepository) GetRecentObservations(ctx context.Context, tenantID string, slavingID uuid.UUID, limit int) ([]*entities.SerialObservation, error) {
+func (r *GormSerialDriftRepository) GetRecentObservations(ctx context.Context, scope entities.OperatorID, slavingID uuid.UUID, limit int) ([]*entities.SerialObservation, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	var records []SerialObservationRecord
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID).
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID).
 		Order("observed_at DESC, id DESC").
 		Limit(limit).
 		Find(&records).Error
@@ -199,13 +204,13 @@ func (r *GormSerialDriftRepository) GetRecentObservations(ctx context.Context, t
 }
 
 // GetRecentRuns returns the most recent check runs for a slaving monitor.
-func (r *GormSerialDriftRepository) GetRecentRuns(ctx context.Context, tenantID string, slavingID uuid.UUID, limit int) ([]*entities.SerialCheckRun, error) {
+func (r *GormSerialDriftRepository) GetRecentRuns(ctx context.Context, scope entities.OperatorID, slavingID uuid.UUID, limit int) ([]*entities.SerialCheckRun, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	var records []SerialCheckRunRecord
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID).
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID).
 		Order("started_at DESC").
 		Limit(limit).
 		Find(&records).Error
@@ -222,11 +227,11 @@ func (r *GormSerialDriftRepository) GetRecentRuns(ctx context.Context, tenantID 
 // ---------- Confidence rollup ----------
 
 // GetConfidenceRollup computes the convergence confidence state from observation history.
-func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, tenantID string, slavingID uuid.UUID) (*entities.SlavingConfidenceRollup, error) {
+func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, scope entities.OperatorID, slavingID uuid.UUID) (*entities.SlavingConfidenceRollup, error) {
 	// 1. Get the ZoneSlaving record for ConfidenceN
 	var slavingRec ZoneSlavingRecord
 	err := r.db.WithContext(ctx).
-		Where("id = ? AND tenant_id = ?", slavingID, tenantID).
+		Where("id = ? AND tenant_id = ?", slavingID, scope).
 		First(&slavingRec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -240,12 +245,12 @@ func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, ten
 	var totalRuns int64
 	r.db.WithContext(ctx).
 		Model(&SerialCheckRunRecord{}).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID).
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID).
 		Count(&totalRuns)
 
 	var latestRun SerialCheckRunRecord
 	err = r.db.WithContext(ctx).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID).
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID).
 		Order("started_at DESC").
 		First(&latestRun).Error
 	if err != nil {
@@ -263,7 +268,7 @@ func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, ten
 	var distinctMasterSerials int64
 	r.db.WithContext(ctx).
 		Model(&SerialCheckRunRecord{}).
-		Where("tenant_id = ? AND slaving_id = ?", tenantID, slavingID).
+		Where("tenant_id = ? AND slaving_id = ?", scope, slavingID).
 		Distinct("master_serial").
 		Count(&distinctMasterSerials)
 
@@ -271,7 +276,7 @@ func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, ten
 	var slaveNameservers []string
 	r.db.WithContext(ctx).
 		Model(&SerialObservationRecord{}).
-		Where("tenant_id = ? AND slaving_id = ? AND is_master = ?", tenantID, slavingID, false).
+		Where("tenant_id = ? AND slaving_id = ? AND is_master = ?", scope, slavingID, false).
 		Distinct("nameserver").
 		Pluck("nameserver", &slaveNameservers)
 
@@ -283,7 +288,7 @@ func (r *GormSerialDriftRepository) GetConfidenceRollup(ctx context.Context, ten
 	for _, ns := range slaveNameservers {
 		var obsRecords []SerialObservationRecord
 		r.db.WithContext(ctx).
-			Where("tenant_id = ? AND slaving_id = ? AND nameserver = ? AND is_master = ?", tenantID, slavingID, ns, false).
+			Where("tenant_id = ? AND slaving_id = ? AND nameserver = ? AND is_master = ?", scope, slavingID, ns, false).
 			Order("observed_at DESC").
 			Limit(fetchLimit).
 			Find(&obsRecords)

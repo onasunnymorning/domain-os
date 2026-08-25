@@ -32,7 +32,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   lint:
-    name: Lint
+    name: Lint (advisory)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,11 +40,34 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
+      # Advisory only. The seven linters in .golangci.yml have never had to
+      # pass and currently report ~1255 issues; clearing that backlog is
+      # tracked separately. Architectural rules do not wait on it — they are
+      # enforced by the arch-lint job below.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
           args: --issues-exit-code=0
+
+  # Enforced. Fails the build on any violation of the architectural rules in
+  # docs/INVARIANTS.md that depguard can express — INV-01, INV-03, INV-12 and
+  # INV-14. Currently green; deliberate exceptions are allowlisted in
+  # .golangci.arch.yml with a note saying what will remove them.
+  arch-lint:
+    name: Architecture gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+      - name: Architecture rules (depguard)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --config .golangci.arch.yml
 
   envcheck:
     name: Env Var Drift Check
@@ -177,7 +200,7 @@ jobs:
   build-images:
     name: Build ${{ matrix.image.name }}
     runs-on: ubuntu-latest
-    needs: [setup, unit-tests, frontend-tests, lint]
+    needs: [setup, unit-tests, frontend-tests, lint, arch-lint]
     strategy:
       fail-fast: false
       matrix:
@@ -214,7 +237,7 @@ jobs:
   api-tests:
     name: API integration tests (Go-native)
     runs-on: ubuntu-latest
-    needs: [unit-tests, lint]
+    needs: [unit-tests, lint, arch-lint]
     services:
       postgres:
         image: postgres:16.1

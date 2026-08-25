@@ -21,8 +21,6 @@ import (
 // Using a string reference avoids importing the workflows package.
 const checkSerialDriftWorkflowName = "CheckSerialDriftWorkflow"
 
-
-
 // ZoneSlavingService provides application-level operations for zone slaving monitors.
 type ZoneSlavingService struct {
 	repo repositories.SerialDriftRepository
@@ -37,10 +35,10 @@ func NewZoneSlavingService(repo repositories.SerialDriftRepository) *ZoneSlaving
 }
 
 // CreateSlaving creates a new ZoneSlaving monitor and starts its Temporal schedule.
-func (s *ZoneSlavingService) CreateSlaving(ctx context.Context, tenantID string, req appinterfaces.CreateSlavingRequest) (*entities.ZoneSlaving, error) {
-	zs, err := entities.NewZoneSlaving(tenantID, req.Zone, req.MasterNS, req.SlaveNS)
+func (s *ZoneSlavingService) CreateSlaving(ctx context.Context, scope entities.OperatorID, req appinterfaces.CreateSlavingRequest) (*entities.ZoneSlaving, error) {
+	zs, err := entities.NewZoneSlaving(scope.String(), req.Zone, req.MasterNS, req.SlaveNS)
 	if err != nil {
-		return nil, fmt.Errorf("CreateSlaving(tenant=%s, zone=%s): %w", tenantID, req.Zone, err)
+		return nil, fmt.Errorf("CreateSlaving(operator=%s, zone=%s): %w", scope, req.Zone, err)
 	}
 
 	// Apply optional overrides
@@ -59,68 +57,68 @@ func (s *ZoneSlavingService) CreateSlaving(ctx context.Context, tenantID string,
 
 	// Persist the entity
 	if err := s.repo.CreateSlaving(ctx, zs); err != nil {
-		return nil, fmt.Errorf("CreateSlaving(tenant=%s, zone=%s): persist: %w", tenantID, req.Zone, err)
+		return nil, fmt.Errorf("CreateSlaving(operator=%s, zone=%s): persist: %w", scope, req.Zone, err)
 	}
 
 	// Create the Temporal schedule
-	if err := s.createSchedule(ctx, zs); err != nil {
+	if err := s.createSchedule(ctx, scope, zs); err != nil {
 		// Best-effort cleanup: we logged the orphan in pending test TestPending_OrphanedScheduleCleanup
-		return zs, fmt.Errorf("CreateSlaving(tenant=%s, zone=%s): schedule: %w — ZoneSlaving created but schedule failed, create manually or retry", tenantID, req.Zone, err)
+		return zs, fmt.Errorf("CreateSlaving(operator=%s, zone=%s): schedule: %w — ZoneSlaving created but schedule failed, create manually or retry", scope, req.Zone, err)
 	}
 
 	return zs, nil
 }
 
 // GetSlaving retrieves a ZoneSlaving monitor by ID.
-func (s *ZoneSlavingService) GetSlaving(ctx context.Context, tenantID string, id uuid.UUID) (*entities.ZoneSlaving, error) {
-	zs, err := s.repo.GetSlaving(ctx, tenantID, id)
+func (s *ZoneSlavingService) GetSlaving(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.ZoneSlaving, error) {
+	zs, err := s.repo.GetSlaving(ctx, scope, id)
 	if err != nil {
-		return nil, fmt.Errorf("GetSlaving(tenant=%s, id=%s): %w", tenantID, id, err)
+		return nil, fmt.Errorf("GetSlaving(operator=%s, id=%s): %w", scope, id, err)
 	}
 	return zs, nil
 }
 
 // CompleteSlaving marks a slaving monitor as completed and deletes its schedule.
-func (s *ZoneSlavingService) CompleteSlaving(ctx context.Context, tenantID string, id uuid.UUID) error {
-	if err := s.repo.UpdateSlavingStatus(ctx, tenantID, id, entities.ZoneSlavingStatusCompleted); err != nil {
-		return fmt.Errorf("CompleteSlaving(tenant=%s, id=%s): update status: %w", tenantID, id, err)
+func (s *ZoneSlavingService) CompleteSlaving(ctx context.Context, scope entities.OperatorID, id uuid.UUID) error {
+	if err := s.repo.UpdateSlavingStatus(ctx, scope, id, entities.ZoneSlavingStatusCompleted); err != nil {
+		return fmt.Errorf("CompleteSlaving(operator=%s, id=%s): update status: %w", scope, id, err)
 	}
 	if err := s.deleteSchedule(ctx, id); err != nil {
-		return fmt.Errorf("CompleteSlaving(tenant=%s, id=%s): delete schedule: %w — status updated but schedule may be orphaned", tenantID, id, err)
+		return fmt.Errorf("CompleteSlaving(operator=%s, id=%s): delete schedule: %w — status updated but schedule may be orphaned", scope, id, err)
 	}
 	return nil
 }
 
 // AbandonSlaving marks a slaving monitor as abandoned and deletes its schedule.
-func (s *ZoneSlavingService) AbandonSlaving(ctx context.Context, tenantID string, id uuid.UUID) error {
-	if err := s.repo.UpdateSlavingStatus(ctx, tenantID, id, entities.ZoneSlavingStatusAbandoned); err != nil {
-		return fmt.Errorf("AbandonSlaving(tenant=%s, id=%s): update status: %w", tenantID, id, err)
+func (s *ZoneSlavingService) AbandonSlaving(ctx context.Context, scope entities.OperatorID, id uuid.UUID) error {
+	if err := s.repo.UpdateSlavingStatus(ctx, scope, id, entities.ZoneSlavingStatusAbandoned); err != nil {
+		return fmt.Errorf("AbandonSlaving(operator=%s, id=%s): update status: %w", scope, id, err)
 	}
 	if err := s.deleteSchedule(ctx, id); err != nil {
-		return fmt.Errorf("AbandonSlaving(tenant=%s, id=%s): delete schedule: %w — status updated but schedule may be orphaned", tenantID, id, err)
+		return fmt.Errorf("AbandonSlaving(operator=%s, id=%s): delete schedule: %w — status updated but schedule may be orphaned", scope, id, err)
 	}
 	return nil
 }
 
-// ListActiveSlavings lists all active slaving monitors for a tenant.
-func (s *ZoneSlavingService) ListActiveSlavings(ctx context.Context, tenantID string) ([]*entities.ZoneSlaving, error) {
-	return s.repo.ListActiveSlavings(ctx, tenantID)
+// ListActiveSlavings lists all active slaving monitors for an operator.
+func (s *ZoneSlavingService) ListActiveSlavings(ctx context.Context, scope entities.OperatorID) ([]*entities.ZoneSlaving, error) {
+	return s.repo.ListActiveSlavings(ctx, scope)
 }
 
 // GetConfidenceRollup returns the current confidence state for a slaving monitor.
-func (s *ZoneSlavingService) GetConfidenceRollup(ctx context.Context, tenantID string, id uuid.UUID) (*entities.SlavingConfidenceRollup, error) {
-	return s.repo.GetConfidenceRollup(ctx, tenantID, id)
+func (s *ZoneSlavingService) GetConfidenceRollup(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.SlavingConfidenceRollup, error) {
+	return s.repo.GetConfidenceRollup(ctx, scope, id)
 }
 
 // ListObservationHistory returns cursor-paginated observation history.
-func (s *ZoneSlavingService) ListObservationHistory(ctx context.Context, tenantID string, slavingID uuid.UUID, pageSize int, cursor string) ([]*entities.SerialObservation, string, error) {
+func (s *ZoneSlavingService) ListObservationHistory(ctx context.Context, scope entities.OperatorID, slavingID uuid.UUID, pageSize int, cursor string) ([]*entities.SerialObservation, string, error) {
 	if pageSize <= 0 {
 		pageSize = 25
 	}
 	if pageSize > 200 {
 		pageSize = 200
 	}
-	return s.repo.ListObservations(ctx, tenantID, slavingID, pageSize, cursor)
+	return s.repo.ListObservations(ctx, scope, slavingID, pageSize, cursor)
 }
 
 // scheduleID returns the deterministic Temporal schedule ID for a slaving monitor.
@@ -129,7 +127,7 @@ func scheduleID(slavingID uuid.UUID) string {
 }
 
 // createSchedule creates a Temporal schedule for the given ZoneSlaving.
-func (s *ZoneSlavingService) createSchedule(ctx context.Context, zs *entities.ZoneSlaving) error {
+func (s *ZoneSlavingService) createSchedule(ctx context.Context, scope entities.OperatorID, zs *entities.ZoneSlaving) error {
 	cfg := temporal.NewClientConfigFromEnv(temporal.QueueFastOps)
 	cli, err := temporal.GetTemporalClient(cfg)
 	if err != nil {
@@ -139,7 +137,7 @@ func (s *ZoneSlavingService) createSchedule(ctx context.Context, zs *entities.Zo
 
 	sid := scheduleID(zs.ID)
 	params := serialdrift.Params{
-		TenantID:  zs.TenantID,
+		TenantID:  scope,
 		SlavingID: zs.ID.String(),
 		Zone:      zs.Zone,
 	}

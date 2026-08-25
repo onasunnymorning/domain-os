@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"net"
 	"testing"
 
@@ -307,10 +308,12 @@ func TestLogConnection(t *testing.T) {
 	require.NotNil(t, newCtx, "Should return context")
 
 	// Verify context has connection ID
-	connID := newCtx.Value(connectionIDKey)
-	assert.NotNil(t, connID, "Context should have connection ID")
+	connID, ok := appcontext.ConnectionID(newCtx)
+	assert.True(t, ok, "Context should have connection ID")
+	assert.NotEmpty(t, connID, "Connection ID should not be empty")
 
 	// Verify context has client IP
-	clientIP := newCtx.Value(clientIPKey)
-	assert.NotNil(t, clientIP, "Context should have client IP")
+	clientIP, ok := appcontext.ClientIP(newCtx)
+	assert.True(t, ok, "Context should have client IP")
+	assert.NotEmpty(t, clientIP, "Client IP should not be empty")
 }

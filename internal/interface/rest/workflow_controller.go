@@ -13,6 +13,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )
@@ -495,11 +496,21 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{backfillParams}
 
 	case "serial-drift":
-		tenantID, _ := req.Params["tenantId"].(string)
+		rawTenantID, _ := req.Params["tenantId"].(string)
 		slavingID, _ := req.Params["slavingId"].(string)
 		zone, _ := req.Params["zone"].(string)
-		if tenantID == "" || zone == "" {
+		if rawTenantID == "" || zone == "" {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "tenantId and zone are required for serial-drift"})
+			return
+		}
+		// The launchpad supplies the operator scope as a launch parameter rather
+		// than deriving it from the caller — a second self-asserted source that
+		// ADR-0006 records as a known gap, to be closed with the Auth0 tenant
+		// claim. Typing it here at least means an unusable scope is rejected
+		// before a schedule is created against it.
+		operatorScope, err := entities.NewOperatorID(rawTenantID)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenantId for serial-drift: " + err.Error()})
 			return
 		}
 
@@ -529,7 +540,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		wfID = fmt.Sprintf("serial-drift-%s-%s", zone, ts)
 		workflow = workflows.CheckSerialDriftWorkflow
 		args = []interface{}{serialdrift.Params{
-			TenantID:  tenantID,
+			TenantID:  operatorScope,
 			SlavingID: slavingID,
 			Zone:      zone,
 			MasterNS:  masterNS,

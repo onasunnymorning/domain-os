@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/mock"
 )
 

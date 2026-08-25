@@ -23,7 +23,7 @@ Based on `internal/interface/rest/tld_controller.go`:
 **Note**: There is NO UPDATE/PUT endpoint for TLDs. The backend only supports Create and Delete for the TLD itself. Status changes are separate operations.
 
 ### TLD Entity Structure
-From `internal/domain/entities/tld.go`:
+From `pkg/domain/entities/tld.go`:
 
 ```go
 type TLD struct {

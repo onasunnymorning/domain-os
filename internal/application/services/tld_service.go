@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
@@ -100,7 +101,6 @@ func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCom
 
 	return createdTLD, nil
 }
-
 
 // GetTLDByName gets a TLD by name
 func (svc *TLDService) GetTLDByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
@@ -320,16 +320,16 @@ func (svc *TLDService) publishTLDEvent(
 		msg,
 		data,
 	)
-	if traceID, ok := ctx.Value("trace_id").(string); ok {
+	if traceID, ok := appcontext.TraceID(ctx); ok {
 		domainEvent.TraceID = traceID
 	}
-	if correlationID, ok := ctx.Value("correlation_id").(string); ok {
+	if correlationID, ok := appcontext.CorrelationID(ctx); ok {
 		domainEvent.CorrelationID = correlationID
 	}
 	domainEvent.Command = command
 	domainEvent.BeforeState = previousState
 	domainEvent.AfterState = newState
-	if actor, ok := ctx.Value("userid").(string); ok {
+	if actor, ok := appcontext.UserID(ctx); ok {
 		domainEvent.Actor = actor
 	}
 
