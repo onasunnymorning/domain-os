@@ -1,4 +1,20 @@
 <a name="unreleased"></a>
+## [0.9.0](https://github.com/onasunnymorning/domain-os/compare/v0.8.4...v0.9.0) (2026-08-25)
+
+
+### Features
+
+* **dev:** one-command local environment ([2bf866b](https://github.com/onasunnymorning/domain-os/commit/2bf866bdceeca62fd90f090b84aa16f0cc907e51))
+* **dev:** one-command local environment ([ed85217](https://github.com/onasunnymorning/domain-os/commit/ed85217ecaa425a1f13c39bdfb2be0c88e32f328))
+* **tenancy:** typed tenant scopes and one derivation point (INV-02) ([b0d6e0b](https://github.com/onasunnymorning/domain-os/commit/b0d6e0b7c70721a3fb9a68da350153f4a7ad9971))
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/text to v0.39.0 for CVE-2026-56852 ([e2b0889](https://github.com/onasunnymorning/domain-os/commit/e2b08891377e46df70a25af55f14e3d120885e80))
+* **frontend:** resolve npm audit high-severity vulnerabilities ([a4c9cdc](https://github.com/onasunnymorning/domain-os/commit/a4c9cdcae1f2d4bcc9640b7fb95824d79cc9acc6))
+* **security:** clear high-severity findings blocking CI (npm audit + Trivy) ([0dccd6d](https://github.com/onasunnymorning/domain-os/commit/0dccd6d59414984245a36eb3d9f2a77b440ca164))
+
 ## [0.8.4](https://github.com/onasunnymorning/domain-os/compare/v0.8.3...v0.8.4) (2026-07-23)
 
 
