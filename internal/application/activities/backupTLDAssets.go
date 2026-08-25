@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 )
 
@@ -191,7 +190,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 				var dbT postgres.TLD
 				if err := db.Where("name = ?", entityID).First(&dbT).Error; err == nil {
 					count++
-					var ent *entities.TLD = postgres.FromDBTLD(&dbT)
+					ent := postgres.FromDBTLD(&dbT)
 					encoder.Encode(BackupItem{Type: "TLD", Entity: ent})
 				}
 			}

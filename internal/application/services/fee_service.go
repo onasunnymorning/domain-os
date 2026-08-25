@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"log"
 	"strings"
@@ -8,7 +9,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"golang.org/x/net/context"
 )
 
 // FeeService implements the FeeService interface

@@ -1527,6 +1527,7 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 		// 1. Host Addresses
 		addrMap := make(map[string][]string)
 		{
+			// On query error (e.g. the table does not exist) addresses are skipped.
 			addrRows, err := sqldb.Query(`SELECT host_name, ip_address FROM host_addresses WHERE host_name >= ? AND host_name <= ?`, firstName, lastName)
 			if err == nil {
 				for addrRows.Next() {
@@ -1536,8 +1537,6 @@ func (a *EscrowImportActivities) importHostsChunked(ctx context.Context, sqldb *
 					}
 				}
 				addrRows.Close()
-			} else {
-				// if query errors (e.g. no table), just skip addresses
 			}
 		}
 

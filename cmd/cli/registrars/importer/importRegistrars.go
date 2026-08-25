@@ -478,7 +478,6 @@ func createRegistrars(createCommands []commands.CreateRegistrarCommand) error {
 
 // getCreateCommands takes a slice of CSVRegistrars and a slice of IANARegistrars and returns a slice of CreateRegistrarCommands
 func getCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.IANARegistrar) ([]commands.CreateRegistrarCommand, error) {
-	skipped := []string{}
 	seen := make(map[string]bool)
 	var createCommands []commands.CreateRegistrarCommand
 
@@ -510,7 +509,6 @@ func getCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 		// Omit the reserved registrars
 		if irar.Status == entities.IANARegistrarStatusReserved {
 			log.Printf("[WARN] Registrar %s with GurID %d is reserved, skipping\n", irar.Name, irar.GurID)
-			skipped = append(skipped, strconv.Itoa(irar.GurID)+" - "+irar.Name)
 			continue
 		}
 
