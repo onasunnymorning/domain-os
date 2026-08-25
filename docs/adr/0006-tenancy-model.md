@@ -234,8 +234,9 @@ Listed so that "not done" is on the record rather than inferred:
 ## Action Items
 
 1. [ ] EPP transactional verbs enforce sponsorship/accreditation in the command
-       layer — tracked as a follow-on issue on the "Architectural invariants"
-       board, so the rule is on the board the EPP buildout works from.
+       layer. Open this as an issue on the "Architectural invariants" board so
+       the rule lives where the EPP buildout works from, not only in this
+       document.
 2. [ ] Replace the root-asserted `X-Tenant-ID` read in
        `OperatorScopeFromRequest` with the Auth0 tenant claim, alongside ADR
        0002.
