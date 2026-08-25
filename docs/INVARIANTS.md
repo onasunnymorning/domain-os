@@ -4,6 +4,8 @@
 **Date:** 2026-08-10
 **Status:** Draft. Nothing here is settled. Expected review action is deletion and correction.
 
+**Resolutions since the analysis SHA:** `PROP-04` → `INV-07` (2026-08-10, retired). `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25); its evidence is cited at HEAD rather than at the analysis SHA.
+
 This document exists so architectural review can be a link to a section ID instead of an essay.
 
 ## How to read this
@@ -24,7 +26,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | ID | Rule | Class | Section |
 |---|---|---|---|
 | INV-01 | Outbox is the path of record; telemetry is never load-bearing | A | Invariants |
-| INV-02 | Tenant scope required on every executor call | **D** | Unresolved |
+| INV-02 | Two-sided tenancy: operator scope by TLD join, registrar scope by sponsorship | **B** | Invariants |
 | INV-03 | No vendor LLM SDK outside `ModelProvider` | A | Invariants |
 | INV-04 | Evidence provenance mandatory on terminal agent outcomes | **B** | Invariants |
 | INV-05 | Reconciliation before record creation | **B** (process only) | Invariants |
@@ -53,6 +55,43 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 **Two adjacent defects, surfaced not fixed:**
 1. **The outbox is not transactional.** The event insert is a separate `db.Create` ([`internal/infrastructure/db/postgres/event_publisher.go:46`](../internal/infrastructure/db/postgres/event_publisher.go#L46)) with no shared `tx` with the business write. A crash between the two loses the event.
 2. **Publish failures are swallowed in all six producers.** The pattern is `if err := ...Publish(...); err != nil { log.Printf(...) }` — the business operation succeeds even if nothing reaches the outbox: [`domain_service.go:1787`](../internal/application/services/domain_service.go#L1787), [`registrar_service.go:329`](../internal/application/services/registrar_service.go#L329), [`host_service.go:347`](../internal/application/services/host_service.go#L347), [`contact_service.go:152`](../internal/application/services/contact_service.go#L152), [`accreditation_service.go:153`](../internal/application/services/accreditation_service.go#L153), [`phase_service.go:220`](../internal/application/services/phase_service.go#L220).
+
+---
+
+## INV-02 — Tenancy is two-sided: operator scope by TLD join, registrar scope by sponsorship
+
+*Resolved 2026-08-25. Was Class D (Unresolved). The rule below is the decision recorded in [`docs/adr/0006-tenancy-model.md`](adr/0006-tenancy-model.md) — read that for the reasoning, the guardrails, and what is deferred.*
+
+**Rule.** This registry is a two-sided marketplace, so there are two tenant kinds and each has its own key:
+
+- **Operator scope** — a `RegistryOperator.RyID`. Administrative plane. Reaches TLDs and everything inside them *through the TLD join*, never through a denormalized column.
+- **Registrar scope** — a `Registrar.ClID`. Transactional plane (EPP, future registrar portal). Reaches **only objects the registrar sponsors**; accreditation gates which TLDs it may transact in.
+- **Staff/global is an explicit third kind**, never the absence of a filter.
+
+Scope is a claim on the authenticated principal, is passed as a typed parameter immediately after `ctx`, and is enforced in repository SQL — `WHERE tld.ry_id = ?` on the operator side, `WHERE clid = ?` on the registrar side. Every EPP transactional verb checks sponsorship (info/update/delete/transfer → EPP `2201` on mismatch) or accreditation (create) in the command layer.
+
+**Why.** The original formulation asked for "tenant scope on every executor call" and could not be satisfied, because "tenant" had never been defined here. Defining it dissolves the problem that made this a contradiction: contacts and hosts have no TLD and so cannot carry operator scope, but they are *sponsored*, and sponsorship is already in the schema — `ClID` on [`domain.go:59`](../pkg/domain/entities/domain.go#L59), [`contact.go:66`](../pkg/domain/entities/contact.go#L66), [`host.go:42`](../pkg/domain/entities/host.go#L42). The consumer side needs no schema change; the supply side needs no denormalization. Getting this wrong in the other direction is expensive and quiet: a `ry_id` column on `contacts` would work until the first TLD reassignment.
+
+**Class: B — the rule holds wherever tenancy is implemented today; the surfaces it does not yet reach are enumerated below, each with a stated reason.**
+
+**Evidence.**
+
+Scope types: [`pkg/domain/entities/scope.go:38`](../pkg/domain/entities/scope.go#L38) (`OperatorID`) and [`:80`](../pkg/domain/entities/scope.go#L80) (`RegistrarClID`) — distinct defined types over `ClIDType`, not aliases, so the two scope kinds and a plain object ClID cannot be interchanged.
+
+Single admin-plane derivation point: [`internal/interface/rest/tenant.go:39`](../internal/interface/rest/tenant.go#L39). It is the only reader of `X-Tenant-ID` in `internal/` — the six per-handler `getTenantID` calls, and the `?tenant_id=` query fallback that made scope forgeable from an address bar, are gone.
+
+Operator scope threaded and enforced, zone-slaving slice: interface [`zone_slaving_interface.go:27`](../internal/application/interfaces/zone_slaving_interface.go#L27) (all seven methods `(ctx, scope entities.OperatorID, ...)`), port [`serial_drift_repository.go:15`](../pkg/domain/repositories/serial_drift_repository.go#L15), SQL enforcement at [`internal/infrastructure/db/postgres/serial_drift_repository.go:43`](../internal/infrastructure/db/postgres/serial_drift_repository.go#L43) and 12 further sites — 13 `tenant_id = ?` predicates in that file, one for every scoped query — with the uniqueness index at [`zone_slaving.go:14`](../internal/infrastructure/db/postgres/zone_slaving.go#L14).
+
+The consumer-side chain is already in the schema and needs nothing: sponsorship columns above, accreditation as the bridge at [`accreditation_service.go:40`](../internal/application/services/accreditation_service.go#L40), and both filter hooks already present at [`listDomainsFilter.go:16,18`](../internal/application/queries/listDomainsFilter.go#L16) (`TldEquals`, `ClidEquals`).
+
+**Where the rule does not yet reach, individually:**
+
+1. **The EPP transactional surface does not exist, so the rule is pre-established rather than held.** The server authenticates per registrar — `registrarIDKey` stamped at [`cmd/epp/eppServer.go:319`](../cmd/epp/eppServer.go#L319) with a typed context key ([`:28`](../cmd/epp/eppServer.go#L28)) — but binds only greeting, login, logout and domain-check ([`:100-118`](../cmd/epp/eppServer.go#L100); contact-info commented out), and that identity currently feeds rate limiting only. This is the favourable case, not the unfavourable one: the invariant is being written before the surface it governs. To be put on the "Architectural invariants" board as a follow-on issue, so the EPP buildout works from it rather than from a document alone.
+2. **The core registry services are intentionally global.** Not one method across the 25 interfaces in `internal/application/interfaces/` takes a scope — e.g. [`domain_interface.go:14-57`](../internal/application/interfaces/domain_interface.go#L14), [`registrar_interface.go:13-22`](../internal/application/interfaces/registrar_interface.go#L13). Under a single operator this is deliberate deferral, recorded in ADR-0006, not drift. (`ClID` in those signatures is the *operand's* key — which record is being acted on — not a caller scope.)
+3. **The workflow launchpad still takes operator scope from the request body.** [`workflow_controller.go`](../internal/interface/rest/workflow_controller.go), `serial-drift` case: it is now typed and validated, so an unusable scope is rejected before a schedule is created against it, but it is self-asserted rather than claimed. Closes with the Auth0 tenant claim.
+4. **Context-derived identifiers remain audit-only.** `trace_id` / `correlation_id` / `userid` are stamped onto events in all six producer services (e.g. [`domain_service.go:1761,1764,1780`](../internal/application/services/domain_service.go#L1761)) and no query is filtered by them. That is correct under this rule — scope is a parameter, not context state — and is listed so it is not mistaken for tenancy.
+5. **Writes carry scope inside the entity, not as a parameter.** `CreateSlaving`, `CreateRun` and `CreateObservations` on the port take no `scope` argument — the value is already a field on the record being written, and a second copy in the signature would be two sources of truth for one column. Reads and status changes, where the scope is a filter rather than a value, all take it explicitly. Deliberate, and stated here so it is not read as an omission.
+6. **`askg`'s `CallerScope` is not a tenant.** [`internal/askg/result.go:62`](../internal/askg/result.go#L62) is `CallerScope{ UserID string }`, threaded into no tool execution; the `Executor` at [`toolexec.go:9`](../internal/askg/toolexec.go#L9) that the original wording named is an LLM tool executor, not a tenancy boundary. The agent eval suite asserts tenant isolation anyway — `CategoryTenantIsolation` ([`eval/eval.go:36`](../internal/askg/eval/eval.go#L36)), `ScoreTenantIsolation` ([`eval/scoring.go:24`](../internal/askg/eval/scoring.go#L24), which greps answer text), `TestOrchestrator_TenantScopeThreading` ([`orchestrator_test.go:291`](../internal/askg/orchestrator_test.go#L291)) — so those tests describe an intent that layer does not implement. Out of scope for ADR-0006.
 
 ---
 
@@ -226,23 +265,7 @@ Temporal code is unambiguous and clean. Elsewhere the split reads as age rather 
 
 Contradictions. No rule proposed for any of these — they need a decision.
 
-## INV-02 — Tenant scope on every executor call *(reclassified: Class D)*
-
-The rule as stated does not map onto this codebase, and the code does three incompatible things.
-
-**First, the naming.** The only thing called an `Executor` is an LLM tool executor: [`internal/askg/toolexec.go:9`](../internal/askg/toolexec.go#L9), `Execute(ctx, ToolCall, CallerScope) ToolResult`. Its scope type is **not a tenant** — [`internal/askg/result.go:62`](../internal/askg/result.go#L62) is `CallerScope{ UserID string }`, and the doc comment above it says the underlying services return unscoped data and the field "enables future registrar-scoped filtering." It is used in exactly one `slog` line at [`internal/askg/tools.go:102-124`](../internal/askg/tools.go#L102) and is never passed into `executeDomain` / `executeTLD` / `executeKnowledgeSearch`. **The isolation gate described by this invariant does not exist at that layer.**
-
-**Second, the service layer does it three ways:**
-
-1. **Explicit, required, immediately after ctx — one vertical slice only.** Zone slaving / serial drift: [`internal/application/interfaces/zone_slaving_interface.go:25-43`](../internal/application/interfaces/zone_slaving_interface.go#L25) — all seven methods take `tenantID string`. It is genuinely enforced down to SQL: [`internal/infrastructure/db/postgres/serial_drift_repository.go:40`](../internal/infrastructure/db/postgres/serial_drift_repository.go#L40) and 11 more sites all carry `WHERE ... tenant_id = ?`, with a uniqueness index at [`zone_slaving.go:14`](../internal/infrastructure/db/postgres/zone_slaving.go#L14).
-2. **No tenant at all — the entire core registry domain.** [`internal/application/interfaces/domain_interface.go:14-57`](../internal/application/interfaces/domain_interface.go#L14): not one method takes a scope. Same for [`registrar_interface.go:13-22`](../internal/application/interfaces/registrar_interface.go#L13). Note `ClID` here is the *operand's* primary key — which record you are acting on — not a caller scope; it should not be read as tenant threading.
-3. **Derived from `context.Context` — but only for audit stamping, never authorization.** `trace_id` / `correlation_id` / `userid` are pulled from context and written onto events in all six producer services (e.g. [`domain_service.go:1761,1764,1780`](../internal/application/services/domain_service.go#L1761)). No query is filtered by them.
-
-**Third, and worst: where the tenant comes from.** [`internal/interface/rest/zone_slaving_controller.go:32-38`](../internal/interface/rest/zone_slaving_controller.go#L32) reads it from an unauthenticated `X-Tenant-ID` header, falling back to a `tenant_id` query param. Handlers reject only the empty string ([`:66`](../internal/interface/rest/zone_slaving_controller.go#L66), `:104`, `:149`, `:197`, `:225`, `:264`). Nothing cross-checks it against the caller's identity. The one place tenant isolation *is* implemented is the one place a caller can choose their own tenant. The workflow trigger path is the same, via the request body: [`workflow_controller.go:498-502`](../internal/interface/rest/workflow_controller.go#L498).
-
-**Note.** Tenant isolation is asserted in the agent eval suite — `CategoryTenantIsolation` ([`internal/askg/eval/eval.go:36`](../internal/askg/eval/eval.go#L36)), `ScoreTenantIsolation` ([`eval/scoring.go:24`](../internal/askg/eval/scoring.go#L24), which greps the model's answer text), `TestOrchestrator_TenantScopeThreading` ([`orchestrator_test.go:291`](../internal/askg/orchestrator_test.go#L291)). The tests describe an intent the service layer does not implement.
-
-**What needs deciding:** whether the zone-slaving slice is the target shape the rest should converge on, or a local experiment — and, separately, whether `X-Tenant-ID` being self-asserted is known and accepted.
+`INV-02` was here and has left: it is resolved by [ADR-0006](adr/0006-tenancy-model.md) and now sits in Invariants as Class B. The ID is unchanged.
 
 ## UNR-01 — The domain layer imports outward, while the docs say it cannot
 
@@ -303,7 +326,7 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-01 | partial | import lint (`depguard`) | S | Ban `go.opentelemetry.io` from the relay/publisher packages. Cannot mechanically check "telemetry isn't load-bearing" in general — but the concrete rule is one deny-rule. |
 | INV-01 defect 1 (non-transactional outbox) | no | code review | — | Requires knowing which writes belong together. |
 | INV-01 defect 2 (swallowed publish) | yes | custom analyser | M | Flag `Publish(...)` whose error is only logged. Narrow enough to be low-noise. |
-| INV-02 | partial | custom analyser | L | Could assert every exported method on a service interface takes `tenantID` after `ctx`. Only worth building once the target shape is decided — see Unresolved. |
+| INV-02 | partial | grep-level CI check + architecture test | S→L | Two cheap gates hold the ratchet today: assert the literal `"X-Tenant-ID"` appears exactly once in non-test `internal/` code — the `TenantIDHeader` const in the derivation point, and assert no `tenantID string` parameter survives in the zone-slaving slice. The full rule — every tenant-scoped service method takes a typed scope after `ctx`, every scoped query carries its predicate — needs a custom analyser and is only worth building once scope is threaded past the template slice. The EPP half is not checkable until the verbs exist. |
 | INV-03 | **yes** | import lint (`depguard`) | **S** | Highest value per unit of effort in this table. Allow vendor LLM SDKs only under `internal/askg/provider/**`; deny everywhere else. One config block. |
 | INV-04 | yes | type change + analyser | M | Strongest fix is structural, not a lint: unexport `Result`'s fields and add `NewAnswer(...)`/`NewEscalation(...)` constructors that reject empty `Evidence` for `OutcomeAnswer`. A `Validate()` called at [`agent_controller.go:91`](../internal/interface/rest/agent_controller.go#L91) is the cheap interim. |
 | INV-05 | partial | grep-level CI check | S | Cannot verify reconciliation happened. **Can** assert `entity_count_consistency` has `Severity: "error"` — i.e. pin the gate so it cannot be silently downgraded again. Genuine enforcement needs branching on `VerificationPassed`, which is a code fix, not a gate. |
