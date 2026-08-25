@@ -79,11 +79,6 @@ func main() {
 	countCmds := len(cmds)
 	log.Printf("[INFO] %d create commands created\n", countCmds)
 
-	// err = bulkCreateRegistrarsThroughAPI(countCmds, CHUNKSIZE, cmds)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error creating registrars: %v", err)
-	// }
-
 	err = createRegistrars(cmds)
 	if err != nil {
 		log.Fatalf("[ERR] error creating registrars: %v", err)
@@ -93,40 +88,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERR] error updating registrar statuses: %v", err)
 	}
-
-	// Collate the infromation from both ICANN and IANA sources into create commands
-
-	// createCommands, err := getCreateRegistrarCommandsFromFile(*filename)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error getting create commands from file: %v", err)
-	// }
-
-	// err = createRegistrars(createCommands)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error creating registrars: %v", err)
-	// }
-
-	// err = updateRegistrarStatuses(createCommands)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error updating registrar statuses: %v", err)
-	// }
-
-	// // Create CreateRegistrarCommands for the terminated IANARegistrars
-	// fmt.Println("[INFO] Createing terminated registrars")
-	// terminatedCreateCommands, err := getCreateCommandsForTerminatedRegistrars(ianaRegistrars)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error getting create commands for terminated registrars: %v", err)
-	// }
-
-	// err = createRegistrars(terminatedCreateCommands)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error creating terminated registrars: %v", err)
-	// }
-
-	// err = updateRegistrarStatuses(terminatedCreateCommands)
-	// if err != nil {
-	// 	log.Fatalf("[ERR] error updating terminated registrar statuses: %v", err)
-	// }
 
 }
 
@@ -198,7 +159,8 @@ func (r CSVRegistrar) ContactPhone() string {
 	// Validate the phone number
 	validated, err := entities.NewE164Type("+" + cleaned)
 	if err != nil {
-		// log.Printf("Error validating phone number %s: %v - Removing phone number", cleaned, err)
+		// An unparseable number is dropped rather than reported: the importer
+		// runs over thousands of registrars and a per-number log drowns it out.
 		return ""
 	}
 
@@ -294,19 +256,19 @@ func SyncIANARegistrars() {
 	// Send the PUT request
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
-	}
-	if err != nil {
-		log.Fatalf("[ERR] error syncing IANA regsitrars via API(%s): %v", URL, err)
+		log.Printf("[ERR] error syncing IANA registrars via API(%s): %v", URL, err)
+		return
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		log.Printf("[ERR] error reading sync response from %s: %v", URL, err)
+		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("[ERR] error syncing IANA registrars: %v - %v", resp.Status, string(body))
+		log.Printf("[ERR] error syncing IANA registrars: %v - %v", resp.Status, string(body))
+		return
 	}
 	log.Println("[INFO] IANA registrars updated")
 }
@@ -413,7 +375,7 @@ func getCSVRegistrarsFromFile(filename string) ([]CSVRegistrar, error) {
 	// Open the file
 	file, err := os.Open(filename)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("opening %s: %w", filename, err)
 	}
 	defer file.Close()
 	log.Printf("[INFO] preparing data in file %s\n", filename)
@@ -422,7 +384,7 @@ func getCSVRegistrarsFromFile(filename string) ([]CSVRegistrar, error) {
 	reader.LazyQuotes = true // To avoid `parse error on line 1, column 4: bare " in non-quoted-field` error
 	data, err := reader.ReadAll()
 	if err != nil {
-		log.Fatalln(err)
+		return nil, fmt.Errorf("reading %s: %w", filename, err)
 	}
 
 	// Make a slice of CSVRegistrars
@@ -461,7 +423,7 @@ func createRegistrars(createCommands []commands.CreateRegistrarCommand) error {
 		if err != nil {
 			if err.Error() == ERR_DUPL_NAME {
 				// If there is a name collision, try and rename the registrar
-				cmd.Name = cmd.Name + "-2"
+				cmd.Name += "-2"
 				err := createRegistrar(cmd)
 				if err == nil {
 					// If this resolved it, continue
@@ -518,7 +480,7 @@ func getCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 		}
 
 		if seen[irar.Name] {
-			irar.Name = irar.Name + "-2"
+			irar.Name += "-2"
 		}
 		seen[irar.Name] = true
 

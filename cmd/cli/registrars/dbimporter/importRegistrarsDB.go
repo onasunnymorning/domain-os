@@ -144,10 +144,10 @@ func CreateRegistrarsThroughAPI(total, chuckSize int) error {
 
 		resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
 		if err != nil {
-			log.Fatalln("[ERR] error send create command to API")
+			return fmt.Errorf("error sending create command to API: %w", err)
 		}
-		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("error reading response body: %v", err)
 		}

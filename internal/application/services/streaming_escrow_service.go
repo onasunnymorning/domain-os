@@ -599,18 +599,6 @@ func (svc *StreamingXMLEscrowService) validateCSVCounts() error {
 		}
 	}
 
-	// Check unique contact IDs file - Skipped as map is cleared for memory optimization
-	/*
-		uniqueContactFile := baseFilename + "-uniqueDomainContactIDs.csv"
-		if lines, err := svc.countCSVLines(uniqueContactFile); err != nil {
-			log.Printf("⚠️  Could not validate unique contact IDs: %v", err)
-		} else {
-			// Log count for info only
-			actual := lines - 1
-			log.Printf("ℹ️  Unique contact IDs CSV contains %d records", actual)
-		}
-	*/
-
 	return nil
 }
 

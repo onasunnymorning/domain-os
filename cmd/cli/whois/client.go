@@ -36,7 +36,7 @@ func performWhoisQuery(domain string, wg *sync.WaitGroup) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("Error reading from WHOIS server: %v", err)
+		log.Printf("Error reading from WHOIS server: %v", err)
 	}
 }
 

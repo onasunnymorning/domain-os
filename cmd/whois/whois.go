@@ -33,7 +33,8 @@ func main() {
 	// Set up the database connection.
 	db, err := setupDB()
 	if err != nil {
-		log.Fatalf("Error setting up database: %v", err)
+		log.Printf("Error setting up database: %v", err)
+		return
 	}
 	domRepo := postgres.NewDomainRepository(db)
 	rarRepo := postgres.NewGormRegistrarRepository(db)
