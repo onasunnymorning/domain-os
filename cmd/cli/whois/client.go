@@ -27,7 +27,7 @@ func performWhoisQuery(domain string, wg *sync.WaitGroup) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(domain + "\r\n"))
+	_, _ = conn.Write([]byte(domain + "\r\n")) // the connection is gone if this fails, and the handler has no error path
 
 	// Read the response
 	scanner := bufio.NewScanner(conn)

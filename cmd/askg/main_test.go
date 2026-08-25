@@ -40,8 +40,8 @@ func TestLogOutputGoesToStderr(t *testing.T) {
 	os.Stderr = origStderr
 
 	var bufOut, bufErr bytes.Buffer
-	io.Copy(&bufOut, rOut)
-	io.Copy(&bufErr, rErr)
+	_, _ = io.Copy(&bufOut, rOut) // test setup; a failure here surfaces in the assertions below
+	_, _ = io.Copy(&bufErr, rErr) // test setup; a failure here surfaces in the assertions below
 
 	// stdout must be clean — this is what jq parses
 	assert.Empty(t, bufOut.String(), "log output must not appear on stdout")
@@ -71,7 +71,7 @@ func TestRunWithoutArgs(t *testing.T) {
 	os.Stderr = origStderr
 
 	var bufErr bytes.Buffer
-	io.Copy(&bufErr, rErr)
+	_, _ = io.Copy(&bufErr, rErr) // test setup; a failure here surfaces in the assertions below
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, bufErr.String(), "Usage:")

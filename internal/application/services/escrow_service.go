@@ -359,12 +359,14 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 							errCount++
 							svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error creating JSON for contact command %s: %s", rdeContact.ID, err))
 						}
-						createContactsCommandsFile.Write(jsonCmd)
-						createContactsCommandsFile.Write([]byte("\n"))
+						if _, werr := createContactsCommandsFile.Write(append(jsonCmd, '\n')); werr != nil {
+							errCount++
+							svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error writing contact command for %s: %s", rdeContact.ID, werr))
+						}
 					}
 
 					// Write the contact to the contact file
-					contactWriter.Write(rdeContact.ToCSV())
+					_ = contactWriter.Write(rdeContact.ToCSV()) // reported by Error() after Flush
 					// Set Status in statusFile
 					cStatuses := []string{rdeContact.ID}
 					for _, status := range rdeContact.Status {
@@ -375,7 +377,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 							continue
 						}
 						statusCounter++
-						statusWriter.Write([]string{rdeContact.ID, s})
+						_ = statusWriter.Write([]string{rdeContact.ID, s}) // reported by Error() after Flush
 					}
 					// Set postalInfo in postalInfoFile
 					cPostalInfo := make(map[int][]string)
@@ -386,7 +388,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 					}
 
 					for _, v := range cPostalInfo {
-						postalInfoWriter.Write(v)
+						_ = postalInfoWriter.Write(v) // reported by Error() after Flush
 					}
 
 					// Update counters in Registrar Map
@@ -399,7 +401,7 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Unlinked contact %s will not be imported", rdeContact.ID))
 				}
 
-				pbar.Add(1)
+				_ = pbar.Add(1) // progress display only
 			}
 		}
 	}
@@ -419,6 +421,11 @@ func (svc *XMLEscrowService) ExtractContacts(returnCommands bool) ([]commands.Cr
 	checkLineCount(postalInfoFileName, postalInfoCounter)
 	contactWriter.Flush()
 	checkLineCount(outFileName, svc.Header.ContactCount()-unlinkedCount)
+	for name, w := range map[string]*csv.Writer{"status": statusWriter, "postalInfo": postalInfoWriter, "contact": contactWriter} {
+		if err := w.Error(); err != nil {
+			return nil, fmt.Errorf("writing %s csv: %w", name, err)
+		}
+	}
 	if errCount > 0 {
 		log.Printf("🔥 ERROR %d errors were encountered while processing contacts. See analysis file for details\n", errCount)
 	}
@@ -521,7 +528,7 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating host command for %s: %s", host.Name, err))
 				}
 
-				writer.Write(host.ToCSV())
+				_ = writer.Write(host.ToCSV()) // reported by Error() after Flush
 				// Set Status in statusFile
 				hStatuses := []string{host.Name}
 				for _, status := range host.Status {
@@ -532,12 +539,12 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					if i == 0 {
 						continue
 					}
-					statusWriter.Write([]string{host.Name, s})
+					_ = statusWriter.Write([]string{host.Name, s}) // reported by Error() after Flush
 				}
 				// Set addresses in addrFile
 				for _, addr := range host.Addr {
 					addrCounter++
-					addrWriter.Write([]string{host.Name, addr.IP, addr.ID})
+					_ = addrWriter.Write([]string{host.Name, addr.IP, addr.ID}) // reported by Error() after Flush
 				}
 
 				// Add the command to our slice of create commands
@@ -554,8 +561,10 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 					errCount++
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating JSON for host command %s: %s", host.Name, err))
 				}
-				createHostCommandsFile.Write(jsonCmd)
-				createHostCommandsFile.Write([]byte("\n"))
+				if _, werr := createHostCommandsFile.Write(append(jsonCmd, '\n')); werr != nil {
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error writing host command for %s: %s", host.Name, werr))
+				}
 
 				// Update counters in Registrar Map
 				objCount := svc.RegistrarMapping[host.ClID]
@@ -563,7 +572,7 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 				svc.RegistrarMapping[host.ClID] = objCount
 				count++
 
-				pbar.Add(1)
+				_ = pbar.Add(1) // progress display only
 			}
 		}
 	}
@@ -577,6 +586,11 @@ func (svc *XMLEscrowService) ExtractHosts(returnHostCommands bool) ([]commands.C
 	checkLineCount(statusFileName, statusCounter)
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.HostCount())
+	for name, w := range map[string]*csv.Writer{"hostAddress": addrWriter, "hostStatus": statusWriter, "host": writer} {
+		if err := w.Error(); err != nil {
+			return nil, fmt.Errorf("writing %s csv: %w", name, err)
+		}
+	}
 	if errCount > 0 {
 		log.Printf("🔥 ERROR %d errors were encountered while processing hosts. See analysis file for details\n", errCount)
 	}
@@ -660,19 +674,24 @@ func (svc *XMLEscrowService) ExtractNNDNS(returnNNDNCreateCommands bool) ([]comm
 					errCount++
 					svc.Analysis.Warnings = append(svc.Analysis.Warnings, fmt.Sprintf("Error creating JSON for NNDN command %s: %s", rdeNNDN.AName, err))
 				}
-				createNNDNCommandsFile.Write(jsonCmd)
-				createNNDNCommandsFile.Write([]byte("\n"))
+				if _, werr := createNNDNCommandsFile.Write(append(jsonCmd, '\n')); werr != nil {
+					errCount++
+					svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error writing NNDN command for %s: %s", rdeNNDN.AName, werr))
+				}
 
 				// Write to CSV
-				writer.Write(rdeNNDN.ToCSV())
+				_ = writer.Write(rdeNNDN.ToCSV()) // reported by Error() after Flush
 				count++
 
-				pbar.Add(1)
+				_ = pbar.Add(1) // progress display only
 			}
 		}
 	}
 	writer.Flush()
 	checkLineCount(outFileName, svc.Header.NNDNCount())
+	if err := writer.Error(); err != nil {
+		return nil, fmt.Errorf("writing nndn csv: %w", err)
+	}
 	if errCount > 0 {
 		log.Printf("🔥 ERROR %d errors were encountered while processing NNDNs. See analysis file for details\n", errCount)
 	}
@@ -851,12 +870,14 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 						errCount++
 						svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("error marshalling domain command for %s: %s", dom.Name, err))
 					}
-					createDomainCommandsFile.Write(jsonCmd)
-					createDomainCommandsFile.Write([]byte("\n"))
+					if _, werr := createDomainCommandsFile.Write(append(jsonCmd, '\n')); werr != nil {
+						errCount++
+						svc.Analysis.Errors = append(svc.Analysis.Errors, fmt.Sprintf("Error writing domain command for %s: %s", dom.Name.String(), werr))
+					}
 				}
 
 				// Write the domain to the domain file
-				domainWriter.Write(dom.ToCSV())
+				_ = domainWriter.Write(dom.ToCSV()) // reported by Error() after Flush
 				// Add a line to the contactID file for each contact, only if it does not exist yet
 				// Start with the registrant
 				if !svc.uniqueContactIDs[dom.Registrant] {
@@ -879,7 +900,7 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 						continue
 					}
 					statusCounter++
-					statusWriter.Write([]string{dom.Name.String(), s})
+					_ = statusWriter.Write([]string{dom.Name.String(), s}) // reported by Error() after Flush
 				}
 				// Write the nameservers to the nameserver file
 				dNameservers := []string{dom.Name.String()}
@@ -891,17 +912,17 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 						continue
 					}
 					nameServerCounter++
-					nameserverWriter.Write([]string{dom.Name.String(), ns})
+					_ = nameserverWriter.Write([]string{dom.Name.String(), ns}) // reported by Error() after Flush
 				}
 				// Write the dnssec information to the dnssec file
 				for _, dsData := range dom.SecDNS.DSData {
 					dnssecCounter++
-					dnssecWriter.Write([]string{dom.Name.String(), strconv.Itoa(dsData.KeyTag), strconv.Itoa(dsData.Alg), strconv.Itoa(dsData.DigestType), dsData.Digest})
+					_ = dnssecWriter.Write([]string{dom.Name.String(), strconv.Itoa(dsData.KeyTag), strconv.Itoa(dsData.Alg), strconv.Itoa(dsData.DigestType), dsData.Digest}) // reported by Error() after Flush
 				}
 				// Write the transfer information to the transfer file
 				if dom.TrnData.TrStatus.State != "" {
 					transferCounter++
-					transferWriter.Write([]string{dom.Name.String(), dom.TrnData.TrStatus.State, dom.TrnData.ReRr.RegID, dom.TrnData.ReDate, dom.TrnData.ReRr.RegID, dom.TrnData.AcDate, dom.TrnData.ExDate})
+					_ = transferWriter.Write([]string{dom.Name.String(), dom.TrnData.TrStatus.State, dom.TrnData.ReRr.RegID, dom.TrnData.ReDate, dom.TrnData.ReRr.RegID, dom.TrnData.AcDate, dom.TrnData.ExDate}) // reported by Error() after Flush
 				}
 
 				// Update counters in Registrar Map
@@ -910,13 +931,13 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 				svc.RegistrarMapping[dom.ClID] = objCount
 				count++
 
-				pbar.Add(1)
+				_ = pbar.Add(1) // progress display only
 			}
 		}
 	}
 	// Write the unique contact IDs to the contactID file
 	for k := range svc.uniqueContactIDs {
-		contactIDWriter.Write([]string{k})
+		_ = contactIDWriter.Write([]string{k}) // reported by Error() after Flush
 	}
 	contactIDWriter.Flush()
 	log.Printf("✅  Written %d unique contact IDs used by Domains to : %s", len(svc.uniqueContactIDs), contactIDFileName)
@@ -934,6 +955,11 @@ func (svc *XMLEscrowService) ExtractDomains(returnCommands bool) ([]commands.Cre
 	checkLineCount(transferFileName, transferCounter)
 	domainWriter.Flush()
 	checkLineCount(outFileName, svc.Header.DomainCount())
+	for name, w := range map[string]*csv.Writer{"contactID": contactIDWriter, "domainStatus": statusWriter, "domainNameserver": nameserverWriter, "domainDnssec": dnssecWriter, "domainTransfer": transferWriter, "domain": domainWriter} {
+		if err := w.Error(); err != nil {
+			return nil, fmt.Errorf("writing %s csv: %w", name, err)
+		}
+	}
 	if errCount > 0 {
 		log.Printf("🔥 ERROR %d errors were encountered while processing domains. See analysis file for details\n", errCount)
 	}
@@ -1067,7 +1093,9 @@ func (svc *XMLEscrowService) SaveAnalysis() error {
 		return err
 	}
 	analysisFileName := svc.GetDepositFileNameWoExtension() + "-analysis.json"
-	os.WriteFile(analysisFileName, bytes, 0600)
+	if err := os.WriteFile(analysisFileName, bytes, 0600); err != nil {
+		return fmt.Errorf("saving analysis to %s: %w", analysisFileName, err)
+	}
 	log.Printf("✅  Saved analysis to: %s\n", analysisFileName)
 	return nil
 }
@@ -1079,7 +1107,9 @@ func (svc *XMLEscrowService) SaveImportResult() error {
 		return err
 	}
 	importFileName := svc.GetDepositFileNameWoExtension() + "-import.json"
-	os.WriteFile(importFileName, bytes, 0600)
+	if err := os.WriteFile(importFileName, bytes, 0600); err != nil {
+		return fmt.Errorf("saving import result to %s: %w", importFileName, err)
+	}
 	log.Printf("✅  Saved import to: %s\n", importFileName)
 	return nil
 }
@@ -1234,7 +1264,7 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 	}
 	// write mapping to file
 	for k, v := range svc.RegistrarMapping {
-		writer.Write([]string{k, v.Name, strconv.Itoa(v.GurID), v.RegistrarClID.String(), strconv.Itoa(v.DomainCount), strconv.Itoa(v.HostCount), strconv.Itoa(v.ContactCount)})
+		_ = writer.Write([]string{k, v.Name, strconv.Itoa(v.GurID), v.RegistrarClID.String(), strconv.Itoa(v.DomainCount), strconv.Itoa(v.HostCount), strconv.Itoa(v.ContactCount)}) // reported by Error() after Flush
 	}
 
 	if missing > 0 {
@@ -1314,8 +1344,8 @@ func (svc *XMLEscrowService) CreateContacts(cmds []commands.CreateContactCommand
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createContact(client, cmd, token)
-				pbar.Add(1)
+				_ = svc.createContact(client, cmd, token) // per-object failures are accumulated in svc.Import
+				_ = pbar.Add(1)                           // progress display only
 			}
 		}()
 	}
@@ -1441,8 +1471,8 @@ func (svc *XMLEscrowService) CreateHosts(cmds []commands.CreateHostCommand, toke
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createHost(*client, cmd, token)
-				pbar.Add(1)
+				_ = svc.createHost(*client, cmd, token) // per-object failures are accumulated in svc.Import
+				_ = pbar.Add(1)                         // progress display only
 			}
 		}()
 	}
@@ -1572,8 +1602,8 @@ func (svc *XMLEscrowService) CreateDomains(cmds []commands.CreateDomainCommand, 
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createDomain(*client, cmd, token)
-				pbar.Add(1)
+				_ = svc.createDomain(*client, cmd, token) // per-object failures are accumulated in svc.Import
+				_ = pbar.Add(1)                           // progress display only
 			}
 		}()
 	}
@@ -1713,8 +1743,8 @@ func (svc *XMLEscrowService) LinkHostsToDomains(token string) error {
 		go func() {
 			defer wg.Done()
 			for record := range cmdChan {
-				svc.linkHostToDomain(*client, record[0], strings.Trim(record[1], "."), token)
-				pbar.Add(1)
+				_ = svc.linkHostToDomain(*client, record[0], strings.Trim(record[1], "."), token) // per-object failures are accumulated in svc.Import
+				_ = pbar.Add(1)                                                                   // progress display only
 			}
 		}()
 	}
@@ -1793,8 +1823,8 @@ func (svc *XMLEscrowService) CreateNNDNs(cmds []commands.CreateNNDNCommand, toke
 		go func() {
 			defer wg.Done()
 			for cmd := range cmdChan {
-				svc.createNNDN(*client, cmd, token)
-				pbar.Add(1)
+				_ = svc.createNNDN(*client, cmd, token) // per-object failures are accumulated in svc.Import
+				_ = pbar.Add(1)                         // progress display only
 			}
 		}()
 	}

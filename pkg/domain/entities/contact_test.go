@@ -403,7 +403,7 @@ func TestContact_CheckOKIsSet(t *testing.T) {
 		},
 	}
 
-	c.UnSetStatus(string(ContactStatusPendingCreate))
+	_ = c.UnSetStatus(string(ContactStatusPendingCreate)) // test setup; a failure here surfaces in the assertions below
 
 	require.False(t, c.Status.PendingCreate, "PendingCreate should have been removed")
 	require.True(t, c.Status.OK, "OK should have been set")
@@ -466,10 +466,10 @@ func TestRemoveContactPostalInfo(t *testing.T) {
 	a, _ := NewAddress("London", "UK")
 	pi, _ := NewContactPostalInfo("int", "Some Name", a)
 	// Add a valid 'int' postal info
-	c.AddPostalInfo(pi)
+	_ = c.AddPostalInfo(pi) // test setup; a failure here surfaces in the assertions below
 	// Add a valid 'loc' postal info
 	pi.Type = "loc"
-	c.AddPostalInfo(pi)
+	_ = c.AddPostalInfo(pi) // test setup; a failure here surfaces in the assertions below
 
 	// Remove the 'int' postal info
 	err = c.RemovePostalInfo("int")

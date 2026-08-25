@@ -53,12 +53,16 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	if c.svc.Header.ContactCount() > 0 {
 		contactCmds, err := c.svc.ExtractContacts(true)
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 		err = c.svc.CreateContacts(contactCmds, "")
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 	}
@@ -67,12 +71,16 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	if c.svc.Header.NNDNCount() > 0 {
 		nndnCmds, err := c.svc.ExtractNNDNS(true)
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 		err = c.svc.CreateNNDNs(nndnCmds, "")
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 	} else {
@@ -83,7 +91,9 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	if c.svc.Header.HostCount() > 0 {
 		hostCmds, err := c.svc.ExtractHosts(true)
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 		log.Printf("Host count from deposit: %d\n", len(hostCmds))
@@ -92,12 +102,16 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 		hostCmds, err = c.svc.DuplicateHostCommands(hostCmds)
 		log.Printf("Hosts after correction: %d\n", len(hostCmds))
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 		err = c.svc.CreateHosts(hostCmds, "")
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 	} else {
@@ -108,12 +122,16 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	if c.svc.Header.DomainCount() > 0 {
 		domainCmds, err := c.svc.ExtractDomains(true)
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 		err = c.svc.CreateDomains(domainCmds, "")
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 	} else {
@@ -127,7 +145,9 @@ func (c *EscrowImportController) Import(analysisFile, depositFile string, ignore
 	} else {
 		err = c.svc.LinkHostsToDomains("")
 		if err != nil {
-			c.svc.SaveImportResult()
+			if serr := c.svc.SaveImportResult(); serr != nil {
+				log.Printf("failed to save import result: %v", serr)
+			}
 			return err
 		}
 	}
