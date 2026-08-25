@@ -17,8 +17,27 @@ linters:
   default: none
   enable:
     - depguard
+    - errorlint
+    - staticcheck
 
   settings:
+    # INV-07 — errors are wrapped with %w, not %v.
+    # Only the errorf check. The `asserts` and `comparison` checks find a
+    # further ~38 sites and are a separate decision, since changing `==` to
+    # errors.Is can alter behaviour where a sentinel is compared by identity.
+    errorlint:
+      errorf: true
+      asserts: false
+      comparison: false
+
+    # INV-15 — context values are carried on typed keys.
+    # SA1029 only: "should not use built-in type as key for value in
+    # context.WithValue". The rest of staticcheck is advisory in .golangci.yml
+    # and is not gated here.
+    staticcheck:
+      checks:
+        - SA1029
+
     depguard:
       rules:
         # INV-14 — the domain layer does not import inward.
@@ -73,6 +92,33 @@ linters:
     paths:
       - vendor
       - testdata
+
+    rules:
+      # INV-07 backlog, allowlisted while #404 clears it. These 8 files hold
+      # the 47 remaining non-wrapping fmt.Errorf sites; the rule still guards
+      # every other file, so the backlog cannot grow outside them.
+      #
+      # The 2 sites in pkg/domain/entities/domain.go were fixed rather than
+      # excluded — an unwrapped error in the domain layer defeats errors.Is
+      # for every caller above it, so the domain layer is fully gated.
+      #
+      # Delete each line as its file is cleared. Counts are as of 2026-08-25.
+      - linters: [errorlint]
+        path: cmd/cli/registrars/importer/importRegistrars\.go          # 25
+      - linters: [errorlint]
+        path: internal/application/services/dnssec_service\.go          # 5
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannregistrars/getCreateCommands\.go  # 4
+      - linters: [errorlint]
+        path: internal/application/commands/registrar_commands\.go      # 4
+      - linters: [errorlint]
+        path: internal/infrastructure/web/ianaregistrars/iana_repository\.go     # 3
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannspec5/icann_repository\.go        # 2
+      - linters: [errorlint]
+        path: internal/infrastructure/web/icannregistrars/readFile\.go   # 2
+      - linters: [errorlint]
+        path: cmd/cli/registrars/dbimporter/importRegistrarsDB\.go       # 2
 
 issues:
   # Every violation must be reported. The default caps identical messages at 3,

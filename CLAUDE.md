@@ -16,7 +16,7 @@ IDs are never reused. **The `PROP-nn` proposal space is fully retired** — all 
 
 Two things to know about CI:
 
-- **Architectural rules are enforced.** The `arch-lint` job runs `.golangci.arch.yml` and fails the build on any violation of `INV-01`, `INV-03`, `INV-12` (workflows) or `INV-14`. `INV-06` is enforced by an architecture test. Deliberate exceptions are allowlisted by filename in that config with a note saying what will remove them — do not add to it without one.
+- **Architectural rules are enforced.** The `arch-lint` job runs `.golangci.arch.yml` and fails the build on any violation of `INV-01`, `INV-03`, `INV-07`, `INV-12` (workflows), `INV-14` or `INV-15`. `INV-06` is enforced by an architecture test. Deliberate exceptions are allowlisted by filename in that config with a note saying what will remove them — do not add to it without one.
 - **General lint findings are advisory.** The main `golangci-lint` pass still runs with `--issues-exit-code=0` and reports ~1255 issues across seven linters, so it will not fail your build. Do not read a green Lint job as a clean bill of health.
 
 See the enforcement assessment at the end of `docs/INVARIANTS.md` for which rules are machine-checkable.
