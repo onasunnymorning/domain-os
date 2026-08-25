@@ -296,7 +296,7 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 # Local CI (mirrors GitHub Actions)
 ###################
 
-ci-local: ci-preflight ci-envcheck ci-lint build-all ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + build + test + frontend + security + API integration)
+ci-local: ci-preflight ci-envcheck ci-lint ci-arch build-all ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + arch gate + build + test + frontend + security + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
 
@@ -326,14 +326,31 @@ ci-envcheck: ## Check env var registry and deployment contract for drift
 	fi
 	@echo "✅ .env.example is in sync with env registry."
 
-ci-lint: ## Run all linters (Go + Frontend)
+ci-lint: ## Run all linters (Go + Frontend) — advisory, mirrors the "Lint (advisory)" CI job
 	@echo "🔍 Running Go vet..."
 	@go vet ./...
-	@echo "🔍 Running golangci-lint (warnings only — will become blocking once pre-existing issues are fixed)..."
+	@echo "🔍 Running golangci-lint (ADVISORY — does not fail the build; see issue #411)..."
 	@golangci-lint run ./... 2>&1 | tail -5 || true
 	@echo "🔍 Running frontend linters..."
 	@cd frontend && npm run lint
-	@echo "✅ All linters passed!"
+	@echo "✅ Linters run. Note: Go findings above are advisory — architectural rules are gated by 'make ci-arch'."
+
+ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Architecture gate" CI job
+	@echo "🏛  Enforcing architectural invariants from docs/INVARIANTS.md..."
+	@echo "    INV-01 telemetry off the delivery path   INV-03 vendor LLM SDK boundary"
+	@echo "    INV-07 errors wrapped with %w            INV-12 Temporal workflow logging"
+	@echo "    INV-14 domain layer imports inward       INV-15 typed context keys"
+	@golangci-lint run --config .golangci.arch.yml ./... || { \
+		echo ""; \
+		echo "❌ Architecture gate FAILED. Each finding names the invariant it breaks."; \
+		echo "   Read docs/INVARIANTS.md for the rule and why it exists."; \
+		echo "   A deliberate exception goes in .golangci.arch.yml with a comment"; \
+		echo "   saying why and what will remove it — never a bare nolint."; \
+		exit 1; \
+	}
+	@echo "🏛  Checking INV-06 (workflow determinism)..."
+	@go test -count=1 -run TestWorkflowDeterminism ./internal/application/workflows/
+	@echo "✅ Architecture gate passed."
 
 generate-contract: ## Regenerate deploy/contract.json from env registry + service metadata
 	@go run ./cmd/tools/gencontract > deploy/contract.json
