@@ -25,5 +25,6 @@ See the enforcement assessment at the end of `docs/INVARIANTS.md` for which rule
 ## Other project docs
 
 - [`docs/adr/0006-tenancy-model.md`](docs/adr/0006-tenancy-model.md) — the tenancy model behind `INV-02`. Read it before adding a tenant column, a scope parameter, or an EPP transactional verb; it carries the guardrails those changes are reviewed against.
-- [`architecture.md`](architecture.md) and [`stack.md`](stack.md) — narrative overview. **Both contain claims contradicted by the code; see `UNR-03`.** Where they disagree with `docs/INVARIANTS.md`, the latter carries the evidence.
+- [`architecture.md`](architecture.md) — structural overview: layers, entry points, patterns. Describes shape only and delegates every rule to `docs/INVARIANTS.md` by ID. Rewritten 2026-08-25; accurate as of then.
+- [`stack.md`](stack.md) — technology choices. **Contains at least one claim contradicted by the code (it names a message broker that does not exist); see `UNR-03`.** Where it disagrees with `docs/INVARIANTS.md`, the latter carries the evidence.
 - [`docs/adr/`](docs/adr/) — decision records.
