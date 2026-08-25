@@ -4,6 +4,8 @@
 **Date:** 2026-08-10
 **Status:** Draft. Nothing here is settled. Expected review action is deletion and correction.
 
+**Resolutions since the analysis SHA:** `PROP-04` → `INV-07` (2026-08-10, retired). `INV-02` → Invariants, Class B, by [ADR-0006](adr/0006-tenancy-model.md) (2026-08-25); its evidence is cited at HEAD rather than at the analysis SHA.
+
 This document exists so architectural review can be a link to a section ID instead of an essay.
 
 ## How to read this
@@ -24,7 +26,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | ID | Rule | Class | Section |
 |---|---|---|---|
 | INV-01 | Outbox is the path of record; telemetry is never load-bearing | A | Invariants |
-| INV-02 | Tenant scope required on every executor call | **D** | Unresolved |
+| INV-02 | Two-sided tenancy: operator scope by TLD join, registrar scope by sponsorship | **B** | Invariants |
 | INV-03 | No vendor LLM SDK outside `ModelProvider` | A | Invariants |
 | INV-04 | Evidence provenance mandatory on terminal agent outcomes | **B** | Invariants |
 | INV-05 | Reconciliation before record creation | **B** (process only) | Invariants |
@@ -46,13 +48,50 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 
 **Class: A** — holds, but note *why* it holds (below).
 
-**Evidence.** Port: [`pkg/domain/repositories/event_publisher.go:9`](pkg/domain/repositories/event_publisher.go#L9). Outbox row and flag: [`internal/infrastructure/db/postgres/domain_event.go:25`](internal/infrastructure/db/postgres/domain_event.go#L25) (`Published bool` — comment reads "outbox relay flag"). Relay: [`internal/application/workflows/eventRelay.go:40`](internal/application/workflows/eventRelay.go#L40), [`internal/application/activities/eventRelayActivities.go:80`](internal/application/activities/eventRelayActivities.go#L80). `TraceID` on an event is a plain string read from `ctx.Value("trace_id")`, not a span handle — [`internal/application/services/domain_service.go:1761`](internal/application/services/domain_service.go#L1761).
+**Evidence.** Port: [`pkg/domain/repositories/event_publisher.go:9`](../pkg/domain/repositories/event_publisher.go#L9). Outbox row and flag: [`internal/infrastructure/db/postgres/domain_event.go:25`](../internal/infrastructure/db/postgres/domain_event.go#L25) (`Published bool` — comment reads "outbox relay flag"). Relay: [`internal/application/workflows/eventRelay.go:40`](../internal/application/workflows/eventRelay.go#L40), [`internal/application/activities/eventRelayActivities.go:80`](../internal/application/activities/eventRelayActivities.go#L80). `TraceID` on an event is a plain string read from `ctx.Value("trace_id")`, not a span handle — [`internal/application/services/domain_service.go:1761`](../internal/application/services/domain_service.go#L1761).
 
 **Caveat on the classification.** `go.opentelemetry.io` appears in `go.sum` only — zero first-party Go imports, nothing in `go.mod`'s require blocks. There is also no AMQP/Kafka/NATS/SNS/SQS anywhere. **This invariant currently holds because no telemetry infrastructure exists in application code at all**, not because a boundary is being defended. It is untested against the case it was written for. Treat it as A-by-vacancy.
 
 **Two adjacent defects, surfaced not fixed:**
-1. **The outbox is not transactional.** The event insert is a separate `db.Create` ([`internal/infrastructure/db/postgres/event_publisher.go:46`](internal/infrastructure/db/postgres/event_publisher.go#L46)) with no shared `tx` with the business write. A crash between the two loses the event.
-2. **Publish failures are swallowed in all six producers.** The pattern is `if err := ...Publish(...); err != nil { log.Printf(...) }` — the business operation succeeds even if nothing reaches the outbox: [`domain_service.go:1787`](internal/application/services/domain_service.go#L1787), [`registrar_service.go:329`](internal/application/services/registrar_service.go#L329), [`host_service.go:347`](internal/application/services/host_service.go#L347), [`contact_service.go:152`](internal/application/services/contact_service.go#L152), [`accreditation_service.go:153`](internal/application/services/accreditation_service.go#L153), [`phase_service.go:220`](internal/application/services/phase_service.go#L220).
+1. **The outbox is not transactional.** The event insert is a separate `db.Create` ([`internal/infrastructure/db/postgres/event_publisher.go:46`](../internal/infrastructure/db/postgres/event_publisher.go#L46)) with no shared `tx` with the business write. A crash between the two loses the event.
+2. **Publish failures are swallowed in all six producers.** The pattern is `if err := ...Publish(...); err != nil { log.Printf(...) }` — the business operation succeeds even if nothing reaches the outbox: [`domain_service.go:1787`](../internal/application/services/domain_service.go#L1787), [`registrar_service.go:329`](../internal/application/services/registrar_service.go#L329), [`host_service.go:347`](../internal/application/services/host_service.go#L347), [`contact_service.go:152`](../internal/application/services/contact_service.go#L152), [`accreditation_service.go:153`](../internal/application/services/accreditation_service.go#L153), [`phase_service.go:220`](../internal/application/services/phase_service.go#L220).
+
+---
+
+## INV-02 — Tenancy is two-sided: operator scope by TLD join, registrar scope by sponsorship
+
+*Resolved 2026-08-25. Was Class D (Unresolved). The rule below is the decision recorded in [`docs/adr/0006-tenancy-model.md`](adr/0006-tenancy-model.md) — read that for the reasoning, the guardrails, and what is deferred.*
+
+**Rule.** This registry is a two-sided marketplace, so there are two tenant kinds and each has its own key:
+
+- **Operator scope** — a `RegistryOperator.RyID`. Administrative plane. Reaches TLDs and everything inside them *through the TLD join*, never through a denormalized column.
+- **Registrar scope** — a `Registrar.ClID`. Transactional plane (EPP, future registrar portal). Reaches **only objects the registrar sponsors**; accreditation gates which TLDs it may transact in.
+- **Staff/global is an explicit third kind**, never the absence of a filter.
+
+Scope is a claim on the authenticated principal, is passed as a typed parameter immediately after `ctx`, and is enforced in repository SQL — `WHERE tld.ry_id = ?` on the operator side, `WHERE clid = ?` on the registrar side. Every EPP transactional verb checks sponsorship (info/update/delete/transfer → EPP `2201` on mismatch) or accreditation (create) in the command layer.
+
+**Why.** The original formulation asked for "tenant scope on every executor call" and could not be satisfied, because "tenant" had never been defined here. Defining it dissolves the problem that made this a contradiction: contacts and hosts have no TLD and so cannot carry operator scope, but they are *sponsored*, and sponsorship is already in the schema — `ClID` on [`domain.go:59`](../pkg/domain/entities/domain.go#L59), [`contact.go:66`](../pkg/domain/entities/contact.go#L66), [`host.go:42`](../pkg/domain/entities/host.go#L42). The consumer side needs no schema change; the supply side needs no denormalization. Getting this wrong in the other direction is expensive and quiet: a `ry_id` column on `contacts` would work until the first TLD reassignment.
+
+**Class: B — the rule holds wherever tenancy is implemented today; the surfaces it does not yet reach are enumerated below, each with a stated reason.**
+
+**Evidence.**
+
+Scope types: [`pkg/domain/entities/scope.go:38`](../pkg/domain/entities/scope.go#L38) (`OperatorID`) and [`:80`](../pkg/domain/entities/scope.go#L80) (`RegistrarClID`) — distinct defined types over `ClIDType`, not aliases, so the two scope kinds and a plain object ClID cannot be interchanged.
+
+Single admin-plane derivation point: [`internal/interface/rest/tenant.go:39`](../internal/interface/rest/tenant.go#L39). It is the only reader of `X-Tenant-ID` in `internal/` — the six per-handler `getTenantID` calls, and the `?tenant_id=` query fallback that made scope forgeable from an address bar, are gone.
+
+Operator scope threaded and enforced, zone-slaving slice: interface [`zone_slaving_interface.go:27`](../internal/application/interfaces/zone_slaving_interface.go#L27) (all seven methods `(ctx, scope entities.OperatorID, ...)`), port [`serial_drift_repository.go:15`](../pkg/domain/repositories/serial_drift_repository.go#L15), SQL enforcement at [`internal/infrastructure/db/postgres/serial_drift_repository.go:43`](../internal/infrastructure/db/postgres/serial_drift_repository.go#L43) and 12 further sites — 13 `tenant_id = ?` predicates in that file, one for every scoped query — with the uniqueness index at [`zone_slaving.go:14`](../internal/infrastructure/db/postgres/zone_slaving.go#L14).
+
+The consumer-side chain is already in the schema and needs nothing: sponsorship columns above, accreditation as the bridge at [`accreditation_service.go:40`](../internal/application/services/accreditation_service.go#L40), and both filter hooks already present at [`listDomainsFilter.go:16,18`](../internal/application/queries/listDomainsFilter.go#L16) (`TldEquals`, `ClidEquals`).
+
+**Where the rule does not yet reach, individually:**
+
+1. **The EPP transactional surface does not exist, so the rule is pre-established rather than held.** The server authenticates per registrar — `registrarIDKey` stamped at [`cmd/epp/eppServer.go:319`](../cmd/epp/eppServer.go#L319) with a typed context key ([`:28`](../cmd/epp/eppServer.go#L28)) — but binds only greeting, login, logout and domain-check ([`:100-118`](../cmd/epp/eppServer.go#L100); contact-info commented out), and that identity currently feeds rate limiting only. This is the favourable case, not the unfavourable one: the invariant is being written before the surface it governs. To be put on the "Architectural invariants" board as a follow-on issue, so the EPP buildout works from it rather than from a document alone.
+2. **The core registry services are intentionally global.** Not one method across the 25 interfaces in `internal/application/interfaces/` takes a scope — e.g. [`domain_interface.go:14-57`](../internal/application/interfaces/domain_interface.go#L14), [`registrar_interface.go:13-22`](../internal/application/interfaces/registrar_interface.go#L13). Under a single operator this is deliberate deferral, recorded in ADR-0006, not drift. (`ClID` in those signatures is the *operand's* key — which record is being acted on — not a caller scope.)
+3. **The workflow launchpad still takes operator scope from the request body.** [`workflow_controller.go`](../internal/interface/rest/workflow_controller.go), `serial-drift` case: it is now typed and validated, so an unusable scope is rejected before a schedule is created against it, but it is self-asserted rather than claimed. Closes with the Auth0 tenant claim.
+4. **Context-derived identifiers remain audit-only.** `trace_id` / `correlation_id` / `userid` are stamped onto events in all six producer services (e.g. [`domain_service.go:1761,1764,1780`](../internal/application/services/domain_service.go#L1761)) and no query is filtered by them. That is correct under this rule — scope is a parameter, not context state — and is listed so it is not mistaken for tenancy.
+5. **Writes carry scope inside the entity, not as a parameter.** `CreateSlaving`, `CreateRun` and `CreateObservations` on the port take no `scope` argument — the value is already a field on the record being written, and a second copy in the signature would be two sources of truth for one column. Reads and status changes, where the scope is a filter rather than a value, all take it explicitly. Deliberate, and stated here so it is not read as an omission.
+6. **`askg`'s `CallerScope` is not a tenant.** [`internal/askg/result.go:62`](../internal/askg/result.go#L62) is `CallerScope{ UserID string }`, threaded into no tool execution; the `Executor` at [`toolexec.go:9`](../internal/askg/toolexec.go#L9) that the original wording named is an LLM tool executor, not a tenancy boundary. The agent eval suite asserts tenant isolation anyway — `CategoryTenantIsolation` ([`eval/eval.go:36`](../internal/askg/eval/eval.go#L36)), `ScoreTenantIsolation` ([`eval/scoring.go:24`](../internal/askg/eval/scoring.go#L24), which greps answer text), `TestOrchestrator_TenantScopeThreading` ([`orchestrator_test.go:291`](../internal/askg/orchestrator_test.go#L291)) — so those tests describe an intent that layer does not implement. Out of scope for ADR-0006.
 
 ---
 
@@ -64,9 +103,9 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 
 **Class: A** — holds cleanly across the full import graph.
 
-**Evidence.** Interface: [`internal/askg/provider.go:108`](internal/askg/provider.go#L108) — `Generate(ctx, ModelRequest) (ModelResponse, error)` and `Name() string`. The **only** vendor-LLM imports in the entire non-vendor tree: [`internal/askg/provider/anthropic/anthropic.go:14-15`](internal/askg/provider/anthropic/anthropic.go#L14). Zero hits for `go-openai`, `genai`, `generative-ai-go`, `cohere`, `mistral`, `ollama`, `langchain`, or direct calls to `api.anthropic.com` / `api.openai.com`. Composition roots import the *adapter package*, never the SDK: [`cmd/api/ry-admin/ryAdminAPI.go:16`](cmd/api/ry-admin/ryAdminAPI.go#L16), [`cmd/askg/main.go:26`](cmd/askg/main.go#L26). A second implementation exists for tests: [`internal/askg/provider/fake_provider.go:37`](internal/askg/provider/fake_provider.go#L37).
+**Evidence.** Interface: [`internal/askg/provider.go:108`](../internal/askg/provider.go#L108) — `Generate(ctx, ModelRequest) (ModelResponse, error)` and `Name() string`. The **only** vendor-LLM imports in the entire non-vendor tree: [`internal/askg/provider/anthropic/anthropic.go:14-15`](../internal/askg/provider/anthropic/anthropic.go#L14). Zero hits for `go-openai`, `genai`, `generative-ai-go`, `cohere`, `mistral`, `ollama`, `langchain`, or direct calls to `api.anthropic.com` / `api.openai.com`. Composition roots import the *adapter package*, never the SDK: [`cmd/api/ry-admin/ryAdminAPI.go:16`](../cmd/api/ry-admin/ryAdminAPI.go#L16), [`cmd/askg/main.go:26`](../cmd/askg/main.go#L26). A second implementation exists for tests: [`internal/askg/provider/fake_provider.go:37`](../internal/askg/provider/fake_provider.go#L37).
 
-**Soft coupling worth a decision.** Model *identifier strings* (`DefaultModel`, `DefaultClassifier` at [`anthropic.go:21-22`](internal/askg/provider/anthropic/anthropic.go#L21)) are referenced from `cmd/` wiring, so swapping providers still means touching entrypoints. Not an SDK leak — flagging it as the one seam that would resist a swap.
+**Soft coupling worth a decision.** Model *identifier strings* (`DefaultModel`, `DefaultClassifier` at [`anthropic.go:21-22`](../internal/askg/provider/anthropic/anthropic.go#L21)) are referenced from `cmd/` wiring, so swapping providers still means touching entrypoints. Not an SDK leak — flagging it as the one seam that would resist a swap.
 
 ---
 
@@ -78,18 +117,18 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 
 **Class: B — intended, documented, enforced by nothing.**
 
-The rule is written down at [`internal/askg/result.go:27`](internal/askg/result.go#L27) — "Every claim in Result.Answer must be supported by something in Evidence." There is no mechanism behind it. `Result` ([`result.go:35`](internal/askg/result.go#L35)) is a plain struct with all fields exported: **no constructor, no `Validate()` method, no method set at all.** `Evidence []Evidence` ([`result.go:49`](internal/askg/result.go#L49)) is an ordinary nil-able slice.
+The rule is written down at [`internal/askg/result.go:27`](../internal/askg/result.go#L27) — "Every claim in Result.Answer must be supported by something in Evidence." There is no mechanism behind it. `Result` ([`result.go:35`](../internal/askg/result.go#L35)) is a plain struct with all fields exported: **no constructor, no `Validate()` method, no method set at all.** `Evidence []Evidence` ([`result.go:49`](../internal/askg/result.go#L49)) is an ordinary nil-able slice.
 
 **Violations, individually:**
 
-1. [`internal/askg/eval/runner.go:119-122`](internal/askg/eval/runner.go#L119) — constructs `&askg.Result{Outcome: askg.OutcomeEscalate, Reason: ...}` with the `Evidence` field **omitted entirely**. Proof the zero-provenance shape is reachable and already reached.
-2. [`internal/askg/orchestrator.go:187-193`](internal/askg/orchestrator.go#L187) — JSON-parse-failure fallback; passes `allEvidence` through unchecked.
-3. [`internal/askg/orchestrator.go:210-214`](internal/askg/orchestrator.go#L210) — the happy path; same unchecked passthrough.
-4. [`internal/askg/orchestrator.go:247-253`](internal/askg/orchestrator.go#L247) — `escalateWithEvidence`, reached from `:74` (model error), `:97` (max tokens), `:157` (iteration cap). On a first-iteration model failure it emits `Evidence: nil`.
+1. [`internal/askg/eval/runner.go:119-122`](../internal/askg/eval/runner.go#L119) — constructs `&askg.Result{Outcome: askg.OutcomeEscalate, Reason: ...}` with the `Evidence` field **omitted entirely**. Proof the zero-provenance shape is reachable and already reached.
+2. [`internal/askg/orchestrator.go:187-193`](../internal/askg/orchestrator.go#L187) — JSON-parse-failure fallback; passes `allEvidence` through unchecked.
+3. [`internal/askg/orchestrator.go:210-214`](../internal/askg/orchestrator.go#L210) — the happy path; same unchecked passthrough.
+4. [`internal/askg/orchestrator.go:247-253`](../internal/askg/orchestrator.go#L247) — `escalateWithEvidence`, reached from `:74` (model error), `:97` (max tokens), `:157` (iteration cap). On a first-iteration model failure it emits `Evidence: nil`.
 
-For 2–4: `allEvidence` is declared at [`orchestrator.go:52`](internal/askg/orchestrator.go#L52) and appended only at [`:137`](internal/askg/orchestrator.go#L137), inside the tool-call branch. A first-turn direct answer never enters that branch, so the slice is nil.
+For 2–4: `allEvidence` is declared at [`orchestrator.go:52`](../internal/askg/orchestrator.go#L52) and appended only at [`:137`](../internal/askg/orchestrator.go#L137), inside the tool-call branch. A first-turn direct answer never enters that branch, so the slice is nil.
 
-**The one guard is weaker than its name.** `ScoreProvenanceIntegrity` ([`internal/askg/eval/scoring.go:93-119`](internal/askg/eval/scoring.go#L93)) checks only the *reverse* direction — that each evidence entry maps to a tool call that ran, catching fabricated provenance. An empty slice yields zero orphans and **passes**, reporting "all 0 evidence entries have matching tool calls". It also lives in the offline eval harness, not the request path: the REST handler returns `Result` unchecked at [`internal/interface/rest/agent_controller.go:91`](internal/interface/rest/agent_controller.go#L91).
+**The one guard is weaker than its name.** `ScoreProvenanceIntegrity` ([`internal/askg/eval/scoring.go:93-119`](../internal/askg/eval/scoring.go#L93)) checks only the *reverse* direction — that each evidence entry maps to a tool call that ran, catching fabricated provenance. An empty slice yields zero orphans and **passes**, reporting "all 0 evidence entries have matching tool calls". It also lives in the offline eval harness, not the request path: the REST handler returns `Result` unchecked at [`internal/interface/rest/agent_controller.go:91`](../internal/interface/rest/agent_controller.go#L91).
 
 ---
 
@@ -101,17 +140,17 @@ For 2–4: `allEvidence` is declared at [`orchestrator.go:52`](internal/askg/orc
 
 **Class: B — this is a process invariant held by operator discipline. It is not enforced by code. State that plainly.**
 
-**No reconciler over records exists.** Every reconciliation-shaped thing in the repo is either about Temporal *schedules* ([`internal/infrastructure/bootstrap/ensure.go:153`](internal/infrastructure/bootstrap/ensure.go#L153)) or is reporting-only.
+**No reconciler over records exists.** Every reconciliation-shaped thing in the repo is either about Temporal *schedules* ([`internal/infrastructure/bootstrap/ensure.go:153`](../internal/infrastructure/bootstrap/ensure.go#L153)) or is reporting-only.
 
 **Violations, individually:**
 
-1. **Post-ingestion verification is explicitly non-blocking, by its own doc comment.** [`internal/application/activities/verify_ingestion.go:82`](internal/application/activities/verify_ingestion.go#L82): "Verification failures are informational — they do not fail the workflow."
-2. **Its result is stored and never branched on.** [`internal/application/workflows/escrowImport.go:547`](internal/application/workflows/escrowImport.go#L547) writes `state.VerificationPassed`; [`:566`](internal/application/workflows/escrowImport.go#L566) copies it into the result. Nothing reads it as a condition. Ingestion already ran at [`:392`](internal/application/workflows/escrowImport.go#L392).
-3. **The one check that would catch truncation is downgraded to a warning.** `entity_count_consistency` ([`internal/application/activities/escrow_import.go:4638`](internal/application/activities/escrow_import.go#L4638)) compares staged domain count against the source-analysis sum — exactly the truncation check. Its `Severity` is `"warning"` at [`:4640`](internal/application/activities/escrow_import.go#L4640). `AddCheck` ([`:4374`](internal/application/activities/escrow_import.go#L4374)) fails the report **only** on `Severity == "error"`. A staged DB missing 40% of its domains logs a mismatch and proceeds to ingestion.
-4. **The sync path has no completeness guard.** [`internal/application/workflows/syncRegistrarsWorkflow.go:144`](internal/application/workflows/syncRegistrarsWorkflow.go#L144) — the `Count == 0` test selects bootstrap-vs-incremental mode; it is not a sanity check. Nothing tests whether a fetched IANA list is suspiciously small before bulk-creating registrars.
-5. **The serial-drift path writes runs unconditionally.** [`internal/application/activities/serialDriftActivities.go:172-207`](internal/application/activities/serialDriftActivities.go#L172) persists the run and every observation regardless of how many nameservers responded; failed probes are stored with a populated `Error` field.
+1. **Post-ingestion verification is explicitly non-blocking, by its own doc comment.** [`internal/application/activities/verify_ingestion.go:82`](../internal/application/activities/verify_ingestion.go#L82): "Verification failures are informational — they do not fail the workflow."
+2. **Its result is stored and never branched on.** [`internal/application/workflows/escrowImport.go:547`](../internal/application/workflows/escrowImport.go#L547) writes `state.VerificationPassed`; [`:566`](../internal/application/workflows/escrowImport.go#L566) copies it into the result. Nothing reads it as a condition. Ingestion already ran at [`:392`](../internal/application/workflows/escrowImport.go#L392).
+3. **The one check that would catch truncation is downgraded to a warning.** `entity_count_consistency` ([`internal/application/activities/escrow_import.go:4638`](../internal/application/activities/escrow_import.go#L4638)) compares staged domain count against the source-analysis sum — exactly the truncation check. Its `Severity` is `"warning"` at [`:4640`](../internal/application/activities/escrow_import.go#L4640). `AddCheck` ([`:4374`](../internal/application/activities/escrow_import.go#L4374)) fails the report **only** on `Severity == "error"`. A staged DB missing 40% of its domains logs a mismatch and proceeds to ingestion.
+4. **The sync path has no completeness guard.** [`internal/application/workflows/syncRegistrarsWorkflow.go:144`](../internal/application/workflows/syncRegistrarsWorkflow.go#L144) — the `Count == 0` test selects bootstrap-vs-incremental mode; it is not a sanity check. Nothing tests whether a fetched IANA list is suspiciously small before bulk-creating registrars.
+5. **The serial-drift path writes runs unconditionally.** [`internal/application/activities/serialDriftActivities.go:172-207`](../internal/application/activities/serialDriftActivities.go#L172) persists the run and every observation regardless of how many nameservers responded; failed probes are stored with a populated `Error` field.
 
-**A real gate does exist**, and is worth keeping in view: [`internal/application/workflows/escrowImport.go:340`](internal/application/workflows/escrowImport.go#L340) halts before ingestion when `!qaOut.Passed`. Three `error`-severity checks can trip it (`unmapped_primary_clids`, `null_primary_clids`, `registrar_mapping_completeness`). The gate works; the truncation check simply is not wired into it.
+**A real gate does exist**, and is worth keeping in view: [`internal/application/workflows/escrowImport.go:340`](../internal/application/workflows/escrowImport.go#L340) halts before ingestion when `!qaOut.Passed`. Three `error`-severity checks can trip it (`unmapped_primary_clids`, `null_primary_clids`, `registrar_mapping_completeness`). The gate works; the truncation check simply is not wired into it.
 
 ---
 
@@ -123,11 +162,11 @@ For 2–4: `allEvidence` is declared at [`orchestrator.go:52`](internal/askg/orc
 
 **Class: A** — holds strongly, and appears to be actively maintained.
 
-**Evidence.** Across every file in `internal/application/workflows/` **including tests**: zero occurrences of `time.Now()`, `math/rand`, `crypto/rand`, `uuid.New`, `net/http`, or `http.Get/Post/Client/NewRequest`. The `time` import appears in 15 files and is used only for `time.Duration` constants, `time.Time` struct fields, and `time.RFC3339` formatting. Against that: **69 `workflow.Now(ctx)` calls and 72 `workflow.ExecuteActivity` calls** across the package — e.g. [`serialDrift.go:17`](internal/application/workflows/serialDrift.go#L17), [`tombstoneBackfill.go:45`](internal/application/workflows/tombstoneBackfill.go#L45), [`updateFX.go:40`](internal/application/workflows/updateFX.go#L40).
+**Evidence.** Across every file in `internal/application/workflows/` **including tests**: zero occurrences of `time.Now()`, `math/rand`, `crypto/rand`, `uuid.New`, `net/http`, or `http.Get/Post/Client/NewRequest`. The `time` import appears in 15 files and is used only for `time.Duration` constants, `time.Time` struct fields, and `time.RFC3339` formatting. Against that: **69 `workflow.Now(ctx)` calls and 72 `workflow.ExecuteActivity` calls** across the package — e.g. [`serialDrift.go:17`](../internal/application/workflows/serialDrift.go#L17), [`tombstoneBackfill.go:45`](../internal/application/workflows/tombstoneBackfill.go#L45), [`updateFX.go:40`](../internal/application/workflows/updateFX.go#L40).
 
-Nondeterminism is correctly concentrated in `internal/application/activities/` (~40 files import `net/http`; `time.Now()` at [`eventRelayActivities.go:169`](internal/application/activities/eventRelayActivities.go#L169), `math/rand` at [`verify_ingestion.go:9`](internal/application/activities/verify_ingestion.go#L9)) — legal there. The boundary looks deliberately maintained: [`internal/application/activities/listPurgeableDomains.go:21`](internal/application/activities/listPurgeableDomains.go#L21) carries a comment explaining that the reference time is passed *in from the workflow* rather than defaulting to the activity's own clock.
+Nondeterminism is correctly concentrated in `internal/application/activities/` (~40 files import `net/http`; `time.Now()` at [`eventRelayActivities.go:169`](../internal/application/activities/eventRelayActivities.go#L169), `math/rand` at [`verify_ingestion.go:9`](../internal/application/activities/verify_ingestion.go#L9)) — legal there. The boundary looks deliberately maintained: [`internal/application/activities/listPurgeableDomains.go:21`](../internal/application/activities/listPurgeableDomains.go#L21) carries a comment explaining that the reference time is passed *in from the workflow* rather than defaulting to the activity's own clock.
 
-**One item outside Temporal scope, flagged separately.** [`internal/askg/tools.go:341`](internal/askg/tools.go#L341) uses `time.Now().UTC()` inside business logic (`deriveDomainRGPPhase`). Ask G is not a Temporal workflow, so this carries no replay risk — but it makes the function untestable at date boundaries without clock injection, and its own comment says it "mirrors the MCP server's deriveRGPPhase function", so the duplicated logic can drift.
+**One item outside Temporal scope, flagged separately.** [`internal/askg/tools.go:341`](../internal/askg/tools.go#L341) uses `time.Now().UTC()` inside business logic (`deriveDomainRGPPhase`). Ask G is not a Temporal workflow, so this carries no replay risk — but it makes the function untestable at date boundaries without clock injection, and its own comment says it "mirrors the MCP server's deriveRGPPhase function", so the duplicated logic can drift.
 
 ---
 
@@ -147,15 +186,15 @@ Nondeterminism is correctly concentrated in `internal/application/activities/` (
 
 | Count | File |
 |---|---|
-| **25** | [`cmd/cli/registrars/importer/importRegistrars.go`](cmd/cli/registrars/importer/importRegistrars.go) |
-| 5 | [`internal/application/services/dnssec_service.go`](internal/application/services/dnssec_service.go) |
-| 4 | [`internal/infrastructure/web/icannregistrars/getCreateCommands.go`](internal/infrastructure/web/icannregistrars/getCreateCommands.go) |
-| 4 | [`internal/application/commands/registrar_commands.go`](internal/application/commands/registrar_commands.go) |
-| 3 | [`internal/infrastructure/web/ianaregistrars/iana_repository.go`](internal/infrastructure/web/ianaregistrars/iana_repository.go) |
-| 2 | [`pkg/domain/entities/domain.go:499`](pkg/domain/entities/domain.go#L499), [`:505`](pkg/domain/entities/domain.go#L505) |
-| 2 | [`internal/infrastructure/web/icannspec5/icann_repository.go`](internal/infrastructure/web/icannspec5/icann_repository.go) |
-| 2 | [`internal/infrastructure/web/icannregistrars/readFile.go`](internal/infrastructure/web/icannregistrars/readFile.go) |
-| 2 | [`cmd/cli/registrars/dbimporter/importRegistrarsDB.go`](cmd/cli/registrars/dbimporter/importRegistrarsDB.go) |
+| **25** | [`cmd/cli/registrars/importer/importRegistrars.go`](../cmd/cli/registrars/importer/importRegistrars.go) |
+| 5 | [`internal/application/services/dnssec_service.go`](../internal/application/services/dnssec_service.go) |
+| 4 | [`internal/infrastructure/web/icannregistrars/getCreateCommands.go`](../internal/infrastructure/web/icannregistrars/getCreateCommands.go) |
+| 4 | [`internal/application/commands/registrar_commands.go`](../internal/application/commands/registrar_commands.go) |
+| 3 | [`internal/infrastructure/web/ianaregistrars/iana_repository.go`](../internal/infrastructure/web/ianaregistrars/iana_repository.go) |
+| 2 | [`pkg/domain/entities/domain.go:499`](../pkg/domain/entities/domain.go#L499), [`:505`](../pkg/domain/entities/domain.go#L505) |
+| 2 | [`internal/infrastructure/web/icannspec5/icann_repository.go`](../internal/infrastructure/web/icannspec5/icann_repository.go) |
+| 2 | [`internal/infrastructure/web/icannregistrars/readFile.go`](../internal/infrastructure/web/icannregistrars/readFile.go) |
+| 2 | [`cmd/cli/registrars/dbimporter/importRegistrarsDB.go`](../cmd/cli/registrars/dbimporter/importRegistrarsDB.go) |
 
 By layer: `cmd/cli` 27 · `internal/infrastructure` 11 · `internal/application` 9 · `pkg/domain` 2.
 
@@ -170,11 +209,11 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 **These are not rules.** They are consistent patterns found in the code, presented as questions. Answer each yes / no / no-longer. Nothing here should be cited in review until it has been promoted.
 
 ### PROP-01 — Transaction boundaries have no owner
-Only 8 explicit transaction sites exist, spread across three layers: services ([`jisc_service.go:52`](internal/application/services/jisc_service.go#L52), [`:513`](internal/application/services/jisc_service.go#L513), [`csv_to_sqlite_service.go:334`](internal/application/services/csv_to_sqlite_service.go#L334), [`:448`](internal/application/services/csv_to_sqlite_service.go#L448)), activities ([`serialDriftActivities.go:175`](internal/application/activities/serialDriftActivities.go#L175), [`escrow_import.go:2602`](internal/application/activities/escrow_import.go#L2602), [`:3143`](internal/application/activities/escrow_import.go#L3143)), and repositories ([`fx_repository.go:30`](internal/infrastructure/db/postgres/fx_repository.go#L30)). The entire core registry service set (domain, registrar, host, contact, tld, accreditation) opens none — which is also why INV-01's outbox write is not atomic with its business write.
+Only 8 explicit transaction sites exist, spread across three layers: services ([`jisc_service.go:52`](../internal/application/services/jisc_service.go#L52), [`:513`](../internal/application/services/jisc_service.go#L513), [`csv_to_sqlite_service.go:334`](../internal/application/services/csv_to_sqlite_service.go#L334), [`:448`](../internal/application/services/csv_to_sqlite_service.go#L448)), activities ([`serialDriftActivities.go:175`](../internal/application/activities/serialDriftActivities.go#L175), [`escrow_import.go:2602`](../internal/application/activities/escrow_import.go#L2602), [`:3143`](../internal/application/activities/escrow_import.go#L3143)), and repositories ([`fx_repository.go:30`](../internal/infrastructure/db/postgres/fx_repository.go#L30)). The entire core registry service set (domain, registrar, host, contact, tld, accreditation) opens none — which is also why INV-01's outbox write is not atomic with its business write.
 **Q: Should transaction ownership sit at one named layer, or is per-case placement intentional?**
 
 ### PROP-02 — Validation lives in entity constructors, not at the edge
-30 `New<X>(...) (*X, error)` constructors and 24 `Validate()`/`IsValid()` methods across 74 files in `pkg/domain/entities/` (e.g. [`registrar.go:124`](pkg/domain/entities/registrar.go#L124), [`contact.go:147`](pkg/domain/entities/contact.go#L147), [`tld.go:65`](pkg/domain/entities/tld.go#L65)). Against that, only **18** `binding:"..."` gin tags exist across the whole REST layer. The edge appears to trust the domain rather than duplicate its checks.
+30 `New<X>(...) (*X, error)` constructors and 24 `Validate()`/`IsValid()` methods across 74 files in `pkg/domain/entities/` (e.g. [`registrar.go:124`](../pkg/domain/entities/registrar.go#L124), [`contact.go:147`](../pkg/domain/entities/contact.go#L147), [`tld.go:65`](../pkg/domain/entities/tld.go#L65)). Against that, only **18** `binding:"..."` gin tags exist across the whole REST layer. The edge appears to trust the domain rather than duplicate its checks.
 **Q: Is "validation is the entity's job, handlers don't re-check" the rule?**
 
 ### PROP-03 — Sentinel errors are an entity-layer convention
@@ -185,15 +224,15 @@ Only 8 explicit transaction sites exist, spread across three layers: services ([
 Confirmed 2026-08-10. The ID `PROP-04` is retired and will not be reused.
 
 ### PROP-05 — Repository methods take `ctx` first
-121 of 124 interface methods in `pkg/domain/repositories/` lead with `ctx context.Context`. The three exceptions: [`idGenerator_interface.go:5`](pkg/domain/repositories/idGenerator_interface.go#L5), [`:6`](pkg/domain/repositories/idGenerator_interface.go#L6), [`iana_interface.go:8`](pkg/domain/repositories/iana_interface.go#L8).
+121 of 124 interface methods in `pkg/domain/repositories/` lead with `ctx context.Context`. The three exceptions: [`idGenerator_interface.go:5`](../pkg/domain/repositories/idGenerator_interface.go#L5), [`:6`](../pkg/domain/repositories/idGenerator_interface.go#L6), [`iana_interface.go:8`](../pkg/domain/repositories/iana_interface.go#L8).
 **Q: Rule, with three to fix — or are the ID generator and IANA list legitimately context-free?**
 
 ### PROP-06 — Pagination is cursor-based, never offset
-Where repository interfaces paginate they use `pageSize int, pageCursor string`: [`ianaRegistrar_interface.go:12`](pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](pkg/domain/repositories/phase_repository_interface.go#L17). No `OFFSET`-style signature appears in the port layer.
+Where repository interfaces paginate they use `pageSize int, pageCursor string`: [`ianaRegistrar_interface.go:12`](../pkg/domain/repositories/ianaRegistrar_interface.go#L12), [`phase_repository_interface.go:16`](../pkg/domain/repositories/phase_repository_interface.go#L16), [`:17`](../pkg/domain/repositories/phase_repository_interface.go#L17). No `OFFSET`-style signature appears in the port layer.
 **Q: Is cursor pagination a rule for new list endpoints?**
 
 ### PROP-07 — Eager loading is expressed as a `preload…bool` parameter
-[`tld_interface.go:12`](pkg/domain/repositories/tld_interface.go#L12) (`preloadAll`), [`registrar_interface.go:13`](pkg/domain/repositories/registrar_interface.go#L13) (`preloadTLDs`), [`domain_repository.go:16`](pkg/domain/repositories/domain_repository.go#L16) and [`:32`](pkg/domain/repositories/domain_repository.go#L32) (`preloadHosts`). Each names a different relation, so the idiom is a boolean flag rather than a shared option type.
+[`tld_interface.go:12`](../pkg/domain/repositories/tld_interface.go#L12) (`preloadAll`), [`registrar_interface.go:13`](../pkg/domain/repositories/registrar_interface.go#L13) (`preloadTLDs`), [`domain_repository.go:16`](../pkg/domain/repositories/domain_repository.go#L16) and [`:32`](../pkg/domain/repositories/domain_repository.go#L32) (`preloadHosts`). Each names a different relation, so the idiom is a boolean flag rather than a shared option type.
 **Q: Keep the boolean-flag idiom, or is this drifting toward a load-options struct?**
 
 ### PROP-08 — Logging idiom is determined by layer
@@ -209,11 +248,11 @@ Where repository interfaces paginate they use `pageSize int, pageCursor string`:
 | `infrastructure` | 24 | 2 | 0 | 8 |
 | `cmd` | — | — | 0 | **47** |
 
-Temporal code is unambiguous and clean. Elsewhere the split reads as age rather than policy: the newest code (`askg`) is all-`slog`, the oldest (`services`) is all-`log.Printf`, and `zap` is confined to composition roots plus the two infrastructure types it is injected into ([`event_publisher.go:13`](internal/infrastructure/db/postgres/event_publisher.go#L13), [`lifecycleActivities.go`](internal/application/activities/lifecycleActivities.go)). There is no project logger wrapper type — `zap` is passed by dependency injection, `slog` and `log` are used package-globally.
+Temporal code is unambiguous and clean. Elsewhere the split reads as age rather than policy: the newest code (`askg`) is all-`slog`, the oldest (`services`) is all-`log.Printf`, and `zap` is confined to composition roots plus the two infrastructure types it is injected into ([`event_publisher.go:13`](../internal/infrastructure/db/postgres/event_publisher.go#L13), [`lifecycleActivities.go`](../internal/application/activities/lifecycleActivities.go)). There is no project logger wrapper type — `zap` is passed by dependency injection, `slog` and `log` are used package-globally.
 **Q: Is `slog` the direction of travel — and if so, what happens to the injected `zap` loggers, which are the only ones that are testable by injection?**
 
 ### PROP-09 — Schema is GORM `AutoMigrate`, env-gated, with no versioned migrations
-[`internal/infrastructure/db/postgres/connection.go:15`](internal/infrastructure/db/postgres/connection.go#L15), gated by `AUTO_MIGRATE` (default `false` — [`internal/config/env_registry.go:69`](internal/config/env_registry.go#L69)). Ownership is asserted in a comment at [`cmd/api/ry-admin/seed.go:114`](cmd/api/ry-admin/seed.go#L114): "admin-api owns migration; we only ever write rows". There are **no** `.sql` migration files anywhere — the only SQL-ish init script is `docker/postgres-init/01-temporal.sh`. A note at [`connection.go:82`](internal/infrastructure/db/postgres/connection.go#L82) records that AutoMigrate never drops indexes, so cleanup is manual.
+[`internal/infrastructure/db/postgres/connection.go:15`](../internal/infrastructure/db/postgres/connection.go#L15), gated by `AUTO_MIGRATE` (default `false` — [`internal/config/env_registry.go:69`](../internal/config/env_registry.go#L69)). Ownership is asserted in a comment at [`cmd/api/ry-admin/seed.go:114`](../cmd/api/ry-admin/seed.go#L114): "admin-api owns migration; we only ever write rows". There are **no** `.sql` migration files anywhere — the only SQL-ish init script is `docker/postgres-init/01-temporal.sh`. A note at [`connection.go:82`](../internal/infrastructure/db/postgres/connection.go#L82) records that AutoMigrate never drops indexes, so cleanup is manual.
 **Q: Is "one service owns AutoMigrate, no migration tool" the deliberate position?**
 
 ### PROP-10 — Write and read models are split into `commands/` and `queries/`
@@ -226,35 +265,19 @@ Temporal code is unambiguous and clean. Elsewhere the split reads as age rather 
 
 Contradictions. No rule proposed for any of these — they need a decision.
 
-## INV-02 — Tenant scope on every executor call *(reclassified: Class D)*
-
-The rule as stated does not map onto this codebase, and the code does three incompatible things.
-
-**First, the naming.** The only thing called an `Executor` is an LLM tool executor: [`internal/askg/toolexec.go:9`](internal/askg/toolexec.go#L9), `Execute(ctx, ToolCall, CallerScope) ToolResult`. Its scope type is **not a tenant** — [`internal/askg/result.go:62`](internal/askg/result.go#L62) is `CallerScope{ UserID string }`, and the doc comment above it says the underlying services return unscoped data and the field "enables future registrar-scoped filtering." It is used in exactly one `slog` line at [`internal/askg/tools.go:102-124`](internal/askg/tools.go#L102) and is never passed into `executeDomain` / `executeTLD` / `executeKnowledgeSearch`. **The isolation gate described by this invariant does not exist at that layer.**
-
-**Second, the service layer does it three ways:**
-
-1. **Explicit, required, immediately after ctx — one vertical slice only.** Zone slaving / serial drift: [`internal/application/interfaces/zone_slaving_interface.go:25-43`](internal/application/interfaces/zone_slaving_interface.go#L25) — all seven methods take `tenantID string`. It is genuinely enforced down to SQL: [`internal/infrastructure/db/postgres/serial_drift_repository.go:40`](internal/infrastructure/db/postgres/serial_drift_repository.go#L40) and 11 more sites all carry `WHERE ... tenant_id = ?`, with a uniqueness index at [`zone_slaving.go:14`](internal/infrastructure/db/postgres/zone_slaving.go#L14).
-2. **No tenant at all — the entire core registry domain.** [`internal/application/interfaces/domain_interface.go:14-57`](internal/application/interfaces/domain_interface.go#L14): not one method takes a scope. Same for [`registrar_interface.go:13-22`](internal/application/interfaces/registrar_interface.go#L13). Note `ClID` here is the *operand's* primary key — which record you are acting on — not a caller scope; it should not be read as tenant threading.
-3. **Derived from `context.Context` — but only for audit stamping, never authorization.** `trace_id` / `correlation_id` / `userid` are pulled from context and written onto events in all six producer services (e.g. [`domain_service.go:1761,1764,1780`](internal/application/services/domain_service.go#L1761)). No query is filtered by them.
-
-**Third, and worst: where the tenant comes from.** [`internal/interface/rest/zone_slaving_controller.go:32-38`](internal/interface/rest/zone_slaving_controller.go#L32) reads it from an unauthenticated `X-Tenant-ID` header, falling back to a `tenant_id` query param. Handlers reject only the empty string ([`:66`](internal/interface/rest/zone_slaving_controller.go#L66), `:104`, `:149`, `:197`, `:225`, `:264`). Nothing cross-checks it against the caller's identity. The one place tenant isolation *is* implemented is the one place a caller can choose their own tenant. The workflow trigger path is the same, via the request body: [`workflow_controller.go:498-502`](internal/interface/rest/workflow_controller.go#L498).
-
-**Note.** Tenant isolation is asserted in the agent eval suite — `CategoryTenantIsolation` ([`internal/askg/eval/eval.go:36`](internal/askg/eval/eval.go#L36)), `ScoreTenantIsolation` ([`eval/scoring.go:24`](internal/askg/eval/scoring.go#L24), which greps the model's answer text), `TestOrchestrator_TenantScopeThreading` ([`orchestrator_test.go:291`](internal/askg/orchestrator_test.go#L291)). The tests describe an intent the service layer does not implement.
-
-**What needs deciding:** whether the zone-slaving slice is the target shape the rest should converge on, or a local experiment — and, separately, whether `X-Tenant-ID` being self-asserted is known and accepted.
+`INV-02` was here and has left: it is resolved by [ADR-0006](adr/0006-tenancy-model.md) and now sits in Invariants as Class B. The ID is unchanged.
 
 ## UNR-01 — The domain layer imports outward, while the docs say it cannot
 
-[`architecture.md:11`](architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](.cursorrules) makes that file binding on every agent working in this repo. 13 files in `pkg/domain/repositories/` import inward-layer packages — **but they are two different problems with two different fixes, and only one is a real layering violation.**
+[`architecture.md:11`](../architecture.md#L11) states the domain layer "is dependency-free (no imports of database drivers, HTTP frameworks, etc.)", and [`.cursorrules`](../.cursorrules) makes that file binding on every agent working in this repo. 13 files in `pkg/domain/repositories/` import inward-layer packages — **but they are two different problems with two different fixes, and only one is a real layering violation.**
 
-`pkg/domain/repositories/` is a genuine ports package: 26 interfaces, no adapters. (It does hold 4 mock implementations — [`MockDomainRepository`](pkg/domain/repositories/domain_repository.go#L38), [`MockRegistrarRepository`](pkg/domain/repositories/registrar_interface.go#L25), [`MockHostRepository`](pkg/domain/repositories/host_repository.go#L28), [`MockHostAddressRepository`](pkg/domain/repositories/hostAddress_repository.go#L17) — which is a separate, minor question about test doubles shipping in the port package.)
+`pkg/domain/repositories/` is a genuine ports package: 26 interfaces, no adapters. (It does hold 4 mock implementations — [`MockDomainRepository`](../pkg/domain/repositories/domain_repository.go#L38), [`MockRegistrarRepository`](../pkg/domain/repositories/registrar_interface.go#L25), [`MockHostRepository`](../pkg/domain/repositories/host_repository.go#L28), [`MockHostAddressRepository`](../pkg/domain/repositories/hostAddress_repository.go#L17) — which is a separate, minor question about test doubles shipping in the port package.)
 
 ### Group 1 — misfiled value types, not a layering violation (11 files)
 
 These import `internal/application/queries` purely for pagination and filter parameter types: `ListItemsQuery`, `ListDomainsFilter`, `ListContactsFilter`, `ListHostsFilter`, `ListTldsFilter`, `ListNndnsFilter`, `ListTombstonesFilter`, `ListRegistryOperatorsFilter`, `ActiveDomainsWithHostsQuery`.
 
-Files: [`domain_repository.go:8`](pkg/domain/repositories/domain_repository.go#L8), [`contact_repository.go:6`](pkg/domain/repositories/contact_repository.go#L6), [`host_repository.go:6`](pkg/domain/repositories/host_repository.go#L6), [`registrar_interface.go:6`](pkg/domain/repositories/registrar_interface.go#L6), [`tld_interface.go:6`](pkg/domain/repositories/tld_interface.go#L6), [`nndn_interface.go:6`](pkg/domain/repositories/nndn_interface.go#L6), [`premiumLabel_repository.go:6`](pkg/domain/repositories/premiumLabel_repository.go#L6), [`premiumList_repository.go:6`](pkg/domain/repositories/premiumList_repository.go#L6), [`registryOperator_repository.go:6`](pkg/domain/repositories/registryOperator_repository.go#L6), [`spec5Label_interface.go:6`](pkg/domain/repositories/spec5Label_interface.go#L6), [`tombstone_interface.go:6`](pkg/domain/repositories/tombstone_interface.go#L6).
+Files: [`domain_repository.go:8`](../pkg/domain/repositories/domain_repository.go#L8), [`contact_repository.go:6`](../pkg/domain/repositories/contact_repository.go#L6), [`host_repository.go:6`](../pkg/domain/repositories/host_repository.go#L6), [`registrar_interface.go:6`](../pkg/domain/repositories/registrar_interface.go#L6), [`tld_interface.go:6`](../pkg/domain/repositories/tld_interface.go#L6), [`nndn_interface.go:6`](../pkg/domain/repositories/nndn_interface.go#L6), [`premiumLabel_repository.go:6`](../pkg/domain/repositories/premiumLabel_repository.go#L6), [`premiumList_repository.go:6`](../pkg/domain/repositories/premiumList_repository.go#L6), [`registryOperator_repository.go:6`](../pkg/domain/repositories/registryOperator_repository.go#L6), [`spec5Label_interface.go:6`](../pkg/domain/repositories/spec5Label_interface.go#L6), [`tombstone_interface.go:6`](../pkg/domain/repositories/tombstone_interface.go#L6).
 
 **The dependency direction is not actually inverted here.** `go list -deps ./internal/application/queries` returns exactly one first-party package: `pkg/domain/entities`. No infrastructure, no GORM, no HTTP — its third-party deps are the same value-object libraries the entities use. These are domain-shaped value types that happen to be filed under `internal/application/`.
 
@@ -262,10 +285,10 @@ Files: [`domain_repository.go:8`](pkg/domain/repositories/domain_repository.go#L
 
 ### Group 2 — a real leak, and it is the expensive one (2 files)
 
-[`fx_interface.go:6`](pkg/domain/repositories/fx_interface.go#L6) and [`tldDNSRecord_repository.go:6`](pkg/domain/repositories/tldDNSRecord_repository.go#L6) import `internal/infrastructure/db/postgres` and type their method signatures against GORM persistence models.
+[`fx_interface.go:6`](../pkg/domain/repositories/fx_interface.go#L6) and [`tldDNSRecord_repository.go:6`](../pkg/domain/repositories/tldDNSRecord_repository.go#L6) import `internal/infrastructure/db/postgres` and type their method signatures against GORM persistence models.
 
-- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
-- **`TLDDNSRecordRepository` uses `postgres.TLDDNSRecord` in all three methods** ([`:11-13`](pkg/domain/repositories/tldDNSRecord_repository.go#L11)) — and there is **no** `entities.TLDDNSRecord`. That concept was never modelled in the domain at all; the persistence model is its only representation.
+- **`FXRepository` is inconsistent within itself.** [`UpdateAll(ctx, fxs []*postgres.FX)`](pkg/domain/repositories/fx_interface.go#L13) takes the GORM model, while [`ListByBaseCurrency`](../pkg/domain/repositories/fx_interface.go#L14) returns `[]*entities.FX`. Writes speak Postgres, reads speak domain. And [`entities.FX` exists](../pkg/domain/entities/fx.go#L18) with real behaviour on it (a `Convert` method) — it is simply not used on the write path. [`postgres.FX`](../internal/infrastructure/db/postgres/fx.go#L10) is a different shape: `gorm:"primaryKey"` tags, `CreatedAt`/`UpdatedAt`, differently-named fields.
+- **`TLDDNSRecordRepository` uses `postgres.TLDDNSRecord` in all three methods** ([`:11-13`](../pkg/domain/repositories/tldDNSRecord_repository.go#L11)) — and there is **no** `entities.TLDDNSRecord`. That concept was never modelled in the domain at all; the persistence model is its only representation.
 
 **The concrete cost, measured:** `go list -deps` gives `pkg/domain/entities` **19** third-party transitive dependencies. `pkg/domain/repositories` has **76**, including `github.com/jackc/pgx/v5/pgconn`, `pgproto3`, and `lib/pq` — actual Postgres wire-protocol drivers, now reachable from the domain layer. **These two files alone cause that.** This is precisely the "no imports of database drivers" case `architecture.md:11` names.
 
@@ -275,20 +298,20 @@ Files: [`domain_repository.go:8`](pkg/domain/repositories/domain_repository.go#L
 
 ## UNR-02 — Two spellings of the correlation ID; the only reader is dead code with a passing test
 
-The middleware writes `"correlation_id"`: [`internal/interface/rest/stream_middleware.go:62`](internal/interface/rest/stream_middleware.go#L62). The six producer services read `"correlation_id"` and work.
+The middleware writes `"correlation_id"`: [`internal/interface/rest/stream_middleware.go:62`](../internal/interface/rest/stream_middleware.go#L62). The six producer services read `"correlation_id"` and work.
 
-But [`internal/application/helpers/helpers.go:12`](internal/application/helpers/helpers.go#L12) reads `"correlationID"` — camelCase — and would therefore never find the value. It is moot only because `getCorrelationID` is unexported and called from nothing but its own test. That test passes because it sets the camelCase key itself: [`helpers_test.go:18`](internal/application/helpers/helpers_test.go#L18). So the test certifies the spelling production never writes.
+But [`internal/application/helpers/helpers.go:12`](../internal/application/helpers/helpers.go#L12) reads `"correlationID"` — camelCase — and would therefore never find the value. It is moot only because `getCorrelationID` is unexported and called from nothing but its own test. That test passes because it sets the camelCase key itself: [`helpers_test.go:18`](../internal/application/helpers/helpers_test.go#L18). So the test certifies the spelling production never writes.
 
-Related: all of these keys are **bare strings** used as `context.WithValue` keys, which is the `staticcheck` SA1029 pattern — currently unreported because lint is non-blocking in CI. The repo already has the typed-key idiom elsewhere: [`cmd/epp/eppServer.go:28`](cmd/epp/eppServer.go#L28) defines `type contextKey string` and uses it properly.
+Related: all of these keys are **bare strings** used as `context.WithValue` keys, which is the `staticcheck` SA1029 pattern — currently unreported because lint is non-blocking in CI. The repo already has the typed-key idiom elsewhere: [`cmd/epp/eppServer.go:28`](../cmd/epp/eppServer.go#L28) defines `type contextKey string` and uses it properly.
 
 **What needs deciding:** delete the dead helper, or fix its key and wire it up — and whether typed context keys become the standard.
 
 ## UNR-03 — `architecture.md` and `stack.md` assert things the code does not do
 
-Both files are named by [`.cursorrules`](.cursorrules) as authority every agent "must ALWAYS consult", so drift here propagates into agent behaviour.
+Both files are named by [`.cursorrules`](../.cursorrules) as authority every agent "must ALWAYS consult", so drift here propagates into agent behaviour.
 
-1. [`architecture.md:22`](architecture.md#L22) locates the domain layer at `internal/domain`, repeated at [`:24`](architecture.md#L24), [`:25`](architecture.md#L25), and in the repository rule at [`:51`](architecture.md#L51). **That directory does not exist.** Entities and repositories are in `pkg/domain/`.
-2. [`stack.md`](stack.md) lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing. There is no message broker: event delivery is the Postgres outbox plus S3 archive via Temporal (INV-01). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
+1. [`architecture.md:22`](../architecture.md#L22) locates the domain layer at `internal/domain`, repeated at [`:24`](../architecture.md#L24), [`:25`](../architecture.md#L25), and in the repository rule at [`:51`](../architecture.md#L51). **That directory does not exist.** Entities and repositories are in `pkg/domain/`.
+2. [`stack.md`](../stack.md) lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing. There is no message broker: event delivery is the Postgres outbox plus S3 archive via Temporal (INV-01). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
 
 **What needs deciding:** whether these files get corrected, superseded by this document, or retired. Deliberately not fixed here — out of scope for this ticket.
 
@@ -303,9 +326,9 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-01 | partial | import lint (`depguard`) | S | Ban `go.opentelemetry.io` from the relay/publisher packages. Cannot mechanically check "telemetry isn't load-bearing" in general — but the concrete rule is one deny-rule. |
 | INV-01 defect 1 (non-transactional outbox) | no | code review | — | Requires knowing which writes belong together. |
 | INV-01 defect 2 (swallowed publish) | yes | custom analyser | M | Flag `Publish(...)` whose error is only logged. Narrow enough to be low-noise. |
-| INV-02 | partial | custom analyser | L | Could assert every exported method on a service interface takes `tenantID` after `ctx`. Only worth building once the target shape is decided — see Unresolved. |
+| INV-02 | partial | grep-level CI check + architecture test | S→L | Two cheap gates hold the ratchet today: assert the literal `"X-Tenant-ID"` appears exactly once in non-test `internal/` code — the `TenantIDHeader` const in the derivation point, and assert no `tenantID string` parameter survives in the zone-slaving slice. The full rule — every tenant-scoped service method takes a typed scope after `ctx`, every scoped query carries its predicate — needs a custom analyser and is only worth building once scope is threaded past the template slice. The EPP half is not checkable until the verbs exist. |
 | INV-03 | **yes** | import lint (`depguard`) | **S** | Highest value per unit of effort in this table. Allow vendor LLM SDKs only under `internal/askg/provider/**`; deny everywhere else. One config block. |
-| INV-04 | yes | type change + analyser | M | Strongest fix is structural, not a lint: unexport `Result`'s fields and add `NewAnswer(...)`/`NewEscalation(...)` constructors that reject empty `Evidence` for `OutcomeAnswer`. A `Validate()` called at [`agent_controller.go:91`](internal/interface/rest/agent_controller.go#L91) is the cheap interim. |
+| INV-04 | yes | type change + analyser | M | Strongest fix is structural, not a lint: unexport `Result`'s fields and add `NewAnswer(...)`/`NewEscalation(...)` constructors that reject empty `Evidence` for `OutcomeAnswer`. A `Validate()` called at [`agent_controller.go:91`](../internal/interface/rest/agent_controller.go#L91) is the cheap interim. |
 | INV-05 | partial | grep-level CI check | S | Cannot verify reconciliation happened. **Can** assert `entity_count_consistency` has `Severity: "error"` — i.e. pin the gate so it cannot be silently downgraded again. Genuine enforcement needs branching on `VerificationPassed`, which is a code fix, not a gate. |
 | INV-06 | **yes** | architecture test | **S** | Assert no file under `internal/application/workflows/` imports `net/http`, `math/rand`, `crypto/rand`, or a uuid package, and contains no `time.Now(`. A ~30-line Go test using `go/parser`. Currently holds at zero violations, so it lands green on day one. |
 | INV-07 | **yes** | lint (`errorlint`, `errorf: true`) | **S** | Verified against this SHA: `errorlint` is the linter that catches this — not `err113`/`wrapcheck`, which answer different questions. 49 offenders across 9 files to clear first; 25 are in one file. Enabling `errorlint`'s other two checks (`asserts`, `comparison`) raises the count to 87 — a separate cleanup with different risk, since `==` → `errors.Is` can change behaviour where a sentinel is compared by identity. Tracked in [#404](https://github.com/onasunnymorning/domain-os/issues/404). |
@@ -325,8 +348,8 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 
 **Two blockers that gate this entire table:**
 
-1. **CI lint is non-blocking.** [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) runs golangci-lint with `--issues-exit-code=0`. **Every lint-based mechanism above is inert until that flag is removed.** That single change is the prerequisite for roughly half this table.
-2. **No import-restriction linter is configured.** [`.golangci.yml`](.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, PROP-08, UNR-01) are `depguard` rules, so adding it once unlocks all four.
+1. **CI lint is non-blocking.** [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) runs golangci-lint with `--issues-exit-code=0`. **Every lint-based mechanism above is inert until that flag is removed.** That single change is the prerequisite for roughly half this table.
+2. **No import-restriction linter is configured.** [`.golangci.yml`](../.golangci.yml) enables `errcheck, govet, staticcheck, unused, ineffassign, gocritic, gosec` — no `depguard`, no `importas`. Four items above (INV-01, INV-03, PROP-08, UNR-01) are `depguard` rules, so adding it once unlocks all four.
 
 The only architecture-shaped tests that exist today are the env-var drift checks (`TestEnvRegistryDrift`, `TestContractDrift`, `TestCIImageMatrixMatchesContract`, run at the `envcheck` job) — a working precedent for the architecture-test mechanism proposed for INV-06 and PROP-05.
 
