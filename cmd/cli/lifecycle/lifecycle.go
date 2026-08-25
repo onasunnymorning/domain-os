@@ -12,7 +12,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/pborman/uuid"
 	"github.com/urfave/cli/v2"
 )

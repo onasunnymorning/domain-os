@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/require"
 )
 

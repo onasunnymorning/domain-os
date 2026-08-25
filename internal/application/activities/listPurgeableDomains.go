@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // ListPurgeableDomains takes a PurgeableDomainsQuery and returns a list of domains that have PendingDelete set and whose purge date falls on or before the query cutoff (Before). It gets these through the admin API.

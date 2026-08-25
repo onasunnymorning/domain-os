@@ -73,7 +73,8 @@ it is free.
 
 The read side is likewise pre-fitted: `ListDomainsFilter` already carries both
 scope hooks — `TldEquals` (operator side) and `ClidEquals` (registrar side) —
-at `internal/application/queries/listDomainsFilter.go:16,18`.
+at `pkg/domain/queries/listDomainsFilter.go:16,18` (moved there from
+`internal/application/queries` by #399; the hooks themselves are unchanged).
 
 ### Relationship to ADR 0002
 

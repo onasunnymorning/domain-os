@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/onasunnymorning/domain-os/internal/application/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
