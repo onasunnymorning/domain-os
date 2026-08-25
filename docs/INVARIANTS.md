@@ -360,16 +360,21 @@ Related: all of these keys are **bare strings** used as `context.WithValue` keys
 
 **What needs deciding:** delete the dead helper, or fix its key and wire it up — and whether typed context keys become the standard.
 
-## UNR-03 — `architecture.md` and `stack.md` assert things the code does not do
+## UNR-03 — `stack.md` asserts things the code does not do
 
-Both files are named by [`.cursorrules`](../.cursorrules) as authority every agent "must ALWAYS consult", so drift here propagates into agent behaviour.
+`.cursorrules` names [`architecture.md`](../architecture.md) and [`stack.md`](../stack.md) as authority every agent "must ALWAYS consult", so drift in either propagates into agent behaviour.
 
-*The layering half of `architecture.md`'s claim is no longer in dispute — [INV-14](#inv-14--the-domain-layer-does-not-import-inward) states it precisely, including why "dependency-free" is the wrong wording. What remains here is factual drift:*
+**`architecture.md` — resolved 2026-08-25.** Rewritten to describe structure only, with rules delegated to this document by ID. The three defects it carried are gone:
 
-1. [`architecture.md:22`](../architecture.md#L22) locates the domain layer at `internal/domain`, repeated at [`:24`](../architecture.md#L24), [`:25`](../architecture.md#L25), and in the repository rule at [`:51`](../architecture.md#L51). **That directory does not exist.** Entities and repositories are in `pkg/domain/`.
-2. [`stack.md`](../stack.md) lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing. There is no message broker: event delivery is the Postgres outbox plus S3 archive via Temporal (INV-01). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
+- It located the domain layer at `internal/domain`, a directory that has never existed — corrected to `pkg/domain/`.
+- It claimed the domain layer is "dependency-free", which was never true (`pkg/domain/entities` imports `go-money`, `uuid`, `idna`, `miekg/dns` and others, all legitimately). The precise, enforceable form is now [INV-14](#inv-14--the-domain-layer-does-not-import-inward).
+- Its "Repository Pattern (**Strict Enforcement**)" section asserted that direct database access is "strictly forbidden in the Application and Domain layers". **It is not.** Eleven files in `internal/application/` hold a `*gorm.DB` or `*sql.DB` directly — nine Temporal activities (escrow import, snapshot/seed, event relay, serial drift, TLD cleanup, spec5 sweep, tombstone backfill) and two services (`csv_to_sqlite_service.go`, `jisc_service.go`). Most are bulk data-movement paths where a row-oriented port is the wrong shape. The rewrite states this plainly instead of asserting a prohibition the code does not honour.
 
-**What needs deciding:** whether these files get corrected, superseded by this document, or retired. Deliberately not fixed here — out of scope for this ticket.
+It also removed claims with no referent in the codebase: gRPC handlers (no first-party gRPC import exists — it is transitive via Temporal), payment-gateway adapters (the only external API adapters are Frankfurter FX and ICANN MoSAPI), and a `PostgresDomainRepository` type (the implementation is `postgres.DomainRepository`). Four entry points the document omitted entirely — EPP, WHOIS, MCP and the Temporal workers — are now listed.
+
+**`stack.md` — still open.** It lists **RabbitMQ** as the message queue. `rg -i 'amqp|rabbitmq'` over all Go files returns nothing; there is no message broker. Event delivery is the Postgres outbox plus S3 archive via Temporal ([INV-01](#inv-01--the-event-outbox-is-the-path-of-record-telemetry-is-never-load-bearing)). Redis and MinIO, listed alongside it, *are* real (`go.mod:34`, `:28`).
+
+**What needs deciding:** whether `stack.md` is corrected the same way, or retired in favour of `go.mod` plus this document. Until then it remains a file agents are instructed to treat as authoritative while it names a broker that does not exist.
 
 ---
 
