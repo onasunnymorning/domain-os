@@ -16,7 +16,6 @@ import (
 // MockWriter implements the epp.Writer interface for testing
 type MockWriter struct {
 	buffer          bytes.Buffer
-	shouldClose     bool
 	closeAfterWrite bool
 }
 

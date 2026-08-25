@@ -59,11 +59,6 @@ type corpusManifest struct {
 	Sources map[string]any `yaml:"sources"`
 }
 
-// sourceWithGlob represents a source entry that uses a glob pattern.
-type sourceWithGlob struct {
-	Glob string `yaml:"glob"`
-}
-
 // ---------------------------------------------------------------------------
 // Stop words — common English words excluded from indexing
 // ---------------------------------------------------------------------------

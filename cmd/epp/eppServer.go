@@ -306,9 +306,10 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 			fmt.Printf("Error clearing failed logins: %v\n", err)
 		}
 
-		// Store registrar ID in context for connection tracking
-		// In a real implementation, you'd extract this from your auth system
-		ctx = appcontext.WithRegistrarID(ctx, username)
+		// TODO: carry the registrar ID for connection tracking. Enriching ctx
+		// here is pointless while this handler neither propagates nor returns
+		// it — the value was silently dropped. Wire it through the connection
+		// once authentication above is real.
 	}
 
 	// For now, accept any login and return success

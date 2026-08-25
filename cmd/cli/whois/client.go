@@ -7,9 +7,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/likexian/whois"
-	whoisparser "github.com/likexian/whois-parser"
 )
 
 const (
@@ -43,24 +40,6 @@ func performWhoisQuery(domain string, wg *sync.WaitGroup) {
 	}
 }
 
-// performWhoisQuery performs a WHOIS query for the given domain using
-// Perform the WHOIS query
-func performWhoisQueryParsed(domain string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	result, err := whois.Whois(domain)
-	if err != nil {
-		fmt.Printf("Error fetching WHOIS information: %v", err)
-	}
-
-	// Parse the WHOIS result
-	parsedResult, err := whoisparser.Parse(result)
-	if err != nil {
-		fmt.Printf("Error parsing WHOIS information: %v", err)
-	}
-
-	fmt.Println(parsedResult.Domain.ID)
-}
-
 func main() {
 	var wg sync.WaitGroup
 	domains := []string{"claire.melisa", "florida.melisa", "rashad.melisa"}
@@ -68,7 +47,6 @@ func main() {
 	for _, domain := range domains {
 		wg.Add(1)
 		go performWhoisQuery(domain, &wg)
-		// go performWhoisQueryParsed(domain, &wg)
 	}
 
 	wg.Wait()
