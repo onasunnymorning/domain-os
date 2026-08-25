@@ -19,7 +19,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | **C — Observed pattern** | A convention exists; whether it is deliberate is unknown. Stated as a question. |
 | **D — Contradiction** | Two parts of the repo do incompatible things. No rule proposed. |
 
-**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. `UNR-01` has been retired into `INV-14`, and `UNR-03` was resolved by correcting the documents it described. `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
+**ID rules.** `INV-nn` are the confirmed invariants and are the only IDs citable as rules. `UNR-nn` are unresolved contradictions — no rule is proposed for them. All three `UNR` IDs are now retired: `UNR-01` into `INV-14`, `UNR-02` into `INV-15`, and `UNR-03` by correcting the documents it described. **The Unresolved section is empty.** `PROP-nn` was the review-time proposal space; **it is now fully retired**, and no `PROP` ID is live or citable. IDs are stable and are never reused after retirement.
 
 ## Index
 
@@ -40,8 +40,10 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-13 | `commands/` write inputs, `queries/` read filters | A | Invariants |
 | ~~PROP-01…10~~ | All retired — six promoted, four dropped | — | Disposition table |
 | INV-14 | Domain layer does not import inward | **B** | Invariants |
+| INV-15 | Context values are carried on typed keys | A | Invariants |
+| INV-16 | correlation_id = Temporal Workflow ID; trace_id = Run ID | **B** | Invariants |
 | ~~UNR-01~~ | Retired — promoted to INV-14 on 2026-08-25 | — | — |
-| UNR-02 | Contradiction | D | Unresolved |
+| ~~UNR-02~~ | Retired — promoted to INV-15 on 2026-08-25 | — | — |
 | ~~UNR-03~~ | Retired — resolved 2026-08-25 | — | — |
 
 ---
@@ -322,6 +324,42 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 **When both land**, the `depguard` rule in [#403](https://github.com/onasunnymorning/domain-os/issues/403) can be enabled with no allowlist, and this invariant moves from B to A.
 ---
 
+## INV-15 — Context values are carried on typed keys
+
+*Confirmed 2026-08-25. Promoted from `UNR-02`, which is retired.*
+
+**Rule.** Values placed on a `context.Context` use the unexported key type in [`internal/appcontext`](../internal/appcontext/appcontext.go), through its accessors. No bare string is used as a context key.
+
+**Why.** A bare string key is public to every package sharing the context, so two packages choosing the same word silently overwrite each other, and every read is an unchecked type assertion. It is also how a spelling can drift unnoticed: this codebase had a reader looking for `correlationID` while the writer wrote `correlation_id`, which nothing caught because both were just strings. Accessors make the key private and the value type compile-checked.
+
+**Class: A** — no bare-string context key remains in first-party code. Verified with `staticcheck` SA1029 across `cmd/`, `internal/` and `pkg/`: 0 issues.
+
+**Evidence.** Keys and accessors: [`internal/appcontext/appcontext.go`](../internal/appcontext/appcontext.go). Request path populated at [`stream_middleware.go:51`](../internal/interface/rest/stream_middleware.go#L51) and read in the seven services that stamp events, e.g. [`domain_service.go:1762`](../internal/application/services/domain_service.go#L1762). EPP session values populated at [`cmd/epp/eppServer.go:219`](../cmd/epp/eppServer.go#L219).
+
+**Note on semantics.** `TraceID` and `CorrelationID` are not interchangeable, and their meaning is inherited from Temporal — see `INV-16`.
+
+---
+
+## INV-16 — Correlation ID is the Temporal Workflow ID; trace ID is the Run ID
+
+*Recorded 2026-08-25. Describes an existing convention that was previously undocumented.*
+
+**Rule.** For work originating in Temporal, `correlation_id` carries the Workflow ID and `trace_id` carries the Run ID.
+
+**Why.** The two answer different questions and the Temporal identifiers already draw exactly that line. A Workflow ID is chosen when the workflow starts and survives retries, continue-as-new and reset — it names *the logical operation*. A Run ID is unique to a single execution attempt — it names *this run*. Mapping correlation to the stable identifier and trace to the per-attempt one means events emitted across three retries of one workflow group under a single correlation ID while remaining individually distinguishable.
+
+**Class: B** — the mapping is implemented and correct where it is applied, but it is not applied everywhere and nothing enforces it.
+
+**Evidence.** Workflow side: [`workflows/helpers.go:10`](../internal/application/workflows/helpers.go#L10) reads `workflow.GetInfo(ctx).WorkflowExecution.ID` and workflows pass it as the activity's correlation argument, e.g. [`expiryLoop.go:171`](../internal/application/workflows/expiryLoop.go#L171). Activity side: [`activities/helpers.go:60`](../internal/application/activities/helpers.go#L60) reads `activity.GetInfo(ctx).WorkflowExecution.RunID`, and [`prepareRequest`](../internal/application/activities/helpers.go#L74) sets `X-Correlation-ID` and `X-Trace-ID` on the outbound call. REST side: [`stream_middleware.go:15`](../internal/interface/rest/stream_middleware.go#L15) accepts either from query or header and generates a UUID when absent, so a request that did not come from Temporal still gets both.
+
+**Gaps, individually:**
+
+1. **Only 8 of the workflows propagate it** — `expiryLoop`, `purgeLoop`, `restoreWorkflow`, `serialDrift`, `spec5Sweep`, `syncSpec5Workflow`, `syncRegistrarsWorkflow`, `updateFX`. The rest call activities without a correlation argument, so any events they cause carry a middleware-generated UUID that correlates nothing.
+2. **The correlation value is threaded by hand** through 31 activity signatures as `correlationID string`, rather than derived from `activity.GetInfo` the way the Run ID already is. The parameter name also hides that the value *is* the Workflow ID.
+3. **Query-parameter spelling is inconsistent** — 22 call sites send `correlationID`, 13 send `correlation_id`. Harmless today only because [`stream_middleware.go:16-19`](../internal/interface/rest/stream_middleware.go#L16) deliberately accepts both, but it is the same drift that produced the dead reader retired with `UNR-02`.
+
+**The cheap completion** is to derive the correlation ID inside [`prepareRequest`](../internal/application/activities/helpers.go#L74) from `activity.GetInfo(ctx).WorkflowExecution.ID` when the explicit argument is empty, mirroring what [`getTemporalRunID`](../internal/application/activities/helpers.go#L60) already does for the Run ID. That would make the mapping automatic, close gap 1, and let the 31 threaded parameters be retired incrementally.
+
 # Proposed — resolved 2026-08-25
 
 **This section is closed.** All ten Class C candidates have been answered. Six were promoted to invariants, four were retired without promotion. **No `PROP-nn` ID is live**, none should be cited in review, and none will be reused.
@@ -343,7 +381,7 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 # Unresolved
 
-Contradictions. No rule proposed for any of these — they need a decision.
+**This section is empty.** All three contradictions have been resolved — two promoted to invariants, one fixed by correcting the documents it described. The IDs are retained below as retirement records and will not be reused.
 
 `INV-02` was here and has left: it is resolved by [ADR-0006](adr/0006-tenancy-model.md) and now sits in Invariants as Class B. The ID is unchanged.
 
@@ -353,22 +391,11 @@ Confirmed 2026-08-25. The ID `UNR-01` is retired and will not be reused.
 
 It entered as a Class D contradiction because 13 files were in violation for two unrelated reasons, and it was not clear there was a single rule underneath. There was. Group 1 (11 files) turned out to be misfiled value types and was fixed by a move ([#399](https://github.com/onasunnymorning/domain-os/issues/399)); group 2 (2 files) is a genuine leak with fixes identified. With the two causes separated, the rule is statable and the remaining violations are enumerable — which makes it Class B, not D.
 
-## UNR-02 — Bare-string context keys, and one spelling that never matched
+## ~~UNR-02~~ — promoted, see [INV-15](#inv-15--context-values-are-carried-on-typed-keys)
 
-**Half resolved 2026-08-25.** The dead reader is gone; the underlying convention question is still open.
+Confirmed 2026-08-25. The ID `UNR-02` is retired and will not be reused.
 
-**Resolved — the duplicate spelling.** `internal/application/helpers/` contained a single unexported `getCorrelationID` that read `ctx.Value("correlationID")` in camelCase, while the middleware writes `correlation_id` in snake_case ([`stream_middleware.go:62`](../internal/interface/rest/stream_middleware.go#L62)). It would never have found the value. It was moot only because nothing imported the package — its sole caller was its own test, which passed because it set the camelCase key itself, thereby certifying a spelling production never writes. The whole package was dead and has been deleted.
-
-**Still open — bare strings as context keys.** Every remaining context key in the request path is an untyped string:
-
-- Written at [`stream_middleware.go:52,57,62`](../internal/interface/rest/stream_middleware.go#L52) — `userid`, `trace_id`, `correlation_id`.
-- Read in all six producer services for event stamping, e.g. [`domain_service.go:1761,1764,1780`](../internal/application/services/domain_service.go#L1761).
-
-This is the `staticcheck` SA1029 pattern: a bare string key can collide with any other package's key on the same context, and nothing type-checks the read. It goes unreported today only because lint is non-blocking in CI.
-
-**The repo already has the correct idiom**, used consistently in the EPP server: [`cmd/epp/eppServer.go:28`](../cmd/epp/eppServer.go#L28) defines `type contextKey string` and keys everything through it. So the codebase does this two different ways, which is why this remains a Class D contradiction rather than a straightforward defect.
-
-**What needs deciding:** whether typed context keys become the standard for the request path too, and if so where the shared key type lives.
+It was a Class D contradiction because the codebase did context keys two ways: bare strings on the request path, and a proper unexported key type in the EPP server. Both now use the shared typed keys in `internal/appcontext`. The dead reader that read `correlationID` while the writer wrote `correlation_id` — and whose test passed only because it set the camelCase key itself — was deleted with its package. The semantics of the two IDs are recorded separately in [INV-16](#inv-16--correlation-id-is-the-temporal-workflow-id-trace-id-is-the-run-id).
 
 ## ~~UNR-03~~ — resolved 2026-08-25
 
@@ -409,7 +436,8 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-13 | partial | architecture test | S | Can assert `commands/` and `queries/` contain no cross-imports and that no type is declared in both. Cannot assert a given type was filed in the right one. |
 | ~~PROP-09~~ | — | — | — | Retired without promotion. Migration tooling is an open decision, not an invariant — [#410](https://github.com/onasunnymorning/domain-os/issues/410). |
 | INV-14 | **yes** | import lint (`depguard`) | **S** (rule) / M (violations) | One deny-rule: no `internal/**` from `pkg/domain/**`. The rule itself is a single config block; the work is clearing the 2 violations first — [#400](https://github.com/onasunnymorning/domain-os/issues/400) is in flight as [PR #405](https://github.com/onasunnymorning/domain-os/pull/405), [#401](https://github.com/onasunnymorning/domain-os/issues/401) needs a modelling decision. Land both (or allowlist the 2 files) and enable in [#403](https://github.com/onasunnymorning/domain-os/issues/403). Group 1's 11 files were cleared by [#399](https://github.com/onasunnymorning/domain-os/issues/399). |
-| UNR-02 | partial | `staticcheck` SA1029 | S | Already detected by a linter that is already enabled — see the blocker below. |
+| INV-15 | **yes** | `staticcheck` SA1029 | **S** | Already detected by a linter already enabled, and currently reports 0. Costs nothing but removing `--issues-exit-code=0`. |
+| INV-16 | partial | custom analyser | M | Can assert every `workflow.ExecuteActivity` call passing a correlation argument passes `getWorkflowID(ctx)`. Cannot assert semantic correctness. Deriving the value in `prepareRequest` would make most of it unnecessary. |
 | ~~UNR-03~~ | — | — | — | **Resolved 2026-08-25** — `architecture.md`, `stack.md` and `.cursorrules` corrected. Doc-vs-code drift is not mechanically checkable; the mitigation is that rules now live in one evidenced place and the narrative docs delegate to it. |
 
 **Two blockers that gate this entire table:**
