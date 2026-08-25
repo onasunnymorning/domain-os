@@ -32,7 +32,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   lint:
-    name: Lint (advisory)
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,15 +40,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
-      # Advisory only. The seven linters in .golangci.yml have never had to
-      # pass and currently report ~1255 issues; clearing that backlog is
-      # tracked separately. Architectural rules do not wait on it — they are
-      # enforced by the arch-lint job below.
+      # Enforced. Was advisory until #411, which triaged the 1599-finding
+      # backlog down to zero. Architectural rules are gated separately by the
+      # arch-lint job below and do not depend on this one.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
-          args: --issues-exit-code=0
 
   # Enforced. Fails the build on any violation of the architectural rules in
   # docs/INVARIANTS.md that depguard can express — INV-01, INV-03, INV-12 and
