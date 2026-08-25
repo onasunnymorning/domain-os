@@ -3016,9 +3016,13 @@ func (a *EscrowImportActivities) BuildStagingDatabase(ctx context.Context, args 
 		"completedAt": time.Now().UTC().Format(time.RFC3339),
 	}
 	if tmp, err := os.CreateTemp("", "manifest-*.json"); err == nil {
-		json.NewEncoder(tmp).Encode(manifest)
+		if encErr := json.NewEncoder(tmp).Encode(manifest); encErr != nil {
+			activity.GetLogger(ctx).Warn("Failed to encode manifest", "error", encErr)
+		}
 		tmp.Close()
-		s3c.UploadFile(ctx, manifestKey, tmp.Name(), "application/json")
+		if upErr := s3c.UploadFile(ctx, manifestKey, tmp.Name(), "application/json"); upErr != nil {
+			activity.GetLogger(ctx).Warn("Failed to upload manifest", "key", manifestKey, "error", upErr)
+		}
 		os.Remove(tmp.Name())
 	}
 
@@ -3339,9 +3343,13 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 		"autoFixed":   len(autoFixed),
 	}
 	if tmp, err := os.CreateTemp("", "map-manifest-*.json"); err == nil {
-		json.NewEncoder(tmp).Encode(manifest)
+		if encErr := json.NewEncoder(tmp).Encode(manifest); encErr != nil {
+			activity.GetLogger(ctx).Warn("Failed to encode manifest", "error", encErr)
+		}
 		tmp.Close()
-		s3c.UploadFile(ctx, manifestKey, tmp.Name(), "application/json")
+		if upErr := s3c.UploadFile(ctx, manifestKey, tmp.Name(), "application/json"); upErr != nil {
+			activity.GetLogger(ctx).Warn("Failed to upload manifest", "key", manifestKey, "error", upErr)
+		}
 		os.Remove(tmp.Name())
 	}
 
@@ -3539,7 +3547,7 @@ func (a *EscrowImportActivities) ApplyRegistrarMappings(ctx context.Context, arg
 				`%s = (SELECT registrar_clid FROM _mapping WHERE eid = TRIM(LOWER(%s.%s)))`,
 				col, table, col))
 		}
- // #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
+		// #nosec G201 -- the interpolated text is a compile-time literal (table/column names, or a run of "?" placeholders); every value is bound as a parameter
 		if len(setClauses) > 0 {
 			query := fmt.Sprintf("UPDATE %s SET %s", table, strings.Join(setClauses, ", "))
 			if res, err := db.Exec(query); err != nil {
@@ -3552,7 +3560,10 @@ func (a *EscrowImportActivities) ApplyRegistrarMappings(ctx context.Context, arg
 
 		// Add clID index on staged table — benefits downstream QA queries
 		for _, col := range strictCols {
-			db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_staged_%s_%s ON %s(%s)", table, col, table, col))
+			// #nosec G201 -- table and col are compile-time literals from the stageTable call sites
+			if _, err := db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_staged_%s_%s ON %s(%s)", table, col, table, col)); err != nil {
+				activity.GetLogger(ctx).Warn("ApplyRegistrarMappings: index creation failed", "table", table, "column", col, "error", err)
+			}
 		}
 
 		return nil
@@ -3582,7 +3593,7 @@ func (a *EscrowImportActivities) ApplyRegistrarMappings(ctx context.Context, arg
 	}
 
 	// Detach
-	db.Exec("DETACH DATABASE src")
+	_, _ = db.Exec("DETACH DATABASE src") // best-effort cleanup of a scratch object
 
 	// Close the DB to ensure WAL is flushed to the main file
 	db.Close()
@@ -4356,7 +4367,9 @@ func (a *EscrowImportActivities) CleanOrphanedContacts(ctx context.Context, args
 	reportKey := args.RunPrefix + "/cleanup-report.json"
 	reportData, _ := json.MarshalIndent(result, "", "  ")
 	if tmp, err := os.CreateTemp("", "cleanup-report-*.json"); err == nil {
-		tmp.Write(reportData)
+		if _, wErr := tmp.Write(reportData); wErr != nil {
+			activity.GetLogger(ctx).Warn("Failed to write cleanup report", "error", wErr)
+		}
 		tmp.Close()
 		if err := s3c.UploadFile(ctx, reportKey, tmp.Name(), "application/json"); err != nil {
 			activity.GetLogger(ctx).Warn("Failed to upload cleanup report", "error", err)
@@ -4576,13 +4589,15 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		}
 		// Count total distinct CLIDs
 		var totalDistinct int
-		db.QueryRow(`SELECT COUNT(DISTINCT clid) FROM (
+		if err := db.QueryRow(`SELECT COUNT(DISTINCT clid) FROM (
 			SELECT TRIM(clID) as clid FROM contacts WHERE clID IS NOT NULL AND clID != ''
 			UNION
 			SELECT TRIM(clID) FROM hosts WHERE clID IS NOT NULL AND clID != ''
 			UNION
 			SELECT TRIM(clID) FROM domains WHERE clID IS NOT NULL AND clID != ''
-		)`).Scan(&totalDistinct)
+		)`).Scan(&totalDistinct); err != nil {
+			totalDistinct = 0 // Non-fatal: the message below reports on what was read
+		}
 
 		check := QACheck{
 			Rule:          "registrar_mapping_completeness",
@@ -4624,7 +4639,9 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 	// Cross-check staged counts with registrar_mapping domain_count sums
 	{
 		var mappingDomainSum int64
-		db.QueryRow(`SELECT COALESCE(SUM(domain_count), 0) FROM registrars WHERE domain_count IS NOT NULL`).Scan(&mappingDomainSum)
+		if err := db.QueryRow(`SELECT COALESCE(SUM(domain_count), 0) FROM registrars WHERE domain_count IS NOT NULL`).Scan(&mappingDomainSum); err != nil {
+			mappingDomainSum = 0 // Non-fatal: the delta below reports on what was read
+		}
 
 		stagedDomains := report.Summary["domains"]
 		delta := stagedDomains - mappingDomainSum
@@ -4818,7 +4835,10 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 	if err != nil {
 		return QAStagedDatabaseResult{}, fmt.Errorf("create temp file failed: %w", err)
 	}
-	tmpFile.Write(reportJSON)
+	if _, wErr := tmpFile.Write(reportJSON); wErr != nil {
+		tmpFile.Close()
+		return QAStagedDatabaseResult{}, fmt.Errorf("write qa report failed: %w", wErr)
+	}
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 

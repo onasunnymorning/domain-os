@@ -149,7 +149,7 @@ func FromDBContact(c *Contact) *entities.Contact {
 		Address: a0,
 	}
 
-	domainContact.AddPostalInfo(p0)
+	_ = domainContact.AddPostalInfo(p0) // FromDB* has no error return; invalid stored postal info is omitted from the mapped entity
 
 	a1 := &entities.Address{
 		Street1:       entities.OptPostalLineType(c.Street1Loc),
@@ -168,7 +168,7 @@ func FromDBContact(c *Contact) *entities.Contact {
 		Address: a1,
 	}
 
-	domainContact.AddPostalInfo(p1)
+	_ = domainContact.AddPostalInfo(p1) // FromDB* has no error return; invalid stored postal info is omitted from the mapped entity
 
 	return domainContact
 }

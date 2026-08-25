@@ -170,7 +170,7 @@ func generateCertificate() tls.Certificate {
 
 // sendGreeting adheres to the CommandFunc signature and sends a greeting.
 func sendGreeting(ctx context.Context, rw epp.Writer, _ *etree.Document) {
-	rw.Write([]byte(getGreetingXML()))
+	_, _ = rw.Write([]byte(getGreetingXML())) // the connection is gone if this fails, and the handler has no error path
 }
 
 // getGreetingXML returns the XML for a greeting.
@@ -273,7 +273,7 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 		if locked {
 			fmt.Printf("Login attempt for locked account: %s\n", username)
 			// Send error response
-			rw.Write([]byte(getAuthErrorResponseXML("account locked")))
+			_, _ = rw.Write([]byte(getAuthErrorResponseXML("account locked"))) // the connection is gone if this fails, and the handler has no error path
 			return
 		}
 	}
@@ -295,7 +295,7 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 		}
 
 		// Send authentication error response
-		rw.Write([]byte(getAuthErrorResponseXML("invalid credentials")))
+		_, _ = rw.Write([]byte(getAuthErrorResponseXML("invalid credentials"))) // the connection is gone if this fails, and the handler has no error path
 		return
 	}
 
@@ -313,7 +313,7 @@ func respondToLoginCommand(ctx context.Context, rw epp.Writer, doc *etree.Docume
 
 	// For now, accept any login and return success
 	// In a real implementation, you would validate credentials here
-	rw.Write([]byte(getLoginResponseXML()))
+	_, _ = rw.Write([]byte(getLoginResponseXML())) // the connection is gone if this fails, and the handler has no error path
 }
 
 // getAuthErrorResponseXML returns an authentication error response.
@@ -350,7 +350,7 @@ func getLoginResponseXML() string {
 // respondToLogoutCommand handles EPP logout commands.
 func respondToLogoutCommand(ctx context.Context, rw epp.Writer, doc *etree.Document) {
 	fmt.Println("Client logout")
-	rw.Write([]byte(getLogoutResponseXML()))
+	_, _ = rw.Write([]byte(getLogoutResponseXML())) // the connection is gone if this fails, and the handler has no error path
 	// Close the connection after writing the response
 	if respWriter, ok := rw.(*epp.ResponseWriter); ok {
 		respWriter.CloseAfterWrite()
@@ -417,7 +417,7 @@ func respondToDomainCheckCommand(ctx context.Context, rw epp.Writer, doc *etree.
 	// 	results[i] = result
 	// 	fmt.Println(results)
 	// }
-	rw.Write([]byte(dummyDomainCheckResponse()))
+	_, _ = rw.Write([]byte(dummyDomainCheckResponse())) // the connection is gone if this fails, and the handler has no error path
 }
 
 // dummyDomainCheckResponse returns a dummy domain check response.

@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -15,7 +16,13 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-// StreamingCSVWriters holds all CSV writers for concurrent writing during streaming
+// StreamingCSVWriters holds all CSV writers for concurrent writing during streaming.
+//
+// Per-record Write calls on these writers are deliberately discarded (`_ =`).
+// csv.Writer buffers, so an individual Write reports only a malformed record;
+// a real I/O failure surfaces from Error() after Flush. closeCSVWriters checks
+// Error() and Close() on every writer and returns the first failure, which is
+// the single place an extraction failure is detected.
 type StreamingCSVWriters struct {
 	// Domain-related files
 	domainFile             *os.File
@@ -375,50 +382,50 @@ func (svc *StreamingXMLEscrowService) initializeCSVWriters() error {
 		return err
 	}
 	writers.domainWriter = csv.NewWriter(writers.domainFile)
-	writers.domainWriter.Write(entities.RdeDomainCSVHeader) // Write header
+	_ = writers.domainWriter.Write(entities.RdeDomainCSVHeader) // Write header
 
 	if writers.domainStatusFile, err = os.Create(baseFilename + "-domainStatuses.csv"); err != nil {
 		return err
 	}
 	writers.domainStatusWriter = csv.NewWriter(writers.domainStatusFile)
-	writers.domainStatusWriter.Write([]string{"DomainName", "Status"}) // Write header
+	_ = writers.domainStatusWriter.Write([]string{"DomainName", "Status"}) // Write header
 
 	if writers.domainNameserverFile, err = os.Create(baseFilename + "-domainNameservers.csv"); err != nil {
 		return err
 	}
 	writers.domainNameserverWriter = csv.NewWriter(writers.domainNameserverFile)
-	writers.domainNameserverWriter.Write([]string{"DomainName", "Nameserver"}) // Write header
+	_ = writers.domainNameserverWriter.Write([]string{"DomainName", "Nameserver"}) // Write header
 
 	if writers.domainTransferFile, err = os.Create(baseFilename + "-domainTransfers.csv"); err != nil {
 		return err
 	}
 	writers.domainTransferWriter = csv.NewWriter(writers.domainTransferFile)
-	writers.domainTransferWriter.Write([]string{"DomainName", "TransferStatus", "RelinquishingRegistrar", "RelinquishDate", "AcquiringRegistrar", "AcquireDate", "ExpiryDate"}) // Write header
+	_ = writers.domainTransferWriter.Write([]string{"DomainName", "TransferStatus", "RelinquishingRegistrar", "RelinquishDate", "AcquiringRegistrar", "AcquireDate", "ExpiryDate"}) // Write header
 
 	if writers.domainDnssecFile, err = os.Create(baseFilename + "-DomainDnssec.csv"); err != nil {
 		return err
 	}
 	writers.domainDnssecWriter = csv.NewWriter(writers.domainDnssecFile)
-	writers.domainDnssecWriter.Write([]string{"DomainName", "DnssecData"}) // Write header
+	_ = writers.domainDnssecWriter.Write([]string{"DomainName", "DnssecData"}) // Write header
 
 	if writers.domainRgpStatusFile, err = os.Create(baseFilename + "-domainRgpStatus.csv"); err != nil {
 		return err
 	}
 	writers.domainRgpStatusWriter = csv.NewWriter(writers.domainRgpStatusFile)
-	writers.domainRgpStatusWriter.Write([]string{"DomainName", "RgpStatus"}) // Write header
+	_ = writers.domainRgpStatusWriter.Write([]string{"DomainName", "RgpStatus"}) // Write header
 
 	// Initialize contact-related CSV files
 	if writers.contactFile, err = os.Create(baseFilename + "-contacts.csv"); err != nil {
 		return err
 	}
 	writers.contactWriter = csv.NewWriter(writers.contactFile)
-	writers.contactWriter.Write(entities.RdeContactCSVHeader) // Write header
+	_ = writers.contactWriter.Write(entities.RdeContactCSVHeader) // Write header
 
 	if writers.contactStatusFile, err = os.Create(baseFilename + "-contactStatuses.csv"); err != nil {
 		return err
 	}
 	writers.contactStatusWriter = csv.NewWriter(writers.contactStatusFile)
-	writers.contactStatusWriter.Write([]string{"ContactID", "Status"}) // Write header
+	_ = writers.contactStatusWriter.Write([]string{"ContactID", "Status"}) // Write header
 
 	if writers.contactPostalInfoFile, err = os.Create(baseFilename + "-contactPostalInfo.csv"); err != nil {
 		return err
@@ -426,59 +433,64 @@ func (svc *StreamingXMLEscrowService) initializeCSVWriters() error {
 	writers.contactPostalInfoWriter = csv.NewWriter(writers.contactPostalInfoFile)
 	// ContactID + postal info fields
 	contactPostalHeader := append([]string{"ContactID"}, entities.RdeContactPostalInfoCSVHeader...)
-	writers.contactPostalInfoWriter.Write(contactPostalHeader) // Write header
+	_ = writers.contactPostalInfoWriter.Write(contactPostalHeader) // Write header
 
 	// Initialize host-related CSV files
 	if writers.hostFile, err = os.Create(baseFilename + "-hosts.csv"); err != nil {
 		return err
 	}
 	writers.hostWriter = csv.NewWriter(writers.hostFile)
-	writers.hostWriter.Write(entities.RdeHostCSVHeader) // Write header
+	_ = writers.hostWriter.Write(entities.RdeHostCSVHeader) // Write header
 
 	if writers.hostStatusFile, err = os.Create(baseFilename + "-hostStatuses.csv"); err != nil {
 		return err
 	}
 	writers.hostStatusWriter = csv.NewWriter(writers.hostStatusFile)
-	writers.hostStatusWriter.Write([]string{"HostName", "Status"}) // Write header
+	_ = writers.hostStatusWriter.Write([]string{"HostName", "Status"}) // Write header
 
 	if writers.hostAddressFile, err = os.Create(baseFilename + "-hostAddresses.csv"); err != nil {
 		return err
 	}
 	writers.hostAddressWriter = csv.NewWriter(writers.hostAddressFile)
-	writers.hostAddressWriter.Write([]string{"HostName", "IPAddress", "IPVersion"}) // Write header
+	_ = writers.hostAddressWriter.Write([]string{"HostName", "IPAddress", "IPVersion"}) // Write header
 
 	// Initialize registrar-related CSV files
 	if writers.registrarFile, err = os.Create(baseFilename + "-registrars.csv"); err != nil {
 		return err
 	}
 	writers.registrarWriter = csv.NewWriter(writers.registrarFile)
-	writers.registrarWriter.Write([]string{"ID", "Name", "GurID", "Status", "Voice", "Fax", "Email", "URL", "CrDate", "UpDate"}) // Write header
+	_ = writers.registrarWriter.Write([]string{"ID", "Name", "GurID", "Status", "Voice", "Fax", "Email", "URL", "CrDate", "UpDate"}) // Write header
 
 	if writers.registrarPostalInfoFile, err = os.Create(baseFilename + "-registrarPostalInfo.csv"); err != nil {
 		return err
 	}
 	writers.registrarPostalInfoWriter = csv.NewWriter(writers.registrarPostalInfoFile)
-	writers.registrarPostalInfoWriter.Write([]string{"RegistrarID", "Type", "Street1", "Street2", "Street3", "City", "StateProvince", "PostalCode", "CountryCode"}) // Write header
+	_ = writers.registrarPostalInfoWriter.Write([]string{"RegistrarID", "Type", "Street1", "Street2", "Street3", "City", "StateProvince", "PostalCode", "CountryCode"}) // Write header
 
 	// Initialize other CSV files
 	if writers.nndnFile, err = os.Create(baseFilename + "-nndns.csv"); err != nil {
 		return err
 	}
 	writers.nndnWriter = csv.NewWriter(writers.nndnFile)
-	writers.nndnWriter.Write(entities.RdeNNDNCSVHeader) // Write header
+	_ = writers.nndnWriter.Write(entities.RdeNNDNCSVHeader) // Write header
 
 	if writers.uniqueContactIDFile, err = os.Create(baseFilename + "-uniqueDomainContactIDs.csv"); err != nil {
 		return err
 	}
 	writers.uniqueContactIDWriter = csv.NewWriter(writers.uniqueContactIDFile)
-	writers.uniqueContactIDWriter.Write([]string{"ContactID"}) // Write header
+	_ = writers.uniqueContactIDWriter.Write([]string{"ContactID"}) // Write header
 
 	svc.csvWriters = writers
 	log.Printf("✅ Initialized all CSV files for streaming output")
 	return nil
 }
 
-// closeCSVWriters flushes and closes all CSV files
+// closeCSVWriters flushes and closes all CSV files.
+//
+// csv.Writer buffers and reports nothing from Write; a failed write only
+// surfaces via Error() after Flush. Every Flush and Close error here used to be
+// discarded, so a full disk produced truncated CSVs and a nil return — the
+// caller believed a partial deposit had been extracted successfully.
 func (svc *StreamingXMLEscrowService) closeCSVWriters() error {
 	if svc.csvWriters == nil {
 		return nil
@@ -486,48 +498,47 @@ func (svc *StreamingXMLEscrowService) closeCSVWriters() error {
 
 	writers := svc.csvWriters
 
-	// Flush and close all writers
-	writers.domainWriter.Flush()
-	writers.domainFile.Close()
-	writers.domainStatusWriter.Flush()
-	writers.domainStatusFile.Close()
-	writers.domainNameserverWriter.Flush()
-	writers.domainNameserverFile.Close()
-	writers.domainTransferWriter.Flush()
-	writers.domainTransferFile.Close()
-	writers.domainDnssecWriter.Flush()
-	writers.domainDnssecFile.Close()
-	writers.domainRgpStatusWriter.Flush()
-	writers.domainRgpStatusFile.Close()
-
-	writers.contactWriter.Flush()
-	writers.contactFile.Close()
-	writers.contactStatusWriter.Flush()
-	writers.contactStatusFile.Close()
-	writers.contactPostalInfoWriter.Flush()
-	writers.contactPostalInfoFile.Close()
-
-	writers.hostWriter.Flush()
-	writers.hostFile.Close()
-	writers.hostStatusWriter.Flush()
-	writers.hostStatusFile.Close()
-	writers.hostAddressWriter.Flush()
-	writers.hostAddressFile.Close()
-
-	writers.registrarWriter.Flush()
-	writers.registrarFile.Close()
-	writers.registrarPostalInfoWriter.Flush()
-	writers.registrarPostalInfoFile.Close()
-
-	writers.nndnWriter.Flush()
-	writers.nndnFile.Close()
-
-	// Write unique contact IDs to file
-	for contactID := range svc.uniqueContactIDs {
-		writers.uniqueContactIDWriter.Write([]string{contactID})
+	var firstErr error
+	// finish flushes one writer, closes its file, and keeps the first failure.
+	finish := func(name string, w *csv.Writer, f *os.File) {
+		w.Flush()
+		if err := w.Error(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("flushing %s csv: %w", name, err)
+		}
+		if err := f.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("closing %s csv: %w", name, err)
+		}
 	}
-	writers.uniqueContactIDWriter.Flush()
-	writers.uniqueContactIDFile.Close()
+
+	// Write unique contact IDs before the writer is flushed below.
+	for contactID := range svc.uniqueContactIDs {
+		_ = writers.uniqueContactIDWriter.Write([]string{contactID}) // reported by Error() in finish
+	}
+
+	finish("domain", writers.domainWriter, writers.domainFile)
+	finish("domainStatus", writers.domainStatusWriter, writers.domainStatusFile)
+	finish("domainNameserver", writers.domainNameserverWriter, writers.domainNameserverFile)
+	finish("domainTransfer", writers.domainTransferWriter, writers.domainTransferFile)
+	finish("domainDnssec", writers.domainDnssecWriter, writers.domainDnssecFile)
+	finish("domainRgpStatus", writers.domainRgpStatusWriter, writers.domainRgpStatusFile)
+
+	finish("contact", writers.contactWriter, writers.contactFile)
+	finish("contactStatus", writers.contactStatusWriter, writers.contactStatusFile)
+	finish("contactPostalInfo", writers.contactPostalInfoWriter, writers.contactPostalInfoFile)
+
+	finish("host", writers.hostWriter, writers.hostFile)
+	finish("hostStatus", writers.hostStatusWriter, writers.hostStatusFile)
+	finish("hostAddress", writers.hostAddressWriter, writers.hostAddressFile)
+
+	finish("registrar", writers.registrarWriter, writers.registrarFile)
+	finish("registrarPostalInfo", writers.registrarPostalInfoWriter, writers.registrarPostalInfoFile)
+
+	finish("nndn", writers.nndnWriter, writers.nndnFile)
+	finish("uniqueContactID", writers.uniqueContactIDWriter, writers.uniqueContactIDFile)
+
+	if firstErr != nil {
+		return firstErr
+	}
 
 	log.Printf("✅ Closed all CSV files and wrote %d unique contact IDs", len(svc.uniqueContactIDs))
 
@@ -689,18 +700,18 @@ func (svc *StreamingXMLEscrowService) processDomainTag(decoder *xml.Decoder, sta
 	// Write to CSV files (same as original ExtractDomains)
 	if svc.csvWriters != nil {
 		// Write domain to main domain CSV
-		svc.csvWriters.domainWriter.Write(domain.ToCSV())
+		_ = svc.csvWriters.domainWriter.Write(domain.ToCSV())
 
 		// Write domain statuses
 		for _, status := range domain.Status {
-			svc.csvWriters.domainStatusWriter.Write([]string{domain.Name.String(), status.S})
+			_ = svc.csvWriters.domainStatusWriter.Write([]string{domain.Name.String(), status.S})
 			svc.csvWriters.domainStatusCounter++
 		}
 
 		// Write nameservers
 		for _, nsGroup := range domain.Ns {
 			for _, hostObj := range nsGroup.HostObjs {
-				svc.csvWriters.domainNameserverWriter.Write([]string{domain.Name.String(), hostObj})
+				_ = svc.csvWriters.domainNameserverWriter.Write([]string{domain.Name.String(), hostObj})
 				svc.csvWriters.domainNameserverCounter++
 			}
 		}
@@ -709,7 +720,7 @@ func (svc *StreamingXMLEscrowService) processDomainTag(decoder *xml.Decoder, sta
 		if len(domain.SecDNS.DSData) > 0 {
 			// Create a simple DNSSEC record - adjust fields as needed
 			dnssecRecord := []string{domain.Name.String(), "dnssec_data_present"}
-			svc.csvWriters.domainDnssecWriter.Write(dnssecRecord)
+			_ = svc.csvWriters.domainDnssecWriter.Write(dnssecRecord)
 			svc.csvWriters.domainDnssecCounter++
 		}
 
@@ -724,14 +735,14 @@ func (svc *StreamingXMLEscrowService) processDomainTag(decoder *xml.Decoder, sta
 				domain.TrnData.AcDate,
 				domain.TrnData.ExDate,
 			}
-			svc.csvWriters.domainTransferWriter.Write(transferRecord)
+			_ = svc.csvWriters.domainTransferWriter.Write(transferRecord)
 			svc.csvWriters.domainTransferCounter++
 		}
 
 		// Write RGP Status if present
 		if len(domain.RgpStatus) != 0 {
 			for _, rgpStatus := range domain.RgpStatus {
-				svc.csvWriters.domainRgpStatusWriter.Write(rgpStatus.ToCSV(domain.Name.String()))
+				_ = svc.csvWriters.domainRgpStatusWriter.Write(rgpStatus.ToCSV(domain.Name.String()))
 				svc.csvWriters.domainRgpStatusCounter++
 			}
 		}
@@ -755,11 +766,11 @@ func (svc *StreamingXMLEscrowService) processContactTag(decoder *xml.Decoder, st
 	// Write to CSV files
 	if svc.csvWriters != nil {
 		// Write contact to main contact CSV
-		svc.csvWriters.contactWriter.Write(contact.ToCSV())
+		_ = svc.csvWriters.contactWriter.Write(contact.ToCSV())
 
 		// Write contact statuses
 		for _, status := range contact.Status {
-			svc.csvWriters.contactStatusWriter.Write([]string{contact.ID, status.S})
+			_ = svc.csvWriters.contactStatusWriter.Write([]string{contact.ID, status.S})
 			svc.csvWriters.contactStatusCounter++
 		}
 
@@ -767,7 +778,7 @@ func (svc *StreamingXMLEscrowService) processContactTag(decoder *xml.Decoder, st
 		for _, postalInfo := range contact.PostalInfo {
 			postalRecord := []string{contact.ID}
 			postalRecord = append(postalRecord, postalInfo.ToCSV()...)
-			svc.csvWriters.contactPostalInfoWriter.Write(postalRecord)
+			_ = svc.csvWriters.contactPostalInfoWriter.Write(postalRecord)
 			svc.csvWriters.contactPostalInfoCounter++
 		}
 	}
@@ -790,17 +801,17 @@ func (svc *StreamingXMLEscrowService) processHostTag(decoder *xml.Decoder, start
 	// Write to CSV files
 	if svc.csvWriters != nil {
 		// Write host to main host CSV
-		svc.csvWriters.hostWriter.Write(host.ToCSV())
+		_ = svc.csvWriters.hostWriter.Write(host.ToCSV())
 
 		// Write host statuses
 		for _, status := range host.Status {
-			svc.csvWriters.hostStatusWriter.Write([]string{host.Name, status.S})
+			_ = svc.csvWriters.hostStatusWriter.Write([]string{host.Name, status.S})
 			svc.csvWriters.hostStatusCounter++
 		}
 
 		// Write host addresses
 		for _, addr := range host.Addr {
-			svc.csvWriters.hostAddressWriter.Write([]string{host.Name, addr.IP, addr.ID})
+			_ = svc.csvWriters.hostAddressWriter.Write([]string{host.Name, addr.IP, addr.ID})
 			svc.csvWriters.hostAddressCounter++
 		}
 	}
@@ -818,11 +829,11 @@ func (svc *StreamingXMLEscrowService) processRegistrarTag(decoder *xml.Decoder, 
 	// Write to CSV if streaming
 	if svc.csvWriters != nil {
 		// Write registrar data
-		svc.csvWriters.registrarWriter.Write(registrar.ToCSV())
+		_ = svc.csvWriters.registrarWriter.Write(registrar.ToCSV())
 
 		// Write postal info data
 		for _, postalInfo := range registrar.PostalInfo {
-			svc.csvWriters.registrarPostalInfoWriter.Write(postalInfo.ToCSV(registrar.ID))
+			_ = svc.csvWriters.registrarPostalInfoWriter.Write(postalInfo.ToCSV(registrar.ID))
 		}
 	}
 
@@ -849,7 +860,7 @@ func (svc *StreamingXMLEscrowService) processNNDNTag(decoder *xml.Decoder, start
 
 	// Write to CSV file
 	if svc.csvWriters != nil {
-		svc.csvWriters.nndnWriter.Write(nndn.ToCSV())
+		_ = svc.csvWriters.nndnWriter.Write(nndn.ToCSV())
 	}
 
 	return nil

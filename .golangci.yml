@@ -100,6 +100,23 @@ linters:
         # cheap check is `grep -rn 'os.Open\|os.Create\|os.ReadFile' internal/interface/`.
         - G304
 
+    # Beyond the std-error-handling preset below, four function classes whose
+    # error is not actionable at the call site. Each is a whole-class decision
+    # rather than a per-site suppression, because the reason never varies.
+    errcheck:
+      exclude-functions:
+        # Progress display. A failed bar update has no bearing on the work.
+        - (*github.com/schollz/progressbar/v3.ProgressBar).Add
+        # `defer tx.Rollback()` after a successful Commit returns sql.ErrTxDone
+        # by design; that is the idiom, not a missed error.
+        - (*database/sql.Tx).Rollback
+        # zap's own docs note Sync returns an error when stderr/stdout is not
+        # syncable, which is the normal case on Linux and macOS.
+        - (*go.uber.org/zap.Logger).Sync
+        # net/http already tears the connection down on a failed response
+        # write; there is nothing the handler can do but return, which it does.
+        - (net/http.ResponseWriter).Write
+
   exclusions:
     # Standard golangci-lint exclusions. For errcheck this covers Close, Flush,
     # os.Remove/RemoveAll, os.Setenv and the fmt print family — 392 findings,

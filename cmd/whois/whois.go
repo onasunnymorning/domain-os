@@ -99,7 +99,7 @@ func handleConnection(ctx context.Context, conn net.Conn, svc *services.WhoisSer
 	response := getWHOISResponse(ctx, query, svc)
 
 	// Write the response back to the client.
-	conn.Write([]byte(response))
+	_, _ = conn.Write([]byte(response)) // the connection is gone if this fails, and the handler has no error path
 }
 
 // getWHOISResponse determines the type of WHOIS query and returns a response.

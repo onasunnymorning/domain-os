@@ -94,7 +94,7 @@ func (p *ClientPool) Release(client *pkg.Client) {
 		log.Println("Client released successfully")
 	default:
 		log.Println("Pool is full, closing the client...")
-		client.SendCommandUsingTemplate("logout.xml", nil) // Close the connection if the pool is full
+		_, _ = client.SendCommandUsingTemplate("logout.xml", nil) // Close the connection if the pool is full  // best-effort logout while discarding an over-capacity client
 	}
 }
 

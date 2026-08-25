@@ -150,7 +150,7 @@ func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 		Address: a0,
 	}
 
-	registrar.AddPostalInfo(pi0)
+	_ = registrar.AddPostalInfo(pi0) // FromDB* has no error return; invalid stored postal info is omitted from the mapped entity
 
 	a1 := &entities.Address{
 		Street1:       entities.OptPostalLineType(dbr.Street1Loc),
@@ -167,7 +167,7 @@ func FromDBRegistrar(dbr *Registrar) *entities.Registrar {
 		Address: a1,
 	}
 
-	registrar.AddPostalInfo(pi1)
+	_ = registrar.AddPostalInfo(pi1) // FromDB* has no error return; invalid stored postal info is omitted from the mapped entity
 
 	for _, tld := range dbr.TLDs {
 		registrar.TLDs = append(registrar.TLDs, FromDBTLD(&tld))
