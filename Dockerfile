@@ -1,7 +1,7 @@
 # The main Build image to build all our binaries.
 # Pinned to the native build platform so Go cross-compiles to the target arch
 # (GOARCH below) instead of running under QEMU emulation on the arm64 leg.
-FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
 
 WORKDIR /
 ENV CGO_ENABLED=0
