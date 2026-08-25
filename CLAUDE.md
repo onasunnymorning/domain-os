@@ -14,10 +14,10 @@ Cite invariants by ID in review and in commit messages, e.g. "this violates INV-
 
 IDs are never reused. **The `PROP-nn` proposal space is fully retired** — all ten were answered on 2026-08-10 and 2026-08-25 (six promoted to `INV-07`…`INV-13`, four dropped); no `PROP` ID is live or citable, and the disposition table in `docs/INVARIANTS.md` records where each went. `INV-02` has left the Unresolved list: it is resolved by [ADR-0006](docs/adr/0006-tenancy-model.md) and is now a Class B invariant. **All three `UNR` IDs are retired and the Unresolved section is empty**: `UNR-01` → `INV-14` (domain layer does not import inward, superseding the looser "dependency-free" wording), `UNR-02` → `INV-15` (typed context keys), and `UNR-03` resolved by correcting `architecture.md`, `stack.md` and `.cursorrules`.
 
-Two consequences worth knowing before you rely on CI:
+Two things to know about CI:
 
-- `golangci-lint` runs with `--issues-exit-code=0`, so lint findings do not fail the build.
-- No import-restriction linter is configured, so layering rules are not mechanically enforced.
+- **Architectural rules are enforced.** The `arch-lint` job runs `.golangci.arch.yml` and fails the build on any violation of `INV-01`, `INV-03`, `INV-12` (workflows) or `INV-14`. `INV-06` is enforced by an architecture test. Deliberate exceptions are allowlisted by filename in that config with a note saying what will remove them — do not add to it without one.
+- **General lint findings are advisory.** The main `golangci-lint` pass still runs with `--issues-exit-code=0` and reports ~1255 issues across seven linters, so it will not fail your build. Do not read a green Lint job as a clean bill of health.
 
 See the enforcement assessment at the end of `docs/INVARIANTS.md` for which rules are machine-checkable.
 

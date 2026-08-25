@@ -1,0 +1,81 @@
+# Architecture gate — enforced, and deliberately separate from .golangci.yml.
+#
+# The main lint config runs advisory (--issues-exit-code=0) because the seven
+# linters it enables have never had to pass and currently report ~1255 issues.
+# Clearing that backlog is tracked separately. This file exists so that the
+# architectural rules in docs/INVARIANTS.md do not have to wait for it: the
+# rules below hold today and are enforced today.
+#
+# Adding a violation here fails CI. If a violation is deliberate, allowlist it
+# in this file with a comment saying why and what will remove it.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - depguard
+
+  settings:
+    depguard:
+      rules:
+        # INV-14 — the domain layer does not import inward.
+        domain-layer:
+          files:
+            - "**/pkg/domain/**"
+            # Allowlisted, temporarily. Both type their signatures against GORM
+            # models and are the only reason pkg/domain/repositories reaches
+            # pgx and lib/pq. Fixes in flight: #400 (PR #405) and #401.
+            # Remove these two lines when those land — see UNR-01 group 2.
+            - "!**/pkg/domain/repositories/fx_interface.go"
+            - "!**/pkg/domain/repositories/tldDNSRecord_repository.go"
+          deny:
+            - pkg: github.com/onasunnymorning/domain-os/internal
+              desc: "the domain layer must not import inward (INV-14)"
+
+        # INV-03 — vendor LLM SDKs live only in the provider adapter.
+        llm-sdk-boundary:
+          files:
+            - "**/*.go"
+            - "!**/internal/askg/provider/**"
+          deny:
+            - pkg: github.com/anthropics/anthropic-sdk-go
+              desc: "vendor LLM SDKs belong only in internal/askg/provider (INV-03)"
+
+        # INV-12 — Temporal workflow code logs through the Temporal logger.
+        # Scoped to workflows only. Activities are excluded deliberately: some
+        # accept a *log.Logger as an injected dependency and some log at
+        # construction time, where no activity context exists yet.
+        temporal-workflow-logging:
+          files:
+            - "**/internal/application/workflows/**"
+          deny:
+            - pkg: log
+              desc: "workflows must log via workflow.GetLogger(ctx) (INV-12)"
+            - pkg: log/slog
+              desc: "workflows must log via workflow.GetLogger(ctx) (INV-12)"
+
+        # INV-01 — telemetry is never on the event delivery path.
+        outbox-no-telemetry:
+          files:
+            - "**/internal/application/workflows/eventRelay.go"
+            - "**/internal/application/activities/eventRelayActivities.go"
+            - "**/internal/infrastructure/db/postgres/event_publisher.go"
+          deny:
+            - pkg: go.opentelemetry.io
+              desc: "telemetry must not be load-bearing on the delivery path (INV-01)"
+            - pkg: github.com/newrelic/go-agent
+              desc: "telemetry must not be load-bearing on the delivery path (INV-01)"
+
+  exclusions:
+    paths:
+      - vendor
+      - testdata
+
+issues:
+  # Every violation must be reported. The default caps identical messages at 3,
+  # which silently understates a broad breach.
+  max-same-issues: 0
+  max-issues-per-linter: 0
