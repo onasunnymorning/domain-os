@@ -90,10 +90,10 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 	// S3 Client is optional for some use-cases (like local CLI import)
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		// Just log, don't fail. Methods using S3 will panic or fail if called, but ImportToDirectDB doesn't use it.
-		// Or better, we could make the methods check for nil.
-		// For now, let's just ignore the error here.
-		// log.Printf("Warning: Failed to init S3 client: %v", err)
+		// Non-fatal: ImportToDirectDB does not use S3. Methods that do will
+		// fail on the nil client, so surface the reason here rather than
+		// letting it show up later as an unexplained nil dereference.
+		log.Printf("Warning: failed to init S3 client, S3-backed methods will not work: %v", err)
 	}
 
 	idGen, err := snowflakeidgenerator.NewIDGenerator()

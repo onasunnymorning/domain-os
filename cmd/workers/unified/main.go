@@ -132,8 +132,8 @@ func main() {
 	// UpdateFX (Fast Ops + Drain Data)
 	// activities.UpdateFX (HTTP) is deprecated — registered only to drain
 	// in-flight executions. New runs use FXActivities.UpdateFXRates below.
-	fastOpsWorker.RegisterActivity(activities.UpdateFX)
-	drainDataWorker.RegisterActivity(activities.UpdateFX)
+	fastOpsWorker.RegisterActivity(activities.UpdateFX)   //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
+	drainDataWorker.RegisterActivity(activities.UpdateFX) //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
 
 	// FX Rates Activities (Fast Ops + Drain Data)
 	fxActs, err := activities.NewFXActivities()
@@ -177,8 +177,8 @@ func main() {
 
 	// Lifecycle Basic Activities
 	lifecycleBasicActs := []interface{}{
-		activities.CheckDomainCanAutoRenew,
-		activities.CheckDomainsCanAutoRenew,
+		activities.CheckDomainCanAutoRenew,  //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
+		activities.CheckDomainsCanAutoRenew, //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
 		activities.GetExpiredDomainCount,
 		activities.ListExpiringDomains,
 		activities.AutoRenewDomain,

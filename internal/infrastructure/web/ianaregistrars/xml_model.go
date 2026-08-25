@@ -31,6 +31,6 @@ type RegistrarRecord struct {
 
 // RDAP URL structure for IANA XML Registry
 type RdapURL struct {
-	XMLName xml.Name `xml:"rdapurl" json:"rdapurl" json:"-"`
+	XMLName xml.Name `xml:"rdapurl" json:"-"`
 	Server  string   `xml:"server" json:"server"`
 }

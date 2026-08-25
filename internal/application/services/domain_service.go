@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,7 +16,6 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"golang.org/x/net/context"
 )
 
 var (
@@ -1781,9 +1781,7 @@ func (s *DomainService) publishDomainEvent(
 	if actor, ok := appcontext.UserID(ctx); ok {
 		domainEvent.Actor = actor
 	}
-	if event != nil {
-		domainEvent.RoID = event.DomainRoID
-	}
+	domainEvent.RoID = event.DomainRoID
 
 	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
 		log.Printf("failed to publish event %s: %v", eventType, err)

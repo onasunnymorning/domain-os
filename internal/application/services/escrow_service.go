@@ -943,7 +943,7 @@ func CountLines(r io.Reader) (int, error) {
 	var count int
 	var read int
 	var err error
-	var target []byte = []byte("\n")
+	target := []byte("\n")
 
 	buffer := make([]byte, 32*1024)
 
@@ -1113,7 +1113,7 @@ func (svc *XMLEscrowService) MapRegistrars(token string, overrides map[string]st
 		svc.RegistrarMapping[rar.ID] = pre
 
 		var URL string
-		var overrideID string = ""
+		var overrideID string
 		// Check for overrides first
 		if overrides != nil {
 			if val, ok := overrides[rar.Name]; ok {
