@@ -343,6 +343,29 @@ ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI 
 	@cd frontend && npm run lint
 	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
 
+secrets: ## Scan the working tree for secrets (BLOCKING) — CI only scans new commits
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks not installed:  brew install gitleaks"; \
+		echo "                    or:  go install github.com/zricethezav/gitleaks/v8@latest"; \
+		exit 1; \
+	}
+	@echo "🔐 Scanning the working tree..."
+	@gitleaks dir . --config .gitleaks.toml --redact --no-banner
+	@echo "✅ Working tree is clean."
+
+secrets-history: ## Scan all git history for secrets (informational — findings need rotation, not edits)
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks not installed:  brew install gitleaks"; \
+		echo "                    or:  go install github.com/zricethezav/gitleaks/v8@latest"; \
+		exit 1; \
+	}
+	@echo "🔐 Scanning git history. This is informational: a secret already pushed"
+	@echo "   cannot be un-published by editing a file — it has to be rotated."
+	@gitleaks git . --config .gitleaks.toml --redact --no-banner || true
+	@echo ""
+	@echo "   This repository is public. Anything above was world-readable between"
+	@echo "   the commit that added it and the one that removed it. See #411."
+
 ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Architecture gate" CI job
 	@echo "🏛  Enforcing architectural invariants from docs/INVARIANTS.md..."
 	@echo "    INV-01 telemetry off the delivery path   INV-03 vendor LLM SDK boundary"
