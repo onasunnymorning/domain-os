@@ -20,6 +20,14 @@ on:
         - debug
 
 jobs:
+  # This job scans the commits a push or PR introduces. That is the right shape
+  # for stopping new secrets, but note what it cannot do: it was added in June
+  # 2026, and it only ever looks at new commits, so the three live credentials
+  # already sitting in this public repo's history were never examined — a
+  # CentralNic EPP account and a MOSAPI account marked PROD (both May 2024) and
+  # a Grafana Cloud token (Feb 2025). #411 found them via gosec G101 instead.
+  #
+  # For the whole tree rather than a diff, run `make secrets` locally.
   scan:
     name: Secret Scan
     runs-on: ubuntu-latest
@@ -30,6 +38,9 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Without this the job runs gitleaks' bare defaults and ignores the
+          # allowlist, so it trips on deliberate test fixtures.
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   lint:
     name: Lint
