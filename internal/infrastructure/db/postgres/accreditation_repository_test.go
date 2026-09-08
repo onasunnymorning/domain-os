@@ -70,6 +70,9 @@ func (s *AccreditationSuite) SetupSuite() {
 		s.T().Fatal(err)
 	}
 	createdTLD, err := tldRepo.GetByName(context.Background(), tld.Name.String(), false)
+	if err != nil {
+		s.T().Fatal(err)
+	}
 	s.tld = createdTLD
 }
 

@@ -147,26 +147,37 @@ func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
 					continue
 				}
 
-				stmtNS.Exec(d.DomainName, hostName)
+				if _, err := stmtNS.Exec(d.DomainName, hostName); err != nil {
+					log.Printf("Error inserting nameserver %s for %s: %v", hostName, d.DomainName, err)
+				}
 				// Create Host entry (assuming same registrar as domain for ClID)
-				stmtHost.Exec(hostName, registrarID, registrarID, registrarID)
+				if _, err := stmtHost.Exec(hostName, registrarID, registrarID, registrarID); err != nil {
+					log.Printf("Error inserting host %s: %v", hostName, err)
+				}
 
 				// Parse IPs
 				for i := 1; i < len(parts); i++ {
 					ip := strings.TrimSpace(parts[i])
 					if ip != "" {
-						stmtHostAddr.Exec(hostName, ip)
+						if _, err := stmtHostAddr.Exec(hostName, ip); err != nil {
+							log.Printf("Error inserting host address %s for %s: %v", ip, hostName, err)
+						}
 					}
 				}
 
 				// Basic host statuses implied by being part of active domain
-				stmtHostStatus.Exec(hostName, "ok")
-				stmtHostStatus.Exec(hostName, "linked")
+				for _, hs := range []string{"ok", "linked"} {
+					if _, err := stmtHostStatus.Exec(hostName, hs); err != nil {
+						log.Printf("Error inserting host status %s for %s: %v", hs, hostName, err)
+					}
+				}
 			}
 		}
 
 		// 5. Status
-		stmtStatus.Exec(d.DomainName, d.Status)
+		if _, err := stmtStatus.Exec(d.DomainName, d.Status); err != nil {
+			log.Printf("Error inserting status for %s: %v", d.DomainName, err)
+		}
 
 		count++
 		if count%1000 == 0 {
@@ -627,7 +638,9 @@ func (s *JiscService) generateReport() error {
 	for rowsStatus.Next() {
 		var status string
 		var count int
-		rowsStatus.Scan(&status, &count)
+		if err := rowsStatus.Scan(&status, &count); err != nil {
+			return fmt.Errorf("scanning status breakdown: %w", err)
+		}
 		fmt.Printf("  - %s: %d\n", status, count)
 	}
 
@@ -879,10 +892,8 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 				log.Printf("ERROR: Generated Contact ID '%s' is Invalid: %v", contactID, errID)
 			}
 
-			// IDEMPOTENCY CHECK
-			if existingContacts[contactID] {
-				// log.Printf("Skipping creation of contact %s (already exists)", contactID)
-			} else {
+			// IDEMPOTENCY CHECK — skip contacts that already exist
+			if !existingContacts[contactID] {
 				contacts[contactID] = commands.CreateContactCommand{
 					ID:         contactID,
 					ClID:       rarClID,
@@ -913,7 +924,6 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 				// If host exists for THIS registrar, skip creation.
 				key := fmt.Sprintf("%s|%s", strings.ToLower(hostName), rarClID)
 				if existingHosts[key] {
-					// log.Printf("Skipping creation of %s (already exists for %s)", hostName, rarClID)
 					continue
 				}
 

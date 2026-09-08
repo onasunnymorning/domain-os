@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 )
 
@@ -51,7 +50,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- s3c.UploadStream(context.Background(), backupKey, pr, "application/jsonl")
+		errChan <- s3c.UploadStream(ctx, backupKey, pr, "application/jsonl")
 	}()
 
 	var count int64
@@ -155,7 +154,9 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 			switch entityType {
 			case "Domain":
 				var id int64
-				fmt.Sscanf(entityID, "%d", &id)
+				if _, serr := fmt.Sscanf(entityID, "%d", &id); serr != nil {
+					continue // unparseable manifest id — appending 0 would target the wrong row
+				}
 				domainIDs = append(domainIDs, id)
 				if len(domainIDs) >= batchSize {
 					if err := flushDomains(); err != nil {
@@ -173,7 +174,9 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 				}
 			case "Host":
 				var id int64
-				fmt.Sscanf(entityID, "%d", &id)
+				if _, serr := fmt.Sscanf(entityID, "%d", &id); serr != nil {
+					continue // unparseable manifest id — appending 0 would target the wrong row
+				}
 				hostIDs = append(hostIDs, id)
 				if len(hostIDs) >= batchSize {
 					if err := flushHosts(); err != nil {
@@ -185,14 +188,20 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 				var dbP postgres.Phase
 				if err := db.Where("id = ?", entityID).First(&dbP).Error; err == nil {
 					count++
-					encoder.Encode(BackupItem{Type: "Phase", Entity: dbP.ToEntity()})
+					if encErr := encoder.Encode(BackupItem{Type: "Phase", Entity: dbP.ToEntity()}); encErr != nil {
+						writeErr = encErr
+						return
+					}
 				}
 			case "TLD":
 				var dbT postgres.TLD
 				if err := db.Where("name = ?", entityID).First(&dbT).Error; err == nil {
 					count++
-					var ent *entities.TLD = postgres.FromDBTLD(&dbT)
-					encoder.Encode(BackupItem{Type: "TLD", Entity: ent})
+					ent := postgres.FromDBTLD(&dbT)
+					if encErr := encoder.Encode(BackupItem{Type: "TLD", Entity: ent}); encErr != nil {
+						writeErr = encErr
+						return
+					}
 				}
 			}
 		}

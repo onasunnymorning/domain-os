@@ -213,10 +213,9 @@ func (d *RDEDisclose) ToEntity() (*ContactDisclose, error) {
 	// our main data policy is not to disclose
 	cd := NewDiscloseStruct(false)
 	// Since our default is not to disclose, and some elements need to be set to false, we might skip this as everything is already set to false
-	if d.Flag {
-		// If the xml element is present, set the Disclose Property in question to equal the d.Flag (in this case true since we already handled the false case)
-		// TODO: implement this
-	}
+	// TODO: handle d.Flag == true. When the xml element is present the
+	// corresponding Disclose property should be set to d.Flag; only the false
+	// case is handled today, which the default above already covers.
 	return cd, nil
 }
 

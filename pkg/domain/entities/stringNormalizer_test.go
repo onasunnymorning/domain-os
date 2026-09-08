@@ -120,7 +120,7 @@ func TestReplaceMultipleSpaces(t *testing.T) {
 	}
 }
 
-func testremoveTrailingDot(t *testing.T) {
+func TestRemoveTrailingDot(t *testing.T) {
 	testCases := []struct {
 		input    string
 		expected string

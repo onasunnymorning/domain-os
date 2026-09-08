@@ -159,7 +159,7 @@ func TestBulkUpdateRegistrarStatuses(t *testing.T) {
 					w.WriteHeader(http.StatusNoContent)
 				default:
 					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprintf(w, "unexpected path: %s", path)
+					fmt.Fprintf(w, "unexpected path: %s", path) // #nosec G705 -- test-only httptest handler; the response is never rendered as HTML
 				}
 			},
 			wantUpdated:    2,

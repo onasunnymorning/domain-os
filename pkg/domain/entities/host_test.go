@@ -84,7 +84,7 @@ func TestAddHostAddress(t *testing.T) {
 
 func TestAddHostAddress_UpdateProhibited(t *testing.T) {
 	host, _ := NewHost("example.com", "12345", "67890")
-	host.SetStatus(HostStatusClientUpdateProhibited)
+	_ = host.SetStatus(HostStatusClientUpdateProhibited) // test setup; a failure here surfaces in the assertions below
 
 	_, err := host.AddAddress("195.238.2.21")
 	require.ErrorIs(t, err, ErrHostUpdateProhibited)

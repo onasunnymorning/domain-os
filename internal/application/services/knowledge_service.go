@@ -59,11 +59,6 @@ type corpusManifest struct {
 	Sources map[string]any `yaml:"sources"`
 }
 
-// sourceWithGlob represents a source entry that uses a glob pattern.
-type sourceWithGlob struct {
-	Glob string `yaml:"glob"`
-}
-
 // ---------------------------------------------------------------------------
 // Stop words — common English words excluded from indexing
 // ---------------------------------------------------------------------------
@@ -443,7 +438,7 @@ func chunkMarkdown(content, docPath string) []docChunk {
 // Returns the content between the backticks, or empty string if not found.
 func extractMarkdownFromTS(content string) string {
 	match := tsTemplateLiteralRe.FindStringSubmatch(content)
-	if match == nil || len(match) < 2 {
+	if len(match) < 2 {
 		return ""
 	}
 	return match[1]

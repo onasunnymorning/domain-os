@@ -141,18 +141,23 @@ func (c *EscrowController) Upload(ctx *gin.Context) {
 	if baseDir == "" {
 		baseDir = "/tmp/escrow-uploads"
 	}
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	// #nosec G703 -- the path is filepath.Base of the upload name joined onto a fixed base dir, so it cannot escape it; mime/multipart applies filepath.Base too, and the explicit call above keeps that guarantee local
+	if err := os.MkdirAll(baseDir, 0o750); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to create upload dir: %v", err)})
 		return
 	}
 
 	// Create destination filename
 	ts := time.Now().UTC().Format("20060102-150405")
-	safeName := strings.ReplaceAll(header.Filename, " ", "_")
+	// filepath.Base defends the join below against a crafted upload filename.
+	// mime/multipart already applies it to header.Filename, but relying on that
+	// silently puts an arbitrary-file-write away from one stdlib change.
+	safeName := strings.ReplaceAll(filepath.Base(header.Filename), " ", "_")
 	destName := fmt.Sprintf("%s-%s", ts, safeName)
 	destPath := filepath.Join(baseDir, destName)
 
 	// Stream copy with checksum
+	// #nosec G703 -- the path is filepath.Base of the upload name joined onto a fixed base dir, so it cannot escape it; mime/multipart applies filepath.Base too, and the explicit call above keeps that guarantee local
 	dst, err := os.Create(destPath)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to create dest file: %v", err)})
@@ -182,6 +187,7 @@ func (c *EscrowController) Upload(ctx *gin.Context) {
 		return
 	}
 	// Remove local temp file after successful upload
+	// #nosec G703 -- the path is filepath.Base of the upload name joined onto a fixed base dir, so it cannot escape it; mime/multipart applies filepath.Base too, and the explicit call above keeps that guarantee local
 	_ = os.Remove(destPath)
 	ctx.JSON(http.StatusCreated, uploadResponse{ObjectKey: s3Key, Size: size, Checksum: checksum})
 }
@@ -239,6 +245,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 }
 
 // StartIngestion triggers the EscrowIngestionWorkflow for a specific staged DB
+//
 // Deprecated: This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal.
 func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 	ctx.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal."})

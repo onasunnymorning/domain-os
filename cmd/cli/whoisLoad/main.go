@@ -182,7 +182,7 @@ func sendQuery(query string, metrics *Metrics) {
 
 func runLoadTest() {
 	// Seed random number generator
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- not security material: a seed/load-test identifier, not a key, token or password
 
 	// Create channels to synchronize goroutines
 	done := make(chan bool)

@@ -114,7 +114,7 @@ func CreateRandomClID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 16)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[rand.Intn(len(charset))] // #nosec G404 -- not security material: a seed/load-test identifier, not a key, token or password
 	}
 	return string(b)
 }
@@ -144,10 +144,10 @@ func CreateRegistrarsThroughAPI(total, chuckSize int) error {
 
 		resp, err := http.Post(URL, "application/json", bytes.NewBuffer(postBody))
 		if err != nil {
-			log.Fatalln("[ERR] error send create command to API")
+			return fmt.Errorf("error sending create command to API: %w", err)
 		}
-		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("error reading response body: %v", err)
 		}

@@ -103,12 +103,12 @@ func run() int {
 	}
 	ks, ksErr := services.NewKnowledgeService(projectRoot)
 	if ksErr != nil {
-		slog.Warn("KnowledgeService not available — answer_system_question tool disabled",
+		slog.Warn("KnowledgeService not available — answer_system_question tool disabled", // #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 			"error", ksErr,
 			"project_root", projectRoot)
 	} else {
 		knowledgeSvc = ks
-		slog.Info("KnowledgeService loaded",
+		slog.Info("KnowledgeService loaded", // #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 			"docs", ks.DocCount(),
 			"chunks", ks.ChunkCount())
 	}
@@ -124,7 +124,7 @@ func run() int {
 		UserID: envOrDefault("ASKG_USER_ID", "cli-user"),
 	}
 
-	slog.Info("ask_g: processing question",
+	slog.Info("ask_g: processing question", // #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 		slog.String("question", question),
 		slog.String("model", cfg.Model),
 		slog.String("provider", cfg.Provider),
