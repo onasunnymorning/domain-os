@@ -53,7 +53,7 @@ func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 		}
 
 		if seen[irar.Name] {
-			irar.Name = irar.Name + "-2"
+			irar.Name += "-2"
 		}
 		seen[irar.Name] = true
 

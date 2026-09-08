@@ -57,5 +57,5 @@ func (p *Price) GetMoney(transactionType TransactionType) (*money.Money, error) 
 		return nil, ErrInvalidTransactionTypeForQuote
 	}
 
-	return money.New(int64(amount), p.Currency), nil
+	return money.New(int64(amount), p.Currency), nil // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 }

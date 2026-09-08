@@ -68,11 +68,13 @@ func createTestDB() {
 	}
 	defer db.Close()
 
-	// createDatabaseCommand := fmt.Sprintf("SELECT 'CREATE DATABASE %s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '%s')", os.Getenv("DB_NAME"), os.Getenv("DB_NAME"))
 	createDatabaseCommand := fmt.Sprintf("CREATE DATABASE %s", dbName)
 	_, err = db.Exec(createDatabaseCommand)
 	if err != nil {
-		log.Fatal(err)
+		// log.Fatal skips defers, so close explicitly. The deferred Close
+		// never runs on this path, so it is not closed twice.
+		db.Close()
+		log.Fatal(err) //nolint:gocritic // exitAfterDefer: the deferred Close is what the line above just did explicitly, precisely because log.Fatal skips it.
 	}
 	log.Printf("Database created: %s", dbName)
 }

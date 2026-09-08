@@ -50,7 +50,7 @@ func NewTestEPPServer(commandMux *epp.CommandMux, tlsConfig *tls.Config) (*TestE
 // Start starts the test server in a goroutine
 func (s *TestEPPServer) Start() error {
 	go func() {
-		s.Server.Serve(s.Listener)
+		_ = s.Server.Serve(s.Listener) // returns when the listener is closed during teardown
 	}()
 
 	// Give server time to start

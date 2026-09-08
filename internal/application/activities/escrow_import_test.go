@@ -314,10 +314,10 @@ func TestDecompressGzipFile(t *testing.T) {
 	// Write compressed content to temporary file
 	tmpDir := t.TempDir()
 	gzPath := filepath.Join(tmpDir, "test.xml.gz")
-	
+
 	f, err := os.Create(gzPath)
 	require.NoError(t, err)
-	
+
 	gw := gzip.NewWriter(f)
 	_, err = gw.Write([]byte(content))
 	require.NoError(t, err)
@@ -705,7 +705,7 @@ func TestAutoFixHostOnly_MultiRegistrar_Duplication(t *testing.T) {
 	var clIDs []string
 	for rows.Next() {
 		var c string
-		rows.Scan(&c)
+		require.NoError(t, rows.Scan(&c))
 		clIDs = append(clIDs, c)
 	}
 	rows.Close()

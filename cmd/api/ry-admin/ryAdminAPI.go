@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
-	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	appservices "github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -112,8 +112,6 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-
-
 // @title Domain OS Admin API
 // @license.name Geoffrey De Prins All rights reserved
 func main() {
@@ -153,13 +151,19 @@ func main() {
 	}
 
 	// Initialize New Relic APM if enabled
+	var nrApp *newrelic.Application
 	if cfg.NewRelicEnabled {
 		logger.Info("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
-		app, err := initNewRelicAPM()
+		nrApp, err = initNewRelicAPM()
 		if err != nil {
 			logger.Error("Failed to initialize New Relic APM", zap.Error(err))
+			nrApp = nil
 		}
-		defer app.Shutdown(0)
+		defer func() {
+			if nrApp != nil {
+				nrApp.Shutdown(0)
+			}
+		}()
 	}
 
 	// Initialize variables for the Swagger API documentation
@@ -287,8 +291,6 @@ func main() {
 	// Dnssec
 	dnssecService := appservices.NewDnssecService()
 
-
-
 	// Create Gin Engine/Router
 	// r := gin.Default()
 	// Create a new Gin router without any default middleware.
@@ -363,7 +365,6 @@ func main() {
 	rest.NewAccreditationController(r, accreditationService, authMiddleware)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService, authMiddleware)
 	rest.NewFXController(r, fxService, authMiddleware)
-	// rest.NewQuoteController(r, quoteService, authMiddleware)
 	rest.NewWhoisController(r, whoisService, authMiddleware)
 	rest.NewDnssecController(r, dnssecService, authMiddleware)
 	// Workflows
@@ -422,19 +423,27 @@ func main() {
 		logger.Warn("Agent Alpaca (Ask G) disabled — ANTHROPIC_API_KEY not set. Set it via Doppler to enable the /agent endpoints.")
 	}
 
-
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(
 		swaggerFiles.Handler,
 		ginSwagger.DocExpansion("none"))) // collapse all endpoints by default
 
+	var serveErr error
 	if inLambda() {
 		logger.Info("Determined we are running in AWS Lambda")
 		// Start the server using the AWS Lambda proxy
-		log.Fatal(gateway.ListenAndServe(os.Getenv("API_PORT"), r))
+		serveErr = gateway.ListenAndServe(os.Getenv("API_PORT"), r)
 	} else {
 		// Start the server using the standard HTTP server
-		r.Run(":" + os.Getenv("API_PORT"))
+		serveErr = r.Run(":" + os.Getenv("API_PORT"))
+	}
+	if serveErr != nil {
+		logger.Error("server exited", zap.Error(serveErr))
+		// os.Exit skips defers, so flush New Relic explicitly first.
+		if nrApp != nil {
+			nrApp.Shutdown(0)
+		}
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: the deferred Shutdown is what the three lines above just did explicitly, precisely because os.Exit skips it.
 	}
 
 }

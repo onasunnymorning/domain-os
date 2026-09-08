@@ -79,21 +79,21 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 	opt.PoolSize = 5
 	opt.MinIdleConns = 1
 	opt.DialTimeout = 10 * time.Second
-	opt.ReadTimeout = 90 * time.Second  // Bulk upserts with 5K+ rows can take time
+	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
 	opt.WriteTimeout = 90 * time.Second
 	opt.PoolTimeout = 30 * time.Second
-	opt.MaxRetries = 3                  // Retry transient connection failures
-	opt.RetryStatementTimeout = true    // Retry on statement_timeout errors too
+	opt.MaxRetries = 3               // Retry transient connection failures
+	opt.RetryStatementTimeout = true // Retry on statement_timeout errors too
 
 	db := pg.Connect(opt)
 
 	// S3 Client is optional for some use-cases (like local CLI import)
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
-		// Just log, don't fail. Methods using S3 will panic or fail if called, but ImportToDirectDB doesn't use it.
-		// Or better, we could make the methods check for nil.
-		// For now, let's just ignore the error here.
-		// log.Printf("Warning: Failed to init S3 client: %v", err)
+		// Non-fatal: ImportToDirectDB does not use S3. Methods that do will
+		// fail on the nil client, so surface the reason here rather than
+		// letting it show up later as an unexplained nil dereference.
+		log.Printf("Warning: failed to init S3 client, S3-backed methods will not work: %v", err)
 	}
 
 	idGen, err := snowflakeidgenerator.NewIDGenerator()
@@ -119,7 +119,7 @@ func (s *DirectDBImporter) SaveReport(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func getEnv(key, def string) string {
@@ -314,7 +314,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 		}
 
 		// Create JSON payload for heartbeat
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
 		heartbeat(payload)
 	}
 	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d, Skipped: %d", total, inserted, updated, skipped)
@@ -525,7 +525,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		lastKey = rawHosts[len(rawHosts)-1].Name
 		lastClID = rawHosts[len(rawHosts)-1].ClID
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestHosts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
@@ -769,7 +769,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			lastKey = entitiesBatch[len(entitiesBatch)-1].Name.String()
 		}
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
@@ -804,7 +804,7 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 	if _, err := s.PG.Exec(`CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
 		log.Printf("LinkDomainHosts: index on _host_dedup failed (non-fatal): %v", err)
 	}
-	defer s.PG.Exec("DROP TABLE IF EXISTS _host_dedup")
+	defer func() { _, _ = s.PG.Exec("DROP TABLE IF EXISTS _host_dedup") }() // best-effort cleanup of a scratch object
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT domain_name, nameserver FROM domain_nameservers WHERE (domain_name > ?) OR (domain_name = ? AND nameserver > ?) ORDER BY domain_name, nameserver LIMIT ?`, lastDomain, lastDomain, lastNS, batchSize)
@@ -974,7 +974,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 
 		lastKey = currentBatchMaxKey
 
-		payload := fmt.Sprintf(`{"lastKey":"%s","processed":%d,"total":%d}`, lastKey, total, totalRows)
+		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
 	log.Printf("IngestNNDNs: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)

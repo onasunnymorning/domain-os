@@ -1,9 +1,9 @@
 package services
 
 import (
+	"context"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"golang.org/x/net/context"
 )
 
 // WhoisService implements the whois service interface

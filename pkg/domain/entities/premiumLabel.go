@@ -58,13 +58,13 @@ func NewPremiumLabel(label string, registrationAmount, renewalAmount, transferAm
 func (pl *PremiumLabel) GetMoney(transactionType string) (*money.Money, error) {
 	switch transactionType {
 	case "registration":
-		return money.New(int64(pl.RegistrationAmount), pl.Currency), nil
+		return money.New(int64(pl.RegistrationAmount), pl.Currency), nil // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 	case "renewal":
-		return money.New(int64(pl.RenewalAmount), pl.Currency), nil
+		return money.New(int64(pl.RenewalAmount), pl.Currency), nil // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 	case "transfer":
-		return money.New(int64(pl.TransferAmount), pl.Currency), nil
+		return money.New(int64(pl.TransferAmount), pl.Currency), nil // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 	case "restore":
-		return money.New(int64(pl.RestoreAmount), pl.Currency), nil
+		return money.New(int64(pl.RestoreAmount), pl.Currency), nil // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 	default:
 		return nil, ErrInvalidTransactionTypeForQuote
 	}
