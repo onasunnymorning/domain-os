@@ -48,6 +48,19 @@ const ARTIFACT_FIELDS: Record<string, Record<string, string>> = {
     SnapshotKey: 'Snapshot (JSONL)',
     ManifestKey: 'Manifest',
   },
+  // A validation run always emits the summary; the rdeReport needs a decision
+  // and the notification needs a signature, so those two keys are often empty.
+  'escrow-validation': {
+    summaryKey: 'Findings Summary',
+    reportKey: 'rdeReport',
+    notificationKey: 'rdeNotification',
+  },
+  'escrow-sanitize': {
+    derivativeKey: 'Sanitized Derivative',
+    manifestKey: 'Manifest',
+    DerivativeKey: 'Sanitized Derivative',
+    ManifestKey: 'Manifest',
+  },
 };
 
 function isArtifactField(workflowType: string, field: string): string | null {
@@ -80,6 +93,18 @@ const FIELD_LABELS: Record<string, string> = {
   totalIana: 'Total IANA',
   totalExisting: 'Total Existing',
   totalProcessed: 'Total Processed',
+  // Escrow validation (EVE)
+  validationRunId: 'Validation Run',
+  depositId: 'Deposit',
+  outcome: 'Outcome',
+  verified: 'Cryptographically Verified',
+  notificationStatus: 'Notification',
+  codes: 'Reason Codes',
+  replay: 'Replay of an Earlier Run',
+  // Escrow derivative sanitization
+  sanitizationRunId: 'Sanitization Run',
+  sourceValidationRunId: 'Source Validation Run',
+  policyVersion: 'Policy Version',
   // Take Snapshot
   snapshotKey: 'Snapshot File',
   SnapshotKey: 'Snapshot File',

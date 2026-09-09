@@ -109,10 +109,16 @@ func (s *EscrowValidationWorkflowTestSuite) Test_ErrorOutcome_FinalisesWithoutNo
 	var acts *activities.EscrowValidationActivities
 	s.env.OnActivity(acts.BindDeposit, mock.Anything, mock.Anything).Return(evBound(), nil).Once()
 	s.env.OnActivity(acts.ValidateArtifacts, mock.Anything, mock.Anything).Return(evResult(rdevalidate.OutcomeError, rdevalidate.CodeDecryptKeyUnavailable), nil).Once()
+	// The emit activity still runs for an undecided run: it writes the summary,
+	// which is the artifact whose findings say why the run could not be
+	// decided. It writes no rdeReport and no notification, because there is
+	// nothing to claim.
+	s.env.OnActivity(acts.EmitReportAndNotification, mock.Anything, mock.Anything).
+		Return(activities.EmitReportOutput{SummaryKey: "escrow-validation/ryop1/example/dep/run/summary.json"}, nil).Once()
 	s.env.OnActivity(acts.FinalizeValidationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeRunInput) bool {
-		return in.Result.Outcome == rdevalidate.OutcomeError && in.NotificationStatus == "" && in.Failure == ""
+		return in.Result.Outcome == rdevalidate.OutcomeError && in.NotificationStatus == "" && in.Failure == "" &&
+			in.SummaryKey != "" && in.ReportKey == "" && in.NotificationKey == ""
 	})).Return(nil).Once()
-	// EmitReportAndNotification must never be called.
 
 	s.env.ExecuteWorkflow(EscrowValidationWorkflow, evParams)
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -176,10 +182,20 @@ func (s *EscrowValidationWorkflowTestSuite) Test_UnsignedProfile_EmitsNoNotifica
 	s.env.OnActivity(acts.ValidateArtifacts, mock.Anything, mock.MatchedBy(func(in activities.ValidateArtifactsInput) bool {
 		return in.Profile == entities.EscrowProfilePlaintextXML
 	})).Return(rdevalidate.Result{Profile: rdevalidate.ProfilePlaintextXML, Outcome: rdevalidate.OutcomePass, StageReached: rdevalidate.StageRDE}, nil).Once()
-	// EmitReportAndNotification is deliberately not mocked: an unsigned deposit
-	// establishes nothing to report to ICANN, so calling it would fail the test.
+	// The emit activity still runs — it writes the summary and the rdeReport
+	// for any decided run — but it returns no notification, because an
+	// unsigned deposit establishes nothing to claim to ICANN. The workflow
+	// must carry that emptiness through to finalisation, where the entity
+	// rejects an unsigned run that arrives with a notification.
+	s.env.OnActivity(acts.EmitReportAndNotification, mock.Anything, mock.MatchedBy(func(in activities.EmitReportInput) bool {
+		return in.Profile == entities.EscrowProfilePlaintextXML
+	})).Return(activities.EmitReportOutput{
+		SummaryKey: "escrow-validation/ryop1/example/dep/run/summary.json",
+		ReportKey:  "escrow-validation/ryop1/example/dep/run/report.xml",
+	}, nil).Once()
 	s.env.OnActivity(acts.FinalizeValidationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeRunInput) bool {
-		return in.NotificationStatus == "" && in.ReportKey == "" && in.NotificationKey == ""
+		return in.NotificationStatus == "" && in.NotificationKey == "" &&
+			in.SummaryKey != "" && in.ReportKey != ""
 	})).Return(nil).Once()
 
 	params := evParams
@@ -195,4 +211,6 @@ func (s *EscrowValidationWorkflowTestSuite) Test_UnsignedProfile_EmitsNoNotifica
 	s.False(result.Verified, "an unsigned deposit is never a verified pass")
 	s.Empty(result.NotificationStatus)
 	s.Empty(result.NotificationKey)
+	s.NotEmpty(result.SummaryKey, "every run that produced a result gets a summary")
+	s.NotEmpty(result.ReportKey, "a decided run gets an rdeReport whatever its profile")
 }

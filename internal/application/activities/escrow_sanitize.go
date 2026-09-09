@@ -562,7 +562,7 @@ func (a *EscrowSanitizeActivities) VerifyDerivative(ctx context.Context, in Veri
 		res.Counts.ObjectsByType = observed
 	}
 
-	res.Outcome = rdesanitize.Decide(res.Findings)
+	res.Decide()
 	res.CompletedAt = now()
 	out := VerifyDerivativeOutput{Result: res}
 	if res.Outcome != rdesanitize.OutcomePass {
@@ -728,7 +728,7 @@ func nonRetryableSanitize(msg string, cause error) error {
 func sanitizeServiceError(code rdesanitize.Code, msg string, at time.Time) rdesanitize.Result {
 	res := rdesanitize.Result{StageReached: rdesanitize.StageSource, StartedAt: at, CompletedAt: at}
 	res.Add(rdesanitize.Finding{Code: code, Severity: rdesanitize.SeverityError, Stage: rdesanitize.StageSource, Message: msg, At: at})
-	res.Outcome = rdesanitize.Decide(res.Findings)
+	res.Decide()
 	return res
 }
 
@@ -748,7 +748,7 @@ func sanitizeSourceFailure(open rdevalidate.Result, at time.Time) rdesanitize.Re
 	res.Add(rdesanitize.Finding{Code: code, Severity: rdesanitize.SeverityError, Stage: rdesanitize.StageSource, Message: msg, At: at})
 	res.Add(rdesanitize.Finding{Code: rdesanitize.CodeInternal, Severity: rdesanitize.SeverityError, Stage: rdesanitize.StageSource,
 		Locator: strings.Join(codeStringsValidate(open.Codes()), ","), Message: "source could not be reopened", At: at})
-	res.Outcome = rdesanitize.Decide(res.Findings)
+	res.Decide()
 	return res
 }
 
