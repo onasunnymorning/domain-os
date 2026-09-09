@@ -28,12 +28,26 @@ type XMLValidator struct {
 
 // objectSpec is the per-object decode/validate table.
 type objectSpec struct {
-	uri  string
-	name string
-	// decode must return an ERROR-severity problem description for missing
-	// RDE-required fields, and a WARNING description if the domain-os entity
-	// constructor rejected the object.
-	decode func(dec *xml.Decoder, se *xml.StartElement) (required error, entity error, decodeErr error)
+	uri    string
+	name   string
+	decode func(dec *xml.Decoder, se *xml.StartElement) objectResult
+}
+
+// objectResult is what a per-object decoder reports back about one object.
+// At most one of the three problems is set.
+type objectResult struct {
+	// Missing lists the RDE-required elements the object does not carry.
+	// ERROR severity: the deposit does not conform to RFC 9022.
+	Missing error
+	// Rejected is the error the domain-os entity constructor returned for an
+	// object that carries everything RDE requires. WARNING severity: the
+	// deposit is well-formed, this registry would not import it as it stands.
+	Rejected error
+	// Rule names the rule behind Rejected in constant, value-free terms. See
+	// entityRule — the error itself can carry payload text and is never used.
+	Rule string
+	// DecodeErr is a failure to decode the element at all.
+	DecodeErr error
 }
 
 var objectSpecs = []objectSpec{
@@ -45,6 +59,20 @@ var objectSpecs = []objectSpec{
 	{uri: entities.NNDN_URI, name: "NNDN", decode: decodeNNDN},
 }
 
+// CountsObjectsIn reports whether this validator walks and counts the objects
+// of a namespace. A deposit's header may declare namespaces that carry no
+// countable objects — rdeEppParams and rdePolicy each declare a count of one
+// for a single non-repeating element — and a report must not present those as
+// a count mismatch.
+func CountsObjectsIn(namespaceURI string) bool {
+	for _, s := range objectSpecs {
+		if s.uri == namespaceURI {
+			return true
+		}
+	}
+	return false
+}
+
 // Validate streams r to EOF. It always returns a summary (possibly partial)
 // and the findings it produced; the caller decides the outcome.
 func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummary, []Finding) {
@@ -54,8 +82,14 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 	}
 	summary := DepositSummary{Observed: map[string]int{}}
 	var findings []Finding
+	addRuled := func(code Code, sev Severity, stage Stage, objType, locator, rule, msg string) {
+		findings = append(findings, Finding{
+			Code: code, Severity: sev, Stage: stage, Rule: rule,
+			ObjectType: objType, Locator: locator, Message: msg, At: now(),
+		})
+	}
 	add := func(code Code, sev Severity, stage Stage, objType, locator, msg string) {
-		findings = append(findings, Finding{Code: code, Severity: sev, Stage: stage, ObjectType: objType, Locator: locator, Message: msg, At: now()})
+		addRuled(code, sev, stage, objType, locator, "", msg)
 	}
 	specByLocal := map[string]objectSpec{}
 	for _, s := range objectSpecs {
@@ -143,21 +177,26 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 			if objects%heartbeatEvery == 0 && v.Heartbeat != nil {
 				v.Heartbeat(StageRDE, "objects="+itoa(objects))
 			}
-			required, entity, decodeErr := spec.decode(dec, &se)
+			out := spec.decode(dec, &se)
 			locator := spec.name + "#" + itoa(summary.Observed[spec.uri]+1) + " " + offsetLocator(dec)
 			var syn *xml.SyntaxError
 			switch {
-			case decodeErr != nil && errors.As(decodeErr, &syn):
+			case out.DecodeErr != nil && errors.As(out.DecodeErr, &syn):
 				// The document itself is broken inside this object: report the
 				// well-formedness failure once and stop, like the token loop does.
 				add(CodeXMLMalformed, SeverityError, StageXML, "", "line="+itoa(syn.Line), "deposit XML is not well-formed")
 				return summary, findings
-			case decodeErr != nil:
+			case out.DecodeErr != nil:
 				add(CodeRDEObjectDecodeError, SeverityError, StageRDE, spec.name, locator, "object could not be decoded")
-			case required != nil:
-				add(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, locator, "object is missing an RDE-required element: "+required.Error())
-			case entity != nil:
-				add(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, locator, "object is well-formed but was rejected by the registry entity rules")
+			case out.Missing != nil:
+				// The element names come from requireAll's own constant list,
+				// never from the deposit, so they are safe as a rule.
+				addRuled(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, locator,
+					"missing RDE-required element(s): "+out.Missing.Error(),
+					"object is missing an RDE-required element: "+out.Missing.Error())
+			case out.Rejected != nil:
+				addRuled(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, locator, out.Rule,
+					"object is well-formed but this registry would not import it as it stands: "+out.Rule)
 			}
 			summary.Observed[spec.uri]++
 		}
@@ -258,26 +297,26 @@ func requireAll(pairs ...string) error {
 	return errors.New(strings.Join(missing, ","))
 }
 
-func decodeDomain(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var d entities.RDEDomain
 	if err := dec.DecodeElement(&d, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
 	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID, "crRr", d.CrRr, "crDate", d.CrDate)
 	if req == nil && len(d.Status) == 0 {
 		req = errors.New("status")
 	}
 	if req != nil {
-		return req, nil, nil
+		return objectResult{Missing: req}
 	}
 	_, err := d.ToEntity()
-	return nil, err, nil
+	return objectResult{Rejected: err, Rule: entityRule(err, "exDate", d.ExDate, "crDate", d.CrDate, "upDate", d.UpDate)}
 }
 
-func decodeContact(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var c entities.RDEContact
 	if err := dec.DecodeElement(&c, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
 	req := requireAll("id", c.ID, "roid", c.RoID, "clID", c.ClID, "crRr", c.CrRr, "crDate", c.CrDate)
 	if req == nil && len(c.Status) == 0 {
@@ -287,56 +326,56 @@ func decodeContact(dec *xml.Decoder, se *xml.StartElement) (error, error, error)
 		req = errors.New("postalInfo")
 	}
 	if req != nil {
-		return req, nil, nil
+		return objectResult{Missing: req}
 	}
 	_, err := c.ToEntity()
-	return nil, err, nil
+	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", c.CrDate, "upDate", c.UpDate)}
 }
 
-func decodeHost(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var h entities.RDEHost
 	if err := dec.DecodeElement(&h, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
 	req := requireAll("name", h.Name, "roid", h.RoID, "clID", h.ClID, "crRr", h.CrRr, "crDate", h.CrDate)
 	if req == nil && len(h.Status) == 0 {
 		req = errors.New("status")
 	}
 	if req != nil {
-		return req, nil, nil
+		return objectResult{Missing: req}
 	}
 	_, err := h.ToEntity()
-	return nil, err, nil
+	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", h.CrDate, "upDate", h.UpDate)}
 }
 
-func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var r entities.RDERegistrar
 	if err := dec.DecodeElement(&r, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
 	req := requireAll("id", r.ID, "name", r.Name, "crDate", r.CrDate)
 	if req == nil && len(r.PostalInfo) == 0 {
 		req = errors.New("postalInfo")
 	}
 	if req != nil {
-		return req, nil, nil
+		return objectResult{Missing: req}
 	}
 	_, err := r.ToEntity()
-	return nil, err, nil
+	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", r.CrDate, "upDate", r.UpDate)}
 }
 
-func decodeIDN(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeIDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var i entities.RDEIdnTableReference
 	if err := dec.DecodeElement(&i, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
-	return requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy), nil, nil
+	return objectResult{Missing: requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy)}
 }
 
-func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var n entities.RDENNDN
 	if err := dec.DecodeElement(&n, se); err != nil {
-		return nil, nil, err
+		return objectResult{DecodeErr: err}
 	}
-	return requireAll("aName", n.AName, "nameState", n.NameState, "crDate", n.CrDate), nil, nil
+	return objectResult{Missing: requireAll("aName", n.AName, "nameState", n.NameState, "crDate", n.CrDate)}
 }

@@ -7,14 +7,32 @@ import { severityClass } from './EscrowOutcomeBadge';
 import type { EscrowFinding, EscrowFindingTally } from '@/lib/api/escrow-runs';
 
 /**
- * The findings of one run: the exact per-code tally first, the individual
- * findings second.
+ * The findings of one run: the exact tally first, the individual findings
+ * second.
  *
  * The ordering is the point. A deposit can produce tens of thousands of
- * findings while the run record keeps only the first thousand, so the list is
- * a sample and the tally is the fact. Leading with the list would invite
- * reading "1,000 findings" as the total.
+ * findings while the run record keeps only worked examples, so the list is a
+ * sample and the tally is the fact. Leading with the list would invite reading
+ * its length as the total.
+ *
+ * Both are ordered by severity before count. A single ERROR among sixty
+ * thousand warnings is what decided the run, and sorting by count alone puts
+ * it at the bottom of the table.
  */
+/** Loudest first. An unrecognised severity sorts last, never ahead of ERROR. */
+function severityRank(severity: string): number {
+  switch (severity) {
+    case 'ERROR':
+      return 0;
+    case 'WARNING':
+      return 1;
+    case 'INFO':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 export function EscrowFindingsPanel({
   tally,
   findings,
@@ -34,6 +52,12 @@ export function EscrowFindingsPanel({
   // can exceed the tally by one on a truncated run. Never report a negative.
   const suppressed = Math.max(0, total - findings.length);
 
+  // The retained findings are in document order, which on a deposit that trips
+  // one warning per object means the ERROR is at the end. Lead with severity.
+  const orderedFindings = [...findings].sort(
+    (a, b) => severityRank(a.severity) - severityRank(b.severity)
+  );
+
   if (total === 0) {
     return (
       <div
@@ -47,7 +71,14 @@ export function EscrowFindingsPanel({
     );
   }
 
-  const sorted = [...tally].sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+  const sorted = [...tally].sort(
+    (a, b) =>
+      severityRank(a.severity) - severityRank(b.severity) ||
+      b.count - a.count ||
+      a.code.localeCompare(b.code) ||
+      (a.rule ?? '').localeCompare(b.rule ?? '') ||
+      (a.objectType ?? '').localeCompare(b.objectType ?? '')
+  );
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -59,8 +90,8 @@ export function EscrowFindingsPanel({
               {total.toLocaleString()} findings, {findings.length.toLocaleString()} retained
             </p>
             <p className="text-muted-foreground">
-              The run record stops at 1,000 findings. The counts below are exact and include
-              the {suppressed.toLocaleString()} that were not kept.
+              The run record keeps a limited number of examples of each finding. The counts
+              below are exact and include the {suppressed.toLocaleString()} that were not kept.
             </p>
           </div>
         </div>
@@ -72,6 +103,8 @@ export function EscrowFindingsPanel({
             <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Reason code</th>
+                <th className="px-3 py-2 text-left font-medium">Object</th>
+                <th className="px-3 py-2 text-left font-medium">What failed</th>
                 <th className="px-3 py-2 text-left font-medium">Severity</th>
                 <th className="px-3 py-2 text-left font-medium">Stage</th>
                 <th className="px-3 py-2 text-right font-medium">Count</th>
@@ -79,8 +112,17 @@ export function EscrowFindingsPanel({
             </thead>
             <tbody className="divide-y divide-border">
               {sorted.map((row) => (
-                <tr key={`${row.code}-${row.stage}-${row.severity}`} className="hover:bg-muted/30">
+                <tr
+                  key={`${row.code}-${row.stage}-${row.severity}-${row.objectType ?? ''}-${row.rule ?? ''}`}
+                  className="hover:bg-muted/30"
+                >
                   <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {row.objectType || <span className="text-muted-foreground/60">—</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.rule || <span className="text-muted-foreground/60">—</span>}
+                  </td>
                   <td className={cn('px-3 py-2 font-medium', severityClass(row.severity))}>
                     {row.severity}
                   </td>
@@ -108,7 +150,7 @@ export function EscrowFindingsPanel({
           </button>
           {expanded && (
             <ul className="max-h-96 divide-y divide-border overflow-y-auto border-t border-border">
-              {findings.map((f, i) => (
+              {orderedFindings.map((f, i) => (
                 <li key={i} className="px-3 py-2 text-sm">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="font-mono text-xs">{f.code}</span>

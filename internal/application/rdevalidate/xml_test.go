@@ -124,6 +124,33 @@ func TestXMLValidator(t *testing.T) {
 		assert.Equal(t, OutcomePass, Decide(fs))
 	})
 
+	// A rejection that does not say which rule rejected the object is a
+	// rejection an operator cannot act on. This is the shape a deposit written
+	// by another registry system takes: every object carries a roid this
+	// registry will not accept, so every object is refused for one reason.
+	t.Run("a rejection names the rule that refused the object", func(t *testing.T) {
+		raw := bytes.ReplaceAll(
+			rdetest.BuildXML(rdetest.DepositOpts{Domains: 2, Contacts: 1, Hosts: 1}),
+			[]byte("_DOM-APEX"), []byte("-APEX"))
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+		require.NotEmpty(t, fs)
+
+		var rejected []Finding
+		for _, f := range fs {
+			if f.Code == CodeRDEObjectEntityRejected {
+				rejected = append(rejected, f)
+			}
+		}
+		require.Len(t, rejected, 2, "both domains are refused")
+		for _, f := range rejected {
+			assert.Equal(t, "roid: must have the form <id>_<OBJECT>-<repository>, e.g. 1_DOM-APEX", f.Rule)
+			assert.Contains(t, f.Message, f.Rule, "the message carries the rule, so a reader of the findings list alone still learns it")
+			assert.NotContains(t, f.Message, "example-", "the offending value never appears")
+			assert.NotContains(t, f.Rule, "example-")
+		}
+	})
+
 	t.Run("cancelled context yields a timeout finding", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
