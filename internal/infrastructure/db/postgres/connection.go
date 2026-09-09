@@ -39,6 +39,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&EscrowDepositRecord{},
 		&EscrowValidationRunRecord{},
 		&EscrowTrustedKeyRecord{},
+		&EscrowSanitizationRunRecord{},
 	)
 	if err != nil {
 		return err
@@ -77,6 +78,12 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_deposits_tenant_tld_profile_digests ON escrow_deposits (tenant_id, tld, profile, artifact_sha256, signature_sha256)",
 		// escrow_validation_runs: runs for one deposit, newest first (ListByDeposit)
 		"CREATE INDEX IF NOT EXISTS idx_escrow_validation_runs_deposit_started ON escrow_validation_runs (deposit_id, started_at DESC)",
+		// escrow_sanitization_runs: one derivative per source run per policy version — a
+		// different policy version is a separate, separately traceable derivative and
+		// never an overwrite (issue #415)
+		"CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_sanitization_source_policy ON escrow_sanitization_runs (tenant_id, source_validation_run_id, policy_version)",
+		// escrow_sanitization_runs: tenant listing, newest first
+		"CREATE INDEX IF NOT EXISTS idx_escrow_sanitization_runs_tenant_tld_started ON escrow_sanitization_runs (tenant_id, tld, started_at DESC)",
 		// escrow_trusted_keys: ListActive predicate (tenant, tld, window)
 		"CREATE INDEX IF NOT EXISTS idx_escrow_trusted_keys_tenant_tld_valid ON escrow_trusted_keys (tenant_id, tld, valid_from)",
 	}
