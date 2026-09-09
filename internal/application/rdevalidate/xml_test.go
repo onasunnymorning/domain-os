@@ -198,7 +198,11 @@ func TestXMLValidator(t *testing.T) {
 		assert.NotEqual(t, OutcomeFail, Decide(fs), "an orphan never fails a deposit")
 	})
 
-	t.Run("a reference the deposit does not carry is reported", func(t *testing.T) {
+	// A broken reference is not the mirror of an orphan. An orphan is data
+	// nobody asked for; a domain pointing at a contact that is not in the
+	// deposit means the deposit is not integral and that domain cannot be
+	// imported, so it fails the run.
+	t.Run("a reference the deposit does not carry fails the deposit", func(t *testing.T) {
 		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 1, Hosts: 1}
 		raw := bytes.Replace(rdetest.BuildXML(opts),
 			[]byte("<rdeDomain:registrant>CONT1</rdeDomain:registrant>"),
@@ -213,10 +217,31 @@ func TestXMLValidator(t *testing.T) {
 			}
 		}
 		require.Len(t, dangling, 1)
+		assert.Equal(t, SeverityError, dangling[0].Severity)
 		assert.Equal(t, "contact", dangling[0].ObjectType)
 		assert.Equal(t, "domain#1", dangling[0].Locator, "located at the domain that made the reference")
 		assert.NotContains(t, dangling[0].Message, "CONT-ELSEWHERE", "the identifier never appears")
 		assert.NotContains(t, dangling[0].Rule, "CONT-ELSEWHERE")
+		assert.Equal(t, OutcomeFail, Decide(fs), "a deposit that is not integral is not a pass")
+	})
+
+	// The same domain, with the same missing contact, delegating to a
+	// nameserver under another TLD: that host is somebody else's object and
+	// its absence is not a defect, so only the contact fails the deposit.
+	t.Run("an orphan alone never fails the deposit", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 3, Hosts: 2}
+		raw := dropElements(rdetest.BuildXML(opts), "rdeDomain:ns")
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+
+		var orphans int
+		for _, f := range fs {
+			if f.Code == CodeRDEObjectNotReferenced {
+				orphans++
+			}
+		}
+		require.Positive(t, orphans)
+		assert.Equal(t, OutcomePass, Decide(fs))
 	})
 
 	// A nameserver under another TLD is somebody else's host object and RFC
