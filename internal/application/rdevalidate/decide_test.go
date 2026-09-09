@@ -41,10 +41,53 @@ func TestResult_AddCapsFindings(t *testing.T) {
 		r.Add(Finding{Code: CodeRDECountMismatch, Severity: SeverityError})
 	}
 	r.finish(r.StartedAt)
-	require.Len(t, r.Findings, MaxFindings+1)
-	require.Equal(t, CodeFindingsTruncated, r.Findings[MaxFindings].Code)
+	// One kind of finding gets MaxFindingsPerRule worked examples however many
+	// times it fires, plus the truncation notice.
+	require.Len(t, r.Findings, MaxFindingsPerRule+1)
+	require.Equal(t, CodeFindingsTruncated, r.Findings[MaxFindingsPerRule].Code)
+	require.Equal(t, MaxFindings+5-MaxFindingsPerRule, r.Suppressed)
+	require.Equal(t, MaxFindings+5, r.TotalFindings())
 	require.Equal(t, OutcomeFail, r.Outcome)
 	require.True(t, r.Has(CodeFindingsTruncated))
+}
+
+// TestResult_RetainsAnExampleOfEveryKind pins the property that makes the
+// findings list worth reading: a deposit that trips one warning on every one
+// of its objects must not crowd the other findings out of the record. Retaining
+// the first MaxFindings did exactly that.
+func TestResult_RetainsAnExampleOfEveryKind(t *testing.T) {
+	var r Result
+	r.StageReached = StageRDE
+	// Far more noise than the whole list can hold, under two rules of the
+	// same code — the shape a real deposit takes.
+	for i := 0; i < 30000; i++ {
+		r.Add(Finding{Code: CodeRDEObjectEntityRejected, Severity: SeverityWarning, Stage: StageRDE, Rule: "roid"})
+	}
+	for i := 0; i < 30000; i++ {
+		r.Add(Finding{Code: CodeRDEObjectEntityRejected, Severity: SeverityWarning, Stage: StageRDE, Rule: "email"})
+	}
+	// Then the quiet ERROR the run is actually decided on.
+	r.Add(Finding{Code: CodeRDECountMismatch, Severity: SeverityError, Stage: StageRDE, Rule: "domain"})
+	r.finish(r.StartedAt)
+
+	require.Equal(t, OutcomeFail, r.Outcome)
+	byRule := map[string]int{}
+	for _, f := range r.Findings {
+		byRule[string(f.Code)+"/"+f.Rule]++
+	}
+	require.Equal(t, MaxFindingsPerRule, byRule["RDE_OBJECT_ENTITY_REJECTED/roid"])
+	require.Equal(t, MaxFindingsPerRule, byRule["RDE_OBJECT_ENTITY_REJECTED/email"])
+	require.Equal(t, 1, byRule["RDE_COUNT_MISMATCH/domain"], "the deciding finding must be in the record, not only in the tally")
+
+	// The two rules are counted apart, so the report can say which one rejected
+	// what: a single RDE_OBJECT_ENTITY_REJECTED row of 60000 would not.
+	counts := map[string]int{}
+	for _, e := range r.Tally {
+		counts[string(e.Code)+"/"+e.Rule] = e.Count
+	}
+	require.Equal(t, 30000, counts["RDE_OBJECT_ENTITY_REJECTED/roid"])
+	require.Equal(t, 30000, counts["RDE_OBJECT_ENTITY_REJECTED/email"])
+	require.Equal(t, 1, counts["RDE_COUNT_MISMATCH/domain"])
 }
 
 // TestResult_DecidesFromTallyNotTruncatedFindings pins the shape of a real
@@ -61,9 +104,9 @@ func TestResult_DecidesFromTallyNotTruncatedFindings(t *testing.T) {
 	r.Add(Finding{Code: CodeRDECountMismatch, Severity: SeverityError, Stage: StageRDE})
 	r.finish(r.StartedAt)
 
-	require.Equal(t, OutcomeFail, r.Outcome, "the suppressed count mismatch must still decide the run")
-	require.Len(t, r.Findings, MaxFindings+1, "retained findings are still capped")
-	require.Equal(t, 51, r.Suppressed)
+	require.Equal(t, OutcomeFail, r.Outcome, "the count mismatch must decide the run")
+	require.Len(t, r.Findings, MaxFindingsPerRule+2, "examples of each kind, plus the truncation notice")
+	require.Equal(t, MaxFindings+50-MaxFindingsPerRule, r.Suppressed)
 	require.Equal(t, MaxFindings+51, r.TotalFindings())
 
 	// The tally carries the exact counts the truncated list cannot.

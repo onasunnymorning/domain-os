@@ -357,7 +357,7 @@ func TestRDEDomain_ToEntity(t *testing.T) {
 			rdeDomain: &RDEDomain{
 				Name:       "apex.domains",
 				RoID:       "12345_DOM-APEX",
-				UName:      "apex.domains",
+				UName:      "andere.domains",
 				ClID:       "GoMamma",
 				CrRr:       "GoMamma",
 				ExDate:     "2022-01-01T00:00:00Z",

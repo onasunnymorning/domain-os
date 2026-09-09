@@ -12,6 +12,12 @@ import (
 // places cannot bloat the run record or the workflow payload. Counts stay exact.
 const MaxFindings = 1000
 
+// MaxFindingsPerKind bounds how many worked examples of one kind of finding
+// the list keeps, for the same reason as rdevalidate.MaxFindingsPerRule:
+// spending the cap first-come fills the list with copies of whichever finding
+// the source trips most often and leaves no room for the rest.
+const MaxFindingsPerKind = 50
+
 // Outcome is the decision for one sanitisation run.
 type Outcome string
 
@@ -68,7 +74,8 @@ type Result struct {
 	Tally      []FindingTally `json:"tally,omitempty"`
 	Suppressed int            `json:"suppressed,omitempty"`
 
-	tally map[tallyKey]int
+	tally    map[tallyKey]int
+	retained map[tallyKey]int
 }
 
 // Add records a finding, capping the retained list and recording the overflow
@@ -76,18 +83,29 @@ type Result struct {
 func (r *Result) Add(f Finding) {
 	if r.tally == nil {
 		r.tally = make(map[tallyKey]int)
+		r.retained = make(map[tallyKey]int)
 	}
-	r.tally[tallyKey{f.Code, f.Severity, f.Stage}]++
+	k := tallyKey{f.Code, f.Severity, f.Stage}
+	r.tally[k]++
+
+	quota := MaxFindingsPerKind
 	if len(r.Findings) >= MaxFindings {
+		// The list is full. Only a kind with nothing to show still gets in,
+		// which bounds the overshoot by the number of distinct kinds.
+		quota = 1
+	}
+	if r.retained[k] >= quota {
 		if r.Suppressed == 0 {
 			r.Findings = append(r.Findings, Finding{
 				Code: CodeFindingsTruncated, Severity: SeverityInfo, Stage: f.Stage,
-				Message: "further findings suppressed after " + strconv.Itoa(MaxFindings), At: f.At,
+				Message: "findings list keeps at most " + strconv.Itoa(MaxFindingsPerKind) +
+					" examples of each finding and " + strconv.Itoa(MaxFindings) + " in total", At: f.At,
 			})
 		}
 		r.Suppressed++
 		return
 	}
+	r.retained[k]++
 	r.Findings = append(r.Findings, f)
 }
 

@@ -12,7 +12,11 @@ import (
 
 // SummarySchemaVersion is stamped on every summary. It is ours, not ICANN's,
 // so it moves whenever the shape below changes in a way a reader would notice.
-const SummarySchemaVersion = "escrow-validation-summary-1"
+//
+// -2 replaced SummaryCount.matches with a status that can say "not-checked",
+// added the rule to every ByCode row, and made the sample and the ordering
+// lead with severity rather than with whichever finding fired most often.
+const SummarySchemaVersion = "escrow-validation-summary-2"
 
 // MaxSummarySampleFindings bounds the worked examples carried in the summary.
 // The tally is the complete account; the sample only shows what the findings
@@ -84,12 +88,25 @@ type SummaryDeposit struct {
 	Counts []SummaryCount `json:"counts"`
 }
 
+// Statuses a SummaryCount can carry.
+const (
+	CountMatch      = "match"       // the header's count and the observed count agree
+	CountMismatch   = "mismatch"    // they disagree — the same fact RDE_COUNT_MISMATCH reports
+	CountUndeclared = "undeclared"  // objects were found in a namespace the header does not declare
+	CountNotChecked = "not-checked" // the validator does not count objects in this namespace
+)
+
 // SummaryCount is one object namespace's declared and observed totals.
+//
+// Status exists because a bare "matches: false" lies about the namespaces the
+// validator deliberately does not walk — rdeEppParams and rdePolicy carry no
+// countable objects, so a header that declares one of each against zero
+// observed is correct, not a mismatch.
 type SummaryCount struct {
 	URI      string `json:"uri"`
 	Declared *int   `json:"declared,omitempty"`
 	Observed int    `json:"observed"`
-	Matches  bool   `json:"matches"`
+	Status   string `json:"status"`
 }
 
 // SummaryDigests records what was hashed, never where it was stored.
@@ -119,8 +136,10 @@ type SummaryFindings struct {
 	BySeverity map[string]int   `json:"bySeverity"`
 	ByStage    map[string]int   `json:"byStage"`
 	ByCode     []SummaryCodeRow `json:"byCode"`
-	// Sample holds up to MaxSummarySampleFindings retained findings so a
-	// reader can see the shape of a locator without opening the run record.
+	// Sample holds up to MaxSummarySampleFindings worked examples, drawn a few
+	// at a time from each row of ByCode rather than off the front of the list.
+	// Taking the first N would fill the sample with whichever finding the
+	// deposit happens to trip most often and hide the one that decided the run.
 	Sample []rdevalidate.Finding `json:"sample,omitempty"`
 }
 
@@ -129,7 +148,16 @@ type SummaryCodeRow struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
 	Stage    string `json:"stage"`
-	Count    int    `json:"count"`
+	// Rule names the specific check behind the code. Two rows can share a code
+	// and differ only here: that is the point, since "56926 objects were
+	// rejected" is not something an operator can act on and "56926 objects
+	// were rejected because their roid is not in this registry's format" is.
+	Rule string `json:"rule,omitempty"`
+	// ObjectType splits a rule across the kinds of object it refused, which is
+	// usually the first thing an operator wants to know about a deposit that
+	// was rejected wholesale.
+	ObjectType string `json:"objectType,omitempty"`
+	Count      int    `json:"count"`
 	// ErrorClass marks a code that means the service could not decide, as
 	// opposed to one that means the deposit is wrong.
 	ErrorClass bool `json:"errorClass,omitempty"`
@@ -237,10 +265,17 @@ func summaryDeposit(res rdevalidate.Result, hints Hints) SummaryDeposit {
 	}
 	d.Counts = make([]SummaryCount, 0, len(uris))
 	for uri := range uris {
-		row := SummaryCount{URI: uri, Observed: dep.Observed[uri]}
+		row := SummaryCount{URI: uri, Observed: dep.Observed[uri], Status: CountUndeclared}
 		if n, ok := declared[uri]; ok {
 			row.Declared = &n
-			row.Matches = n == row.Observed
+			switch {
+			case !rdevalidate.CountsObjectsIn(uri):
+				row.Status = CountNotChecked
+			case n == row.Observed:
+				row.Status = CountMatch
+			default:
+				row.Status = CountMismatch
+			}
 		}
 		d.Counts = append(d.Counts, row)
 	}
@@ -265,26 +300,102 @@ func summaryFindings(res rdevalidate.Result) SummaryFindings {
 		f.ByStage[string(e.Stage)] += e.Count
 		f.ByCode = append(f.ByCode, SummaryCodeRow{
 			Code: string(e.Code), Severity: string(e.Severity), Stage: string(e.Stage),
-			Count: e.Count, ErrorClass: e.Code.IsErrorClass(),
+			Rule: e.Rule, ObjectType: e.ObjectType, Count: e.Count, ErrorClass: e.Code.IsErrorClass(),
 		})
 	}
-	// Loudest first: a reader wants the code that fired ten thousand times,
-	// not the one that fired once. Ties break on code for stable output.
+	// Severity first, then loudest. Count alone would bury the single ERROR
+	// that decided the run under tens of thousands of warnings, which is the
+	// opposite of what a reader opens this document for. Ties break on code
+	// then rule, so the order is stable across runs of the same deposit.
 	sort.SliceStable(f.ByCode, func(i, j int) bool {
-		if f.ByCode[i].Count != f.ByCode[j].Count {
-			return f.ByCode[i].Count > f.ByCode[j].Count
+		a, b := f.ByCode[i], f.ByCode[j]
+		if ar, br := severityRank(a.Severity), severityRank(b.Severity); ar != br {
+			return ar < br
 		}
-		return f.ByCode[i].Code < f.ByCode[j].Code
+		if a.Count != b.Count {
+			return a.Count > b.Count
+		}
+		if a.Code != b.Code {
+			return a.Code < b.Code
+		}
+		if a.Rule != b.Rule {
+			return a.Rule < b.Rule
+		}
+		return a.ObjectType < b.ObjectType
 	})
 
-	n := len(res.Findings)
-	if n > MaxSummarySampleFindings {
-		n = MaxSummarySampleFindings
-	}
-	if n > 0 {
-		f.Sample = append(f.Sample, res.Findings[:n]...)
-	}
+	f.Sample = sampleFindings(res.Findings, f.ByCode, MaxSummarySampleFindings)
 	return f
+}
+
+// severityRank orders severities loudest first. An unknown severity sorts last
+// rather than silently ahead of ERROR.
+func severityRank(s string) int {
+	switch s {
+	case string(rdevalidate.SeverityError):
+		return 0
+	case string(rdevalidate.SeverityWarning):
+		return 1
+	case string(rdevalidate.SeverityInfo):
+		return 2
+	default:
+		return 3
+	}
+}
+
+// sampleFindings draws worked examples round-robin across the rows of order,
+// so every distinct code and rule is represented before any of them gets a
+// second example, and the rows the run was decided on come first.
+//
+// The alternative — the first max findings — is what a reader least wants: on
+// a deposit where every object trips the same warning it returns fifty copies
+// of that warning and nothing else, however many other things went wrong.
+func sampleFindings(findings []rdevalidate.Finding, order []SummaryCodeRow, max int) []rdevalidate.Finding {
+	if len(findings) == 0 || max <= 0 {
+		return nil
+	}
+	type key struct{ code, severity, stage, objectType, rule string }
+	buckets := map[key][]rdevalidate.Finding{}
+	for _, f := range findings {
+		k := key{string(f.Code), string(f.Severity), string(f.Stage), f.ObjectType, f.Rule}
+		buckets[k] = append(buckets[k], f)
+	}
+
+	// Follow ByCode's order, then anything the tally did not name — a finding
+	// appended after the tally was materialised, such as the truncation notice.
+	keys := make([]key, 0, len(buckets))
+	seen := map[key]bool{}
+	for _, row := range order {
+		k := key{row.Code, row.Severity, row.Stage, row.ObjectType, row.Rule}
+		if buckets[k] != nil && !seen[k] {
+			keys, seen[k] = append(keys, k), true
+		}
+	}
+	for _, f := range findings {
+		k := key{string(f.Code), string(f.Severity), string(f.Stage), f.ObjectType, f.Rule}
+		if !seen[k] {
+			keys, seen[k] = append(keys, k), true
+		}
+	}
+
+	out := make([]rdevalidate.Finding, 0, max)
+	for round := 0; len(out) < max; round++ {
+		progressed := false
+		for _, k := range keys {
+			if round >= len(buckets[k]) {
+				continue
+			}
+			out = append(out, buckets[k][round])
+			progressed = true
+			if len(out) == max {
+				return out
+			}
+		}
+		if !progressed {
+			break
+		}
+	}
+	return out
 }
 
 // Marshal renders the summary as indented JSON. It is read by people as often

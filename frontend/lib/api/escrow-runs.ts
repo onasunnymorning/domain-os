@@ -20,19 +20,27 @@ export interface EscrowFinding {
   code: string;
   severity: string;
   stage: string;
+  /** The specific check behind the code, where the code alone is too coarse. */
+  rule?: string;
   message: string;
   locator?: string;
 }
 
 /**
- * One kind of finding with its exact count. `findings` on a run stops at 1,000
- * entries; this does not, so it is the only place a run says how many times a
- * code actually fired.
+ * One kind of finding with its exact count. `findings` on a run keeps worked
+ * examples only; this does not, so it is the only place a run says how many
+ * times a check actually fired.
+ *
+ * Rows are keyed by rule and object type as well as by code: "56,926 objects
+ * were rejected" is not something an operator can act on, and "43,313 hosts
+ * were rejected because their roid is not in this registry's format" is.
  */
 export interface EscrowFindingTally {
   code: string;
   severity: string;
   stage: string;
+  objectType?: string;
+  rule?: string;
   count: number;
 }
 

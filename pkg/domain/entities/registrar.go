@@ -23,6 +23,7 @@ const (
 var (
 	ErrInvalidRegistrar                                 = errors.New("invalid registrar")
 	ErrRegistrarNotFound                                = errors.New("registrar not found")
+	ErrRegistrarMissingPostalInfo                       = errors.New("a registrar must have at least one postalInfo")
 	ErrRegistrarMissingEmail                            = errors.New("missing email: a valid email is required")
 	ErrRegistrarMissingName                             = errors.New("missing name: a valid name and unique name is required")
 	ErrInvalidRegistrarStatus                           = errors.New("invalid registrar status: status must be one of 'ok', 'readonly', 'terminated'")
@@ -193,8 +194,11 @@ func (r *Registrar) Validate() error {
 		}
 	}
 
+	// Distinct from an invalid one: RFC 9022 §7.1 makes postalInfo optional, so
+	// a deposit that omits it is conformant and only this registry objects.
+	// Saying which of the two it is keeps that visible in a validation report.
 	if validPostalInfoCount == 0 {
-		return ErrInvalidRegistrarPostalInfo
+		return ErrRegistrarMissingPostalInfo
 	}
 
 	return nil

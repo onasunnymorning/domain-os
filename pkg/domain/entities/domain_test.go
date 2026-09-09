@@ -293,12 +293,54 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
-				UName:    "de.domaintesttld",
+				UName:    "andere.domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrUNameFieldReservedForIDNDomains,
+		},
+		{
+			// uName is the domain name in Unicode (RFC 9022 §4.1), and for a
+			// name that is already ASCII the two are the same string. Escrow
+			// deposits do write it that way; rejecting it failed every domain
+			// in a real .radio deposit.
+			name: "UName repeating an ASCII name is accepted",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "de.domaintesttld",
+				UName:    "de.domaintesttld",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: nil,
+		},
+		{
+			// A roid from another registry follows no structure RFC 5730 asks
+			// for, and nothing here may require this registry's own shape.
+			name: "a roid from another registry is accepted",
+			domain: &Domain{
+				RoID:     "Dztys40879-RADIO",
+				Name:     "path.domaintesttld",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: nil,
+		},
+		{
+			// A roid this registry did mint is still held to it, so a contact
+			// roid can never end up on a domain in our own data.
+			name: "a local roid for the wrong object is still rejected",
+			domain: &Domain{
+				RoID:     "12345_CONT-APEX",
+				Name:     "path.domaintesttld",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: ErrInvalidDomainRoID,
 		},
 		{
 			name: "valid use of UName and OriginalName",
