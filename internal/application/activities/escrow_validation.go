@@ -65,9 +65,12 @@ type EscrowValidationActivities struct {
 }
 
 // NewEscrowValidationActivities builds the activities from the environment,
-// following the DB idiom of NewSerialDriftActivities. It fails when the
-// keyring is not configured so the worker can decline to register the
-// activities instead of running a decryptor with no key.
+// following the DB idiom of NewSerialDriftActivities.
+//
+// It fails on anything every profile needs — the database, the two buckets,
+// the limits — but not on an absent decryption keyring, which only signed
+// deposits use. A worker without one still validates plaintext deposits, and
+// refuses signed ones with a recorded DECRYPT_KEY_UNAVAILABLE.
 func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
 	var db *gorm.DB
 	var err error
@@ -94,7 +97,11 @@ func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("escrow validation activities: reports bucket: %w", err)
 	}
-	keyProvider, err := secrets.NewEnvEscrowKeyProviderFromEnv()
+	// An absent keyring is not fatal: unsigned deposits are never decrypted,
+	// and a signed one still fails through the pipeline as
+	// DECRYPT_KEY_UNAVAILABLE rather than by leaving the worker unable to run
+	// any escrow validation at all.
+	keyProvider, err := secrets.NewEnvEscrowKeyProviderOptionalFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("escrow validation activities: %w", err)
 	}
