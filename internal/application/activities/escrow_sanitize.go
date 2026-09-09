@@ -98,7 +98,10 @@ func NewEscrowSanitizeActivities() (*EscrowSanitizeActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewEscrowSanitizeActivities: escrow storage: %w", err)
 	}
-	decryptKeys, err := secrets.NewEnvEscrowKeyProviderFromEnv()
+	// Optional for the same reason as in escrow validation: a plaintext source
+	// deposit is re-read without decryption. The token key below is not
+	// optional — without it there is no pseudonymisation to speak of.
+	decryptKeys, err := secrets.NewEnvEscrowKeyProviderOptionalFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("NewEscrowSanitizeActivities: escrow decryption keys: %w", err)
 	}
