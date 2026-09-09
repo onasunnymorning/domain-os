@@ -40,6 +40,12 @@ const (
 	CodeRDEObjectInvalid         Code = "RDE_OBJECT_INVALID"         // an RDE-required element is missing or unparsable
 	CodeRDEObjectEntityRejected  Code = "RDE_OBJECT_ENTITY_REJECTED" // WARNING: the domain-os entity constructor rejected an otherwise well-formed object
 	CodeRDERequiredObjectMissing Code = "RDE_REQUIRED_OBJECT_MISSING"
+	// Referential integrity across a FULL deposit. Both are WARNING: RFC 9022
+	// does not require a contact or host to be referenced, and an unresolvable
+	// reference makes the deposit less useful without making it malformed.
+	CodeRDEObjectNotReferenced   Code = "RDE_OBJECT_NOT_REFERENCED"    // a contact or host no domain in the deposit uses
+	CodeRDEReferenceNotInDeposit Code = "RDE_REFERENCE_NOT_IN_DEPOSIT" // a domain points at a contact or in-bailiwick host the deposit omits
+	CodeRDECrossReferenceSkipped Code = "RDE_CROSS_REFERENCE_SKIPPED"  // INFO: the deposit is too large to cross-reference
 
 	// --- cross-cutting ---
 	CodeValidationTimeout Code = "VALIDATION_TIMEOUT" // -> ERROR

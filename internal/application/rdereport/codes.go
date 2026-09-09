@@ -41,6 +41,11 @@ var resultCodes = map[rdevalidate.Code]resultCode{
 	rdevalidate.CodeRDEObjectDecodeError:     {4503, "An RDE object could not be decoded."},
 	rdevalidate.CodeRDEObjectInvalid:         {4504, "An RDE object is missing a required element."},
 	rdevalidate.CodeRDERequiredObjectMissing: {4505, "Objects declared in the header are absent from the deposit."},
+	// Reserved. Both are WARNING today and so never reach a DVFN, but the table
+	// is append-only and renumbering later is not allowed, so they take their
+	// slot in the RDE range now.
+	rdevalidate.CodeRDEObjectNotReferenced:   {4506, "A contact or host in the deposit is referenced by no domain."},
+	rdevalidate.CodeRDEReferenceNotInDeposit: {4507, "A domain references an object the deposit does not carry."},
 }
 
 // unknownResultCode is used for any ERROR-severity finding not in the table,

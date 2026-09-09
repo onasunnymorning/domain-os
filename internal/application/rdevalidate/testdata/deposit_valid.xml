@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rde:deposit xmlns:rde="urn:ietf:params:xml:ns:rde-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:rdeDomain="urn:ietf:params:xml:ns:rdeDomain-1.0" xmlns:rdeHost="urn:ietf:params:xml:ns:rdeHost-1.0" xmlns:rdeContact="urn:ietf:params:xml:ns:rdeContact-1.0" xmlns:rdeRegistrar="urn:ietf:params:xml:ns:rdeRegistrar-1.0" xmlns:rdeIDN="urn:ietf:params:xml:ns:rdeIDN-1.0" xmlns:rdeNNDN="urn:ietf:params:xml:ns:rdeNNDN-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:rdeEppParams="urn:ietf:params:xml:ns:rdeEppParams-1.0" xmlns:vnd="urn:example:vendor-1.0" type="FULL" id="20260908001">
+<rde:deposit xmlns:rde="urn:ietf:params:xml:ns:rde-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:rdeDomain="urn:ietf:params:xml:ns:rdeDomain-1.0" xmlns:rdeHost="urn:ietf:params:xml:ns:rdeHost-1.0" xmlns:rdeContact="urn:ietf:params:xml:ns:rdeContact-1.0" xmlns:rdeRegistrar="urn:ietf:params:xml:ns:rdeRegistrar-1.0" xmlns:rdeIDN="urn:ietf:params:xml:ns:rdeIDN-1.0" xmlns:rdeNNDN="urn:ietf:params:xml:ns:rdeNNDN-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:epp="urn:ietf:params:xml:ns:epp-1.0" xmlns:rdeEppParams="urn:ietf:params:xml:ns:rdeEppParams-1.0" xmlns:vnd="urn:example:vendor-1.0" type="FULL" id="20260908001">
   <rde:watermark>2026-09-08T00:00:00Z</rde:watermark>
   <rde:rdeMenu>
     <rde:version>1.0</rde:version>
@@ -25,7 +25,7 @@
       <rdeRegistrar:id>registrar1</rdeRegistrar:id>
       <rdeRegistrar:name>Registrar 1</rdeRegistrar:name>
       <rdeRegistrar:gurid>9001</rdeRegistrar:gurid>
-      <rdeRegistrar:status s="ok"/>
+      <rdeRegistrar:status>ok</rdeRegistrar:status>
       <rdeRegistrar:postalInfo type="int">
         <rdeRegistrar:addr>
           <rdeRegistrar:street>1 Test Street</rdeRegistrar:street>
@@ -47,14 +47,14 @@
       <rdeContact:roid>1_CONT-APEX</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <rdeContact:name>Contact %!d(string=Contact 1)</rdeContact:name>
-        <rdeContact:org>Org 1</rdeContact:org>
-        <rdeContact:addr>
-          <rdeContact:street>1 Test Street</rdeContact:street>
-          <rdeContact:city>Testville</rdeContact:city>
-          <rdeContact:pc>12345</rdeContact:pc>
-          <rdeContact:cc>US</rdeContact:cc>
-        </rdeContact:addr>
+        <contact:name>Contact 1</contact:name>
+        <contact:org>Org 1</contact:org>
+        <contact:addr>
+          <contact:street>1 Test Street</contact:street>
+          <contact:city>Testville</contact:city>
+          <contact:pc>12345</contact:pc>
+          <contact:cc>US</contact:cc>
+        </contact:addr>
       </rdeContact:postalInfo>
       <rdeContact:voice>+1.5555550001</rdeContact:voice>
       <rdeContact:email>contact1@example.com</rdeContact:email>
@@ -67,14 +67,14 @@
       <rdeContact:roid>2_CONT-APEX</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <rdeContact:name>Contact %!d(string=Contact 2)</rdeContact:name>
-        <rdeContact:org>Org 2</rdeContact:org>
-        <rdeContact:addr>
-          <rdeContact:street>2 Test Street</rdeContact:street>
-          <rdeContact:city>Testville</rdeContact:city>
-          <rdeContact:pc>12345</rdeContact:pc>
-          <rdeContact:cc>US</rdeContact:cc>
-        </rdeContact:addr>
+        <contact:name>Contact 2</contact:name>
+        <contact:org>Org 2</contact:org>
+        <contact:addr>
+          <contact:street>2 Test Street</contact:street>
+          <contact:city>Testville</contact:city>
+          <contact:pc>12345</contact:pc>
+          <contact:cc>US</contact:cc>
+        </contact:addr>
       </rdeContact:postalInfo>
       <rdeContact:voice>+1.5555550002</rdeContact:voice>
       <rdeContact:email>contact2@example.com</rdeContact:email>
@@ -108,8 +108,8 @@
       <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
       <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
       <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.example</domain:hostObj>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
+        <domain:hostObj>ns1.example-1.example</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
@@ -124,8 +124,8 @@
       <rdeDomain:contact type="admin">CONT2</rdeDomain:contact>
       <rdeDomain:contact type="tech">CONT2</rdeDomain:contact>
       <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.example</domain:hostObj>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
+        <domain:hostObj>ns2.example-1.example</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
@@ -140,7 +140,6 @@
       <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
       <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
       <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.example</domain:hostObj>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
