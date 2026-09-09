@@ -141,6 +141,37 @@ type DepositOpts struct {
 	// BreakDomain drops the roid from every domain (RDE-required element missing).
 	BreakDomain bool
 
+	// The options below exist for the sanitisation work (issue #415): they
+	// produce the material a derivative has to remove, replace, retain or
+	// refuse. None of them are needed to validate a deposit.
+
+	// AuthInfo adds <rdeDomain:authInfo>/<rdeContact:authInfo> with a password
+	// that must never survive into a derivative.
+	AuthInfo bool
+	// SecDNS adds both dsData and keyData to every domain. Both are published
+	// in DNS and must be retained unchanged apart from the suffix rewrite.
+	SecDNS bool
+	// Disclose adds a contact disclosure block, whose child elements share
+	// their names with the postal fields but are preferences, not values.
+	Disclose bool
+	// PrivacyProxy makes the first contact a privacy/proxy record whose
+	// underlying customer data is as identifying as a registrant's.
+	PrivacyProxy bool
+	// SharedContact points every domain at the same contact handle, so a
+	// derivative can be checked for preserving the relationship.
+	SharedContact bool
+	// IDNDomain adds an IDN domain carrying both the A-label and the U-label.
+	IDNDomain bool
+	// VendorExtension adds an element in a namespace the profile does not
+	// classify.
+	VendorExtension bool
+	// EppParams adds the rdeEppParams block including its DCP policy statement.
+	EppParams bool
+	// DTD prepends a document type declaration.
+	DTD bool
+	// Encoding overrides the XML declaration's encoding (e.g. "ISO-8859-1").
+	Encoding string
+
 	Layout    Layout
 	EntryGzip bool       // gzip the XML inside the tar entry
 	GzipWraps int        // extra gzip layers around the whole payload
@@ -182,13 +213,20 @@ func (o DepositOpts) withDefaults() DepositOpts {
 func BuildXML(o DepositOpts) []byte {
 	o = o.withDefaults()
 	var b strings.Builder
-	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	enc := o.Encoding
+	if enc == "" {
+		enc = "UTF-8"
+	}
+	fmt.Fprintf(&b, `<?xml version="1.0" encoding="%s"?>`+"\n", enc)
+	if o.DTD {
+		b.WriteString("<!DOCTYPE rde:deposit [ <!ENTITY dummy \"x\"> ]>\n")
+	}
 	root := "rde:deposit"
 	if o.OmitDeposit {
 		root = "rde:bundle"
 	}
-	fmt.Fprintf(&b, `<%s xmlns:rde="%s" xmlns:rdeHeader="%s" xmlns:rdeDomain="%s" xmlns:rdeHost="%s" xmlns:rdeContact="%s" xmlns:rdeRegistrar="%s" xmlns:rdeIDN="%s" xmlns:rdeNNDN="%s" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" type="%s" id="%s"`,
-		root, entities.RDE_URI, entities.RDE_HEADER_URI, entities.DOMAIN_URI, entities.HOST_URI, entities.CONTACT_URI, entities.REGISTRAR_URI, entities.IDN_URI, entities.NNDN_URI, o.Kind, o.ID)
+	fmt.Fprintf(&b, `<%s xmlns:rde="%s" xmlns:rdeHeader="%s" xmlns:rdeDomain="%s" xmlns:rdeHost="%s" xmlns:rdeContact="%s" xmlns:rdeRegistrar="%s" xmlns:rdeIDN="%s" xmlns:rdeNNDN="%s" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:rdeEppParams="%s" xmlns:vnd="urn:example:vendor-1.0" type="%s" id="%s"`,
+		root, entities.RDE_URI, entities.RDE_HEADER_URI, entities.DOMAIN_URI, entities.HOST_URI, entities.CONTACT_URI, entities.REGISTRAR_URI, entities.IDN_URI, entities.NNDN_URI, entities.EPP_PARAMS_URI, o.Kind, o.ID)
 	if o.PrevID != "" {
 		fmt.Fprintf(&b, ` prevId="%s"`, o.PrevID)
 	}
@@ -257,6 +295,32 @@ func BuildXML(o DepositOpts) []byte {
 		if o.Canary != "" {
 			org = o.Canary
 		}
+		name := fmt.Sprintf("Contact %d", i)
+		if o.PrivacyProxy && i == 1 {
+			// A privacy/proxy record: the visible contact is the proxy service,
+			// the underlying customer is in the same fields and is exactly as
+			// identifying as a registrant.
+			name = "Privacy Proxy Customer 4711"
+			org = "Proxy Services Ltd"
+		}
+		disclose := ""
+		if o.Disclose {
+			disclose = `      <rdeContact:disclose flag="0">
+        <rdeContact:name type="int"/>
+        <rdeContact:org type="int"/>
+        <rdeContact:addr type="int"/>
+        <rdeContact:voice/>
+        <rdeContact:email/>
+      </rdeContact:disclose>
+`
+		}
+		authInfo := ""
+		if o.AuthInfo {
+			authInfo = `      <rdeContact:authInfo>
+        <contact:pw>2fooBAR-contact</contact:pw>
+      </rdeContact:authInfo>
+`
+		}
 		fmt.Fprintf(&b, `    <rdeContact:contact>
       <rdeContact:id>CONT%d</rdeContact:id>
       <rdeContact:roid>%d_CONT-APEX</rdeContact:roid>
@@ -276,8 +340,8 @@ func BuildXML(o DepositOpts) []byte {
       <rdeContact:clID>registrar1</rdeContact:clID>
       <rdeContact:crRr>registrar1</rdeContact:crRr>
       <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
-    </rdeContact:contact>
-`, i, i, i, org, i, i, i)
+%s%s    </rdeContact:contact>
+`, i, i, name, org, i, i, i, disclose, authInfo)
 	}
 	for i := 1; i <= o.Hosts; i++ {
 		fmt.Fprintf(&b, `    <rdeHost:host>
@@ -296,21 +360,70 @@ func BuildXML(o DepositOpts) []byte {
 		if o.BreakDomain {
 			roid = ""
 		}
+		contactID := "CONT1"
+		if !o.SharedContact && o.Contacts > 1 {
+			contactID = fmt.Sprintf("CONT%d", (i-1)%o.Contacts+1)
+		}
+		extra := ""
+		if o.SecDNS {
+			// dsData and keyData are both published in DNS and must survive.
+			extra += `      <rdeDomain:secDNS>
+        <secDNS:dsData>
+          <secDNS:keyTag>12345</secDNS:keyTag>
+          <secDNS:alg>13</secDNS:alg>
+          <secDNS:digestType>2</secDNS:digestType>
+          <secDNS:digest>49FD46E6C4B45C55D4AC</secDNS:digest>
+          <secDNS:keyData>
+            <secDNS:flags>257</secDNS:flags>
+            <secDNS:protocol>3</secDNS:protocol>
+            <secDNS:alg>13</secDNS:alg>
+            <secDNS:pubKey>AQPJ////4Q==</secDNS:pubKey>
+          </secDNS:keyData>
+        </secDNS:dsData>
+      </rdeDomain:secDNS>
+`
+		}
+		if o.AuthInfo {
+			extra += `      <rdeDomain:authInfo>
+        <domain:pw>2fooBAR-domain</domain:pw>
+      </rdeDomain:authInfo>
+`
+		}
+		if o.VendorExtension {
+			extra += "      <vnd:internalScore>0.93</vnd:internalScore>\n"
+		}
 		fmt.Fprintf(&b, `    <rdeDomain:domain>
       <rdeDomain:name>example-%d.%s</rdeDomain:name>
 %s      <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>CONT1</rdeDomain:registrant>
-      <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
-      <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
+      <rdeDomain:registrant>%s</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">%s</rdeDomain:contact>
+      <rdeDomain:contact type="tech">%s</rdeDomain:contact>
       <rdeDomain:ns>
         <domain:hostObj>ns1.example-1.%s</domain:hostObj>
+        <domain:hostObj>ns1.outside.example.net</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
       <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>
       <rdeDomain:exDate>2027-01-01T00:00:00Z</rdeDomain:exDate>
+%s    </rdeDomain:domain>
+`, i, o.TLD, roid, contactID, contactID, contactID, o.TLD, extra)
+	}
+	if o.IDNDomain {
+		// The A-label and the U-label describe the same name; a suffix rewrite
+		// that touched only one of them would desynchronise the pair.
+		fmt.Fprintf(&b, `    <rdeDomain:domain>
+      <rdeDomain:name>xn--nxasmm1c.%s</rdeDomain:name>
+      <rdeDomain:uName>βόλος.%s</rdeDomain:uName>
+      <rdeDomain:roid>IDN_DOM-APEX</rdeDomain:roid>
+      <rdeDomain:idnTableId>Greek</rdeDomain:idnTableId>
+      <rdeDomain:status s="ok"/>
+      <rdeDomain:registrant>CONT1</rdeDomain:registrant>
+      <rdeDomain:clID>registrar1</rdeDomain:clID>
+      <rdeDomain:crRr>registrar1</rdeDomain:crRr>
+      <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>
     </rdeDomain:domain>
-`, i, o.TLD, roid, o.TLD)
+`, o.TLD, o.TLD)
 	}
 	for i := 1; i <= o.IDNs; i++ {
 		fmt.Fprintf(&b, `    <rdeIDN:idnTableRef id="table-%d">
@@ -326,6 +439,25 @@ func BuildXML(o DepositOpts) []byte {
       <rdeNNDN:crDate>2025-01-01T00:00:00Z</rdeNNDN:crDate>
     </rdeNNDN:NNDN>
 `, i, o.TLD)
+	}
+	if o.EppParams {
+		b.WriteString(`    <rdeEppParams:eppParams>
+      <rdeEppParams:version>1.0</rdeEppParams:version>
+      <rdeEppParams:lang>en</rdeEppParams:lang>
+      <rdeEppParams:objURI>urn:ietf:params:xml:ns:domain-1.0</rdeEppParams:objURI>
+      <rdeEppParams:svcExtension>
+        <rdeEppParams:extURI>urn:ietf:params:xml:ns:secDNS-1.1</rdeEppParams:extURI>
+      </rdeEppParams:svcExtension>
+      <rdeEppParams:dcp>
+        <rdeEppParams:access><rdeEppParams:all/></rdeEppParams:access>
+        <rdeEppParams:statement>
+          <rdeEppParams:purpose><rdeEppParams:admin/><rdeEppParams:prov/></rdeEppParams:purpose>
+          <rdeEppParams:recipient><rdeEppParams:ours/><rdeEppParams:public/></rdeEppParams:recipient>
+          <rdeEppParams:retention><rdeEppParams:stated/></rdeEppParams:retention>
+        </rdeEppParams:statement>
+      </rdeEppParams:dcp>
+    </rdeEppParams:eppParams>
+`)
 	}
 	b.WriteString("  </rde:contents>\n")
 	fmt.Fprintf(&b, "</%s>\n", root)

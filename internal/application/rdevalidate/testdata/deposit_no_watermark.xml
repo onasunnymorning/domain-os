@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rde:deposit xmlns:rde="urn:ietf:params:xml:ns:rde-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:rdeDomain="urn:ietf:params:xml:ns:rdeDomain-1.0" xmlns:rdeHost="urn:ietf:params:xml:ns:rdeHost-1.0" xmlns:rdeContact="urn:ietf:params:xml:ns:rdeContact-1.0" xmlns:rdeRegistrar="urn:ietf:params:xml:ns:rdeRegistrar-1.0" xmlns:rdeIDN="urn:ietf:params:xml:ns:rdeIDN-1.0" xmlns:rdeNNDN="urn:ietf:params:xml:ns:rdeNNDN-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" type="FULL" id="20260908001">
+<rde:deposit xmlns:rde="urn:ietf:params:xml:ns:rde-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:rdeDomain="urn:ietf:params:xml:ns:rdeDomain-1.0" xmlns:rdeHost="urn:ietf:params:xml:ns:rdeHost-1.0" xmlns:rdeContact="urn:ietf:params:xml:ns:rdeContact-1.0" xmlns:rdeRegistrar="urn:ietf:params:xml:ns:rdeRegistrar-1.0" xmlns:rdeIDN="urn:ietf:params:xml:ns:rdeIDN-1.0" xmlns:rdeNNDN="urn:ietf:params:xml:ns:rdeNNDN-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:rdeEppParams="urn:ietf:params:xml:ns:rdeEppParams-1.0" xmlns:vnd="urn:example:vendor-1.0" type="FULL" id="20260908001">
   <rde:rdeMenu>
     <rde:version>1.0</rde:version>
     <rde:objURI>urn:ietf:params:xml:ns:rdeHeader-1.0</rde:objURI>
@@ -44,7 +44,7 @@
       <rdeContact:roid>1_CONT-APEX</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <rdeContact:name>Contact 1</rdeContact:name>
+        <rdeContact:name>Contact %!d(string=Contact 1)</rdeContact:name>
         <rdeContact:org>Org 1</rdeContact:org>
         <rdeContact:addr>
           <rdeContact:street>1 Test Street</rdeContact:street>
@@ -64,7 +64,7 @@
       <rdeContact:roid>2_CONT-APEX</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <rdeContact:name>Contact 2</rdeContact:name>
+        <rdeContact:name>Contact %!d(string=Contact 2)</rdeContact:name>
         <rdeContact:org>Org 2</rdeContact:org>
         <rdeContact:addr>
           <rdeContact:street>2 Test Street</rdeContact:street>
@@ -106,6 +106,7 @@
       <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
       <rdeDomain:ns>
         <domain:hostObj>ns1.example-1.example</domain:hostObj>
+        <domain:hostObj>ns1.outside.example.net</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
@@ -116,11 +117,12 @@
       <rdeDomain:name>example-2.example</rdeDomain:name>
       <rdeDomain:roid>2_DOM-APEX</rdeDomain:roid>
       <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>CONT1</rdeDomain:registrant>
-      <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
-      <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
+      <rdeDomain:registrant>CONT2</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">CONT2</rdeDomain:contact>
+      <rdeDomain:contact type="tech">CONT2</rdeDomain:contact>
       <rdeDomain:ns>
         <domain:hostObj>ns1.example-1.example</domain:hostObj>
+        <domain:hostObj>ns1.outside.example.net</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
