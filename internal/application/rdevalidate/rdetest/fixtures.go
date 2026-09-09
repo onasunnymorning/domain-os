@@ -364,9 +364,20 @@ func BuildXML(o DepositOpts) []byte {
 		if o.BreakDomain {
 			roid = ""
 		}
-		contactID := "CONT1"
-		if !o.SharedContact && o.Contacts > 1 {
-			contactID = fmt.Sprintf("CONT%d", (i-1)%o.Contacts+1)
+		// Reference a contact only when the deposit declares one. RFC 9022
+		// makes registrant and contact optional, and a domain pointing at a
+		// contact the deposit does not carry is a referential defect the
+		// validator reports — a fixture must not carry one by accident.
+		contacts := ""
+		if o.Contacts > 0 {
+			contactID := "CONT1"
+			if !o.SharedContact && o.Contacts > 1 {
+				contactID = fmt.Sprintf("CONT%d", (i-1)%o.Contacts+1)
+			}
+			contacts = fmt.Sprintf(`      <rdeDomain:registrant>%s</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">%s</rdeDomain:contact>
+      <rdeDomain:contact type="tech">%s</rdeDomain:contact>
+`, contactID, contactID, contactID)
 		}
 		extra := ""
 		if o.SecDNS {
@@ -396,22 +407,27 @@ func BuildXML(o DepositOpts) []byte {
 		if o.VendorExtension {
 			extra += "      <vnd:internalScore>0.93</vnd:internalScore>\n"
 		}
+		// Delegate to every host the deposit declares, spread over the domains,
+		// so a generated deposit leaves no host unreferenced. An orphan host is
+		// a defect the validator reports, and a fixture called "valid" that
+		// carries one is a fixture that cannot be asserted empty.
+		ns := "        <domain:hostObj>ns1.outside.example.net</domain:hostObj>\n"
+		for h := 1; h <= o.Hosts; h++ {
+			if (h-1)%o.Domains == i-1 {
+				ns += fmt.Sprintf("        <domain:hostObj>ns%d.example-1.%s</domain:hostObj>\n", h, o.TLD)
+			}
+		}
 		fmt.Fprintf(&b, `    <rdeDomain:domain>
       <rdeDomain:name>example-%d.%s</rdeDomain:name>
 %s      <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>%s</rdeDomain:registrant>
-      <rdeDomain:contact type="admin">%s</rdeDomain:contact>
-      <rdeDomain:contact type="tech">%s</rdeDomain:contact>
-      <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.%s</domain:hostObj>
-        <domain:hostObj>ns1.outside.example.net</domain:hostObj>
-      </rdeDomain:ns>
+%s      <rdeDomain:ns>
+%s      </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
       <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>
       <rdeDomain:exDate>2027-01-01T00:00:00Z</rdeDomain:exDate>
 %s    </rdeDomain:domain>
-`, i, o.TLD, roid, contactID, contactID, contactID, o.TLD, extra)
+`, i, o.TLD, roid, contacts, ns, extra)
 	}
 	if o.IDNDomain {
 		// The A-label and the U-label describe the same name; a suffix rewrite

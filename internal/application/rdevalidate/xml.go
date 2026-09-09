@@ -48,6 +48,14 @@ type objectResult struct {
 	Rule string
 	// DecodeErr is a failure to decode the element at all.
 	DecodeErr error
+
+	// Declares is the identifier this object adds to the deposit's namespace:
+	// a contact id or a host name. Refs are the contact ids and RefHosts the
+	// nameservers it points at. They feed crossRef and nothing else — they are
+	// payload values and must never reach a finding.
+	Declares string
+	Refs     []string
+	RefHosts []string
 }
 
 var objectSpecs = []objectSpec{
@@ -95,6 +103,7 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 	for _, s := range objectSpecs {
 		specByLocal[s.name] = s
 	}
+	xref := newCrossRef(v.BoundTLD)
 
 	dec := xml.NewDecoder(r)
 	dec.Strict = true
@@ -142,6 +151,10 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 			}
 			depositFound = true
 			v.parseDepositAttrs(se, &summary, add, dec)
+			// Only a FULL deposit is self-contained. In a DIFF or INCR, a
+			// contact whose domain was deposited last week is not an orphan
+			// and a reference into an earlier deposit is not dangling.
+			xref.enabled = summary.Kind == entities.RDEReportTypeFULL
 		case local == "watermark" && space == entities.RDE_URI:
 			var wm string
 			if err := dec.DecodeElement(&wm, &se); err != nil {
@@ -198,6 +211,8 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 				addRuled(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, locator, out.Rule,
 					"object is well-formed but this registry would not import it as it stands: "+out.Rule)
 			}
+			ordinal := summary.Observed[spec.uri] + 1
+			xref.declare(spec.name, out, ordinal)
 			summary.Observed[spec.uri]++
 		}
 	}
@@ -233,6 +248,10 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 			add(CodeRDECountMismatch, SeverityError, StageRDE, s.name, "", "deposit contains "+itoa(got)+" objects the header does not declare")
 		}
 	}
+
+	// Referential integrity across the whole deposit. It runs last because it
+	// is the only check that needs to have seen every object.
+	xref.report(addRuled)
 	return summary, findings
 }
 
@@ -305,15 +324,23 @@ func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	// RFC 9022 §4.1: name, roid, status and clID are the required elements.
 	// crRr, crDate, exDate, upRr and upDate are all minOccurs="0" — a deposit
 	// that leaves one out is conformant, not defective.
+	// What the domain points at. Collected even when the object is rejected
+	// below: a domain with a bad roid still uses its contacts and nameservers,
+	// and calling them orphans because of it would be wrong.
+	res := objectResult{Refs: domainContacts(&d), RefHosts: domainHosts(&d)}
+
 	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID)
 	if req == nil && len(d.Status) == 0 {
 		req = errors.New("status")
 	}
 	if req != nil {
-		return objectResult{Missing: req}
+		res.Missing = req
+		return res
 	}
 	_, err := d.ToEntity()
-	return objectResult{Rejected: err, Rule: entityRule(err, "exDate", d.ExDate, "crDate", d.CrDate, "upDate", d.UpDate)}
+	res.Rejected = err
+	res.Rule = entityRule(err, "exDate", d.ExDate, "crDate", d.CrDate, "upDate", d.UpDate)
+	return res
 }
 
 func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
@@ -329,11 +356,15 @@ func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if req == nil && len(c.PostalInfo) == 0 {
 		req = errors.New("postalInfo")
 	}
+	res := objectResult{Declares: c.ID}
 	if req != nil {
-		return objectResult{Missing: req}
+		res.Missing = req
+		return res
 	}
 	_, err := c.ToEntity()
-	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", c.CrDate, "upDate", c.UpDate)}
+	res.Rejected = err
+	res.Rule = entityRule(err, "crDate", c.CrDate, "upDate", c.UpDate)
+	return res
 }
 
 func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
@@ -347,11 +378,15 @@ func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if req == nil && len(h.Status) == 0 {
 		req = errors.New("status")
 	}
+	res := objectResult{Declares: h.Name}
 	if req != nil {
-		return objectResult{Missing: req}
+		res.Missing = req
+		return res
 	}
 	_, err := h.ToEntity()
-	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", h.CrDate, "upDate", h.UpDate)}
+	res.Rejected = err
+	res.Rule = entityRule(err, "crDate", h.CrDate, "upDate", h.UpDate)
+	return res
 }
 
 func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) objectResult {
@@ -387,4 +422,38 @@ func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	}
 	// RFC 9022 §9.1: aName and nameState are required; crDate is not.
 	return objectResult{Missing: requireAll("aName", n.AName, "nameState", n.NameState)}
+}
+
+// domainContacts is every contact id the domain points at: the registrant and
+// each linked contact, whatever its type.
+func domainContacts(d *entities.RDEDomain) []string {
+	ids := make([]string, 0, len(d.Contact)+1)
+	if d.Registrant != "" {
+		ids = append(ids, d.Registrant)
+	}
+	for _, c := range d.Contact {
+		if c.ID != "" {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
+}
+
+// domainHosts is every nameserver the domain delegates to by name.
+//
+// RFC 9022 also allows a domain to carry its nameservers inline as hostAttr
+// rather than by reference. entities.RDEDomain does not model that form, so a
+// deposit using it contributes no host references here and its hosts are not
+// cross-checked — the check reports nothing rather than reporting every host
+// as an orphan.
+func domainHosts(d *entities.RDEDomain) []string {
+	var names []string
+	for _, ns := range d.Ns {
+		for _, h := range ns.HostObjs {
+			if h != "" {
+				names = append(names, h)
+			}
+		}
+	}
+	return names
 }
