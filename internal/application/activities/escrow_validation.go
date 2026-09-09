@@ -453,69 +453,135 @@ func (a *EscrowValidationActivities) readSmall(ctx context.Context, key string, 
 // 3. EmitReportAndNotification
 // ---------------------------------------------------------------------------
 
-// EmitReportInput carries a decided result (PASS or FAIL).
+// EmitReportInput carries the result of a run that reached a decision.
 type EmitReportInput struct {
-	Scope           string             `json:"scope"`
-	TLD             string             `json:"tld"`
-	DepositID       uuid.UUID          `json:"depositId"`
-	ValidationRunID uuid.UUID          `json:"validationRunId"`
-	WorkflowID      string             `json:"workflowId"`
-	Result          rdevalidate.Result `json:"result"`
-	ReceivedAt      time.Time          `json:"receivedAt"`
-	ValidatedAt     time.Time          `json:"validatedAt"`
-	Hints           rdereport.Hints    `json:"hints"`
+	Scope           string    `json:"scope"`
+	TLD             string    `json:"tld"`
+	Profile         string    `json:"profile"`
+	DepositID       uuid.UUID `json:"depositId"`
+	ValidationRunID uuid.UUID `json:"validationRunId"`
+	WorkflowID      string    `json:"workflowId"`
+	// TemporalRunID is the trace id under INV-16; the workflow id is the
+	// correlation id.
+	TemporalRunID string             `json:"temporalRunId,omitempty"`
+	Result        rdevalidate.Result `json:"result"`
+	ReceivedAt    time.Time          `json:"receivedAt"`
+	ValidatedAt   time.Time          `json:"validatedAt"`
+	Hints         rdereport.Hints    `json:"hints"`
 }
 
-// EmitReportOutput locates the emitted documents.
+// EmitReportOutput locates the emitted documents. A key is empty when that
+// document was not emitted for this run — see EmitReportAndNotification.
 type EmitReportOutput struct {
+	SummaryKey         string `json:"summaryKey"`
 	ReportKey          string `json:"reportKey"`
 	NotificationKey    string `json:"notificationKey"`
 	NotificationStatus string `json:"notificationStatus"`
 }
 
-// EmitReportAndNotification writes the rdeReport and the DVPN/DVFN to the
-// reports bucket under the run's own prefix; nothing is ever overwritten
-// because the run id is part of the key.
+// EmitReportAndNotification writes the run's artifacts to the reports bucket
+// under the run's own prefix; nothing is ever overwritten because the run id
+// is part of the key.
+//
+// Three documents, three different audiences, three different rules:
+//
+//   - summary.json is always written. It is our own operational account of the
+//     run and the only artifact carrying the findings, so it is emitted for
+//     every run that produced a result — an ERROR run included, since that is
+//     the run an operator most needs to read.
+//   - report.xml is written for a decided run (PASS or FAIL) whatever its
+//     profile. It is an RFC 9022 rdeReport, but for an unsigned profile it is
+//     an internal record of observed counts and is never submitted to ICANN.
+//   - notification.xml is written only for a decided run on a signed profile.
+//     A DVPN/DVFN is a compliance claim about a signed deposit; an unsigned
+//     one has established nothing to claim.
 func (a *EscrowValidationActivities) EmitReportAndNotification(ctx context.Context, in EmitReportInput) (EmitReportOutput, error) {
 	logger := activity.GetLogger(ctx)
 	scope, err := entities.NewOperatorID(in.Scope)
 	if err != nil {
 		return EmitReportOutput{}, nonRetryable("invalid operator scope", err)
 	}
+	profile := in.Profile
+	if profile == "" {
+		profile = in.Result.Profile
+	}
 	params := rdereport.Params{
 		DEAName: a.deaName, Result: in.Result, BoundTLD: in.TLD,
 		ReceivedAt: in.ReceivedAt, ValidatedAt: in.ValidatedAt, Hints: in.Hints,
 	}
-	notification, err := rdereport.BuildNotification(params)
-	if err != nil {
-		if errors.Is(err, rdereport.ErrNoNotificationForOutcome) {
-			return EmitReportOutput{}, nonRetryable("no notification for this outcome", err)
-		}
-		return EmitReportOutput{}, nonRetryable("notification could not be built", err)
-	}
-	reportDoc, err := notification.Report.Marshal()
-	if err != nil {
-		return EmitReportOutput{}, nonRetryable("report could not be rendered", err)
-	}
-	notificationDoc, err := notification.Marshal()
-	if err != nil {
-		return EmitReportOutput{}, nonRetryable("notification could not be rendered", err)
-	}
 	prefix := fmt.Sprintf("%s/%s/%s/%s/%s", escrowValidationPrefix, scope.String(), in.TLD, in.DepositID, in.ValidationRunID)
-	out := EmitReportOutput{
-		ReportKey:          prefix + "/report.xml",
-		NotificationKey:    prefix + "/notification.xml",
-		NotificationStatus: notification.Status,
+	out := EmitReportOutput{SummaryKey: prefix + "/summary.json"}
+
+	decided := in.Result.Outcome == rdevalidate.OutcomePass || in.Result.Outcome == rdevalidate.OutcomeFail
+
+	// The rdeReport, for a decided run of any profile.
+	if decided {
+		report, err := rdereport.BuildReport(params)
+		if err != nil {
+			return EmitReportOutput{}, nonRetryable("report could not be built", err)
+		}
+		reportDoc, err := report.Marshal()
+		if err != nil {
+			return EmitReportOutput{}, nonRetryable("report could not be rendered", err)
+		}
+		out.ReportKey = prefix + "/report.xml"
+		if err := a.reportStore.UploadStream(ctx, out.ReportKey, strings.NewReader(string(reportDoc)), "application/xml"); err != nil {
+			return EmitReportOutput{}, fmt.Errorf("EmitReportAndNotification: upload report: %w", err)
+		}
 	}
-	if err := a.reportStore.UploadStream(ctx, out.ReportKey, strings.NewReader(string(reportDoc)), "application/xml"); err != nil {
-		return EmitReportOutput{}, fmt.Errorf("EmitReportAndNotification: upload report: %w", err)
+
+	// The rdeNotification, for a decided run of a signed profile only.
+	if decided && entities.EscrowProfileIsSigned(profile) {
+		notification, err := rdereport.BuildNotification(params)
+		if err != nil {
+			if errors.Is(err, rdereport.ErrNoNotificationForOutcome) {
+				return EmitReportOutput{}, nonRetryable("no notification for this outcome", err)
+			}
+			return EmitReportOutput{}, nonRetryable("notification could not be built", err)
+		}
+		notificationDoc, err := notification.Marshal()
+		if err != nil {
+			return EmitReportOutput{}, nonRetryable("notification could not be rendered", err)
+		}
+		out.NotificationKey = prefix + "/notification.xml"
+		out.NotificationStatus = notification.Status
+		if err := a.reportStore.UploadStream(ctx, out.NotificationKey, strings.NewReader(string(notificationDoc)), "application/xml"); err != nil {
+			return EmitReportOutput{}, fmt.Errorf("EmitReportAndNotification: upload notification: %w", err)
+		}
 	}
-	if err := a.reportStore.UploadStream(ctx, out.NotificationKey, strings.NewReader(string(notificationDoc)), "application/xml"); err != nil {
-		return EmitReportOutput{}, fmt.Errorf("EmitReportAndNotification: upload notification: %w", err)
+
+	// The summary, always, and last: it names the siblings that were written.
+	artifacts := map[string]string{}
+	if out.ReportKey != "" {
+		artifacts["report"] = out.ReportKey
 	}
-	logger.Info("escrow validation: notification emitted",
+	if out.NotificationKey != "" {
+		artifacts["notification"] = out.NotificationKey
+	}
+	if len(artifacts) == 0 {
+		artifacts = nil
+	}
+	summary, err := rdereport.BuildSummary(rdereport.SummaryParams{
+		Params: params, TenantID: scope.String(), Profile: profile,
+		DepositID: in.DepositID.String(), ValidationRunID: in.ValidationRunID.String(),
+		CorrelationID: in.WorkflowID, TraceID: in.TemporalRunID,
+		NotificationStatus: out.NotificationStatus, Artifacts: artifacts,
+	})
+	if err != nil {
+		return EmitReportOutput{}, nonRetryable("summary could not be built", err)
+	}
+	summaryDoc, err := summary.Marshal()
+	if err != nil {
+		return EmitReportOutput{}, nonRetryable("summary could not be rendered", err)
+	}
+	if err := a.reportStore.UploadStream(ctx, out.SummaryKey, strings.NewReader(string(summaryDoc)), "application/json"); err != nil {
+		return EmitReportOutput{}, fmt.Errorf("EmitReportAndNotification: upload summary: %w", err)
+	}
+
+	logger.Info("escrow validation: artifacts emitted",
 		"correlation_id", in.WorkflowID, "deposit_id", in.DepositID.String(), "run_id", in.ValidationRunID.String(),
-		"tld", in.TLD, "stage", "report", "outcome", string(in.Result.Outcome), "notification", out.NotificationStatus)
+		"tld", in.TLD, "stage", "report", "outcome", string(in.Result.Outcome), "notification", out.NotificationStatus,
+		"findings_total", summary.Findings.Total, "findings_suppressed", summary.Findings.Suppressed)
 	return out, nil
 }
 
@@ -529,6 +595,7 @@ type FinalizeRunInput struct {
 	ValidationRunID    uuid.UUID          `json:"validationRunId"`
 	WorkflowID         string             `json:"workflowId"`
 	Result             rdevalidate.Result `json:"result"`
+	SummaryKey         string             `json:"summaryKey"`
 	ReportKey          string             `json:"reportKey"`
 	NotificationKey    string             `json:"notificationKey"`
 	NotificationStatus string             `json:"notificationStatus"`
@@ -571,6 +638,7 @@ func (a *EscrowValidationActivities) FinalizeValidationRun(ctx context.Context, 
 		Outcome:                  entities.EscrowValidationOutcome(res.Outcome),
 		StageReached:             string(res.StageReached),
 		Findings:                 rdevalidate.ToEntityFindings(res.Findings),
+		FindingTally:             rdevalidate.ToEntityTally(res.Tally),
 		SigningKeyFingerprint:    res.Signature.KeyFingerprint,
 		DecryptionKeyFingerprint: res.Decryption.KeyFingerprint,
 		PlaintextSHA256:          res.Digests.PlaintextSHA256,
@@ -578,6 +646,7 @@ func (a *EscrowValidationActivities) FinalizeValidationRun(ctx context.Context, 
 		RDEKind:                  res.Deposit.Kind,
 		RDEResend:                res.Deposit.Resend,
 		RDEWatermark:             wm,
+		SummaryObjectKey:         in.SummaryKey,
 		ReportObjectKey:          in.ReportKey,
 		NotificationObjectKey:    in.NotificationKey,
 		NotificationStatus:       entities.EscrowNotificationStatus(in.NotificationStatus),

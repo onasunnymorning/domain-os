@@ -6,7 +6,6 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -52,6 +51,7 @@ type EscrowValidationResult struct {
 	Outcome            string   `json:"outcome"`
 	Verified           bool     `json:"verified"` // cryptographically verified RDE pass (constraint 5)
 	NotificationStatus string   `json:"notificationStatus,omitempty"`
+	SummaryKey         string   `json:"summaryKey,omitempty"`
 	ReportKey          string   `json:"reportKey,omitempty"`
 	NotificationKey    string   `json:"notificationKey,omitempty"`
 	Codes              []string `json:"codes,omitempty"`
@@ -142,11 +142,35 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 	}
 	result.Outcome, result.Verified, result.Codes = state.Outcome, res.Verified(), state.Codes
 
-	// ERROR: the service could not decide. Record it, emit nothing, fail.
+	// 3. Emit the run's artifacts. The activity decides which of the three it
+	// writes: the summary always, the rdeReport for a decided run of any
+	// profile, and the DVPN/DVFN only for a decided run of a signed profile.
+	// An ERROR run still gets its summary — that is the run whose findings an
+	// operator most needs — but it claims nothing to ICANN.
+	state.Phase = "reporting"
+	var emitted activities.EmitReportOutput
+	if err := workflow.ExecuteActivity(ctxShort, acts.EmitReportAndNotification, activities.EmitReportInput{
+		Scope: params.Scope, TLD: params.TLD, Profile: bound.Profile,
+		DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID,
+		WorkflowID: wfID, TemporalRunID: runID,
+		Result: res, ReceivedAt: params.ReceivedAt, ValidatedAt: validatedAt, Hints: bound.Hints,
+	}).Get(ctxShort, &emitted); err != nil {
+		// Losing the summary must not lose the run: an ERROR run is finalised
+		// as ERROR either way, and a decided run finalises through the same
+		// fail-closed path as any other post-bind failure.
+		finalizeError("report", err)
+		return result, fmt.Errorf("EmitReportAndNotification(run=%s) failed: %w", state.ValidationRunID, err)
+	}
+	state.NotificationStatus = emitted.NotificationStatus
+	result.NotificationStatus = emitted.NotificationStatus
+	result.SummaryKey, result.ReportKey, result.NotificationKey = emitted.SummaryKey, emitted.ReportKey, emitted.NotificationKey
+
+	// ERROR: the service could not decide. Record it, claim nothing, fail.
 	if res.Outcome == rdevalidate.OutcomeError {
 		state.Phase = "finalizing"
 		if err := workflow.ExecuteActivity(ctxShort, acts.FinalizeValidationRun, activities.FinalizeRunInput{
-			Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID, Result: res, CompletedAt: workflow.Now(ctx),
+			Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID, Result: res,
+			SummaryKey: emitted.SummaryKey, CompletedAt: workflow.Now(ctx),
 		}).Get(ctxShort, nil); err != nil {
 			state.Phase, state.Error = "error", err.Error()
 			return result, fmt.Errorf("FinalizeValidationRun(run=%s) failed: %w", state.ValidationRunID, err)
@@ -155,28 +179,12 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		return result, fmt.Errorf("validation of run %s could not be decided (%v); no notification emitted", state.ValidationRunID, state.Codes)
 	}
 
-	// 3. Emit rdeReport + DVPN/DVFN — signed profiles only. An rdeNotification
-	// is a compliance claim about a signed deposit; an unsigned one has
-	// established nothing to report to ICANN (issue #415).
-	var emitted activities.EmitReportOutput
-	if entities.EscrowProfileIsSigned(bound.Profile) {
-		state.Phase = "reporting"
-		if err := workflow.ExecuteActivity(ctxShort, acts.EmitReportAndNotification, activities.EmitReportInput{
-			Scope: params.Scope, TLD: params.TLD, DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
-			Result: res, ReceivedAt: params.ReceivedAt, ValidatedAt: validatedAt, Hints: bound.Hints,
-		}).Get(ctxShort, &emitted); err != nil {
-			finalizeError("report", err)
-			return result, fmt.Errorf("EmitReportAndNotification(run=%s) failed: %w", state.ValidationRunID, err)
-		}
-		state.NotificationStatus = emitted.NotificationStatus
-		result.NotificationStatus, result.ReportKey, result.NotificationKey = emitted.NotificationStatus, emitted.ReportKey, emitted.NotificationKey
-	}
-
 	// 4. Finalise the immutable run record.
 	state.Phase = "finalizing"
 	if err := workflow.ExecuteActivity(ctxShort, acts.FinalizeValidationRun, activities.FinalizeRunInput{
 		Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID, Result: res,
-		ReportKey: emitted.ReportKey, NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
+		SummaryKey: emitted.SummaryKey, ReportKey: emitted.ReportKey,
+		NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
 		CompletedAt: workflow.Now(ctx),
 	}).Get(ctxShort, nil); err != nil {
 		state.Phase, state.Error = "error", err.Error()

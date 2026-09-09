@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/onasunnymorning/domain-os/internal/application/rdereport"
 	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate/rdetest"
@@ -129,7 +130,8 @@ func (f *evFixture) emit(t *testing.T, b BindDepositOutput, res rdevalidate.Resu
 	t.Helper()
 	var out EmitReportOutput
 	val, err := f.env.ExecuteActivity(f.acts.EmitReportAndNotification, EmitReportInput{
-		Scope: f.scope.String(), TLD: f.tld, DepositID: b.DepositID, ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1",
+		Scope: f.scope.String(), TLD: f.tld, Profile: b.Profile,
+		DepositID: b.DepositID, ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1", TemporalRunID: "temporal-run-1",
 		Result: res, ReceivedAt: time.Now().UTC().Add(-time.Minute), ValidatedAt: time.Now().UTC(), Hints: b.Hints,
 	})
 	if err != nil {
@@ -143,7 +145,8 @@ func (f *evFixture) finalize(t *testing.T, b BindDepositOutput, res rdevalidate.
 	t.Helper()
 	_, err := f.env.ExecuteActivity(f.acts.FinalizeValidationRun, FinalizeRunInput{
 		Scope: f.scope.String(), ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1", Result: res,
-		ReportKey: emitted.ReportKey, NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
+		SummaryKey: emitted.SummaryKey, ReportKey: emitted.ReportKey,
+		NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
 		CompletedAt: time.Now().UTC().Add(2 * time.Hour), Failure: failure,
 	})
 	return err
@@ -209,13 +212,91 @@ func TestEscrowValidationActivities_PlaintextProfileEndToEnd(t *testing.T) {
 	require.Equal(t, rdevalidate.OutcomePass, res.Outcome, "findings: %v", res.Findings)
 	assert.False(t, res.Verified(), "an unsigned deposit is never a verified pass")
 
+	// An unsigned deposit still gets both of the artifacts that are ours: the
+	// summary, always, and the rdeReport, because the run reached a decision.
+	// What it does not get is a notification — that is the ICANN claim only a
+	// signature can support.
+	emitted, err := f.emit(t, b, res)
+	require.NoError(t, err)
+	assert.NotEmpty(t, emitted.SummaryKey)
+	assert.NotEmpty(t, emitted.ReportKey)
+	assert.Empty(t, emitted.NotificationKey, "an unsigned deposit claims nothing to ICANN")
+	assert.Empty(t, emitted.NotificationStatus)
+	assert.ElementsMatch(t, []string{emitted.SummaryKey, emitted.ReportKey}, f.reports.keys())
+
+	raw, ok := f.reports.get(emitted.SummaryKey)
+	require.True(t, ok)
+	var summary rdereport.Summary
+	require.NoError(t, json.Unmarshal(raw, &summary))
+	assert.Equal(t, rdereport.SummarySchemaVersion, summary.SchemaVersion)
+	assert.Equal(t, "PASS", summary.Outcome)
+	assert.False(t, summary.Verified, "an unsigned deposit is never a verified pass")
+	assert.Equal(t, entities.EscrowProfilePlaintextXML, summary.Profile)
+	assert.Equal(t, b.ValidationRunID.String(), summary.ValidationRunID)
+	assert.Equal(t, "wf-1", summary.CorrelationID)
+	assert.Equal(t, "temporal-run-1", summary.TraceID)
+	assert.Equal(t, emitted.ReportKey, summary.Artifacts["report"])
+	assert.NotContains(t, summary.Artifacts, "notification")
+	// The deposit's declared counts are reconciled against what was observed.
+	require.NotEmpty(t, summary.Deposit.Counts)
+	for _, c := range summary.Deposit.Counts {
+		assert.True(t, c.Matches, "declared and observed disagree for %s", c.URI)
+	}
+
 	// PASS on an unsigned profile finalises with no notification at all.
-	require.NoError(t, f.finalize(t, b, res, EmitReportOutput{}, ""))
+	require.NoError(t, f.finalize(t, b, res, emitted, ""))
 	run, err := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
 	require.NoError(t, err)
 	assert.Equal(t, entities.EscrowValidationPass, run.Outcome)
 	assert.Equal(t, entities.EscrowNotificationNone, run.NotificationStatus)
 	assert.False(t, run.Verified())
+	assert.Equal(t, emitted.SummaryKey, run.SummaryObjectKey)
+	assert.Equal(t, emitted.ReportKey, run.ReportObjectKey)
+}
+
+// TestEscrowValidationActivities_SummaryCountsSuppressedFindings is the case
+// that sent us here: a deposit whose objects are rejected in their tens of
+// thousands. The run record keeps MaxFindings of them, so the summary's tally
+// is the only exact account of what the deposit actually contained.
+func TestEscrowValidationActivities_SummaryCountsSuppressedFindings(t *testing.T) {
+	f := newEVFixture(t, nil, nil, nil, nil)
+	f.prov.ring = nil
+
+	var res rdevalidate.Result
+	res.Profile = rdevalidate.ProfilePlaintextXML
+	res.StageReached = rdevalidate.StageRDE
+	res.Deposit = rdevalidate.DepositSummary{ID: "20260908001", Kind: "FULL", Watermark: time.Now().UTC().Add(-time.Hour), HeaderFound: true}
+	const rejected = rdevalidate.MaxFindings + 4242
+	for i := 0; i < rejected; i++ {
+		res.Add(rdevalidate.Finding{Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning, Stage: rdevalidate.StageRDE})
+	}
+	res.Outcome = rdevalidate.OutcomePass
+	res.Tally = []rdevalidate.FindingTally{{
+		Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning,
+		Stage: rdevalidate.StageRDE, Count: rejected,
+	}}
+
+	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutGzip}
+	f.store.put("uploads/example.xml.gz", rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts)))
+	b, err := f.bindPlaintext(t, "uploads/example.xml.gz")
+	require.NoError(t, err)
+
+	emitted, err := f.emit(t, b, res)
+	require.NoError(t, err)
+	raw, ok := f.reports.get(emitted.SummaryKey)
+	require.True(t, ok)
+	var summary rdereport.Summary
+	require.NoError(t, json.Unmarshal(raw, &summary))
+
+	assert.Equal(t, rejected, summary.Findings.Total, "the tally counts every finding, not the retained ones")
+	assert.Equal(t, rdevalidate.MaxFindings, summary.Findings.Retained)
+	assert.Equal(t, rejected-rdevalidate.MaxFindings, summary.Findings.Suppressed)
+	require.Len(t, summary.Findings.ByCode, 1)
+	assert.Equal(t, string(rdevalidate.CodeRDEObjectEntityRejected), summary.Findings.ByCode[0].Code)
+	assert.Equal(t, rejected, summary.Findings.ByCode[0].Count)
+	assert.False(t, summary.Findings.ByCode[0].ErrorClass)
+	assert.Equal(t, rejected, summary.Findings.BySeverity["WARNING"])
+	assert.LessOrEqual(t, len(summary.Findings.Sample), rdereport.MaxSummarySampleFindings)
 }
 
 func TestEscrowValidationActivities_PlaintextProfileRejectsSignatureKey(t *testing.T) {
@@ -351,15 +432,21 @@ func TestEscrowValidationActivities_KeyUnavailableIsErrorNotDVFN(t *testing.T) {
 	assert.Equal(t, rdevalidate.OutcomeError, res.Outcome)
 	assert.Contains(t, res.Codes(), rdevalidate.CodeDecryptKeyUnavailable)
 
-	_, err = f.emit(t, b, res)
-	require.Error(t, err, "no notification for ERROR")
-	assert.True(t, isNonRetryable(err))
-	assert.Empty(t, f.reports.keys())
+	// An undecided run claims nothing — no rdeReport, no DVFN — but it still
+	// gets the summary, which is where the reason code is written down.
+	emitted, err := f.emit(t, b, res)
+	require.NoError(t, err)
+	assert.NotEmpty(t, emitted.SummaryKey)
+	assert.Empty(t, emitted.ReportKey, "an undecided run states no counts")
+	assert.Empty(t, emitted.NotificationKey, "an undecided run claims nothing to ICANN")
+	assert.Empty(t, emitted.NotificationStatus)
+	assert.Equal(t, []string{emitted.SummaryKey}, f.reports.keys())
 
-	require.NoError(t, f.finalize(t, b, res, EmitReportOutput{}, ""))
+	require.NoError(t, f.finalize(t, b, res, emitted, ""))
 	final, _ := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
 	assert.Equal(t, entities.EscrowValidationError, final.Outcome)
 	assert.Equal(t, entities.EscrowNotificationNone, final.NotificationStatus)
+	assert.Equal(t, emitted.SummaryKey, final.SummaryObjectKey)
 }
 
 func TestEscrowValidationActivities_FinalizeFailurePath(t *testing.T) {
