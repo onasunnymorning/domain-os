@@ -57,7 +57,29 @@ type rewriteState struct {
 	// we are inside a keep-subtree block that is copied without classification.
 	skipDepth int
 	copyDepth int
+	// refused records that the profile has met something it does not
+	// classify. From that moment the run can only be QUARANTINED, so nothing
+	// more is written; the walk continues purely to find the rest of the gaps.
+	// See surveying below.
+	refused bool
 }
+
+// refuse marks the run unpublishable and silences the writer. It is not an
+// abort: a source that trips the profile once usually trips it in several
+// places, and stopping at the first would make extending the profile a
+// re-run-the-whole-deposit loop, one name at a time. The walk carries on so a
+// single quarantined run reports every gap it can see.
+//
+// Nothing written before this point can escape: only a PASS is verified and
+// published, and only a PASS may reference an object in the run record.
+func (s *rewriteState) refuse() {
+	s.refused = true
+	s.pending = nil
+}
+
+// surveying reports whether the writer is silenced. Every emit consults it, so
+// a refusal stops output at exactly one place rather than at every call site.
+func (s *rewriteState) surveying() bool { return s.refused }
 
 // Rewrite reads the deposit from src and writes the derivative to dst. It never
 // panics: a failure becomes a Finding and Decide picks the outcome. When the
@@ -223,14 +245,25 @@ func (s *rewriteState) startElement(t xml.StartElement, at time.Time) bool {
 	key, ok := s.key(scope, t.Name)
 	if !ok {
 		s.res.Add(Finding{Code: CodePolicyUnknownNamespace, Severity: SeverityError, Stage: StageRewrite,
-			Locator: s.locator(), Message: "element is in a namespace the profile does not classify", At: at})
-		return false
+			Object: s.namespaceName(scope, t.Name), Locator: s.locator(),
+			Message: "element is in a namespace the profile does not classify", At: at})
+		// The subtree is skipped rather than surveyed: nothing under an
+		// unclassified namespace can be classified either, and the namespace
+		// is the one entry that has to be added before any of it can be.
+		s.refuse()
+		s.skipDepth = 1
+		return true
 	}
 	action, ok := s.rw.Profile.Action(s.parentKey(), key)
 	if !ok {
 		s.res.Add(Finding{Code: CodePolicyUnknownElement, Severity: SeverityError, Stage: StageRewrite,
-			Locator: s.locator(), Message: "element is not classified by profile " + s.rw.Profile.Version(), At: at})
-		return false
+			Object: key, Locator: s.locator(),
+			Message: "element is not classified by profile " + s.rw.Profile.Version(), At: at})
+		// Likewise: an unclassified element's children are classified against
+		// it, so the element is the gap to report and its subtree is skipped.
+		s.refuse()
+		s.skipDepth = 1
+		return true
 	}
 
 	if action.Kind == ActDropSubtree {
@@ -242,10 +275,7 @@ func (s *rewriteState) startElement(t xml.StartElement, at time.Time) bool {
 		return true
 	}
 
-	attrs, ok := s.attributes(scope, key, t.Attr, at)
-	if !ok {
-		return false
-	}
+	attrs := s.attributes(scope, key, t.Attr, at)
 	if uri, isObject := objectRoots[key]; isObject {
 		if s.res.Counts.ObjectsByType == nil {
 			s.res.Counts.ObjectsByType = map[string]int64{}
@@ -505,7 +535,11 @@ func (s *rewriteState) pop() {
 
 // attributes validates every attribute against the profile and returns the ones
 // to emit. Namespace declarations always pass; schema hints are dropped.
-func (s *rewriteState) attributes(scope map[string]string, key string, attrs []xml.Attr, at time.Time) ([]xml.Attr, bool) {
+//
+// Every attribute on the element is checked even once one has been refused: an
+// element that carries one unclassified attribute often carries several, and
+// reporting them together is the difference between one run and several.
+func (s *rewriteState) attributes(scope map[string]string, key string, attrs []xml.Attr, at time.Time) []xml.Attr {
 	out := make([]xml.Attr, 0, len(attrs))
 	for _, a := range attrs {
 		if a.Name.Space == "xmlns" || (a.Name.Space == "" && a.Name.Local == "xmlns") {
@@ -518,17 +552,36 @@ func (s *rewriteState) attributes(scope map[string]string, key string, attrs []x
 				continue // schema hint: recognised, deliberately not reproduced
 			}
 			s.res.Add(Finding{Code: CodePolicyUnknownAttribute, Severity: SeverityError, Stage: StageRewrite,
-				Locator: s.locator(), Message: "attribute is in a namespace the profile does not classify", At: at})
-			return nil, false
+				Object: s.namespaceName(scope, a.Name), Locator: s.locator(),
+				Message: "attribute is in a namespace the profile does not classify", At: at})
+			s.refuse()
+			continue
 		}
 		if !s.rw.Profile.AllowsAttribute(s.parentKey(), key, a.Name.Local) {
 			s.res.Add(Finding{Code: CodePolicyUnknownAttribute, Severity: SeverityError, Stage: StageRewrite,
-				Locator: s.locator(), Message: "attribute is not classified by profile " + s.rw.Profile.Version(), At: at})
-			return nil, false
+				Object: key + "@" + a.Name.Local, Locator: s.locator(),
+				Message: "attribute is not classified by profile " + s.rw.Profile.Version(), At: at})
+			s.refuse()
+			continue
 		}
 		out = append(out, a)
 	}
-	return out, true
+	return out
+}
+
+// namespaceName identifies an unclassified namespace for a finding. Where the
+// prefix resolves it is the URI, because the URI is the entry the profile is
+// missing — Alias maps URIs, not prefixes, and a source is free to spell the
+// prefix however it likes. Where it does not resolve, the prefix as written is
+// all there is to report.
+func (s *rewriteState) namespaceName(scope map[string]string, name xml.Name) string {
+	if uri, ok := s.resolve(scope, name.Space); ok {
+		return uri
+	}
+	if name.Space == "" {
+		return name.Local
+	}
+	return name.Space + ":" + name.Local
 }
 
 func rawName(n xml.Name) string {
@@ -576,8 +629,19 @@ func writeText(w *bufio.Writer, s string) { _, _ = textEscaper.WriteString(w, s)
 // first error and reports it from Flush, which Rewrite checks once at the end,
 // so the individual writes are deliberately unchecked: branching on each would
 // add a dozen paths reachable only after the single checked one has failed.
-func (s *rewriteState) emit(b []byte)       { _, _ = s.w.Write(b) }
-func (s *rewriteState) emitString(x string) { _, _ = s.w.WriteString(x) }
+func (s *rewriteState) emit(b []byte) {
+	if s.surveying() {
+		return
+	}
+	_, _ = s.w.Write(b)
+}
+
+func (s *rewriteState) emitString(x string) {
+	if s.surveying() {
+		return
+	}
+	_, _ = s.w.WriteString(x)
+}
 
 var attrEscaper = strings.NewReplacer(
 	"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",
