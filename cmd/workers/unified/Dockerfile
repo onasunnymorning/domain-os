@@ -1,9 +1,11 @@
 FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS builder
 WORKDIR /app
-# Leverage layer caching: download deps first
+# Dependencies come from the committed vendor tree, not the module proxy: the
+# build stays hermetic and cannot fail on a proxy outage. go.mod/go.sum are
+# still needed — vendor mode checks them against vendor/modules.txt.
+# Leverage layer caching: the vendor tree changes far less often than the source.
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+COPY vendor/ ./vendor/
 # Then copy the rest of the source
 COPY . .
 ENV GOTOOLCHAIN=auto
@@ -13,7 +15,7 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=vendor -ldflags="-s -w \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o /out/unified-worker ./cmd/workers/unified
