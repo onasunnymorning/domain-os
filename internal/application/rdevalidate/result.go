@@ -6,9 +6,14 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-// ProfileRydeSig is the only profile this package implements and the only
-// one that can yield a cryptographically verified pass (constraint 5).
-const ProfileRydeSig = entities.EscrowProfileRydeSig
+// Profiles this package can validate. Only ProfileRydeSig can yield a
+// cryptographically verified pass (constraint 5); ProfilePlaintextXML accepts
+// an unsigned `.xml` or `.xml.gz` deposit and establishes nothing about its
+// origin (issue #415).
+const (
+	ProfileRydeSig      = entities.EscrowProfileRydeSig
+	ProfilePlaintextXML = entities.EscrowProfilePlaintextXML
+)
 
 // MaxFindings bounds the findings list so a pathologically broken deposit
 // cannot bloat the persisted record or the workflow payload. Counts stay exact.
@@ -65,8 +70,10 @@ type DepositSummary struct {
 
 // Digests are the content digests recorded against the run.
 type Digests struct {
-	RydeSHA256      string `json:"rydeSha256"`
-	SigSHA256       string `json:"sigSha256"`
+	ArtifactSHA256  string `json:"artifactSha256"`
+	SignatureSHA256 string `json:"signatureSha256,omitempty"`
+	// PlaintextSHA256 digests the decrypted payload. For an unsigned profile
+	// there is nothing to decrypt, so it equals ArtifactSHA256.
 	PlaintextSHA256 string `json:"plaintextSha256,omitempty"`
 }
 

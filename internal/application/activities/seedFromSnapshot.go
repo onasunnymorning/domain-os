@@ -307,7 +307,7 @@ func insertTypedOmit[T any](db *gorm.DB, batch []json.RawMessage, omit ...string
 
 // SnapshotListItem represents a snapshot in the list returned by ListSnapshots.
 type SnapshotListItem struct {
-	Key         string           `json:"key"`       // S3 prefix key
+	Key         string           `json:"key"` // S3 prefix key
 	Label       string           `json:"label"`
 	Note        string           `json:"note,omitempty"`
 	CreatedAt   string           `json:"createdAt"` // ISO 8601 timestamp

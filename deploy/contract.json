@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-09-09T02:14:47Z",
+  "generated": "2026-09-09T04:05:05Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -640,6 +640,36 @@
             "name": "ESCROW_VALIDATION_TIMEOUT",
             "default": "2h",
             "description": "Wall-clock bound for validating one deposit (Go duration)"
+          },
+          {
+            "name": "ESCROW_SANITIZE_HMAC_KEY",
+            "secret": true,
+            "description": "Master HMAC key for escrow derivative pseudonymisation, base64 or hex, at least 32 bytes. Tenant- and purpose-scoped subkeys are derived from it; rotating it changes every token, so derivatives made before and after are no longer joinable. Without it the sanitization activities are not registered"
+          },
+          {
+            "name": "ESCROW_SANITIZE_SUFFIX",
+            "default": "artful-dodger",
+            "description": "Synthetic registry suffix every in-bailiwick FQDN in a derivative is rewritten to, e.g. domain.suffix becomes domain.artful-dodger. Overridable per launch; must differ from the source TLD"
+          },
+          {
+            "name": "ESCROW_SANITIZE_MAX_XML_DEPTH",
+            "default": "32",
+            "description": "Maximum XML nesting depth accepted from a deposit being sanitized"
+          },
+          {
+            "name": "ESCROW_SANITIZE_MAX_ELEMENTS",
+            "default": "1000000000",
+            "description": "Maximum number of XML elements accepted from a deposit being sanitized. Generous by design: a large TLD legitimately produces hundreds of millions"
+          },
+          {
+            "name": "ESCROW_SANITIZE_MAX_FIELD_BYTES",
+            "default": "65536",
+            "description": "Maximum length of a single XML field value accepted from a deposit being sanitized"
+          },
+          {
+            "name": "ESCROW_SANITIZE_TIMEOUT",
+            "default": "4h",
+            "description": "Wall-clock budget for producing and verifying one derivative"
           }
         ]
       }

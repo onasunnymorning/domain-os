@@ -563,11 +563,23 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "a valid tld is required for escrow-validation"})
 			return
 		}
-		rydeKey, _ := req.Params["rydeObjectKey"].(string)
-		sigKey, _ := req.Params["sigObjectKey"].(string)
+		artifactKey, _ := req.Params["artifactObjectKey"].(string)
+		sigKey, _ := req.Params["signatureObjectKey"].(string)
 		intakeRef, _ := req.Params["intakeRef"].(string)
-		if rydeKey == "" || sigKey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "rydeObjectKey and sigObjectKey are required for escrow-validation"})
+		profile, _ := req.Params["profile"].(string)
+		if profile == "" {
+			profile = entities.EscrowProfileRydeSig
+		}
+		if !entities.IsEscrowProfile(profile) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "profile must be \"ryde+sig\" or \"xml\" for escrow-validation"})
+			return
+		}
+		if artifactKey == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "artifactObjectKey is required for escrow-validation"})
+			return
+		}
+		if entities.EscrowProfileIsSigned(profile) != (sigKey != "") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "signatureObjectKey is required for ryde+sig and must be omitted otherwise"})
 			return
 		}
 		submittedBy := scope.String()
@@ -577,8 +589,34 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		wfID = fmt.Sprintf("escrow-validation-%s-%s", tld, ts)
 		workflow = workflows.EscrowValidationWorkflow
 		args = []interface{}{workflows.EscrowValidationParams{
-			Scope: scope.String(), TLD: tld, RydeObjectKey: rydeKey, SigObjectKey: sigKey,
+			Scope: scope.String(), TLD: tld, Profile: profile,
+			ArtifactObjectKey: artifactKey, SignatureObjectKey: sigKey,
 			SubmittedBy: submittedBy, IntakeRef: intakeRef, ReceivedAt: time.Now().UTC(),
+		}}
+
+	case "escrow-sanitize":
+		// Scope is the caller's; the TLD is not a parameter at all, because the
+		// derivative inherits it from the bound source deposit.
+		scope, err := OperatorScopeFromRequest(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		sourceRunID, _ := req.Params["sourceValidationRunId"].(string)
+		if strings.TrimSpace(sourceRunID) == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "sourceValidationRunId is required for escrow-sanitize"})
+			return
+		}
+		suffix, _ := req.Params["syntheticSuffix"].(string)
+		requestedBy := scope.String()
+		if uid, ok := appcontext.UserID(ctx.Request.Context()); ok && uid != "" {
+			requestedBy = uid
+		}
+		wfID = fmt.Sprintf("escrow-sanitize-%s", sourceRunID)
+		workflow = workflows.EscrowSanitizeWorkflow
+		args = []interface{}{workflows.EscrowSanitizeParams{
+			Scope: scope.String(), SourceValidationRunID: sourceRunID,
+			SyntheticSuffix: suffix, RequestedBy: requestedBy,
 		}}
 
 	default:

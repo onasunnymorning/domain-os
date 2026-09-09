@@ -10,11 +10,12 @@ import (
 	"testing"
 )
 
-// TestEscrowValidationDoesNotTouchImport is the structural half of issue
-// #412's "validation is not import" proof: none of the EVE code may import
-// the import services or reference the import activities. The behavioural
-// half is TestEscrowValidation_NoRegistryWriteSideEffect in the activities
-// package.
+// TestEscrowValidationDoesNotTouchImport is the structural half of the "EVE is
+// not import" proof: none of the escrow verification or derivative code may
+// import the import services or reference the import activities. Issue #412
+// established it for validation; issue #415 extends it to the sanitizer, which
+// must have no path to registry data either. The behavioural half is
+// TestEscrowValidation_NoRegistryWriteSideEffect in the activities package.
 func TestEscrowValidationDoesNotTouchImport(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	var files []string
@@ -22,8 +23,11 @@ func TestEscrowValidationDoesNotTouchImport(t *testing.T) {
 		"internal/application/rdevalidate/*.go",
 		"internal/application/rdevalidate/rdetest/*.go",
 		"internal/application/rdereport/*.go",
+		"internal/application/rdesanitize/*.go",
 		"internal/application/activities/escrow_validation*.go",
+		"internal/application/activities/escrow_sanitize*.go",
 		"internal/application/workflows/escrowValidation.go",
+		"internal/application/workflows/escrowSanitize.go",
 		"internal/infrastructure/secrets/*.go",
 	} {
 		matches, err := filepath.Glob(filepath.Join(root, pattern))

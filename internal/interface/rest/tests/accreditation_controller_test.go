@@ -18,11 +18,11 @@ import (
 //	accredit → check → list → de-accredit → verify removal
 var _ = Describe("AccreditationController", Ordered, func() {
 	const (
-		ryID     = "accTestRyOp"
-		gTLDName = "accgtld"  // 7 chars → generic TLD
+		ryID      = "accTestRyOp"
+		gTLDName  = "accgtld" // 7 chars → generic TLD
 		ccTLDName = "ac"      // 2 chars → country-code TLD
-		rar1ClID = "accTestRar1"
-		rar2ClID = "accTestRar2"
+		rar1ClID  = "accTestRar1"
+		rar2ClID  = "accTestRar2"
 		rar1GurID = 10009
 		rar2GurID = 10010
 	)

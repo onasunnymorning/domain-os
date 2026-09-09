@@ -1,8 +1,8 @@
 package activities
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"testing"

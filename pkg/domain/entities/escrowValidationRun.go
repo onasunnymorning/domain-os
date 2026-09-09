@@ -38,9 +38,36 @@ const (
 	EscrowNotificationDVFN EscrowNotificationStatus = "DVFN" // Deposit Verification Fail Notification
 )
 
-// EscrowProfileRydeSig is the only profile that can yield a cryptographically
-// verified pass (issue #412, design constraint 5).
-const EscrowProfileRydeSig = "ryde+sig"
+// Validation profiles. A profile names the shape of the artifact set and, with
+// it, what a pass is allowed to claim.
+const (
+	// EscrowProfileRydeSig is a `.ryde` deposit with a detached `.sig`. It is
+	// the only profile that can yield a cryptographically verified pass
+	// (issue #412, design constraint 5) and the only one that produces an
+	// ICANN DVPN/DVFN notification.
+	EscrowProfileRydeSig = "ryde+sig"
+	// EscrowProfilePlaintextXML is an unsigned, unencrypted `.xml` or `.xml.gz`
+	// deposit (issue #415). It is validated exactly as strictly, but nothing
+	// about its origin is established, so it never yields Verified() and never
+	// produces a notification.
+	EscrowProfilePlaintextXML = "xml"
+)
+
+// IsEscrowProfile reports whether p names a known validation profile.
+func IsEscrowProfile(p string) bool {
+	switch p {
+	case EscrowProfileRydeSig, EscrowProfilePlaintextXML:
+		return true
+	default:
+		return false
+	}
+}
+
+// EscrowProfileIsSigned reports whether p carries a detached signature, and so
+// whether a pass under it is a claim about the depositor's identity.
+func EscrowProfileIsSigned(p string) bool {
+	return p == EscrowProfileRydeSig
+}
 
 // EscrowFinding is the persisted form of one validation check result. It is
 // the domain mirror of the validator's finding type (the domain layer cannot
@@ -105,8 +132,8 @@ func NewEscrowValidationRun(depositID uuid.UUID, scope OperatorID, tld, workflow
 	if strings.TrimSpace(workflowID) == "" {
 		return nil, errors.Join(ErrInvalidEscrowValidationRun, errors.New("workflowID is required"))
 	}
-	if strings.TrimSpace(profile) == "" {
-		return nil, errors.Join(ErrInvalidEscrowValidationRun, errors.New("profile is required"))
+	if !IsEscrowProfile(profile) {
+		return nil, errors.Join(ErrInvalidEscrowValidationRun, ErrUnknownEscrowProfile)
 	}
 	if startedAt.IsZero() {
 		return nil, errors.Join(ErrInvalidEscrowValidationRun, errors.New("startedAt is required"))
@@ -151,14 +178,21 @@ func (r *EscrowValidationRun) Finalize(f EscrowValidationFinalization) error {
 	if r.Outcome != EscrowValidationRunning {
 		return ErrEscrowValidationRunAlreadyFinal
 	}
+	signed := EscrowProfileIsSigned(r.Profile)
 	switch f.Outcome {
 	case EscrowValidationPass:
-		if f.NotificationStatus != EscrowNotificationDVPN {
-			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("PASS requires a DVPN notification"))
+		switch {
+		case signed && f.NotificationStatus != EscrowNotificationDVPN:
+			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("PASS on a signed profile requires a DVPN notification"))
+		case !signed && f.NotificationStatus != EscrowNotificationNone:
+			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("an unsigned profile must not carry a notification"))
 		}
 	case EscrowValidationFail:
-		if f.NotificationStatus != EscrowNotificationDVFN {
-			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("FAIL requires a DVFN notification"))
+		switch {
+		case signed && f.NotificationStatus != EscrowNotificationDVFN:
+			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("FAIL on a signed profile requires a DVFN notification"))
+		case !signed && f.NotificationStatus != EscrowNotificationNone:
+			return errors.Join(ErrInvalidEscrowValidationRun, errors.New("an unsigned profile must not carry a notification"))
 		}
 	case EscrowValidationError:
 		if f.NotificationStatus != EscrowNotificationNone {

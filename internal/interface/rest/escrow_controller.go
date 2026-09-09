@@ -105,6 +105,11 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc, deps EscrowVali
 		grp.POST("/trusted-keys", controller.CreateTrustedKey)
 		grp.POST("/trusted-keys/:id/retire", controller.RetireTrustedKey)
 		grp.GET("/trusted-keys", controller.ListTrustedKeys)
+
+		// EVE derivative sanitization (issue #415)
+		grp.POST("/sanitizations", controller.StartSanitization)
+		grp.GET("/sanitizations", controller.ListSanitizations)
+		grp.GET("/sanitizations/:id", controller.GetSanitization)
 	}
 	return controller
 }

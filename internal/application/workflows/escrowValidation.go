@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -14,13 +15,17 @@ import (
 // pair (issue #412). Scope and TLD come from the authenticated launch
 // context — never from the artifact name or a caller-chosen value.
 type EscrowValidationParams struct {
-	Scope         string    `json:"scope"` // entities.OperatorID, validated at launch and again in BindDeposit
-	TLD           string    `json:"tld"`
-	RydeObjectKey string    `json:"rydeObjectKey"`
-	SigObjectKey  string    `json:"sigObjectKey"`
-	SubmittedBy   string    `json:"submittedBy"`
-	IntakeRef     string    `json:"intakeRef,omitempty"`
-	ReceivedAt    time.Time `json:"receivedAt"`
+	Scope string `json:"scope"` // entities.OperatorID, validated at launch and again in BindDeposit
+	TLD   string `json:"tld"`
+	// Profile is entities.EscrowProfileRydeSig or EscrowProfilePlaintextXML.
+	// Empty means the signed profile.
+	Profile           string `json:"profile,omitempty"`
+	ArtifactObjectKey string `json:"artifactObjectKey"`
+	// SignatureObjectKey is set only for a signed profile.
+	SignatureObjectKey string    `json:"signatureObjectKey,omitempty"`
+	SubmittedBy        string    `json:"submittedBy"`
+	IntakeRef          string    `json:"intakeRef,omitempty"`
+	ReceivedAt         time.Time `json:"receivedAt"`
 	// ValidationTimeout bounds the validate step; it should mirror the worker's
 	// ESCROW_VALIDATION_TIMEOUT. Zero means the default (2h).
 	ValidationTimeout time.Duration `json:"validationTimeout,omitempty"`
@@ -93,8 +98,8 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 	// 1. Bind the pair to an immutable deposit record and open a run.
 	var bound activities.BindDepositOutput
 	if err := workflow.ExecuteActivity(ctxBind, acts.BindDeposit, activities.BindDepositInput{
-		Scope: params.Scope, TLD: params.TLD,
-		RydeObjectKey: params.RydeObjectKey, SigObjectKey: params.SigObjectKey,
+		Scope: params.Scope, TLD: params.TLD, Profile: params.Profile,
+		ArtifactObjectKey: params.ArtifactObjectKey, SignatureObjectKey: params.SignatureObjectKey,
 		SubmittedBy: params.SubmittedBy, IntakeRef: params.IntakeRef, ReceivedAt: params.ReceivedAt,
 		WorkflowID: wfID, RunID: runID,
 	}).Get(ctxBind, &bound); err != nil {
@@ -111,7 +116,7 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		dctx = workflow.WithActivityOptions(dctx, workflow.ActivityOptions{StartToCloseTimeout: 5 * time.Minute, RetryPolicy: shortRetry})
 		if err := workflow.ExecuteActivity(dctx, acts.FinalizeValidationRun, activities.FinalizeRunInput{
 			Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
-			Result:      rdevalidate.Result{Profile: rdevalidate.ProfileRydeSig, Outcome: rdevalidate.OutcomeError, StageReached: rdevalidate.Stage(stage)},
+			Result:      rdevalidate.Result{Profile: bound.Profile, Outcome: rdevalidate.OutcomeError, StageReached: rdevalidate.Stage(stage)},
 			CompletedAt: workflow.Now(ctx), Failure: stage + ": " + cause.Error(),
 		}).Get(dctx, nil); err != nil {
 			logger.Error("escrow validation: could not finalise run as ERROR", "correlation_id", wfID, "run_id", state.ValidationRunID, "error", err)
@@ -122,8 +127,10 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 	state.Phase = "validating"
 	var res rdevalidate.Result
 	if err := workflow.ExecuteActivity(ctxValidate, acts.ValidateArtifacts, activities.ValidateArtifactsInput{
-		Scope: params.Scope, TLD: params.TLD, DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
-		RydeKey: bound.RydeKey, SigKey: bound.SigKey, RydeSHA256: bound.RydeSHA256, SigSHA256: bound.SigSHA256,
+		Scope: params.Scope, TLD: params.TLD, Profile: bound.Profile,
+		DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
+		ArtifactKey: bound.ArtifactKey, SignatureKey: bound.SignatureKey,
+		ArtifactSHA256: bound.ArtifactSHA256, SignatureSHA256: bound.SignatureSHA256,
 	}).Get(ctxValidate, &res); err != nil {
 		finalizeError("validate", err)
 		return result, fmt.Errorf("ValidateArtifacts(run=%s) failed: %w", state.ValidationRunID, err)
@@ -148,18 +155,22 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		return result, fmt.Errorf("validation of run %s could not be decided (%v); no notification emitted", state.ValidationRunID, state.Codes)
 	}
 
-	// 3. Emit rdeReport + DVPN/DVFN.
-	state.Phase = "reporting"
+	// 3. Emit rdeReport + DVPN/DVFN — signed profiles only. An rdeNotification
+	// is a compliance claim about a signed deposit; an unsigned one has
+	// established nothing to report to ICANN (issue #415).
 	var emitted activities.EmitReportOutput
-	if err := workflow.ExecuteActivity(ctxShort, acts.EmitReportAndNotification, activities.EmitReportInput{
-		Scope: params.Scope, TLD: params.TLD, DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
-		Result: res, ReceivedAt: params.ReceivedAt, ValidatedAt: validatedAt, Hints: bound.Hints,
-	}).Get(ctxShort, &emitted); err != nil {
-		finalizeError("report", err)
-		return result, fmt.Errorf("EmitReportAndNotification(run=%s) failed: %w", state.ValidationRunID, err)
+	if entities.EscrowProfileIsSigned(bound.Profile) {
+		state.Phase = "reporting"
+		if err := workflow.ExecuteActivity(ctxShort, acts.EmitReportAndNotification, activities.EmitReportInput{
+			Scope: params.Scope, TLD: params.TLD, DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
+			Result: res, ReceivedAt: params.ReceivedAt, ValidatedAt: validatedAt, Hints: bound.Hints,
+		}).Get(ctxShort, &emitted); err != nil {
+			finalizeError("report", err)
+			return result, fmt.Errorf("EmitReportAndNotification(run=%s) failed: %w", state.ValidationRunID, err)
+		}
+		state.NotificationStatus = emitted.NotificationStatus
+		result.NotificationStatus, result.ReportKey, result.NotificationKey = emitted.NotificationStatus, emitted.ReportKey, emitted.NotificationKey
 	}
-	state.NotificationStatus = emitted.NotificationStatus
-	result.NotificationStatus, result.ReportKey, result.NotificationKey = emitted.NotificationStatus, emitted.ReportKey, emitted.NotificationKey
 
 	// 4. Finalise the immutable run record.
 	state.Phase = "finalizing"

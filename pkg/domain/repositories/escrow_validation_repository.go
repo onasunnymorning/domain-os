@@ -20,7 +20,7 @@ type EscrowDepositRepository interface {
 	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowDeposit, error)
 	// FindByDigests returns the deposit bound to this exact artifact pair, or
 	// entities.ErrEscrowDepositNotFound.
-	FindByDigests(ctx context.Context, scope entities.OperatorID, tld, rydeSHA256, sigSHA256 string) (*entities.EscrowDeposit, error)
+	FindByDigests(ctx context.Context, scope entities.OperatorID, tld, profile, artifactSHA256, signatureSHA256 string) (*entities.EscrowDeposit, error)
 	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowDeposit, string, error)
 }
 
@@ -45,4 +45,18 @@ type EscrowTrustedKeyRepository interface {
 	// ListActive returns keys usable to verify a signature at the given instant.
 	ListActive(ctx context.Context, scope entities.OperatorID, tld string, at time.Time) ([]*entities.EscrowTrustedKey, error)
 	List(ctx context.Context, scope entities.OperatorID, tld string) ([]*entities.EscrowTrustedKey, error)
+}
+
+// EscrowSanitizationRunRepository persists immutable sanitisation runs. Like
+// the validation aggregates it has no Update or Delete: Finalize is a single
+// conditional transition out of RUNNING, and a derivative is never replaced.
+type EscrowSanitizationRunRepository interface {
+	Create(ctx context.Context, r *entities.EscrowSanitizationRun) error
+	Finalize(ctx context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error
+	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error)
+	// FindBySourceAndPolicy returns the run that already derived this source
+	// under this policy version, so a replay binds instead of producing a
+	// second derivative.
+	FindBySourceAndPolicy(ctx context.Context, scope entities.OperatorID, sourceValidationRunID uuid.UUID, policyVersion string) (*entities.EscrowSanitizationRun, error)
+	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowSanitizationRun, string, error)
 }

@@ -27,12 +27,21 @@ func TestNewEscrowDeposit(t *testing.T) {
 	scope := testScope(t)
 	now := time.Now()
 
-	d, err := NewEscrowDeposit(scope, "Example.", now, "user-1", " ref ", "k/ryde", "k/sig", testSHA, testSHA, 10, 5)
+	d, err := NewEscrowDeposit(scope, "Example.", EscrowProfileRydeSig, now, "user-1", " ref ", "k/ryde", testSHA, 10, "k/sig", testSHA, 5)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, d.ID)
 	assert.Equal(t, "example", d.TLD, "TLD is normalised")
 	assert.Equal(t, "ref", d.IntakeRef)
+	assert.Equal(t, EscrowProfileRydeSig, d.Profile)
 	assert.Equal(t, time.UTC, d.ReceivedAt.Location())
+
+	t.Run("unsigned profile needs no signature", func(t *testing.T) {
+		p, err := NewEscrowDeposit(scope, "example", EscrowProfilePlaintextXML, now, "u", "", "k/deposit.xml.gz", testSHA, 10, "", "", 0)
+		require.NoError(t, err)
+		assert.Empty(t, p.SignatureObjectKey)
+		assert.Empty(t, p.SignatureSHA256)
+		assert.Zero(t, p.SignatureBytes)
+	})
 
 	tests := []struct {
 		name string
@@ -40,25 +49,34 @@ func TestNewEscrowDeposit(t *testing.T) {
 		want error
 	}{
 		{"bad scope", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(OperatorID(""), "example", now, "u", "", "a", "b", testSHA, testSHA, 1, 1)
+			return NewEscrowDeposit(OperatorID(""), "example", EscrowProfileRydeSig, now, "u", "", "a", testSHA, 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
 		{"bad tld", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "bad tld!", now, "u", "", "a", "b", testSHA, testSHA, 1, 1)
+			return NewEscrowDeposit(scope, "bad tld!", EscrowProfileRydeSig, now, "u", "", "a", testSHA, 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
+		{"unknown profile", func() (*EscrowDeposit, error) {
+			return NewEscrowDeposit(scope, "example", "ryde", now, "u", "", "a", testSHA, 1, "b", testSHA, 1)
+		}, ErrUnknownEscrowProfile},
 		{"zero receivedAt", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "example", time.Time{}, "u", "", "a", "b", testSHA, testSHA, 1, 1)
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, time.Time{}, "u", "", "a", testSHA, 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
 		{"no submitter", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "example", now, " ", "", "a", "b", testSHA, testSHA, 1, 1)
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, now, " ", "", "a", testSHA, 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
-		{"missing keys", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "example", now, "u", "", "", "b", testSHA, testSHA, 1, 1)
+		{"missing artifact key", func() (*EscrowDeposit, error) {
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, now, "u", "", "", testSHA, 1, "b", testSHA, 1)
+		}, ErrInvalidEscrowDeposit},
+		{"signed profile without signature", func() (*EscrowDeposit, error) {
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, now, "u", "", "a", testSHA, 1, "", "", 0)
+		}, ErrInvalidEscrowDeposit},
+		{"unsigned profile with signature", func() (*EscrowDeposit, error) {
+			return NewEscrowDeposit(scope, "example", EscrowProfilePlaintextXML, now, "u", "", "a", testSHA, 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
 		{"bad digest", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "example", now, "u", "", "a", "b", "ABC", testSHA, 1, 1)
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, now, "u", "", "a", "ABC", 1, "b", testSHA, 1)
 		}, ErrInvalidEscrowDigest},
 		{"zero size", func() (*EscrowDeposit, error) {
-			return NewEscrowDeposit(scope, "example", now, "u", "", "a", "b", testSHA, testSHA, 0, 1)
+			return NewEscrowDeposit(scope, "example", EscrowProfileRydeSig, now, "u", "", "a", testSHA, 0, "b", testSHA, 1)
 		}, ErrInvalidEscrowDeposit},
 	}
 	for _, tc := range tests {
@@ -119,10 +137,19 @@ func TestEscrowValidationRun_Lifecycle(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrEscrowValidationRunAlreadyFinal))
 	assert.Equal(t, EscrowValidationPass, r.Outcome)
 
-	// Only the signed+encrypted profile is a verified pass.
-	other, _ := NewEscrowValidationRun(uuid.New(), scope, "example", "wf", "run", "xml", started)
-	require.NoError(t, other.Finalize(EscrowValidationFinalization{Outcome: EscrowValidationPass, NotificationStatus: EscrowNotificationDVPN, CompletedAt: started}))
+	// Only the signed+encrypted profile is a verified pass, and only it may
+	// carry an ICANN notification.
+	other, err := NewEscrowValidationRun(uuid.New(), scope, "example", "wf", "run", EscrowProfilePlaintextXML, started)
+	require.NoError(t, err)
+	assert.True(t, errors.Is(
+		other.Finalize(EscrowValidationFinalization{Outcome: EscrowValidationPass, NotificationStatus: EscrowNotificationDVPN, CompletedAt: started}),
+		ErrInvalidEscrowValidationRun), "an unsigned profile must not emit a DVPN")
+	require.NoError(t, other.Finalize(EscrowValidationFinalization{Outcome: EscrowValidationPass, NotificationStatus: EscrowNotificationNone, CompletedAt: started}))
 	assert.False(t, other.Verified())
+
+	// An unknown profile is not a run at all.
+	_, err = NewEscrowValidationRun(uuid.New(), scope, "example", "wf", "run", "ryde", started)
+	assert.True(t, errors.Is(err, ErrUnknownEscrowProfile))
 }
 
 func TestEscrowTrustedKey(t *testing.T) {

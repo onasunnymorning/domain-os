@@ -12,10 +12,10 @@ type CreateSlavingRequest struct {
 	Zone            string   `json:"zone" binding:"required"`
 	MasterNS        []string `json:"masterNS" binding:"required,min=1"`
 	SlaveNS         []string `json:"slaveNS" binding:"required,min=1"`
-	CheckIntervalS  int      `json:"checkIntervalSeconds,omitempty"`  // default 300
-	StalledAfterN   int      `json:"stalledAfterN,omitempty"`         // default 3
-	ConfidenceN     int      `json:"confidenceN,omitempty"`           // default 5
-	GraceMultiplier float64  `json:"graceMultiplier,omitempty"`       // default 2.5
+	CheckIntervalS  int      `json:"checkIntervalSeconds,omitempty"` // default 300
+	StalledAfterN   int      `json:"stalledAfterN,omitempty"`        // default 3
+	ConfidenceN     int      `json:"confidenceN,omitempty"`          // default 5
+	GraceMultiplier float64  `json:"graceMultiplier,omitempty"`      // default 2.5
 }
 
 // ZoneSlavingService defines the application-level interface for zone slaving monitor operations.

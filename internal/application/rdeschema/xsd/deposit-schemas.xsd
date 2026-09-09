@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Wrapper schema for xmllint, covering a complete RDE deposit (RFC 8909 +
+  RFC 9022) and the EPP object mappings it composes with. The published
+  schemas import each other by namespace without a schemaLocation, so loading
+  every namespace here, in dependency order, is what lets libxml2 satisfy
+  those imports. Test-only: nothing at runtime reads these files.
+-->
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+        targetNamespace="urn:domain-os:deposit-schemas"
+        elementFormDefault="qualified">
+  <import namespace="urn:ietf:params:xml:ns:eppcom-1.0" schemaLocation="eppcom-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:epp-1.0" schemaLocation="epp-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:domain-1.0" schemaLocation="domain-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:host-1.0" schemaLocation="host-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:contact-1.0" schemaLocation="contact-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:secDNS-1.1" schemaLocation="secDNS-1.1.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rgp-1.0" schemaLocation="rgp-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeDnrdCommon-1.0" schemaLocation="rdeDnrdCommon-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rde-1.0" schemaLocation="rde-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeHeader-1.0" schemaLocation="rdeHeader-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeDomain-1.0" schemaLocation="rdeDomain-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeHost-1.0" schemaLocation="rdeHost-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeContact-1.0" schemaLocation="rdeContact-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeRegistrar-1.0" schemaLocation="rdeRegistrar-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeIDN-1.0" schemaLocation="rdeIDN-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeNNDN-1.0" schemaLocation="rdeNNDN-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeEppParams-1.0" schemaLocation="rdeEppParams-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdePolicy-1.0" schemaLocation="rdePolicy-1.0.xsd"/>
+</schema>
