@@ -13,10 +13,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 RUN apk add upx
 
 # Go dependencies
+# Dependencies come from the committed vendor tree, not the module proxy: the
+# build stays hermetic and cannot fail on a proxy outage. go.mod/go.sum are
+# still needed — vendor mode checks them against vendor/modules.txt.
 COPY go.mod ./
 COPY go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+COPY vendor/ ./vendor/
 
 # Copy source code
 COPY ./cmd/api/epp-client ./cmd/api/epp-client
@@ -32,7 +34,7 @@ WORKDIR /
 ARG GIT_SHA
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api/epp-client/eppClientApi.go
+    go build -mod=vendor -ldflags="-s -w -X main.GitSHA=${GIT_SHA}" -o eppClientApi /cmd/api/epp-client/eppClientApi.go
 # RUN upx --brute /adminAPI # This takes a very long time to compress the binary we should only use if for official releases or when absolutley necessary. It does reduce the size of the binary from 30MB to less than 10MB
 
 

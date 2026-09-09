@@ -23,7 +23,10 @@ coverage*
 test-output
 .idea
 .fleet
-vendor/
+# vendor/ is deliberately NOT ignored: the image builds resolve dependencies
+# from the committed vendor tree (go build -mod=vendor) instead of the module
+# proxy, so a proxy outage cannot fail a build. Excluding it again would
+# silently break every Dockerfile.
 coverage.html
 agent-coverage.html
 
