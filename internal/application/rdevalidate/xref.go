@@ -20,8 +20,17 @@ import (
 // but it is a memory decision and should be made deliberately.
 const MaxCrossReferenceObjects = 5_000_000
 
-// crossRef answers one question about a FULL deposit: does every contact and
-// host in it belong to a domain in it, and does every domain reference resolve.
+// crossRef answers two questions about a FULL deposit, which differ in what
+// they mean and so in what they cost:
+//
+// Does every contact and host in it belong to a domain in it? An orphan is
+// data a successor registry would inherit with nothing pointing at it, and for
+// a contact it is personal data with nothing left to justify keeping it. RFC
+// 9022 does not forbid one, so it is a WARNING.
+//
+// Does every reference a domain makes resolve inside the deposit? A reference
+// that does not is an ERROR: the deposit is not integral and the domain that
+// made it cannot be imported, which is the thing escrow exists to guarantee.
 //
 // It holds 64-bit hashes, never the identifiers themselves. That halves the
 // memory, and it means a contact id or host name cannot reach a finding, a log
@@ -134,7 +143,10 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		return
 	}
 	if x.overflowed {
-		add(CodeRDECrossReferenceSkipped, SeverityInfo, StageRDE, "", "",
+		// A WARNING rather than a note: the check that did not run is the one
+		// that decides whether the deposit is integral, so a reader has to be
+		// told that nothing here says it is.
+		add(CodeRDECrossReferenceSkipped, SeverityWarning, StageRDE, "", "",
 			"deposit exceeds "+itoa(MaxCrossReferenceObjects)+" cross-referenced identifiers",
 			"contact and host references were not checked: the deposit carries more identifiers than the check holds")
 		return
@@ -160,6 +172,10 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		"no domain in this FULL deposit references this host",
 		"host belongs to no domain in the deposit and would be imported with nothing pointing at it")
 
+	// A reference that resolves to nothing is an ERROR, unlike an orphan. An
+	// orphan is data nobody asked for; a broken reference means the deposit is
+	// not integral and a successor registry cannot import the domain that made
+	// it, which is the whole thing escrow exists to guarantee.
 	dangling := func(used, declared map[uint64]int, objType, rule, msg string) {
 		var at []int
 		for k, ordinal := range used {
@@ -169,7 +185,7 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		}
 		sort.Ints(at)
 		for _, ordinal := range at {
-			add(CodeRDEReferenceNotInDeposit, SeverityWarning, StageRDE, objType,
+			add(CodeRDEReferenceNotInDeposit, SeverityError, StageRDE, objType,
 				"domain#"+itoa(ordinal), rule, msg)
 		}
 	}
