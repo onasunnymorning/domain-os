@@ -14,6 +14,13 @@ var (
 	HOST_URI      = "urn:ietf:params:xml:ns:rdeHost-1.0"
 	NNDN_URI      = "urn:ietf:params:xml:ns:rdeNNDN-1.0"
 	REGISTRAR_URI = "urn:ietf:params:xml:ns:rdeRegistrar-1.0"
+
+	// RDE_URI is the namespace of the deposit wrapper (RFC 8909) and
+	// RDE_HEADER_URI that of the header object (RFC 9022 §5.9).
+	RDE_URI        = "urn:ietf:params:xml:ns:rde-1.0"
+	RDE_HEADER_URI = "urn:ietf:params:xml:ns:rdeHeader-1.0"
+	EPP_PARAMS_URI = "urn:ietf:params:xml:ns:rdeEppParams-1.0"
+	RDE_POLICY_URI = "urn:ietf:params:xml:ns:rdePolicy-1.0"
 )
 
 // RegistrarMapping maps the ID of the registrar in the RDE Escrow file to the RdeRegistrarInfo
