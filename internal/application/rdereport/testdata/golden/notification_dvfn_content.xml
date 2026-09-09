@@ -11,7 +11,7 @@
     </iirdea:result>
     <iirdea:result code="4504">
       <iirdea:msg>An RDE object is missing a required element.</iirdea:msg>
-      <iirdea:description>object is missing an RDE-required element: roid (domain#2 offset=5585)</iirdea:description>
+      <iirdea:description>object is missing an RDE-required element: roid (domain#2 offset=5522)</iirdea:description>
     </iirdea:result>
     <iirdea:result code="4502">
       <iirdea:msg>Header object count does not match the deposit contents.</iirdea:msg>

@@ -125,8 +125,8 @@
       <rdeDomain:contact type="admin">CWZSYO6OFV3SAVW7</rdeDomain:contact>
       <rdeDomain:contact type="tech">CWZSYO6OFV3SAVW7</rdeDomain:contact>
       <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.artful-dodger</domain:hostObj>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
+        <domain:hostObj>ns1.example-1.artful-dodger</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
@@ -156,8 +156,8 @@
       <rdeDomain:contact type="admin">CWZSYO6OFV3SAVW7</rdeDomain:contact>
       <rdeDomain:contact type="tech">CWZSYO6OFV3SAVW7</rdeDomain:contact>
       <rdeDomain:ns>
-        <domain:hostObj>ns1.example-1.artful-dodger</domain:hostObj>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
+        <domain:hostObj>ns2.example-1.artful-dodger</domain:hostObj>
       </rdeDomain:ns>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>

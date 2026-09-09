@@ -174,6 +174,92 @@ func TestXMLValidator(t *testing.T) {
 		assert.NotEqual(t, OutcomeFail, Decide(fs))
 	})
 
+	// A contact or host that no domain uses is dead weight a successor registry
+	// would inherit, and for a contact it is personal data with nothing left to
+	// justify it. RFC 9022 does not forbid it, so it is a warning, not a failure.
+	t.Run("a contact or host no domain references is reported", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 3, Hosts: 2}
+		raw := dropElements(rdetest.BuildXML(opts), "rdeDomain:ns")
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+
+		byType := map[string]int{}
+		for _, f := range fs {
+			if f.Code == CodeRDEObjectNotReferenced {
+				assert.Equal(t, SeverityWarning, f.Severity)
+				assert.Contains(t, f.Locator, f.ObjectType+"#")
+				byType[f.ObjectType]++
+			}
+		}
+		// The one domain uses CONT1 for all three of its roles, so CONT2 and
+		// CONT3 are orphans; stripping the ns block orphans both hosts.
+		assert.Equal(t, 2, byType["contact"])
+		assert.Equal(t, 2, byType["host"])
+		assert.NotEqual(t, OutcomeFail, Decide(fs), "an orphan never fails a deposit")
+	})
+
+	t.Run("a reference the deposit does not carry is reported", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 1, Hosts: 1}
+		raw := bytes.Replace(rdetest.BuildXML(opts),
+			[]byte("<rdeDomain:registrant>CONT1</rdeDomain:registrant>"),
+			[]byte("<rdeDomain:registrant>CONT-ELSEWHERE</rdeDomain:registrant>"), 1)
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+
+		var dangling []Finding
+		for _, f := range fs {
+			if f.Code == CodeRDEReferenceNotInDeposit {
+				dangling = append(dangling, f)
+			}
+		}
+		require.Len(t, dangling, 1)
+		assert.Equal(t, "contact", dangling[0].ObjectType)
+		assert.Equal(t, "domain#1", dangling[0].Locator, "located at the domain that made the reference")
+		assert.NotContains(t, dangling[0].Message, "CONT-ELSEWHERE", "the identifier never appears")
+		assert.NotContains(t, dangling[0].Rule, "CONT-ELSEWHERE")
+	})
+
+	// A nameserver under another TLD is somebody else's host object and RFC
+	// 9022 does not ask this deposit to carry it. The generated deposits all
+	// delegate to ns1.outside.example.net, so if this were wrong every fixture
+	// above would carry a dangling-host warning.
+	t.Run("an out-of-bailiwick nameserver is not a dangling reference", func(t *testing.T) {
+		_, fs := validateFixture(t, "deposit_valid.xml")
+		for _, f := range fs {
+			assert.NotEqual(t, CodeRDEReferenceNotInDeposit, f.Code)
+		}
+	})
+
+	// A registry running the host-object model declares an object for every
+	// nameserver its domains use, and most of them are under other TLDs. Those
+	// are not orphans: filtering host references by bailiwick before asking
+	// whether a host is used called 2,168 of them orphans in a real deposit its
+	// own domains delegate to.
+	t.Run("a declared out-of-bailiwick host its domains use is not an orphan", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 1, Hosts: 1}
+		raw := bytes.ReplaceAll(rdetest.BuildXML(opts),
+			[]byte("ns1.example-1.example"), []byte("ns1.elsewhere.net"))
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+		for _, f := range fs {
+			assert.NotEqual(t, CodeRDEObjectNotReferenced, f.Code, "%s %s", f.ObjectType, f.Locator)
+			assert.NotEqual(t, CodeRDEReferenceNotInDeposit, f.Code, "%s %s", f.ObjectType, f.Locator)
+		}
+	})
+
+	// Only a FULL deposit is self-contained. In a DIFF the domain that uses a
+	// contact may have been deposited weeks ago.
+	t.Run("a DIFF deposit is not cross-referenced", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Kind: "DIFF", PrevID: "20260907001", Domains: 1, Contacts: 3, Hosts: 2}
+		raw := dropElements(rdetest.BuildXML(opts), "rdeDomain:ns")
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+		for _, f := range fs {
+			assert.NotEqual(t, CodeRDEObjectNotReferenced, f.Code)
+			assert.NotEqual(t, CodeRDEReferenceNotInDeposit, f.Code)
+		}
+	})
+
 	t.Run("cancelled context yields a timeout finding", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
