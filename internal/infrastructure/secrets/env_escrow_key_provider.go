@@ -53,6 +53,28 @@ func NewEnvEscrowKeyProviderFromEnv() (*EnvEscrowKeyProvider, error) {
 	return NewEnvEscrowKeyProvider(os.Getenv(EnvEscrowPrivateKeys), os.Getenv(EnvEscrowPrivateKeyPassphrase))
 }
 
+// NewEnvEscrowKeyProviderOptionalFromEnv reads the keyring from the environment
+// but tolerates its absence, returning a provider that holds no keys.
+//
+// A deployment without a keyring can still validate and sanitise *unsigned*
+// deposits, which are never decrypted: the signature and decrypt stages are
+// skipped entirely for them. Failing construction on an absent keyring takes
+// the whole activity set off the worker, so an unsigned run fails as an
+// ActivityNotRegisteredError against no record at all, instead of running.
+//
+// An empty provider still refuses a signed deposit — DecryptionKeyring returns
+// ErrNoEscrowPrivateKeys, which the pipeline reports as DECRYPT_KEY_UNAVAILABLE
+// against a recorded run. Unreadable material remains a hard error: an absent
+// keyring is a deployment that does not accept signed deposits, a malformed one
+// is a misconfiguration to fix.
+func NewEnvEscrowKeyProviderOptionalFromEnv() (*EnvEscrowKeyProvider, error) {
+	p, err := NewEnvEscrowKeyProviderFromEnv()
+	if errors.Is(err, ErrNoEscrowPrivateKeys) {
+		return &EnvEscrowKeyProvider{}, nil
+	}
+	return p, err
+}
+
 // NewEnvEscrowKeyProvider builds a provider from armored private key material
 // and an optional passphrase. Errors are fixed text: nothing from the inputs
 // is ever echoed.
