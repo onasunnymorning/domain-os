@@ -58,10 +58,14 @@ func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
 		return nil, err
 	}
 
-	// Set the ExpiryDate
-	domain.ExpiryDate, err = time.Parse(time.RFC3339, d.ExDate)
-	if err != nil {
-		return nil, err
+	// Set the ExpiryDate. exDate is optional in RFC 9022 §4.1, so an absent one
+	// is not a defect; parsing it unconditionally rejected every deposit that
+	// left it out.
+	if d.ExDate != "" {
+		domain.ExpiryDate, err = time.Parse(time.RFC3339, d.ExDate)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Set the optional fields
