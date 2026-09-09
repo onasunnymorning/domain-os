@@ -46,3 +46,17 @@ type EscrowTrustedKeyRepository interface {
 	ListActive(ctx context.Context, scope entities.OperatorID, tld string, at time.Time) ([]*entities.EscrowTrustedKey, error)
 	List(ctx context.Context, scope entities.OperatorID, tld string) ([]*entities.EscrowTrustedKey, error)
 }
+
+// EscrowSanitizationRunRepository persists immutable sanitisation runs. Like
+// the validation aggregates it has no Update or Delete: Finalize is a single
+// conditional transition out of RUNNING, and a derivative is never replaced.
+type EscrowSanitizationRunRepository interface {
+	Create(ctx context.Context, r *entities.EscrowSanitizationRun) error
+	Finalize(ctx context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error
+	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error)
+	// FindBySourceAndPolicy returns the run that already derived this source
+	// under this policy version, so a replay binds instead of producing a
+	// second derivative.
+	FindBySourceAndPolicy(ctx context.Context, scope entities.OperatorID, sourceValidationRunID uuid.UUID, policyVersion string) (*entities.EscrowSanitizationRun, error)
+	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowSanitizationRun, string, error)
+}

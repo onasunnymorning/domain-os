@@ -34,3 +34,29 @@ func (f ListEscrowDepositsFilter) ToQueryParams() string {
 	}
 	return ""
 }
+
+// ListEscrowSanitizationRunsFilter narrows a listing of escrow sanitization
+// runs. Tenant scope is a typed parameter, not a filter (ADR-0006).
+type ListEscrowSanitizationRunsFilter struct {
+	// TLDEquals restricts to one TLD (normalised ASCII, no trailing dot).
+	TLDEquals string
+	// OutcomeEquals restricts to one outcome (RUNNING, PASS, QUARANTINED, ERROR).
+	OutcomeEquals string
+	// SourceValidationRunIDEquals restricts to the derivatives of one source run.
+	SourceValidationRunIDEquals string
+}
+
+// ToQueryParams converts the filter to a query string fragment.
+func (f ListEscrowSanitizationRunsFilter) ToQueryParams() string {
+	q := ""
+	if f.TLDEquals != "" {
+		q += "&tld=" + f.TLDEquals
+	}
+	if f.OutcomeEquals != "" {
+		q += "&outcome=" + f.OutcomeEquals
+	}
+	if f.SourceValidationRunIDEquals != "" {
+		q += "&sourceValidationRunId=" + f.SourceValidationRunIDEquals
+	}
+	return q
+}

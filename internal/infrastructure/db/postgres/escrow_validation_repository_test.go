@@ -234,3 +234,93 @@ func (s *EscrowValidationSuite) TestTrustedKeys_WindowsAndRetirement() {
 	_, err = repo.GetByID(ctx, a, uuid.New())
 	s.True(errors.Is(err, entities.ErrEscrowTrustedKeyNotFound))
 }
+
+// ---------------------------------------------------------------------------
+// Sanitization runs (issue #415)
+// ---------------------------------------------------------------------------
+
+func (s *EscrowValidationSuite) newSanitizationRun(scope entities.OperatorID, sourceRunID, depositID uuid.UUID, policy string) *entities.EscrowSanitizationRun {
+	r, err := entities.NewEscrowSanitizationRun(scope, "example", sourceRunID, depositID, evSHA1,
+		policy, "escrow-sanitize/1", "artful-dodger", "wf-s1", "run-s1", time.Now().UTC().Truncate(time.Microsecond))
+	s.Require().NoError(err)
+	return r
+}
+
+func (s *EscrowValidationSuite) TestSanitizationRuns_OneDerivativePerSourceAndPolicy() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewEscrowSanitizationRunRepository(tx)
+	ctx := context.Background()
+	a, b := s.scope("opA"), s.scope("opB")
+	sourceRun, deposit := uuid.New(), uuid.New()
+
+	first := s.newSanitizationRun(a, sourceRun, deposit, "rde-baseline-v1")
+	s.Require().NoError(repo.Create(ctx, first))
+
+	// The same source under the same policy is refused by the unique index:
+	// a derivative is never silently replaced. The violation aborts the
+	// enclosing transaction, so it runs inside a savepoint.
+	s.Require().NoError(tx.SavePoint("before_dup").Error)
+	dup := s.newSanitizationRun(a, sourceRun, deposit, "rde-baseline-v1")
+	s.Error(repo.Create(ctx, dup))
+	s.Require().NoError(tx.RollbackTo("before_dup").Error)
+
+	// A different policy version is a separate, separately traceable derivative.
+	next := s.newSanitizationRun(a, sourceRun, deposit, "rde-baseline-v2")
+	s.Require().NoError(repo.Create(ctx, next))
+
+	found, err := repo.FindBySourceAndPolicy(ctx, a, sourceRun, "rde-baseline-v1")
+	s.Require().NoError(err)
+	s.Equal(first.ID, found.ID)
+	s.Equal("artful-dodger", found.SyntheticSuffix)
+
+	_, err = repo.FindBySourceAndPolicy(ctx, a, sourceRun, "rde-baseline-v3")
+	s.True(errors.Is(err, entities.ErrEscrowSanitizationRunNotFound))
+	_, err = repo.FindBySourceAndPolicy(ctx, b, sourceRun, "rde-baseline-v1")
+	s.True(errors.Is(err, entities.ErrEscrowSanitizationRunNotFound), "another tenant sees nothing")
+	_, err = repo.GetByID(ctx, b, first.ID)
+	s.True(errors.Is(err, entities.ErrEscrowSanitizationRunNotFound))
+
+	runs, _, err := repo.List(ctx, a, queries.ListItemsQuery{PageSize: 10, Filter: queries.ListEscrowSanitizationRunsFilter{
+		TLDEquals: "example", SourceValidationRunIDEquals: sourceRun.String(),
+	}})
+	s.Require().NoError(err)
+	s.Len(runs, 2)
+	none, _, err := repo.List(ctx, b, queries.ListItemsQuery{PageSize: 10})
+	s.Require().NoError(err)
+	s.Empty(none)
+}
+
+func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewEscrowSanitizationRunRepository(tx)
+	ctx := context.Background()
+	a := s.scope("opA")
+
+	run := s.newSanitizationRun(a, uuid.New(), uuid.New(), "rde-baseline-v1")
+	s.Require().NoError(repo.Create(ctx, run))
+
+	// Finalising a still-RUNNING entity is rejected before touching the DB.
+	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrInvalidEscrowSanitizationRun))
+
+	s.Require().NoError(run.Finalize(entities.EscrowSanitizationFinalization{
+		Outcome: entities.EscrowSanitizationPass, StageReached: "verify",
+		DerivativeObjectKey: "k/deposit.xml.gz", DerivativeSHA256: evSHA2, DerivativeBytes: 128,
+		ManifestObjectKey: "k/manifest.json",
+		Counts:            entities.EscrowSanitizationCounts{Kept: 10, Tokenized: 3, ObjectsByType: map[string]int64{entities.DOMAIN_URI: 2}},
+		CompletedAt:       run.StartedAt.Add(time.Minute),
+	}))
+	s.Require().NoError(repo.Finalize(ctx, a, run))
+
+	got, err := repo.GetByID(ctx, a, run.ID)
+	s.Require().NoError(err)
+	s.Equal(entities.EscrowSanitizationPass, got.Outcome)
+	s.Equal(evSHA2, got.DerivativeSHA256)
+	s.Equal(int64(3), got.Counts.Tokenized)
+	s.Equal(int64(2), got.Counts.ObjectsByType[entities.DOMAIN_URI])
+	s.Require().NotNil(got.CompletedAt)
+
+	// A second conditional UPDATE matches no RUNNING row.
+	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrEscrowSanitizationRunAlreadyFinal))
+}
