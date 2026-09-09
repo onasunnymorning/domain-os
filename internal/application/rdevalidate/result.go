@@ -20,6 +20,14 @@ const (
 // cannot bloat the persisted record or the workflow payload. Counts stay exact.
 const MaxFindings = 1000
 
+// MaxFindingsPerRule bounds how many worked examples of one kind of finding
+// the list keeps. Without it the cap is spent first-come: a deposit whose
+// every domain trips the same warning fills the list with a thousand copies of
+// it, and the one ERROR that decides the run — emitted after the per-object
+// findings — is not in the record at all. Keeping a few of each kind instead
+// costs nothing and is what makes the list worth reading.
+const MaxFindingsPerRule = 50
+
 // Outcome is the decision for a run.
 type Outcome string
 
@@ -29,13 +37,19 @@ const (
 	OutcomeError Outcome = "ERROR"
 )
 
-// Finding is one check result. Message and Locator must be built from
+// Finding is one check result. Message, Locator and Rule must be built from
 // constant templates and numbers only (offsets, indices, counts, line
 // numbers) — never from object names, file names or payload text.
 type Finding struct {
-	Code       Code      `json:"code"`
-	Severity   Severity  `json:"severity"`
-	Stage      Stage     `json:"stage"`
+	Code     Code     `json:"code"`
+	Severity Severity `json:"severity"`
+	Stage    Stage    `json:"stage"`
+	// Rule names the specific check that produced the finding, where the code
+	// alone is too coarse to act on. RDE_OBJECT_ENTITY_REJECTED says an object
+	// was refused; the rule says which rule refused it, so an operator can fix
+	// the deposit instead of guessing. It is part of the tally key, so a run
+	// reports how many objects each individual rule rejected.
+	Rule       string    `json:"rule,omitempty"`
 	ObjectType string    `json:"objectType,omitempty"`
 	Locator    string    `json:"locator,omitempty"`
 	Message    string    `json:"message"`
@@ -47,18 +61,34 @@ type Finding struct {
 // record of a deposit that is wrong in more than MaxFindings places, and it is
 // what the outcome is decided from — see finish.
 type FindingTally struct {
-	Code     Code     `json:"code"`
-	Severity Severity `json:"severity"`
-	Stage    Stage    `json:"stage"`
-	Count    int      `json:"count"`
+	Code       Code     `json:"code"`
+	Severity   Severity `json:"severity"`
+	Stage      Stage    `json:"stage"`
+	ObjectType string   `json:"objectType,omitempty"`
+	Rule       string   `json:"rule,omitempty"`
+	Count      int      `json:"count"`
 }
 
-// tallyKey identifies one kind of finding for counting purposes.
+// tallyKey identifies one kind of finding for counting purposes. The rule and
+// the object type are part of it: "56926 objects were rejected" is not
+// something an operator can act on, and "43313 hosts, 10613 contacts and 3000
+// domains were rejected because their roid is not in this registry's format"
+// is the whole answer.
 type tallyKey struct {
-	code     Code
-	severity Severity
-	stage    Stage
+	code       Code
+	severity   Severity
+	stage      Stage
+	objectType string
+	rule       string
 }
+
+// MaxTallyRows bounds how many distinct kinds the tally distinguishes. The
+// rule of a missing-element finding names the combination of elements that
+// were missing, which is combinatorial, so without a ceiling a deliberately
+// varied deposit could make the tally the largest thing in the run record and
+// in the workflow payload. Past the ceiling a new kind is still counted, under
+// its code alone.
+const MaxTallyRows = 500
 
 // SignatureInfo describes the verified detached signature.
 type SignatureInfo struct {
@@ -118,23 +148,45 @@ type Result struct {
 	// Suppressed is how many findings the MaxFindings cap kept out of Findings.
 	Suppressed int `json:"suppressed,omitempty"`
 
-	// tally accumulates Tally while the run is in progress. It is unexported
-	// because it does not survive the activity boundary; Tally does.
-	tally map[tallyKey]int
+	// tally accumulates Tally while the run is in progress, and retained
+	// counts how many worked examples of each kind Findings already holds.
+	// Both are unexported because they do not survive the activity boundary;
+	// Tally and Suppressed do.
+	tally    map[tallyKey]int
+	retained map[tallyKey]int
 }
 
-// Add records a finding. Every finding is counted in the tally; only the first
-// MaxFindings are kept in full, so an enormous deposit cannot bloat the run
-// record or the workflow payload.
+// Add records a finding. Every finding is counted in the tally; Findings keeps
+// worked examples only, so an enormous deposit cannot bloat the run record or
+// the workflow payload.
+//
+// Retention is per kind rather than first-come. A kind gets up to
+// MaxFindingsPerRule examples until the list reaches MaxFindings, and past
+// that a kind seen for the first time still gets one — otherwise a deposit
+// whose every object trips the same warning would crowd out every other
+// finding it produced, including the ERROR the run is decided on.
 func (r *Result) Add(f Finding) {
 	if r.tally == nil {
 		r.tally = make(map[tallyKey]int)
+		r.retained = make(map[tallyKey]int)
 	}
-	r.tally[tallyKey{f.Code, f.Severity, f.Stage}]++
+	k := tallyKey{f.Code, f.Severity, f.Stage, f.ObjectType, f.Rule}
+	if _, known := r.tally[k]; !known && len(r.tally) >= MaxTallyRows {
+		k = tallyKey{code: f.Code, severity: f.Severity, stage: f.Stage}
+	}
+	r.tally[k]++
+
+	quota := MaxFindingsPerRule
 	if len(r.Findings) >= MaxFindings {
+		// The list is full. Only a kind with nothing to show still gets in,
+		// which bounds the overshoot by the number of distinct kinds.
+		quota = 1
+	}
+	if r.retained[k] >= quota {
 		r.Suppressed++
 		return
 	}
+	r.retained[k]++
 	r.Findings = append(r.Findings, f)
 }
 
@@ -205,7 +257,10 @@ func (r Result) TotalFindings() int {
 func (r *Result) materialiseTally() []FindingTally {
 	out := make([]FindingTally, 0, len(r.tally))
 	for k, n := range r.tally {
-		out = append(out, FindingTally{Code: k.code, Severity: k.severity, Stage: k.stage, Count: n})
+		out = append(out, FindingTally{
+			Code: k.code, Severity: k.severity, Stage: k.stage,
+			ObjectType: k.objectType, Rule: k.rule, Count: n,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
@@ -215,7 +270,13 @@ func (r *Result) materialiseTally() []FindingTally {
 		if a.Severity != b.Severity {
 			return a.Severity < b.Severity
 		}
-		return a.Code < b.Code
+		if a.Code != b.Code {
+			return a.Code < b.Code
+		}
+		if a.Rule != b.Rule {
+			return a.Rule < b.Rule
+		}
+		return a.ObjectType < b.ObjectType
 	})
 	return out
 }
@@ -239,8 +300,9 @@ func (r *Result) finish(now time.Time) {
 	if r.Suppressed > 0 {
 		r.Findings = append(r.Findings, Finding{
 			Code: CodeFindingsTruncated, Severity: SeverityInfo, Stage: r.StageReached,
-			Message: "findings list truncated at " + itoa(MaxFindings) + "; " + itoa(r.Suppressed) + " further findings suppressed",
-			At:      now,
+			Message: "findings list keeps at most " + itoa(MaxFindingsPerRule) + " examples of each finding and " +
+				itoa(MaxFindings) + " in total; " + itoa(r.Suppressed) + " further findings were counted in the tally but not listed",
+			At: now,
 		})
 	}
 	r.CompletedAt = now
@@ -309,7 +371,7 @@ func ToEntityFindings(fs []Finding) []entities.EscrowFinding {
 	out := make([]entities.EscrowFinding, len(fs))
 	for i, f := range fs {
 		out[i] = entities.EscrowFinding{
-			Code: string(f.Code), Severity: string(f.Severity), Stage: string(f.Stage),
+			Code: string(f.Code), Severity: string(f.Severity), Stage: string(f.Stage), Rule: f.Rule,
 			ObjectType: f.ObjectType, Locator: f.Locator, Message: f.Message, At: f.At,
 		}
 	}
@@ -321,7 +383,8 @@ func ToEntityTally(ts []FindingTally) []entities.EscrowFindingTally {
 	out := make([]entities.EscrowFindingTally, len(ts))
 	for i, t := range ts {
 		out[i] = entities.EscrowFindingTally{
-			Code: string(t.Code), Severity: string(t.Severity), Stage: string(t.Stage), Count: t.Count,
+			Code: string(t.Code), Severity: string(t.Severity), Stage: string(t.Stage),
+			ObjectType: t.ObjectType, Rule: t.Rule, Count: t.Count,
 		}
 	}
 	return out

@@ -269,7 +269,10 @@ func (h *Host) Validate() error {
 	if err := h.RoID.Validate(); err != nil {
 		return err
 	}
-	if h.RoID.ObjectIdentifier() != HOST_ROID_ID {
+	// Only a roid this registry minted is held to the local convention. A
+	// deposit from another registry carries its own roids, which are valid
+	// under RFC 5730 without naming an object type at all.
+	if h.RoID.IsIssuedHere() && h.RoID.ObjectIdentifier() != HOST_ROID_ID {
 		return ErrInvalidHostRoID
 	}
 	if err := h.ClID.Validate(); err != nil {

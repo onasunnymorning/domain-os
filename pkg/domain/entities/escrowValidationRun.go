@@ -74,9 +74,13 @@ func EscrowProfileIsSigned(p string) bool {
 // import it, INV-14). Message and Locator carry constant text plus numbers
 // only — never untrusted names or payload content.
 type EscrowFinding struct {
-	Code       string    `json:"code"`
-	Severity   string    `json:"severity"`
-	Stage      string    `json:"stage"`
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	Stage    string `json:"stage"`
+	// Rule names the specific check behind the code, where the code alone is
+	// too coarse to act on. It is a constant phrase, never a value from the
+	// deposit, and it is part of the tally key below.
+	Rule       string    `json:"rule,omitempty"`
 	ObjectType string    `json:"objectType,omitempty"`
 	Locator    string    `json:"locator,omitempty"`
 	Message    string    `json:"message"`
@@ -88,10 +92,12 @@ type EscrowFinding struct {
 // this is not, so it is the exact account of what a deposit contained and the
 // only place a run says how many times a code actually fired.
 type EscrowFindingTally struct {
-	Code     string `json:"code"`
-	Severity string `json:"severity"`
-	Stage    string `json:"stage"`
-	Count    int    `json:"count"`
+	Code       string `json:"code"`
+	Severity   string `json:"severity"`
+	Stage      string `json:"stage"`
+	ObjectType string `json:"objectType,omitempty"`
+	Rule       string `json:"rule,omitempty"`
+	Count      int    `json:"count"`
 }
 
 // EscrowValidationRun is one immutable execution of the validation pipeline

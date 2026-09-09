@@ -240,7 +240,7 @@ func TestEscrowValidationActivities_PlaintextProfileEndToEnd(t *testing.T) {
 	// The deposit's declared counts are reconciled against what was observed.
 	require.NotEmpty(t, summary.Deposit.Counts)
 	for _, c := range summary.Deposit.Counts {
-		assert.True(t, c.Matches, "declared and observed disagree for %s", c.URI)
+		assert.Equal(t, rdereport.CountMatch, c.Status, "declared and observed disagree for %s", c.URI)
 	}
 
 	// PASS on an unsigned profile finalises with no notification at all.
@@ -267,14 +267,24 @@ func TestEscrowValidationActivities_SummaryCountsSuppressedFindings(t *testing.T
 	res.StageReached = rdevalidate.StageRDE
 	res.Deposit = rdevalidate.DepositSummary{ID: "20260908001", Kind: "FULL", Watermark: time.Now().UTC().Add(-time.Hour), HeaderFound: true}
 	const rejected = rdevalidate.MaxFindings + 4242
+	const roidRule = "roid: must have the form <id>_<OBJECT>-<repository>, e.g. 1_DOMAIN-APEX"
 	for i := 0; i < rejected; i++ {
-		res.Add(rdevalidate.Finding{Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning, Stage: rdevalidate.StageRDE})
+		res.Add(rdevalidate.Finding{
+			Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning,
+			Stage: rdevalidate.StageRDE, Rule: roidRule,
+		})
 	}
-	res.Outcome = rdevalidate.OutcomePass
-	res.Tally = []rdevalidate.FindingTally{{
-		Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning,
-		Stage: rdevalidate.StageRDE, Count: rejected,
-	}}
+	// The one ERROR the deposit also contains, emitted last as the validator
+	// emits its count checks. It is what the operator opens the report for.
+	res.Add(rdevalidate.Finding{
+		Code: rdevalidate.CodeRDECountMismatch, Severity: rdevalidate.SeverityError,
+		Stage: rdevalidate.StageRDE, Rule: "declared and observed domain counts differ",
+	})
+	res.Outcome = rdevalidate.OutcomeFail
+	res.Tally = []rdevalidate.FindingTally{
+		{Code: rdevalidate.CodeRDEObjectEntityRejected, Severity: rdevalidate.SeverityWarning, Stage: rdevalidate.StageRDE, Rule: roidRule, Count: rejected},
+		{Code: rdevalidate.CodeRDECountMismatch, Severity: rdevalidate.SeverityError, Stage: rdevalidate.StageRDE, Rule: "declared and observed domain counts differ", Count: 1},
+	}
 
 	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutGzip}
 	f.store.put("uploads/example.xml.gz", rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts)))
@@ -288,15 +298,34 @@ func TestEscrowValidationActivities_SummaryCountsSuppressedFindings(t *testing.T
 	var summary rdereport.Summary
 	require.NoError(t, json.Unmarshal(raw, &summary))
 
-	assert.Equal(t, rejected, summary.Findings.Total, "the tally counts every finding, not the retained ones")
-	assert.Equal(t, rdevalidate.MaxFindings, summary.Findings.Retained)
-	assert.Equal(t, rejected-rdevalidate.MaxFindings, summary.Findings.Suppressed)
-	require.Len(t, summary.Findings.ByCode, 1)
-	assert.Equal(t, string(rdevalidate.CodeRDEObjectEntityRejected), summary.Findings.ByCode[0].Code)
-	assert.Equal(t, rejected, summary.Findings.ByCode[0].Count)
-	assert.False(t, summary.Findings.ByCode[0].ErrorClass)
+	assert.Equal(t, rejected+1, summary.Findings.Total, "the tally counts every finding, not the retained ones")
+	assert.Equal(t, rdevalidate.MaxFindingsPerRule+1, summary.Findings.Retained)
+	assert.Equal(t, rejected-rdevalidate.MaxFindingsPerRule, summary.Findings.Suppressed)
 	assert.Equal(t, rejected, summary.Findings.BySeverity["WARNING"])
-	assert.LessOrEqual(t, len(summary.Findings.Sample), rdereport.MaxSummarySampleFindings)
+	assert.Equal(t, 1, summary.Findings.BySeverity["ERROR"])
+
+	// The ERROR leads, however far it is outnumbered: severity is what decided
+	// the run, and a reader who has to scroll past 4000 warnings to find it has
+	// not been told anything.
+	require.Len(t, summary.Findings.ByCode, 2)
+	assert.Equal(t, string(rdevalidate.CodeRDECountMismatch), summary.Findings.ByCode[0].Code)
+	assert.Equal(t, 1, summary.Findings.ByCode[0].Count)
+	assert.Equal(t, string(rdevalidate.CodeRDEObjectEntityRejected), summary.Findings.ByCode[1].Code)
+	assert.Equal(t, rejected, summary.Findings.ByCode[1].Count)
+	assert.Equal(t, roidRule, summary.Findings.ByCode[1].Rule, "the row names the rule, not just the code")
+	assert.False(t, summary.Findings.ByCode[1].ErrorClass)
+
+	// And the sample shows an example of each rather than fifty copies of the
+	// loudest one.
+	require.LessOrEqual(t, len(summary.Findings.Sample), rdereport.MaxSummarySampleFindings)
+	seen := map[string]int{}
+	for _, s := range summary.Findings.Sample {
+		seen[string(s.Code)]++
+	}
+	assert.Equal(t, 1, seen[string(rdevalidate.CodeRDECountMismatch)], "the deciding finding must appear in the sample")
+	assert.Positive(t, seen[string(rdevalidate.CodeRDEObjectEntityRejected)])
+	assert.Equal(t, string(rdevalidate.CodeRDECountMismatch), string(summary.Findings.Sample[0].Code),
+		"the sample leads with the deciding finding too")
 }
 
 func TestEscrowValidationActivities_PlaintextProfileRejectsSignatureKey(t *testing.T) {

@@ -175,7 +175,10 @@ func (d *Domain) Validate() error {
 	if err := d.RoID.Validate(); err != nil {
 		return err
 	}
-	if d.RoID.ObjectIdentifier() != DOMAIN_ROID_ID {
+	// Only a roid this registry minted is held to the local convention. A
+	// deposit from another registry carries its own roids, which are valid
+	// under RFC 5730 without naming an object type at all.
+	if d.RoID.IsIssuedHere() && d.RoID.ObjectIdentifier() != DOMAIN_ROID_ID {
 		return ErrInvalidDomainRoID
 	}
 	if err := d.Name.Validate(); err != nil {
@@ -191,11 +194,15 @@ func (d *Domain) Validate() error {
 		return err
 	}
 	if isIDN, _ := d.Name.IsIDN(); !isIDN {
-		// if the domain is not an IDN domain, the OriginalName and UName fields must be empty
+		// The OriginalName field marks an IDN variant, so it means nothing here.
 		if d.OriginalName != "" {
 			return ErrOriginalNameFieldReservedForIDN
 		}
-		if d.UName != "" {
+		// UName is the domain name in Unicode (RFC 9022 §4.1). For a name that
+		// is already ASCII the two are the same string, and escrow deposits do
+		// carry it that way, so repeating the name is correct and must be
+		// accepted. Only a UName that says something different is wrong.
+		if d.UName != "" && d.UName != d.Name {
 			return ErrUNameFieldReservedForIDNDomains
 		}
 	} else {
