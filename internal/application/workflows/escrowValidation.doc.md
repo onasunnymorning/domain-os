@@ -12,6 +12,15 @@
 
 Stage 1 of the escrow verification (EVE) service for issue #412. It takes an ICANN-style RDE deposit supplied as a `.ryde` archive plus its detached `.sig`, bound to the caller's operator tenant and a TLD, and produces an auditable, profile-aware verification decision: the detached signature is verified against the registry keys trusted for that tenant/TLD, the archive is decrypted with the service keyring and unpacked under explicit limits, the RDE XML is streamed through strict structural and content checks, an immutable validation record is persisted, and a schema-valid `rdeReport:report` plus `rdeNotification:notification` (`DVPN` on pass, `DVFN` on a received-but-invalid deposit) is written to the reports bucket.
 
+### Profiles
+
+| Profile | Artifact set | Signature verified | `Verified()` | Notification |
+|---|---|---|---|---|
+| `ryde+sig` (default) | `.ryde` + detached `.sig` | Yes, against the tenant/TLD trusted keys | Yes on PASS | `DVPN` / `DVFN` |
+| `xml` | a single `.xml` or `.xml.gz` | No — there is none | **Never** | **None** |
+
+The `xml` profile (issue #415) runs exactly the same unpack and RDE checks; what it cannot do is say anything about who sent the deposit, so it never claims a cryptographically verified pass and never emits an ICANN notification. It exists so a plaintext deposit can be accepted as the source of a sanitized derivative.
+
 **Validation is not import.** This workflow never calls the escrow import pipeline or mutates registry data; `escrow_validation_isolation_test.go` and `TestEscrowValidation_NoRegistryWriteSideEffect` enforce that. See ADR-0007.
 
 ## Flow Diagram
@@ -30,8 +39,9 @@ graph TD
 type EscrowValidationParams struct {
     Scope             string        // operator scope from the authenticated request (ADR-0006)
     TLD               string        // must be operated by Scope; re-checked in BindDeposit
-    RydeObjectKey     string        // escrow bucket key of the .ryde artifact
-    SigObjectKey      string        // escrow bucket key of the detached .sig
+    Profile            string       // "ryde+sig" (default) or "xml" for an unsigned .xml/.xml.gz
+    ArtifactObjectKey  string       // escrow bucket key of the deposit artifact
+    SignatureObjectKey string       // escrow bucket key of the detached .sig; empty when unsigned
     SubmittedBy       string        // authenticated identity
     IntakeRef         string        // opaque intake reference (optional)
     ReceivedAt        time.Time     // intake timestamp
@@ -44,8 +54,9 @@ type EscrowValidationParams struct {
 {
   "scope": "ryop1",
   "tld": "example",
-  "rydeObjectKey": "uploads/20260908/1757300000/example_2026-09-08_full_S1_R0.ryde",
-  "sigObjectKey": "uploads/20260908/1757300000/example_2026-09-08_full_S1_R0.sig",
+  "profile": "ryde+sig",
+  "artifactObjectKey": "uploads/20260908/1757300000/example_2026-09-08_full_S1_R0.ryde",
+  "signatureObjectKey": "uploads/20260908/1757300000/example_2026-09-08_full_S1_R0.sig",
   "submittedBy": "auth0|abc",
   "receivedAt": "2026-09-08T03:15:00Z"
 }
@@ -56,7 +67,7 @@ type EscrowValidationParams struct {
 ```go
 type EscrowValidationResult struct {
     DepositID, ValidationRunID string
-    Replay                     bool     // the same artifact pair was already bound
+    Replay                     bool     // the same artifact set was already bound
     Outcome                    string   // PASS | FAIL | ERROR
     Verified                   bool     // PASS on the ryde+sig profile only
     NotificationStatus         string   // DVPN | DVFN | ""
@@ -95,7 +106,7 @@ type EscrowValidationResult struct {
 
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
-| BindDeposit non-retryable | TLD not operated by scope, artifact missing, oversize signature | Workflow fails before any record exists | Fix intake, relaunch |
+| BindDeposit non-retryable | TLD not operated by scope, artifact missing, oversize signature, artifact set that does not match the profile | Workflow fails before any record exists | Fix intake, relaunch |
 | Outcome `FAIL` | Bad/untrusted signature, wrong recipient key, unsafe archive, limit breach, malformed XML, invalid RDE object, count/TLD mismatch | `DVFN` emitted, run finalised FAIL, workflow completes | None: the deposit is invalid; registry resubmits |
 | Outcome `ERROR` | Service keyring unavailable, timeout, internal error, artifact changed since intake | Run finalised ERROR, **no notification**, workflow fails | Fix the service condition, relaunch (replay binds to the same deposit, new run) |
 | Activity infrastructure error after bind | Storage/DB outage beyond retries | Run finalised ERROR via disconnected context, workflow fails | Relaunch |
@@ -104,7 +115,7 @@ type EscrowValidationResult struct {
 
 | Artifact | Storage | Purpose |
 |----------|---------|---------|
-| `deposit.ryde`, `deposit.sig` | S3 escrow bucket: `escrow-validation/{tenant}/{tld}/{depositID}/` | Immutable copy of the exact pair validated |
+| `deposit.ryde` + `deposit.sig`, or `deposit.xml` / `deposit.xml.gz` | S3 escrow bucket: `escrow-validation/{tenant}/{tld}/{depositID}/` | Immutable copy of the exact artifact set validated |
 | `report.xml` | S3 reports bucket: `escrow-validation/{tenant}/{tld}/{depositID}/{runID}/` | `rdeReport:report` |
 | `notification.xml` | same prefix | `rdeNotification:notification` (DVPN/DVFN) |
 | `escrow_deposits`, `escrow_validation_runs` | Postgres | Immutable records, traceable by tenant/TLD/deposit id/digest; `workflow_id` is the correlation id (INV-16) |
@@ -118,9 +129,9 @@ Not scheduled. Missing-deposit notices (`DRFN`) are a follow-on.
 Logs carry `correlation_id`, `deposit_id`, `run_id`, `tld`, `stage`, `outcome`, `codes` and nothing from the payload. Query the run table by outcome; a growing count of `ERROR` runs means a service problem, not bad deposits.
 
 ### Manual Intervention
-Relaunching with the same pair is safe: it binds to the existing deposit and creates a new run; earlier outcomes are never overwritten. Trusted registry keys are managed through `/escrow/trusted-keys`; the service keyring through `ESCROW_VALIDATION_PRIVATE_KEYS`.
+Relaunching with the same artifact set is safe: it binds to the existing deposit and creates a new run; earlier outcomes are never overwritten. Trusted registry keys are managed through `/escrow/trusted-keys`; the service keyring through `ESCROW_VALIDATION_PRIVATE_KEYS`.
 
 ---
 
-> **Last updated**: 2026-09-08
-> **Updated by**: issue #412
+> **Last updated**: 2026-09-09
+> **Updated by**: issue #415 (unsigned `xml` profile); originally issue #412

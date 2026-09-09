@@ -16,23 +16,24 @@ import (
 // Domain Lifecycle Integration Test
 //
 // Models the full EPP domain lifecycle:
-//   register → renew → autorenew → mark-for-deletion → restore → cleanup/teardown
+//
+//	register → renew → autorenew → mark-for-deletion → restore → cleanup/teardown
 //
 // This is the most important test in the suite — it exercises the registrar-facing
 // endpoints in the order a real EPP client would use them.
 var _ = Describe("DomainLifecycle", Ordered, func() {
 	const (
-		ryID            = "lcTestRyOp"
-		tldName         = "lctest"
-		gaPhase         = "GA1"
-		launchPhase     = "Launch1"
-		registrarClID   = "lcTestRar"
-		contactID       = "lcTestCont"
-		domainName      = "lifecycle.lctest"
-		idnDomainName   = "xn--cario-rta.lctest" // IDN A-label
-		host1Name       = "ns1.example.com"
-		host2Name       = "ns2.example.com"
-		registrarGurID  = 10005
+		ryID           = "lcTestRyOp"
+		tldName        = "lctest"
+		gaPhase        = "GA1"
+		launchPhase    = "Launch1"
+		registrarClID  = "lcTestRar"
+		contactID      = "lcTestCont"
+		domainName     = "lifecycle.lctest"
+		idnDomainName  = "xn--cario-rta.lctest" // IDN A-label
+		host1Name      = "ns1.example.com"
+		host2Name      = "ns2.example.com"
+		registrarGurID = 10005
 	)
 
 	// State captured across specs

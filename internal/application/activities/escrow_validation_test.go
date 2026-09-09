@@ -102,7 +102,7 @@ func (f *evFixture) bind(t *testing.T, rydeKey, sigKey string) (BindDepositOutpu
 	f.trust(t)
 	var out BindDepositOutput
 	val, err := f.env.ExecuteActivity(f.acts.BindDeposit, BindDepositInput{
-		Scope: f.scope.String(), TLD: f.tld, RydeObjectKey: rydeKey, SigObjectKey: sigKey,
+		Scope: f.scope.String(), TLD: f.tld, ArtifactObjectKey: rydeKey, SignatureObjectKey: sigKey,
 		SubmittedBy: "tester", IntakeRef: "ref-1", ReceivedAt: time.Now().UTC(), WorkflowID: "wf-1", RunID: "run-1",
 	})
 	if err != nil {
@@ -117,7 +117,7 @@ func (f *evFixture) validate(t *testing.T, b BindDepositOutput) rdevalidate.Resu
 	var res rdevalidate.Result
 	val, err := f.env.ExecuteActivity(f.acts.ValidateArtifacts, ValidateArtifactsInput{
 		Scope: f.scope.String(), TLD: f.tld, DepositID: b.DepositID, ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1",
-		RydeKey: b.RydeKey, SigKey: b.SigKey, RydeSHA256: b.RydeSHA256, SigSHA256: b.SigSHA256,
+		Profile: b.Profile, ArtifactKey: b.ArtifactKey, SignatureKey: b.SignatureKey, ArtifactSHA256: b.ArtifactSHA256, SignatureSHA256: b.SignatureSHA256,
 	})
 	require.NoError(t, err)
 	require.NoError(t, val.Get(&res))
@@ -168,6 +168,69 @@ func xmllintOK(t *testing.T, doc []byte) {
 	require.NoError(t, err, "%s", out)
 }
 
+// bindPlaintext binds an unsigned .xml / .xml.gz deposit: no signature key,
+// and the trusted-key registration the signed path needs is never consulted.
+func (f *evFixture) bindPlaintext(t *testing.T, artifactKey string) (BindDepositOutput, error) {
+	t.Helper()
+	var out BindDepositOutput
+	val, err := f.env.ExecuteActivity(f.acts.BindDeposit, BindDepositInput{
+		Scope: f.scope.String(), TLD: f.tld, Profile: entities.EscrowProfilePlaintextXML,
+		ArtifactObjectKey: artifactKey, SubmittedBy: "tester", IntakeRef: "ref-plain",
+		ReceivedAt: time.Now().UTC(), WorkflowID: "wf-1", RunID: "run-1",
+	})
+	if err != nil {
+		return out, err
+	}
+	require.NoError(t, val.Get(&out))
+	return out, nil
+}
+
+func TestEscrowValidationActivities_PlaintextProfileEndToEnd(t *testing.T) {
+	f := newEVFixture(t, nil, nil, nil, nil)
+	// No trusted key is registered and the key provider is emptied: an unsigned
+	// deposit must not need either.
+	f.prov.ring = nil
+	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutGzip, Domains: 3, Contacts: 2, Hosts: 1, Registrars: 1}
+	artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
+	f.store.put("uploads/example.xml.gz", artifact)
+
+	b, err := f.bindPlaintext(t, "uploads/example.xml.gz")
+	require.NoError(t, err)
+	assert.Equal(t, entities.EscrowProfilePlaintextXML, b.Profile)
+	assert.Empty(t, b.SignatureKey)
+	assert.Empty(t, b.SignatureSHA256)
+	assert.True(t, strings.HasSuffix(b.ArtifactKey, "/deposit.xml.gz"), "archived name reflects the artifact: %s", b.ArtifactKey)
+	archived, ok := f.store.get(b.ArtifactKey)
+	require.True(t, ok)
+	assert.Equal(t, artifact, archived)
+
+	res := f.validate(t, b)
+	require.Equal(t, rdevalidate.OutcomePass, res.Outcome, "findings: %v", res.Findings)
+	assert.False(t, res.Verified(), "an unsigned deposit is never a verified pass")
+
+	// PASS on an unsigned profile finalises with no notification at all.
+	require.NoError(t, f.finalize(t, b, res, EmitReportOutput{}, ""))
+	run, err := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
+	require.NoError(t, err)
+	assert.Equal(t, entities.EscrowValidationPass, run.Outcome)
+	assert.Equal(t, entities.EscrowNotificationNone, run.NotificationStatus)
+	assert.False(t, run.Verified())
+}
+
+func TestEscrowValidationActivities_PlaintextProfileRejectsSignatureKey(t *testing.T) {
+	f := newEVFixture(t, nil, nil, nil, nil)
+	f.store.put("uploads/a.xml", []byte("<x/>"))
+	f.store.put("uploads/a.sig", []byte("sig"))
+
+	_, err := f.env.ExecuteActivity(f.acts.BindDeposit, BindDepositInput{
+		Scope: f.scope.String(), TLD: f.tld, Profile: entities.EscrowProfilePlaintextXML,
+		ArtifactObjectKey: "uploads/a.xml", SignatureObjectKey: "uploads/a.sig",
+		SubmittedBy: "tester", ReceivedAt: time.Now().UTC(), WorkflowID: "wf-1", RunID: "run-1",
+	})
+	require.Error(t, err)
+	assert.True(t, isNonRetryable(err), "a mismatched artifact set is a caller error, not a retryable one")
+}
+
 func TestEscrowValidationActivities_PassEndToEnd(t *testing.T) {
 	f := newEVFixture(t, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example", Domains: 4, Contacts: 2, Hosts: 2, Registrars: 1}, f.service, f.registry)
@@ -177,8 +240,8 @@ func TestEscrowValidationActivities_PassEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, b.Replay)
 	assert.Equal(t, "20260908001", b.Hints.DepositID)
-	assert.True(t, strings.HasPrefix(b.RydeKey, "escrow-validation/ryop1/example/"+b.DepositID.String()+"/"))
-	archived, ok := f.store.get(b.RydeKey)
+	assert.True(t, strings.HasPrefix(b.ArtifactKey, "escrow-validation/ryop1/example/"+b.DepositID.String()+"/"))
+	archived, ok := f.store.get(b.ArtifactKey)
 	require.True(t, ok)
 	assert.Equal(t, pair.Ryde, archived, "artifact archived byte-for-byte")
 	run, err := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
@@ -188,7 +251,7 @@ func TestEscrowValidationActivities_PassEndToEnd(t *testing.T) {
 	res := f.validate(t, b)
 	require.Equal(t, rdevalidate.OutcomePass, res.Outcome, "findings: %v", res.Findings)
 	assert.True(t, res.Verified())
-	assert.Equal(t, 2, f.store.reads[b.RydeKey], "ciphertext streamed exactly twice: verify, then decrypt")
+	assert.Equal(t, 2, f.store.reads[b.ArtifactKey], "ciphertext streamed exactly twice: verify, then decrypt")
 
 	emitted, err := f.emit(t, b, res)
 	require.NoError(t, err)
@@ -336,7 +399,7 @@ func TestEscrowValidationActivities_NoSensitiveDataPersisted(t *testing.T) {
 		assert.NotContains(t, k, canary)
 	}
 	dep, _ := f.deposits.GetByID(t.Context(), f.scope, b.DepositID)
-	assert.NotContains(t, dep.RydeObjectKey, canary, "archived key is deterministic, not the upload name")
+	assert.NotContains(t, dep.ArtifactObjectKey, canary, "archived key is deterministic, not the upload name")
 }
 
 func TestLoadEscrowValidationLimits(t *testing.T) {

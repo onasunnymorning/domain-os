@@ -24,19 +24,22 @@ import (
 
 // EscrowDepositRecord is the GORM model for the escrow_deposits table.
 type EscrowDepositRecord struct {
-	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
-	TenantID      string    `gorm:"not null;index"`
-	TLD           string    `gorm:"not null;index"`
-	ReceivedAt    time.Time `gorm:"not null"`
-	SubmittedBy   string    `gorm:"not null"`
-	IntakeRef     string
-	RydeObjectKey string `gorm:"not null"`
-	SigObjectKey  string `gorm:"not null"`
-	RydeSHA256    string `gorm:"not null;size:64"`
-	SigSHA256     string `gorm:"not null;size:64"`
-	RydeBytes     int64  `gorm:"not null"`
-	SigBytes      int64  `gorm:"not null"`
-	CreatedAt     time.Time
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	TenantID    string    `gorm:"not null;index"`
+	TLD         string    `gorm:"not null;index"`
+	Profile     string    `gorm:"not null;default:'ryde+sig'"`
+	ReceivedAt  time.Time `gorm:"not null"`
+	SubmittedBy string    `gorm:"not null"`
+	IntakeRef   string
+	// Artifact* is the deposit itself; Signature* is the detached signature and
+	// is empty for unsigned profiles (issue #415).
+	ArtifactObjectKey  string `gorm:"not null"`
+	ArtifactSHA256     string `gorm:"not null;size:64"`
+	ArtifactBytes      int64  `gorm:"not null"`
+	SignatureObjectKey string
+	SignatureSHA256    string `gorm:"size:64"`
+	SignatureBytes     int64
+	CreatedAt          time.Time
 }
 
 // TableName specifies the table name for EscrowDepositRecord.
@@ -92,20 +95,20 @@ func (EscrowTrustedKeyRecord) TableName() string { return "escrow_trusted_keys" 
 
 func toDBEscrowDeposit(d *entities.EscrowDeposit) *EscrowDepositRecord {
 	return &EscrowDepositRecord{
-		ID: d.ID, TenantID: d.TenantID.String(), TLD: d.TLD, ReceivedAt: d.ReceivedAt,
+		ID: d.ID, TenantID: d.TenantID.String(), TLD: d.TLD, Profile: d.Profile, ReceivedAt: d.ReceivedAt,
 		SubmittedBy: d.SubmittedBy, IntakeRef: d.IntakeRef,
-		RydeObjectKey: d.RydeObjectKey, SigObjectKey: d.SigObjectKey,
-		RydeSHA256: d.RydeSHA256, SigSHA256: d.SigSHA256, RydeBytes: d.RydeBytes, SigBytes: d.SigBytes,
+		ArtifactObjectKey: d.ArtifactObjectKey, ArtifactSHA256: d.ArtifactSHA256, ArtifactBytes: d.ArtifactBytes,
+		SignatureObjectKey: d.SignatureObjectKey, SignatureSHA256: d.SignatureSHA256, SignatureBytes: d.SignatureBytes,
 		CreatedAt: d.CreatedAt,
 	}
 }
 
 func fromDBEscrowDeposit(r *EscrowDepositRecord) *entities.EscrowDeposit {
 	return &entities.EscrowDeposit{
-		ID: r.ID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD, ReceivedAt: r.ReceivedAt,
+		ID: r.ID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD, Profile: r.Profile, ReceivedAt: r.ReceivedAt,
 		SubmittedBy: r.SubmittedBy, IntakeRef: r.IntakeRef,
-		RydeObjectKey: r.RydeObjectKey, SigObjectKey: r.SigObjectKey,
-		RydeSHA256: r.RydeSHA256, SigSHA256: r.SigSHA256, RydeBytes: r.RydeBytes, SigBytes: r.SigBytes,
+		ArtifactObjectKey: r.ArtifactObjectKey, ArtifactSHA256: r.ArtifactSHA256, ArtifactBytes: r.ArtifactBytes,
+		SignatureObjectKey: r.SignatureObjectKey, SignatureSHA256: r.SignatureSHA256, SignatureBytes: r.SignatureBytes,
 		CreatedAt: r.CreatedAt,
 	}
 }
@@ -202,11 +205,12 @@ func (r *GormEscrowDepositRepository) GetByID(ctx context.Context, scope entitie
 	return fromDBEscrowDeposit(&rec), nil
 }
 
-// FindByDigests returns the deposit bound to this exact artifact pair.
-func (r *GormEscrowDepositRepository) FindByDigests(ctx context.Context, scope entities.OperatorID, tld, rydeSHA256, sigSHA256 string) (*entities.EscrowDeposit, error) {
+// FindByDigests returns the deposit bound to this exact artifact set.
+func (r *GormEscrowDepositRepository) FindByDigests(ctx context.Context, scope entities.OperatorID, tld, profile, artifactSHA256, signatureSHA256 string) (*entities.EscrowDeposit, error) {
 	var rec EscrowDepositRecord
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND tld = ? AND ryde_sha256 = ? AND sig_sha256 = ?", scope.String(), tld, rydeSHA256, sigSHA256).
+		Where("tenant_id = ? AND tld = ? AND profile = ? AND artifact_sha256 = ? AND signature_sha256 = ?",
+			scope.String(), tld, profile, artifactSHA256, signatureSHA256).
 		First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
