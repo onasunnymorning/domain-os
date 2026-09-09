@@ -1,5 +1,5 @@
-# Read version from the single source of truth
-version = str(local('cat VERSION', quiet=True)).strip()
+# Read version from the single source of truth (git tags, same as Makefile)
+version = str(local("git describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev", quiet=True)).strip()
 
 # Get the current branch
 branch = str(local('git branch --show-current', quiet=True)).strip()
