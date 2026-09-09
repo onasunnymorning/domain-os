@@ -57,7 +57,9 @@ type openState struct {
 	closers []io.Closer
 }
 
-func (s *openState) close() {
+// Close releases the artifact stream. Callers must call it once they have
+// finished with the XML entry.
+func (s *openState) Close() {
 	for _, c := range s.closers {
 		_ = c.Close()
 	}
@@ -185,13 +187,13 @@ func OpenDeposit(ctx context.Context, in Input, res *Result, now func() time.Tim
 		heartbeat(StageDecrypt, "decrypting deposit")
 		if len(in.ServiceKeys) == 0 {
 			res.Add(Finding{Code: CodeDecryptKeyUnavailable, Severity: SeverityError, Stage: StageDecrypt, Message: "no service decryption key is available", At: now()})
-			st.close()
+			st.Close()
 			return nil, nil, false
 		}
 		md, decInfo, f := Decrypt(in.ServiceKeys, source, now())
 		if f != nil {
 			res.Add(*f)
-			st.close()
+			st.Close()
 			return nil, nil, false
 		}
 		res.Decryption = decInfo
@@ -208,7 +210,7 @@ func OpenDeposit(ctx context.Context, in Input, res *Result, now func() time.Tim
 	entry, f := SafeUnpack(st.payload, in.Limits, st.budget, now())
 	if f != nil {
 		res.Add(*f)
-		st.close()
+		st.Close()
 		return nil, nil, false
 	}
 	res.Layout = entry.Layout
@@ -241,7 +243,7 @@ func Run(ctx context.Context, in Input) (res Result) {
 	if !ok {
 		return res
 	}
-	defer st.close()
+	defer st.Close()
 
 	res.StageReached = StageXML
 	if in.Heartbeat != nil {

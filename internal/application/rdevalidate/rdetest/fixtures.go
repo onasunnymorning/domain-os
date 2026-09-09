@@ -247,7 +247,11 @@ func BuildXML(o DepositOpts) []byte {
 		counts := o.HeaderCounts
 		if counts == nil {
 			counts = map[string]int{}
-			for uri, n := range map[string]int{entities.DOMAIN_URI: o.Domains, entities.HOST_URI: o.Hosts, entities.CONTACT_URI: o.Contacts, entities.REGISTRAR_URI: o.Registrars, entities.IDN_URI: o.IDNs, entities.NNDN_URI: o.NNDNs} {
+			domains := o.Domains
+			if o.IDNDomain {
+				domains++ // the IDN domain is a domain like any other and is counted
+			}
+			for uri, n := range map[string]int{entities.DOMAIN_URI: domains, entities.HOST_URI: o.Hosts, entities.CONTACT_URI: o.Contacts, entities.REGISTRAR_URI: o.Registrars, entities.IDN_URI: o.IDNs, entities.NNDN_URI: o.NNDNs} {
 				if n > 0 {
 					counts[uri] = n
 				}
