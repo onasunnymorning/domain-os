@@ -39,7 +39,8 @@ const (
 
 // Finding is one check result. Message, Locator and Rule must be built from
 // constant templates and numbers only (offsets, indices, counts, line
-// numbers) — never from object names, file names or payload text.
+// numbers) — never from object names, file names or payload text. Object is
+// the single, deliberate exception; see its doc comment.
 type Finding struct {
 	Code     Code     `json:"code"`
 	Severity Severity `json:"severity"`
@@ -49,11 +50,26 @@ type Finding struct {
 	// was refused; the rule says which rule refused it, so an operator can fix
 	// the deposit instead of guessing. It is part of the tally key, so a run
 	// reports how many objects each individual rule rejected.
-	Rule       string    `json:"rule,omitempty"`
-	ObjectType string    `json:"objectType,omitempty"`
-	Locator    string    `json:"locator,omitempty"`
-	Message    string    `json:"message"`
-	At         time.Time `json:"at"`
+	Rule       string `json:"rule,omitempty"`
+	ObjectType string `json:"objectType,omitempty"`
+	// Object is the identifier of the object the finding is about, as the
+	// deposit wrote it: a domain or host name, a contact or registrar id. It
+	// is the only field built from deposit content, and it is here because
+	// Locator is reproducible but not actionable — "domain#2374
+	// offset=2820739" identifies the object exactly and tells an operator
+	// nothing they can go and fix.
+	//
+	// Because it is untrusted payload, its blast radius is fenced rather than
+	// trusted: it reaches the run record and the operational summary, both
+	// tenant-scoped and read behind the API's authorisation, and nothing
+	// else. It is deliberately absent from the structured log line (see
+	// activities/escrow_validation.go) and from the DVFN sent to ICANN (see
+	// rdereport.resultsFromFindings), each of which builds its text from
+	// Message and Locator alone. Tests hold both fences.
+	Object  string    `json:"object,omitempty"`
+	Locator string    `json:"locator,omitempty"`
+	Message string    `json:"message"`
+	At      time.Time `json:"at"`
 }
 
 // FindingTally counts every finding of one kind the run produced, including
@@ -372,7 +388,7 @@ func ToEntityFindings(fs []Finding) []entities.EscrowFinding {
 	for i, f := range fs {
 		out[i] = entities.EscrowFinding{
 			Code: string(f.Code), Severity: string(f.Severity), Stage: string(f.Stage), Rule: f.Rule,
-			ObjectType: f.ObjectType, Locator: f.Locator, Message: f.Message, At: f.At,
+			ObjectType: f.ObjectType, Object: f.Object, Locator: f.Locator, Message: f.Message, At: f.At,
 		}
 	}
 	return out

@@ -113,6 +113,44 @@ func TestXMLValidator(t *testing.T) {
 		assert.NotContains(t, fs[0].Message, "example-1", "object names never leak")
 	})
 
+	// Object is the one field allowed to carry deposit content, and the point
+	// of it: an ordinal and a byte offset identify an object exactly and are
+	// no use to an operator who does not have the deposit open.
+	t.Run("a finding names the object it is about", func(t *testing.T) {
+		_, fs := validateFixture(t, "deposit_bad_domain.xml")
+		require.NotEmpty(t, fs)
+		f := fs[0]
+		require.NotEmpty(t, f.Object, "a finding about an object says which one")
+		assert.Contains(t, f.Object, "example-1")
+		// The other three fields keep the constant-template rule they had
+		// before Object existed: these are what the DVFN and the logs read.
+		assert.NotContains(t, f.Message, f.Object)
+		assert.NotContains(t, f.Locator, f.Object)
+		assert.NotContains(t, f.Rule, f.Object)
+	})
+
+	t.Run("every kind of object names itself", func(t *testing.T) {
+		// One of each object type, each broken the same way: strip the roid,
+		// which RFC 9022 requires of a domain, contact and host alike.
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 1, Hosts: 1, Registrars: 1}
+		raw := rdetest.BuildXML(opts)
+		for _, ns := range []string{"rdeDomain", "rdeContact", "rdeHost"} {
+			raw = dropElements(raw, ns+":roid")
+		}
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+
+		named := map[string]string{}
+		for _, f := range fs {
+			if f.Code == CodeRDEObjectInvalid && f.ObjectType != "" {
+				named[f.ObjectType] = f.Object
+			}
+		}
+		assert.Equal(t, "example-1.example", named["domain"])
+		assert.Equal(t, "CONT1", named["contact"])
+		assert.Equal(t, "ns1.example-1.example", named["host"])
+	})
+
 	t.Run("entity rejection is a warning, not a failure", func(t *testing.T) {
 		// A registrar URL under the reserved .test domain is valid RDE but is
 		// rejected by the domain-os URL rule; a registry-specific rule must not
@@ -184,13 +222,19 @@ func TestXMLValidator(t *testing.T) {
 		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
 
 		byType := map[string]int{}
+		var orphaned []string
 		for _, f := range fs {
 			if f.Code == CodeRDEObjectNotReferenced {
 				assert.Equal(t, SeverityWarning, f.Severity)
 				assert.Contains(t, f.Locator, f.ObjectType+"#")
+				assert.NotEmpty(t, f.Object, "an orphan an operator cannot name is not actionable")
 				byType[f.ObjectType]++
+				orphaned = append(orphaned, f.Object)
 			}
 		}
+		assert.ElementsMatch(t,
+			[]string{"CONT2", "CONT3", "ns1.example-1.example", "ns2.example-1.example"},
+			orphaned, "each orphan is named, not just counted")
 		// The one domain uses CONT1 for all three of its roles, so CONT2 and
 		// CONT3 are orphans; stripping the ns block orphans both hosts.
 		assert.Equal(t, 2, byType["contact"])
@@ -220,8 +264,13 @@ func TestXMLValidator(t *testing.T) {
 		assert.Equal(t, SeverityError, dangling[0].Severity)
 		assert.Equal(t, "contact", dangling[0].ObjectType)
 		assert.Equal(t, "domain#1", dangling[0].Locator, "located at the domain that made the reference")
-		assert.NotContains(t, dangling[0].Message, "CONT-ELSEWHERE", "the identifier never appears")
+		assert.NotContains(t, dangling[0].Message, "CONT-ELSEWHERE", "the identifier never appears in the template fields")
 		assert.NotContains(t, dangling[0].Rule, "CONT-ELSEWHERE")
+		assert.NotContains(t, dangling[0].Locator, "CONT-ELSEWHERE")
+		// It does appear as the Object: the unresolved identifier is the one
+		// thing the operator has to go and find, and the locator already says
+		// which domain wanted it.
+		assert.Equal(t, "CONT-ELSEWHERE", dangling[0].Object)
 		assert.Equal(t, OutcomeFail, Decide(fs), "a deposit that is not integral is not a pass")
 	})
 

@@ -92,6 +92,13 @@ func BuildNotification(p Params) (*Notification, error) {
 // resultsFromFindings converts ERROR-severity findings into iirdea results.
 // The message is the code's canonical text; the finding's own (template-only)
 // message and locator go into the description.
+//
+// Finding.Object is deliberately not among them. A DVFN leaves this system for
+// ICANN, and everything it carries originates as bytes from an untrusted
+// deposit; the description is therefore built from constant templates and
+// numbers only, exactly as it was before findings learned to name an object.
+// The operator gets the names in the summary, which stays in the tenant's
+// bucket. TestResultsFromFindings_OmitsTheObject holds this.
 func resultsFromFindings(fs []rdevalidate.Finding) *Results {
 	var out []Result
 	for _, f := range fs {

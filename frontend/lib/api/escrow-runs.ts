@@ -23,6 +23,15 @@ export interface EscrowFinding {
   /** The specific check behind the code, where the code alone is too coarse. */
   rule?: string;
   message: string;
+  /** The kind of object the finding is about: domain, contact, host, ... */
+  objectType?: string;
+  /**
+   * The identifier of the object itself, as the deposit wrote it — a domain
+   * or host name, a contact or registrar id. `locator` is exact but only
+   * usable with the deposit open; this is what an operator can act on.
+   * Absent on runs recorded before #423, and on findings about no one object.
+   */
+  object?: string;
   locator?: string;
 }
 

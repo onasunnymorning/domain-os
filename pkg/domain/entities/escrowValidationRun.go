@@ -80,11 +80,19 @@ type EscrowFinding struct {
 	// Rule names the specific check behind the code, where the code alone is
 	// too coarse to act on. It is a constant phrase, never a value from the
 	// deposit, and it is part of the tally key below.
-	Rule       string    `json:"rule,omitempty"`
-	ObjectType string    `json:"objectType,omitempty"`
-	Locator    string    `json:"locator,omitempty"`
-	Message    string    `json:"message"`
-	At         time.Time `json:"at"`
+	Rule       string `json:"rule,omitempty"`
+	ObjectType string `json:"objectType,omitempty"`
+	// Object is the identifier the finding is about, taken from the deposit:
+	// a domain or host name, a contact or registrar id. It is the one field
+	// here that carries deposit content, and it exists because Locator alone
+	// ("domain#2374 offset=2820739") cannot be acted on without the deposit
+	// in hand. It is confined to this record and the operational summary,
+	// both tenant-scoped; it must never reach a log line or an ICANN
+	// notification. See rdereport.resultsFromFindings.
+	Object  string    `json:"object,omitempty"`
+	Locator string    `json:"locator,omitempty"`
+	Message string    `json:"message"`
+	At      time.Time `json:"at"`
 }
 
 // EscrowFindingTally counts every finding of one kind the run produced,
