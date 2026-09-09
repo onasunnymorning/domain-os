@@ -35,6 +35,8 @@ type EscrowValidationDeps struct {
 	Deposits repositories.EscrowDepositRepository
 	Runs     repositories.EscrowValidationRunRepository
 	Keys     repositories.EscrowTrustedKeyRepository
+	// Sanitizations is the derivative record set (issue #415).
+	Sanitizations repositories.EscrowSanitizationRunRepository
 }
 
 type startEscrowValidationRequest struct {

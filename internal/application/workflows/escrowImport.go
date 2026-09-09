@@ -20,42 +20,42 @@ type EscrowImportParams struct {
 
 // EscrowImportState tracks the real-time progress and QA status of the escrow import
 type EscrowImportState struct {
-	Phase                  string                          `json:"phase"` // "validating", "parsing", "staging_db", "cleaning_orphans", "resolving", "pending_registrar_overrides", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
-	TLD                    string                          `json:"tld"`
-	ObjectKey              string                          `json:"objectKey"`
-	RunPrefix              string                          `json:"runPrefix"`
-	BaseDBKey              string                          `json:"baseDbKey,omitempty"`
-	StagedDBKey            string                          `json:"stagedDbKey"`
-	QAPassed               bool                            `json:"qaPassed"`
-	QAReportKey            string                          `json:"qaReportKey,omitempty"`
-	Error                  string                          `json:"error,omitempty"`
-	Ingested               map[string]int64                `json:"ingested,omitempty"`
-	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
-	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
-	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
-	OverridesProvided      map[string]string               `json:"overridesProvided,omitempty"`
-	RejectedOverrides      []activities.RejectedOverride   `json:"rejectedOverrides,omitempty"`
-	VerificationPassed     *bool                           `json:"verificationPassed,omitempty"`
-	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
+	Phase                 string                         `json:"phase"` // "validating", "parsing", "staging_db", "cleaning_orphans", "resolving", "pending_registrar_overrides", "applying_mappings", "qa_check", "pending_confirmation", "ingesting", "verifying", "completed", "aborted", "qa_failed", "failed"
+	TLD                   string                         `json:"tld"`
+	ObjectKey             string                         `json:"objectKey"`
+	RunPrefix             string                         `json:"runPrefix"`
+	BaseDBKey             string                         `json:"baseDbKey,omitempty"`
+	StagedDBKey           string                         `json:"stagedDbKey"`
+	QAPassed              bool                           `json:"qaPassed"`
+	QAReportKey           string                         `json:"qaReportKey,omitempty"`
+	Error                 string                         `json:"error,omitempty"`
+	Ingested              map[string]int64               `json:"ingested,omitempty"`
+	TotalRegistrars       int                            `json:"totalRegistrars,omitempty"`
+	MappedRegistrars      int                            `json:"mappedRegistrars,omitempty"`
+	UnmappedRegistrars    []activities.UnmappedRegistrar `json:"unmappedRegistrars,omitempty"`
+	OverridesProvided     map[string]string              `json:"overridesProvided,omitempty"`
+	RejectedOverrides     []activities.RejectedOverride  `json:"rejectedOverrides,omitempty"`
+	VerificationPassed    *bool                          `json:"verificationPassed,omitempty"`
+	VerificationReportKey string                         `json:"verificationReportKey,omitempty"`
 }
 
 // EscrowImportResult is the final output of the unified EscrowImportWorkflow
 type EscrowImportResult struct {
-	TLD                    string                          `json:"tld"`
-	ObjectKey              string                          `json:"objectKey"`
-	RunPrefix              string                          `json:"runPrefix"`
-	DBKey                  string                          `json:"dbKey,omitempty"`
-	StagedDBKey            string                          `json:"stagedDbKey"`
-	QAPassed               bool                            `json:"qaPassed"`
-	QAReportKey            string                          `json:"qaReportKey"`
-	Confirmed              bool                            `json:"confirmed"`
-	IngestedCounts         map[string]int64                `json:"ingestedCounts,omitempty"`
-	TotalRegistrars        int                             `json:"totalRegistrars,omitempty"`
-	MappedRegistrars       int                             `json:"mappedRegistrars,omitempty"`
-	UnmappedRegistrars     []activities.UnmappedRegistrar   `json:"unmappedRegistrars,omitempty"`
-	OverridesProvided      map[string]string               `json:"overridesProvided,omitempty"`
-	VerificationPassed     bool                            `json:"verificationPassed"`
-	VerificationReportKey  string                          `json:"verificationReportKey,omitempty"`
+	TLD                   string                         `json:"tld"`
+	ObjectKey             string                         `json:"objectKey"`
+	RunPrefix             string                         `json:"runPrefix"`
+	DBKey                 string                         `json:"dbKey,omitempty"`
+	StagedDBKey           string                         `json:"stagedDbKey"`
+	QAPassed              bool                           `json:"qaPassed"`
+	QAReportKey           string                         `json:"qaReportKey"`
+	Confirmed             bool                           `json:"confirmed"`
+	IngestedCounts        map[string]int64               `json:"ingestedCounts,omitempty"`
+	TotalRegistrars       int                            `json:"totalRegistrars,omitempty"`
+	MappedRegistrars      int                            `json:"mappedRegistrars,omitempty"`
+	UnmappedRegistrars    []activities.UnmappedRegistrar `json:"unmappedRegistrars,omitempty"`
+	OverridesProvided     map[string]string              `json:"overridesProvided,omitempty"`
+	VerificationPassed    bool                           `json:"verificationPassed"`
+	VerificationReportKey string                         `json:"verificationReportKey,omitempty"`
 }
 
 // EscrowImportWorkflow manages the entire escrow import lifecycle.
@@ -550,20 +550,20 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	state.Phase = "completed"
 
 	return EscrowImportResult{
-		TLD:                    params.TLD,
-		ObjectKey:              params.ObjectKey,
-		RunPrefix:              assetsOut.RunPrefix,
-		DBKey:                  collateOut.DBKey,
-		StagedDBKey:            stageOut.StagedDBKey,
-		QAPassed:               true,
-		QAReportKey:            qaOut.QAReportKey,
-		Confirmed:              true,
-		IngestedCounts:         counts,
-		TotalRegistrars:        mapOut.TotalRegistrars,
-		MappedRegistrars:       mapOut.MappedCount,
-		UnmappedRegistrars:     mapOut.UnmappedRegistrars,
-		OverridesProvided:      state.OverridesProvided,
-		VerificationPassed:     verifyOut.Passed,
-		VerificationReportKey:  verifyOut.ReportKey,
+		TLD:                   params.TLD,
+		ObjectKey:             params.ObjectKey,
+		RunPrefix:             assetsOut.RunPrefix,
+		DBKey:                 collateOut.DBKey,
+		StagedDBKey:           stageOut.StagedDBKey,
+		QAPassed:              true,
+		QAReportKey:           qaOut.QAReportKey,
+		Confirmed:             true,
+		IngestedCounts:        counts,
+		TotalRegistrars:       mapOut.TotalRegistrars,
+		MappedRegistrars:      mapOut.MappedCount,
+		UnmappedRegistrars:    mapOut.UnmappedRegistrars,
+		OverridesProvided:     state.OverridesProvided,
+		VerificationPassed:    verifyOut.Passed,
+		VerificationReportKey: verifyOut.ReportKey,
 	}, nil
 }

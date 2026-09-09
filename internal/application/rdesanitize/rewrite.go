@@ -85,7 +85,7 @@ func (rw *Rewriter) Rewrite(ctx context.Context, src io.Reader, dst io.Writer) (
 	}
 
 	st := &rewriteState{rw: rw, res: &res, w: bufio.NewWriterSize(dst, 64<<10), value: &strings.Builder{}}
-	st.w.WriteString(xmlDeclaration)
+	st.emitString(xmlDeclaration)
 	dec := xml.NewDecoder(src)
 	dec.Strict = true
 
@@ -308,11 +308,11 @@ func (s *rewriteState) copyToken(tok xml.Token, at time.Time) bool {
 			return false
 		}
 		if s.pending != nil {
-			s.w.Write(s.pending[:len(s.pending)-1])
-			s.w.WriteString("/>")
+			s.emit(s.pending[:len(s.pending)-1])
+			s.emitString("/>")
 			s.pending = nil
 		} else {
-			s.w.WriteString(s.endTag(t.Name))
+			s.emitString(s.endTag(t.Name))
 		}
 		s.pop()
 		s.copyDepth--
@@ -344,17 +344,17 @@ func (s *rewriteState) endElement(t xml.EndElement, at time.Time) bool {
 		if !ok {
 			return false
 		}
-		s.w.Write(s.pending)
+		s.emit(s.pending)
 		s.pending = nil
 		writeText(s.w, out)
-		s.w.WriteString(s.endTag(t.Name))
+		s.emitString(s.endTag(t.Name))
 	} else if s.pending != nil {
 		// Nothing between the tags: keep the source's self-closing form.
-		s.w.Write(s.pending[:len(s.pending)-1])
-		s.w.WriteString("/>")
+		s.emit(s.pending[:len(s.pending)-1])
+		s.emitString("/>")
 		s.pending = nil
 	} else {
-		s.w.WriteString(s.endTag(t.Name))
+		s.emitString(s.endTag(t.Name))
 	}
 	s.pop()
 	s.action = s.currentAction()
@@ -559,7 +559,7 @@ func (s *rewriteState) endTag(name xml.Name) string {
 
 func (s *rewriteState) flushPending() {
 	if s.pending != nil {
-		s.w.Write(s.pending)
+		s.emit(s.pending)
 		s.pending = nil
 	}
 }
@@ -571,6 +571,13 @@ func (s *rewriteState) flushPending() {
 var textEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\r", "&#xD;")
 
 func writeText(w *bufio.Writer, s string) { _, _ = textEscaper.WriteString(w, s) }
+
+// emit and emitString write to the buffered output. bufio.Writer latches its
+// first error and reports it from Flush, which Rewrite checks once at the end,
+// so the individual writes are deliberately unchecked: branching on each would
+// add a dozen paths reachable only after the single checked one has failed.
+func (s *rewriteState) emit(b []byte)       { _, _ = s.w.Write(b) }
+func (s *rewriteState) emitString(x string) { _, _ = s.w.WriteString(x) }
 
 var attrEscaper = strings.NewReplacer(
 	"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",

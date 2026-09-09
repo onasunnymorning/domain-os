@@ -34,6 +34,7 @@ const (
 	CodeDerivativePIIDetected Code = "DERIVATIVE_PII_DETECTED"
 
 	// cross-cutting, error class: the service could not decide.
+	// #nosec G101 -- a reason code naming an unavailable key, not a key
 	CodeTokenKeyUnavailable Code = "TOKEN_KEY_UNAVAILABLE"
 	CodeSanitizeTimeout     Code = "SANITIZE_TIMEOUT"
 	CodeInternal            Code = "INTERNAL_ERROR"

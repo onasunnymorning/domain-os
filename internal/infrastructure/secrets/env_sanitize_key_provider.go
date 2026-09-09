@@ -15,6 +15,7 @@ import (
 
 // EnvSanitizeTokenKey is the environment variable holding the master HMAC key
 // for escrow derivative pseudonymisation, injected by the secrets manager.
+// #nosec G101 -- the name of the variable that holds the key, not the key
 const EnvSanitizeTokenKey = "ESCROW_SANITIZE_HMAC_KEY"
 
 // Errors are fixed text: an error path that quoted the variable's contents
@@ -66,6 +67,7 @@ func NewEnvSanitizeKeyProvider(encoded string) (*EnvSanitizeKeyProvider, error) 
 	// The fingerprint is a MAC over a fixed public string and cannot be
 	// inverted, so logging it is safe — and it is the only way an operator can
 	// confirm which key a worker holds without handling the key.
+	// #nosec G706 -- both values are ours: the fingerprint is base32 of a MAC and PolicyVersion is a compile-time constant
 	log.Printf("escrow sanitization: token key loaded (fingerprint %s, policy %s)", p.fingerprint, rdesanitize.PolicyVersion)
 	return p, nil
 }

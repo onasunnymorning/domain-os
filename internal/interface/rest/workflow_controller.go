@@ -594,6 +594,31 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			SubmittedBy: submittedBy, IntakeRef: intakeRef, ReceivedAt: time.Now().UTC(),
 		}}
 
+	case "escrow-sanitize":
+		// Scope is the caller's; the TLD is not a parameter at all, because the
+		// derivative inherits it from the bound source deposit.
+		scope, err := OperatorScopeFromRequest(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		sourceRunID, _ := req.Params["sourceValidationRunId"].(string)
+		if strings.TrimSpace(sourceRunID) == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "sourceValidationRunId is required for escrow-sanitize"})
+			return
+		}
+		suffix, _ := req.Params["syntheticSuffix"].(string)
+		requestedBy := scope.String()
+		if uid, ok := appcontext.UserID(ctx.Request.Context()); ok && uid != "" {
+			requestedBy = uid
+		}
+		wfID = fmt.Sprintf("escrow-sanitize-%s", sourceRunID)
+		workflow = workflows.EscrowSanitizeWorkflow
+		args = []interface{}{workflows.EscrowSanitizeParams{
+			Scope: scope.String(), SourceValidationRunID: sourceRunID,
+			SyntheticSuffix: suffix, RequestedBy: requestedBy,
+		}}
+
 	default:
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported workflow type: %s", req.WorkflowType)})
 		return

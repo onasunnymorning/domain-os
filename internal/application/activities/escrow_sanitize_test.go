@@ -26,12 +26,11 @@ var sanitizeTokenKey = bytes.Repeat([]byte("eve-sanitize-activity-key!!!!!!!"), 
 // fake repositories and stores, because a derivative can only exist downstream
 // of a real accepted validation run.
 type esFixture struct {
-	ev       *evFixture
-	sanRepo  *fakeSanitizationRepo
-	tokens   *fakeTokenKeyProvider
-	acts     *EscrowSanitizeActivities
-	env      *testsuite.TestActivityEnvironment
-	sourceID uuid.UUID
+	ev      *evFixture
+	sanRepo *fakeSanitizationRepo
+	tokens  *fakeTokenKeyProvider
+	acts    *EscrowSanitizeActivities
+	env     *testsuite.TestActivityEnvironment
 }
 
 func newESFixture(t *testing.T) *esFixture {
@@ -78,7 +77,7 @@ func (f *esFixture) bind(t *testing.T, sourceRunID uuid.UUID, suffix string) (Bi
 	t.Helper()
 	var out BindSanitizationSourceOutput
 	val, err := f.env.ExecuteActivity(f.acts.BindSanitizationSource, BindSanitizationSourceInput{
-		Scope: f.ev.scope.String(), SourceValidationRunID: sourceRunID, SyntheticSuffix: suffix,
+		Scope: f.ev.scope.String(), SourceValidationRunID: sourceRunID.String(), SyntheticSuffix: suffix,
 		WorkflowID: "wf-san-1", RunID: "run-san-1",
 	})
 	if err != nil {
@@ -215,7 +214,7 @@ func TestEscrowSanitize_RefusesAnotherTenantsRun(t *testing.T) {
 
 	var out BindSanitizationSourceOutput
 	_, err := f.env.ExecuteActivity(f.acts.BindSanitizationSource, BindSanitizationSourceInput{
-		Scope: "ryop2", SourceValidationRunID: sourceRunID, WorkflowID: "wf-san-1", RunID: "run-san-1",
+		Scope: "ryop2", SourceValidationRunID: sourceRunID.String(), WorkflowID: "wf-san-1", RunID: "run-san-1",
 	})
 	require.Error(t, err)
 	assert.True(t, isNonRetryable(err))
