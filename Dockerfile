@@ -38,10 +38,12 @@ RUN apk add upx
 #     LIBRDKAFKA=1
 
 # Go dependencies
+# Dependencies come from the committed vendor tree, not the module proxy: the
+# build stays hermetic and cannot fail on a proxy outage. go.mod/go.sum are
+# still needed — vendor mode checks them against vendor/modules.txt.
 COPY go.mod ./
 COPY go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+COPY vendor/ ./vendor/
 
 # Copy source code
 COPY ./internal ./internal
@@ -68,7 +70,7 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags dynamic -ldflags="-s -w \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=vendor -tags dynamic -ldflags="-s -w \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o ryAdminAPI ./cmd/api/ry-admin

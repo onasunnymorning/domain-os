@@ -90,6 +90,31 @@ jobs:
       - name: Check env var registry and deployment contract
         run: go test -run 'TestEnvRegistryDrift|TestRegistryNoDuplicates|TestRegistryHasDescriptions|TestContractDrift|TestCIImageMatrixMatchesContract' ./internal/config/...
 
+  # The image builds resolve dependencies from the committed vendor tree rather
+  # than the module proxy (see .dockerignore and the Dockerfiles), so vendor/ is
+  # what ends up compiled into every shipped container. That makes two things
+  # load-bearing on every PR: the tree is exactly what `go mod vendor` produces
+  # from go.mod, and the modules it was built from still match go.sum. Without
+  # this job a hand-edited vendor/ would reach production with nothing to catch
+  # it — the build itself cannot tell the difference.
+  vendor-check:
+    name: Vendor Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+      # Checks the module cache against go.sum. Run before `go mod vendor`,
+      # which rewrites the tree we are about to diff.
+      - name: Verify module checksums against go.sum
+        run: go mod verify
+      - name: Verify vendor/ matches go.mod
+        run: |
+          go mod vendor
+          git diff --exit-code -- vendor/ go.mod go.sum
+
   unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -212,7 +237,7 @@ jobs:
   build-images:
     name: Build ${{ matrix.image.name }}
     runs-on: ubuntu-latest
-    needs: [setup, unit-tests, frontend-tests, lint, arch-lint]
+    needs: [setup, unit-tests, frontend-tests, lint, arch-lint, vendor-check]
     strategy:
       fail-fast: false
       matrix:
