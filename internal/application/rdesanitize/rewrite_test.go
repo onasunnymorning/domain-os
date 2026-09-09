@@ -193,6 +193,99 @@ func TestRewrite_UnknownAttributeQuarantines(t *testing.T) {
 	assert.True(t, res.Has(CodePolicyUnknownAttribute), "codes: %v", res.Codes())
 }
 
+// A refusal that does not say what it refused cannot be acted on: the whole
+// remedy for a POLICY_UNKNOWN_* finding is to add that name to the profile.
+func TestRewrite_NamesWhatTheProfileDoesNotClassify(t *testing.T) {
+	t.Run("attribute", func(t *testing.T) {
+		f := newFixture(t)
+		doc := strings.Replace(string(rdetest.BuildXML(rdetest.DepositOpts{TLD: sourceTLD, Domains: 1})),
+			`<rdeDomain:status s="ok"/>`, `<rdeDomain:status s="ok" vendorFlag="7"/>`, 1)
+		var out bytes.Buffer
+		res := f.rw.Rewrite(context.Background(), strings.NewReader(doc), &out)
+
+		require.Equal(t, OutcomeQuarantined, res.Outcome)
+		got := findingWithCode(t, res, CodePolicyUnknownAttribute)
+		assert.Equal(t, "rdeDomain:status@vendorFlag", got.Object,
+			"the object is the profile entry that is missing")
+	})
+
+	t.Run("namespace", func(t *testing.T) {
+		f := newFixture(t)
+		res, _ := f.run(t, rdetest.DepositOpts{Domains: 1, VendorExtension: true})
+
+		require.Equal(t, OutcomeQuarantined, res.Outcome)
+		got := findingWithCode(t, res, CodePolicyUnknownNamespace)
+		assert.NotEmpty(t, got.Object)
+		assert.Contains(t, got.Object, ":", "a namespace is reported as its URI, which Alias maps")
+	})
+}
+
+// The refusal used to stop the walk at the first unclassified name, so
+// extending the profile meant re-running the whole deposit once per gap. It
+// now surveys to the end and reports them together.
+func TestRewrite_SurveysTheWholeSourceOnRefusal(t *testing.T) {
+	f := newFixture(t)
+	doc := string(rdetest.BuildXML(rdetest.DepositOpts{TLD: sourceTLD, Domains: 1, Contacts: 1}))
+	doc = strings.Replace(doc, `<rdeDomain:status s="ok"/>`, `<rdeDomain:status s="ok" vendorFlag="7"/>`, 1)
+	doc = strings.Replace(doc, `<rdeContact:status s="ok"/>`, `<rdeContact:status s="ok" legacyId="3"/>`, 1)
+	require.Contains(t, doc, "vendorFlag")
+	require.Contains(t, doc, "legacyId")
+
+	var out bytes.Buffer
+	res := f.rw.Rewrite(context.Background(), strings.NewReader(doc), &out)
+	require.Equal(t, OutcomeQuarantined, res.Outcome)
+
+	var objects []string
+	for _, x := range res.Findings {
+		if x.Code == CodePolicyUnknownAttribute {
+			objects = append(objects, x.Object)
+		}
+	}
+	assert.ElementsMatch(t, []string{"rdeDomain:status@vendorFlag", "rdeContact:status@legacyId"}, objects,
+		"one run reports every gap, not just the first")
+
+	// Surveying is not producing: the moment the profile refuses, the
+	// derivative stops being written, so nothing downstream can mistake what
+	// was staged for a complete document.
+	assert.NotContains(t, out.String(), "</rde:deposit>")
+}
+
+// One unclassified name used a hundred times is one gap in the profile, not a
+// hundred findings to read past.
+func TestRewrite_ReportsEachGapOnce(t *testing.T) {
+	f := newFixture(t)
+	doc := strings.ReplaceAll(string(rdetest.BuildXML(rdetest.DepositOpts{TLD: sourceTLD, Domains: 20})),
+		`<rdeDomain:status s="ok"/>`, `<rdeDomain:status s="ok" vendorFlag="7"/>`)
+	var out bytes.Buffer
+	res := f.rw.Rewrite(context.Background(), strings.NewReader(doc), &out)
+	require.Equal(t, OutcomeQuarantined, res.Outcome)
+
+	listed, counted := 0, 0
+	for _, x := range res.Findings {
+		if x.Code == CodePolicyUnknownAttribute {
+			listed++
+		}
+	}
+	for _, e := range res.Tally {
+		if e.Code == CodePolicyUnknownAttribute {
+			counted += e.Count
+		}
+	}
+	assert.Equal(t, 1, listed, "the findings list carries one example of the gap")
+	assert.Greater(t, counted, 1, "the tally still counts every occurrence")
+}
+
+func findingWithCode(t *testing.T, res Result, c Code) Finding {
+	t.Helper()
+	for _, f := range res.Findings {
+		if f.Code == c {
+			return f
+		}
+	}
+	require.FailNowf(t, "no finding with code", "%s; codes: %v", string(c), res.Codes())
+	return Finding{}
+}
+
 func TestRewrite_LimitsAreEnforced(t *testing.T) {
 	t.Run("depth", func(t *testing.T) {
 		f := newFixture(t)
