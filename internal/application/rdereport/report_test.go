@@ -40,13 +40,13 @@ func runFixture(t *testing.T, opts rdetest.DepositOpts, breakSig bool) rdevalida
 		sig = rdetest.Sign(t, []byte("something else"), registry, false)
 	}
 	res := rdevalidate.Run(context.Background(), rdevalidate.Input{
-		OpenArtifact:    func(context.Context) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(pair.Ryde)), nil },
-		Sig:         sig,
-		TrustedKeys: []string{registry.ArmoredPublic},
-		ServiceKeys: openpgp.EntityList{service.Entity},
-		BoundTLD:    "example",
-		Limits:      rdevalidate.DefaultLimits(),
-		Now:         func() time.Time { return time.Now().UTC().Add(time.Hour) },
+		OpenArtifact: func(context.Context) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(pair.Ryde)), nil },
+		Sig:          sig,
+		TrustedKeys:  []string{registry.ArmoredPublic},
+		ServiceKeys:  openpgp.EntityList{service.Entity},
+		BoundTLD:     "example",
+		Limits:       rdevalidate.DefaultLimits(),
+		Now:          func() time.Time { return time.Now().UTC().Add(time.Hour) },
 	})
 	// Pin non-deterministic fields.
 	res.Signature.SignedAt = fixedSigned
@@ -288,4 +288,30 @@ func TestResultCodes_CoverEveryFailureCode(t *testing.T) {
 	}
 	code, _ := ResultCodeFor("SOMETHING_NEW")
 	assert.Equal(t, 4999, code)
+}
+
+// A DVFN leaves this system for ICANN. Finding.Object is the one field a
+// finding builds from the deposit's own bytes, so the notification is built
+// from the constant-template fields alone — see resultsFromFindings.
+func TestBuildNotification_DVFN_OmitsTheObjectIdentifier(t *testing.T) {
+	res := runFixture(t, rdetest.DepositOpts{TLD: "example", Domains: 2, Contacts: 1, Hosts: 1, Registrars: 1, BreakDomain: true}, false)
+	require.Equal(t, rdevalidate.OutcomeFail, res.Outcome)
+
+	var objects []string
+	for _, f := range res.Findings {
+		if f.Severity == rdevalidate.SeverityError && f.Object != "" {
+			objects = append(objects, f.Object)
+		}
+	}
+	require.NotEmpty(t, objects, "the fixture must produce a named ERROR for this to prove anything")
+
+	n, err := BuildNotification(params(res))
+	require.NoError(t, err)
+	require.NotNil(t, n.Results)
+	for _, r := range n.Results.Result {
+		for _, o := range objects {
+			assert.NotContains(t, r.Description, o, "an object identifier must not reach the notification")
+			assert.NotContains(t, r.Msg, o)
+		}
+	}
 }

@@ -16,7 +16,13 @@ import (
 // -2 replaced SummaryCount.matches with a status that can say "not-checked",
 // added the rule to every ByCode row, and made the sample and the ordering
 // lead with severity rather than with whichever finding fired most often.
-const SummarySchemaVersion = "escrow-validation-summary-2"
+//
+// -3 added "object" to every sampled finding: the domain name, host name or
+// contact id the finding is about. It is the one field in this document drawn
+// from the deposit's own content rather than from a constant template, which
+// is why the summary stays in the tenant's bucket and the DVFN does not get
+// it. See rdevalidate.Finding.Object.
+const SummarySchemaVersion = "escrow-validation-summary-3"
 
 // MaxSummarySampleFindings bounds the worked examples carried in the summary.
 // The tally is the complete account; the sample only shows what the findings

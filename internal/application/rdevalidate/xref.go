@@ -20,6 +20,17 @@ import (
 // but it is a memory decision and should be made deliberately.
 const MaxCrossReferenceObjects = 5_000_000
 
+// MaxCrossReferenceNames bounds how many of those identifiers the check also
+// keeps verbatim, so it can name the object a finding is about rather than
+// only its ordinal. A name costs a string header and its bytes on top of the
+// entry — call it seventy bytes for a host name — so keeping every one would
+// roughly triple the ceiling above. This bound is deliberately the smaller of
+// the two: past it the index keeps counting and comparing, and findings
+// degrade to an ordinal and a byte offset, which is what they carried before
+// Finding.Object existed. A deposit that large is already being read with the
+// file in hand.
+const MaxCrossReferenceNames = 1_000_000
+
 // crossRef answers two questions about a FULL deposit, which differ in what
 // they mean and so in what they cost:
 //
@@ -32,13 +43,15 @@ const MaxCrossReferenceObjects = 5_000_000
 // that does not is an ERROR: the deposit is not integral and the domain that
 // made it cannot be imported, which is the thing escrow exists to guarantee.
 //
-// It holds 64-bit hashes, never the identifiers themselves. That halves the
-// memory, and it means a contact id or host name cannot reach a finding, a log
-// or a heap dump through this check even by accident — the redaction rule for
-// findings (constant templates and numbers only) is satisfied structurally
-// rather than by remembering to satisfy it. The cost is that two identifiers
+// It compares 64-bit hashes rather than the identifiers themselves, which
+// halves the memory the comparison costs. The cost is that two identifiers
 // could collide and an orphan go unreported: at five million entries the odds
 // are about one in a million, and the failure is a missing warning.
+//
+// It does keep the identifiers verbatim, in one bounded side table, purely so
+// a finding can say which contact or host it means (Finding.Object). Nothing
+// else reads them: every message, rule and locator the check emits is still
+// built from constant text and ordinals.
 type crossRef struct {
 	// enabled is false for a DIFF or INCR deposit, where a contact or host
 	// belonging to a domain deposited earlier is correct, not an orphan.
@@ -62,6 +75,11 @@ type crossRef struct {
 	// orphans in a real deposit that its own domains delegate to.
 	usedHostInBailiwick map[uint64]int
 
+	// names maps a key back to the identifier that produced it, for the
+	// findings alone. Bounded separately by MaxCrossReferenceNames; a key with
+	// no entry here yields a finding with no Object, not a wrong one.
+	names map[uint64]string
+
 	entries    int
 	overflowed bool
 }
@@ -74,6 +92,7 @@ func newCrossRef(boundTLD string) *crossRef {
 		usedHost:    map[uint64]int{},
 
 		usedHostInBailiwick: map[uint64]int{},
+		names:               map[uint64]string{},
 	}
 	if tld := strings.Trim(strings.ToLower(strings.TrimSpace(boundTLD)), "."); tld != "" {
 		x.bailiwick = "." + tld
@@ -91,9 +110,14 @@ func key(id string) uint64 {
 	return h.Sum64()
 }
 
-// put records id in m under ordinal, unless the bound has been reached.
+// put records id in m under ordinal, unless the bound has been reached, and
+// remembers the identifier itself while there is room for it.
 func (x *crossRef) put(m map[uint64]int, id string, ordinal int) {
-	if !x.enabled || x.overflowed || strings.TrimSpace(id) == "" {
+	if !x.enabled || x.overflowed {
+		return
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
 		return
 	}
 	k := key(id)
@@ -106,6 +130,12 @@ func (x *crossRef) put(m map[uint64]int, id string, ordinal int) {
 	}
 	x.entries++
 	m[k] = ordinal
+	// Recorded on first sight from either direction, so a domain that
+	// references an object the deposit never declares still has a name to
+	// report. The first spelling wins; the rest differ only in case.
+	if _, named := x.names[k]; !named && len(x.names) < MaxCrossReferenceNames {
+		x.names[k] = id
+	}
 }
 
 func (x *crossRef) declareContact(id string, ordinal int) { x.put(x.contacts, id, ordinal) }
@@ -138,7 +168,7 @@ func (x *crossRef) useHost(name string, domainOrdinal int) {
 // holds one entry per orphan until the pipeline funnels it in. A deposit whose
 // every host is an orphan therefore costs about 130 bytes each here, on top of
 // the index. MaxCrossReferenceObjects is what bounds it.
-func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType, locator, rule, msg string)) {
+func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType, object, locator, rule, msg string)) {
 	if !x.enabled {
 		return
 	}
@@ -146,23 +176,17 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		// A WARNING rather than a note: the check that did not run is the one
 		// that decides whether the deposit is integral, so a reader has to be
 		// told that nothing here says it is.
-		add(CodeRDECrossReferenceSkipped, SeverityWarning, StageRDE, "", "",
+		add(CodeRDECrossReferenceSkipped, SeverityWarning, StageRDE, "", "", "",
 			"deposit exceeds "+itoa(MaxCrossReferenceObjects)+" cross-referenced identifiers",
 			"contact and host references were not checked: the deposit carries more identifiers than the check holds")
 		return
 	}
 
 	orphans := func(declared, used map[uint64]int, objType, rule, msg string) {
-		var at []int
-		for k, ordinal := range declared {
-			if _, referenced := used[k]; !referenced {
-				at = append(at, ordinal)
-			}
-		}
-		sort.Ints(at)
-		for _, ordinal := range at {
+		at := x.unmatched(declared, used)
+		for _, o := range at {
 			add(CodeRDEObjectNotReferenced, SeverityWarning, StageRDE, objType,
-				objType+"#"+itoa(ordinal), rule, msg)
+				o.name, objType+"#"+itoa(o.ordinal), rule, msg)
 		}
 	}
 	orphans(x.contacts, x.usedContact, "contact",
@@ -176,17 +200,13 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 	// orphan is data nobody asked for; a broken reference means the deposit is
 	// not integral and a successor registry cannot import the domain that made
 	// it, which is the whole thing escrow exists to guarantee.
+	// The Object here is the identifier that could not be resolved, not the
+	// domain that named it: that identifier is what an operator has to go and
+	// find, and the locator already says which domain wanted it.
 	dangling := func(used, declared map[uint64]int, objType, rule, msg string) {
-		var at []int
-		for k, ordinal := range used {
-			if _, present := declared[k]; !present {
-				at = append(at, ordinal)
-			}
-		}
-		sort.Ints(at)
-		for _, ordinal := range at {
+		for _, o := range x.unmatched(used, declared) {
 			add(CodeRDEReferenceNotInDeposit, SeverityError, StageRDE, objType,
-				"domain#"+itoa(ordinal), rule, msg)
+				o.name, "domain#"+itoa(o.ordinal), rule, msg)
 		}
 	}
 	dangling(x.usedContact, x.contacts, "contact",
@@ -197,6 +217,27 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		"domain points at a nameserver under this TLD that is not in the deposit, so the reference cannot be resolved")
 }
 
+// unmatchedEntry is one key of have that miss does not carry, carrying the
+// ordinal a finding locates it by and the identifier it names.
+type unmatchedEntry struct {
+	ordinal int
+	name    string
+}
+
+// unmatched is every key in have that is absent from miss, ordered by
+// ordinal. The order is what makes two runs over the same deposit emit the
+// same findings in the same sequence; ranging a map alone would not.
+func (x *crossRef) unmatched(have, miss map[uint64]int) []unmatchedEntry {
+	var out []unmatchedEntry
+	for k, ordinal := range have {
+		if _, present := miss[k]; !present {
+			out = append(out, unmatchedEntry{ordinal: ordinal, name: x.names[k]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ordinal < out[j].ordinal })
+	return out
+}
+
 // declare folds one decoded object into the index. The ordinal is the object's
 // position among others of its kind, which is what a finding's locator names.
 func (x *crossRef) declare(objectType string, out objectResult, ordinal int) {
@@ -205,9 +246,9 @@ func (x *crossRef) declare(objectType string, out objectResult, ordinal int) {
 	}
 	switch objectType {
 	case "contact":
-		x.declareContact(out.Declares, ordinal)
+		x.declareContact(out.Name, ordinal)
 	case "host":
-		x.declareHost(out.Declares, ordinal)
+		x.declareHost(out.Name, ordinal)
 	case "domain":
 		for _, id := range out.Refs {
 			x.useContact(id, ordinal)

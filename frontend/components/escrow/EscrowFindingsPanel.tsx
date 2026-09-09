@@ -159,6 +159,14 @@ export function EscrowFindingsPanel({
                     </span>
                     <span className="text-xs text-muted-foreground">{f.stage}</span>
                   </div>
+                  {f.object && (
+                    <p className="mt-0.5 font-mono text-sm break-all">
+                      {f.objectType ? (
+                        <span className="text-muted-foreground">{f.objectType}&nbsp;</span>
+                      ) : null}
+                      {f.object}
+                    </p>
+                  )}
                   <p className="mt-0.5 text-muted-foreground">{f.message}</p>
                   {f.locator && (
                     <p className="mt-0.5 font-mono text-xs text-muted-foreground/70">{f.locator}</p>
