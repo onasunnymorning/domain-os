@@ -49,7 +49,7 @@ type SnapshotLine struct {
 
 // tableExporter defines how to export a single table in batches.
 type tableExporter struct {
-	name    string
+	name     string
 	exportFn func(db *gorm.DB, encoder *json.Encoder, ctx context.Context) (int64, error)
 }
 
@@ -317,7 +317,7 @@ func exportRegistrars(db *gorm.DB, encoder *json.Encoder, ctx context.Context) (
 
 // Accreditation represents a row in the accreditations join table (TLD ↔ Registrar M2M).
 type Accreditation struct {
-	TLDName      string `json:"tld_name" gorm:"column:tld_name"`
+	TLDName       string `json:"tld_name" gorm:"column:tld_name"`
 	RegistrarClID string `json:"registrar_cl_id" gorm:"column:registrar_cl_id"`
 }
 

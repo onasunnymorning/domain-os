@@ -24,48 +24,63 @@ var (
 	ErrEscrowTrustedKeyAlreadyRetired     = errors.New("escrow trusted key is already retired")
 	ErrEscrowTrustedKeyInvalidWindow      = errors.New("escrow trusted key validity window is invalid")
 	ErrEscrowTrustedKeyInvalidFingerprint = errors.New("escrow trusted key fingerprint must be 40 or 64 hex characters")
+	ErrUnknownEscrowProfile               = errors.New("unknown escrow validation profile")
 )
 
 var sha256HexRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// EscrowDeposit is the immutable record of one artifact pair received for
-// validation: a `.ryde` deposit and its detached `.sig`, bound to an operator
-// tenant and a TLD at intake time.
+// EscrowDeposit is the immutable record of one artifact set received for
+// validation, bound to an operator tenant and a TLD at intake time.
+//
+// The artifact set depends on the profile (issue #415):
+//
+//   - EscrowProfileRydeSig: a `.ryde` deposit plus its detached `.sig`.
+//   - EscrowProfilePlaintextXML: a plaintext `.xml` or `.xml.gz` deposit and
+//     no signature at all.
+//
+// The fields are therefore named for their role, not for one profile's file
+// extension: Artifact* is the deposit itself and Signature* is the detached
+// signature, which is empty for every unsigned profile.
 //
 // Immutability is by construction: there is no Update on its repository. A
-// replay of the same pair (same tenant, TLD and digests) binds to the existing
-// row; a different pair is a different deposit. The tenant/TLD binding comes
-// from the authenticated intake context, never from the artifact itself
+// replay of the same set (same tenant, TLD, profile and digests) binds to the
+// existing row; a different set is a different deposit. The tenant/TLD binding
+// comes from the authenticated intake context, never from the artifact itself
 // (issue #412, design constraint 2).
 type EscrowDeposit struct {
 	ID          uuid.UUID
 	TenantID    OperatorID // Operator scope the deposit is bound to (ADR-0006)
 	TLD         string     // Normalised ASCII TLD, no trailing dot
+	Profile     string     // EscrowProfileRydeSig | EscrowProfilePlaintextXML
 	ReceivedAt  time.Time
-	SubmittedBy string // Authenticated identity that submitted the pair
+	SubmittedBy string // Authenticated identity that submitted the set
 	IntakeRef   string // Opaque reference supplied by the intake path (optional)
 
-	RydeObjectKey string // Object-storage key of the immutable .ryde artifact
-	SigObjectKey  string // Object-storage key of the immutable .sig artifact
-	RydeSHA256    string // Lower-case hex digest of the .ryde bytes
-	SigSHA256     string // Lower-case hex digest of the .sig bytes
-	RydeBytes     int64
-	SigBytes      int64
+	ArtifactObjectKey string // Object-storage key of the immutable deposit artifact
+	ArtifactSHA256    string // Lower-case hex digest of the deposit bytes
+	ArtifactBytes     int64
+
+	SignatureObjectKey string // Object-storage key of the detached signature; empty when unsigned
+	SignatureSHA256    string // Lower-case hex digest of the signature bytes; empty when unsigned
+	SignatureBytes     int64
 
 	CreatedAt time.Time
 }
 
 // NewEscrowDeposit validates and creates an EscrowDeposit. It returns
 // ErrInvalidEscrowDeposit (joined with the specific cause) on any invalid
-// input.
+// input. The signature triple is required for signed profiles and must be
+// absent for unsigned ones — a half-populated signature is a bug, not a
+// tolerable input.
 func NewEscrowDeposit(
 	scope OperatorID,
-	tld string,
+	tld, profile string,
 	receivedAt time.Time,
 	submittedBy, intakeRef string,
-	rydeObjectKey, sigObjectKey string,
-	rydeSHA256, sigSHA256 string,
-	rydeBytes, sigBytes int64,
+	artifactObjectKey, artifactSHA256 string,
+	artifactBytes int64,
+	signatureObjectKey, signatureSHA256 string,
+	signatureBytes int64,
 ) (*EscrowDeposit, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, errors.Join(ErrInvalidEscrowDeposit, err)
@@ -74,36 +89,54 @@ func NewEscrowDeposit(
 	if err != nil {
 		return nil, errors.Join(ErrInvalidEscrowDeposit, err)
 	}
+	if !IsEscrowProfile(profile) {
+		return nil, errors.Join(ErrInvalidEscrowDeposit, ErrUnknownEscrowProfile)
+	}
 	if receivedAt.IsZero() {
 		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("receivedAt is required"))
 	}
 	if strings.TrimSpace(submittedBy) == "" {
 		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("submittedBy is required"))
 	}
-	if strings.TrimSpace(rydeObjectKey) == "" || strings.TrimSpace(sigObjectKey) == "" {
-		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("rydeObjectKey and sigObjectKey are required"))
+	if strings.TrimSpace(artifactObjectKey) == "" {
+		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("artifactObjectKey is required"))
 	}
-	if !IsSHA256Hex(rydeSHA256) || !IsSHA256Hex(sigSHA256) {
+	if !IsSHA256Hex(artifactSHA256) {
 		return nil, errors.Join(ErrInvalidEscrowDeposit, ErrInvalidEscrowDigest)
 	}
-	if rydeBytes <= 0 || sigBytes <= 0 {
-		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("artifact sizes must be positive"))
+	if artifactBytes <= 0 {
+		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("artifact size must be positive"))
+	}
+
+	if EscrowProfileIsSigned(profile) {
+		if strings.TrimSpace(signatureObjectKey) == "" {
+			return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("signatureObjectKey is required for a signed profile"))
+		}
+		if !IsSHA256Hex(signatureSHA256) {
+			return nil, errors.Join(ErrInvalidEscrowDeposit, ErrInvalidEscrowDigest)
+		}
+		if signatureBytes <= 0 {
+			return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("signature size must be positive"))
+		}
+	} else if signatureObjectKey != "" || signatureSHA256 != "" || signatureBytes != 0 {
+		return nil, errors.Join(ErrInvalidEscrowDeposit, errors.New("an unsigned profile must not carry signature artifacts"))
 	}
 
 	return &EscrowDeposit{
-		ID:            uuid.New(),
-		TenantID:      scope,
-		TLD:           normTLD,
-		ReceivedAt:    receivedAt.UTC(),
-		SubmittedBy:   strings.TrimSpace(submittedBy),
-		IntakeRef:     strings.TrimSpace(intakeRef),
-		RydeObjectKey: rydeObjectKey,
-		SigObjectKey:  sigObjectKey,
-		RydeSHA256:    rydeSHA256,
-		SigSHA256:     sigSHA256,
-		RydeBytes:     rydeBytes,
-		SigBytes:      sigBytes,
-		CreatedAt:     RoundTime(time.Now().UTC()),
+		ID:                 uuid.New(),
+		TenantID:           scope,
+		TLD:                normTLD,
+		Profile:            profile,
+		ReceivedAt:         receivedAt.UTC(),
+		SubmittedBy:        strings.TrimSpace(submittedBy),
+		IntakeRef:          strings.TrimSpace(intakeRef),
+		ArtifactObjectKey:  artifactObjectKey,
+		ArtifactSHA256:     artifactSHA256,
+		ArtifactBytes:      artifactBytes,
+		SignatureObjectKey: signatureObjectKey,
+		SignatureSHA256:    signatureSHA256,
+		SignatureBytes:     signatureBytes,
+		CreatedAt:          RoundTime(time.Now().UTC()),
 	}, nil
 }
 

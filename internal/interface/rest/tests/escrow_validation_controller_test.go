@@ -57,7 +57,7 @@ var _ = Describe("EscrowValidationController", Ordered, func() {
 		api.DELETE("/registry-operators/" + otherRy)
 	})
 
-	body := map[string]string{"tld": tldName, "rydeObjectKey": "uploads/x.ryde", "sigObjectKey": "uploads/x.sig"}
+	body := map[string]string{"tld": tldName, "artifactObjectKey": "uploads/x.ryde", "signatureObjectKey": "uploads/x.sig"}
 
 	It("requires the operator scope header", func() {
 		resp := scoped(http.MethodPost, "/escrow/validations", "", body)
@@ -73,6 +73,22 @@ var _ = Describe("EscrowValidationController", Ordered, func() {
 
 	It("rejects an incomplete launch request", func() {
 		resp := scoped(http.MethodPost, "/escrow/validations", ryID, map[string]string{"tld": tldName})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("rejects a mismatched profile and artifact set", func() {
+		// A signed profile without a signature, and an unsigned one with it,
+		// are both caller errors — the profile decides the artifact set.
+		resp := scoped(http.MethodPost, "/escrow/validations", ryID,
+			map[string]string{"tld": tldName, "artifactObjectKey": "uploads/x.ryde"})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+
+		resp = scoped(http.MethodPost, "/escrow/validations", ryID,
+			map[string]string{"tld": tldName, "profile": "xml", "artifactObjectKey": "uploads/x.xml", "signatureObjectKey": "uploads/x.sig"})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+
+		resp = scoped(http.MethodPost, "/escrow/validations", ryID,
+			map[string]string{"tld": tldName, "profile": "ryde", "artifactObjectKey": "uploads/x.ryde"})
 		Expect(resp.Code).To(Equal(http.StatusBadRequest))
 	})
 

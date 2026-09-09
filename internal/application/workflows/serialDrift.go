@@ -95,7 +95,6 @@ func CheckSerialDriftWorkflow(ctx workflow.Context, params serialdrift.Params) (
 		}
 	}
 
-
 	// Step 3: Fan-out DNS queries to all nameservers
 	allNS := make([]string, 0, len(config.MasterNS)+len(config.SlaveNS))
 	allNS = append(allNS, config.MasterNS...)

@@ -71,8 +71,8 @@ type ZoneSlavingRecord struct {
 	ID              string  `gorm:"primaryKey;column:id"`
 	TenantID        string  `gorm:"column:tenant_id;index"`
 	Zone            string  `gorm:"column:zone"`
-	MasterNS        string  `gorm:"column:master_ns"`        // comma-separated
-	SlaveNS         string  `gorm:"column:slave_ns"`          // comma-separated
+	MasterNS        string  `gorm:"column:master_ns"` // comma-separated
+	SlaveNS         string  `gorm:"column:slave_ns"`  // comma-separated
 	StalledAfterN   int     `gorm:"column:stalled_after_n;default:3"`
 	ConfidenceN     int     `gorm:"column:confidence_n;default:5"`
 	GraceMultiplier float64 `gorm:"column:grace_multiplier;default:2.0"`

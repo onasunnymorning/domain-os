@@ -35,29 +35,35 @@ type EscrowValidationDeps struct {
 	Deposits repositories.EscrowDepositRepository
 	Runs     repositories.EscrowValidationRunRepository
 	Keys     repositories.EscrowTrustedKeyRepository
+	// Sanitizations is the derivative record set (issue #415).
+	Sanitizations repositories.EscrowSanitizationRunRepository
 }
 
 type startEscrowValidationRequest struct {
-	TLD           string `json:"tld" binding:"required"`
-	RydeObjectKey string `json:"rydeObjectKey" binding:"required"`
-	SigObjectKey  string `json:"sigObjectKey" binding:"required"`
-	IntakeRef     string `json:"intakeRef"`
+	TLD string `json:"tld" binding:"required"`
+	// Profile selects the artifact shape: "ryde+sig" (default) or "xml" for an
+	// unsigned .xml / .xml.gz deposit.
+	Profile            string `json:"profile"`
+	ArtifactObjectKey  string `json:"artifactObjectKey" binding:"required"`
+	SignatureObjectKey string `json:"signatureObjectKey"`
+	IntakeRef          string `json:"intakeRef"`
 }
 
 // EscrowDepositResponse is the API shape of an escrow deposit record.
 type EscrowDepositResponse struct {
-	ID            string    `json:"id"`
-	TLD           string    `json:"tld"`
-	ReceivedAt    time.Time `json:"receivedAt"`
-	SubmittedBy   string    `json:"submittedBy"`
-	IntakeRef     string    `json:"intakeRef,omitempty"`
-	RydeObjectKey string    `json:"rydeObjectKey"`
-	SigObjectKey  string    `json:"sigObjectKey"`
-	RydeSHA256    string    `json:"rydeSha256"`
-	SigSHA256     string    `json:"sigSha256"`
-	RydeBytes     int64     `json:"rydeBytes"`
-	SigBytes      int64     `json:"sigBytes"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID                 string    `json:"id"`
+	TLD                string    `json:"tld"`
+	Profile            string    `json:"profile"`
+	ReceivedAt         time.Time `json:"receivedAt"`
+	SubmittedBy        string    `json:"submittedBy"`
+	IntakeRef          string    `json:"intakeRef,omitempty"`
+	ArtifactObjectKey  string    `json:"artifactObjectKey"`
+	ArtifactSHA256     string    `json:"artifactSha256"`
+	ArtifactBytes      int64     `json:"artifactBytes"`
+	SignatureObjectKey string    `json:"signatureObjectKey,omitempty"`
+	SignatureSHA256    string    `json:"signatureSha256,omitempty"`
+	SignatureBytes     int64     `json:"signatureBytes,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
 }
 
 // EscrowValidationRunResponse is the API shape of a validation run.
@@ -109,9 +115,11 @@ type createTrustedKeyRequest struct {
 
 func toDepositResponse(d *entities.EscrowDeposit) EscrowDepositResponse {
 	return EscrowDepositResponse{
-		ID: d.ID.String(), TLD: d.TLD, ReceivedAt: d.ReceivedAt, SubmittedBy: d.SubmittedBy, IntakeRef: d.IntakeRef,
-		RydeObjectKey: d.RydeObjectKey, SigObjectKey: d.SigObjectKey, RydeSHA256: d.RydeSHA256, SigSHA256: d.SigSHA256,
-		RydeBytes: d.RydeBytes, SigBytes: d.SigBytes, CreatedAt: d.CreatedAt,
+		ID: d.ID.String(), TLD: d.TLD, Profile: d.Profile, ReceivedAt: d.ReceivedAt,
+		SubmittedBy: d.SubmittedBy, IntakeRef: d.IntakeRef,
+		ArtifactObjectKey: d.ArtifactObjectKey, ArtifactSHA256: d.ArtifactSHA256, ArtifactBytes: d.ArtifactBytes,
+		SignatureObjectKey: d.SignatureObjectKey, SignatureSHA256: d.SignatureSHA256, SignatureBytes: d.SignatureBytes,
+		CreatedAt: d.CreatedAt,
 	}
 }
 
@@ -162,18 +170,34 @@ func (c *EscrowController) scopedTLD(ctx *gin.Context, rawTLD string) (entities.
 }
 
 // StartValidation launches the EscrowValidationWorkflow for a .ryde/.sig pair.
-// @Summary Validate a signed and encrypted RDE deposit
+// @Summary Validate an RDE deposit (signed .ryde+.sig, or unsigned .xml/.xml.gz)
 // @Tags Escrow
 // @Accept json
 // @Produce json
 // @Param X-Tenant-ID header string true "Operator scope"
-// @Param body body startEscrowValidationRequest true "Deposit pair"
+// @Param body body startEscrowValidationRequest true "Deposit artifact set"
 // @Success 202 {object} startEscrowImportResponse
 // @Router /escrow/validations [post]
 func (c *EscrowController) StartValidation(ctx *gin.Context) {
 	var req startEscrowValidationRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld, rydeObjectKey and sigObjectKey are required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and artifactObjectKey are required"})
+		return
+	}
+	profile := req.Profile
+	if profile == "" {
+		profile = entities.EscrowProfileRydeSig
+	}
+	if !entities.IsEscrowProfile(profile) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "unknown profile: expected \"ryde+sig\" or \"xml\""})
+		return
+	}
+	switch {
+	case entities.EscrowProfileIsSigned(profile) && strings.TrimSpace(req.SignatureObjectKey) == "":
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "signatureObjectKey is required for the ryde+sig profile"})
+		return
+	case !entities.EscrowProfileIsSigned(profile) && strings.TrimSpace(req.SignatureObjectKey) != "":
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "signatureObjectKey must be omitted for an unsigned profile"})
 		return
 	}
 	scope, tld, ok := c.scopedTLD(ctx, req.TLD)
@@ -197,7 +221,8 @@ func (c *EscrowController) StartValidation(ctx *gin.Context) {
 	wfID := "escrow-validation-" + tld + "-" + now.Format("20060102-150405")
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{ID: wfID, TaskQueue: cfg.WorkerQueue},
 		workflows.EscrowValidationWorkflow, workflows.EscrowValidationParams{
-			Scope: scope.String(), TLD: tld, RydeObjectKey: req.RydeObjectKey, SigObjectKey: req.SigObjectKey,
+			Scope: scope.String(), TLD: tld, Profile: profile,
+			ArtifactObjectKey: req.ArtifactObjectKey, SignatureObjectKey: req.SignatureObjectKey,
 			SubmittedBy: submittedBy, IntakeRef: req.IntakeRef, ReceivedAt: now,
 		})
 	if err != nil {

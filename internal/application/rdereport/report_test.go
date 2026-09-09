@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate/rdetest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -39,7 +40,7 @@ func runFixture(t *testing.T, opts rdetest.DepositOpts, breakSig bool) rdevalida
 		sig = rdetest.Sign(t, []byte("something else"), registry, false)
 	}
 	res := rdevalidate.Run(context.Background(), rdevalidate.Input{
-		OpenRyde:    func(context.Context) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(pair.Ryde)), nil },
+		OpenArtifact:    func(context.Context) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(pair.Ryde)), nil },
 		Sig:         sig,
 		TrustedKeys: []string{registry.ArmoredPublic},
 		ServiceKeys: openpgp.EntityList{service.Entity},
@@ -52,7 +53,7 @@ func runFixture(t *testing.T, opts rdetest.DepositOpts, breakSig bool) rdevalida
 	res.Signature.KeyFingerprint = "0000000000000000000000000000000000000001"
 	res.Decryption.KeyFingerprint = "0000000000000000000000000000000000000002"
 	res.Decryption.LiteralTime = time.Time{}
-	res.Digests = rdevalidate.Digests{RydeSHA256: strings.Repeat("ab", 32), SigSHA256: strings.Repeat("cd", 32), PlaintextSHA256: strings.Repeat("ef", 32)}
+	res.Digests = rdevalidate.Digests{ArtifactSHA256: strings.Repeat("ab", 32), SignatureSHA256: strings.Repeat("cd", 32), PlaintextSHA256: strings.Repeat("ef", 32)}
 	for i := range res.Findings {
 		res.Findings[i].At = fixedValid
 	}
@@ -86,7 +87,7 @@ func validateXSD(t *testing.T, doc []byte) {
 	}
 	f := filepath.Join(t.TempDir(), "doc.xml")
 	require.NoError(t, os.WriteFile(f, doc, 0o600))
-	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("xsd", "eve-schemas.xsd"), f).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
+	out, err := exec.Command(xmllint, "--noout", "--schema", rdeschema.Path(rdeschema.ReportSchemas), f).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
 	require.NoError(t, err, "xmllint: %s\n--- document ---\n%s", out, doc)
 }
 

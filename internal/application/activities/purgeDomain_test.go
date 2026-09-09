@@ -1,8 +1,8 @@
 package activities
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"

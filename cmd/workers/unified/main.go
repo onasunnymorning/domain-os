@@ -98,6 +98,7 @@ func main() {
 	// Heavy Batch
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
+	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.SeedFromSnapshotWorkflow)
@@ -161,6 +162,16 @@ func main() {
 		log.Printf("WARNING: escrow validation activities not available: %v", err)
 	} else {
 		heavyBatchWorker.RegisterActivity(eveActs)
+	}
+
+	// Escrow derivative sanitization (Heavy Batch). Declines to register when
+	// the pseudonymisation key is absent, rather than producing derivatives
+	// whose tokens are not a real barrier to re-identification (issue #415).
+	sanitizeActs, err := activities.NewEscrowSanitizeActivities()
+	if err != nil {
+		log.Printf("WARNING: escrow sanitization activities not available: %v", err)
+	} else {
+		heavyBatchWorker.RegisterActivity(sanitizeActs)
 	}
 
 	// Registrar & Basic Lifecycle activities
