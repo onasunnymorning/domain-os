@@ -1,0 +1,37 @@
+# Table for Decide(): each case lists findings as code/severity pairs and the
+# expected outcome. ERROR-class codes win over FAIL; any ERROR severity fails;
+# warnings and info never fail.
+cases:
+  - name: no findings
+    findings: []
+    outcome: PASS
+  - name: info and warnings only
+    findings:
+      - {code: INFO_INNER_SIGNATURE_PRESENT, severity: INFO}
+      - {code: RDE_OBJECT_ENTITY_REJECTED, severity: WARNING}
+    outcome: PASS
+  - name: one error fails
+    findings:
+      - {code: RDE_COUNT_MISMATCH, severity: ERROR}
+    outcome: FAIL
+  - name: bad signature fails
+    findings:
+      - {code: SIG_INVALID, severity: ERROR}
+    outcome: FAIL
+  - name: service key missing is an error, not a failure
+    findings:
+      - {code: DECRYPT_KEY_UNAVAILABLE, severity: ERROR}
+    outcome: ERROR
+  - name: timeout after deposit errors is still an error
+    findings:
+      - {code: XML_MALFORMED, severity: ERROR}
+      - {code: VALIDATION_TIMEOUT, severity: ERROR}
+    outcome: ERROR
+  - name: internal error before any check
+    findings:
+      - {code: INTERNAL_ERROR, severity: ERROR}
+    outcome: ERROR
+  - name: truncation notice alone passes
+    findings:
+      - {code: FINDINGS_TRUNCATED, severity: INFO}
+    outcome: PASS

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Wrapper schema for xmllint. The published schemas import each other by
+  namespace without schemaLocation; loading every namespace here, in
+  dependency order, lets libxml2 satisfy those imports. Test-only.
+-->
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+        targetNamespace="urn:domain-os:eve-schemas"
+        elementFormDefault="qualified">
+  <import namespace="urn:ietf:params:xml:ns:eppcom-1.0" schemaLocation="eppcom-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rde-1.0" schemaLocation="rde-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeHeader-1.0" schemaLocation="rdeHeader-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:iirdea-1.0" schemaLocation="iirdea-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeReport-1.0" schemaLocation="rdeReport-1.0.xsd"/>
+  <import namespace="urn:ietf:params:xml:ns:rdeNotification-1.0" schemaLocation="rdeNotification-1.0.xsd"/>
+</schema>

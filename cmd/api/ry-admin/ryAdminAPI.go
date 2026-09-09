@@ -370,7 +370,12 @@ func main() {
 	// Workflows
 	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow
-	rest.NewEscrowController(r, authMiddleware)
+	rest.NewEscrowController(r, authMiddleware, rest.EscrowValidationDeps{
+		TLDs:     tldRepo,
+		Deposits: postgres.NewEscrowDepositRepository(gormDB),
+		Runs:     postgres.NewEscrowValidationRunRepository(gormDB),
+		Keys:     postgres.NewEscrowTrustedKeyRepository(gormDB),
+	})
 	// Zone Slaving (serial drift monitoring)
 	rest.NewZoneSlavingController(r, zoneSlavingService, authMiddleware)
 

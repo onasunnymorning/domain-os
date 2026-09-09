@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-08-25T18:57:33Z",
+  "generated": "2026-09-09T02:14:47Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -600,6 +600,46 @@
             "name": "STORAGE_AUTO_CREATE_BUCKETS",
             "default": "false",
             "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
+          },
+          {
+            "name": "ESCROW_VALIDATION_PRIVATE_KEYS",
+            "secret": true,
+            "description": "ASCII-armored OpenPGP private key block(s), concatenated, used to decrypt inbound .ryde deposits. Hold every non-retired key so deposits encrypted to the previous key still open during rollover. Never place in general config"
+          },
+          {
+            "name": "ESCROW_VALIDATION_PRIVATE_KEY_PASSPHRASE",
+            "secret": true,
+            "description": "Passphrase protecting the keys in ESCROW_VALIDATION_PRIVATE_KEYS (one passphrase for the whole ring)"
+          },
+          {
+            "name": "ESCROW_VALIDATION_DEA_NAME",
+            "default": "domain-os EVE",
+            "description": "Data Escrow Agent name written into rdeNotification:deaName (1-255 characters)"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_COMPRESSED_BYTES",
+            "default": "10737418240",
+            "description": "Largest .ryde artifact accepted for validation, in bytes (default 10 GiB)"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_UNPACKED_BYTES",
+            "default": "53687091200",
+            "description": "Cumulative plaintext budget across every decompression layer of one deposit, in bytes (default 50 GiB); stops archive bombs"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_FILES",
+            "default": "8",
+            "description": "Maximum tar entries inside a deposit archive"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_NESTING",
+            "default": "2",
+            "description": "Maximum decompression layers (gzip inside gzip, gzip inside tar) inside a deposit"
+          },
+          {
+            "name": "ESCROW_VALIDATION_TIMEOUT",
+            "default": "2h",
+            "description": "Wall-clock bound for validating one deposit (Go duration)"
           }
         ]
       }

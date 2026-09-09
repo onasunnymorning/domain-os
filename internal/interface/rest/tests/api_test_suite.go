@@ -13,13 +13,13 @@ import (
 	"gorm.io/gorm"
 
 	"context"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // TestAPI is the shared test harness for API integration tests.
@@ -31,23 +31,23 @@ type TestAPI struct {
 	DB     *gorm.DB
 
 	// Services exposed for test data setup (creating prerequisite entities directly)
-	RoidService              *services.RoidService
-	RegistryOperatorService  *services.RegistryOperatorService
-	TLDService               *services.TLDService
-	DomainService            *services.DomainService
-	HostService              *services.HostService
-	RegistrarService         *services.RegistrarService
-	ContactService           *services.ContactService
-	PhaseService             *services.PhaseService
-	IANARegistrarService     *services.IANARegistrarService
-	AccreditationService     *services.AccreditationService
-	FeeService               *services.FeeService
-	PriceService             *services.PriceService
-	FXService                *services.FXService
-	NNDNService              *services.NNDNService
-	PremiumListService       *services.PremiumListService
-	PremiumLabelService      *services.PremiumLabelService
-	WhoisService             *services.WhoisService
+	RoidService             *services.RoidService
+	RegistryOperatorService *services.RegistryOperatorService
+	TLDService              *services.TLDService
+	DomainService           *services.DomainService
+	HostService             *services.HostService
+	RegistrarService        *services.RegistrarService
+	ContactService          *services.ContactService
+	PhaseService            *services.PhaseService
+	IANARegistrarService    *services.IANARegistrarService
+	AccreditationService    *services.AccreditationService
+	FeeService              *services.FeeService
+	PriceService            *services.PriceService
+	FXService               *services.FXService
+	NNDNService             *services.NNDNService
+	PremiumListService      *services.PremiumListService
+	PremiumLabelService     *services.PremiumLabelService
+	WhoisService            *services.WhoisService
 }
 
 // MockAuthMiddleware returns a gin.HandlerFunc that bypasses authentication.
@@ -145,6 +145,12 @@ func NewTestAPI() (*TestAPI, error) {
 	rest.NewSyncController(router, syncService, auth)
 	rest.NewSpec5Controller(router, spec5Service, auth)
 	rest.NewIANARegistrarController(router, ianaRegistrarService, auth)
+	rest.NewEscrowController(router, auth, rest.EscrowValidationDeps{
+		TLDs:     tldRepo,
+		Deposits: postgres.NewEscrowDepositRepository(db),
+		Runs:     postgres.NewEscrowValidationRunRepository(db),
+		Keys:     postgres.NewEscrowTrustedKeyRepository(db),
+	})
 
 	server := httptest.NewServer(router)
 

@@ -115,6 +115,9 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+      - name: Install xmllint (schema conformance tests)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+
       - name: Run All Tests
         run: |
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
