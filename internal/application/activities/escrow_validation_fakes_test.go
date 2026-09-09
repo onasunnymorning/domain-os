@@ -234,3 +234,83 @@ type fakeKeyProvider struct {
 func (f *fakeKeyProvider) DecryptionKeyring(context.Context) (openpgp.EntityList, error) {
 	return f.ring, f.err
 }
+
+// ---- sanitization fakes (issue #415) ----
+
+type fakeSanitizationRepo struct {
+	mu   sync.Mutex
+	rows map[uuid.UUID]*entities.EscrowSanitizationRun
+}
+
+func newFakeSanitizationRepo() *fakeSanitizationRepo {
+	return &fakeSanitizationRepo{rows: map[uuid.UUID]*entities.EscrowSanitizationRun{}}
+}
+
+func (f *fakeSanitizationRepo) Create(_ context.Context, r *entities.EscrowSanitizationRun) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, existing := range f.rows {
+		// Mirrors uq_escrow_sanitization_source_policy.
+		if existing.TenantID == r.TenantID && existing.SourceValidationRunID == r.SourceValidationRunID && existing.PolicyVersion == r.PolicyVersion {
+			return errors.New("unique violation")
+		}
+	}
+	cp := *r
+	f.rows[r.ID] = &cp
+	return nil
+}
+
+func (f *fakeSanitizationRepo) Finalize(_ context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row, ok := f.rows[r.ID]
+	if !ok || row.TenantID != scope {
+		return entities.ErrEscrowSanitizationRunNotFound
+	}
+	if row.Outcome != entities.EscrowSanitizationRunning {
+		return entities.ErrEscrowSanitizationRunAlreadyFinal
+	}
+	cp := *r
+	f.rows[r.ID] = &cp
+	return nil
+}
+
+func (f *fakeSanitizationRepo) GetByID(_ context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if r, ok := f.rows[id]; ok && r.TenantID == scope {
+		cp := *r
+		return &cp, nil
+	}
+	return nil, entities.ErrEscrowSanitizationRunNotFound
+}
+
+func (f *fakeSanitizationRepo) FindBySourceAndPolicy(_ context.Context, scope entities.OperatorID, sourceRunID uuid.UUID, policyVersion string) (*entities.EscrowSanitizationRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if r.TenantID == scope && r.SourceValidationRunID == sourceRunID && r.PolicyVersion == policyVersion {
+			cp := *r
+			return &cp, nil
+		}
+	}
+	return nil, entities.ErrEscrowSanitizationRunNotFound
+}
+
+func (f *fakeSanitizationRepo) List(context.Context, entities.OperatorID, queries.ListItemsQuery) ([]*entities.EscrowSanitizationRun, string, error) {
+	return nil, "", nil
+}
+
+// fakeTokenKeyProvider stands in for the secrets manager. The key is fixture
+// material and never leaves the test binary.
+type fakeTokenKeyProvider struct {
+	key []byte
+	err error
+}
+
+func (f *fakeTokenKeyProvider) TokenKey(context.Context) ([]byte, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.key, nil
+}

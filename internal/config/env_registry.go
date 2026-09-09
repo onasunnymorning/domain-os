@@ -176,6 +176,17 @@ var Registry = []EnvVar{
 	{Name: "ESCROW_VALIDATION_MAX_NESTING", Services: []Service{ServiceWorker}, Default: "2", Description: "Maximum decompression layers (gzip inside gzip, gzip inside tar) inside a deposit"},
 	{Name: "ESCROW_VALIDATION_TIMEOUT", Services: []Service{ServiceWorker}, Default: "2h", Description: "Wall-clock bound for validating one deposit (Go duration)"},
 
+	// ─── Escrow derivative sanitization (EVE, issue #415) ───
+	// The derivative is a separate processing purpose from escrow custody: it
+	// is labelled sanitized-pseudonymized, it never replaces the deposit, and
+	// it is produced by a workflow that cannot write registry data.
+	{Name: "ESCROW_SANITIZE_HMAC_KEY", Services: []Service{ServiceWorker}, Secret: true, Description: "Master HMAC key for escrow derivative pseudonymisation, base64 or hex, at least 32 bytes. Tenant- and purpose-scoped subkeys are derived from it; rotating it changes every token, so derivatives made before and after are no longer joinable. Without it the sanitization activities are not registered"},
+	{Name: "ESCROW_SANITIZE_SUFFIX", Services: []Service{ServiceWorker}, Default: "artful-dodger", Description: "Synthetic registry suffix every in-bailiwick FQDN in a derivative is rewritten to, e.g. domain.suffix becomes domain.artful-dodger. Overridable per launch; must differ from the source TLD"},
+	{Name: "ESCROW_SANITIZE_MAX_XML_DEPTH", Services: []Service{ServiceWorker}, Default: "32", Description: "Maximum XML nesting depth accepted from a deposit being sanitized"},
+	{Name: "ESCROW_SANITIZE_MAX_ELEMENTS", Services: []Service{ServiceWorker}, Default: "1000000000", Description: "Maximum number of XML elements accepted from a deposit being sanitized. Generous by design: a large TLD legitimately produces hundreds of millions"},
+	{Name: "ESCROW_SANITIZE_MAX_FIELD_BYTES", Services: []Service{ServiceWorker}, Default: "65536", Description: "Maximum length of a single XML field value accepted from a deposit being sanitized"},
+	{Name: "ESCROW_SANITIZE_TIMEOUT", Services: []Service{ServiceWorker}, Default: "4h", Description: "Wall-clock budget for producing and verifying one derivative"},
+
 	// ═══════════════════════════════════════════
 	// FRONTEND (NEXT_PUBLIC_*)
 	//
