@@ -1,0 +1,342 @@
+package rdevalidate
+
+import (
+	"context"
+	"encoding/xml"
+	"errors"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+)
+
+// heartbeatEvery is the object interval at which the validator reports progress.
+const heartbeatEvery = 1000
+
+// XMLValidator streams an RDE deposit (RFC 8909 wrapper, RFC 9022 objects)
+// and turns every structural or content problem into a Finding. It reuses
+// the pkg/domain/entities RDE structs and namespace constants that the import
+// parser uses, but writes nothing, logs nothing, and never drops an element
+// silently.
+type XMLValidator struct {
+	BoundTLD  string // TLD from the authenticated intake context; the header must agree
+	Now       func() time.Time
+	Heartbeat func(stage Stage, detail string)
+}
+
+// objectSpec is the per-object decode/validate table.
+type objectSpec struct {
+	uri  string
+	name string
+	// decode must return an ERROR-severity problem description for missing
+	// RDE-required fields, and a WARNING description if the domain-os entity
+	// constructor rejected the object.
+	decode func(dec *xml.Decoder, se *xml.StartElement) (required error, entity error, decodeErr error)
+}
+
+var objectSpecs = []objectSpec{
+	{uri: entities.DOMAIN_URI, name: "domain", decode: decodeDomain},
+	{uri: entities.CONTACT_URI, name: "contact", decode: decodeContact},
+	{uri: entities.HOST_URI, name: "host", decode: decodeHost},
+	{uri: entities.REGISTRAR_URI, name: "registrar", decode: decodeRegistrar},
+	{uri: entities.IDN_URI, name: "idnTableRef", decode: decodeIDN},
+	{uri: entities.NNDN_URI, name: "NNDN", decode: decodeNNDN},
+}
+
+// Validate streams r to EOF. It always returns a summary (possibly partial)
+// and the findings it produced; the caller decides the outcome.
+func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummary, []Finding) {
+	now := v.Now
+	if now == nil {
+		now = time.Now
+	}
+	summary := DepositSummary{Observed: map[string]int{}}
+	var findings []Finding
+	add := func(code Code, sev Severity, stage Stage, objType, locator, msg string) {
+		findings = append(findings, Finding{Code: code, Severity: sev, Stage: stage, ObjectType: objType, Locator: locator, Message: msg, At: now()})
+	}
+	specByLocal := map[string]objectSpec{}
+	for _, s := range objectSpecs {
+		specByLocal[s.name] = s
+	}
+
+	dec := xml.NewDecoder(r)
+	dec.Strict = true
+	depositFound, headerFound := false, false
+	objects := 0
+
+	for {
+		if objects%256 == 0 {
+			if err := ctx.Err(); err != nil {
+				add(CodeValidationTimeout, SeverityError, StageXML, "", offsetLocator(dec), "validation deadline reached while streaming the deposit")
+				return summary, findings
+			}
+		}
+		tok, err := dec.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			var syn *xml.SyntaxError
+			switch {
+			case errors.Is(err, errBudgetExceeded):
+				add(CodeArchiveLimitUnpackedSize, SeverityError, StageUnpack, "archive", offsetLocator(dec), "unpacked size limit exceeded while streaming the deposit")
+			case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+				add(CodeValidationTimeout, SeverityError, StageXML, "", offsetLocator(dec), "validation deadline reached while streaming the deposit")
+			case errors.As(err, &syn):
+				add(CodeXMLMalformed, SeverityError, StageXML, "", "line="+itoa(syn.Line), "deposit XML is not well-formed")
+			case IsIntegrityError(err):
+				add(CodeDecryptFailed, SeverityError, StageDecrypt, "deposit", "", "deposit integrity check failed while streaming: ciphertext was altered")
+			default:
+				add(CodeXMLMalformed, SeverityError, StageXML, "", offsetLocator(dec), "deposit XML could not be read")
+			}
+			return summary, findings
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		local, space := se.Name.Local, se.Name.Space
+
+		switch {
+		case local == "deposit" && space == entities.RDE_URI:
+			if depositFound {
+				add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "more than one deposit element")
+				continue
+			}
+			depositFound = true
+			v.parseDepositAttrs(se, &summary, add, dec)
+		case local == "watermark" && space == entities.RDE_URI:
+			var wm string
+			if err := dec.DecodeElement(&wm, &se); err != nil {
+				add(CodeRDEObjectDecodeError, SeverityError, StageRDE, "deposit", offsetLocator(dec), "watermark element could not be decoded")
+				continue
+			}
+			t, err := time.Parse(time.RFC3339, strings.TrimSpace(wm))
+			if err != nil {
+				add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "watermark is not an RFC 3339 timestamp")
+				continue
+			}
+			summary.Watermark = t.UTC()
+		case local == "header" && space == entities.RDE_HEADER_URI:
+			if headerFound {
+				add(CodeRDEObjectInvalid, SeverityError, StageRDE, "header", offsetLocator(dec), "more than one header element")
+				continue
+			}
+			var h entities.RDEHeader
+			if err := dec.DecodeElement(&h, &se); err != nil {
+				add(CodeRDEObjectDecodeError, SeverityError, StageRDE, "header", offsetLocator(dec), "header element could not be decoded")
+				continue
+			}
+			headerFound = true
+			summary.Header = h
+			summary.HeaderFound = true
+			v.checkHeader(h, add, dec)
+		default:
+			spec, known := specByLocal[local]
+			if !known || spec.uri != space {
+				continue
+			}
+			objects++
+			if objects%heartbeatEvery == 0 && v.Heartbeat != nil {
+				v.Heartbeat(StageRDE, "objects="+itoa(objects))
+			}
+			required, entity, decodeErr := spec.decode(dec, &se)
+			locator := spec.name + "#" + itoa(summary.Observed[spec.uri]+1) + " " + offsetLocator(dec)
+			var syn *xml.SyntaxError
+			switch {
+			case decodeErr != nil && errors.As(decodeErr, &syn):
+				// The document itself is broken inside this object: report the
+				// well-formedness failure once and stop, like the token loop does.
+				add(CodeXMLMalformed, SeverityError, StageXML, "", "line="+itoa(syn.Line), "deposit XML is not well-formed")
+				return summary, findings
+			case decodeErr != nil:
+				add(CodeRDEObjectDecodeError, SeverityError, StageRDE, spec.name, locator, "object could not be decoded")
+			case required != nil:
+				add(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, locator, "object is missing an RDE-required element: "+required.Error())
+			case entity != nil:
+				add(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, locator, "object is well-formed but was rejected by the registry entity rules")
+			}
+			summary.Observed[spec.uri]++
+		}
+	}
+
+	if !depositFound {
+		add(CodeXMLNoDeposit, SeverityError, StageXML, "deposit", "", "no rde:deposit element found")
+	}
+	if !headerFound {
+		add(CodeXMLNoHeader, SeverityError, StageXML, "header", "", "no rdeHeader:header element found")
+		return summary, findings
+	}
+	if summary.Watermark.IsZero() {
+		add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", "", "deposit has no watermark")
+	}
+
+	// Header counts vs observed counts, per object namespace.
+	declared := map[string]int{}
+	for _, c := range summary.Header.Count {
+		declared[c.Uri] = c.ID
+		if c.ID < 0 {
+			add(CodeRDEObjectInvalid, SeverityError, StageRDE, "header", "", "header declares a negative count")
+		}
+	}
+	for _, s := range objectSpecs {
+		exp, declaredHere := declared[s.uri]
+		got := summary.Observed[s.uri]
+		switch {
+		case declaredHere && exp > 0 && got == 0:
+			add(CodeRDERequiredObjectMissing, SeverityError, StageRDE, s.name, "", "header declares "+itoa(exp)+" objects but none were found")
+		case declaredHere && exp != got:
+			add(CodeRDECountMismatch, SeverityError, StageRDE, s.name, "", "header declares "+itoa(exp)+" objects, deposit contains "+itoa(got))
+		case !declaredHere && got > 0:
+			add(CodeRDECountMismatch, SeverityError, StageRDE, s.name, "", "deposit contains "+itoa(got)+" objects the header does not declare")
+		}
+	}
+	return summary, findings
+}
+
+func (v *XMLValidator) parseDepositAttrs(se xml.StartElement, s *DepositSummary, add func(Code, Severity, Stage, string, string, string), dec *xml.Decoder) {
+	for _, a := range se.Attr {
+		switch a.Name.Local {
+		case "type":
+			s.Kind = strings.ToUpper(strings.TrimSpace(a.Value))
+		case "id":
+			s.ID = strings.TrimSpace(a.Value)
+		case "prevId":
+			s.PrevID = strings.TrimSpace(a.Value)
+		case "resend":
+			n, err := strconv.Atoi(strings.TrimSpace(a.Value))
+			if err != nil || n < 0 {
+				add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "deposit resend attribute is not a non-negative integer")
+				continue
+			}
+			s.Resend = n
+		}
+	}
+	switch s.Kind {
+	case entities.RDEReportTypeFULL, entities.RDEReportTypeDIFF, entities.RDEReportTypeINCR:
+	default:
+		add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "deposit type attribute must be FULL, DIFF or INCR")
+	}
+	if s.ID == "" {
+		add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "deposit id attribute is missing")
+	}
+	if s.Kind != entities.RDEReportTypeFULL && s.PrevID == "" {
+		add(CodeRDEObjectInvalid, SeverityError, StageRDE, "deposit", offsetLocator(dec), "non-FULL deposit must carry a prevId attribute")
+	}
+}
+
+func (v *XMLValidator) checkHeader(h entities.RDEHeader, add func(Code, Severity, Stage, string, string, string), dec *xml.Decoder) {
+	tld := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h.TLD)), ".")
+	if tld == "" {
+		add(CodeRDEObjectInvalid, SeverityError, StageRDE, "header", offsetLocator(dec), "header has no tld element")
+		return
+	}
+	if v.BoundTLD != "" && tld != v.BoundTLD {
+		add(CodeRDEHeaderTLDMismatch, SeverityError, StageRDE, "header", offsetLocator(dec), "header tld does not match the TLD the deposit was bound to at intake")
+	}
+}
+
+func offsetLocator(dec *xml.Decoder) string {
+	return "offset=" + i64toa(dec.InputOffset())
+}
+
+// --- per-object decoders -------------------------------------------------
+
+func requireAll(pairs ...string) error {
+	var missing []string
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if strings.TrimSpace(pairs[i+1]) == "" {
+			missing = append(missing, pairs[i])
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(missing, ","))
+}
+
+func decodeDomain(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var d entities.RDEDomain
+	if err := dec.DecodeElement(&d, se); err != nil {
+		return nil, nil, err
+	}
+	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID, "crRr", d.CrRr, "crDate", d.CrDate)
+	if req == nil && len(d.Status) == 0 {
+		req = errors.New("status")
+	}
+	if req != nil {
+		return req, nil, nil
+	}
+	_, err := d.ToEntity()
+	return nil, err, nil
+}
+
+func decodeContact(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var c entities.RDEContact
+	if err := dec.DecodeElement(&c, se); err != nil {
+		return nil, nil, err
+	}
+	req := requireAll("id", c.ID, "roid", c.RoID, "clID", c.ClID, "crRr", c.CrRr, "crDate", c.CrDate)
+	if req == nil && len(c.Status) == 0 {
+		req = errors.New("status")
+	}
+	if req == nil && len(c.PostalInfo) == 0 {
+		req = errors.New("postalInfo")
+	}
+	if req != nil {
+		return req, nil, nil
+	}
+	_, err := c.ToEntity()
+	return nil, err, nil
+}
+
+func decodeHost(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var h entities.RDEHost
+	if err := dec.DecodeElement(&h, se); err != nil {
+		return nil, nil, err
+	}
+	req := requireAll("name", h.Name, "roid", h.RoID, "clID", h.ClID, "crRr", h.CrRr, "crDate", h.CrDate)
+	if req == nil && len(h.Status) == 0 {
+		req = errors.New("status")
+	}
+	if req != nil {
+		return req, nil, nil
+	}
+	_, err := h.ToEntity()
+	return nil, err, nil
+}
+
+func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var r entities.RDERegistrar
+	if err := dec.DecodeElement(&r, se); err != nil {
+		return nil, nil, err
+	}
+	req := requireAll("id", r.ID, "name", r.Name, "crDate", r.CrDate)
+	if req == nil && len(r.PostalInfo) == 0 {
+		req = errors.New("postalInfo")
+	}
+	if req != nil {
+		return req, nil, nil
+	}
+	_, err := r.ToEntity()
+	return nil, err, nil
+}
+
+func decodeIDN(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var i entities.RDEIdnTableReference
+	if err := dec.DecodeElement(&i, se); err != nil {
+		return nil, nil, err
+	}
+	return requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy), nil, nil
+}
+
+func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) (error, error, error) {
+	var n entities.RDENNDN
+	if err := dec.DecodeElement(&n, se); err != nil {
+		return nil, nil, err
+	}
+	return requireAll("aName", n.AName, "nameState", n.NameState, "crDate", n.CrDate), nil, nil
+}

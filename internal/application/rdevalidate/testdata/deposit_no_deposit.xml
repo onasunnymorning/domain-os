@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rde:bundle xmlns:rde="urn:ietf:params:xml:ns:rde-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:rdeDomain="urn:ietf:params:xml:ns:rdeDomain-1.0" xmlns:rdeHost="urn:ietf:params:xml:ns:rdeHost-1.0" xmlns:rdeContact="urn:ietf:params:xml:ns:rdeContact-1.0" xmlns:rdeRegistrar="urn:ietf:params:xml:ns:rdeRegistrar-1.0" xmlns:rdeIDN="urn:ietf:params:xml:ns:rdeIDN-1.0" xmlns:rdeNNDN="urn:ietf:params:xml:ns:rdeNNDN-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" type="FULL" id="20260908001">
+  <rde:watermark>2026-09-08T00:00:00Z</rde:watermark>
+  <rde:rdeMenu>
+    <rde:version>1.0</rde:version>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeHeader-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeDomain-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeHost-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeContact-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeRegistrar-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeIDN-1.0</rde:objURI>
+    <rde:objURI>urn:ietf:params:xml:ns:rdeNNDN-1.0</rde:objURI>
+  </rde:rdeMenu>
+  <rde:contents>
+    <rdeHeader:header>
+      <rdeHeader:tld>example</rdeHeader:tld>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeDomain-1.0">2</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeHost-1.0">2</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeContact-1.0">2</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeRegistrar-1.0">1</rdeHeader:count>
+    </rdeHeader:header>
+    <rdeRegistrar:registrar>
+      <rdeRegistrar:id>registrar1</rdeRegistrar:id>
+      <rdeRegistrar:name>Registrar 1</rdeRegistrar:name>
+      <rdeRegistrar:gurid>9001</rdeRegistrar:gurid>
+      <rdeRegistrar:status s="ok"/>
+      <rdeRegistrar:postalInfo type="int">
+        <rdeRegistrar:addr>
+          <rdeRegistrar:street>1 Test Street</rdeRegistrar:street>
+          <rdeRegistrar:city>Testville</rdeRegistrar:city>
+          <rdeRegistrar:cc>US</rdeRegistrar:cc>
+        </rdeRegistrar:addr>
+      </rdeRegistrar:postalInfo>
+      <rdeRegistrar:voice>+1.5555550100</rdeRegistrar:voice>
+      <rdeRegistrar:email>registrar1@example.com</rdeRegistrar:email>
+      <rdeRegistrar:url>https://registrar1.example.com</rdeRegistrar:url>
+      <rdeRegistrar:whoisInfo>
+        <rdeRegistrar:name>whois.registrar1.example.com</rdeRegistrar:name>
+        <rdeRegistrar:url>https://whois.registrar1.example.com</rdeRegistrar:url>
+      </rdeRegistrar:whoisInfo>
+      <rdeRegistrar:crDate>2025-01-01T00:00:00Z</rdeRegistrar:crDate>
+    </rdeRegistrar:registrar>
+    <rdeContact:contact>
+      <rdeContact:id>CONT1</rdeContact:id>
+      <rdeContact:roid>1_CONT-APEX</rdeContact:roid>
+      <rdeContact:status s="ok"/>
+      <rdeContact:postalInfo type="int">
+        <rdeContact:name>Contact 1</rdeContact:name>
+        <rdeContact:org>Org 1</rdeContact:org>
+        <rdeContact:addr>
+          <rdeContact:street>1 Test Street</rdeContact:street>
+          <rdeContact:city>Testville</rdeContact:city>
+          <rdeContact:pc>12345</rdeContact:pc>
+          <rdeContact:cc>US</rdeContact:cc>
+        </rdeContact:addr>
+      </rdeContact:postalInfo>
+      <rdeContact:voice>+1.5555550001</rdeContact:voice>
+      <rdeContact:email>contact1@example.com</rdeContact:email>
+      <rdeContact:clID>registrar1</rdeContact:clID>
+      <rdeContact:crRr>registrar1</rdeContact:crRr>
+      <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
+    </rdeContact:contact>
+    <rdeContact:contact>
+      <rdeContact:id>CONT2</rdeContact:id>
+      <rdeContact:roid>2_CONT-APEX</rdeContact:roid>
+      <rdeContact:status s="ok"/>
+      <rdeContact:postalInfo type="int">
+        <rdeContact:name>Contact 2</rdeContact:name>
+        <rdeContact:org>Org 2</rdeContact:org>
+        <rdeContact:addr>
+          <rdeContact:street>2 Test Street</rdeContact:street>
+          <rdeContact:city>Testville</rdeContact:city>
+          <rdeContact:pc>12345</rdeContact:pc>
+          <rdeContact:cc>US</rdeContact:cc>
+        </rdeContact:addr>
+      </rdeContact:postalInfo>
+      <rdeContact:voice>+1.5555550002</rdeContact:voice>
+      <rdeContact:email>contact2@example.com</rdeContact:email>
+      <rdeContact:clID>registrar1</rdeContact:clID>
+      <rdeContact:crRr>registrar1</rdeContact:crRr>
+      <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
+    </rdeContact:contact>
+    <rdeHost:host>
+      <rdeHost:name>ns1.example-1.example</rdeHost:name>
+      <rdeHost:roid>1_HOST-APEX</rdeHost:roid>
+      <rdeHost:status s="ok"/>
+      <rdeHost:addr ip="v4">192.0.2.1</rdeHost:addr>
+      <rdeHost:clID>registrar1</rdeHost:clID>
+      <rdeHost:crRr>registrar1</rdeHost:crRr>
+      <rdeHost:crDate>2025-01-01T00:00:00Z</rdeHost:crDate>
+    </rdeHost:host>
+    <rdeHost:host>
+      <rdeHost:name>ns2.example-1.example</rdeHost:name>
+      <rdeHost:roid>2_HOST-APEX</rdeHost:roid>
+      <rdeHost:status s="ok"/>
+      <rdeHost:addr ip="v4">192.0.2.2</rdeHost:addr>
+      <rdeHost:clID>registrar1</rdeHost:clID>
+      <rdeHost:crRr>registrar1</rdeHost:crRr>
+      <rdeHost:crDate>2025-01-01T00:00:00Z</rdeHost:crDate>
+    </rdeHost:host>
+    <rdeDomain:domain>
+      <rdeDomain:name>example-1.example</rdeDomain:name>
+      <rdeDomain:roid>1_DOM-APEX</rdeDomain:roid>
+      <rdeDomain:status s="ok"/>
+      <rdeDomain:registrant>CONT1</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
+      <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
+      <rdeDomain:ns>
+        <domain:hostObj>ns1.example-1.example</domain:hostObj>
+      </rdeDomain:ns>
+      <rdeDomain:clID>registrar1</rdeDomain:clID>
+      <rdeDomain:crRr>registrar1</rdeDomain:crRr>
+      <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>
+      <rdeDomain:exDate>2027-01-01T00:00:00Z</rdeDomain:exDate>
+    </rdeDomain:domain>
+    <rdeDomain:domain>
+      <rdeDomain:name>example-2.example</rdeDomain:name>
+      <rdeDomain:roid>2_DOM-APEX</rdeDomain:roid>
+      <rdeDomain:status s="ok"/>
+      <rdeDomain:registrant>CONT1</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">CONT1</rdeDomain:contact>
+      <rdeDomain:contact type="tech">CONT1</rdeDomain:contact>
+      <rdeDomain:ns>
+        <domain:hostObj>ns1.example-1.example</domain:hostObj>
+      </rdeDomain:ns>
+      <rdeDomain:clID>registrar1</rdeDomain:clID>
+      <rdeDomain:crRr>registrar1</rdeDomain:crRr>
+      <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>
+      <rdeDomain:exDate>2027-01-01T00:00:00Z</rdeDomain:exDate>
+    </rdeDomain:domain>
+  </rde:contents>
+</rde:bundle>

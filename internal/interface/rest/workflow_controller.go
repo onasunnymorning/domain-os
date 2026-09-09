@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"fmt"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"net/http"
 	"os"
 	"strings"
@@ -545,6 +546,39 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			Zone:      zone,
 			MasterNS:  masterNS,
 			SlaveNS:   slaveNS,
+		}}
+
+	case "escrow-validation":
+		// Scope is the caller's (ADR-0006 guardrail 5), never a launch parameter.
+		// TLD ownership is enforced again inside BindDeposit (R3), so a launch
+		// against a foreign TLD fails before any record exists.
+		scope, err := OperatorScopeFromRequest(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		rawTLD, _ := req.Params["tld"].(string)
+		tld, err := entities.NormalizeEscrowTLD(rawTLD)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "a valid tld is required for escrow-validation"})
+			return
+		}
+		rydeKey, _ := req.Params["rydeObjectKey"].(string)
+		sigKey, _ := req.Params["sigObjectKey"].(string)
+		intakeRef, _ := req.Params["intakeRef"].(string)
+		if rydeKey == "" || sigKey == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "rydeObjectKey and sigObjectKey are required for escrow-validation"})
+			return
+		}
+		submittedBy := scope.String()
+		if uid, ok := appcontext.UserID(ctx.Request.Context()); ok && uid != "" {
+			submittedBy = uid
+		}
+		wfID = fmt.Sprintf("escrow-validation-%s-%s", tld, ts)
+		workflow = workflows.EscrowValidationWorkflow
+		args = []interface{}{workflows.EscrowValidationParams{
+			Scope: scope.String(), TLD: tld, RydeObjectKey: rydeKey, SigObjectKey: sigKey,
+			SubmittedBy: submittedBy, IntakeRef: intakeRef, ReceivedAt: time.Now().UTC(),
 		}}
 
 	default:

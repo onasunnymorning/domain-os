@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
-	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	appservices "github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -111,8 +111,6 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-
 
 // @title Domain OS Admin API
 // @license.name Geoffrey De Prins All rights reserved
@@ -287,8 +285,6 @@ func main() {
 	// Dnssec
 	dnssecService := appservices.NewDnssecService()
 
-
-
 	// Create Gin Engine/Router
 	// r := gin.Default()
 	// Create a new Gin router without any default middleware.
@@ -369,7 +365,12 @@ func main() {
 	// Workflows
 	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow
-	rest.NewEscrowController(r, authMiddleware)
+	rest.NewEscrowController(r, authMiddleware, rest.EscrowValidationDeps{
+		TLDs:     tldRepo,
+		Deposits: postgres.NewEscrowDepositRepository(gormDB),
+		Runs:     postgres.NewEscrowValidationRunRepository(gormDB),
+		Keys:     postgres.NewEscrowTrustedKeyRepository(gormDB),
+	})
 	// Zone Slaving (serial drift monitoring)
 	rest.NewZoneSlavingController(r, zoneSlavingService, authMiddleware)
 
@@ -421,7 +422,6 @@ func main() {
 	} else {
 		logger.Warn("Agent Alpaca (Ask G) disabled — ANTHROPIC_API_KEY not set. Set it via Doppler to enable the /agent endpoints.")
 	}
-
 
 	// Serve the swagger documentation
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(

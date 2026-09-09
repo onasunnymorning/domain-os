@@ -20,8 +20,11 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-// EscrowController provides endpoints to upload escrow files and trigger imports
-type EscrowController struct{}
+// EscrowController provides endpoints to upload escrow files, trigger imports,
+// and run/inspect escrow validations (EVE, issue #412).
+type EscrowController struct {
+	deps EscrowValidationDeps
+}
 
 type uploadResponse struct {
 	ObjectKey string `json:"objectKey"`
@@ -80,8 +83,8 @@ type EscrowImportListResponse struct {
 	Count int             `json:"count"`
 }
 
-func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc) *EscrowController {
-	controller := &EscrowController{}
+func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc, deps EscrowValidationDeps) *EscrowController {
+	controller := &EscrowController{deps: deps}
 	grp := e.Group("/escrow", handler)
 	{
 		grp.POST("/uploads/presign", controller.Presign)
@@ -93,6 +96,15 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc) *EscrowControll
 		grp.POST("/imports", controller.StartImport)
 		grp.POST("/ingest", controller.StartIngestion)
 		grp.GET("/imports", controller.ListImports)
+
+		// Escrow validation (EVE) — tenant-scoped via X-Tenant-ID (ADR-0006)
+		grp.POST("/validations", controller.StartValidation)
+		grp.GET("/validations", controller.ListValidations)
+		grp.GET("/validations/:id", controller.GetValidation)
+		grp.GET("/deposits/:id", controller.GetDeposit)
+		grp.POST("/trusted-keys", controller.CreateTrustedKey)
+		grp.POST("/trusted-keys/:id/retire", controller.RetireTrustedKey)
+		grp.GET("/trusted-keys", controller.ListTrustedKeys)
 	}
 	return controller
 }
@@ -243,8 +255,6 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 func (c *EscrowController) StartIngestion(ctx *gin.Context) {
 	ctx.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is retired. Please use the unified Escrow Import workflow (/escrow/imports or via the workflows launch API) and confirm ingestion via the ConfirmEscrowImport signal."})
 }
-
-
 
 // ListImports returns recent escrow import runs for a given TLD by scanning S3/MinIO prefixes
 func (c *EscrowController) ListImports(ctx *gin.Context) {
