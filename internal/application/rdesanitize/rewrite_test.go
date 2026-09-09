@@ -87,22 +87,23 @@ func TestRewrite_FullDepositPasses(t *testing.T) {
 	assert.NotContains(t, doc, "contact1@example.com")
 	assert.NotContains(t, doc, "Privacy Proxy Customer 4711", "an underlying proxy customer is as identifying as a registrant")
 	assert.NotContains(t, doc, "Proxy Services Ltd")
-	assert.NotContains(t, doc, "<rdeContact:street>", "a registrant's street address is removed")
-	assert.NotContains(t, doc, "<rdeContact:org>", "a registrant's organisation is removed")
+	assert.NotContains(t, doc, "<contact:street>", "a registrant's street address is removed")
+	assert.NotContains(t, doc, "<contact:org>", "a registrant's organisation is removed")
 	assert.NotContains(t, doc, "<rdeContact:voice>", "an optional phone number is removed rather than replaced")
 	assert.Contains(t, doc, "@example.invalid")
-	assert.Contains(t, doc, "<rdeContact:name>Contact ")
+	assert.Contains(t, doc, "<contact:name>Contact ")
 
 	// Registrar records are business data the profile deliberately retains.
 	assert.Contains(t, doc, "<rdeRegistrar:name>Registrar 1</rdeRegistrar:name>")
+	assert.Contains(t, doc, "<rdeRegistrar:status>ok</rdeRegistrar:status>")
 	assert.Contains(t, doc, "<rdeRegistrar:street>1 Test Street</rdeRegistrar:street>")
 	assert.Contains(t, doc, "<rdeRegistrar:voice>+1.5555550100</rdeRegistrar:voice>")
 
 	// Analytical metadata is retained: it is what the derivative is for, and
 	// it is why the output is pseudonymized rather than anonymous.
-	assert.Contains(t, doc, "<rdeContact:city>Testville</rdeContact:city>")
-	assert.Contains(t, doc, "<rdeContact:cc>US</rdeContact:cc>")
-	assert.Contains(t, doc, "<rdeContact:pc>12345</rdeContact:pc>")
+	assert.Contains(t, doc, "<contact:city>Testville</contact:city>")
+	assert.Contains(t, doc, "<contact:cc>US</contact:cc>")
+	assert.Contains(t, doc, "<contact:pc>12345</contact:pc>")
 
 	// Public DNS material survives untouched.
 	assert.Contains(t, doc, "<secDNS:pubKey>AQPJ////4Q==</secDNS:pubKey>")
@@ -112,11 +113,11 @@ func TestRewrite_FullDepositPasses(t *testing.T) {
 	// Disclosure preferences share their element names with the postal fields
 	// and must not be mistaken for them.
 	assert.Contains(t, doc, `<rdeContact:disclose flag="0">`)
-	assert.Contains(t, doc, `<rdeContact:org type="int"/>`)
+	assert.Contains(t, doc, `<contact:org type="int"/>`)
 
 	// Protocol policy is copied as a block.
 	assert.Contains(t, doc, "<rdeEppParams:dcp>")
-	assert.Contains(t, doc, "<rdeEppParams:stated/>")
+	assert.Contains(t, doc, "<epp:stated/>")
 
 	assert.Positive(t, res.Counts.Kept)
 	assert.Positive(t, res.Counts.Dropped)
@@ -239,9 +240,9 @@ func TestRewrite_PreservesDocumentStructure(t *testing.T) {
 	// removes outright. Listing them here means a future profile change that
 	// silently drops something else fails this test.
 	removed := map[string]bool{
-		"{urn:ietf:params:xml:ns:rdeContact-1.0}org":    true,
-		"{urn:ietf:params:xml:ns:rdeContact-1.0}street": true,
-		"{urn:ietf:params:xml:ns:rdeContact-1.0}voice":  true,
+		"{urn:ietf:params:xml:ns:contact-1.0}org":      true,
+		"{urn:ietf:params:xml:ns:contact-1.0}street":   true,
+		"{urn:ietf:params:xml:ns:rdeContact-1.0}voice": true,
 	}
 	wantKept := make([]string, 0, len(want))
 	for _, p := range want {

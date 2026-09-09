@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate/rdetest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -164,7 +165,7 @@ func xmllintOK(t *testing.T, doc []byte) {
 	}
 	p := filepath.Join(t.TempDir(), "doc.xml")
 	require.NoError(t, os.WriteFile(p, doc, 0o600))
-	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("..", "rdereport", "xsd", "eve-schemas.xsd"), p).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
+	out, err := exec.Command(xmllint, "--noout", "--schema", rdeschema.Path(rdeschema.ReportSchemas), p).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
 	require.NoError(t, err, "%s", out)
 }
 
