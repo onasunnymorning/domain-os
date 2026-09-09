@@ -86,6 +86,21 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "escrowValidation.doc.md",
 		},
 		{
+			Key:         "escrow-sanitize",
+			Name:        "Escrow Derivative Sanitization",
+			Description: "Derives a sanitized-pseudonymized copy of an accepted RDE deposit for internal analytics and non-production testing. Never modifies the deposit, never writes registry data, and refuses any field the versioned profile does not classify.",
+			Queue:       temporal.QueueHeavyBatch,
+			Category:    "data",
+			Tags:        []string{"data", "escrow", "eve", "privacy"},
+			Steps: []WorkflowStep{
+				{Key: "bind-source", Label: "Bind accepted source", ActivityName: "BindSanitizationSource"},
+				{Key: "produce-derivative", Label: "Produce derivative", ActivityName: "ProduceDerivative"},
+				{Key: "verify-derivative", Label: "Verify and publish", ActivityName: "VerifyDerivative"},
+				{Key: "finalize-run", Label: "Finalize run", ActivityName: "FinalizeSanitizationRun"},
+			},
+			docFile: "escrowSanitize.doc.md",
+		},
+		{
 			Key:         "tld-cleanup",
 			Name:        "TLD Cleanup",
 			Description: "Backs up and removes all assets associated with a TLD after confirmation",

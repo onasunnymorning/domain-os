@@ -19,6 +19,7 @@ const MinTokenKeyBytes = 32
 // TokenPurpose names what a set of tokens is for. Tokens are scoped by tenant
 // *and* purpose so that a linkage which is legitimate inside one analysis
 // cannot be carried into another.
+// #nosec G101 -- a purpose label mixed into key derivation, not a secret
 const TokenPurpose = "rde-sanitize"
 
 // b32 is unpadded, upper-case and alphanumeric, which keeps a token inside

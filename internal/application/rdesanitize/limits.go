@@ -37,13 +37,13 @@ func DefaultLimits() Limits {
 func (l Limits) Validate() error {
 	switch {
 	case l.MaxXMLDepth <= 0:
-		return errors.New("MaxXMLDepth must be positive")
+		return errors.New("limits: MaxXMLDepth must be positive")
 	case l.MaxElements <= 0:
-		return errors.New("MaxElements must be positive")
+		return errors.New("limits: MaxElements must be positive")
 	case l.MaxFieldBytes <= 0:
-		return errors.New("MaxFieldBytes must be positive")
+		return errors.New("limits: MaxFieldBytes must be positive")
 	case l.Timeout <= 0:
-		return errors.New("Timeout must be positive")
+		return errors.New("limits: Timeout must be positive")
 	}
 	return nil
 }

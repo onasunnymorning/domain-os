@@ -122,7 +122,7 @@ still schema-valid and still identifies the artifact.
 
 - Secrets-service adapter and private-key rotation tooling (backend undecided).
 - OpenPGP revocation certificates for trusted registry keys (retirement is the control today).
-- Unsigned XML / XML.GZ compatibility profiles; split multi-file deposits.
+- ~~Unsigned XML / XML.GZ compatibility profiles~~ — shipped by issue #415 as `entities.EscrowProfilePlaintextXML`; see ADR-0008. Split multi-file deposits are still deferred.
 - DRFN (missing-deposit) scheduling; `lastFullDate` tracking across runs.
 - RFC 8909 §5.2 dataset reconstruction for DIFF/INCR headers.
 - Submitting a notification to ICANN's interface; a pilot run against one real, authorised deposit.

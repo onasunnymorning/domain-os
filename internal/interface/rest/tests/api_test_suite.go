@@ -146,10 +146,11 @@ func NewTestAPI() (*TestAPI, error) {
 	rest.NewSpec5Controller(router, spec5Service, auth)
 	rest.NewIANARegistrarController(router, ianaRegistrarService, auth)
 	rest.NewEscrowController(router, auth, rest.EscrowValidationDeps{
-		TLDs:     tldRepo,
-		Deposits: postgres.NewEscrowDepositRepository(db),
-		Runs:     postgres.NewEscrowValidationRunRepository(db),
-		Keys:     postgres.NewEscrowTrustedKeyRepository(db),
+		TLDs:          tldRepo,
+		Deposits:      postgres.NewEscrowDepositRepository(db),
+		Runs:          postgres.NewEscrowValidationRunRepository(db),
+		Keys:          postgres.NewEscrowTrustedKeyRepository(db),
+		Sanitizations: postgres.NewEscrowSanitizationRunRepository(db),
 	})
 
 	server := httptest.NewServer(router)

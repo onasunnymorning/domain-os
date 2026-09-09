@@ -155,8 +155,10 @@ func NewEscrowSanitizeActivitiesWithDeps(
 
 // BindSanitizationSourceInput names the accepted validation run to derive from.
 type BindSanitizationSourceInput struct {
-	Scope                 string    `json:"scope"`
-	SourceValidationRunID uuid.UUID `json:"sourceValidationRunId"`
+	Scope string `json:"scope"`
+	// SourceValidationRunID is a string so the workflow that builds this input
+	// never has to import uuid, which INV-06 forbids there.
+	SourceValidationRunID string `json:"sourceValidationRunId"`
 	// SyntheticSuffix overrides ESCROW_SANITIZE_SUFFIX for this run.
 	SyntheticSuffix string `json:"syntheticSuffix,omitempty"`
 	WorkflowID      string `json:"workflowId"`
@@ -180,7 +182,14 @@ type BindSanitizationSourceOutput struct {
 	StagingKey        string    `json:"stagingKey"`
 	DerivativeKey     string    `json:"derivativeKey"`
 	ManifestKey       string    `json:"manifestKey"`
-	AlreadyFinal      bool      `json:"alreadyFinal"`
+	// SourceValidationRunID echoes the bound source so later steps do not have
+	// to re-parse the launch parameter.
+	SourceValidationRunID uuid.UUID `json:"sourceValidationRunIdBound"`
+	// AlreadyFinal reports that this source has already been derived under this
+	// policy version and the earlier run reached a terminal state. There is
+	// nothing left to do and nothing to overwrite.
+	AlreadyFinal    bool   `json:"alreadyFinal"`
+	ExistingOutcome string `json:"existingOutcome,omitempty"`
 }
 
 // BindSanitizationSource refuses anything but an accepted validation run, binds
@@ -195,7 +204,11 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 	if err != nil {
 		return BindSanitizationSourceOutput{}, nonRetryableSanitize("invalid operator scope", err)
 	}
-	source, err := a.runs.GetByID(ctx, scope, in.SourceValidationRunID)
+	sourceRunID, err := uuid.Parse(strings.TrimSpace(in.SourceValidationRunID))
+	if err != nil {
+		return BindSanitizationSourceOutput{}, nonRetryableSanitize("invalid source validation run id", err)
+	}
+	source, err := a.runs.GetByID(ctx, scope, sourceRunID)
 	if err != nil {
 		if errors.Is(err, entities.ErrEscrowValidationRunNotFound) {
 			return BindSanitizationSourceOutput{}, nonRetryableSanitize(string(rdesanitize.CodeSourceNotAccepted)+": source validation run not found for this tenant", err)
@@ -231,6 +244,7 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 		ArtifactKey: deposit.ArtifactObjectKey, SignatureKey: deposit.SignatureObjectKey,
 		ArtifactSHA256: deposit.ArtifactSHA256, SignatureSHA256: deposit.SignatureSHA256,
 		SyntheticSuffix: suffix, PolicyVersion: rdesanitize.PolicyVersion,
+		SourceValidationRunID: source.ID,
 	}
 
 	// One derivative per source per policy version: a replay binds to the
@@ -239,7 +253,10 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 	switch {
 	case err == nil:
 		out.SanitizationRunID, out.Replay, out.AlreadyFinal = existing.ID, true, existing.IsFinal()
-		out.SyntheticSuffix = existing.SyntheticSuffix
+		out.SyntheticSuffix, out.ExistingOutcome = existing.SyntheticSuffix, string(existing.Outcome)
+		if existing.IsFinal() {
+			out.DerivativeKey, out.ManifestKey = existing.DerivativeObjectKey, existing.ManifestObjectKey
+		}
 	case errors.Is(err, entities.ErrEscrowSanitizationRunNotFound):
 		run, nerr := entities.NewEscrowSanitizationRun(scope, deposit.TLD, source.ID, deposit.ID,
 			deposit.ArtifactSHA256, rdesanitize.PolicyVersion, EscrowSanitizeWorkflowVersion, suffix,
@@ -254,7 +271,7 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 				return BindSanitizationSourceOutput{}, fmt.Errorf("BindSanitizationSource: create run: %w", cerr)
 			}
 			run, out.Replay, out.AlreadyFinal = raced, true, raced.IsFinal()
-			out.SyntheticSuffix = raced.SyntheticSuffix
+			out.SyntheticSuffix, out.ExistingOutcome = raced.SyntheticSuffix, string(raced.Outcome)
 		}
 		out.SanitizationRunID, out.SyntheticSuffix = run.ID, run.SyntheticSuffix
 	default:
@@ -263,8 +280,10 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 
 	prefix := fmt.Sprintf("%s/%s/%s/%s/%s", escrowValidationPrefix, scope.String(), deposit.TLD, deposit.ID, out.SanitizationRunID)
 	out.StagingKey = prefix + "/pending/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
-	out.DerivativeKey = prefix + "/sanitized/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
-	out.ManifestKey = prefix + "/sanitized/manifest-" + rdesanitize.PolicyVersion + ".json"
+	if !out.AlreadyFinal {
+		out.DerivativeKey = prefix + "/sanitized/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
+		out.ManifestKey = prefix + "/sanitized/manifest-" + rdesanitize.PolicyVersion + ".json"
+	}
 
 	logger.Info("escrow sanitization: source bound",
 		"correlation_id", in.WorkflowID, "sanitization_run_id", out.SanitizationRunID.String(),

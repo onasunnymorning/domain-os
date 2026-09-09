@@ -106,10 +106,10 @@ func SyncRegistrarsWorkflow(ctx workflow.Context, params SyncRegistrarsParams) (
 	const batchSize = 100
 
 	retrypolicy := &temporal.RetryPolicy{
-		InitialInterval:        time.Second,
-		BackoffCoefficient:     2.0,
-		MaximumInterval:        10 * time.Minute,
-		MaximumAttempts:        3, // 0 is unlimited retries
+		InitialInterval:    time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    10 * time.Minute,
+		MaximumAttempts:    3, // 0 is unlimited retries
 	}
 
 	options := workflow.ActivityOptions{
@@ -326,10 +326,10 @@ func syncRegistrarsIncremental(ctx workflow.Context, params SyncRegistrarsParams
 		bulkUpdateCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			StartToCloseTimeout: 10 * time.Minute,
 			RetryPolicy: &temporal.RetryPolicy{
-				InitialInterval:        time.Second,
-				BackoffCoefficient:     2.0,
-				MaximumInterval:        10 * time.Minute,
-				MaximumAttempts:        3,
+				InitialInterval:    time.Second,
+				BackoffCoefficient: 2.0,
+				MaximumInterval:    10 * time.Minute,
+				MaximumAttempts:    3,
 			},
 		})
 
