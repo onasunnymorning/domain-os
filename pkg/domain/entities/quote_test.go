@@ -120,16 +120,16 @@ func TestAddFee(t *testing.T) {
 			if tc.yearlyFee {
 				require.Len(t, tc.quote.Fees, tc.quote.Years)
 				if tc.quote.FXRate == nil {
-					require.Equal(t, money.New(int64(tc.fee.Amount*uint64(tc.quote.Years)), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly")
+					require.Equal(t, money.New(int64(tc.fee.Amount*uint64(tc.quote.Years)), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly") // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 				} else {
-					require.NotEqual(t, money.New(int64(tc.fee.Amount*uint64(tc.quote.Years)), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly")
+					require.NotEqual(t, money.New(int64(tc.fee.Amount*uint64(tc.quote.Years)), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly") // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 				}
 			} else {
 				require.Len(t, tc.quote.Fees, 1)
 				if tc.quote.FXRate == nil {
-					require.Equal(t, money.New(int64(tc.fee.Amount), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly")
+					require.Equal(t, money.New(int64(tc.fee.Amount), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly") // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 				} else {
-					require.NotEqual(t, money.New(int64(tc.fee.Amount), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly")
+					require.NotEqual(t, money.New(int64(tc.fee.Amount), tc.quote.Price.Currency().Code), tc.quote.Price, "Price is not updated correctly") // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 				}
 			}
 		})

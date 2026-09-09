@@ -19,7 +19,7 @@ func TestNewKnowledgeService_LoadsFromIndex(t *testing.T) {
 
 	// Create a mini docs/index.yaml
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	manifest := `sources:
   system-docs:
@@ -27,7 +27,7 @@ func TestNewKnowledgeService_LoadsFromIndex(t *testing.T) {
   root-docs:
     - README.md
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	// Create test markdown files
 	guide := `# Test Guide
@@ -42,7 +42,7 @@ chunk size threshold of ten words for proper indexing.
 Advanced usage covers topics like performance tuning, scaling strategies,
 deployment pipelines, and monitoring observability dashboards.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "test_guide.md"), []byte(guide), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "test_guide.md"), []byte(guide), 0o600))
 
 	readme := `# Project README
 
@@ -51,7 +51,7 @@ deployment pipelines, and monitoring observability dashboards.
 This project is a domain registry management system that handles domain
 lifecycle operations including registration renewal expiry and purge.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -68,11 +68,11 @@ func TestNewKnowledgeService_GlobPattern(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	// Create workflow docs dir and files
 	wfDir := filepath.Join(dir, "internal", "application", "workflows")
-	require.NoError(t, os.MkdirAll(wfDir, 0o755))
+	require.NoError(t, os.MkdirAll(wfDir, 0o750))
 
 	wfDoc := `# Test Workflow
 
@@ -86,13 +86,13 @@ into the staging database for quality assurance validation.
 Step one validates the source file. Step two parses and extracts the assets
 into individual CSV files for processing by the collation engine.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(wfDir, "testWorkflow.doc.md"), []byte(wfDoc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(wfDir, "testWorkflow.doc.md"), []byte(wfDoc), 0o600))
 
 	manifest := `sources:
   workflow-docs:
     glob: "internal/application/workflows/*.doc.md"
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -109,13 +109,13 @@ func TestKnowledgeService_Search_FindsRelevantChunk(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	manifest := `sources:
   root-docs:
     - docs/arch.md
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	doc := `# Architecture
 
@@ -129,7 +129,7 @@ Connection pooling is handled by pgxpool with configurable maximum connections.
 Temporal is used for workflow orchestration. Workers poll task queues for
 workflow and activity tasks. Each queue is sized for its workload profile.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "arch.md"), []byte(doc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "arch.md"), []byte(doc), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -150,13 +150,13 @@ func TestKnowledgeService_Search_NoResults(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	manifest := `sources:
   root-docs:
     - docs/small.md
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	doc := `# Small Doc
 
@@ -165,7 +165,7 @@ func TestKnowledgeService_Search_NoResults(t *testing.T) {
 This document contains information about domain registration lifecycle
 management including renewal expiry redemption and purge operations.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "small.md"), []byte(doc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "small.md"), []byte(doc), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -184,13 +184,13 @@ func TestKnowledgeService_Search_BM25Ranking(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	manifest := `sources:
   root-docs:
     - docs/ranking.md
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	doc := `# Ranking Test
 
@@ -204,7 +204,7 @@ large data files. Escrow deposits are validated before ingestion.
 The deployment pipeline uses Docker containers and Kubernetes orchestration
 for reliable production releases. One mention of escrow here.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "ranking.md"), []byte(doc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "ranking.md"), []byte(doc), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -382,14 +382,14 @@ func TestNewKnowledgeService_SkipsMissingFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	manifest := `sources:
   root-docs:
     - docs/exists.md
     - docs/missing.md
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	doc := `# Exists
 
@@ -398,7 +398,7 @@ func TestNewKnowledgeService_SkipsMissingFiles(t *testing.T) {
 This document exists and has enough content words to pass the minimum
 chunk threshold for indexing by the knowledge service BM25 engine.
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "exists.md"), []byte(doc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "exists.md"), []byte(doc), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)
@@ -415,19 +415,19 @@ func TestNewKnowledgeService_TSDocExtraction(t *testing.T) {
 	dir := t.TempDir()
 
 	docsDir := filepath.Join(dir, "docs")
-	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.MkdirAll(docsDir, 0o750))
 
 	frontendDir := filepath.Join(dir, "frontend", "lib", "constants")
-	require.NoError(t, os.MkdirAll(frontendDir, 0o755))
+	require.NoError(t, os.MkdirAll(frontendDir, 0o750))
 
 	manifest := `sources:
   reference-guides:
     glob: "frontend/lib/constants/*Doc.ts"
 `
-	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "index.yaml"), []byte(manifest), 0o600))
 
 	tsDoc := "export const TEST_DOC_MARKDOWN = `# Test Reference Guide\n\n## Overview\n\nThis reference guide documents the testing strategy and validation\npatterns used across the domain registry management platform.\n\n## Configuration\n\nConfiguration is managed through environment variables injected via\nDoppler secrets management with automatic rotation and audit logging.\n`;\n"
-	require.NoError(t, os.WriteFile(filepath.Join(frontendDir, "testDoc.ts"), []byte(tsDoc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(frontendDir, "testDoc.ts"), []byte(tsDoc), 0o600))
 
 	svc, err := NewKnowledgeService(dir)
 	require.NoError(t, err)

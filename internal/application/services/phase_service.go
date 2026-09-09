@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -10,7 +11,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"golang.org/x/net/context"
 )
 
 // PhaseService is the implementation of the PhaseService interface

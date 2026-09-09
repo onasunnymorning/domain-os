@@ -151,13 +151,19 @@ func main() {
 	}
 
 	// Initialize New Relic APM if enabled
+	var nrApp *newrelic.Application
 	if cfg.NewRelicEnabled {
 		logger.Info("Initializing New Relic APM - remove/setFalse environment variable 'NEW_RELIC_ENABED' to disable")
-		app, err := initNewRelicAPM()
+		nrApp, err = initNewRelicAPM()
 		if err != nil {
 			logger.Error("Failed to initialize New Relic APM", zap.Error(err))
+			nrApp = nil
 		}
-		defer app.Shutdown(0)
+		defer func() {
+			if nrApp != nil {
+				nrApp.Shutdown(0)
+			}
+		}()
 	}
 
 	// Initialize variables for the Swagger API documentation
@@ -359,7 +365,6 @@ func main() {
 	rest.NewAccreditationController(r, accreditationService, authMiddleware)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService, authMiddleware)
 	rest.NewFXController(r, fxService, authMiddleware)
-	// rest.NewQuoteController(r, quoteService, authMiddleware)
 	rest.NewWhoisController(r, whoisService, authMiddleware)
 	rest.NewDnssecController(r, dnssecService, authMiddleware)
 	// Workflows
@@ -428,13 +433,22 @@ func main() {
 		swaggerFiles.Handler,
 		ginSwagger.DocExpansion("none"))) // collapse all endpoints by default
 
+	var serveErr error
 	if inLambda() {
 		logger.Info("Determined we are running in AWS Lambda")
 		// Start the server using the AWS Lambda proxy
-		log.Fatal(gateway.ListenAndServe(os.Getenv("API_PORT"), r))
+		serveErr = gateway.ListenAndServe(os.Getenv("API_PORT"), r)
 	} else {
 		// Start the server using the standard HTTP server
-		r.Run(":" + os.Getenv("API_PORT"))
+		serveErr = r.Run(":" + os.Getenv("API_PORT"))
+	}
+	if serveErr != nil {
+		logger.Error("server exited", zap.Error(serveErr))
+		// os.Exit skips defers, so flush New Relic explicitly first.
+		if nrApp != nil {
+			nrApp.Shutdown(0)
+		}
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: the deferred Shutdown is what the three lines above just did explicitly, precisely because os.Exit skips it.
 	}
 
 }

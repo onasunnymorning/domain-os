@@ -27,7 +27,7 @@ func (c *MosapiClient) QueryAvailableMeasurementIDs(service, year, month, day st
 		if err != nil {
 			return nil, err
 		}
-		defer c.Logout()
+		defer func() { _ = c.Logout() }() // best-effort session teardown; the call above already returned its result
 	}
 
 	baseURL, err := c.BaseURL()

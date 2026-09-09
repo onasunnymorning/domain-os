@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"log/slog"
@@ -129,6 +130,9 @@ func run() int {
 		httpServer := &http.Server{
 			Addr:    addr,
 			Handler: mux,
+			// Bounds how long a client may take to send its headers. Read and
+			// write timeouts are deliberately left unset: MCP responses stream.
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 
 		// Graceful shutdown: when context is cancelled, shut down the HTTP server.
@@ -136,10 +140,11 @@ func run() int {
 			<-ctx.Done()
 			slog.Info("Shutting down MCP HTTP server")
 			if err := httpServer.Shutdown(context.Background()); err != nil {
-				slog.Error("HTTP server shutdown error", "error", err)
+				slog.Error("HTTP server shutdown error", "error", err) // #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 			}
 		}()
 
+		// #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 		slog.Info("Starting domain-os MCP server",
 			"transport", "http",
 			"addr", addr,
@@ -147,10 +152,11 @@ func run() int {
 		)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("MCP HTTP server exited with error", "error", err)
-			return 1
+			return 1 // #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 		}
 
 	default:
+		// #nosec G706 -- slog key/value attributes, not a format string — the handler encodes values rather than splicing them into the line
 		slog.Error("Unknown MCP_TRANSPORT value — must be 'stdio' or 'http'",
 			"transport", transport,
 		)

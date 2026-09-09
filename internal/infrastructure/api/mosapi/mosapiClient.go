@@ -101,16 +101,6 @@ func NewMosapiClientConfig() *MosapiConfig {
 		Entity:      EntityRegistry,
 		Environment: "OTE",
 	}
-
-	// return &MosapiConfig{
-	// 	TLD:         "build",
-	// 	AuthType:    AuthTypeBasic,
-	// 	Username:    "build_ry",
-	// 	Password:    "ntw{-N+k!H9X%h~^",
-	// 	Version:     V2,
-	// 	Entity:      EntityRegistry,
-	// 	Environment: "PROD",
-	// }
 }
 
 // BASEURL returns the base URL for the MOSAPICient given the current configuration. It supports PROD or OTE environments
@@ -184,7 +174,7 @@ func (c *MosapiClient) GetState() (*StateResponse, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer c.Logout()
+		defer func() { _ = c.Logout() }() // best-effort session teardown; the call above already returned its result
 	}
 	baseURL, err := c.BaseURL()
 	if err != nil {

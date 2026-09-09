@@ -140,7 +140,7 @@ func NewS3ClientForBucket(bucketEnvVar, defaultBucket string) (*S3Client, error)
 	if skipVerify {
 		log.Printf("[storage] WARNING: STORAGE_TLS_SKIP_VERIFY is set — TLS certificate verification is DISABLED. Never use this outside local development.")
 	}
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}} // #nosec G402 -- opt-in and off by default; STORAGE_TLS_SKIP_VERIFY exists for local MinIO with a self-signed cert and logs a warning when set
 	httpClient := &http.Client{Transport: tr}
 
 	cli, err := minio.New(endpoint, &minio.Options{

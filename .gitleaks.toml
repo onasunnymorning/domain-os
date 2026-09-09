@@ -1,0 +1,59 @@
+# Secret scanning config.
+#
+# Added by #411. Two live credentials — a CentralNic EPP account and a MOSAPI
+# account marked PROD — sat in this repository from May 2024 until August 2026.
+# It is public, so they were readable that whole time. Nothing caught them:
+# gosec's G101 would have, but the main lint pass ran with --issues-exit-code=0
+# and never failed a build. This config exists so the next one is caught at the
+# pull request rather than fifteen months later.
+#
+# Run locally:
+#   gitleaks dir . --config .gitleaks.toml --redact
+#   gitleaks git . --config .gitleaks.toml --redact   # includes history
+
+[extend]
+# Start from gitleaks' bundled rules rather than hand-rolling patterns.
+useDefault = true
+
+[allowlist]
+description = "Paths and known-safe fixtures"
+
+paths = [
+  # Third-party code. Real findings here are their problem, not ours, and the
+  # noise would bury ours — the two directories are ~2.4 GB together.
+  '''^vendor/''',
+  '''(^|/)node_modules/''',
+  '''^frontend/dist/''',
+  '''(^|/)testdata/''',
+  # Lockfiles carry integrity hashes that look like high-entropy secrets.
+  '''(^|/)(package-lock\.json|yarn\.lock|go\.sum)$''',
+  # Next.js build output. Untracked, but present locally after a frontend
+  # build, and it embeds its own generated signing/encryption keys.
+  '''^frontend/\.next/''',
+  # Deliberately committed and all NEXT_PUBLIC_*, which next-runtime-env serves
+  # to the browser by design. The file says so in its own header. Anything that
+  # is genuinely secret must not be added here — see ADR-0001.
+  '''^frontend/\.env\.local$''',
+  # Gitignored (see .gitignore) local dev CA material. It cannot reach the
+  # repo, and CI checks out a clean tree where it does not exist. The pair that
+  # *was* committed here in 2024 was untracked by #411.
+  '''^temporal-certs/''',
+]
+
+regexes = [
+  # Deliberate fixtures: passwords built entirely from URL-reserved characters,
+  # used to prove that credential escaping works. They are the subject of the
+  # test, not a credential. Both also carry an inline `#nosec G101` saying so.
+  '''p\?a/s#s@w:o&rd%25''',
+  '''p@ss:w/rd\?#''',
+]
+
+[[rules]]
+# Documentation shows example curl invocations carrying a bearer token. The
+# tokens in them are illustrative; the surrounding prose tells the reader to
+# fetch a real one from Doppler.
+id = "curl-auth-header"
+description = "curl Authorization header"
+regex = '''curl\s+.*-H\s+["']Authorization:'''
+[rules.allowlist]
+paths = ['''^frontend/.*\.md$''', '''^docs/''', '''(^|/)README\.md$''']

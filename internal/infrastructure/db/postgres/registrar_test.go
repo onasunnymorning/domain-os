@@ -46,7 +46,7 @@ func getValidRegistrar() *entities.Registrar {
 		Address: a0,
 	}
 
-	r.AddPostalInfo(p0)
+	_ = r.AddPostalInfo(p0) // test setup; a failure here surfaces in the assertions below
 
 	a1 := &entities.Address{
 		Street1:       entities.OptPostalLineType("Plaüa blanca"),
@@ -63,12 +63,12 @@ func getValidRegistrar() *entities.Registrar {
 		Address: a1,
 	}
 
-	r.AddPostalInfo(p1)
+	_ = r.AddPostalInfo(p1) // test setup; a failure here surfaces in the assertions below
 
-	r.AccreditFor(&entities.TLD{
+	_ = r.AccreditFor(&entities.TLD{ // test setup; a failure here surfaces in the assertions below
 		Name: entities.DomainName("com"),
 	})
-	r.AccreditFor(&entities.TLD{
+	_ = r.AccreditFor(&entities.TLD{ // test setup; a failure here surfaces in the assertions below
 		Name: entities.DomainName("net"),
 	})
 

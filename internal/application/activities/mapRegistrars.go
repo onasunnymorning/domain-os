@@ -87,7 +87,7 @@ func (a *EscrowImportActivities) MapRegistrars(ctx context.Context, args MapRegi
 	}
 
 	// Write back to the downloaded file location to overwrite it
-	if err := os.WriteFile(downloadedPath, updatedBytes, 0644); err != nil {
+	if err := os.WriteFile(downloadedPath, updatedBytes, 0600); err != nil {
 		return MapRegistrarsResult{}, fmt.Errorf("failed to write updated analysis to temp file: %w", err)
 	}
 

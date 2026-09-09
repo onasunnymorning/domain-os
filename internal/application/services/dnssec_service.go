@@ -34,13 +34,13 @@ func (s *DnssecService) Visualize(ctx context.Context, domain string) (map[strin
 	grokOutput := filepath.Join(tempDir, "grok.json")
 
 	// 1. Run dnsviz probe with authoritative analysis (-A) to bypass Docker's recursive DNS
-	probeCmd := exec.CommandContext(ctx, "dnsviz", "probe", "-A", "-a", ".", "-o", probeOutput, domain)
+	probeCmd := exec.CommandContext(ctx, "dnsviz", "probe", "-A", "-a", ".", "-o", probeOutput, domain) // #nosec G204 -- the command is a constant and no shell is involved; domain is validated against domainRegex at the top of this function, so it cannot begin with "-" or contain separators
 	if output, err := probeCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("dnsviz probe failed: %v, output: %s", err, string(output))
 	}
 
 	// 2. Run dnsviz grok
-	grokCmd := exec.CommandContext(ctx, "dnsviz", "grok", "-r", probeOutput, "-o", grokOutput)
+	grokCmd := exec.CommandContext(ctx, "dnsviz", "grok", "-r", probeOutput, "-o", grokOutput) // #nosec G204 -- the command is a constant and no shell is involved; domain is validated against domainRegex at the top of this function, so it cannot begin with "-" or contain separators
 	if output, err := grokCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("dnsviz grok failed: %v, output: %s", err, string(output))
 	}

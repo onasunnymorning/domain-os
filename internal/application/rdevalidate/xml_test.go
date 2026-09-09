@@ -35,7 +35,7 @@ func TestXMLFixtures(t *testing.T) {
 		t.Skip("set UPDATE_FIXTURES=1 to regenerate testdata/*.xml")
 	}
 	for name, opts := range xmlFixtures {
-		require.NoError(t, os.WriteFile(filepath.Join("testdata", name), rdetest.BuildXML(opts), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join("testdata", name), rdetest.BuildXML(opts), 0o600))
 	}
 }
 

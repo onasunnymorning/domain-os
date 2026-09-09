@@ -1,3 +1,11 @@
+# Main lint pass — BLOCKING as of #411.
+#
+# Architectural rules live in .golangci.arch.yml and are gated separately; see
+# docs/INVARIANTS.md. This file is the general-purpose pass.
+#
+# History: this config ran advisory (--issues-exit-code=0) until #411, at which
+# point it reported 1599 findings. ~1093 of those were removed by configuring
+# the linters properly (see each block below) and the residue was fixed.
 version: "2"
 
 run:
@@ -14,13 +22,125 @@ linters:
     - gosec
 
   settings:
+    # Only the `diagnostic` tag — checks that find likely bugs. The `style` and
+    # `performance` tags were enabled here from the start but never enforced,
+    # and they accounted for 408 of gocritic's 488 findings. Their content is
+    # taste (importShadow, paramTypeCombine, unnamedResult) or value-vs-pointer
+    # judgement (hugeParam, rangeValCopy) that was never agreed for this repo.
+    # Re-enable a specific check via `enabled-checks` if it earns its place.
+    #
     gocritic:
       enabled-tags:
         - diagnostic
-        - style
-        - performance
+      # `enabled-tags` ADDS to gocritic's default set rather than replacing it,
+      # so three style checks survived the narrowing above. They are the same
+      # kind of taste and are turned off for the same reason:
+      #   captLocal         — wants TLDName/XMLFilename/GitSHA lowercased. TLD,
+      #                       XML and RDE are initialisms all through a registry
+      #                       codebase; the current naming is deliberate.
+      #   singleCaseSwitch  — all 9 are `switch t.(type) { case xml.StartElement }`
+      #                       in the escrow decode loops, which is the pattern the
+      #                       encoding/xml docs themselves use.
+      #   ifElseChain       — if/else to switch. Taste.
+      # commentedOutCode is deliberately NOT disabled: it is a diagnostic check
+      # and dead commented-out code is a real maintenance hazard.
+      disabled-checks:
+        - captLocal
+        - singleCaseSwitch
+        - ifElseChain
+
+    staticcheck:
+      checks:
+        - all
+        # golangci-lint's own defaults, restated because listing `all` above
+        # replaces them rather than adding to them.
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # QF* is staticcheck's "quickfix" family: refactoring suggestions for
+        # editor integration (apply De Morgan's law, use a tagged switch, lift
+        # an invariant out of a loop), not defect detection. 45 findings of
+        # pure taste. Same call as narrowing gocritic to `diagnostic`.
+        - -QF1001
+        - -QF1002
+        - -QF1003
+        - -QF1006
+        - -QF1007
+        - -QF1008
+        - -QF1011
+        - -QF1012
+        # S1016 fires where two structurally identical but semantically
+        # unrelated types meet — here it wants an activity's *Result* converted
+        # straight into three different activities' *Args*. Temporal DTOs
+        # coincide in shape all the time; taking the suggestion would couple
+        # them, so that adding a field to one silently breaks the others.
+        - -S1016
+
+    gosec:
+      excludes:
+        # G104 duplicates errcheck, which owns unchecked errors here and unlike
+        # G104 can be configured per-function. Leaving both on double-reported
+        # 293 findings. This is a de-duplication, not a suppression.
+        - G104
+
+        # G304 ("file inclusion via variable") assumes a program might open an
+        # attacker-supplied path. That is not the shape of this codebase: all 65
+        # findings were in the escrow/import pipeline, opening CSV, JSON and
+        # temp artifacts whose paths the pipeline itself builds from a base
+        # filename and a suffix. 53 distinct call shapes, one identical excuse —
+        # suppressing them site by site would be rubber-stamping.
+        #
+        # Exactly one place lets an external name reach the filesystem: the
+        # multipart upload in internal/interface/rest/escrow_controller.go. That
+        # one is guarded with filepath.Base before the join and is annotated
+        # there. Re-enable this rule if a second such path is ever added — the
+        # cheap check is `grep -rn 'os.Open\|os.Create\|os.ReadFile' internal/interface/`.
+        - G304
+
+    # Beyond the std-error-handling preset below, four function classes whose
+    # error is not actionable at the call site. Each is a whole-class decision
+    # rather than a per-site suppression, because the reason never varies.
+    errcheck:
+      exclude-functions:
+        # Progress display. A failed bar update has no bearing on the work.
+        - (*github.com/schollz/progressbar/v3.ProgressBar).Add
+        # `defer tx.Rollback()` after a successful Commit returns sql.ErrTxDone
+        # by design; that is the idiom, not a missed error.
+        - (*database/sql.Tx).Rollback
+        # zap's own docs note Sync returns an error when stderr/stdout is not
+        # syncable, which is the normal case on Linux and macOS.
+        - (*go.uber.org/zap.Logger).Sync
+        # net/http already tears the connection down on a failed response
+        # write; there is nothing the handler can do but return, which it does.
+        - (net/http.ResponseWriter).Write
 
   exclusions:
+    # Standard golangci-lint exclusions. For errcheck this covers Close, Flush,
+    # os.Remove/RemoveAll, os.Setenv and the fmt print family — 392 findings,
+    # all of them deferred cleanup where ignoring the error is the intent.
+    #
+    # Caveat worth knowing: `.*Close` also matches write-path closes, where the
+    # error is the "did the bytes land" signal. Those are not lint problems and
+    # are tracked separately.
+    presets:
+      - std-error-handling
+
     paths:
       - vendor
       - testdata
+      # Not tracked by git, so CI never sees it, but `make ci-lint` does once
+      # the frontend has been installed — some npm packages ship .go files.
+      - frontend/node_modules
+
+issues:
+  # Report every finding. All three of these default to hiding things: the
+  # default caps identical messages at 3 and, less obviously, uniq-by-line
+  # keeps only ONE issue per source line across all linters. That last one hid
+  # 344 findings here — including all 293 gosec G104s, which shared lines with
+  # errcheck. Same rationale as .golangci.arch.yml.
+  uniq-by-line: false
+  max-same-issues: 0
+  max-issues-per-linter: 0

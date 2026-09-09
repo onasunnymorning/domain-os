@@ -128,12 +128,6 @@ func (a *SnapshotActivities) SeedFromSnapshot(ctx context.Context, args SeedFrom
 	skipped := make(map[string]int64)
 	var totalInserted, totalSkipped int64
 
-	// Buffer for batch inserts keyed by table name
-	type batchEntry struct {
-		table string
-		rows  []json.RawMessage
-	}
-
 	scanner := bufio.NewScanner(stream)
 	// Allow large lines (some rows can be big)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)

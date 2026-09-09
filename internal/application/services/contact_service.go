@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -11,7 +12,6 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
-	"golang.org/x/net/context"
 )
 
 // ContactService implements the ContactService interface
