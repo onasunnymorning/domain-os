@@ -87,7 +87,6 @@ func TestRoidType_SystemIdentifier(t *testing.T) {
 func TestRoidType_Validate(t *testing.T) {
 	validRoid := RoidType("12345_CONT-APEX")
 	missingDashRoid := RoidType("invalid_roid")
-	missingUnderscoreRoid := RoidType("invalid-roid")
 
 	t.Run("ValidRoid", func(t *testing.T) {
 		err := validRoid.Validate()
@@ -99,8 +98,38 @@ func TestRoidType_Validate(t *testing.T) {
 		require.EqualError(t, err, ErrInvalidRoid.Error())
 	})
 
-	t.Run("Missing Underscore", func(t *testing.T) {
-		err := missingUnderscoreRoid.Validate()
-		require.EqualError(t, err, ErrInvalidRoid.Error())
+	// RFC 5730 constrains a roid to (\w|_){1,80}-\w{1,8} and says nothing about
+	// its structure. The {id}_{object}-{system} shape is this registry's own,
+	// enforced by NewRoidType, and a deposit from another registry has no
+	// reason to follow it. Requiring the underscore here rejected every object
+	// in a real .radio deposit, whose roids read "Dztys40879-RADIO".
+	t.Run("a conformant roid from another registry is valid", func(t *testing.T) {
+		require.NoError(t, RoidType("Dztys40879-RADIO").Validate())
+		require.NoError(t, RoidType("invalid-roid").Validate())
+		require.False(t, RoidType("Dztys40879-RADIO").IsIssuedHere())
+		require.True(t, RoidType("1_DOM-APEX").IsIssuedHere())
+		require.False(t, RoidType("REG_ADHMIIJVVLE2392-RADIO").IsIssuedHere(),
+			"the local shape with an object identifier we never issue is still foreign")
+	})
+
+	// The accessors split on "_" and "-" and used to index the result blindly,
+	// so reading the object type of a foreign roid panicked.
+	t.Run("accessors are total over any roid", func(t *testing.T) {
+		foreign := RoidType("Dztys40879-RADIO")
+		require.Equal(t, "", foreign.ObjectIdentifier())
+		require.Equal(t, "RADIO", foreign.SystemIdentifier())
+		_, err := foreign.Int64()
+		require.Error(t, err, "a foreign roid carries no snowflake id")
+
+		local := RoidType("42_DOM-APEX")
+		require.Equal(t, "DOM", local.ObjectIdentifier())
+		require.Equal(t, "APEX", local.SystemIdentifier())
+		n, err := local.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(42), n)
+
+		bare := RoidType("nodashes")
+		require.Equal(t, "", bare.ObjectIdentifier())
+		require.Equal(t, "", bare.SystemIdentifier())
 	})
 }

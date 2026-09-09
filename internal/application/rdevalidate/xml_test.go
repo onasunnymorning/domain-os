@@ -5,6 +5,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,13 +127,11 @@ func TestXMLValidator(t *testing.T) {
 	})
 
 	// A rejection that does not say which rule rejected the object is a
-	// rejection an operator cannot act on. This is the shape a deposit written
-	// by another registry system takes: every object carries a roid this
-	// registry will not accept, so every object is refused for one reason.
+	// rejection an operator cannot act on.
 	t.Run("a rejection names the rule that refused the object", func(t *testing.T) {
 		raw := bytes.ReplaceAll(
 			rdetest.BuildXML(rdetest.DepositOpts{Domains: 2, Contacts: 1, Hosts: 1}),
-			[]byte("_DOM-APEX"), []byte("-APEX"))
+			[]byte("_DOM-APEX"), []byte(" DOM APEX"))
 		v := &XMLValidator{BoundTLD: "example"}
 		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
 		require.NotEmpty(t, fs)
@@ -144,11 +144,34 @@ func TestXMLValidator(t *testing.T) {
 		}
 		require.Len(t, rejected, 2, "both domains are refused")
 		for _, f := range rejected {
-			assert.Equal(t, "roid: must have the form <id>_<OBJECT>-<repository>, e.g. 1_DOM-APEX", f.Rule)
+			assert.Equal(t, `roid: does not match the EPP roidType pattern (\w|_){1,80}-\w{1,8}`, f.Rule)
 			assert.Contains(t, f.Message, f.Rule, "the message carries the rule, so a reader of the findings list alone still learns it")
 			assert.NotContains(t, f.Message, "example-", "the offending value never appears")
 			assert.NotContains(t, f.Rule, "example-")
 		}
+	})
+
+	// RFC 9022 makes most of an object's elements optional. Requiring them
+	// rejected conformant deposits: a registrar with no postalInfo (§7.1 makes
+	// it minOccurs="0") was the single ERROR that failed a real .radio deposit,
+	// and every one of its 56,926 warnings came from rules like it.
+	t.Run("a deposit is judged by RFC 9022, not by this registry's conventions", func(t *testing.T) {
+		raw := rdetest.BuildXML(rdetest.DepositOpts{Domains: 1, Contacts: 1, Hosts: 1, Registrars: 1, NNDNs: 1})
+		// Strip the elements RFC 9022 marks optional but this validator used to
+		// insist on, and give every object a roid in another registry's shape.
+		for _, el := range []string{"crRr", "crDate", "upRr", "upDate", "exDate"} {
+			raw = dropElements(raw, el)
+		}
+		raw = dropElements(raw, "rdeRegistrar:postalInfo")
+		raw = regexp.MustCompile(`<(\w+):roid>[^<]*</`).ReplaceAll(raw, []byte("<${1}:roid>Dztys40879-RADIO</"))
+
+		v := &XMLValidator{BoundTLD: "example"}
+		_, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+		for _, f := range fs {
+			assert.NotEqual(t, CodeRDEObjectInvalid, f.Code,
+				"an element RFC 9022 makes optional is not a missing required element: %s / %s", f.ObjectType, f.Rule)
+		}
+		assert.NotEqual(t, OutcomeFail, Decide(fs))
 	})
 
 	t.Run("cancelled context yields a timeout finding", func(t *testing.T) {
@@ -159,4 +182,15 @@ func TestXMLValidator(t *testing.T) {
 		require.NotEmpty(t, fs)
 		assert.Equal(t, CodeValidationTimeout, fs[0].Code)
 	})
+}
+
+// dropElements removes every <ns:name>…</ns:name> and every <ns:name … /> from
+// a deposit, so a fixture can be reduced to what RFC 9022 actually requires.
+func dropElements(deposit []byte, name string) []byte {
+	if !strings.Contains(name, ":") {
+		name = `\w+:` + name
+	}
+	paired := regexp.MustCompile(`(?s)<` + name + `\b[^>]*>.*?</` + name + `>`)
+	empty := regexp.MustCompile(`<` + name + `\b[^>]*/>`)
+	return empty.ReplaceAll(paired.ReplaceAll(deposit, nil), nil)
 }

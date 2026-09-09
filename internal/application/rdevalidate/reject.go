@@ -36,14 +36,13 @@ var entityRules = []struct {
 	err  error
 	rule string
 }{
-	// roid. The likeliest reason a deposit produced by another registry system
-	// is refused wholesale: domain-os requires its own <id>_<OBJECT>-<repo>
-	// shape, which a deposit written as "D123-EXAMPLE" does not have.
-	{entities.ErrInvalidDomainRoID, "roid: the object identifier between _ and - must be " + entities.DOMAIN_ROID_ID},
-	{entities.ErrInvalidContactRoID, "roid: the object identifier between _ and - must be " + entities.CONTACT_ROID_ID},
-	{entities.ErrInvalidHostRoID, "roid: the object identifier between _ and - must be " + entities.HOST_ROID_ID},
-	{entities.ErrInvalidRoid, "roid: must have the form <id>_<OBJECT>-<repository>, e.g. 1_" +
-		entities.DOMAIN_ROID_ID + "-" + entities.EPP_REPOSITORY_ID},
+	// roid. A roid from another registry follows no structure RFC 5730 asks
+	// for, so only the pattern is a deposit rule; the three below fire when a
+	// roid this registry itself issued names the wrong kind of object.
+	{entities.ErrInvalidDomainRoID, "roid: this registry issued it for a " + entities.CONTACT_ROID_ID + "/" + entities.HOST_ROID_ID + ", not a domain"},
+	{entities.ErrInvalidContactRoID, "roid: this registry issued it for a " + entities.DOMAIN_ROID_ID + "/" + entities.HOST_ROID_ID + ", not a contact"},
+	{entities.ErrInvalidHostRoID, "roid: this registry issued it for a " + entities.DOMAIN_ROID_ID + "/" + entities.CONTACT_ROID_ID + ", not a host"},
+	{entities.ErrInvalidRoid, `roid: does not match the EPP roidType pattern (\w|_){1,80}-\w{1,8}`},
 
 	// hostnames. Checked on a domain or host name, on a domain's nameservers
 	// and on the host part of a registrar url, and the error is the same in
@@ -61,7 +60,7 @@ var entityRules = []struct {
 	// IDN pairing between name, uName and originalName.
 	{entities.ErrNoUNameProvidedForIDNDomain, "uName: an IDN domain must carry its Unicode form"},
 	{entities.ErrUNameDoesNotMatchDomain, "uName: is not the Unicode form of name"},
-	{entities.ErrUNameFieldReservedForIDNDomains, "uName: set on a domain that is not an IDN"},
+	{entities.ErrUNameFieldReservedForIDNDomains, "uName: differs from name on a domain that is not an IDN"},
 	{entities.ErrOriginalNameShouldBeAlabel, "originalName: must be an A-label"},
 	{entities.ErrOriginalNameEqualToDomain, "originalName: must differ from name"},
 	{entities.ErrOriginalNameFieldReservedForIDN, "originalName: set on a domain that is not an IDN"},
@@ -98,7 +97,8 @@ var entityRules = []struct {
 	// contactable details.
 	{entities.ErrInvalidEmail, "email: is not a valid address"},
 	{entities.ErrInvalidE164Type, "voice or fax: is not an E.164 number"},
-	{entities.ErrRegistrarMissingEmail, "email: a registrar must have one"},
+	{entities.ErrRegistrarMissingEmail, "email: a registrar must have one (this registry's requirement; RFC 9022 makes it optional)"},
+	{entities.ErrRegistrarMissingPostalInfo, "postalInfo: a registrar must have at least one (this registry's requirement; RFC 9022 makes it optional)"},
 	{entities.ErrRegistrarMissingName, "name: a registrar must have one"},
 	{entities.ErrInvalidURL, "url: is not a valid URL"},
 	{entities.ErrInvalidRegistrarIANAStatus, "gurid: is not consistent with the registrar's status"},

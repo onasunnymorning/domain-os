@@ -70,7 +70,7 @@ func TestNewRegistrar(t *testing.T) {
 			email:      "geoff@apex.domains",
 			gurID:      123,
 			postalInfo: [2]*RegistrarPostalInfo{},
-			wantErr:    ErrInvalidRegistrarPostalInfo,
+			wantErr:    ErrRegistrarMissingPostalInfo,
 		},
 		{
 			name:    "valid rar with both postal info",
@@ -222,7 +222,7 @@ func TestRegistrar_IsValid(t *testing.T) {
 				Status:     RegistrarStatusReadonly,
 				PostalInfo: [2]*RegistrarPostalInfo{},
 			},
-			want: ErrInvalidRegistrarPostalInfo,
+			want: ErrRegistrarMissingPostalInfo,
 		},
 	}
 

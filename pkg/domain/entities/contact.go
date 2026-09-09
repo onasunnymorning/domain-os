@@ -392,7 +392,10 @@ func (c *Contact) IsValid() (bool, error) {
 	if err := c.RoID.Validate(); err != nil {
 		return false, err
 	}
-	if c.RoID.ObjectIdentifier() != CONTACT_ROID_ID {
+	// Only a roid this registry minted is held to the local convention. A
+	// deposit from another registry carries its own roids, which are valid
+	// under RFC 5730 without naming an object type at all.
+	if c.RoID.IsIssuedHere() && c.RoID.ObjectIdentifier() != CONTACT_ROID_ID {
 		return false, ErrInvalidContactRoID
 	}
 	if !c.Status.IsValidContactStatus() {

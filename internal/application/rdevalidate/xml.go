@@ -302,7 +302,10 @@ func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&d, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
-	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID, "crRr", d.CrRr, "crDate", d.CrDate)
+	// RFC 9022 §4.1: name, roid, status and clID are the required elements.
+	// crRr, crDate, exDate, upRr and upDate are all minOccurs="0" — a deposit
+	// that leaves one out is conformant, not defective.
+	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID)
 	if req == nil && len(d.Status) == 0 {
 		req = errors.New("status")
 	}
@@ -318,7 +321,8 @@ func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&c, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
-	req := requireAll("id", c.ID, "roid", c.RoID, "clID", c.ClID, "crRr", c.CrRr, "crDate", c.CrDate)
+	// RFC 9022 §5.1: id, roid, status, postalInfo, email and clID are required.
+	req := requireAll("id", c.ID, "roid", c.RoID, "email", c.Email, "clID", c.ClID)
 	if req == nil && len(c.Status) == 0 {
 		req = errors.New("status")
 	}
@@ -337,7 +341,9 @@ func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&h, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
-	req := requireAll("name", h.Name, "roid", h.RoID, "clID", h.ClID, "crRr", h.CrRr, "crDate", h.CrDate)
+	// RFC 9022 §6.1: name, roid, status and clID are required; addr is not, an
+	// out-of-bailiwick host having none.
+	req := requireAll("name", h.Name, "roid", h.RoID, "clID", h.ClID)
 	if req == nil && len(h.Status) == 0 {
 		req = errors.New("status")
 	}
@@ -353,10 +359,10 @@ func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&r, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
-	req := requireAll("id", r.ID, "name", r.Name, "crDate", r.CrDate)
-	if req == nil && len(r.PostalInfo) == 0 {
-		req = errors.New("postalInfo")
-	}
+	// RFC 9022 §7.1: only id and name are required. gurid, status, postalInfo,
+	// voice, fax, email, url, whoisInfo, crDate and upDate are all
+	// minOccurs="0" — a registrar with no postal address is conformant.
+	req := requireAll("id", r.ID, "name", r.Name)
 	if req != nil {
 		return objectResult{Missing: req}
 	}
@@ -369,6 +375,8 @@ func decodeIDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&i, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
+	// RFC 9022 §8.1: url and urlPolicy are required elements and id is a
+	// required attribute of idnTableRef.
 	return objectResult{Missing: requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy)}
 }
 
@@ -377,5 +385,6 @@ func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if err := dec.DecodeElement(&n, se); err != nil {
 		return objectResult{DecodeErr: err}
 	}
-	return objectResult{Missing: requireAll("aName", n.AName, "nameState", n.NameState, "crDate", n.CrDate)}
+	// RFC 9022 §9.1: aName and nameState are required; crDate is not.
+	return objectResult{Missing: requireAll("aName", n.AName, "nameState", n.NameState)}
 }
