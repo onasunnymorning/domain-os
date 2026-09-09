@@ -40,6 +40,13 @@ const (
 	CodeRDEObjectInvalid         Code = "RDE_OBJECT_INVALID"         // an RDE-required element is missing or unparsable
 	CodeRDEObjectEntityRejected  Code = "RDE_OBJECT_ENTITY_REJECTED" // WARNING: the domain-os entity constructor rejected an otherwise well-formed object
 	CodeRDERequiredObjectMissing Code = "RDE_REQUIRED_OBJECT_MISSING"
+	// Referential integrity across a FULL deposit. The two differ in kind: an
+	// unreferenced object is data nobody asked for, while a reference that
+	// resolves to nothing means the deposit is not integral and the domain
+	// that made it cannot be imported.
+	CodeRDEObjectNotReferenced   Code = "RDE_OBJECT_NOT_REFERENCED"    // WARNING: a contact or host no domain in the deposit uses
+	CodeRDEReferenceNotInDeposit Code = "RDE_REFERENCE_NOT_IN_DEPOSIT" // ERROR: a domain points at a contact or in-bailiwick host the deposit omits
+	CodeRDECrossReferenceSkipped Code = "RDE_CROSS_REFERENCE_SKIPPED"  // WARNING: the deposit is too large to cross-reference
 
 	// --- cross-cutting ---
 	CodeValidationTimeout Code = "VALIDATION_TIMEOUT" // -> ERROR
