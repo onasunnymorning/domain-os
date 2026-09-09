@@ -68,28 +68,30 @@ type EscrowDepositResponse struct {
 
 // EscrowValidationRunResponse is the API shape of a validation run.
 type EscrowValidationRunResponse struct {
-	ID                       string                   `json:"id"`
-	DepositID                string                   `json:"depositId"`
-	TLD                      string                   `json:"tld"`
-	WorkflowID               string                   `json:"workflowId"`
-	RunID                    string                   `json:"runId,omitempty"`
-	Profile                  string                   `json:"profile"`
-	Outcome                  string                   `json:"outcome"`
-	Verified                 bool                     `json:"verified"`
-	StageReached             string                   `json:"stageReached,omitempty"`
-	Findings                 []entities.EscrowFinding `json:"findings"`
-	SigningKeyFingerprint    string                   `json:"signingKeyFingerprint,omitempty"`
-	DecryptionKeyFingerprint string                   `json:"decryptionKeyFingerprint,omitempty"`
-	PlaintextSHA256          string                   `json:"plaintextSha256,omitempty"`
-	RDEDepositID             string                   `json:"rdeDepositId,omitempty"`
-	RDEKind                  string                   `json:"rdeKind,omitempty"`
-	RDEResend                int                      `json:"rdeResend"`
-	RDEWatermark             *time.Time               `json:"rdeWatermark,omitempty"`
-	ReportObjectKey          string                   `json:"reportObjectKey,omitempty"`
-	NotificationObjectKey    string                   `json:"notificationObjectKey,omitempty"`
-	NotificationStatus       string                   `json:"notificationStatus,omitempty"`
-	StartedAt                time.Time                `json:"startedAt"`
-	CompletedAt              *time.Time               `json:"completedAt,omitempty"`
+	ID                       string                        `json:"id"`
+	DepositID                string                        `json:"depositId"`
+	TLD                      string                        `json:"tld"`
+	WorkflowID               string                        `json:"workflowId"`
+	RunID                    string                        `json:"runId,omitempty"`
+	Profile                  string                        `json:"profile"`
+	Outcome                  string                        `json:"outcome"`
+	Verified                 bool                          `json:"verified"`
+	StageReached             string                        `json:"stageReached,omitempty"`
+	Findings                 []entities.EscrowFinding      `json:"findings"`
+	SigningKeyFingerprint    string                        `json:"signingKeyFingerprint,omitempty"`
+	DecryptionKeyFingerprint string                        `json:"decryptionKeyFingerprint,omitempty"`
+	PlaintextSHA256          string                        `json:"plaintextSha256,omitempty"`
+	RDEDepositID             string                        `json:"rdeDepositId,omitempty"`
+	RDEKind                  string                        `json:"rdeKind,omitempty"`
+	RDEResend                int                           `json:"rdeResend"`
+	RDEWatermark             *time.Time                    `json:"rdeWatermark,omitempty"`
+	FindingTally             []entities.EscrowFindingTally `json:"findingTally"`
+	SummaryObjectKey         string                        `json:"summaryObjectKey,omitempty"`
+	ReportObjectKey          string                        `json:"reportObjectKey,omitempty"`
+	NotificationObjectKey    string                        `json:"notificationObjectKey,omitempty"`
+	NotificationStatus       string                        `json:"notificationStatus,omitempty"`
+	StartedAt                time.Time                     `json:"startedAt"`
+	CompletedAt              *time.Time                    `json:"completedAt,omitempty"`
 }
 
 // EscrowTrustedKeyResponse is the API shape of a trusted registry key.
@@ -128,12 +130,18 @@ func toRunResponse(r *entities.EscrowValidationRun) EscrowValidationRunResponse 
 	if findings == nil {
 		findings = []entities.EscrowFinding{}
 	}
+	tally := r.FindingTally
+	if tally == nil {
+		tally = []entities.EscrowFindingTally{}
+	}
 	return EscrowValidationRunResponse{
 		ID: r.ID.String(), DepositID: r.DepositID.String(), TLD: r.TLD, WorkflowID: r.WorkflowID, RunID: r.RunID,
 		Profile: r.Profile, Outcome: string(r.Outcome), Verified: r.Verified(), StageReached: r.StageReached, Findings: findings,
 		SigningKeyFingerprint: r.SigningKeyFingerprint, DecryptionKeyFingerprint: r.DecryptionKeyFingerprint, PlaintextSHA256: r.PlaintextSHA256,
 		RDEDepositID: r.RDEDepositID, RDEKind: r.RDEKind, RDEResend: r.RDEResend, RDEWatermark: r.RDEWatermark,
-		ReportObjectKey: r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey, NotificationStatus: string(r.NotificationStatus),
+		FindingTally:     tally,
+		SummaryObjectKey: r.SummaryObjectKey,
+		ReportObjectKey:  r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey, NotificationStatus: string(r.NotificationStatus),
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,
 	}
 }

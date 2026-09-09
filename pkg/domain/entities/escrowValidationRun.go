@@ -83,6 +83,17 @@ type EscrowFinding struct {
 	At         time.Time `json:"at"`
 }
 
+// EscrowFindingTally counts every finding of one kind the run produced,
+// including those the findings list was too small to hold. Findings is capped;
+// this is not, so it is the exact account of what a deposit contained and the
+// only place a run says how many times a code actually fired.
+type EscrowFindingTally struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	Stage    string `json:"stage"`
+	Count    int    `json:"count"`
+}
+
 // EscrowValidationRun is one immutable execution of the validation pipeline
 // against one EscrowDeposit. A run is created RUNNING and finalised exactly
 // once; a second finalisation is rejected with ErrEscrowValidationRunAlreadyFinal.
@@ -99,6 +110,8 @@ type EscrowValidationRun struct {
 	Outcome      EscrowValidationOutcome
 	StageReached string
 	Findings     []EscrowFinding
+	// FindingTally is exact where Findings is truncated. See EscrowFindingTally.
+	FindingTally []EscrowFindingTally
 
 	SigningKeyFingerprint    string // Trusted registry key that signed the .sig
 	DecryptionKeyFingerprint string // Service key that decrypted the .ryde
@@ -109,6 +122,10 @@ type EscrowValidationRun struct {
 	RDEResend    int
 	RDEWatermark *time.Time
 
+	// SummaryObjectKey locates the findings summary. It is written for every
+	// run that produced a result, including an ERROR one, so it is the only
+	// artifact key an undecided run carries.
+	SummaryObjectKey      string
 	ReportObjectKey       string
 	NotificationObjectKey string
 	NotificationStatus    EscrowNotificationStatus
@@ -158,6 +175,7 @@ type EscrowValidationFinalization struct {
 	Outcome                  EscrowValidationOutcome
 	StageReached             string
 	Findings                 []EscrowFinding
+	FindingTally             []EscrowFindingTally
 	SigningKeyFingerprint    string
 	DecryptionKeyFingerprint string
 	PlaintextSHA256          string
@@ -165,6 +183,7 @@ type EscrowValidationFinalization struct {
 	RDEKind                  string
 	RDEResend                int
 	RDEWatermark             *time.Time
+	SummaryObjectKey         string
 	ReportObjectKey          string
 	NotificationObjectKey    string
 	NotificationStatus       EscrowNotificationStatus
@@ -221,6 +240,8 @@ func (r *EscrowValidationRun) Finalize(f EscrowValidationFinalization) error {
 	r.RDEKind = f.RDEKind
 	r.RDEResend = f.RDEResend
 	r.RDEWatermark = f.RDEWatermark
+	r.FindingTally = f.FindingTally
+	r.SummaryObjectKey = f.SummaryObjectKey
 	r.ReportObjectKey = f.ReportObjectKey
 	r.NotificationObjectKey = f.NotificationObjectKey
 	r.NotificationStatus = f.NotificationStatus
