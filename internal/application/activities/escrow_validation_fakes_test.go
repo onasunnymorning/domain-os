@@ -117,7 +117,8 @@ func (f *fakeDepositRepo) Create(_ context.Context, d *entities.EscrowDeposit) e
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, r := range f.rows {
-		if r.TenantID == d.TenantID && r.TLD == d.TLD && r.RydeSHA256 == d.RydeSHA256 && r.SigSHA256 == d.SigSHA256 {
+		if r.TenantID == d.TenantID && r.TLD == d.TLD && r.Profile == d.Profile &&
+			r.ArtifactSHA256 == d.ArtifactSHA256 && r.SignatureSHA256 == d.SignatureSHA256 {
 			return errors.New("unique violation")
 		}
 	}
@@ -134,11 +135,11 @@ func (f *fakeDepositRepo) GetByID(_ context.Context, scope entities.OperatorID, 
 	}
 	return nil, entities.ErrEscrowDepositNotFound
 }
-func (f *fakeDepositRepo) FindByDigests(_ context.Context, scope entities.OperatorID, tld, ryde, sig string) (*entities.EscrowDeposit, error) {
+func (f *fakeDepositRepo) FindByDigests(_ context.Context, scope entities.OperatorID, tld, profile, artifact, sig string) (*entities.EscrowDeposit, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, r := range f.rows {
-		if r.TenantID == scope && r.TLD == tld && r.RydeSHA256 == ryde && r.SigSHA256 == sig {
+		if r.TenantID == scope && r.TLD == tld && r.Profile == profile && r.ArtifactSHA256 == artifact && r.SignatureSHA256 == sig {
 			cp := *r
 			return &cp, nil
 		}

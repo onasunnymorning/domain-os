@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"io"
 	"os"
 	"strings"
@@ -133,18 +134,21 @@ func NewEscrowValidationActivitiesWithDeps(
 // 1. BindDeposit
 // ---------------------------------------------------------------------------
 
-// BindDepositInput binds an artifact pair to the authenticated tenant/TLD.
-// Scope and TLD come from the launch context, never from the artifact.
+// BindDepositInput binds an artifact set to the authenticated tenant/TLD.
+// Scope, TLD and profile come from the launch context, never from the artifact.
 type BindDepositInput struct {
-	Scope         string    `json:"scope"`
-	TLD           string    `json:"tld"`
-	RydeObjectKey string    `json:"rydeObjectKey"`
-	SigObjectKey  string    `json:"sigObjectKey"`
-	SubmittedBy   string    `json:"submittedBy"`
-	IntakeRef     string    `json:"intakeRef"`
-	ReceivedAt    time.Time `json:"receivedAt"`
-	WorkflowID    string    `json:"workflowId"`
-	RunID         string    `json:"runId"`
+	Scope             string `json:"scope"`
+	TLD               string `json:"tld"`
+	Profile           string `json:"profile"`
+	ArtifactObjectKey string `json:"artifactObjectKey"`
+	// SignatureObjectKey is required for a signed profile and must be empty
+	// otherwise.
+	SignatureObjectKey string    `json:"signatureObjectKey"`
+	SubmittedBy        string    `json:"submittedBy"`
+	IntakeRef          string    `json:"intakeRef"`
+	ReceivedAt         time.Time `json:"receivedAt"`
+	WorkflowID         string    `json:"workflowId"`
+	RunID              string    `json:"runId"`
 }
 
 // BindDepositOutput identifies the (possibly pre-existing) deposit record and
@@ -152,17 +156,18 @@ type BindDepositInput struct {
 type BindDepositOutput struct {
 	DepositID       uuid.UUID       `json:"depositId"`
 	ValidationRunID uuid.UUID       `json:"validationRunId"`
-	Replay          bool            `json:"replay"` // the same pair was already bound
-	RydeKey         string          `json:"rydeKey"`
-	SigKey          string          `json:"sigKey"`
-	RydeSHA256      string          `json:"rydeSha256"`
-	SigSHA256       string          `json:"sigSha256"`
-	RydeBytes       int64           `json:"rydeBytes"`
-	SigBytes        int64           `json:"sigBytes"`
+	Replay          bool            `json:"replay"` // the same set was already bound
+	Profile         string          `json:"profile"`
+	ArtifactKey     string          `json:"artifactKey"`
+	SignatureKey    string          `json:"signatureKey"`
+	ArtifactSHA256  string          `json:"artifactSha256"`
+	SignatureSHA256 string          `json:"signatureSha256"`
+	ArtifactBytes   int64           `json:"artifactBytes"`
+	SignatureBytes  int64           `json:"signatureBytes"`
 	Hints           rdereport.Hints `json:"hints"`
 }
 
-// BindDeposit verifies TLD ownership, digests both artifacts, binds them to
+// BindDeposit verifies TLD ownership, digests the artifacts, binds them to
 // an immutable deposit record (reusing an existing one on replay), copies
 // them to the immutable prefix once, and opens a RUNNING run.
 func (a *EscrowValidationActivities) BindDeposit(ctx context.Context, in BindDepositInput) (BindDepositOutput, error) {
@@ -175,6 +180,14 @@ func (a *EscrowValidationActivities) BindDeposit(ctx context.Context, in BindDep
 	if err != nil {
 		return BindDepositOutput{}, nonRetryable("invalid tld", err)
 	}
+	profile := in.Profile
+	if profile == "" {
+		profile = entities.EscrowProfileRydeSig
+	}
+	if !entities.IsEscrowProfile(profile) {
+		return BindDepositOutput{}, nonRetryable("unknown validation profile", entities.ErrUnknownEscrowProfile)
+	}
+	signed := entities.EscrowProfileIsSigned(profile)
 	// R3 defence in depth: the launch surface already checked ownership, but a
 	// forgetful launch path must not be able to create a record.
 	if _, err := a.tlds.GetByNameForOperator(ctx, scope, tld); err != nil {
@@ -183,55 +196,76 @@ func (a *EscrowValidationActivities) BindDeposit(ctx context.Context, in BindDep
 		}
 		return BindDepositOutput{}, fmt.Errorf("BindDeposit: tld lookup: %w", err)
 	}
-	if strings.TrimSpace(in.RydeObjectKey) == "" || strings.TrimSpace(in.SigObjectKey) == "" {
-		return BindDepositOutput{}, nonRetryable("both artifact keys are required", nil)
+	if strings.TrimSpace(in.ArtifactObjectKey) == "" {
+		return BindDepositOutput{}, nonRetryable("the artifact key is required", nil)
 	}
-	for _, key := range []string{in.RydeObjectKey, in.SigObjectKey} {
+	keys := []string{in.ArtifactObjectKey}
+	switch {
+	case signed && strings.TrimSpace(in.SignatureObjectKey) == "":
+		return BindDepositOutput{}, nonRetryable("a signed profile requires a signature key", nil)
+	case signed:
+		keys = append(keys, in.SignatureObjectKey)
+	case strings.TrimSpace(in.SignatureObjectKey) != "":
+		return BindDepositOutput{}, nonRetryable("an unsigned profile must not carry a signature key", nil)
+	}
+	for _, key := range keys {
 		ok, err := a.escrowStore.Exists(ctx, key)
 		if err != nil {
 			return BindDepositOutput{}, fmt.Errorf("BindDeposit: artifact lookup: %w", err)
 		}
 		if !ok {
-			return BindDepositOutput{}, nonRetryable(string(rdevalidate.CodeIntakeArtifactMissing)+": an artifact of the pair is not in storage", nil)
+			return BindDepositOutput{}, nonRetryable(string(rdevalidate.CodeIntakeArtifactMissing)+": an artifact of the set is not in storage", nil)
 		}
 	}
 
 	activity.RecordHeartbeat(ctx, "digesting artifacts")
-	rydeSHA, rydeBytes, err := a.digest(ctx, in.RydeObjectKey, 0)
+	artifactSHA, artifactBytes, err := a.digest(ctx, in.ArtifactObjectKey, 0)
 	if err != nil {
 		return BindDepositOutput{}, fmt.Errorf("BindDeposit: digest deposit: %w", err)
 	}
-	sigSHA, sigBytes, err := a.digest(ctx, in.SigObjectKey, maxSignatureBytes)
-	if err != nil {
-		if errors.Is(err, errArtifactTooLarge) {
-			return BindDepositOutput{}, nonRetryable("signature artifact exceeds the accepted size", nil)
+	var sigSHA string
+	var sigBytes int64
+	if signed {
+		sigSHA, sigBytes, err = a.digest(ctx, in.SignatureObjectKey, maxSignatureBytes)
+		if err != nil {
+			if errors.Is(err, errArtifactTooLarge) {
+				return BindDepositOutput{}, nonRetryable("signature artifact exceeds the accepted size", nil)
+			}
+			return BindDepositOutput{}, fmt.Errorf("BindDeposit: digest signature: %w", err)
 		}
-		return BindDepositOutput{}, fmt.Errorf("BindDeposit: digest signature: %w", err)
 	}
 
 	replay := true
-	deposit, err := a.deposits.FindByDigests(ctx, scope, tld, rydeSHA, sigSHA)
+	deposit, err := a.deposits.FindByDigests(ctx, scope, tld, profile, artifactSHA, sigSHA)
 	if errors.Is(err, entities.ErrEscrowDepositNotFound) {
 		replay = false
 		// The archive prefix embeds the deposit id, so the id is chosen before the
 		// entity is built and the constructor validates the final keys.
 		depositID := uuid.New()
 		prefix := fmt.Sprintf("%s/%s/%s/%s", escrowValidationPrefix, scope.String(), tld, depositID)
-		deposit, err = entities.NewEscrowDeposit(scope, tld, in.ReceivedAt, in.SubmittedBy, in.IntakeRef, prefix+"/deposit.ryde", prefix+"/deposit.sig", rydeSHA, sigSHA, rydeBytes, sigBytes)
+		artifactKey := prefix + "/" + artifactFileName(profile, in.ArtifactObjectKey)
+		sigKey := ""
+		if signed {
+			sigKey = prefix + "/deposit.sig"
+		}
+		deposit, err = entities.NewEscrowDeposit(scope, tld, profile, in.ReceivedAt, in.SubmittedBy, in.IntakeRef,
+			artifactKey, artifactSHA, artifactBytes, sigKey, sigSHA, sigBytes)
 		if err != nil {
 			return BindDepositOutput{}, nonRetryable("deposit record rejected", err)
 		}
 		deposit.ID = depositID
 		activity.RecordHeartbeat(ctx, "archiving artifacts")
-		if err := a.copyIfAbsent(ctx, in.RydeObjectKey, deposit.RydeObjectKey); err != nil {
+		if err := a.copyIfAbsent(ctx, in.ArtifactObjectKey, deposit.ArtifactObjectKey); err != nil {
 			return BindDepositOutput{}, fmt.Errorf("BindDeposit: archive deposit: %w", err)
 		}
-		if err := a.copyIfAbsent(ctx, in.SigObjectKey, deposit.SigObjectKey); err != nil {
-			return BindDepositOutput{}, fmt.Errorf("BindDeposit: archive signature: %w", err)
+		if signed {
+			if err := a.copyIfAbsent(ctx, in.SignatureObjectKey, deposit.SignatureObjectKey); err != nil {
+				return BindDepositOutput{}, fmt.Errorf("BindDeposit: archive signature: %w", err)
+			}
 		}
 		if err := a.deposits.Create(ctx, deposit); err != nil {
-			// A concurrent bind of the same pair won the unique index; use its record.
-			existing, ferr := a.deposits.FindByDigests(ctx, scope, tld, rydeSHA, sigSHA)
+			// A concurrent bind of the same set won the unique index; use its record.
+			existing, ferr := a.deposits.FindByDigests(ctx, scope, tld, profile, artifactSHA, sigSHA)
 			if ferr != nil {
 				return BindDepositOutput{}, fmt.Errorf("BindDeposit: create deposit: %w", err)
 			}
@@ -241,23 +275,38 @@ func (a *EscrowValidationActivities) BindDeposit(ctx context.Context, in BindDep
 		return BindDepositOutput{}, fmt.Errorf("BindDeposit: digest lookup: %w", err)
 	}
 
-	run, err := entities.NewEscrowValidationRun(deposit.ID, scope, tld, in.WorkflowID, in.RunID, rdevalidate.ProfileRydeSig, a.now())
+	run, err := entities.NewEscrowValidationRun(deposit.ID, scope, tld, in.WorkflowID, in.RunID, profile, a.now())
 	if err != nil {
 		return BindDepositOutput{}, nonRetryable("run record rejected", err)
 	}
 	if err := a.runs.Create(ctx, run); err != nil {
 		return BindDepositOutput{}, fmt.Errorf("BindDeposit: create run: %w", err)
 	}
-	hints, _ := rdereport.ParseRydeFileName(in.RydeObjectKey)
+	hints, _ := rdereport.ParseRydeFileName(in.ArtifactObjectKey)
 
 	logger.Info("escrow validation: deposit bound",
 		"correlation_id", in.WorkflowID, "deposit_id", deposit.ID.String(), "run_id", run.ID.String(),
-		"tld", tld, "stage", string(rdevalidate.StageIntake), "outcome", string(entities.EscrowValidationRunning), "replay", replay)
+		"tld", tld, "profile", profile, "stage", string(rdevalidate.StageIntake),
+		"outcome", string(entities.EscrowValidationRunning), "replay", replay)
 	return BindDepositOutput{
-		DepositID: deposit.ID, ValidationRunID: run.ID, Replay: replay,
-		RydeKey: deposit.RydeObjectKey, SigKey: deposit.SigObjectKey,
-		RydeSHA256: rydeSHA, SigSHA256: sigSHA, RydeBytes: rydeBytes, SigBytes: sigBytes, Hints: hints,
+		DepositID: deposit.ID, ValidationRunID: run.ID, Replay: replay, Profile: profile,
+		ArtifactKey: deposit.ArtifactObjectKey, SignatureKey: deposit.SignatureObjectKey,
+		ArtifactSHA256: artifactSHA, SignatureSHA256: sigSHA,
+		ArtifactBytes: artifactBytes, SignatureBytes: sigBytes, Hints: hints,
 	}, nil
+}
+
+// artifactFileName keeps the archived name honest about what the artifact is,
+// preserving a .xml.gz vs .xml distinction that the profile alone does not
+// carry. It never uses the caller's file name verbatim.
+func artifactFileName(profile, sourceKey string) string {
+	if entities.EscrowProfileIsSigned(profile) {
+		return "deposit.ryde"
+	}
+	if strings.HasSuffix(strings.ToLower(sourceKey), ".gz") {
+		return "deposit.xml.gz"
+	}
+	return "deposit.xml"
 }
 
 var errArtifactTooLarge = errors.New("artifact too large")
@@ -298,17 +347,18 @@ func (a *EscrowValidationActivities) copyIfAbsent(ctx context.Context, src, dst 
 // 2. ValidateArtifacts
 // ---------------------------------------------------------------------------
 
-// ValidateArtifactsInput points at the archived pair.
+// ValidateArtifactsInput points at the archived artifact set.
 type ValidateArtifactsInput struct {
 	Scope           string    `json:"scope"`
 	TLD             string    `json:"tld"`
+	Profile         string    `json:"profile"`
 	DepositID       uuid.UUID `json:"depositId"`
 	ValidationRunID uuid.UUID `json:"validationRunId"`
 	WorkflowID      string    `json:"workflowId"`
-	RydeKey         string    `json:"rydeKey"`
-	SigKey          string    `json:"sigKey"`
-	RydeSHA256      string    `json:"rydeSha256"`
-	SigSHA256       string    `json:"sigSha256"`
+	ArtifactKey     string    `json:"artifactKey"`
+	SignatureKey    string    `json:"signatureKey"`
+	ArtifactSHA256  string    `json:"artifactSha256"`
+	SignatureSHA256 string    `json:"signatureSha256"`
 }
 
 // ValidateArtifacts runs the streaming pipeline. It returns an error only
@@ -322,40 +372,49 @@ func (a *EscrowValidationActivities) ValidateArtifacts(ctx context.Context, in V
 	if err != nil {
 		return rdevalidate.Result{}, nonRetryable("invalid operator scope", err)
 	}
-	now := a.now()
-	trusted, err := a.keys.ListActive(ctx, scope, in.TLD, now)
-	if err != nil {
-		return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: trusted keys: %w", err)
+	profile := in.Profile
+	if profile == "" {
+		profile = entities.EscrowProfileRydeSig
 	}
-	armored := make([]string, len(trusted))
-	for i, k := range trusted {
-		armored[i] = k.ArmoredPublicKey
-	}
-	ring, err := a.keyProvider.DecryptionKeyring(ctx)
-	if err != nil {
-		// Reported through the pipeline as DECRYPT_KEY_UNAVAILABLE (ERROR class).
-		ring = nil
-	}
-	sig, err := a.readSmall(ctx, in.SigKey, maxSignatureBytes)
-	if err != nil {
-		return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: signature: %w", err)
+	// An unsigned profile establishes nothing about the depositor, so it needs
+	// neither trusted signing keys nor the service decryption keyring.
+	var armored []string
+	var ring openpgp.EntityList
+	var sig []byte
+	if entities.EscrowProfileIsSigned(profile) {
+		trusted, err := a.keys.ListActive(ctx, scope, in.TLD, a.now())
+		if err != nil {
+			return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: trusted keys: %w", err)
+		}
+		armored = make([]string, len(trusted))
+		for i, k := range trusted {
+			armored[i] = k.ArmoredPublicKey
+		}
+		if ring, err = a.keyProvider.DecryptionKeyring(ctx); err != nil {
+			// Reported through the pipeline as DECRYPT_KEY_UNAVAILABLE (ERROR class).
+			ring = nil
+		}
+		if sig, err = a.readSmall(ctx, in.SignatureKey, maxSignatureBytes); err != nil {
+			return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: signature: %w", err)
+		}
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, a.limits.Timeout)
 	defer cancel()
 	res := rdevalidate.Run(runCtx, rdevalidate.Input{
-		OpenRyde: func(c context.Context) (io.ReadCloser, error) {
-			rc, _, err := a.escrowStore.GetObjectStream(c, in.RydeKey)
+		Profile: profile,
+		OpenArtifact: func(c context.Context) (io.ReadCloser, error) {
+			rc, _, err := a.escrowStore.GetObjectStream(c, in.ArtifactKey)
 			return rc, err
 		},
-		Sig:                sig,
-		ExpectedRydeSHA256: in.RydeSHA256,
-		ExpectedSigSHA256:  in.SigSHA256,
-		TrustedKeys:        armored,
-		ServiceKeys:        ring,
-		BoundTLD:           in.TLD,
-		Limits:             a.limits,
-		Now:                a.now,
+		Sig:                     sig,
+		ExpectedArtifactSHA256:  in.ArtifactSHA256,
+		ExpectedSignatureSHA256: in.SignatureSHA256,
+		TrustedKeys:             armored,
+		ServiceKeys:             ring,
+		BoundTLD:                in.TLD,
+		Limits:                  a.limits,
+		Now:                     a.now,
 		Heartbeat: func(stage rdevalidate.Stage, detail string) {
 			activity.RecordHeartbeat(ctx, string(stage)+": "+detail)
 		},

@@ -20,7 +20,7 @@ type EscrowDepositRepository interface {
 	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowDeposit, error)
 	// FindByDigests returns the deposit bound to this exact artifact pair, or
 	// entities.ErrEscrowDepositNotFound.
-	FindByDigests(ctx context.Context, scope entities.OperatorID, tld, rydeSHA256, sigSHA256 string) (*entities.EscrowDeposit, error)
+	FindByDigests(ctx context.Context, scope entities.OperatorID, tld, profile, artifactSHA256, signatureSHA256 string) (*entities.EscrowDeposit, error)
 	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowDeposit, string, error)
 }
 

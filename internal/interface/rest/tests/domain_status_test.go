@@ -24,12 +24,12 @@ import (
 //   - SetStatus/UnSetStatus return the updated domain entity
 var _ = Describe("DomainStatus", Ordered, func() {
 	const (
-		ryID          = "dsTestRyOp"
-		tldName       = "dstest"
-		registrarClID = "dsTestRar"
+		ryID           = "dsTestRyOp"
+		tldName        = "dstest"
+		registrarClID  = "dsTestRar"
 		registrarGurID = 10011
-		contactID     = "dsTestCont"
-		domainName    = "status.dstest"
+		contactID      = "dsTestCont"
+		domainName     = "status.dstest"
 	)
 
 	// ------------------------------------------------------------------ //

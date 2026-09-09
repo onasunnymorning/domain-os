@@ -24,15 +24,15 @@ import (
 //   - List purgeable domains (GET /domains/purgeable)
 var _ = Describe("DomainExtended", Ordered, func() {
 	const (
-		ryID          = "dxTestRyOp"
-		tldName       = "dxtest"
-		gaPhase       = "GA1"
-		registrarClID = "dxTestRar"
+		ryID           = "dxTestRyOp"
+		tldName        = "dxtest"
+		gaPhase        = "GA1"
+		registrarClID  = "dxTestRar"
 		registrarGurID = 10013
-		contactID     = "dxTestCont"
-		domainName    = "extended.dxtest"
-		host1Name     = "ns1.dxext.com"
-		host2Name     = "ns2.dxext.com"
+		contactID      = "dxTestCont"
+		domainName     = "extended.dxtest"
+		host1Name      = "ns1.dxext.com"
+		host2Name      = "ns2.dxext.com"
 	)
 
 	// Shared state across specs

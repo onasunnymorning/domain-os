@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -20,10 +20,10 @@ import (
 //	create → list → count → get → delete → verify deletion
 var _ = Describe("NNDNController", Ordered, func() {
 	const (
-		ryID     = "nndnTestRyOp"
-		tldName  = "nndntest"
-		nndn1    = "reserved1.nndntest"
-		nndn2    = "reserved2.nndntest"
+		ryID    = "nndnTestRyOp"
+		tldName = "nndntest"
+		nndn1   = "reserved1.nndntest"
+		nndn2   = "reserved2.nndntest"
 	)
 
 	// ------------------------------------------------------------------ //

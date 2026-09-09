@@ -116,7 +116,7 @@ func BuildReport(p Params) (*Report, error) {
 	}
 	if !depositIDRe.MatchString(id) {
 		// The artifact digest is the one identifier we always have.
-		id = strings.ToUpper(firstN(p.Result.Digests.RydeSHA256, 13))
+		id = strings.ToUpper(firstN(p.Result.Digests.ArtifactSHA256, 13))
 	}
 	if id == "" {
 		return nil, errors.New("rdereport: no deposit identifier is available")

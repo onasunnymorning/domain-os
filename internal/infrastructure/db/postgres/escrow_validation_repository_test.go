@@ -40,7 +40,8 @@ func (s *EscrowValidationSuite) scope(id string) entities.OperatorID {
 }
 
 func (s *EscrowValidationSuite) newDeposit(scope entities.OperatorID, tld, ryde, sig string) *entities.EscrowDeposit {
-	d, err := entities.NewEscrowDeposit(scope, tld, time.Now().UTC(), "tester", "ref", "k/"+ryde[:8]+".ryde", "k/"+sig[:8]+".sig", ryde, sig, 100, 10)
+	d, err := entities.NewEscrowDeposit(scope, tld, entities.EscrowProfileRydeSig, time.Now().UTC(), "tester", "ref",
+		"k/"+ryde[:8]+".ryde", ryde, 100, "k/"+sig[:8]+".sig", sig, 10)
 	s.Require().NoError(err)
 	return d
 }
@@ -63,12 +64,12 @@ func (s *EscrowValidationSuite) TestDeposits_TenantIsolationAndDigests() {
 	_, err = repo.GetByID(ctx, b, d.ID)
 	s.True(errors.Is(err, entities.ErrEscrowDepositNotFound), "another tenant cannot see the deposit")
 
-	found, err := repo.FindByDigests(ctx, a, "example", evSHA1, evSHA2)
+	found, err := repo.FindByDigests(ctx, a, "example", entities.EscrowProfileRydeSig, evSHA1, evSHA2)
 	s.Require().NoError(err)
 	s.Equal(d.ID, found.ID)
-	_, err = repo.FindByDigests(ctx, a, "example", evSHA2, evSHA1)
+	_, err = repo.FindByDigests(ctx, a, "example", entities.EscrowProfileRydeSig, evSHA2, evSHA1)
 	s.True(errors.Is(err, entities.ErrEscrowDepositNotFound))
-	_, err = repo.FindByDigests(ctx, b, "example", evSHA1, evSHA2)
+	_, err = repo.FindByDigests(ctx, b, "example", entities.EscrowProfileRydeSig, evSHA1, evSHA2)
 	s.True(errors.Is(err, entities.ErrEscrowDepositNotFound), "digest lookup is tenant-scoped")
 
 	// The unique index rejects a second record for the same pair.

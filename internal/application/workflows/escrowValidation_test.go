@@ -7,6 +7,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/temporal"
@@ -33,13 +34,13 @@ func (s *EscrowValidationWorkflowTestSuite) AfterTest(_, _ string) {
 }
 
 var evParams = EscrowValidationParams{
-	Scope: "ryop1", TLD: "example", RydeObjectKey: "uploads/a.ryde", SigObjectKey: "uploads/a.sig",
+	Scope: "ryop1", TLD: "example", ArtifactObjectKey: "uploads/a.ryde", SignatureObjectKey: "uploads/a.sig",
 	SubmittedBy: "tester", ReceivedAt: time.Date(2026, 9, 8, 3, 15, 0, 0, time.UTC),
 }
 
 func evBound() activities.BindDepositOutput {
 	// Fixed ids: the workflows package may not import uuid (INV-06), even in tests.
-	return activities.BindDepositOutput{DepositID: [16]byte{1, 2, 3}, ValidationRunID: [16]byte{4, 5, 6}, RydeKey: "archived.ryde", SigKey: "archived.sig", RydeSHA256: "aa", SigSHA256: "bb"}
+	return activities.BindDepositOutput{DepositID: [16]byte{1, 2, 3}, ValidationRunID: [16]byte{4, 5, 6}, Profile: entities.EscrowProfileRydeSig, ArtifactKey: "archived.ryde", SignatureKey: "archived.sig", ArtifactSHA256: "aa", SignatureSHA256: "bb"}
 }
 
 func evResult(outcome rdevalidate.Outcome, codes ...rdevalidate.Code) rdevalidate.Result {
@@ -57,7 +58,7 @@ func (s *EscrowValidationWorkflowTestSuite) Test_Pass_EmitsDVPN() {
 		return in.Scope == "ryop1" && in.TLD == "example" && in.WorkflowID != ""
 	})).Return(bound, nil).Once()
 	s.env.OnActivity(acts.ValidateArtifacts, mock.Anything, mock.MatchedBy(func(in activities.ValidateArtifactsInput) bool {
-		return in.RydeKey == "archived.ryde" && in.RydeSHA256 == "aa" && in.ValidationRunID == bound.ValidationRunID
+		return in.ArtifactKey == "archived.ryde" && in.ArtifactSHA256 == "aa" && in.ValidationRunID == bound.ValidationRunID
 	})).Return(evResult(rdevalidate.OutcomePass), nil).Once()
 	s.env.OnActivity(acts.EmitReportAndNotification, mock.Anything, mock.MatchedBy(func(in activities.EmitReportInput) bool {
 		return in.Result.Outcome == rdevalidate.OutcomePass && !in.ValidatedAt.IsZero() && in.ReceivedAt.Equal(evParams.ReceivedAt)
@@ -162,4 +163,36 @@ func (s *EscrowValidationWorkflowTestSuite) Test_ReplayFlagPropagates() {
 	var result EscrowValidationResult
 	s.Require().NoError(s.env.GetWorkflowResult(&result))
 	s.True(result.Replay)
+}
+
+func (s *EscrowValidationWorkflowTestSuite) Test_UnsignedProfile_EmitsNoNotification() {
+	var acts *activities.EscrowValidationActivities
+	bound := evBound()
+	bound.Profile = entities.EscrowProfilePlaintextXML
+	bound.SignatureKey, bound.SignatureSHA256 = "", ""
+	s.env.OnActivity(acts.BindDeposit, mock.Anything, mock.MatchedBy(func(in activities.BindDepositInput) bool {
+		return in.Profile == entities.EscrowProfilePlaintextXML && in.SignatureObjectKey == ""
+	})).Return(bound, nil).Once()
+	s.env.OnActivity(acts.ValidateArtifacts, mock.Anything, mock.MatchedBy(func(in activities.ValidateArtifactsInput) bool {
+		return in.Profile == entities.EscrowProfilePlaintextXML
+	})).Return(rdevalidate.Result{Profile: rdevalidate.ProfilePlaintextXML, Outcome: rdevalidate.OutcomePass, StageReached: rdevalidate.StageRDE}, nil).Once()
+	// EmitReportAndNotification is deliberately not mocked: an unsigned deposit
+	// establishes nothing to report to ICANN, so calling it would fail the test.
+	s.env.OnActivity(acts.FinalizeValidationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeRunInput) bool {
+		return in.NotificationStatus == "" && in.ReportKey == "" && in.NotificationKey == ""
+	})).Return(nil).Once()
+
+	params := evParams
+	params.Profile = entities.EscrowProfilePlaintextXML
+	params.ArtifactObjectKey, params.SignatureObjectKey = "uploads/a.xml.gz", ""
+	s.env.ExecuteWorkflow(EscrowValidationWorkflow, params)
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result EscrowValidationResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal("PASS", result.Outcome)
+	s.False(result.Verified, "an unsigned deposit is never a verified pass")
+	s.Empty(result.NotificationStatus)
+	s.Empty(result.NotificationKey)
 }

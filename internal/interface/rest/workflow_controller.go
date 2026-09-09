@@ -563,11 +563,23 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "a valid tld is required for escrow-validation"})
 			return
 		}
-		rydeKey, _ := req.Params["rydeObjectKey"].(string)
-		sigKey, _ := req.Params["sigObjectKey"].(string)
+		artifactKey, _ := req.Params["artifactObjectKey"].(string)
+		sigKey, _ := req.Params["signatureObjectKey"].(string)
 		intakeRef, _ := req.Params["intakeRef"].(string)
-		if rydeKey == "" || sigKey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "rydeObjectKey and sigObjectKey are required for escrow-validation"})
+		profile, _ := req.Params["profile"].(string)
+		if profile == "" {
+			profile = entities.EscrowProfileRydeSig
+		}
+		if !entities.IsEscrowProfile(profile) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "profile must be \"ryde+sig\" or \"xml\" for escrow-validation"})
+			return
+		}
+		if artifactKey == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "artifactObjectKey is required for escrow-validation"})
+			return
+		}
+		if entities.EscrowProfileIsSigned(profile) != (sigKey != "") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "signatureObjectKey is required for ryde+sig and must be omitted otherwise"})
 			return
 		}
 		submittedBy := scope.String()
@@ -577,7 +589,8 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		wfID = fmt.Sprintf("escrow-validation-%s-%s", tld, ts)
 		workflow = workflows.EscrowValidationWorkflow
 		args = []interface{}{workflows.EscrowValidationParams{
-			Scope: scope.String(), TLD: tld, RydeObjectKey: rydeKey, SigObjectKey: sigKey,
+			Scope: scope.String(), TLD: tld, Profile: profile,
+			ArtifactObjectKey: artifactKey, SignatureObjectKey: sigKey,
 			SubmittedBy: submittedBy, IntakeRef: intakeRef, ReceivedAt: time.Now().UTC(),
 		}}
 
