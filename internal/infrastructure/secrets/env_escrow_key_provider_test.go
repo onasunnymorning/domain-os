@@ -72,3 +72,50 @@ func TestEnvEscrowKeyProvider(t *testing.T) {
 	})
 	_ = strings.TrimSpace
 }
+
+// TestEnvEscrowKeyProviderOptional covers the distinction the worker relies on:
+// an absent keyring is a deployment that does not accept signed deposits and
+// must not take the escrow activities off the worker, while unreadable material
+// is a misconfiguration that should still stop startup.
+func TestEnvEscrowKeyProviderOptional(t *testing.T) {
+	t.Run("absent yields a provider that holds no keys", func(t *testing.T) {
+		t.Setenv(EnvEscrowPrivateKeys, "")
+		t.Setenv(EnvEscrowPrivateKeyPassphrase, "")
+
+		p, err := NewEnvEscrowKeyProviderOptionalFromEnv()
+		require.NoError(t, err)
+		require.NotNil(t, p)
+		assert.Empty(t, p.Fingerprints())
+
+		// A signed deposit still cannot be decrypted — the pipeline turns this
+		// into DECRYPT_KEY_UNAVAILABLE against a recorded run.
+		ring, err := p.DecryptionKeyring(context.Background())
+		assert.ErrorIs(t, err, ErrNoEscrowPrivateKeys)
+		assert.Nil(t, ring)
+	})
+
+	t.Run("unreadable material is still fatal", func(t *testing.T) {
+		// A real keyring with the wrong passphrase: the misconfiguration an
+		// operator actually hits during a rollover. Tolerating it would hide a
+		// broken deployment behind a worker that silently accepts no signed
+		// deposit at all.
+		k := rdetest.NewKeyPair(t, "eve-2026")
+		t.Setenv(EnvEscrowPrivateKeys, rdetest.EncryptedArmoredPrivate(t, k, "correct horse battery staple"))
+		t.Setenv(EnvEscrowPrivateKeyPassphrase, "nope")
+
+		_, err := NewEnvEscrowKeyProviderOptionalFromEnv()
+		require.ErrorIs(t, err, ErrEscrowPrivateKeysUnreadable)
+		assert.NotContains(t, err.Error(), "BEGIN PGP")
+	})
+
+	t.Run("a configured keyring is loaded as usual", func(t *testing.T) {
+		k := rdetest.NewKeyPair(t, "eve-2026")
+		const pass = "correct horse battery staple"
+		t.Setenv(EnvEscrowPrivateKeys, rdetest.EncryptedArmoredPrivate(t, k, pass))
+		t.Setenv(EnvEscrowPrivateKeyPassphrase, pass)
+
+		p, err := NewEnvEscrowKeyProviderOptionalFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, []string{k.Fingerprint}, p.Fingerprints())
+	})
+}
