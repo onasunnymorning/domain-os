@@ -101,12 +101,12 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}).Get(ctxStaging, &validateOut); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
-		return EscrowImportResult{}, fmt.Errorf("ValidateEscrowSource(tld=%s, key=%s) activity failed: %w. Check that the escrow file exists in S3/MinIO and that the TLD is correctly configured.", params.TLD, params.ObjectKey, err)
+		return EscrowImportResult{}, fmt.Errorf("ValidateEscrowSource(tld=%s, key=%s) activity failed: %w. Check that the escrow file exists in S3/MinIO and that the TLD is correctly configured", params.TLD, params.ObjectKey, err)
 	}
 	if !validateOut.Exists {
 		state.Phase = "failed"
 		state.Error = fmt.Sprintf("object %s does not exist", params.ObjectKey)
-		return EscrowImportResult{}, fmt.Errorf("escrow object key %s does not exist on S3. Please verify the file exists before launching.", params.ObjectKey)
+		return EscrowImportResult{}, fmt.Errorf("escrow object key %s does not exist on S3. Please verify the file exists before launching", params.ObjectKey)
 	}
 
 	// 1. Parse & Extract Assets
@@ -125,7 +125,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}).Get(ctxStaging, &assetsOut); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
-		return EscrowImportResult{}, fmt.Errorf("ParseAndExtractAssets(tld=%s, key=%s) activity failed: %w. Verify that the file layout/encoding is valid.", params.TLD, params.ObjectKey, err)
+		return EscrowImportResult{}, fmt.Errorf("ParseAndExtractAssets(tld=%s, key=%s) activity failed: %w. Verify that the file layout/encoding is valid", params.TLD, params.ObjectKey, err)
 	}
 
 	if assetsOut.HasIssues {
@@ -135,7 +135,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 			TLD:       params.TLD,
 			ObjectKey: params.ObjectKey,
 			RunPrefix: runPrefix,
-		}, fmt.Errorf("ParseAndExtractAssets found structural problems with the escrow deposit: %v. Ingestion blocked.", assetsOut.AnalysisErrors)
+		}, fmt.Errorf("ParseAndExtractAssets found structural problems with the escrow deposit: %v. Ingestion blocked", assetsOut.AnalysisErrors)
 	}
 
 	// 1b. Copy source file into the run folder (server-side S3 copy, no download)
@@ -166,7 +166,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}).Get(ctxStaging, &collateOut); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
-		return EscrowImportResult{}, fmt.Errorf("BuildStagingDatabase(tld=%s, runPrefix=%s) activity failed: %w. Check space/permissions in SQLite builder.", params.TLD, runPrefix, err)
+		return EscrowImportResult{}, fmt.Errorf("BuildStagingDatabase(tld=%s, runPrefix=%s) activity failed: %w. Check space/permissions in SQLite builder", params.TLD, runPrefix, err)
 	}
 
 	// 2b. Clean Orphaned Contacts — remove contacts from dead registrars (0 domains, 0 hosts)
@@ -207,7 +207,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}).Get(ctxStaging, &mapOut); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
-		return EscrowImportResult{}, fmt.Errorf("ResolveRegistrars(tld=%s, db=%s) activity failed: %w. Ensure registrar overrides match existing registrar IDs.", params.TLD, collateOut.DBKey, err)
+		return EscrowImportResult{}, fmt.Errorf("ResolveRegistrars(tld=%s, db=%s) activity failed: %w. Ensure registrar overrides match existing registrar IDs", params.TLD, collateOut.DBKey, err)
 	}
 
 	// Propagate mapping summary to state so the UI can surface it
@@ -442,7 +442,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 		return EscrowImportResult{}, fmt.Errorf(
 			"ValidateRegistrantRefs failed: %w. "+
 				"Contacts skipped during IngestContacts: %d. "+
-				"IngestDomains was NOT attempted — no partial data written.",
+				"IngestDomains was NOT attempted — no partial data written",
 			err, cRes.Skipped,
 		)
 	}

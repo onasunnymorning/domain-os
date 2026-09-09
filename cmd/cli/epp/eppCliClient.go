@@ -66,18 +66,6 @@ func main() {
 			Default("epp-ote.centralnic.com").
 			String()
 
-		// cert = kingpin.
-		// 	Flag("cert", "path to the cert to use for tls").
-		// 	Short('c').
-		// 	Default("some-cert-path.cert").
-		// 	String()
-
-		// key = kingpin.
-		// 	Flag("key", "path to the key to use for tls").
-		// 	Short('k').
-		// 	Default("some-key-path.key").
-		// 	String()
-
 		keepAlive = kingpin.
 				Flag("keep-alive", "keep connection to the epp server alive").
 				Short('a').
@@ -151,8 +139,8 @@ func connect(ctx context.Context, host, port string) (*pkg.Client, error) {
 
 	// Create a login data object
 	loginData := &pkg.LoginData{
-		Username: "H1056502248-OTE",
-		Password: "m8u5:}PKy[C1}dBJ",
+		Username: os.Getenv("EPP_USERNAME"),
+		Password: os.Getenv("EPP_PASSWORD"),
 		Namespaces: []string{
 			"urn:ietf:params:xml:ns:host-1.0",
 			"urn:ietf:params:xml:ns:contact-1.0",

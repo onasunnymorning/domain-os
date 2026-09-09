@@ -153,7 +153,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 	gormDB, err := gorm.Open(postgres.Open(dsn))
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, fmt.Sprintf("database \"%s\" does not exist", cfg.DBName)) {
+		if strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
 				log.Println(err)

@@ -37,7 +37,7 @@ func getValidContactEntity() *entities.Contact {
 		Address: a0,
 	}
 
-	c.AddPostalInfo(p0)
+	_ = c.AddPostalInfo(p0) // test setup; a failure here surfaces in the assertions below
 
 	a1 := &entities.Address{
 		Street1:       entities.OptPostalLineType("Plaüa blanca"),
@@ -56,7 +56,7 @@ func getValidContactEntity() *entities.Contact {
 		Address: a1,
 	}
 
-	c.AddPostalInfo(p1)
+	_ = c.AddPostalInfo(p1) // test setup; a failure here surfaces in the assertions below
 
 	return c
 }

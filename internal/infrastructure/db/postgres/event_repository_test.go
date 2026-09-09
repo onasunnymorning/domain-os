@@ -319,6 +319,6 @@ func (s *EventRepositorySuite) TestEncodeDecode() {
 	_, _, err = DecodeCursor("bm9waXBl") // base64("nopipe") — no pipe separator
 	s.Error(err)
 
-	_, _, err = DecodeCursor("bm90LWEtdGltZXN0YW1wfHh4eA==") // base64("not-a-timestamp|xxx")
+	_, _, err = DecodeCursor("bm90LWEtdGltZXN0YW1wfHh4eA==") // decodes to: not-a-timestamp|xxx
 	s.Error(err)
 }

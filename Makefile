@@ -326,14 +326,45 @@ ci-envcheck: ## Check env var registry and deployment contract for drift
 	fi
 	@echo "✅ .env.example is in sync with env registry."
 
-ci-lint: ## Run all linters (Go + Frontend) — advisory, mirrors the "Lint (advisory)" CI job
+ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI job
 	@echo "🔍 Running Go vet..."
 	@go vet ./...
-	@echo "🔍 Running golangci-lint (ADVISORY — does not fail the build; see issue #411)..."
-	@golangci-lint run ./... 2>&1 | tail -5 || true
+	@echo "🔍 Running golangci-lint (BLOCKING)..."
+	@golangci-lint run ./... || { \
+		echo ""; \
+		echo "❌ Lint failed. This pass is enforced as of #411."; \
+		echo "   Fix the finding, or — if it is genuinely not a defect — silence it"; \
+		echo "   at the site with a reason (//nolint:<linter> // why, or #nosec Gxxx -- why)."; \
+		echo "   Never a bare nolint. If a whole rule does not fit this codebase,"; \
+		echo "   make that case in .golangci.yml rather than suppressing it site by site."; \
+		exit 1; \
+	}
 	@echo "🔍 Running frontend linters..."
 	@cd frontend && npm run lint
-	@echo "✅ Linters run. Note: Go findings above are advisory — architectural rules are gated by 'make ci-arch'."
+	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
+
+secrets: ## Scan the working tree for secrets (BLOCKING) — CI only scans new commits
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks not installed:  brew install gitleaks"; \
+		echo "                    or:  go install github.com/zricethezav/gitleaks/v8@latest"; \
+		exit 1; \
+	}
+	@echo "🔐 Scanning the working tree..."
+	@gitleaks dir . --config .gitleaks.toml --redact --no-banner
+	@echo "✅ Working tree is clean."
+
+secrets-history: ## Scan all git history for secrets (informational — findings need rotation, not edits)
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks not installed:  brew install gitleaks"; \
+		echo "                    or:  go install github.com/zricethezav/gitleaks/v8@latest"; \
+		exit 1; \
+	}
+	@echo "🔐 Scanning git history. This is informational: a secret already pushed"
+	@echo "   cannot be un-published by editing a file — it has to be rotated."
+	@gitleaks git . --config .gitleaks.toml --redact --no-banner || true
+	@echo ""
+	@echo "   This repository is public. Anything above was world-readable between"
+	@echo "   the commit that added it and the one that removed it. See #411."
 
 ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Architecture gate" CI job
 	@echo "🏛  Enforcing architectural invariants from docs/INVARIANTS.md..."

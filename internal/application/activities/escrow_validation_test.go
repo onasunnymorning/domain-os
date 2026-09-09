@@ -163,8 +163,8 @@ func xmllintOK(t *testing.T, doc []byte) {
 		t.Skip("xmllint not installed")
 	}
 	p := filepath.Join(t.TempDir(), "doc.xml")
-	require.NoError(t, os.WriteFile(p, doc, 0o644))
-	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("..", "rdereport", "xsd", "eve-schemas.xsd"), p).CombinedOutput()
+	require.NoError(t, os.WriteFile(p, doc, 0o600))
+	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("..", "rdereport", "xsd", "eve-schemas.xsd"), p).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
 	require.NoError(t, err, "%s", out)
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 
@@ -133,8 +134,8 @@ func main() {
 	// UpdateFX (Fast Ops + Drain Data)
 	// activities.UpdateFX (HTTP) is deprecated — registered only to drain
 	// in-flight executions. New runs use FXActivities.UpdateFXRates below.
-	fastOpsWorker.RegisterActivity(activities.UpdateFX)
-	drainDataWorker.RegisterActivity(activities.UpdateFX)
+	fastOpsWorker.RegisterActivity(activities.UpdateFX)   //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
+	drainDataWorker.RegisterActivity(activities.UpdateFX) //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
 
 	// FX Rates Activities (Fast Ops + Drain Data)
 	fxActs, err := activities.NewFXActivities()
@@ -187,8 +188,8 @@ func main() {
 
 	// Lifecycle Basic Activities
 	lifecycleBasicActs := []interface{}{
-		activities.CheckDomainCanAutoRenew,
-		activities.CheckDomainsCanAutoRenew,
+		activities.CheckDomainCanAutoRenew,  //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
+		activities.CheckDomainsCanAutoRenew, //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
 		activities.GetExpiredDomainCount,
 		activities.ListExpiringDomains,
 		activities.AutoRenewDomain,
@@ -300,6 +301,10 @@ func main() {
 
 	// Wait for any worker to exit (error or interrupt)
 	if err := <-errCh; err != nil {
-		log.Fatalln("worker exited with error:", err)
+		log.Println("worker exited with error:", err)
+		// os.Exit skips defers, so close the Temporal client explicitly. The
+		// deferred Close never runs on this path, so it is not closed twice.
+		client.Close()
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: the deferred Close is what the line above just did explicitly, precisely because os.Exit skips it.
 	}
 }

@@ -68,7 +68,7 @@ func checkGolden(t *testing.T, name string, got []byte) {
 	t.Helper()
 	path := filepath.Join("testdata", "golden", name)
 	if os.Getenv("UPDATE_GOLDEN") != "" {
-		require.NoError(t, os.WriteFile(path, got, 0o644))
+		require.NoError(t, os.WriteFile(path, got, 0o600))
 	}
 	want, err := os.ReadFile(path)
 	require.NoError(t, err, "golden missing; run with UPDATE_GOLDEN=1")
@@ -85,8 +85,8 @@ func validateXSD(t *testing.T, doc []byte) {
 		t.Skip("xmllint not installed; install libxml2 to run schema conformance locally")
 	}
 	f := filepath.Join(t.TempDir(), "doc.xml")
-	require.NoError(t, os.WriteFile(f, doc, 0o644))
-	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("xsd", "eve-schemas.xsd"), f).CombinedOutput()
+	require.NoError(t, os.WriteFile(f, doc, 0o600))
+	out, err := exec.Command(xmllint, "--noout", "--schema", filepath.Join("xsd", "eve-schemas.xsd"), f).CombinedOutput() //nolint:gosec // binary path comes from exec.LookPath, arguments are fixed
 	require.NoError(t, err, "xmllint: %s\n--- document ---\n%s", out, doc)
 }
 

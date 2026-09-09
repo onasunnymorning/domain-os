@@ -131,7 +131,9 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 		switch entityType {
 		case "Domain":
 			var id int64
-			fmt.Sscanf(entityID, "%d", &id)
+			if _, serr := fmt.Sscanf(entityID, "%d", &id); serr != nil {
+				continue // unparseable manifest id — deleting row 0 would target the wrong row
+			}
 			domainIDs = append(domainIDs, id)
 			if len(domainIDs) >= batchSize {
 				if err := flushDomains(); err != nil {
@@ -157,7 +159,9 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 			}
 
 			var id int64
-			fmt.Sscanf(entityID, "%d", &id)
+			if _, serr := fmt.Sscanf(entityID, "%d", &id); serr != nil {
+				continue // unparseable manifest id — deleting row 0 would target the wrong row
+			}
 			hostIDs = append(hostIDs, id)
 			if len(hostIDs) >= batchSize {
 				if err := flushHosts(); err != nil {
@@ -177,7 +181,9 @@ func (a *TLDCleanupActivities) DeleteTLDAssets(ctx context.Context, args DeleteT
 			}
 
 			var id int64
-			fmt.Sscanf(entityID, "%d", &id)
+			if _, serr := fmt.Sscanf(entityID, "%d", &id); serr != nil {
+				continue // unparseable manifest id — deleting row 0 would target the wrong row
+			}
 			phaseIDs = append(phaseIDs, id)
 			if len(phaseIDs) >= batchSize {
 				if err := flushPhases(); err != nil {

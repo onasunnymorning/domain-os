@@ -50,5 +50,5 @@ func NewFee(cur, name string, amount uint64, refundable *bool) (*Fee, error) {
 
 // GetMoney returns a money.Money object for that fee
 func (f *Fee) GetMoney() *money.Money {
-	return money.New(int64(f.Amount), f.Currency)
+	return money.New(int64(f.Amount), f.Currency) // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 }

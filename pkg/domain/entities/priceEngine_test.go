@@ -217,7 +217,7 @@ func TestAddGrandFatheringFees(t *testing.T) {
 			priceEngine.Quote, err = NewQuoteFromQuoteRequest(tc.quoteRequest)
 			priceEngine.setQuoteParams()
 			require.NoError(t, err, "Error creating Quote")
-			priceEngine.addGrandFatheringFees()
+			_ = priceEngine.addGrandFatheringFees() // test setup; a failure here surfaces in the assertions below
 			require.Equal(t, tc.expectedPrice, priceEngine.Quote.Price.Amount(), "Price is not correct")
 			if tc.domain.IsGrandFathered() && tc.quoteRequest.TransactionType == TransactionTypeRenewal {
 				require.Equal(t, 1, len(priceEngine.Quote.Fees), "Fees should be 1")
@@ -332,7 +332,7 @@ func TestAddPremiumFees(t *testing.T) {
 			priceEngine.Quote, err = NewQuoteFromQuoteRequest(tc.quoteRequest)
 			priceEngine.setQuoteParams()
 			require.NoError(t, err, "Error creating Quote")
-			priceEngine.addPremiumFees()
+			_ = priceEngine.addPremiumFees() // test setup; a failure here surfaces in the assertions below
 			require.Equal(t, tc.expectedPrice, priceEngine.Quote.Price.Amount(), "Price is not correct")
 			if len(tc.pl) > 0 {
 				require.Equal(t, priceEngine.Quote.Class, tc.pl[0].Class, "Class is not correct")
@@ -473,7 +473,7 @@ func TestAddPhasePrice(t *testing.T) {
 			priceEngine.Quote, err = NewQuoteFromQuoteRequest(tc.quoteRequest)
 			priceEngine.setQuoteParams()
 			require.NoError(t, err, "Error creating Quote")
-			priceEngine.addPhasePrice()
+			_ = priceEngine.addPhasePrice() // test setup; a failure here surfaces in the assertions below
 			require.Equal(t, tc.expectedPrice, priceEngine.Quote.Price.Amount(), "Price is not correct")
 		})
 	}

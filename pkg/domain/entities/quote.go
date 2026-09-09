@@ -45,7 +45,7 @@ func NewQuoteFromQuoteRequest(qr QuoteRequest) (*Quote, error) {
 // AddFeeAndUpdatePrice adds a fee to the quote and update the total price
 func (q *Quote) AddFeeAndUpdatePrice(fee *Fee, yearlyFee bool) error {
 	q.Fees = append(q.Fees, fee)
-	feeMoney := money.New(int64(fee.Amount), fee.Currency)
+	feeMoney := money.New(int64(fee.Amount), fee.Currency) // #nosec G115 -- money amounts are currency minor units, bounded many orders of magnitude below int64 max
 	// if the currency matches no need to convert the currency
 	if feeMoney.Currency() == q.Price.Currency() {
 		// Multiply the fee by the number of years if it is a yearly fee

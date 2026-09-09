@@ -59,7 +59,7 @@ func (suite *UpdateDomainTestSuite) SetupSuite() {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(&updatedDomain)
+			_ = json.NewEncoder(w).Encode(&updatedDomain) // test setup; a failure here surfaces in the assertions below
 		} else if r.URL.Path == "/domains/error-domain/" && r.Method == http.MethodPut {
 			// Mock a failure response
 			w.WriteHeader(http.StatusInternalServerError)
