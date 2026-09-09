@@ -1,0 +1,37 @@
+{
+  "label": "sanitized-pseudonymized",
+  "tenantId": "ryop1",
+  "tld": "example",
+  "syntheticSuffix": "artful-dodger",
+  "sourceValidationRunId": "11111111-1111-4111-8111-111111111111",
+  "sourceDepositId": "22222222-2222-4222-8222-222222222222",
+  "sourceProfile": "ryde+sig",
+  "sourceArtifactSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "derivativeObjectKey": "escrow-validation/ryop1/example/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/sanitized/deposit-rde-baseline-v1.xml.gz",
+  "derivativeSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+  "derivativeBytes": 4096,
+  "policyVersion": "rde-baseline-v1",
+  "workflowVersion": "escrow-sanitize/1",
+  "tokenKeyFingerprint": "SUIZUHAE6RSFWE37",
+  "workflowId": "escrow-sanitize-example-20260909-000000",
+  "runId": "run-1",
+  "outcome": "PASS",
+  "startedAt": "2025-09-08T02:53:20Z",
+  "completedAt": "2025-09-08T02:53:20Z",
+  "sourceElements": 191,
+  "counts": {
+    "objectsByType": {
+      "urn:ietf:params:xml:ns:rdeContact-1.0": 2,
+      "urn:ietf:params:xml:ns:rdeDomain-1.0": 3,
+      "urn:ietf:params:xml:ns:rdeHost-1.0": 2,
+      "urn:ietf:params:xml:ns:rdeIDN-1.0": 1,
+      "urn:ietf:params:xml:ns:rdeNNDN-1.0": 1,
+      "urn:ietf:params:xml:ns:rdeRegistrar-1.0": 1
+    },
+    "kept": 152,
+    "dropped": 14,
+    "synthesized": 4,
+    "tokenized": 11,
+    "rewritten": 10
+  }
+}

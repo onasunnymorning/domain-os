@@ -225,7 +225,7 @@ func BuildXML(o DepositOpts) []byte {
 	if o.OmitDeposit {
 		root = "rde:bundle"
 	}
-	fmt.Fprintf(&b, `<%s xmlns:rde="%s" xmlns:rdeHeader="%s" xmlns:rdeDomain="%s" xmlns:rdeHost="%s" xmlns:rdeContact="%s" xmlns:rdeRegistrar="%s" xmlns:rdeIDN="%s" xmlns:rdeNNDN="%s" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:rdeEppParams="%s" xmlns:vnd="urn:example:vendor-1.0" type="%s" id="%s"`,
+	fmt.Fprintf(&b, `<%s xmlns:rde="%s" xmlns:rdeHeader="%s" xmlns:rdeDomain="%s" xmlns:rdeHost="%s" xmlns:rdeContact="%s" xmlns:rdeRegistrar="%s" xmlns:rdeIDN="%s" xmlns:rdeNNDN="%s" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:epp="urn:ietf:params:xml:ns:epp-1.0" xmlns:rdeEppParams="%s" xmlns:vnd="urn:example:vendor-1.0" type="%s" id="%s"`,
 		root, entities.RDE_URI, entities.RDE_HEADER_URI, entities.DOMAIN_URI, entities.HOST_URI, entities.CONTACT_URI, entities.REGISTRAR_URI, entities.IDN_URI, entities.NNDN_URI, entities.EPP_PARAMS_URI, o.Kind, o.ID)
 	if o.PrevID != "" {
 		fmt.Fprintf(&b, ` prevId="%s"`, o.PrevID)
@@ -271,7 +271,7 @@ func BuildXML(o DepositOpts) []byte {
       <rdeRegistrar:id>registrar%d</rdeRegistrar:id>
       <rdeRegistrar:name>Registrar %d</rdeRegistrar:name>
       <rdeRegistrar:gurid>%d</rdeRegistrar:gurid>
-      <rdeRegistrar:status s="ok"/>
+      <rdeRegistrar:status>ok</rdeRegistrar:status>
       <rdeRegistrar:postalInfo type="int">
         <rdeRegistrar:addr>
           <rdeRegistrar:street>1 Test Street</rdeRegistrar:street>
@@ -306,11 +306,11 @@ func BuildXML(o DepositOpts) []byte {
 		disclose := ""
 		if o.Disclose {
 			disclose = `      <rdeContact:disclose flag="0">
-        <rdeContact:name type="int"/>
-        <rdeContact:org type="int"/>
-        <rdeContact:addr type="int"/>
-        <rdeContact:voice/>
-        <rdeContact:email/>
+        <contact:name type="int"/>
+        <contact:org type="int"/>
+        <contact:addr type="int"/>
+        <contact:voice/>
+        <contact:email/>
       </rdeContact:disclose>
 `
 		}
@@ -326,14 +326,14 @@ func BuildXML(o DepositOpts) []byte {
       <rdeContact:roid>%d_CONT-APEX</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <rdeContact:name>Contact %d</rdeContact:name>
-        <rdeContact:org>%s</rdeContact:org>
-        <rdeContact:addr>
-          <rdeContact:street>%d Test Street</rdeContact:street>
-          <rdeContact:city>Testville</rdeContact:city>
-          <rdeContact:pc>12345</rdeContact:pc>
-          <rdeContact:cc>US</rdeContact:cc>
-        </rdeContact:addr>
+        <contact:name>%s</contact:name>
+        <contact:org>%s</contact:org>
+        <contact:addr>
+          <contact:street>%d Test Street</contact:street>
+          <contact:city>Testville</contact:city>
+          <contact:pc>12345</contact:pc>
+          <contact:cc>US</contact:cc>
+        </contact:addr>
       </rdeContact:postalInfo>
       <rdeContact:voice>+1.555555%04d</rdeContact:voice>
       <rdeContact:email>contact%d@example.com</rdeContact:email>
@@ -414,8 +414,8 @@ func BuildXML(o DepositOpts) []byte {
 		// that touched only one of them would desynchronise the pair.
 		fmt.Fprintf(&b, `    <rdeDomain:domain>
       <rdeDomain:name>xn--nxasmm1c.%s</rdeDomain:name>
-      <rdeDomain:uName>βόλος.%s</rdeDomain:uName>
       <rdeDomain:roid>IDN_DOM-APEX</rdeDomain:roid>
+      <rdeDomain:uName>βόλος.%s</rdeDomain:uName>
       <rdeDomain:idnTableId>Greek</rdeDomain:idnTableId>
       <rdeDomain:status s="ok"/>
       <rdeDomain:registrant>CONT1</rdeDomain:registrant>
@@ -446,15 +446,15 @@ func BuildXML(o DepositOpts) []byte {
       <rdeEppParams:lang>en</rdeEppParams:lang>
       <rdeEppParams:objURI>urn:ietf:params:xml:ns:domain-1.0</rdeEppParams:objURI>
       <rdeEppParams:svcExtension>
-        <rdeEppParams:extURI>urn:ietf:params:xml:ns:secDNS-1.1</rdeEppParams:extURI>
+        <epp:extURI>urn:ietf:params:xml:ns:secDNS-1.1</epp:extURI>
       </rdeEppParams:svcExtension>
       <rdeEppParams:dcp>
-        <rdeEppParams:access><rdeEppParams:all/></rdeEppParams:access>
-        <rdeEppParams:statement>
-          <rdeEppParams:purpose><rdeEppParams:admin/><rdeEppParams:prov/></rdeEppParams:purpose>
-          <rdeEppParams:recipient><rdeEppParams:ours/><rdeEppParams:public/></rdeEppParams:recipient>
-          <rdeEppParams:retention><rdeEppParams:stated/></rdeEppParams:retention>
-        </rdeEppParams:statement>
+        <epp:access><epp:all/></epp:access>
+        <epp:statement>
+          <epp:purpose><epp:admin/><epp:prov/></epp:purpose>
+          <epp:recipient><epp:ours/></epp:recipient>
+          <epp:retention><epp:stated/></epp:retention>
+        </epp:statement>
       </rdeEppParams:dcp>
     </rdeEppParams:eppParams>
 `)

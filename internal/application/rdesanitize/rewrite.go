@@ -319,7 +319,7 @@ func (s *rewriteState) copyToken(tok xml.Token, at time.Time) bool {
 		s.action = s.currentAction()
 	case xml.CharData:
 		s.flushPending()
-		xml.EscapeText(s.w, t) //nolint:errcheck // buffered writer, flush reports
+		writeText(s.w, string(t))
 	}
 	return true
 }
@@ -346,7 +346,7 @@ func (s *rewriteState) endElement(t xml.EndElement, at time.Time) bool {
 		}
 		s.w.Write(s.pending)
 		s.pending = nil
-		xml.EscapeText(s.w, []byte(out)) //nolint:errcheck // buffered writer, flush reports
+		writeText(s.w, out)
 		s.w.WriteString(s.endTag(t.Name))
 	} else if s.pending != nil {
 		// Nothing between the tags: keep the source's self-closing form.
@@ -375,7 +375,7 @@ func (s *rewriteState) charData(t xml.CharData, at time.Time) bool {
 	switch s.action.Kind {
 	case ActKeep, ActKeepSubtree:
 		s.flushPending()
-		xml.EscapeText(s.w, t) //nolint:errcheck // buffered writer, flush reports
+		writeText(s.w, string(t))
 		return true
 	default:
 		// A substituted element's text is buffered and never written, never
@@ -563,6 +563,14 @@ func (s *rewriteState) flushPending() {
 		s.pending = nil
 	}
 }
+
+// textEscaper escapes only what character data must escape. encoding/xml's
+// EscapeText also turns newlines and tabs into character references, which
+// would mangle the source's layout and, outside the root element, turn
+// whitespace into text and make the derivative unparseable.
+var textEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\r", "&#xD;")
+
+func writeText(w *bufio.Writer, s string) { _, _ = textEscaper.WriteString(w, s) }
 
 var attrEscaper = strings.NewReplacer(
 	"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",
