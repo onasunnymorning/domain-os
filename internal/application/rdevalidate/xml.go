@@ -49,11 +49,15 @@ type objectResult struct {
 	// DecodeErr is a failure to decode the element at all.
 	DecodeErr error
 
-	// Declares is the identifier this object adds to the deposit's namespace:
-	// a contact id or a host name. Refs are the contact ids and RefHosts the
-	// nameservers it points at. They feed crossRef and nothing else — they are
-	// payload values and must never reach a finding.
-	Declares string
+	// Name is the object's own identifier as the deposit wrote it — a domain
+	// or host name, a contact or registrar id, an NNDN aName, an IDN table
+	// id. It is what a finding carries as its Object, and for a contact or a
+	// host it is also the identifier the object adds to the deposit's
+	// namespace, which crossRef indexes. Empty when the element did not
+	// decode, or when the identifier is itself the element that is missing.
+	Name string
+	// Refs are the contact ids and RefHosts the nameservers this object
+	// points at. They feed crossRef and nothing else.
 	Refs     []string
 	RefHosts []string
 }
@@ -90,11 +94,18 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 	}
 	summary := DepositSummary{Observed: map[string]int{}}
 	var findings []Finding
-	addRuled := func(code Code, sev Severity, stage Stage, objType, locator, rule, msg string) {
+	// addObject is the full form. object is the identifier the finding is
+	// about, straight from the deposit; every other string here is a constant
+	// template. addRuled and add are the shapes for findings that name no
+	// single object — a header, a count, the deposit itself.
+	addObject := func(code Code, sev Severity, stage Stage, objType, object, locator, rule, msg string) {
 		findings = append(findings, Finding{
 			Code: code, Severity: sev, Stage: stage, Rule: rule,
-			ObjectType: objType, Locator: locator, Message: msg, At: now(),
+			ObjectType: objType, Object: object, Locator: locator, Message: msg, At: now(),
 		})
+	}
+	addRuled := func(code Code, sev Severity, stage Stage, objType, locator, rule, msg string) {
+		addObject(code, sev, stage, objType, "", locator, rule, msg)
 	}
 	add := func(code Code, sev Severity, stage Stage, objType, locator, msg string) {
 		addRuled(code, sev, stage, objType, locator, "", msg)
@@ -200,15 +211,17 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 				add(CodeXMLMalformed, SeverityError, StageXML, "", "line="+itoa(syn.Line), "deposit XML is not well-formed")
 				return summary, findings
 			case out.DecodeErr != nil:
-				add(CodeRDEObjectDecodeError, SeverityError, StageRDE, spec.name, locator, "object could not be decoded")
+				// out.Name is empty here: the element did not decode, so
+				// there is no identifier to report.
+				addObject(CodeRDEObjectDecodeError, SeverityError, StageRDE, spec.name, out.Name, locator, "", "object could not be decoded")
 			case out.Missing != nil:
 				// The element names come from requireAll's own constant list,
 				// never from the deposit, so they are safe as a rule.
-				addRuled(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, locator,
+				addObject(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, out.Name, locator,
 					"missing RDE-required element(s): "+out.Missing.Error(),
 					"object is missing an RDE-required element: "+out.Missing.Error())
 			case out.Rejected != nil:
-				addRuled(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, locator, out.Rule,
+				addObject(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, out.Name, locator, out.Rule,
 					"object is well-formed but this registry would not import it as it stands: "+out.Rule)
 			}
 			ordinal := summary.Observed[spec.uri] + 1
@@ -251,7 +264,7 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 
 	// Referential integrity across the whole deposit. It runs last because it
 	// is the only check that needs to have seen every object.
-	xref.report(addRuled)
+	xref.report(addObject)
 	return summary, findings
 }
 
@@ -327,7 +340,7 @@ func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	// What the domain points at. Collected even when the object is rejected
 	// below: a domain with a bad roid still uses its contacts and nameservers,
 	// and calling them orphans because of it would be wrong.
-	res := objectResult{Refs: domainContacts(&d), RefHosts: domainHosts(&d)}
+	res := objectResult{Name: string(d.Name), Refs: domainContacts(&d), RefHosts: domainHosts(&d)}
 
 	req := requireAll("name", string(d.Name), "roid", d.RoID, "clID", d.ClID)
 	if req == nil && len(d.Status) == 0 {
@@ -356,7 +369,7 @@ func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if req == nil && len(c.PostalInfo) == 0 {
 		req = errors.New("postalInfo")
 	}
-	res := objectResult{Declares: c.ID}
+	res := objectResult{Name: c.ID}
 	if req != nil {
 		res.Missing = req
 		return res
@@ -378,7 +391,7 @@ func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	if req == nil && len(h.Status) == 0 {
 		req = errors.New("status")
 	}
-	res := objectResult{Declares: h.Name}
+	res := objectResult{Name: h.Name}
 	if req != nil {
 		res.Missing = req
 		return res
@@ -397,12 +410,15 @@ func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	// RFC 9022 §7.1: only id and name are required. gurid, status, postalInfo,
 	// voice, fax, email, url, whoisInfo, crDate and upDate are all
 	// minOccurs="0" — a registrar with no postal address is conformant.
-	req := requireAll("id", r.ID, "name", r.Name)
-	if req != nil {
-		return objectResult{Missing: req}
+	res := objectResult{Name: r.ID}
+	if req := requireAll("id", r.ID, "name", r.Name); req != nil {
+		res.Missing = req
+		return res
 	}
 	_, err := r.ToEntity()
-	return objectResult{Rejected: err, Rule: entityRule(err, "crDate", r.CrDate, "upDate", r.UpDate)}
+	res.Rejected = err
+	res.Rule = entityRule(err, "crDate", r.CrDate, "upDate", r.UpDate)
+	return res
 }
 
 func decodeIDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
@@ -412,7 +428,7 @@ func decodeIDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	}
 	// RFC 9022 §8.1: url and urlPolicy are required elements and id is a
 	// required attribute of idnTableRef.
-	return objectResult{Missing: requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy)}
+	return objectResult{Name: i.ID, Missing: requireAll("id", i.ID, "url", i.Url, "urlPolicy", i.UrlPolicy)}
 }
 
 func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
@@ -421,7 +437,7 @@ func decodeNNDN(dec *xml.Decoder, se *xml.StartElement) objectResult {
 		return objectResult{DecodeErr: err}
 	}
 	// RFC 9022 §9.1: aName and nameState are required; crDate is not.
-	return objectResult{Missing: requireAll("aName", n.AName, "nameState", n.NameState)}
+	return objectResult{Name: n.AName, Missing: requireAll("aName", n.AName, "nameState", n.NameState)}
 }
 
 // domainContacts is every contact id the domain points at: the registrant and
