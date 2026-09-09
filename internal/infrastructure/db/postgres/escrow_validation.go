@@ -57,6 +57,7 @@ type EscrowValidationRunRecord struct {
 	Outcome                  string `gorm:"not null;index"`
 	StageReached             string
 	Findings                 []byte `gorm:"type:jsonb"`
+	FindingTally             []byte `gorm:"type:jsonb"`
 	SigningKeyFingerprint    string
 	DecryptionKeyFingerprint string
 	PlaintextSHA256          string
@@ -64,6 +65,7 @@ type EscrowValidationRunRecord struct {
 	RDEKind                  string
 	RDEResend                int
 	RDEWatermark             *time.Time
+	SummaryObjectKey         string
 	ReportObjectKey          string
 	NotificationObjectKey    string
 	NotificationStatus       string
@@ -122,14 +124,22 @@ func toDBEscrowValidationRun(r *entities.EscrowValidationRun) (*EscrowValidation
 	if err != nil {
 		return nil, fmt.Errorf("encode findings: %w", err)
 	}
+	tally := r.FindingTally
+	if tally == nil {
+		tally = []entities.EscrowFindingTally{}
+	}
+	rawTally, err := json.Marshal(tally)
+	if err != nil {
+		return nil, fmt.Errorf("encode finding tally: %w", err)
+	}
 	return &EscrowValidationRunRecord{
 		ID: r.ID, DepositID: r.DepositID, TenantID: r.TenantID.String(), TLD: r.TLD,
 		WorkflowID: r.WorkflowID, RunID: r.RunID, Profile: r.Profile,
-		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: raw,
+		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: raw, FindingTally: rawTally,
 		SigningKeyFingerprint: r.SigningKeyFingerprint, DecryptionKeyFingerprint: r.DecryptionKeyFingerprint,
 		PlaintextSHA256: r.PlaintextSHA256,
 		RDEDepositID:    r.RDEDepositID, RDEKind: r.RDEKind, RDEResend: r.RDEResend, RDEWatermark: r.RDEWatermark,
-		ReportObjectKey: r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey,
+		SummaryObjectKey: r.SummaryObjectKey, ReportObjectKey: r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey,
 		NotificationStatus: string(r.NotificationStatus),
 		StartedAt:          r.StartedAt, CompletedAt: r.CompletedAt,
 	}, nil
@@ -142,14 +152,20 @@ func fromDBEscrowValidationRun(r *EscrowValidationRunRecord) (*entities.EscrowVa
 			return nil, fmt.Errorf("decode findings: %w", err)
 		}
 	}
+	tally := []entities.EscrowFindingTally{}
+	if len(r.FindingTally) > 0 {
+		if err := json.Unmarshal(r.FindingTally, &tally); err != nil {
+			return nil, fmt.Errorf("decode finding tally: %w", err)
+		}
+	}
 	return &entities.EscrowValidationRun{
 		ID: r.ID, DepositID: r.DepositID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD,
 		WorkflowID: r.WorkflowID, RunID: r.RunID, Profile: r.Profile,
-		Outcome: entities.EscrowValidationOutcome(r.Outcome), StageReached: r.StageReached, Findings: findings,
+		Outcome: entities.EscrowValidationOutcome(r.Outcome), StageReached: r.StageReached, Findings: findings, FindingTally: tally,
 		SigningKeyFingerprint: r.SigningKeyFingerprint, DecryptionKeyFingerprint: r.DecryptionKeyFingerprint,
 		PlaintextSHA256: r.PlaintextSHA256,
 		RDEDepositID:    r.RDEDepositID, RDEKind: r.RDEKind, RDEResend: r.RDEResend, RDEWatermark: r.RDEWatermark,
-		ReportObjectKey: r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey,
+		SummaryObjectKey: r.SummaryObjectKey, ReportObjectKey: r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey,
 		NotificationStatus: entities.EscrowNotificationStatus(r.NotificationStatus),
 		StartedAt:          r.StartedAt, CompletedAt: r.CompletedAt,
 	}, nil
@@ -294,6 +310,7 @@ func (r *GormEscrowValidationRunRepository) Finalize(ctx context.Context, scope 
 			"outcome":                    rec.Outcome,
 			"stage_reached":              rec.StageReached,
 			"findings":                   rec.Findings,
+			"finding_tally":              rec.FindingTally,
 			"signing_key_fingerprint":    rec.SigningKeyFingerprint,
 			"decryption_key_fingerprint": rec.DecryptionKeyFingerprint,
 			"plaintext_sha256":           rec.PlaintextSHA256,
@@ -301,6 +318,7 @@ func (r *GormEscrowValidationRunRepository) Finalize(ctx context.Context, scope 
 			"rde_kind":                   rec.RDEKind,
 			"rde_resend":                 rec.RDEResend,
 			"rde_watermark":              rec.RDEWatermark,
+			"summary_object_key":         rec.SummaryObjectKey,
 			"report_object_key":          rec.ReportObjectKey,
 			"notification_object_key":    rec.NotificationObjectKey,
 			"notification_status":        rec.NotificationStatus,

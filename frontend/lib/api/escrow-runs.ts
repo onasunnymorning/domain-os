@@ -24,6 +24,18 @@ export interface EscrowFinding {
   locator?: string;
 }
 
+/**
+ * One kind of finding with its exact count. `findings` on a run stops at 1,000
+ * entries; this does not, so it is the only place a run says how many times a
+ * code actually fired.
+ */
+export interface EscrowFindingTally {
+  code: string;
+  severity: string;
+  stage: string;
+  count: number;
+}
+
 export interface EscrowValidationRun {
   id: string;
   depositId: string;
@@ -35,11 +47,17 @@ export interface EscrowValidationRun {
   verified: boolean;
   stageReached?: string;
   findings: EscrowFinding[];
+  /** Exact where `findings` is truncated. Empty on runs recorded before #420. */
+  findingTally: EscrowFindingTally[];
   plaintextSha256?: string;
   rdeDepositId?: string;
   rdeKind?: string;
   rdeResend: number;
   rdeWatermark?: string;
+  signingKeyFingerprint?: string;
+  decryptionKeyFingerprint?: string;
+  /** Written for every run that produced a result, an ERROR one included. */
+  summaryObjectKey?: string;
   reportObjectKey?: string;
   notificationObjectKey?: string;
   notificationStatus?: string;
@@ -80,6 +98,82 @@ export interface EscrowSanitizationRun {
   counts: EscrowSanitizationCounts;
   startedAt: string;
   completedAt?: string;
+}
+
+export interface EscrowDeposit {
+  id: string;
+  tld: string;
+  profile: string;
+  receivedAt: string;
+  submittedBy?: string;
+  intakeRef?: string;
+  artifactObjectKey: string;
+  artifactSha256: string;
+  artifactBytes: number;
+  signatureObjectKey?: string;
+  signatureSha256?: string;
+  signatureBytes?: number;
+  createdAt: string;
+}
+
+/** GET /escrow/validations/:id returns the run with the deposit it bound. */
+export interface EscrowValidationRunDetail {
+  run: EscrowValidationRun;
+  deposit?: EscrowDeposit;
+}
+
+/**
+ * The findings summary written to the reports bucket as `summary.json`.
+ *
+ * It is the only artifact carrying the findings, and its `byCode` tally is the
+ * only exact account of a deposit that is wrong in more places than the run
+ * record can hold (`retained` stops at 1000).
+ */
+export interface EscrowValidationSummary {
+  schemaVersion: string;
+  tenantId: string;
+  tld: string;
+  profile: string;
+  depositId: string;
+  validationRunId: string;
+  correlationId: string;
+  traceId?: string;
+  outcome: string;
+  stageReached: string;
+  verified: boolean;
+  notificationStatus?: string;
+  receivedAt: string;
+  startedAt: string;
+  validatedAt: string;
+  completedAt: string;
+  deposit: {
+    id?: string;
+    prevId?: string;
+    kind?: string;
+    resend: number;
+    watermark?: string;
+    headerFound: boolean;
+    layout?: string;
+    counts: Array<{ uri: string; declared?: number; observed: number; matches: boolean }>;
+  };
+  digests: { artifactSha256?: string; signatureSha256?: string; plaintextSha256?: string };
+  keys: { signingFingerprint?: string; decryptionFingerprint?: string; innerSigned?: boolean };
+  findings: {
+    total: number;
+    retained: number;
+    suppressed: number;
+    bySeverity: Record<string, number>;
+    byStage: Record<string, number>;
+    byCode: Array<{
+      code: string;
+      severity: string;
+      stage: string;
+      count: number;
+      errorClass?: boolean;
+    }>;
+    sample?: EscrowFinding[];
+  };
+  artifacts?: Record<string, string>;
 }
 
 export interface EscrowListResponse<T> {
@@ -131,6 +225,18 @@ export async function listEscrowValidations(
   params?: { tld?: string; outcome?: string; pagesize?: number; cursor?: string }
 ): Promise<EscrowListResponse<EscrowValidationRun>> {
   const { data } = await apiClient.get('/escrow/validations', { ...scoped(tenantId), params });
+  return data;
+}
+
+/**
+ * Fetch one validation run with the deposit it bound.
+ * GET /escrow/validations/:id
+ */
+export async function getEscrowValidation(
+  tenantId: string,
+  id: string
+): Promise<EscrowValidationRunDetail> {
+  const { data } = await apiClient.get(`/escrow/validations/${id}`, scoped(tenantId));
   return data;
 }
 
