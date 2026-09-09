@@ -29,15 +29,26 @@ const (
 
 // Finding is one reason code with its position. Message and Locator must be
 // built from constant templates and numbers only — never from element names,
-// attribute values or payload text. A finding is copied verbatim into the run
-// record and into logs, so anything placed here is published.
+// attribute values or payload text.
 type Finding struct {
-	Code     Code      `json:"code"`
-	Severity Severity  `json:"severity"`
-	Stage    Stage     `json:"stage"`
-	Locator  string    `json:"locator,omitempty"`
-	Message  string    `json:"message"`
-	At       time.Time `json:"at"`
+	Code     Code     `json:"code"`
+	Severity Severity `json:"severity"`
+	Stage    Stage    `json:"stage"`
+	// Object names the thing the profile does not classify, in the shape the
+	// profile itself uses: a namespace URI, an element key "alias:local", or
+	// an attribute "alias:local@name". It is the entire actionable content of
+	// a POLICY_UNKNOWN_* finding — without it the operator knows only that
+	// something at element[N] was refused.
+	//
+	// It is the one field built from the source rather than from a constant
+	// template, and by construction it is a name this profile does NOT
+	// recognise, so it is untrusted deposit content. Its reach is fenced: it
+	// goes to the run record, which is tenant-scoped and read behind the
+	// API's authorisation, and nowhere else. The log line carries codes only.
+	Object  string    `json:"object,omitempty"`
+	Locator string    `json:"locator,omitempty"`
+	Message string    `json:"message"`
+	At      time.Time `json:"at"`
 }
 
 // FindingTally counts every finding of one kind the run produced, including
@@ -47,14 +58,26 @@ type FindingTally struct {
 	Code     Code     `json:"code"`
 	Severity Severity `json:"severity"`
 	Stage    Stage    `json:"stage"`
-	Count    int      `json:"count"`
+	// Object splits a code across the distinct things it fired on, which for
+	// a POLICY_UNKNOWN_* code is the whole point: one row per gap in the
+	// profile, with the exact number of times the source used it.
+	Object string `json:"object,omitempty"`
+	Count  int    `json:"count"`
 }
 
 type tallyKey struct {
 	code     Code
 	severity Severity
 	stage    Stage
+	object   string
 }
+
+// MaxTallyRows bounds how many distinct kinds the tally distinguishes. The
+// object of a policy finding is a name from the source, so without a ceiling a
+// deliberately varied deposit could make the tally the largest thing in the
+// run record. Past the ceiling a new kind is still counted, under its code
+// alone.
+const MaxTallyRows = 500
 
 // Result is the complete, serialisable outcome of one rewrite.
 type Result struct {
@@ -85,10 +108,19 @@ func (r *Result) Add(f Finding) {
 		r.tally = make(map[tallyKey]int)
 		r.retained = make(map[tallyKey]int)
 	}
-	k := tallyKey{f.Code, f.Severity, f.Stage}
+	k := tallyKey{f.Code, f.Severity, f.Stage, f.Object}
+	if _, known := r.tally[k]; !known && len(r.tally) >= MaxTallyRows {
+		k = tallyKey{code: f.Code, severity: f.Severity, stage: f.Stage}
+	}
 	r.tally[k]++
 
 	quota := MaxFindingsPerKind
+	if f.Object != "" {
+		// The kind is already distinguished by the thing it fired on, so one
+		// worked example of that exact object says everything fifty identical
+		// copies would. The tally still counts every occurrence.
+		quota = 1
+	}
 	if len(r.Findings) >= MaxFindings {
 		// The list is full. Only a kind with nothing to show still gets in,
 		// which bounds the overshoot by the number of distinct kinds.
@@ -162,7 +194,7 @@ func (r *Result) Codes() []Code {
 func (r *Result) materialiseTally() []FindingTally {
 	out := make([]FindingTally, 0, len(r.tally))
 	for k, n := range r.tally {
-		out = append(out, FindingTally{Code: k.code, Severity: k.severity, Stage: k.stage, Count: n})
+		out = append(out, FindingTally{Code: k.code, Severity: k.severity, Stage: k.stage, Object: k.object, Count: n})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
@@ -172,7 +204,10 @@ func (r *Result) materialiseTally() []FindingTally {
 		if a.Severity != b.Severity {
 			return a.Severity < b.Severity
 		}
-		return a.Code < b.Code
+		if a.Code != b.Code {
+			return a.Code < b.Code
+		}
+		return a.Object < b.Object
 	})
 	return out
 }
@@ -242,7 +277,7 @@ func ToEntityFindings(fs []Finding) []entities.EscrowFinding {
 	for _, f := range fs {
 		out = append(out, entities.EscrowFinding{
 			Code: string(f.Code), Severity: string(f.Severity), Stage: string(f.Stage),
-			Locator: f.Locator, Message: f.Message, At: f.At,
+			Object: f.Object, Locator: f.Locator, Message: f.Message, At: f.At,
 		})
 	}
 	return out
