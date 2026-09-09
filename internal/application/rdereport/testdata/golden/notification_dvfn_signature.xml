@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdeNotification:notification xmlns:rdeNotification="urn:ietf:params:xml:ns:rdeNotification-1.0" xmlns:rdeReport="urn:ietf:params:xml:ns:rdeReport-1.0" xmlns:rdeHeader="urn:ietf:params:xml:ns:rdeHeader-1.0" xmlns:iirdea="urn:ietf:params:xml:ns:iirdea-1.0">
+  <rdeNotification:deaName>domain-os EVE (test)</rdeNotification:deaName>
+  <rdeNotification:version>1</rdeNotification:version>
+  <rdeNotification:repDate>2026-09-07</rdeNotification:repDate>
+  <rdeNotification:status>DVFN</rdeNotification:status>
+  <rdeNotification:results>
+    <iirdea:result code="4103">
+      <iirdea:msg>Detached signature does not verify over the deposit.</iirdea:msg>
+      <iirdea:description>signature does not verify over the deposit: the artifact or the signature was altered</iirdea:description>
+    </iirdea:result>
+  </rdeNotification:results>
+  <rdeNotification:reDate>2026-09-08T03:15:00Z</rdeNotification:reDate>
+  <rdeNotification:vaDate>2026-09-08T05:15:00Z</rdeNotification:vaDate>
+  <rdeReport:report>
+    <rdeReport:id>20260907001</rdeReport:id>
+    <rdeReport:version>1</rdeReport:version>
+    <rdeReport:rydeSpecEscrow>RFC8909</rdeReport:rydeSpecEscrow>
+    <rdeReport:rydeSpecMapping>RFC9022</rdeReport:rydeSpecMapping>
+    <rdeReport:resend>0</rdeReport:resend>
+    <rdeReport:crDate>2026-09-08T00:15:00Z</rdeReport:crDate>
+    <rdeReport:kind>FULL</rdeReport:kind>
+    <rdeReport:watermark>2026-09-07T00:00:00Z</rdeReport:watermark>
+    <rdeHeader:header>
+      <rdeHeader:tld>example</rdeHeader:tld>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeDomain-1.0">0</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeHost-1.0">0</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeContact-1.0">0</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeRegistrar-1.0">0</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeIDN-1.0">0</rdeHeader:count>
+      <rdeHeader:count uri="urn:ietf:params:xml:ns:rdeNNDN-1.0">0</rdeHeader:count>
+    </rdeHeader:header>
+  </rdeReport:report>
+</rdeNotification:notification>

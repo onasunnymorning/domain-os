@@ -71,6 +71,21 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "escrowImport.doc.md",
 		},
 		{
+			Key:         "escrow-validation",
+			Name:        "Escrow Validation (EVE)",
+			Description: "Verifies a signed and encrypted RDE deposit (.ryde + .sig): signature, decryption, safe unpack, strict XML checks, DVPN/DVFN notification. Never imports.",
+			Queue:       temporal.QueueHeavyBatch,
+			Category:    "data",
+			Tags:        []string{"data", "escrow", "eve", "GO"},
+			Steps: []WorkflowStep{
+				{Key: "bind-deposit", Label: "Bind Deposit", ActivityName: "BindDeposit"},
+				{Key: "validate-artifacts", Label: "Verify, Decrypt & Validate", ActivityName: "ValidateArtifacts"},
+				{Key: "emit-report", Label: "Emit Report & Notification", ActivityName: "EmitReportAndNotification"},
+				{Key: "finalize-run", Label: "Finalize Run", ActivityName: "FinalizeValidationRun"},
+			},
+			docFile: "escrowValidation.doc.md",
+		},
+		{
 			Key:         "tld-cleanup",
 			Name:        "TLD Cleanup",
 			Description: "Backs up and removes all assets associated with a TLD after confirmation",

@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 type MockDNSRecordRepository struct {
@@ -540,3 +540,12 @@ func TestTLDService_CreateTLD_NoDepsSkipsProvisioning(t *testing.T) {
 	// No panic, no error — silently skips
 }
 
+// GetByNameForOperator returns a TLD by name only if its RyID matches the scope.
+func (repo *MocktldRepository) GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
+	for _, tld := range repo.Tlds {
+		if tld.Name.String() == name && tld.RyID.String() == scope.String() {
+			return tld, nil
+		}
+	}
+	return nil, entities.ErrTLDNotFound
+}

@@ -160,6 +160,23 @@ var Registry = []EnvVar{
 	{Name: "KNOWLEDGE_BASE_DIR", Services: []Service{ServiceAPI, ServiceCLI}, Description: "Root directory for knowledge base docs (docs/index.yaml). Falls back to working directory."},
 
 	// ═══════════════════════════════════════════
+	// ESCROW VALIDATION (EVE) — issue #412, ADR-0007
+	//
+	// The private keyring is custody material: it belongs to the secrets service
+	// and reaches the worker only by injection. Limits are configuration, not
+	// constants (design constraint 7). When the keyring is unset the worker logs
+	// a warning and does not register the validation activities.
+	// ═══════════════════════════════════════════
+	{Name: "ESCROW_VALIDATION_PRIVATE_KEYS", Services: []Service{ServiceWorker}, Secret: true, Description: "ASCII-armored OpenPGP private key block(s), concatenated, used to decrypt inbound .ryde deposits. Hold every non-retired key so deposits encrypted to the previous key still open during rollover. Never place in general config"},
+	{Name: "ESCROW_VALIDATION_PRIVATE_KEY_PASSPHRASE", Services: []Service{ServiceWorker}, Secret: true, Description: "Passphrase protecting the keys in ESCROW_VALIDATION_PRIVATE_KEYS (one passphrase for the whole ring)"},
+	{Name: "ESCROW_VALIDATION_DEA_NAME", Services: []Service{ServiceWorker}, Default: "domain-os EVE", Description: "Data Escrow Agent name written into rdeNotification:deaName (1-255 characters)"},
+	{Name: "ESCROW_VALIDATION_MAX_COMPRESSED_BYTES", Services: []Service{ServiceWorker}, Default: "10737418240", Description: "Largest .ryde artifact accepted for validation, in bytes (default 10 GiB)"},
+	{Name: "ESCROW_VALIDATION_MAX_UNPACKED_BYTES", Services: []Service{ServiceWorker}, Default: "53687091200", Description: "Cumulative plaintext budget across every decompression layer of one deposit, in bytes (default 50 GiB); stops archive bombs"},
+	{Name: "ESCROW_VALIDATION_MAX_FILES", Services: []Service{ServiceWorker}, Default: "8", Description: "Maximum tar entries inside a deposit archive"},
+	{Name: "ESCROW_VALIDATION_MAX_NESTING", Services: []Service{ServiceWorker}, Default: "2", Description: "Maximum decompression layers (gzip inside gzip, gzip inside tar) inside a deposit"},
+	{Name: "ESCROW_VALIDATION_TIMEOUT", Services: []Service{ServiceWorker}, Default: "2h", Description: "Wall-clock bound for validating one deposit (Go duration)"},
+
+	// ═══════════════════════════════════════════
 	// FRONTEND (NEXT_PUBLIC_*)
 	//
 	// These are read at container start by next-runtime-env, not baked into the

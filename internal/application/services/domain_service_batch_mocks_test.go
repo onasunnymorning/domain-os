@@ -234,3 +234,11 @@ func newTestBatchDomainService(
 	roidSvc := NewRoidService(idgen)
 	return NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premiumRepo, fxRepo, rarRepo, eventPub)
 }
+
+func (m *mockTLDRepository) GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
+	args := m.Called(ctx, scope, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.TLD), args.Error(1)
+}

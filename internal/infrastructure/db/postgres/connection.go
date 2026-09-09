@@ -36,6 +36,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&ZoneSlavingRecord{},
 		&SerialCheckRunRecord{},
 		&SerialObservationRecord{},
+		&EscrowDepositRecord{},
+		&EscrowValidationRunRecord{},
+		&EscrowTrustedKeyRecord{},
 	)
 	if err != nil {
 		return err
@@ -70,6 +73,12 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_trace_id ON domain_events (trace_id) WHERE trace_id != ''",
 		// domain_events: partial index on correlation_id for correlation-filtered event search queries
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_correlation_id ON domain_events (correlation_id) WHERE correlation_id != ''",
+		// escrow_deposits: one record per exact artifact pair per tenant/TLD — a replay binds to it, a concurrent duplicate bind fails (issue #412)
+		"CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_deposits_tenant_tld_digests ON escrow_deposits (tenant_id, tld, ryde_sha256, sig_sha256)",
+		// escrow_validation_runs: runs for one deposit, newest first (ListByDeposit)
+		"CREATE INDEX IF NOT EXISTS idx_escrow_validation_runs_deposit_started ON escrow_validation_runs (deposit_id, started_at DESC)",
+		// escrow_trusted_keys: ListActive predicate (tenant, tld, window)
+		"CREATE INDEX IF NOT EXISTS idx_escrow_trusted_keys_tenant_tld_valid ON escrow_trusted_keys (tenant_id, tld, valid_from)",
 	}
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {

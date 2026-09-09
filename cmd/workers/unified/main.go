@@ -97,6 +97,7 @@ func main() {
 
 	// Heavy Batch
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
+	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.SeedFromSnapshotWorkflow)
@@ -152,6 +153,15 @@ func main() {
 	// Escrow Import (Heavy Batch + Drain Data)
 	heavyBatchWorker.RegisterActivity(&activities.EscrowImportActivities{})
 	drainDataWorker.RegisterActivity(&activities.EscrowImportActivities{})
+
+	// Escrow Validation / EVE (Heavy Batch). Declines to register when the
+	// decryption keyring or its stores are not configured (issue #412, ADR-0007).
+	eveActs, err := activities.NewEscrowValidationActivities()
+	if err != nil {
+		log.Printf("WARNING: escrow validation activities not available: %v", err)
+	} else {
+		heavyBatchWorker.RegisterActivity(eveActs)
+	}
 
 	// Registrar & Basic Lifecycle activities
 	// These are split between Scheduled/Lifecycle (new) and Drain Lifecycle (deprecated)

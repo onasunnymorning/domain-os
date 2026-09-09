@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -213,4 +214,27 @@ func setTldFilters(dbQuery *gorm.DB, filter queries.ListTldsFilter) (*gorm.DB, e
 
 	return dbQuery, nil
 
+}
+
+// GetByNameForOperator retrieves a TLD by name only when it belongs to the
+// given operator scope. Tenant isolation is enforced here, in SQL, per
+// ADR-0006: a TLD operated by another tenant is indistinguishable from a TLD
+// that does not exist (entities.ErrTLDNotFound). Phases are preloaded the
+// same way GetByName(preloadAll=false) does; counts are not computed.
+func (repo *GormTLDRepository) GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+	dbtld := &TLD{}
+	err := repo.db.WithContext(ctx).
+		Preload("Phases").
+		Where("name = ? AND ry_id = ?", name, scope.String()).
+		First(dbtld).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrTLDNotFound
+		}
+		return nil, fmt.Errorf("GetByNameForOperator(name=%s): %w", name, err)
+	}
+	return FromDBTLD(dbtld), nil
 }
