@@ -14,8 +14,8 @@ import (
 )
 
 // EscrowSanitizationRunRecord is the GORM model for escrow_sanitization_runs
-// (issue #415). Findings and counts are jsonb: both are small, bounded and
-// only ever read as a whole.
+// (issue #415). Findings, the finding tally and counts are jsonb: each is
+// small, bounded and only ever read as a whole.
 type EscrowSanitizationRunRecord struct {
 	ID       uuid.UUID `gorm:"type:uuid;primaryKey"`
 	TenantID string    `gorm:"not null;index"`
@@ -35,6 +35,7 @@ type EscrowSanitizationRunRecord struct {
 	Outcome      string `gorm:"not null;index"`
 	StageReached string
 	Findings     []byte `gorm:"type:jsonb"`
+	FindingTally []byte `gorm:"type:jsonb"`
 
 	DerivativeObjectKey string
 	DerivativeSHA256    string `gorm:"size:64"`
@@ -60,6 +61,14 @@ func toDBEscrowSanitizationRun(r *entities.EscrowSanitizationRun) (*EscrowSaniti
 	if err != nil {
 		return nil, fmt.Errorf("encode findings: %w", err)
 	}
+	tally := r.FindingTally
+	if tally == nil {
+		tally = []entities.EscrowFindingTally{}
+	}
+	rawTally, err := json.Marshal(tally)
+	if err != nil {
+		return nil, fmt.Errorf("encode finding tally: %w", err)
+	}
 	rawCounts, err := json.Marshal(r.Counts)
 	if err != nil {
 		return nil, fmt.Errorf("encode counts: %w", err)
@@ -70,7 +79,7 @@ func toDBEscrowSanitizationRun(r *entities.EscrowSanitizationRun) (*EscrowSaniti
 		SourceArtifactSHA256: r.SourceArtifactSHA256,
 		PolicyVersion:        r.PolicyVersion, WorkflowVersion: r.WorkflowVersion, SyntheticSuffix: r.SyntheticSuffix,
 		WorkflowID: r.WorkflowID, RunID: r.RunID,
-		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: rawFindings,
+		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: rawFindings, FindingTally: rawTally,
 		DerivativeObjectKey: r.DerivativeObjectKey, DerivativeSHA256: r.DerivativeSHA256,
 		DerivativeBytes: r.DerivativeBytes, ManifestObjectKey: r.ManifestObjectKey, Counts: rawCounts,
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,
@@ -82,6 +91,12 @@ func fromDBEscrowSanitizationRun(rec *EscrowSanitizationRunRecord) (*entities.Es
 	if len(rec.Findings) > 0 {
 		if err := json.Unmarshal(rec.Findings, &findings); err != nil {
 			return nil, fmt.Errorf("decode findings: %w", err)
+		}
+	}
+	tally := []entities.EscrowFindingTally{}
+	if len(rec.FindingTally) > 0 {
+		if err := json.Unmarshal(rec.FindingTally, &tally); err != nil {
+			return nil, fmt.Errorf("decode finding tally: %w", err)
 		}
 	}
 	var counts entities.EscrowSanitizationCounts
@@ -96,7 +111,7 @@ func fromDBEscrowSanitizationRun(rec *EscrowSanitizationRunRecord) (*entities.Es
 		SourceArtifactSHA256: rec.SourceArtifactSHA256,
 		PolicyVersion:        rec.PolicyVersion, WorkflowVersion: rec.WorkflowVersion, SyntheticSuffix: rec.SyntheticSuffix,
 		WorkflowID: rec.WorkflowID, RunID: rec.RunID,
-		Outcome: entities.EscrowSanitizationOutcome(rec.Outcome), StageReached: rec.StageReached, Findings: findings,
+		Outcome: entities.EscrowSanitizationOutcome(rec.Outcome), StageReached: rec.StageReached, Findings: findings, FindingTally: tally,
 		DerivativeObjectKey: rec.DerivativeObjectKey, DerivativeSHA256: rec.DerivativeSHA256,
 		DerivativeBytes: rec.DerivativeBytes, ManifestObjectKey: rec.ManifestObjectKey, Counts: counts,
 		StartedAt: rec.StartedAt, CompletedAt: rec.CompletedAt,
@@ -147,6 +162,7 @@ func (r *GormEscrowSanitizationRunRepository) Finalize(ctx context.Context, scop
 			"outcome":               rec.Outcome,
 			"stage_reached":         rec.StageReached,
 			"findings":              rec.Findings,
+			"finding_tally":         rec.FindingTally,
 			"derivative_object_key": rec.DerivativeObjectKey,
 			"derivative_sha256":     rec.DerivativeSHA256,
 			"derivative_bytes":      rec.DerivativeBytes,
