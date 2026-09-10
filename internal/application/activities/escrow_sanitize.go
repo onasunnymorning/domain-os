@@ -34,6 +34,18 @@ const (
 	EscrowSanitizeWorkflowVersion = "escrow-sanitize/1"
 
 	escrowSanitizeErrorType = "ESCROW_SANITIZE"
+	// escrowSanitizePendingPrefix holds a derivative between staging and
+	// publication. It is a top level prefix of its own rather than a pending/
+	// segment nested under the run, because an S3 or MinIO lifecycle rule
+	// filters on a literal key prefix and cannot express "*/pending/".
+	//
+	// Nothing under it is authoritative: a passed derivative has already been
+	// copied to sanitized/, and a refused one was never published, so the
+	// whole prefix is expirable and a lifecycle rule is expected to expire it.
+	// Without that rule it only grows — CopyObject publishes by copying, so
+	// every passing run leaves its staged twin behind, and a derivative
+	// refused at the verify stage leaves one too.
+	escrowSanitizePendingPrefix = "escrow-sanitize-pending"
 	// derivativeContentType is what the object store is told; the derivative is
 	// always gzipped XML.
 	derivativeContentType = "application/gzip"
@@ -55,16 +67,16 @@ type EscrowSanitizeActivities struct {
 	decryptKeys   interfaces.EscrowDecryptionKeyProvider
 	tokenKeys     interfaces.SanitizationTokenKeyProvider
 
-	// escrowStore holds the source deposit, the pending/ staging object and the
+	// escrowStore holds the source deposit, the staging object and the
 	// published derivative. The custody boundary is the key prefix, not the
-	// bucket: a derivative is written under pending/, verified there, and only
-	// then server-side copied into sanitized/. That copy is what makes
-	// "nothing is published unless it passed" true, and keeping both prefixes
-	// in one bucket is what makes it a copy rather than a full re-upload.
+	// bucket: a derivative is written under escrowSanitizePendingPrefix,
+	// verified there, and only then server-side copied into sanitized/. That
+	// copy is what makes "nothing is published unless it passed" true, and
+	// keeping both prefixes in one bucket is what makes it a copy rather than
+	// a full re-upload.
 	//
 	// Co-locating the derivative with the deposit is a deliberate deviation
-	// from the ticket's separate bucket and IAM role; see ADR-0008. A lifecycle
-	// rule should expire the pending/ prefix.
+	// from the ticket's separate bucket and IAM role; see ADR-0008.
 	escrowStore interfaces.ObjectStore
 
 	validateLimits rdevalidate.Limits
@@ -282,7 +294,8 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 	}
 
 	prefix := fmt.Sprintf("%s/%s/%s/%s/%s", escrowValidationPrefix, scope.String(), deposit.TLD, deposit.ID, out.SanitizationRunID)
-	out.StagingKey = prefix + "/pending/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
+	out.StagingKey = fmt.Sprintf("%s/%s/%s/%s/%s/deposit-%s.xml.gz",
+		escrowSanitizePendingPrefix, scope.String(), deposit.TLD, deposit.ID, out.SanitizationRunID, rdesanitize.PolicyVersion)
 	if !out.AlreadyFinal {
 		out.DerivativeKey = prefix + "/sanitized/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
 		out.ManifestKey = prefix + "/sanitized/manifest-" + rdesanitize.PolicyVersion + ".json"

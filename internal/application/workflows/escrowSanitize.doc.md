@@ -22,7 +22,7 @@ Derives a **sanitized-pseudonymized** copy of an already-accepted RDE deposit, f
 
 ```mermaid
 graph TD
-    A["1. BindSanitizationSource: require an accepted validation run, re-check TLD ownership, bind one derivative per source per policy version"] --> B["2. ProduceDerivative: reopen the validated source, stream it through the profile into pending/"]
+    A["1. BindSanitizationSource: require an accepted validation run, re-check TLD ownership, bind one derivative per source per policy version"] --> B["2. ProduceDerivative: reopen the validated source, stream it through the profile into escrow-sanitize-pending/"]
     B -->|PASS| C["3. VerifyDerivative: PII regression scan + structural re-validation, then publish to sanitized/ with a manifest"]
     B -->|QUARANTINED: profile cannot classify the source| D["4. FinalizeSanitizationRun: nothing published, reason codes recorded"]
     B -->|ERROR: service could not decide| D
@@ -91,7 +91,7 @@ type EscrowSanitizeResult struct {
 
 | Artifact | Storage | Purpose |
 |----------|---------|---------|
-| `pending/deposit-{policy}.xml.gz` | S3 escrow bucket: `escrow-validation/{tenant}/{tld}/{depositID}/{runID}/` | Staged derivative, verified before it is published. A lifecycle rule should expire this prefix |
+| `deposit-{policy}.xml.gz` | S3 escrow bucket: `escrow-sanitize-pending/{tenant}/{tld}/{depositID}/{runID}/` | Staged derivative, verified before it is published. Nothing here is authoritative — a passed derivative has already been copied to `sanitized/` — so a lifecycle rule expires the whole prefix. It is a top level prefix precisely so a rule can name it: a lifecycle filter is a literal key prefix and cannot express `*/pending/` |
 | `sanitized/deposit-{policy}.xml.gz` | same prefix | The published derivative. Never overwritten: a different policy version is a different run and a different object |
 | `sanitized/manifest-{policy}.json` | same prefix | Source and derivative checksums, tenant/TLD, policy and workflow versions, token key fingerprint, timestamps, field/action counts. No values, no excerpts |
 | `escrow_sanitization_runs` | Postgres | Immutable record; unique on (tenant, source validation run, policy version) |
