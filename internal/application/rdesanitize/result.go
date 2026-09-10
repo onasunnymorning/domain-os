@@ -271,6 +271,21 @@ func DecideTally(tally []FindingTally) Outcome {
 	return OutcomePass
 }
 
+// ToEntityTally converts the tally to its persisted domain form. Findings is
+// capped and keeps one worked example of each distinct object; this is not
+// capped by occurrence, so it is the only exact account of how much of a
+// source depends on each thing the profile does not classify.
+func ToEntityTally(ts []FindingTally) []entities.EscrowFindingTally {
+	out := make([]entities.EscrowFindingTally, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, entities.EscrowFindingTally{
+			Code: string(t.Code), Severity: string(t.Severity), Stage: string(t.Stage),
+			Object: t.Object, Count: t.Count,
+		})
+	}
+	return out
+}
+
 // ToEntityFindings converts findings to their persisted form.
 func ToEntityFindings(fs []Finding) []entities.EscrowFinding {
 	out := make([]entities.EscrowFinding, 0, len(fs))

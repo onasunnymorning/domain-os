@@ -692,6 +692,7 @@ func (a *EscrowSanitizeActivities) FinalizeSanitizationRun(ctx context.Context, 
 		Outcome:      entities.EscrowSanitizationOutcome(res.Outcome),
 		StageReached: string(res.StageReached),
 		Findings:     rdesanitize.ToEntityFindings(res.Findings),
+		FindingTally: rdesanitize.ToEntityTally(res.Tally),
 		Counts:       res.Counts,
 		CompletedAt:  completed,
 	}
