@@ -345,6 +345,17 @@ services:
       - dos
 
   # MinIO client to create the buckets (one per data type — see docs: Bucket Storage Strategy)
+  # and to expire the sanitisation staging prefix. The rule is added only when
+  # one for that prefix is absent — mc has no upsert and a second `rule add`
+  # happily creates a duplicate, so a plain `|| true` would grow a new rule on
+  # every `docker compose up`. The test is `case`, not `grep`: this image
+  # carries mc and a shell, no coreutils. Nothing under
+  # escrow-sanitize-pending/ is authoritative: a derivative that passed has
+  # already been copied to sanitized/, one that was refused was never
+  # published. Publication is a copy rather than a move, so without this rule
+  # every passing run leaves its staged twin behind for good. The same rule is
+  # expected on the production bucket, which is provisioned out of band — see
+  # internal/infrastructure/storage/ensure.go.
   minio-setup:
     # Pinned, not :latest — a floating tag here means two collaborators can
     # provision buckets with different mc versions on the same compose file.
@@ -359,6 +370,10 @@ services:
     entrypoint: [ "/bin/sh", "-c" ]
     command: |
       "mc mb -p minio/escrow || true; mc anonymous set download minio/escrow || true;
+       case \"$(mc ilm rule ls minio/escrow --json 2>/dev/null)\" in
+         *escrow-sanitize-pending*) ;;
+         *) mc ilm rule add --expire-days 7 --prefix 'escrow-sanitize-pending/' minio/escrow || true ;;
+       esac;
        mc mb -p minio/event-logs || true;
        mc mb -p minio/reports || true;
        mc mb -p minio/temp-artifacts || true"
