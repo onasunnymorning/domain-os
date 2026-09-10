@@ -52,6 +52,9 @@ type EscrowSanitizationRunResponse struct {
 	Outcome      string                   `json:"outcome"`
 	StageReached string                   `json:"stageReached,omitempty"`
 	Findings     []entities.EscrowFinding `json:"findings"`
+	// FindingTally is exact where Findings is truncated: one row per distinct
+	// thing a code fired on, with every occurrence counted.
+	FindingTally []entities.EscrowFindingTally `json:"findingTally"`
 
 	DerivativeObjectKey string                            `json:"derivativeObjectKey,omitempty"`
 	DerivativeSHA256    string                            `json:"derivativeSha256,omitempty"`
@@ -68,13 +71,17 @@ func toSanitizationRunResponse(r *entities.EscrowSanitizationRun) EscrowSanitiza
 	if findings == nil {
 		findings = []entities.EscrowFinding{}
 	}
+	tally := r.FindingTally
+	if tally == nil {
+		tally = []entities.EscrowFindingTally{}
+	}
 	return EscrowSanitizationRunResponse{
 		ID: r.ID.String(), TLD: r.TLD, TenantID: r.TenantID.String(), Label: entities.EscrowDerivativeLabel,
 		SourceValidationRunID: r.SourceValidationRunID.String(), SourceDepositID: r.SourceDepositID.String(),
 		SourceArtifactSHA256: r.SourceArtifactSHA256,
 		PolicyVersion:        r.PolicyVersion, WorkflowVersion: r.WorkflowVersion, SyntheticSuffix: r.SyntheticSuffix,
 		WorkflowID: r.WorkflowID, RunID: r.RunID,
-		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: findings,
+		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: findings, FindingTally: tally,
 		DerivativeObjectKey: r.DerivativeObjectKey, DerivativeSHA256: r.DerivativeSHA256,
 		DerivativeBytes: r.DerivativeBytes, ManifestObjectKey: r.ManifestObjectKey, Counts: r.Counts,
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,

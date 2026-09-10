@@ -258,6 +258,22 @@ func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *test
 	assert.Equal(t, entities.EscrowSanitizationQuarantined, run.Outcome)
 	assert.Empty(t, run.DerivativeObjectKey, "a quarantined run points at nothing")
 	assert.Contains(t, run.FindingCodes(), string(rdesanitize.CodePolicyUnknownNamespace))
+
+	// The record is the only place an operator sees this run, so it has to
+	// carry both halves: which profile entries are missing, and how much of
+	// the source depends on each. Findings keeps one example per gap; the
+	// tally counts every occurrence.
+	require.NotEmpty(t, run.FindingTally, "a quarantined run records its tally")
+	var gaps int
+	for _, e := range run.FindingTally {
+		if e.Code != string(rdesanitize.CodePolicyUnknownNamespace) {
+			continue
+		}
+		gaps++
+		assert.NotEmpty(t, e.Object, "a tally row names the gap it counts")
+		assert.Positive(t, e.Count)
+	}
+	assert.Positive(t, gaps, "tally: %+v", run.FindingTally)
 }
 
 func TestEscrowSanitize_MissingTokenKeyIsAnErrorNotAQuarantine(t *testing.T) {

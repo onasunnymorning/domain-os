@@ -105,7 +105,13 @@ type EscrowFindingTally struct {
 	Stage      string `json:"stage"`
 	ObjectType string `json:"objectType,omitempty"`
 	Rule       string `json:"rule,omitempty"`
-	Count      int    `json:"count"`
+	// Object splits a code across the distinct things it fired on, where the
+	// thing itself is what has to be acted on: a sanitisation run counts one
+	// row per gap in the profile, with the number of times the source used
+	// it. Like EscrowFinding.Object it is drawn from the deposit and stays
+	// inside this tenant-scoped record.
+	Object string `json:"object,omitempty"`
+	Count  int    `json:"count"`
 }
 
 // EscrowValidationRun is one immutable execution of the validation pipeline
