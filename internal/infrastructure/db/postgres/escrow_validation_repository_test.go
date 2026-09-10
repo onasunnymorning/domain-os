@@ -309,7 +309,10 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 		DerivativeObjectKey: "k/deposit.xml.gz", DerivativeSHA256: evSHA2, DerivativeBytes: 128,
 		ManifestObjectKey: "k/manifest.json",
 		Counts:            entities.EscrowSanitizationCounts{Kept: 10, Tokenized: 3, ObjectsByType: map[string]int64{entities.DOMAIN_URI: 2}},
-		CompletedAt:       run.StartedAt.Add(time.Minute),
+		FindingTally: []entities.EscrowFindingTally{
+			{Code: "POLICY_UNKNOWN_ATTRIBUTE", Severity: "ERROR", Stage: "rewrite", Object: "rdeDomain:status@vendorFlag", Count: 43313},
+		},
+		CompletedAt: run.StartedAt.Add(time.Minute),
 	}))
 	s.Require().NoError(repo.Finalize(ctx, a, run))
 
@@ -320,6 +323,12 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 	s.Equal(int64(3), got.Counts.Tokenized)
 	s.Equal(int64(2), got.Counts.ObjectsByType[entities.DOMAIN_URI])
 	s.Require().NotNil(got.CompletedAt)
+
+	// The tally is the only exact account of a quarantined source, so it has
+	// to survive the jsonb round trip with its object and its count intact.
+	s.Require().Len(got.FindingTally, 1)
+	s.Equal("rdeDomain:status@vendorFlag", got.FindingTally[0].Object)
+	s.Equal(43313, got.FindingTally[0].Count)
 
 	// A second conditional UPDATE matches no RUNNING row.
 	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrEscrowSanitizationRunAlreadyFinal))

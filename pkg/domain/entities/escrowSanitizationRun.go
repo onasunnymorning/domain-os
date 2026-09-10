@@ -79,6 +79,11 @@ type EscrowSanitizationRun struct {
 	Outcome      EscrowSanitizationOutcome
 	StageReached string
 	Findings     []EscrowFinding
+	// FindingTally is exact where Findings is truncated. Findings keeps one
+	// worked example of each distinct thing a code fired on; this counts every
+	// occurrence, so a quarantined run says not just which profile entries are
+	// missing but how much of the source depends on each.
+	FindingTally []EscrowFindingTally
 
 	DerivativeObjectKey string
 	DerivativeSHA256    string
@@ -157,6 +162,7 @@ type EscrowSanitizationFinalization struct {
 	Outcome             EscrowSanitizationOutcome
 	StageReached        string
 	Findings            []EscrowFinding
+	FindingTally        []EscrowFindingTally
 	DerivativeObjectKey string
 	DerivativeSHA256    string
 	DerivativeBytes     int64
@@ -203,6 +209,9 @@ func (r *EscrowSanitizationRun) Finalize(f EscrowSanitizationFinalization) error
 	r.StageReached = f.StageReached
 	if f.Findings != nil {
 		r.Findings = f.Findings
+	}
+	if f.FindingTally != nil {
+		r.FindingTally = f.FindingTally
 	}
 	r.DerivativeObjectKey = f.DerivativeObjectKey
 	r.DerivativeSHA256 = f.DerivativeSHA256
