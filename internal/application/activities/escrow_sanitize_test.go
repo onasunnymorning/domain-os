@@ -155,7 +155,7 @@ func TestEscrowSanitize_EndToEnd(t *testing.T) {
 	assert.NotEmpty(t, p.TokenKeyID)
 	// Staged, not published: the sanitized/ prefix is still empty.
 	_, staged := f.ev.store.get(b.StagingKey)
-	assert.True(t, staged, "the derivative is staged under pending/")
+	assert.True(t, staged, "the derivative is staged before it is published")
 	_, published := f.ev.store.get(b.DerivativeKey)
 	assert.False(t, published, "nothing reaches sanitized/ before it has been verified")
 
@@ -247,7 +247,7 @@ func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *test
 	require.Equal(t, rdesanitize.OutcomeQuarantined, p.Result.Outcome, "codes: %v", p.Result.Codes())
 	assert.True(t, p.Result.Has(rdesanitize.CodePolicyUnknownNamespace))
 	_, staged := f.ev.store.get(b.StagingKey)
-	assert.False(t, staged, "a refused rewrite stores nothing, not even under pending/")
+	assert.False(t, staged, "a refused rewrite stores nothing, not even in the staging prefix")
 	_, published := f.ev.store.get(b.DerivativeKey)
 	assert.False(t, published)
 
