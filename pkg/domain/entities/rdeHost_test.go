@@ -275,3 +275,12 @@ func TestRDEHost_IsLinked(t *testing.T) {
 		})
 	}
 }
+
+// The host's copy of the same defect; see the contact test for what it is.
+func TestGetHostStatusFromRDEHostStatus_EmptyStatus(t *testing.T) {
+	var err error
+	require.NotPanics(t, func() {
+		_, err = GetHostStatusFromRDEHostStatus([]RDEHostStatus{{S: "ok"}, {S: ""}})
+	})
+	require.ErrorIs(t, err, ErrInvalidHostStatus)
+}
