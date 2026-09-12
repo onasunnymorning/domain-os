@@ -175,6 +175,8 @@ var Registry = []EnvVar{
 	{Name: "ESCROW_VALIDATION_MAX_FILES", Services: []Service{ServiceWorker}, Default: "8", Description: "Maximum tar entries inside a deposit archive"},
 	{Name: "ESCROW_VALIDATION_MAX_NESTING", Services: []Service{ServiceWorker}, Default: "2", Description: "Maximum decompression layers (gzip inside gzip, gzip inside tar) inside a deposit"},
 	{Name: "ESCROW_VALIDATION_TIMEOUT", Services: []Service{ServiceWorker}, Default: "2h", Description: "Wall-clock bound for validating one deposit (Go duration)"},
+	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", Services: []Service{ServiceWorker}, Default: "20000000", Description: "How many identifiers the contact/host referential check may hold for one deposit. It is the only check that cannot work in constant space, and each entry costs about 30 bytes, so the default is roughly 580 MB held and 670 MB at the peak — size it to the worker's memory limit. Past it the deposit is still validated and the check reports RDE_CROSS_REFERENCE_SKIPPED"},
+	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES", Services: []Service{ServiceWorker}, Default: "1000000", Description: "How many of those identifiers are also kept verbatim so a finding can name the object rather than only its ordinal. About 60 bytes each, so it is deliberately smaller than the bound above; past it findings carry an ordinal and a byte offset instead of a name"},
 
 	// ─── Escrow derivative sanitization (EVE, issue #415) ───
 	// The derivative is a separate processing purpose from escrow custody: it

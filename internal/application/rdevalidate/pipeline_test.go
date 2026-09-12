@@ -242,6 +242,16 @@ func TestRun_ErrorClass(t *testing.T) {
 		res := Run(context.Background(), in)
 		assert.Equal(t, OutcomeError, res.Outcome)
 	})
+	t.Run("a negative cross-reference bound is misconfigured; zero is not", func(t *testing.T) {
+		in := f.input(good.Ryde, good.Sig)
+		in.Limits.MaxCrossReferenceObjects = -1
+		assert.Equal(t, OutcomeError, Run(context.Background(), in).Outcome)
+
+		in = f.input(good.Ryde, good.Sig)
+		in.Limits.MaxCrossReferenceObjects, in.Limits.MaxCrossReferenceNames = 0, 0
+		assert.NotEqual(t, OutcomeError, Run(context.Background(), in).Outcome,
+			"zero means the default, which is what an unset Limits carries")
+	})
 	t.Run("panic is contained", func(t *testing.T) {
 		in := f.input(good.Ryde, good.Sig)
 		in.Heartbeat = func(Stage, string) { panic("boom") }
@@ -394,5 +404,28 @@ func TestPanicText(t *testing.T) {
 		// taken straight out of the deposit.
 		assert.Equal(t, "non-runtime panic of type string", panicText("contact CONT1 of registrar reg-732530"))
 		assert.NotContains(t, panicText(errors.New("domain altruismoeficaz.radio")), "altruismoeficaz")
+	})
+}
+
+// The bound the operator configures has to reach the check. It travels
+// Limits -> Run -> XMLValidator -> crossRef, four hops through three types,
+// and nothing else would notice if a hop dropped it: the deposit still
+// validates, it just silently stops being cross-checked.
+func TestRun_CarriesTheCrossReferenceBoundFromLimits(t *testing.T) {
+	f := newPipelineFixture(t)
+	opts := rdetest.DepositOpts{TLD: "example", Domains: 2, Contacts: 3, Hosts: 2, Registrars: 1}
+	pair := rdetest.BuildPair(t, opts, f.service, f.registry)
+
+	t.Run("a bound the deposit exceeds stops the check", func(t *testing.T) {
+		in := f.input(pair.Ryde, pair.Sig)
+		in.Limits.MaxCrossReferenceObjects = 2
+		res := Run(context.Background(), in)
+		require.True(t, res.Has(CodeRDECrossReferenceSkipped), "findings: %v", res.Findings)
+		assert.NotEqual(t, OutcomeError, res.Outcome, "giving up on one check is not a failure to validate")
+	})
+
+	t.Run("the default does not", func(t *testing.T) {
+		res := Run(context.Background(), f.input(pair.Ryde, pair.Sig))
+		assert.False(t, res.Has(CodeRDECrossReferenceSkipped), "findings: %v", res.Findings)
 	})
 }
