@@ -32,6 +32,16 @@ func loadEscrowValidationLimits() (rdevalidate.Limits, error) {
 		return lim, err
 	}
 	lim.MaxNesting = int(maxNesting)
+	maxXrefObjects, err := envInt64("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", os.Getenv("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS"), int64(lim.MaxCrossReferenceObjects))
+	if err != nil {
+		return lim, err
+	}
+	lim.MaxCrossReferenceObjects = int(maxXrefObjects)
+	maxXrefNames, err := envInt64("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES", os.Getenv("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES"), int64(lim.MaxCrossReferenceNames))
+	if err != nil {
+		return lim, err
+	}
+	lim.MaxCrossReferenceNames = int(maxXrefNames)
 	if raw := strings.TrimSpace(os.Getenv("ESCROW_VALIDATION_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
 		if err != nil {

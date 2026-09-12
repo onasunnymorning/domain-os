@@ -251,7 +251,9 @@ func Run(ctx context.Context, in Input) (res Result) {
 	if in.Heartbeat != nil {
 		in.Heartbeat(StageXML, "validating deposit XML")
 	}
-	v := &XMLValidator{BoundTLD: in.BoundTLD, Now: now, Heartbeat: in.Heartbeat}
+	v := &XMLValidator{BoundTLD: in.BoundTLD, Now: now, Heartbeat: in.Heartbeat,
+		MaxCrossReferenceObjects: in.Limits.MaxCrossReferenceObjects,
+		MaxCrossReferenceNames:   in.Limits.MaxCrossReferenceNames}
 	summary, findings := v.Validate(ctx, entry.Reader)
 	res.Deposit = summary
 	for _, f := range findings {

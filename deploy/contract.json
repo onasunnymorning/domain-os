@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-09-09T04:05:05Z",
+  "generated": "2026-09-12T18:48:31Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -640,6 +640,16 @@
             "name": "ESCROW_VALIDATION_TIMEOUT",
             "default": "2h",
             "description": "Wall-clock bound for validating one deposit (Go duration)"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS",
+            "default": "20000000",
+            "description": "How many identifiers the contact/host referential check may hold for one deposit. It is the only check that cannot work in constant space, and each entry costs about 30 bytes, so the default is roughly 580 MB held and 670 MB at the peak — size it to the worker's memory limit. Past it the deposit is still validated and the check reports RDE_CROSS_REFERENCE_SKIPPED"
+          },
+          {
+            "name": "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES",
+            "default": "1000000",
+            "description": "How many of those identifiers are also kept verbatim so a finding can name the object rather than only its ordinal. About 60 bytes each, so it is deliberately smaller than the bound above; past it findings carry an ordinal and a byte offset instead of a name"
           },
           {
             "name": "ESCROW_SANITIZE_HMAC_KEY",
