@@ -76,6 +76,7 @@ var entityRules = []struct {
 	{entities.ErrInvalidDomainStatus, "status: is not an EPP domain status"},
 	{entities.ErrInvalidContactStatusCombination, "status: the statuses on this contact cannot be held at once"},
 	{entities.ErrInvalidContactStatus, "status: is not an EPP contact status"},
+	{entities.ErrInvalidHostStatus, "status: is not an EPP host status"},
 	{entities.ErrInvalidRegistrarStatus, "status: is not a registrar status"},
 
 	// postal information.

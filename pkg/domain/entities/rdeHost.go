@@ -116,9 +116,15 @@ func GetHostStatusFromRDEHostStatus(statuses []RDEHostStatus) (HostStatus, error
 		if s.Kind() == reflect.Struct {
 			// exported field
 			var f reflect.Value
-			if strings.ToLower(status.S) == "ok" {
+			switch {
+			case status.S == "":
+				// <status s=""/> is well-formed XML and names no status, and
+				// indexing its first byte to capitalise it panics. A deposit
+				// carrying one is invalid, not unrepresentable: say so.
+				return hs, ErrInvalidHostStatus
+			case strings.ToLower(status.S) == "ok":
 				f = s.FieldByName(strings.ToUpper(string(status.S))) // uppercase OK completely
-			} else {
+			default:
 				f = s.FieldByName(strings.ToUpper(string(status.S[0])) + status.S[1:]) // uppercase the first character to match the struct field
 			}
 			if f.IsValid() {
