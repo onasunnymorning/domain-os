@@ -131,7 +131,22 @@ Logs carry `correlation_id`, `deposit_id`, `run_id`, `tld`, `stage`, `outcome`, 
 ### Manual Intervention
 Relaunching with the same artifact set is safe: it binds to the existing deposit and creates a new run; earlier outcomes are never overwritten. Trusted registry keys are managed through `/escrow/trusted-keys`; the service keyring through `ESCROW_VALIDATION_PRIVATE_KEYS`.
 
+### Sizing the referential check
+Every other check here works in constant space. The contact/host referential check cannot: it has to have seen the whole deposit before it can say whether a reference resolves, so it holds one entry per identifier for the length of the run. `ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS` is how many, and it is a statement about the worker rather than about the deposit.
+
+| bound | covers a TLD of about | held | peak |
+|---|---|---|---|
+| 5,000,000 (the old constant) | 1M domains | 152 MB | 175 MB |
+| **20,000,000** (default) | 4M domains — including `.co` | 580 MB | 670 MB |
+| 40,000,000 | 8M domains | 1.2 GB | 1.5 GB |
+
+Entries run at roughly twice the contact count, because a registry that gives each domain its own contacts indexes each one once as declared and once as referenced. Measured at 30.3 bytes an entry on Go 1.26/arm64.
+
+Past the bound the deposit is still validated in full and the check reports `RDE_CROSS_REFERENCE_SKIPPED` (WARNING) — the run does not fail, it just no longer says whether the deposit is integral. `ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES` bounds the smaller side table that lets a finding name the object it is about; past it findings carry an ordinal and a byte offset instead.
+
+Two things to hold in mind when raising either. Concurrent validations on the same worker each pay the full cost. And the workers declare no memory limit, so until they do, this bound is the only thing between a very large deposit and an OOM-killed worker — which takes every other workflow on that worker with it.
+
 ---
 
-> **Last updated**: 2026-09-09
-> **Updated by**: issue #415 (unsigned `xml` profile); originally issue #412
+> **Last updated**: 2026-09-12
+> **Updated by**: issue #412 (configurable referential-check bound); issue #415 (unsigned `xml` profile); originally issue #412
