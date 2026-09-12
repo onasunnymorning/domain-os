@@ -536,6 +536,35 @@ func TestLoadEscrowValidationLimits(t *testing.T) {
 	assert.Error(t, err, "zero budget is rejected")
 }
 
+// The referential check's bounds are configuration for the same reason every
+// other limit here is: what a worker can afford to hold is a property of the
+// deployment, not of the RDE format. Unlike the byte budgets, zero is a legal
+// value and means "use the default" — a worker with no opinion should not have
+// to invent a number.
+func TestLoadEscrowValidationLimits_CrossReferenceBounds(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		lim, err := loadEscrowValidationLimits()
+		require.NoError(t, err)
+		assert.Equal(t, rdevalidate.DefaultMaxCrossReferenceObjects, lim.MaxCrossReferenceObjects)
+		assert.Equal(t, rdevalidate.DefaultMaxCrossReferenceNames, lim.MaxCrossReferenceNames)
+	})
+
+	t.Run("overridden", func(t *testing.T) {
+		t.Setenv("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", "40000000")
+		t.Setenv("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES", "0")
+		lim, err := loadEscrowValidationLimits()
+		require.NoError(t, err)
+		assert.Equal(t, 40_000_000, lim.MaxCrossReferenceObjects)
+		assert.Equal(t, 0, lim.MaxCrossReferenceNames, "zero reaches the pipeline and means the default there")
+	})
+
+	t.Run("rejected", func(t *testing.T) {
+		t.Setenv("ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", "-1")
+		_, err := loadEscrowValidationLimits()
+		assert.Error(t, err, "a negative bound is a mistake, not an opinion")
+	})
+}
+
 func TestEscrowValidationActivities_HoldNoDatabaseHandle(t *testing.T) {
 	// Structural half of "validation is not import": the activities struct
 	// holds escrow repositories only, never a raw database handle.

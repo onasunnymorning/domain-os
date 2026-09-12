@@ -641,7 +641,9 @@ func (a *EscrowSanitizeActivities) revalidate(ctx context.Context, key, syntheti
 	var observed map[string]int64
 	var out []rdesanitize.Finding
 	_, err := a.overStagedDerivative(ctx, key, func(r io.Reader) ([]rdesanitize.Finding, error) {
-		v := &rdevalidate.XMLValidator{BoundTLD: syntheticSuffix, Now: a.now}
+		v := &rdevalidate.XMLValidator{BoundTLD: syntheticSuffix, Now: a.now,
+			MaxCrossReferenceObjects: a.validateLimits.MaxCrossReferenceObjects,
+			MaxCrossReferenceNames:   a.validateLimits.MaxCrossReferenceNames}
 		summary, findings := v.Validate(ctx, r)
 		observed = make(map[string]int64, len(summary.Observed))
 		for uri, n := range summary.Observed {

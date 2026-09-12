@@ -15,6 +15,15 @@ type Limits struct {
 	MaxFiles           int           // tar entries, including non-XML ones
 	MaxNesting         int           // decompression layers (gzip inside gzip, gzip inside tar…)
 	Timeout            time.Duration // wall-clock bound for one run
+
+	// MaxCrossReferenceObjects and MaxCrossReferenceNames bound the referential
+	// check, which is the one check that cannot work in constant space. Unlike
+	// the budgets above they are a memory decision about the worker rather than
+	// a judgement about the deposit: past them the deposit is still validated
+	// and the check says it did not run. Zero means the default — see
+	// DefaultMaxCrossReferenceObjects for what each entry costs.
+	MaxCrossReferenceObjects int
+	MaxCrossReferenceNames   int
 }
 
 // DefaultLimits returns conservative defaults.
@@ -25,6 +34,9 @@ func DefaultLimits() Limits {
 		MaxFiles:           8,
 		MaxNesting:         2,
 		Timeout:            2 * time.Hour,
+
+		MaxCrossReferenceObjects: DefaultMaxCrossReferenceObjects,
+		MaxCrossReferenceNames:   DefaultMaxCrossReferenceNames,
 	}
 }
 
@@ -42,6 +54,12 @@ func (l Limits) Validate() error {
 	}
 	if l.Timeout <= 0 {
 		return errors.New("limits: Timeout must be positive")
+	}
+	// Zero is allowed here and means the default: a caller that has no opinion
+	// about how much memory the referential check may hold should not have to
+	// invent a number. A negative one is a mistake, not an opinion.
+	if l.MaxCrossReferenceObjects < 0 || l.MaxCrossReferenceNames < 0 {
+		return errors.New("limits: cross-reference bounds must not be negative")
 	}
 	return nil
 }

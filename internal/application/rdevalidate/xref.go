@@ -6,30 +6,52 @@ import (
 	"strings"
 )
 
-// MaxCrossReferenceObjects bounds how many identifiers the referential check
-// holds at once. The check has to see the whole deposit before it can say
+// DefaultMaxCrossReferenceObjects bounds how many identifiers the referential
+// check holds at once, unless ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS
+// says otherwise. The check has to see the whole deposit before it can say
 // anything — a host may be declared forty thousand objects before the domain
 // that uses it, and this deposit's header is the last element in the file — so
 // unlike every other check here it cannot work in constant space. Past the
 // bound it gives up and says so rather than growing without limit inside a
 // worker that is also streaming a multi-gigabyte deposit.
 //
-// An entry is a uint64 key and an int value, so a Go map costs roughly 24
-// bytes for each once buckets and load factor are counted: five million of
-// them is about 120 MB. A TLD large enough to pass that can raise the bound,
-// but it is a memory decision and should be made deliberately.
-const MaxCrossReferenceObjects = 5_000_000
+// An entry is a uint64 key and an int value. Measured on Go 1.26/arm64 a map
+// of them costs 30.3 bytes an entry once groups and load factor are counted,
+// and about 35 while it is still growing, so twenty million of them is roughly
+// 580 MB held and 670 MB at the peak. (An earlier comment here said 24 bytes;
+// Go's swiss maps changed that, and the figures above are measured, not
+// derived.)
+//
+// Twenty million is what it takes to check a TLD the size of .co, whose real
+// deposit carries 8.6M contacts against 3.36M domains — contacts are not
+// shared between domains there, so each one is indexed twice, once declared
+// and once referenced, for about 17.5M entries. Since entries run at roughly
+// twice the contact count, the old bound of five million gave out at about a
+// million domains, which is most large gTLDs and was not a deliberate choice.
+//
+// It is still a bound and not a promise: .com would want some 400 million
+// entries, twelve gigabytes, so the give-up path below is permanent. What the
+// number decides is only where the line sits. The honest guard on the other
+// side of it is the worker's own memory limit, which this repository does not
+// currently declare anywhere — until it does, this constant is the only thing
+// standing between a very large deposit and an OOM-killed worker, and it
+// should be lowered rather than raised on a worker whose ceiling is unknown.
+const DefaultMaxCrossReferenceObjects = 20_000_000
 
-// MaxCrossReferenceNames bounds how many of those identifiers the check also
-// keeps verbatim, so it can name the object a finding is about rather than
-// only its ordinal. A name costs a string header and its bytes on top of the
-// entry — call it seventy bytes for a host name — so keeping every one would
-// roughly triple the ceiling above. This bound is deliberately the smaller of
-// the two: past it the index keeps counting and comparing, and findings
-// degrade to an ordinal and a byte offset, which is what they carried before
-// Finding.Object existed. A deposit that large is already being read with the
-// file in hand.
-const MaxCrossReferenceNames = 1_000_000
+// DefaultMaxCrossReferenceNames bounds how many of those identifiers the check
+// also keeps verbatim, so it can name the object a finding is about rather
+// than only its ordinal. Overridden by
+// ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES.
+//
+// A name costs a string header and its bytes on top of the entry: measured at
+// 60.7 bytes an entry for twelve-character identifiers, twice what the index
+// alone costs. Keeping a name for every one of .co's 17.5M entries would add a
+// gigabyte to the 530 MB the index already needs, which is why this bound is
+// deliberately the smaller of the two and is not raised with it. Past it the
+// index keeps counting and comparing, and findings degrade to an ordinal and a
+// byte offset, which is what they carried before Finding.Object existed. A
+// deposit that large is already being read with the file in hand.
+const DefaultMaxCrossReferenceNames = 1_000_000
 
 // crossRef answers two questions about a FULL deposit, which differ in what
 // they mean and so in what they cost:
@@ -45,8 +67,12 @@ const MaxCrossReferenceNames = 1_000_000
 //
 // It compares 64-bit hashes rather than the identifiers themselves, which
 // halves the memory the comparison costs. The cost is that two identifiers
-// could collide and an orphan go unreported: at five million entries the odds
-// are about one in a million, and the failure is a missing warning.
+// could collide. An orphan then goes unreported, which is a missing warning;
+// less comfortably, a reference that resolves to nothing can look resolved,
+// which turns an ERROR into silence. The odds go as the square of the number
+// of entries: about one deposit in 1.5 million at five million entries, about
+// one in ninety thousand at twenty million. That ratio, not the memory, is
+// what should stop the bound from being raised much further.
 //
 // It does keep the identifiers verbatim, in one bounded side table, purely so
 // a finding can say which contact or host it means (Finding.Object). Nothing
@@ -76,15 +102,31 @@ type crossRef struct {
 	usedHostInBailiwick map[uint64]int
 
 	// names maps a key back to the identifier that produced it, for the
-	// findings alone. Bounded separately by MaxCrossReferenceNames; a key with
+	// findings alone. Bounded separately by maxNames; a key with
 	// no entry here yields a finding with no Object, not a wrong one.
 	names map[uint64]string
+
+	// maxObjects and maxNames are this run's bounds, resolved from Limits.
+	// They are per-instance rather than package constants because what a
+	// worker can afford to hold is deployment configuration, not a property
+	// of the RDE format.
+	maxObjects int
+	maxNames   int
 
 	entries    int
 	overflowed bool
 }
 
-func newCrossRef(boundTLD string) *crossRef {
+// newCrossRef builds the index for one deposit. A bound of zero or less means
+// the default, so a caller that does not care — every test, and the derivative
+// revalidation — does not have to name one.
+func newCrossRef(boundTLD string, maxObjects, maxNames int) *crossRef {
+	if maxObjects <= 0 {
+		maxObjects = DefaultMaxCrossReferenceObjects
+	}
+	if maxNames <= 0 {
+		maxNames = DefaultMaxCrossReferenceNames
+	}
 	x := &crossRef{
 		contacts:    map[uint64]int{},
 		hosts:       map[uint64]int{},
@@ -93,6 +135,9 @@ func newCrossRef(boundTLD string) *crossRef {
 
 		usedHostInBailiwick: map[uint64]int{},
 		names:               map[uint64]string{},
+
+		maxObjects: maxObjects,
+		maxNames:   maxNames,
 	}
 	if tld := strings.Trim(strings.ToLower(strings.TrimSpace(boundTLD)), "."); tld != "" {
 		x.bailiwick = "." + tld
@@ -124,7 +169,7 @@ func (x *crossRef) put(m map[uint64]int, id string, ordinal int) {
 	if _, seen := m[k]; seen {
 		return
 	}
-	if x.entries >= MaxCrossReferenceObjects {
+	if x.entries >= x.maxObjects {
 		x.overflowed = true
 		return
 	}
@@ -133,7 +178,7 @@ func (x *crossRef) put(m map[uint64]int, id string, ordinal int) {
 	// Recorded on first sight from either direction, so a domain that
 	// references an object the deposit never declares still has a name to
 	// report. The first spelling wins; the rest differ only in case.
-	if _, named := x.names[k]; !named && len(x.names) < MaxCrossReferenceNames {
+	if _, named := x.names[k]; !named && len(x.names) < x.maxNames {
 		x.names[k] = id
 	}
 }
@@ -167,7 +212,7 @@ func (x *crossRef) useHost(name string, domainOrdinal int) {
 // every finding and retains only a few — but it does mean the caller's slice
 // holds one entry per orphan until the pipeline funnels it in. A deposit whose
 // every host is an orphan therefore costs about 130 bytes each here, on top of
-// the index. MaxCrossReferenceObjects is what bounds it.
+// the index. maxObjects is what bounds it.
 func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType, object, locator, rule, msg string)) {
 	if !x.enabled {
 		return
@@ -177,7 +222,7 @@ func (x *crossRef) report(add func(code Code, sev Severity, stage Stage, objType
 		// that decides whether the deposit is integral, so a reader has to be
 		// told that nothing here says it is.
 		add(CodeRDECrossReferenceSkipped, SeverityWarning, StageRDE, "", "", "",
-			"deposit exceeds "+itoa(MaxCrossReferenceObjects)+" cross-referenced identifiers",
+			"deposit exceeds "+itoa(x.maxObjects)+" cross-referenced identifiers",
 			"contact and host references were not checked: the deposit carries more identifiers than the check holds")
 		return
 	}

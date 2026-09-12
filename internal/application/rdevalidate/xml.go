@@ -24,6 +24,11 @@ type XMLValidator struct {
 	BoundTLD  string // TLD from the authenticated intake context; the header must agree
 	Now       func() time.Time
 	Heartbeat func(stage Stage, detail string)
+
+	// MaxCrossReferenceObjects and MaxCrossReferenceNames bound the referential
+	// check for this run; zero means the default. Run fills them from Limits.
+	MaxCrossReferenceObjects int
+	MaxCrossReferenceNames   int
 }
 
 // objectSpec is the per-object decode/validate table.
@@ -119,7 +124,7 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 	for _, s := range objectSpecs {
 		specByLocal[s.name] = s
 	}
-	xref := newCrossRef(v.BoundTLD)
+	xref := newCrossRef(v.BoundTLD, v.MaxCrossReferenceObjects, v.MaxCrossReferenceNames)
 
 	dec := xml.NewDecoder(r)
 	dec.Strict = true
