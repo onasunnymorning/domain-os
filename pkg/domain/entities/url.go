@@ -27,11 +27,30 @@ func NewURL(url string) (*URL, error) {
 
 // Validate returns a boolean representing the validity of the URL object
 func (u *URL) Validate() error {
-	if !gonet.IsURL(string(*u)) {
+	s := string(*u)
+	if !gonet.IsURL(s) {
 		return ErrInvalidURL
 	}
-	// Check if the domain part is valid
-	d := DomainName(strings.Split(string(*u), "/")[2])
+	// The domain part is everything between "://" and the first "/" after it.
+	//
+	// This used to be strings.Split(s, "/")[2], which reads the third field of
+	// "scheme://host/path" — and panics on anything with fewer than two
+	// slashes. gonet.IsURL accepts plenty of those: "example.com",
+	// "example.com/path", "https:/example.com" are all URLs to it. A registrar
+	// in a real .co deposit carried one, and because a panic here is a panic
+	// through the whole call stack, it ended a 12-million-object escrow
+	// validation with nothing to show for it.
+	//
+	// A URL with no scheme has no domain part to take, so it is invalid here.
+	// That is the answer the callers already expect: RDERegistrar.ToEntity
+	// reads it as "this may be a bare hostname" and retries with http://
+	// prepended.
+	scheme, rest, found := strings.Cut(s, "://")
+	if !found || scheme == "" || rest == "" {
+		return ErrInvalidURL
+	}
+	host, _, _ := strings.Cut(rest, "/")
+	d := DomainName(host)
 	if err := d.Validate(); err != nil {
 		return err
 	}

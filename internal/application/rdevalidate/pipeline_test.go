@@ -373,3 +373,26 @@ func TestRun_PlaintextXML_RejectsEncryptedArtifact(t *testing.T) {
 	require.Equal(t, OutcomeFail, res.Outcome)
 	assert.True(t, res.Has(CodeArchiveUnsupportedLayout), "codes: %v", res.Codes())
 }
+
+// panicText is the one place a recovered value is turned into words a finding
+// carries, so it holds the same fence every other message here does: constant
+// templates and numbers, never deposit content.
+func TestPanicText(t *testing.T) {
+	recovered := func(f func()) (p any) {
+		defer func() { p = recover() }()
+		f()
+		return nil
+	}
+
+	t.Run("a runtime error is Go's own words and is kept", func(t *testing.T) {
+		p := recovered(func() { var s []string; _ = s[2] }) // #nosec G602 -- panicking on purpose is the test
+		assert.Equal(t, "runtime error: index out of range [2] with length 0", panicText(p))
+	})
+
+	t.Run("anything else is reduced to its type", func(t *testing.T) {
+		// A panic value the code chose could be anything, including a string
+		// taken straight out of the deposit.
+		assert.Equal(t, "non-runtime panic of type string", panicText("contact CONT1 of registrar reg-732530"))
+		assert.NotContains(t, panicText(errors.New("domain altruismoeficaz.radio")), "altruismoeficaz")
+	})
+}

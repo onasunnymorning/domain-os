@@ -34,7 +34,7 @@ type objectSpec struct {
 }
 
 // objectResult is what a per-object decoder reports back about one object.
-// At most one of the three problems is set.
+// At most one of the four problems is set.
 type objectResult struct {
 	// Missing lists the RDE-required elements the object does not carry.
 	// ERROR severity: the deposit does not conform to RFC 9022.
@@ -48,6 +48,11 @@ type objectResult struct {
 	Rule string
 	// DecodeErr is a failure to decode the element at all.
 	DecodeErr error
+	// Panicked is set when the object's entity constructor panicked instead of
+	// returning an error. It is a service defect, not a deposit defect, so it
+	// is reported as INTERNAL_ERROR — but against this one object, which is
+	// what lets the scan carry on past it. See guard.
+	Panicked string
 
 	// Name is the object's own identifier as the deposit wrote it — a domain
 	// or host name, a contact or registrar id, an NNDN aName, an IDN table
@@ -220,6 +225,9 @@ func (v *XMLValidator) Validate(ctx context.Context, r io.Reader) (DepositSummar
 				addObject(CodeRDEObjectInvalid, SeverityError, StageRDE, spec.name, out.Name, locator,
 					"missing RDE-required element(s): "+out.Missing.Error(),
 					"object is missing an RDE-required element: "+out.Missing.Error())
+			case out.Panicked != "":
+				addObject(CodeInternal, SeverityError, StageRDE, spec.name, out.Name, locator, "",
+					"object could not be converted: the entity constructor panicked: "+out.Panicked)
 			case out.Rejected != nil:
 				addObject(CodeRDEObjectEntityRejected, SeverityWarning, StageRDE, spec.name, out.Name, locator, out.Rule,
 					"object is well-formed but this registry would not import it as it stands: "+out.Rule)
@@ -329,6 +337,31 @@ func requireAll(pairs ...string) error {
 	return errors.New(strings.Join(missing, ","))
 }
 
+// guard runs an RDE object's entity constructor and converts a panic inside it
+// into a finding about that one object.
+//
+// Without it a single unrepresentable object costs the whole deposit: Run
+// recovers at the top of the pipeline, so an index out of range twelve million
+// objects into an 813 MB deposit ended that run after five minutes of streaming
+// with one finding, "validation pipeline panicked", naming neither the position
+// in the stage nor the object. A constructor that panics is a defect in this
+// service either way — the finding is an ERROR and the run cannot pass — but
+// the operator gets the object, the offset and Go's own words for what went
+// wrong, and the remaining objects are still validated.
+//
+// It is deliberately wrapped around the constructor alone and not around
+// DecodeElement: a panic there would leave the decoder halfway through an
+// element with no safe way to resume, and the pipeline-level recover is the
+// right answer to that.
+func guard(convert func() error) (panicked string, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			panicked, err = panicText(p), nil
+		}
+	}()
+	return "", convert()
+}
+
 func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 	var d entities.RDEDomain
 	if err := dec.DecodeElement(&d, se); err != nil {
@@ -350,7 +383,8 @@ func decodeDomain(dec *xml.Decoder, se *xml.StartElement) objectResult {
 		res.Missing = req
 		return res
 	}
-	_, err := d.ToEntity()
+	panicked, err := guard(func() error { _, e := d.ToEntity(); return e })
+	res.Panicked = panicked
 	res.Rejected = err
 	res.Rule = entityRule(err, "exDate", d.ExDate, "crDate", d.CrDate, "upDate", d.UpDate)
 	return res
@@ -374,7 +408,8 @@ func decodeContact(dec *xml.Decoder, se *xml.StartElement) objectResult {
 		res.Missing = req
 		return res
 	}
-	_, err := c.ToEntity()
+	panicked, err := guard(func() error { _, e := c.ToEntity(); return e })
+	res.Panicked = panicked
 	res.Rejected = err
 	res.Rule = entityRule(err, "crDate", c.CrDate, "upDate", c.UpDate)
 	return res
@@ -396,7 +431,8 @@ func decodeHost(dec *xml.Decoder, se *xml.StartElement) objectResult {
 		res.Missing = req
 		return res
 	}
-	_, err := h.ToEntity()
+	panicked, err := guard(func() error { _, e := h.ToEntity(); return e })
+	res.Panicked = panicked
 	res.Rejected = err
 	res.Rule = entityRule(err, "crDate", h.CrDate, "upDate", h.UpDate)
 	return res
@@ -415,7 +451,8 @@ func decodeRegistrar(dec *xml.Decoder, se *xml.StartElement) objectResult {
 		res.Missing = req
 		return res
 	}
-	_, err := r.ToEntity()
+	panicked, err := guard(func() error { _, e := r.ToEntity(); return e })
+	res.Panicked = panicked
 	res.Rejected = err
 	res.Rule = entityRule(err, "crDate", r.CrDate, "upDate", r.UpDate)
 	return res
