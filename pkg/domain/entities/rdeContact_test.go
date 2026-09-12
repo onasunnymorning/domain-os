@@ -797,3 +797,15 @@ func TestRDEContact_IsLinked(t *testing.T) {
 		})
 	}
 }
+
+// <status s=""/> is well-formed XML that names no status, and capitalising its
+// first byte to match the struct field indexed a byte that is not there. Found
+// by auditing for the same shape of defect as the URL.Validate panic: a value
+// a deposit is free to write, read positionally without checking.
+func TestGetContactStatusFromRDEContactStatus_EmptyStatus(t *testing.T) {
+	var err error
+	require.NotPanics(t, func() {
+		_, err = GetContactStatusFromRDEContactStatus([]RDEContactStatus{{S: "ok"}, {S: ""}})
+	})
+	require.ErrorIs(t, err, ErrInvalidContactStatus)
+}

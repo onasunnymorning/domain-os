@@ -716,3 +716,32 @@ func TestRDEAddress_ToCSV(t *testing.T) {
 		})
 	}
 }
+
+// The registrar is where a deposit's URLs come from, and a registrar that
+// writes its website without a scheme used to take the whole process down with
+// it rather than being refused. Both spellings are answered without panicking:
+// a bare host is accepted and given a scheme, a bare host with a path is
+// refused like any other value this registry will not store.
+func TestRDERegistrar_ToEntity_SchemelessURL(t *testing.T) {
+	build := func(url string) *RDERegistrar {
+		return &RDERegistrar{
+			ID: "reg1", Name: "Example Registrar", Email: "info@example.com", GurID: 456,
+			PostalInfo: []RDERegistrarPostalInfo{{Type: "int", Address: RDEAddress{City: "New York", CountryCode: "US"}}},
+			URL:        url,
+		}
+	}
+
+	t.Run("a bare host is given a scheme", func(t *testing.T) {
+		var rar *Registrar
+		var err error
+		require.NotPanics(t, func() { rar, err = build("example-registrar.com").ToEntity() })
+		require.NoError(t, err)
+		require.Equal(t, URL("http://example-registrar.com"), rar.URL)
+	})
+
+	t.Run("a bare host with a path is refused, not fatal", func(t *testing.T) {
+		var err error
+		require.NotPanics(t, func() { _, err = build("www.example-registrar.com/es").ToEntity() })
+		require.Error(t, err, "the value is not a URL and not a domain name either")
+	})
+}

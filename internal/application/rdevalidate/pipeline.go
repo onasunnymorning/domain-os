@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"runtime"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -229,7 +230,8 @@ func Run(ctx context.Context, in Input) (res Result) {
 	res = Result{Profile: in.profile(), StartedAt: now(), Findings: []Finding{}}
 	defer func() {
 		if p := recover(); p != nil {
-			res.Add(Finding{Code: CodeInternal, Severity: SeverityError, Stage: res.StageReached, Message: "validation pipeline panicked", At: now()})
+			res.Add(Finding{Code: CodeInternal, Severity: SeverityError, Stage: res.StageReached,
+				Message: "validation pipeline panicked: " + panicText(p), At: now()})
 		}
 		res.finish(now())
 	}()
@@ -283,4 +285,21 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // String renders a compact operator-safe summary (codes only, no payload data).
 func (r Result) String() string {
 	return fmt.Sprintf("profile=%s outcome=%s stage=%s codes=%v", r.Profile, r.Outcome, r.StageReached, r.Codes())
+}
+
+// panicText renders a recovered value for a finding, under the same rule every
+// other message here follows: constant templates and numbers only, never
+// deposit content.
+//
+// A runtime error is Go's own words for what went wrong — "index out of range
+// [0] with length 0", "invalid memory address or nil pointer dereference" —
+// built by the runtime from type names and indexes, with nothing of the value
+// that provoked it. That is exactly what an operator needs and is safe to
+// write down. Anything else was panicked by code that chose the value, which
+// could be a deposit string, so it is reduced to its type.
+func panicText(p any) string {
+	if re, ok := p.(runtime.Error); ok {
+		return re.Error()
+	}
+	return fmt.Sprintf("non-runtime panic of type %T", p)
 }

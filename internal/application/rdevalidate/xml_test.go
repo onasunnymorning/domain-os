@@ -3,6 +3,7 @@ package rdevalidate
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -332,6 +333,84 @@ func TestXMLValidator(t *testing.T) {
 			assert.NotEqual(t, CodeRDEObjectNotReferenced, f.Code)
 			assert.NotEqual(t, CodeRDEReferenceNotInDeposit, f.Code)
 		}
+	})
+
+	// A registrar that writes its website without a scheme — "www.example.com/es"
+	// — used to panic inside URL.Validate, and a panic anywhere in a decoder
+	// unwinds the whole scan: Run recovers at the top of the pipeline, so a real
+	// 813 MB .co deposit spent five minutes streaming 12 million objects and came
+	// back with a single INTERNAL_ERROR finding that named nothing. It is a
+	// rejected registrar, one warning among the rest.
+	t.Run("a registrar URL with no scheme is a warning, not the end of the run", func(t *testing.T) {
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 1, Hosts: 1, Registrars: 1, NNDNs: 1}
+		raw := bytes.ReplaceAll(rdetest.BuildXML(opts),
+			[]byte("https://registrar1.example.com<"), []byte("www.registrar1.example.com/es<"))
+		v := &XMLValidator{BoundTLD: "example"}
+		sum, fs := v.Validate(context.Background(), bytes.NewReader(raw))
+
+		for _, f := range fs {
+			assert.NotEqual(t, CodeInternal, f.Code, "%s %s: %s", f.ObjectType, f.Locator, f.Message)
+		}
+		var rejected []Finding
+		for _, f := range fs {
+			if f.Code == CodeRDEObjectEntityRejected && f.ObjectType == "registrar" {
+				rejected = append(rejected, f)
+			}
+		}
+		require.Len(t, rejected, 1)
+		assert.Equal(t, SeverityWarning, rejected[0].Severity)
+		assert.Equal(t, "registrar1", rejected[0].Object)
+		assert.NotEqual(t, OutcomeError, Decide(fs))
+		// The scan reached the end of the deposit rather than stopping at it.
+		assert.Equal(t, 1, sum.Observed[entities.NNDN_URI])
+	})
+
+	// The containment behind that: a constructor that panics is a defect in
+	// this service and the run cannot pass, but it costs one object and the
+	// rest of the deposit is still validated — with the object, its offset and
+	// Go's own words for what went wrong.
+	t.Run("a panicking constructor costs one object, not the deposit", func(t *testing.T) {
+		restore := objectSpecs
+		t.Cleanup(func() { objectSpecs = restore })
+		objectSpecs = append([]objectSpec{}, restore...)
+		for i := range objectSpecs {
+			if objectSpecs[i].name != "contact" {
+				continue
+			}
+			inner := objectSpecs[i].decode
+			objectSpecs[i].decode = func(dec *xml.Decoder, se *xml.StartElement) objectResult {
+				out := inner(dec, se)
+				if out.Name == "CONT2" {
+					// exactly how the real decoders call their constructor
+					out.Panicked, out.Rejected = guard(func() error {
+						var boom []string
+						_ = boom[2] // #nosec G602 -- panicking on purpose is the test
+						return nil
+					})
+				}
+				return out
+			}
+		}
+
+		opts := rdetest.DepositOpts{TLD: "example", Domains: 1, Contacts: 3, Hosts: 1, Registrars: 1}
+		v := &XMLValidator{BoundTLD: "example"}
+		sum, fs := v.Validate(context.Background(), bytes.NewReader(rdetest.BuildXML(opts)))
+
+		var internal []Finding
+		for _, f := range fs {
+			if f.Code == CodeInternal {
+				internal = append(internal, f)
+			}
+		}
+		require.Len(t, internal, 1)
+		assert.Equal(t, SeverityError, internal[0].Severity)
+		assert.Equal(t, "contact", internal[0].ObjectType)
+		assert.Equal(t, "CONT2", internal[0].Object, "the object is named, which is the whole point")
+		assert.Contains(t, internal[0].Locator, "contact#2 offset=")
+		assert.Contains(t, internal[0].Message, "index out of range", "Go's own words for what went wrong")
+		assert.Equal(t, OutcomeError, Decide(fs), "a defect in this service is not a verdict on the deposit")
+		assert.Equal(t, 3, sum.Observed[entities.CONTACT_URI], "the scan carried on past it")
+		assert.Equal(t, 1, sum.Observed[entities.REGISTRAR_URI])
 	})
 
 	t.Run("cancelled context yields a timeout finding", func(t *testing.T) {
