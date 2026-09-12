@@ -1,4 +1,62 @@
 <a name="unreleased"></a>
+## [0.9.0](https://github.com/onasunnymorning/domain-os/compare/v0.8.4...v0.9.0) (2026-09-12)
+
+
+### Features
+
+* **dev:** one-command local environment ([2bf866b](https://github.com/onasunnymorning/domain-os/commit/2bf866bdceeca62fd90f090b84aa16f0cc907e51))
+* **dev:** one-command local environment ([ed85217](https://github.com/onasunnymorning/domain-os/commit/ed85217ecaa425a1f13c39bdfb2be0c88e32f328))
+* **eve:** accept unsigned .xml and .xml.gz deposits as a distinct profile ([47942b2](https://github.com/onasunnymorning/domain-os/commit/47942b28464f424fb6b275e017c7c0ff7fae7887)), closes [#415](https://github.com/onasunnymorning/domain-os/issues/415)
+* **eve:** activities that produce and verify a sanitized derivative ([5343b76](https://github.com/onasunnymorning/domain-os/commit/5343b7661e3012391a58db80e476d73bfef7b52e)), closes [#415](https://github.com/onasunnymorning/domain-os/issues/415)
+* **eve:** check referential integrity across a FULL deposit ([a6cc7cc](https://github.com/onasunnymorning/domain-os/commit/a6cc7cc7e89bdf2b25b6e59f7e05ce53f923d4f2))
+* **eve:** emit a findings report for every validation run ([a7e2a20](https://github.com/onasunnymorning/domain-os/commit/a7e2a2099980a442c2992fd1d74f4bd7f609bfec))
+* **eve:** emit a findings report for every validation run ([b508ba3](https://github.com/onasunnymorning/domain-os/commit/b508ba30b24f4db4a47d7fd7747025d8bb802cf1))
+* **eve:** escrow-sanitize workflow, REST surface and ADR-0008 ([70131fe](https://github.com/onasunnymorning/domain-os/commit/70131feea9c2b6c84a2492898c22c3536062378e)), closes [#415](https://github.com/onasunnymorning/domain-os/issues/415)
+* **eve:** immutable record for sanitized derivative runs ([879fb58](https://github.com/onasunnymorning/domain-os/commit/879fb587c01498673a7f357badb409a8a1bcdf7a)), closes [#415](https://github.com/onasunnymorning/domain-os/issues/415)
+* **eve:** make the referential-check bound configuration, and size it for .co ([5df9efd](https://github.com/onasunnymorning/domain-os/commit/5df9efd81cff6424ae75f661fedde2384d3d289c))
+* **eve:** make the referential-check bound configuration, and size it for .co ([4e8a186](https://github.com/onasunnymorning/domain-os/commit/4e8a186ffb3bfcd9ab47973f038c00a2db0108bd))
+* **eve:** record the sanitisation tally, so a quarantined run says how much ([da5ea10](https://github.com/onasunnymorning/domain-os/commit/da5ea10d36d30e96491f044eb6fdd11a397b0d65))
+* **eve:** record the sanitisation tally, so a quarantined run says how much ([a3df61a](https://github.com/onasunnymorning/domain-os/commit/a3df61a1732c34deb5b5f6db18a4c6eb3cc552c0))
+* **eve:** report contacts and hosts no domain in the deposit uses ([2ad2b67](https://github.com/onasunnymorning/domain-os/commit/2ad2b670e6737b7992c8577741e2855083364aa6))
+* **eve:** say which object a finding is about, not just where it is ([fe94bf5](https://github.com/onasunnymorning/domain-os/commit/fe94bf59f0459b002bc2edd050f10af621e6118e))
+* **eve:** say which object a finding is about, not just where it is ([943cdfe](https://github.com/onasunnymorning/domain-os/commit/943cdfe6945da77679199678a577083c4d2cd0ea))
+* **eve:** say which rule rejected an object, and keep an example of each ([d8948d0](https://github.com/onasunnymorning/domain-os/commit/d8948d0c1cea216f100324325db7c12a673bbc34))
+* **eve:** survey the whole source when the profile refuses, and name the gap ([99ea82e](https://github.com/onasunnymorning/domain-os/commit/99ea82e5b2d566bbafcac37ea2cf9cd822d3b5ff))
+* **eve:** survey the whole source when the profile refuses, and name the gap ([ccba1fd](https://github.com/onasunnymorning/domain-os/commit/ccba1fd70eeba3451a79dea1dac090d9e21e751d))
+* **eve:** token-level RDE sanitizer with a versioned fail-closed profile ([9e9f0dc](https://github.com/onasunnymorning/domain-os/commit/9e9f0dce985c76c1bf109ad963f50f062a65d810)), closes [#415](https://github.com/onasunnymorning/domain-os/issues/415)
+* **eve:** validate and create a sanitized XML deposit derivative ([#415](https://github.com/onasunnymorning/domain-os/issues/415)) ([bdcecd5](https://github.com/onasunnymorning/domain-os/commit/bdcecd5fd53f284e465e63ce37bcf7a7a5353a68))
+* **eve:** validate signed and encrypted RDE deposits end to end ([#412](https://github.com/onasunnymorning/domain-os/issues/412)) ([5feb288](https://github.com/onasunnymorning/domain-os/commit/5feb2880a7323820be38987b6572c68ced1b12d1))
+* **eve:** validate signed and encrypted RDE deposits end to end ([#412](https://github.com/onasunnymorning/domain-os/issues/412)) ([1062122](https://github.com/onasunnymorning/domain-os/commit/1062122471c65754a8cf89595c9300c9d282083f))
+* **tenancy:** typed tenant scopes and one derivation point (INV-02) ([b0d6e0b](https://github.com/onasunnymorning/domain-os/commit/b0d6e0b7c70721a3fb9a68da350153f4a7ad9971))
+* **ui:** capture launch input for the two escrow workflows ([beed141](https://github.com/onasunnymorning/domain-os/commit/beed141b4634cc51e015721a48b325aea6c4550c))
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/text to v0.39.0 for CVE-2026-56852 ([e2b0889](https://github.com/onasunnymorning/domain-os/commit/e2b08891377e46df70a25af55f14e3d120885e80))
+* **deps:** clear the Trivy HIGH failing the image builds ([809383f](https://github.com/onasunnymorning/domain-os/commit/809383f78f17e9ee4857d6eea35031752e5fdf97))
+* **escrow:** record dropped import failures and guard Import from the workers ([bd5dc85](https://github.com/onasunnymorning/domain-os/commit/bd5dc85bef428589937a817dbea911f168491751)), closes [#411](https://github.com/onasunnymorning/domain-os/issues/411)
+* **eve:** a reference the deposit does not carry is an ERROR ([59d9d70](https://github.com/onasunnymorning/domain-os/commit/59d9d70b0f1267a9e98945c4a60568d7d543d35a))
+* **eve:** judge a deposit by RFC 9022, and say which rule rejected an object ([7ac85b8](https://github.com/onasunnymorning/domain-os/commit/7ac85b8f87cb94e65ba68778f65b53be00a85cef))
+* **eve:** judge a deposit by RFC 9022, not by this registry's conventions ([050df4a](https://github.com/onasunnymorning/domain-os/commit/050df4a6c197f759b6b38378ec99485e082f3de9))
+* **eve:** put the sanitisation staging object where a lifecycle rule can reach it ([cc425e6](https://github.com/onasunnymorning/domain-os/commit/cc425e6c7a505c8fd12eaf5912ab75c2a03a3abc))
+* **eve:** put the sanitisation staging object where a lifecycle rule can reach it ([ce3606e](https://github.com/onasunnymorning/domain-os/commit/ce3606e73ed569e910c5556220c5505c2c04f445))
+* **eve:** register escrow activities without a decryption keyring ([1f9421c](https://github.com/onasunnymorning/domain-os/commit/1f9421c06234a53b77f708e6d220ed1e7a7f6b85))
+* **eve:** register escrow activities without a decryption keyring ([970346c](https://github.com/onasunnymorning/domain-os/commit/970346c2fd69c2bc2c13082c1dd31441b9b70b83))
+* **eve:** stop one registrar's URL from killing a 12-million-object validation ([ef2f9ba](https://github.com/onasunnymorning/domain-os/commit/ef2f9ba34d8c0645e32cbd81b45576b57988059b))
+* **eve:** stop one registrar's URL from killing a 12-million-object validation ([cab0b09](https://github.com/onasunnymorning/domain-os/commit/cab0b09a1b636cd03a6f6448ff3bdefa0b679c19))
+* **frontend:** clear new npm audit findings failing frontend-tests ([00c91ac](https://github.com/onasunnymorning/domain-os/commit/00c91ace46f634266d79332a0fef92adc5369db8))
+* **frontend:** resolve npm audit high-severity vulnerabilities ([a4c9cdc](https://github.com/onasunnymorning/domain-os/commit/a4c9cdcae1f2d4bcc9640b7fb95824d79cc9acc6))
+* **lint:** clear errcheck (165 -&gt; 0) ([4d15a0c](https://github.com/onasunnymorning/domain-os/commit/4d15a0c34ead5b236ebccd7cac0f7e3b8fda3b76)), closes [#411](https://github.com/onasunnymorning/domain-os/issues/411)
+* **lint:** clear gocritic (77 -&gt; 0) ([7f19708](https://github.com/onasunnymorning/domain-os/commit/7f19708c5d35366e7894f674296e7e53143ba05d)), closes [#411](https://github.com/onasunnymorning/domain-os/issues/411)
+* **lint:** clear gosec (150 -&gt; 0) ([d5eae72](https://github.com/onasunnymorning/domain-os/commit/d5eae724565ca871183ffd562e48ff995399b654)), closes [#411](https://github.com/onasunnymorning/domain-os/issues/411)
+* **lint:** clear ineffassign and unused (20 findings) ([07b8252](https://github.com/onasunnymorning/domain-os/commit/07b82526d5ee08e76c091629d7074d87b4bfbe13))
+* **lint:** clear staticcheck (83 -&gt; 0) ([36a4b26](https://github.com/onasunnymorning/domain-os/commit/36a4b262c91cf281fd66dec43c95a214220a3b0b)), closes [#411](https://github.com/onasunnymorning/domain-os/issues/411)
+* **security:** clear high-severity findings blocking CI (npm audit + Trivy) ([0dccd6d](https://github.com/onasunnymorning/domain-os/commit/0dccd6d59414984245a36eb3d9f2a77b440ca164))
+* **security:** clear the npm audit and Trivy findings failing ci-security ([f374500](https://github.com/onasunnymorning/domain-os/commit/f374500b9379a0dae981a608b34088a5d6ac7bf8))
+* **Tiltfile:** update version retrieval to use git tags instead of VERSION file ([ad0dd5a](https://github.com/onasunnymorning/domain-os/commit/ad0dd5a3715747321194c64bfaaf166e5fc276db))
+* **ui:** capture launch input for the two escrow workflows ([65cc7e9](https://github.com/onasunnymorning/domain-os/commit/65cc7e9dfe7ca97e6e74198aface93c4018f20b6))
+
 ## [0.8.4](https://github.com/onasunnymorning/domain-os/compare/v0.8.3...v0.8.4) (2026-07-23)
 
 
