@@ -106,6 +106,12 @@ Every token shape stays inside the schema type it replaces (`eppcom:clIDType`
 is 3–16 characters, `eppcom:roidType` needs its hyphen), so the derivative still
 validates as RDE rather than merely parsing.
 
+> **Amended by [ADR-0009](0009-escrow-parties-keys-arrangements.md).** The
+> master key becomes an EVE-managed `pseudonymise` key version on our DEA
+> identity, stored in AWS Secrets Manager. At most one version is active,
+> replacing it requires explicit confirmation, and every derivative records the
+> version id next to the fingerprint. The env adapter described below is removed.
+
 Key custody follows the split ADR-0007 drew: the value belongs to the secrets
 service, the *meaning* belongs here. An env-backed adapter sits behind
 `interfaces.SanitizationTokenKeyProvider`, its errors are fixed text that cannot

@@ -11,11 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/google/uuid"
+	"github.com/onasunnymorning/domain-os/internal/application/escrowkeys"
+	"github.com/onasunnymorning/domain-os/internal/application/escrowkeys/escrowkeystest"
 	"github.com/onasunnymorning/domain-os/internal/application/rdereport"
 	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate/rdetest"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"github.com/stretchr/testify/assert"
@@ -34,25 +37,35 @@ type evFixture struct {
 	reports  *fakeStore
 	deposits *fakeDepositRepo
 	runs     *fakeRunRepo
-	keys     *fakeKeyRepo
-	keyRepo  repositories.EscrowTrustedKeyRepository
-	prov     *fakeKeyProvider
-	trusted  bool
-	acts     *EscrowValidationActivities
-	env      *testsuite.TestActivityEnvironment
+	// The key registry (issue #429). trust registers the registry signing key
+	// on an external RSP party and the service decryption key on a platform DEA
+	// identity, and names both in the TLD's arrangement.
+	versions     repositories.EscrowKeyVersionRepository
+	arrangements repositories.EscrowArrangementRepository
+	resolver     *escrowkeys.Resolver
+	secretStore  *secrets.MemorySecretStore
+	loader       *secrets.EscrowKeyLoader
+	eve          *entities.EscrowParty
+	trusted      bool
+	// selections are the key selections validate resolved, by run, so that
+	// finalize records them as the workflow would.
+	selections map[uuid.UUID]*entities.EscrowKeySelection
+	acts       *EscrowValidationActivities
+	env        *testsuite.TestActivityEnvironment
 }
 
-func newEVFixture(t *testing.T, tldRepo repositories.TLDRepository, depRepo repositories.EscrowDepositRepository, runRepo repositories.EscrowValidationRunRepository, keyRepo repositories.EscrowTrustedKeyRepository) *evFixture {
+func newEVFixture(t *testing.T, tldRepo repositories.TLDRepository, depRepo repositories.EscrowDepositRepository, runRepo repositories.EscrowValidationRunRepository, versions repositories.EscrowKeyVersionRepository, arrangements repositories.EscrowArrangementRepository) *evFixture {
 	t.Helper()
 	scope, err := entities.NewOperatorID("ryop1")
 	require.NoError(t, err)
 	f := &evFixture{
-		scope:    scope,
-		tld:      "example",
-		service:  rdetest.NewKeyPair(t, "eve-service"),
-		registry: rdetest.NewKeyPair(t, "registry-signer"),
-		store:    newFakeStore(),
-		reports:  newFakeStore(),
+		selections: map[uuid.UUID]*entities.EscrowKeySelection{},
+		scope:      scope,
+		tld:        "example",
+		service:    rdetest.NewKeyPair(t, "eve-service"),
+		registry:   rdetest.NewKeyPair(t, "registry-signer"),
+		store:      newFakeStore(),
+		reports:    newFakeStore(),
 	}
 	if depRepo == nil {
 		f.deposits = newFakeDepositRepo()
@@ -62,16 +75,20 @@ func newEVFixture(t *testing.T, tldRepo repositories.TLDRepository, depRepo repo
 		f.runs = newFakeRunRepo()
 		runRepo = f.runs
 	}
-	if keyRepo == nil {
-		f.keys = &fakeKeyRepo{}
-		keyRepo = f.keys
+	if versions == nil {
+		versions = escrowkeystest.NewVersions()
 	}
+	if arrangements == nil {
+		arrangements = escrowkeystest.NewArrangements()
+	}
+	f.versions, f.arrangements = versions, arrangements
+	f.resolver = escrowkeys.NewResolver(versions, arrangements)
+	f.secretStore = secrets.NewMemorySecretStore()
+	f.loader = secrets.NewEscrowKeyLoader(f.secretStore, time.Minute)
 	if tldRepo == nil {
 		tldRepo = &fakeTLDRepo{owned: map[string]string{"example": "ryop1"}}
 	}
-	f.prov = &fakeKeyProvider{ring: openpgp.EntityList{f.service.Entity}}
-	f.keyRepo = keyRepo
-	f.acts = NewEscrowValidationActivitiesWithDeps(tldRepo, depRepo, runRepo, keyRepo, f.prov, f.store, f.reports, rdevalidate.DefaultLimits(), "domain-os EVE (test)")
+	f.acts = NewEscrowValidationActivitiesWithDeps(tldRepo, depRepo, runRepo, f.resolver, f.loader, f.store, f.reports, rdevalidate.DefaultLimits(), "domain-os EVE (test)")
 	f.acts.now = func() time.Time { return time.Now().UTC().Add(time.Hour) } // after key creation
 	var ts testsuite.WorkflowTestSuite
 	f.env = ts.NewTestActivityEnvironment()
@@ -87,16 +104,97 @@ func (f *evFixture) upload(t *testing.T, name string, pair rdetest.Pair) (rydeKe
 	return
 }
 
-// trust registers the registry signing key for the fixture's scope/TLD (idempotent).
+// auditCtx is the audit context fixture registry changes are recorded under.
+func auditCtx() entities.EscrowKeyAuditContext {
+	return entities.EscrowKeyAuditContext{Actor: "fixture", At: time.Now().UTC()}
+}
+
+// trust registers the fixture's keys for its scope/TLD (idempotent): the
+// registry signing key as an active verification version of an external RSP
+// party, the service key as an active decryption version of a platform DEA
+// identity, and a TLD-level arrangement naming them depositor and receiver.
 func (f *evFixture) trust(t *testing.T) {
 	t.Helper()
 	if f.trusted {
 		return
 	}
-	trusted, err := entities.NewEscrowTrustedKey(f.scope, f.tld, f.registry.Fingerprint, f.registry.ArmoredPublic, "registry", time.Now().UTC().Add(-time.Hour), nil)
+	rsp, err := entities.NewEscrowParty(entities.OperatorKeyOwner(f.scope), "Registry RSP", entities.EscrowPartyRSP, entities.EscrowPartyExternal, "fixture", time.Now().UTC())
 	require.NoError(t, err)
-	require.NoError(t, f.keyRepo.Create(t.Context(), trusted))
+	v, err := entities.NewEscrowKeyVersion(entities.EscrowKeyVersionSpec{Party: rsp, Purpose: entities.EscrowKeyPurposeVerifyInbound, Version: 1,
+		Fingerprint: f.registry.Fingerprint, ArmoredPublicKey: f.registry.ArmoredPublic, At: time.Now().UTC()})
+	require.NoError(t, err)
+	require.NoError(t, v.Activate(time.Now().UTC().Add(-time.Hour)))
+	ev, err := entities.NewEscrowKeyVersionAuditEvent(auditCtx(), nil, v, entities.EscrowAuditVersionPublicKeyAdded)
+	require.NoError(t, err)
+	require.NoError(t, f.versions.Create(t.Context(), v, ev))
+	eve, err := entities.NewEscrowParty(entities.PlatformKeyOwner(), "EVE", entities.EscrowPartyDEA, entities.EscrowPartySelf, "fixture", time.Now().UTC())
+	require.NoError(t, err)
+	f.addDecryptVersion(t, eve, f.service, 1)
+	f.eve = eve
+	f.setArrangement(t, entities.EscrowArrangementSpec{Level: entities.EscrowArrangementTLD, Operator: f.scope, TLD: f.tld, Depositor: rsp, Receiver: eve})
 	f.trusted = true
+}
+
+// setArrangement replaces the live arrangement for the spec's slot.
+func (f *evFixture) setArrangement(t *testing.T, spec entities.EscrowArrangementSpec) *entities.EscrowArrangement {
+	t.Helper()
+	spec.Direction, spec.At = entities.EscrowArrangementInbound, time.Now().UTC()
+	ks := entities.OperatorEscrowKeyScope(f.scope)
+	if spec.Level == entities.EscrowArrangementPlatform {
+		ks = entities.PlatformEscrowKeyScope(entities.NewPlatformScope())
+	}
+	prev, err := f.arrangements.GetLive(t.Context(), ks, spec.Level, spec.TLD, entities.EscrowArrangementInbound)
+	if err == nil {
+		spec.Previous = prev
+	}
+	a, err := entities.NewEscrowArrangement(spec)
+	require.NoError(t, err)
+	ev, err := entities.NewEscrowArrangementAuditEvent(auditCtx(), a, entities.EscrowAuditArrangementChanged)
+	require.NoError(t, err)
+	require.NoError(t, f.arrangements.Replace(t.Context(), spec.Previous, a, ev))
+	return a
+}
+
+// receiver makes a platform-owned DEA party, holding the given decryption
+// keys in the key store, the TLD's receiver. It returns the party and the
+// versions, all ACTIVE.
+func (f *evFixture) receiver(t *testing.T, keys ...rdetest.KeyPair) (*entities.EscrowParty, []*entities.EscrowKeyVersion) {
+	t.Helper()
+	eve, err := entities.NewEscrowParty(entities.PlatformKeyOwner(), "EVE", entities.EscrowPartyDEA, entities.EscrowPartySelf, "fixture", time.Now().UTC())
+	require.NoError(t, err)
+	var out []*entities.EscrowKeyVersion
+	for i, kp := range keys {
+		out = append(out, f.addDecryptVersion(t, eve, kp, i+1))
+	}
+	f.setArrangement(t, entities.EscrowArrangementSpec{Level: entities.EscrowArrangementTLD, Operator: f.scope, TLD: f.tld, Receiver: eve, Depositor: f.depositorParty(t)})
+	return eve, out
+}
+
+func (f *evFixture) addDecryptVersion(t *testing.T, eve *entities.EscrowParty, kp rdetest.KeyPair, n int) *entities.EscrowKeyVersion {
+	t.Helper()
+	value, err := secrets.EncodeOpenPGPSecret(rdetest.EncryptedArmoredPrivate(t, kp, "fixture-pass"), "fixture-pass")
+	require.NoError(t, err)
+	ref, err := f.secretStore.Put(t.Context(), eve.ID.String()+"/"+kp.Fingerprint, nil, value)
+	require.NoError(t, err)
+	v, err := entities.NewEscrowKeyVersion(entities.EscrowKeyVersionSpec{Party: eve, Purpose: entities.EscrowKeyPurposeDecryptInbound, Version: n,
+		Fingerprint: kp.Fingerprint, ArmoredPublicKey: kp.ArmoredPublic, SecretRef: &ref, At: time.Now().UTC()})
+	require.NoError(t, err)
+	require.NoError(t, v.RecordProbe(true, time.Now().UTC()))
+	require.NoError(t, v.Activate(time.Now().UTC().Add(-time.Hour)))
+	ev, err := entities.NewEscrowKeyVersionAuditEvent(auditCtx(), nil, v, entities.EscrowAuditVersionImported)
+	require.NoError(t, err)
+	require.NoError(t, f.versions.Create(t.Context(), v, ev))
+	return v
+}
+
+// depositorParty returns the RSP party trust registered.
+func (f *evFixture) depositorParty(t *testing.T) *entities.EscrowParty {
+	t.Helper()
+	f.trust(t)
+	a, err := f.arrangements.GetLive(t.Context(), entities.OperatorEscrowKeyScope(f.scope), entities.EscrowArrangementTLD, f.tld, entities.EscrowArrangementInbound)
+	require.NoError(t, err)
+	require.NotNil(t, a.DepositorPartyID)
+	return &entities.EscrowParty{ID: *a.DepositorPartyID, Owner: entities.OperatorKeyOwner(f.scope), Kind: entities.EscrowPartyRSP, Side: entities.EscrowPartyExternal}
 }
 
 func (f *evFixture) bind(t *testing.T, rydeKey, sigKey string) (BindDepositOutput, error) {
@@ -114,12 +212,20 @@ func (f *evFixture) bind(t *testing.T, rydeKey, sigKey string) (BindDepositOutpu
 	return out, nil
 }
 
+// validate resolves the run's keys (signed profiles only) and validates with
+// them, as the workflow does.
 func (f *evFixture) validate(t *testing.T, b BindDepositOutput) rdevalidate.Result {
 	t.Helper()
+	var keys *entities.EscrowKeySelection
+	if entities.EscrowProfileIsSigned(b.Profile) {
+		keys = f.resolveKeys(t, b)
+		f.selections[b.ValidationRunID] = keys
+	}
 	var res rdevalidate.Result
 	val, err := f.env.ExecuteActivity(f.acts.ValidateArtifacts, ValidateArtifactsInput{
 		Scope: f.scope.String(), TLD: f.tld, DepositID: b.DepositID, ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1",
 		Profile: b.Profile, ArtifactKey: b.ArtifactKey, SignatureKey: b.SignatureKey, ArtifactSHA256: b.ArtifactSHA256, SignatureSHA256: b.SignatureSHA256,
+		Keys: keys,
 	})
 	require.NoError(t, err)
 	require.NoError(t, val.Get(&res))
@@ -147,7 +253,7 @@ func (f *evFixture) finalize(t *testing.T, b BindDepositOutput, res rdevalidate.
 		Scope: f.scope.String(), ValidationRunID: b.ValidationRunID, WorkflowID: "wf-1", Result: res,
 		SummaryKey: emitted.SummaryKey, ReportKey: emitted.ReportKey,
 		NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
-		CompletedAt: time.Now().UTC().Add(2 * time.Hour), Failure: failure,
+		CompletedAt: time.Now().UTC().Add(2 * time.Hour), Failure: failure, Keys: f.selections[b.ValidationRunID],
 	})
 	return err
 }
@@ -190,10 +296,8 @@ func (f *evFixture) bindPlaintext(t *testing.T, artifactKey string) (BindDeposit
 }
 
 func TestEscrowValidationActivities_PlaintextProfileEndToEnd(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
-	// No trusted key is registered and the key provider is emptied: an unsigned
-	// deposit must not need either.
-	f.prov.ring = nil
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
+	// No key is registered at all: an unsigned deposit must not need one.
 	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutGzip, Domains: 3, Contacts: 2, Hosts: 1, Registrars: 1}
 	artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
 	f.store.put("uploads/example.xml.gz", artifact)
@@ -259,8 +363,7 @@ func TestEscrowValidationActivities_PlaintextProfileEndToEnd(t *testing.T) {
 // thousands. The run record keeps MaxFindings of them, so the summary's tally
 // is the only exact account of what the deposit actually contained.
 func TestEscrowValidationActivities_SummaryCountsSuppressedFindings(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
-	f.prov.ring = nil
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 
 	var res rdevalidate.Result
 	res.Profile = rdevalidate.ProfilePlaintextXML
@@ -329,7 +432,7 @@ func TestEscrowValidationActivities_SummaryCountsSuppressedFindings(t *testing.T
 }
 
 func TestEscrowValidationActivities_PlaintextProfileRejectsSignatureKey(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	f.store.put("uploads/a.xml", []byte("<x/>"))
 	f.store.put("uploads/a.sig", []byte("sig"))
 
@@ -343,7 +446,7 @@ func TestEscrowValidationActivities_PlaintextProfileRejectsSignatureKey(t *testi
 }
 
 func TestEscrowValidationActivities_PassEndToEnd(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example", Domains: 4, Contacts: 2, Hosts: 2, Registrars: 1}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, "example_2026-09-08_full_S1_R0", pair)
 
@@ -405,7 +508,7 @@ func TestEscrowValidationActivities_PassEndToEnd(t *testing.T) {
 }
 
 func TestEscrowValidationActivities_BadSignatureIsDVFN(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
 	pair.Sig = rdetest.Sign(t, []byte("not the deposit"), f.registry, false)
 	rydeKey, sigKey := f.upload(t, "bad", pair)
@@ -430,7 +533,7 @@ func TestEscrowValidationActivities_BadSignatureIsDVFN(t *testing.T) {
 }
 
 func TestEscrowValidationActivities_TenantCannotBindForeignTLD(t *testing.T) {
-	f := newEVFixture(t, &fakeTLDRepo{owned: map[string]string{"example": "someoneelse"}}, nil, nil, nil)
+	f := newEVFixture(t, &fakeTLDRepo{owned: map[string]string{"example": "someoneelse"}}, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, "foreign", pair)
 	_, err := f.bind(t, rydeKey, sigKey)
@@ -441,7 +544,7 @@ func TestEscrowValidationActivities_TenantCannotBindForeignTLD(t *testing.T) {
 }
 
 func TestEscrowValidationActivities_MissingArtifact(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
 	f.store.put("uploads/only.ryde", pair.Ryde)
 	_, err := f.bind(t, "uploads/only.ryde", "uploads/missing.sig")
@@ -451,12 +554,13 @@ func TestEscrowValidationActivities_MissingArtifact(t *testing.T) {
 }
 
 func TestEscrowValidationActivities_KeyUnavailableIsErrorNotDVFN(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, "nokey", pair)
 	b, err := f.bind(t, rydeKey, sigKey)
 	require.NoError(t, err)
-	f.prov.err = errors.New("secrets service unreachable")
+	// The TLD's receiver has no decryption key: our problem, not the deposit's.
+	f.setArrangement(t, entities.EscrowArrangementSpec{Level: entities.EscrowArrangementTLD, Operator: f.scope, TLD: f.tld, Depositor: f.depositorParty(t)})
 	res := f.validate(t, b)
 	assert.Equal(t, rdevalidate.OutcomeError, res.Outcome)
 	assert.Contains(t, res.Codes(), rdevalidate.CodeDecryptKeyUnavailable)
@@ -479,7 +583,7 @@ func TestEscrowValidationActivities_KeyUnavailableIsErrorNotDVFN(t *testing.T) {
 }
 
 func TestEscrowValidationActivities_FinalizeFailurePath(t *testing.T) {
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, "fail", pair)
 	b, err := f.bind(t, rydeKey, sigKey)
@@ -494,7 +598,7 @@ func TestEscrowValidationActivities_NoSensitiveDataPersisted(t *testing.T) {
 	// Canaries in a tar entry name, a contact org and the upload key: none may
 	// reach the run row, the result payload or the emitted documents.
 	const canary = "CANARYxq9"
-	f := newEVFixture(t, nil, nil, nil, nil)
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example", Canary: canary, EntryName: canary + ".xml", BreakDomain: true}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, canary, pair)
 	b, err := f.bind(t, rydeKey, sigKey)

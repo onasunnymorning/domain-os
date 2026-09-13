@@ -110,65 +110,16 @@ var _ = Describe("EscrowValidationController", Ordered, func() {
 		Expect(resp.Code).To(Equal(http.StatusNotFound))
 	})
 
-	Describe("trusted keys", func() {
-		var keyID string
-		kp := newTestKeyPair()
-
-		It("registers a key for an operated TLD and computes its fingerprint", func() {
-			resp := scoped(http.MethodPost, "/escrow/trusted-keys", ryID, map[string]string{"tld": tldName, "armoredPublicKey": kp.ArmoredPublic, "label": "primary"})
-			Expect(resp.Code).To(Equal(http.StatusCreated), resp.Body.String())
-			var out rest.EscrowTrustedKeyResponse
-			Expect(json.Unmarshal(resp.Body.Bytes(), &out)).To(Succeed())
-			Expect(out.Fingerprint).To(Equal(kp.Fingerprint))
-			Expect(out.Active).To(BeTrue())
-			keyID = out.ID
-		})
-
-		It("rejects material that is not a single public key", func() {
-			resp := scoped(http.MethodPost, "/escrow/trusted-keys", ryID, map[string]string{"tld": tldName, "armoredPublicKey": kp.ArmoredPrivate})
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-			resp = scoped(http.MethodPost, "/escrow/trusted-keys", ryID, map[string]string{"tld": tldName, "armoredPublicKey": "garbage"})
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-		})
-
-		It("refuses registration against a foreign TLD", func() {
-			resp := scoped(http.MethodPost, "/escrow/trusted-keys", otherRy, map[string]string{"tld": tldName, "armoredPublicKey": kp.ArmoredPublic})
-			Expect(resp.Code).To(Equal(http.StatusNotFound))
-		})
-
-		It("lists keys per tenant only", func() {
-			// Keys are immutable (never deleted), so earlier runs against the shared
-			// test database leave theirs behind: assert on this run's fingerprint.
-			fingerprints := func(tenant string) []string {
-				resp := scoped(http.MethodGet, "/escrow/trusted-keys?tld="+tldName, tenant, nil)
-				Expect(resp.Code).To(Equal(http.StatusOK))
-				var out struct {
-					Items []rest.EscrowTrustedKeyResponse `json:"items"`
-				}
-				Expect(json.Unmarshal(resp.Body.Bytes(), &out)).To(Succeed())
-				var fps []string
-				for _, k := range out.Items {
-					fps = append(fps, k.Fingerprint)
-				}
-				return fps
-			}
-			Expect(fingerprints(ryID)).To(ContainElement(kp.Fingerprint))
-			Expect(fingerprints(otherRy)).NotTo(ContainElement(kp.Fingerprint))
-		})
-
-		It("retires a key once, and only for its own tenant", func() {
-			resp := scoped(http.MethodPost, "/escrow/trusted-keys/"+keyID+"/retire", otherRy, nil)
-			Expect(resp.Code).To(Equal(http.StatusNotFound))
-			resp = scoped(http.MethodPost, "/escrow/trusted-keys/"+keyID+"/retire", ryID, nil)
-			Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
-			var out rest.EscrowTrustedKeyResponse
-			Expect(json.Unmarshal(resp.Body.Bytes(), &out)).To(Succeed())
-			Expect(out.RetiredAt).NotTo(BeNil())
-			Expect(out.Active).To(BeFalse())
-			resp = scoped(http.MethodPost, "/escrow/trusted-keys/"+keyID+"/retire", ryID, nil)
-			Expect(resp.Code).To(Equal(http.StatusConflict))
-		})
+	It("no longer serves the trusted-keys API it replaced (issue #429)", func() {
+		resp := scoped(http.MethodGet, "/escrow/trusted-keys?tld="+tldName, ryID, nil)
+		Expect(resp.Code).To(Equal(http.StatusNotFound))
 	})
+
+	It("rejects a malformed key-version filter", func() {
+		resp := scoped(http.MethodGet, "/escrow/validations?keyVersionId=nope", ryID, nil)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
+
 })
 
 type testKeyPair struct {

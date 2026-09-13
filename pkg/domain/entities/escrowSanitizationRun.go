@@ -91,6 +91,13 @@ type EscrowSanitizationRun struct {
 	ManifestObjectKey   string
 	Counts              EscrowSanitizationCounts
 
+	// TokenKeyFingerprint identifies the pseudonymisation master key and
+	// TokenKeyVersionID the key-registry version it came from (nil when no key
+	// was available and nothing was produced). A change in either between two
+	// derivatives is a visible break in joinability (ADR-0008, ADR-0009).
+	TokenKeyFingerprint string
+	TokenKeyVersionID   *uuid.UUID
+
 	StartedAt   time.Time
 	CompletedAt *time.Time
 }
@@ -168,6 +175,8 @@ type EscrowSanitizationFinalization struct {
 	DerivativeBytes     int64
 	ManifestObjectKey   string
 	Counts              EscrowSanitizationCounts
+	TokenKeyFingerprint string
+	TokenKeyVersionID   *uuid.UUID
 	CompletedAt         time.Time
 }
 
@@ -218,6 +227,7 @@ func (r *EscrowSanitizationRun) Finalize(f EscrowSanitizationFinalization) error
 	r.DerivativeBytes = f.DerivativeBytes
 	r.ManifestObjectKey = f.ManifestObjectKey
 	r.Counts = f.Counts
+	r.TokenKeyFingerprint, r.TokenKeyVersionID = f.TokenKeyFingerprint, f.TokenKeyVersionID
 	r.CompletedAt = &completed
 	return nil
 }

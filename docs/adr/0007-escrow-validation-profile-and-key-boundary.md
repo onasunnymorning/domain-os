@@ -38,13 +38,15 @@ the peek-and-branch unpacker makes adding a layout a local change.
 
 ### 2. The key boundary is keyring-shaped; custody is someone else's job
 
+> **Amended by [ADR-0009](0009-escrow-parties-keys-arrangements.md).** The keyring shape and the custody split stand. What changes: keys belong to parties rather than to a worker or a TLD, trusted signing keys move out of `escrow_trusted_keys` into the key registry, and the env adapter is replaced by AWS Secrets Manager.
+
 Two responsibilities are deliberately separated:
 
 | Responsibility | Owner | Status |
 |---|---|---|
 | Custody, access control, audit of reads and versioning of the **private key value** | Secrets service (Doppler today; the approved IAM-backed service once `alpaca-infra` names it) | Env adapter `internal/infrastructure/secrets` reads a Doppler-injected keyring. A secrets-service adapter is deferred until the service is decided; it replaces the adapter behind `interfaces.EscrowDecryptionKeyProvider` without touching validation code. |
 | **Keyring semantics**: which private keys are live, try-all during rollover, which key decrypted each run, retirement | This application | Shipped: `DecryptionKeyring(ctx) (openpgp.EntityList, error)`, every run records the decrypting fingerprint. |
-| **Trusted registry signing keys** per tenant/TLD with overlapping validity windows and retirement | This application (data, not secrets) | Shipped: `escrow_trusted_keys`, `/escrow/trusted-keys`, active-window check pinned to the verification time, signing fingerprint on every run. |
+| **Trusted registry signing keys** per tenant/TLD with overlapping validity windows and retirement | This application (data, not secrets) | Shipped as `escrow_trusted_keys` and `/escrow/trusted-keys`; **replaced by the key registry (ADR-0009 §8)**, which removed both. The signing fingerprint is still recorded on every run. |
 | Private-key rotation tooling and OpenPGP revocation-certificate ingestion | Follow-on | Deferred: depends on the backend and on how registries are notified. |
 
 Why keyring-shaped: registries re-key on their own schedule, so during a
@@ -120,7 +122,7 @@ still schema-valid and still identifies the artifact.
 
 ## Explicitly deferred
 
-- Secrets-service adapter and private-key rotation tooling (backend undecided).
+- ~~Secrets-service adapter and private-key rotation tooling (backend undecided).~~ — decided by [ADR-0009](0009-escrow-parties-keys-arrangements.md) (issue #429): AWS Secrets Manager behind a port, and EVE-managed parties, key versions and arrangements.
 - OpenPGP revocation certificates for trusted registry keys (retirement is the control today).
 - ~~Unsigned XML / XML.GZ compatibility profiles~~ — shipped by issue #415 as `entities.EscrowProfilePlaintextXML`; see ADR-0008. Split multi-file deposits are still deferred.
 - DRFN (missing-deposit) scheduling; `lastFullDate` tracking across runs.
@@ -142,6 +144,6 @@ pilot run.
 ## Action Items
 
 1. [ ] Confirm the `.ryde` layering against one authorised real sample before the pilot run.
-2. [ ] Name the secrets service in `alpaca-infra` and add its adapter behind `EscrowDecryptionKeyProvider`.
+2. [ ] ~~Name the secrets service in `alpaca-infra` and add its adapter behind `EscrowDecryptionKeyProvider`.~~ Superseded by ADR-0009; tracked there.
 3. [ ] Decide how registries are notified of a service public-key rollover and build the rotation runbook.
 4. [ ] Remove `entities.RDEReport` once nothing references it.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -123,6 +124,21 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		}
 	}
 
+	// 1b. Resolve which key versions this run may use, once, into history: a
+	// retry validates with exactly these versions, a revalidation resolves
+	// again, and a revocation still reaches a retry (the activity re-checks).
+	var keys *entities.EscrowKeySelection
+	if entities.EscrowProfileIsSigned(bound.Profile) {
+		var sel entities.EscrowKeySelection
+		if err := workflow.ExecuteActivity(ctxShort, acts.ResolveEscrowKeys, activities.ResolveEscrowKeysInput{
+			Scope: params.Scope, DepositID: bound.DepositID, WorkflowID: wfID,
+		}).Get(ctxShort, &sel); err != nil {
+			finalizeError("keys", err)
+			return result, fmt.Errorf("ResolveEscrowKeys(run=%s) failed: %w", state.ValidationRunID, err)
+		}
+		keys = &sel
+	}
+
 	// 2. Verify, decrypt, unpack, validate — one streaming pass after signature check.
 	state.Phase = "validating"
 	var res rdevalidate.Result
@@ -131,6 +147,7 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		DepositID: bound.DepositID, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID,
 		ArtifactKey: bound.ArtifactKey, SignatureKey: bound.SignatureKey,
 		ArtifactSHA256: bound.ArtifactSHA256, SignatureSHA256: bound.SignatureSHA256,
+		Keys: keys,
 	}).Get(ctxValidate, &res); err != nil {
 		finalizeError("validate", err)
 		return result, fmt.Errorf("ValidateArtifacts(run=%s) failed: %w", state.ValidationRunID, err)
@@ -170,7 +187,7 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		state.Phase = "finalizing"
 		if err := workflow.ExecuteActivity(ctxShort, acts.FinalizeValidationRun, activities.FinalizeRunInput{
 			Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID, Result: res,
-			SummaryKey: emitted.SummaryKey, CompletedAt: workflow.Now(ctx),
+			SummaryKey: emitted.SummaryKey, CompletedAt: workflow.Now(ctx), Keys: keys,
 		}).Get(ctxShort, nil); err != nil {
 			state.Phase, state.Error = "error", err.Error()
 			return result, fmt.Errorf("FinalizeValidationRun(run=%s) failed: %w", state.ValidationRunID, err)
@@ -185,7 +202,7 @@ func EscrowValidationWorkflow(ctx workflow.Context, params EscrowValidationParam
 		Scope: params.Scope, ValidationRunID: bound.ValidationRunID, WorkflowID: wfID, Result: res,
 		SummaryKey: emitted.SummaryKey, ReportKey: emitted.ReportKey,
 		NotificationKey: emitted.NotificationKey, NotificationStatus: emitted.NotificationStatus,
-		CompletedAt: workflow.Now(ctx),
+		CompletedAt: workflow.Now(ctx), Keys: keys,
 	}).Get(ctxShort, nil); err != nil {
 		state.Phase, state.Error = "error", err.Error()
 		return result, fmt.Errorf("FinalizeValidationRun(run=%s) failed: %w", state.ValidationRunID, err)

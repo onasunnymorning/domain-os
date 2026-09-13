@@ -83,13 +83,15 @@ func TestEscrowValidation_NoRegistryWriteSideEffect(t *testing.T) {
 	tldRepo := postgres.NewGormTLDRepo(tx)
 	require.NoError(t, tldRepo.Create(context.Background(), tld))
 
-	before := registryCounts(t, tx)
-
-	f := newEVFixture(t, tldRepo, postgres.NewEscrowDepositRepository(tx), postgres.NewEscrowValidationRunRepository(tx), postgres.NewEscrowTrustedKeyRepository(tx))
+	f := newEVFixture(t, tldRepo, postgres.NewEscrowDepositRepository(tx), postgres.NewEscrowValidationRunRepository(tx), postgres.NewEscrowKeyVersionRepository(tx), postgres.NewEscrowArrangementRepository(tx))
 	f.scope = entities.OperatorID(ryid)
 	f.tld = "evesidefx"
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "evesidefx", Domains: 25, Contacts: 10, Hosts: 5, Registrars: 2, NNDNs: 3}, f.service, f.registry)
 	rydeKey, sigKey := f.upload(t, "example_2026-09-08_full_S1_R0", pair)
+	// Registering the trusted key is setup, and it legitimately writes its own
+	// audit events to the outbox; the snapshot is of what validation does.
+	f.trust(t)
+	before := registryCounts(t, tx)
 
 	b, err := f.bind(t, rydeKey, sigKey)
 	require.NoError(t, err)

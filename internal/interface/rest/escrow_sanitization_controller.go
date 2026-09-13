@@ -56,10 +56,14 @@ type EscrowSanitizationRunResponse struct {
 	// thing a code fired on, with every occurrence counted.
 	FindingTally []entities.EscrowFindingTally `json:"findingTally"`
 
-	DerivativeObjectKey string                            `json:"derivativeObjectKey,omitempty"`
-	DerivativeSHA256    string                            `json:"derivativeSha256,omitempty"`
-	DerivativeBytes     int64                             `json:"derivativeBytes,omitempty"`
-	ManifestObjectKey   string                            `json:"manifestObjectKey,omitempty"`
+	DerivativeObjectKey string `json:"derivativeObjectKey,omitempty"`
+	DerivativeSHA256    string `json:"derivativeSha256,omitempty"`
+	DerivativeBytes     int64  `json:"derivativeBytes,omitempty"`
+	ManifestObjectKey   string `json:"manifestObjectKey,omitempty"`
+	// TokenKeyFingerprint and TokenKeyVersionID identify the pseudonymisation
+	// key the derivative was tokenised with (issue #429).
+	TokenKeyFingerprint string                            `json:"tokenKeyFingerprint,omitempty"`
+	TokenKeyVersionID   string                            `json:"tokenKeyVersionId,omitempty"`
 	Counts              entities.EscrowSanitizationCounts `json:"counts"`
 
 	StartedAt   time.Time  `json:"startedAt"`
@@ -84,6 +88,7 @@ func toSanitizationRunResponse(r *entities.EscrowSanitizationRun) EscrowSanitiza
 		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: findings, FindingTally: tally,
 		DerivativeObjectKey: r.DerivativeObjectKey, DerivativeSHA256: r.DerivativeSHA256,
 		DerivativeBytes: r.DerivativeBytes, ManifestObjectKey: r.ManifestObjectKey, Counts: r.Counts,
+		TokenKeyFingerprint: r.TokenKeyFingerprint, TokenKeyVersionID: uuidString(r.TokenKeyVersionID),
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,
 	}
 }
@@ -264,4 +269,11 @@ func (c *EscrowController) GetSanitization(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"run": toSanitizationRunResponse(run), "policyVersion": rdesanitize.PolicyVersion})
+}
+
+func uuidString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }

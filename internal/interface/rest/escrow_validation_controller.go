@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
-	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -34,9 +34,11 @@ type EscrowValidationDeps struct {
 	TLDs     repositories.TLDRepository
 	Deposits repositories.EscrowDepositRepository
 	Runs     repositories.EscrowValidationRunRepository
-	Keys     repositories.EscrowTrustedKeyRepository
 	// Sanitizations is the derivative record set (issue #415).
 	Sanitizations repositories.EscrowSanitizationRunRepository
+	// KeyRegistry manages escrow parties, keys and arrangements (issue #429).
+	// Its routes are registered only when it is set.
+	KeyRegistry *services.EscrowKeyService
 }
 
 type startEscrowValidationRequest struct {
@@ -68,51 +70,31 @@ type EscrowDepositResponse struct {
 
 // EscrowValidationRunResponse is the API shape of a validation run.
 type EscrowValidationRunResponse struct {
-	ID                       string                        `json:"id"`
-	DepositID                string                        `json:"depositId"`
-	TLD                      string                        `json:"tld"`
-	WorkflowID               string                        `json:"workflowId"`
-	RunID                    string                        `json:"runId,omitempty"`
-	Profile                  string                        `json:"profile"`
-	Outcome                  string                        `json:"outcome"`
-	Verified                 bool                          `json:"verified"`
-	StageReached             string                        `json:"stageReached,omitempty"`
-	Findings                 []entities.EscrowFinding      `json:"findings"`
-	SigningKeyFingerprint    string                        `json:"signingKeyFingerprint,omitempty"`
-	DecryptionKeyFingerprint string                        `json:"decryptionKeyFingerprint,omitempty"`
-	PlaintextSHA256          string                        `json:"plaintextSha256,omitempty"`
-	RDEDepositID             string                        `json:"rdeDepositId,omitempty"`
-	RDEKind                  string                        `json:"rdeKind,omitempty"`
-	RDEResend                int                           `json:"rdeResend"`
-	RDEWatermark             *time.Time                    `json:"rdeWatermark,omitempty"`
-	FindingTally             []entities.EscrowFindingTally `json:"findingTally"`
-	SummaryObjectKey         string                        `json:"summaryObjectKey,omitempty"`
-	ReportObjectKey          string                        `json:"reportObjectKey,omitempty"`
-	NotificationObjectKey    string                        `json:"notificationObjectKey,omitempty"`
-	NotificationStatus       string                        `json:"notificationStatus,omitempty"`
-	StartedAt                time.Time                     `json:"startedAt"`
-	CompletedAt              *time.Time                    `json:"completedAt,omitempty"`
-}
-
-// EscrowTrustedKeyResponse is the API shape of a trusted registry key.
-type EscrowTrustedKeyResponse struct {
-	ID          string     `json:"id"`
-	TLD         string     `json:"tld"`
-	Fingerprint string     `json:"fingerprint"`
-	Label       string     `json:"label,omitempty"`
-	ValidFrom   time.Time  `json:"validFrom"`
-	ValidTo     *time.Time `json:"validTo,omitempty"`
-	RetiredAt   *time.Time `json:"retiredAt,omitempty"`
-	Active      bool       `json:"active"`
-	CreatedAt   time.Time  `json:"createdAt"`
-}
-
-type createTrustedKeyRequest struct {
-	TLD              string     `json:"tld" binding:"required"`
-	ArmoredPublicKey string     `json:"armoredPublicKey" binding:"required"`
-	Label            string     `json:"label"`
-	ValidFrom        *time.Time `json:"validFrom"`
-	ValidTo          *time.Time `json:"validTo"`
+	ID                       string                         `json:"id"`
+	DepositID                string                         `json:"depositId"`
+	TLD                      string                         `json:"tld"`
+	WorkflowID               string                         `json:"workflowId"`
+	RunID                    string                         `json:"runId,omitempty"`
+	Profile                  string                         `json:"profile"`
+	Outcome                  string                         `json:"outcome"`
+	Verified                 bool                           `json:"verified"`
+	StageReached             string                         `json:"stageReached,omitempty"`
+	Findings                 []entities.EscrowFinding       `json:"findings"`
+	SigningKeyFingerprint    string                         `json:"signingKeyFingerprint,omitempty"`
+	DecryptionKeyFingerprint string                         `json:"decryptionKeyFingerprint,omitempty"`
+	Keys                     *entities.EscrowRunKeyEvidence `json:"keys,omitempty"`
+	PlaintextSHA256          string                         `json:"plaintextSha256,omitempty"`
+	RDEDepositID             string                         `json:"rdeDepositId,omitempty"`
+	RDEKind                  string                         `json:"rdeKind,omitempty"`
+	RDEResend                int                            `json:"rdeResend"`
+	RDEWatermark             *time.Time                     `json:"rdeWatermark,omitempty"`
+	FindingTally             []entities.EscrowFindingTally  `json:"findingTally"`
+	SummaryObjectKey         string                         `json:"summaryObjectKey,omitempty"`
+	ReportObjectKey          string                         `json:"reportObjectKey,omitempty"`
+	NotificationObjectKey    string                         `json:"notificationObjectKey,omitempty"`
+	NotificationStatus       string                         `json:"notificationStatus,omitempty"`
+	StartedAt                time.Time                      `json:"startedAt"`
+	CompletedAt              *time.Time                     `json:"completedAt,omitempty"`
 }
 
 func toDepositResponse(d *entities.EscrowDeposit) EscrowDepositResponse {
@@ -134,8 +116,14 @@ func toRunResponse(r *entities.EscrowValidationRun) EscrowValidationRunResponse 
 	if tally == nil {
 		tally = []entities.EscrowFindingTally{}
 	}
+	var keys *entities.EscrowRunKeyEvidence
+	if !r.Keys.IsZero() {
+		k := r.Keys
+		keys = &k
+	}
 	return EscrowValidationRunResponse{
-		ID: r.ID.String(), DepositID: r.DepositID.String(), TLD: r.TLD, WorkflowID: r.WorkflowID, RunID: r.RunID,
+		Keys: keys,
+		ID:   r.ID.String(), DepositID: r.DepositID.String(), TLD: r.TLD, WorkflowID: r.WorkflowID, RunID: r.RunID,
 		Profile: r.Profile, Outcome: string(r.Outcome), Verified: r.Verified(), StageReached: r.StageReached, Findings: findings,
 		SigningKeyFingerprint: r.SigningKeyFingerprint, DecryptionKeyFingerprint: r.DecryptionKeyFingerprint, PlaintextSHA256: r.PlaintextSHA256,
 		RDEDepositID: r.RDEDepositID, RDEKind: r.RDEKind, RDEResend: r.RDEResend, RDEWatermark: r.RDEWatermark,
@@ -143,13 +131,6 @@ func toRunResponse(r *entities.EscrowValidationRun) EscrowValidationRunResponse 
 		SummaryObjectKey: r.SummaryObjectKey,
 		ReportObjectKey:  r.ReportObjectKey, NotificationObjectKey: r.NotificationObjectKey, NotificationStatus: string(r.NotificationStatus),
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,
-	}
-}
-
-func toTrustedKeyResponse(k *entities.EscrowTrustedKey, now time.Time) EscrowTrustedKeyResponse {
-	return EscrowTrustedKeyResponse{
-		ID: k.ID.String(), TLD: k.TLD, Fingerprint: k.Fingerprint, Label: k.Label,
-		ValidFrom: k.ValidFrom, ValidTo: k.ValidTo, RetiredAt: k.RetiredAt, Active: k.Active(now), CreatedAt: k.CreatedAt,
 	}
 }
 
@@ -250,6 +231,7 @@ func (c *EscrowController) StartValidation(ctx *gin.Context) {
 // @Param X-Tenant-ID header string true "Operator scope"
 // @Param tld query string false "Filter by TLD"
 // @Param outcome query string false "Filter by outcome (RUNNING, PASS, FAIL, ERROR)"
+// @Param keyVersionId query string false "Only runs that verified or decrypted with this key version"
 // @Param pagesize query int false "Page size"
 // @Param cursor query string false "Cursor from a previous page"
 // @Success 200 {object} map[string]interface{}
@@ -278,6 +260,13 @@ func (c *EscrowController) ListValidations(ctx *gin.Context) {
 			return
 		}
 		filter.TLDEquals = tld
+	}
+	if raw := strings.TrimSpace(ctx.Query("keyVersionId")); raw != "" {
+		if _, err := uuid.Parse(raw); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid keyVersionId"})
+			return
+		}
+		filter.KeyVersionIDEquals = raw
 	}
 	runs, next, err := c.deps.Runs.List(ctx.Request.Context(), scope, queries.ListItemsQuery{PageSize: pageSize, PageCursor: cursor, Filter: filter})
 	if err != nil {
@@ -368,118 +357,4 @@ func (c *EscrowController) GetDeposit(ctx *gin.Context) {
 		items[i] = toRunResponse(r)
 	}
 	ctx.JSON(http.StatusOK, gin.H{"deposit": toDepositResponse(dep), "runs": items})
-}
-
-// CreateTrustedKey registers a registry signing key for a TLD the caller operates.
-// @Summary Register a trusted registry signing key
-// @Tags Escrow
-// @Accept json
-// @Produce json
-// @Param X-Tenant-ID header string true "Operator scope"
-// @Param body body createTrustedKeyRequest true "Key"
-// @Success 201 {object} EscrowTrustedKeyResponse
-// @Router /escrow/trusted-keys [post]
-func (c *EscrowController) CreateTrustedKey(ctx *gin.Context) {
-	var req createTrustedKeyRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "tld and armoredPublicKey are required"})
-		return
-	}
-	scope, tld, ok := c.scopedTLD(ctx, req.TLD)
-	if !ok {
-		return
-	}
-	entity, err := rdevalidate.ParseArmoredPublicKey(req.ArmoredPublicKey)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "armoredPublicKey is not a single ASCII-armored OpenPGP public key"})
-		return
-	}
-	now := time.Now().UTC()
-	validFrom := now
-	if req.ValidFrom != nil {
-		validFrom = req.ValidFrom.UTC()
-	}
-	key, err := entities.NewEscrowTrustedKey(scope, tld, rdevalidate.FingerprintHex(entity), req.ArmoredPublicKey, req.Label, validFrom, req.ValidTo)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if err := c.deps.Keys.Create(ctx.Request.Context(), key); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "could not register key"})
-		return
-	}
-	ctx.JSON(http.StatusCreated, toTrustedKeyResponse(key, now))
-}
-
-// RetireTrustedKey stops trusting a key from now on. Keys are never deleted.
-// @Summary Retire a trusted registry signing key
-// @Tags Escrow
-// @Produce json
-// @Param X-Tenant-ID header string true "Operator scope"
-// @Param id path string true "Key ID"
-// @Success 200 {object} EscrowTrustedKeyResponse
-// @Router /escrow/trusted-keys/{id}/retire [post]
-func (c *EscrowController) RetireTrustedKey(ctx *gin.Context) {
-	scope, err := OperatorScopeFromRequest(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	id, err := uuid.Parse(ctx.Param("id"))
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-	now := time.Now().UTC()
-	if err := c.deps.Keys.Retire(ctx.Request.Context(), scope, id, now); err != nil {
-		switch {
-		case errors.Is(err, entities.ErrEscrowTrustedKeyNotFound):
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "trusted key not found"})
-		case errors.Is(err, entities.ErrEscrowTrustedKeyAlreadyRetired):
-			ctx.JSON(http.StatusConflict, gin.H{"error": "trusted key is already retired"})
-		default:
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "could not retire key"})
-		}
-		return
-	}
-	key, err := c.deps.Keys.GetByID(ctx.Request.Context(), scope, id)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
-		return
-	}
-	ctx.JSON(http.StatusOK, toTrustedKeyResponse(key, now))
-}
-
-// ListTrustedKeys lists the registry keys registered for the caller's scope.
-// @Summary List trusted registry signing keys
-// @Tags Escrow
-// @Produce json
-// @Param X-Tenant-ID header string true "Operator scope"
-// @Param tld query string false "Filter by TLD"
-// @Success 200 {object} map[string]interface{}
-// @Router /escrow/trusted-keys [get]
-func (c *EscrowController) ListTrustedKeys(ctx *gin.Context) {
-	scope, err := OperatorScopeFromRequest(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	tld := ""
-	if raw := strings.TrimSpace(ctx.Query("tld")); raw != "" {
-		if tld, err = entities.NormalizeEscrowTLD(raw); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid tld"})
-			return
-		}
-	}
-	keys, err := c.deps.Keys.List(ctx.Request.Context(), scope, tld)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "listing failed"})
-		return
-	}
-	now := time.Now().UTC()
-	items := make([]EscrowTrustedKeyResponse, len(keys))
-	for i, k := range keys {
-		items[i] = toTrustedKeyResponse(k, now)
-	}
-	ctx.JSON(http.StatusOK, gin.H{"items": items, "count": len(items)})
 }

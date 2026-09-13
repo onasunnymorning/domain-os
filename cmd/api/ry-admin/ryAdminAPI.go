@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -15,6 +17,7 @@ import (
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
@@ -370,12 +373,24 @@ func main() {
 	// Workflows
 	rest.NewWorkflowController(r, authMiddleware)
 	// Escrow
+	// Escrow key registry (issue #429, ADR-0009). The API writes key material
+	// to the key store but never reads it; without a configured store, public
+	// keys and arrangements still work and imports report 503.
+	escrowKeyStore, err := secrets.NewEscrowSecretStoreFromEnv(context.Background())
+	if err != nil && !errors.Is(err, entities.ErrEscrowKeyStoreNotConfigured) {
+		logger.Fatal("escrow key store", zap.Error(err))
+	}
+	escrowKeyService := appservices.NewEscrowKeyService(
+		postgres.NewEscrowPartyRepository(gormDB), postgres.NewEscrowKeyVersionRepository(gormDB),
+		postgres.NewEscrowArrangementRepository(gormDB), postgres.NewEscrowKeyAuditRepository(gormDB),
+		tldRepo, escrowKeyStore, rest.TemporalEscrowKeyProbeStarter{},
+	)
 	rest.NewEscrowController(r, authMiddleware, rest.EscrowValidationDeps{
 		TLDs:          tldRepo,
 		Deposits:      postgres.NewEscrowDepositRepository(gormDB),
 		Runs:          postgres.NewEscrowValidationRunRepository(gormDB),
-		Keys:          postgres.NewEscrowTrustedKeyRepository(gormDB),
 		Sanitizations: postgres.NewEscrowSanitizationRunRepository(gormDB),
+		KeyRegistry:   escrowKeyService,
 	})
 	// Zone Slaving (serial drift monitoring)
 	rest.NewZoneSlavingController(r, zoneSlavingService, authMiddleware)

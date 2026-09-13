@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "generated": "2026-09-12T18:48:31Z",
+  "generated": "2026-09-13T04:53:55Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -241,6 +241,34 @@
           {
             "name": "KNOWLEDGE_BASE_DIR",
             "description": "Root directory for knowledge base docs (docs/index.yaml). Falls back to working directory."
+          },
+          {
+            "name": "ESCROW_CUSTODY_BACKEND",
+            "default": "none",
+            "description": "Escrow key store: none or aws-secrets-manager. With none, public keys and unsigned deposits still work, and importing or probing a private key reports KEY_STORE_NOT_CONFIGURED"
+          },
+          {
+            "name": "ESCROW_CUSTODY_AWS_REGION",
+            "required_when": "ESCROW_CUSTODY_BACKEND=aws-secrets-manager",
+            "description": "AWS region of the Secrets Manager holding escrow key material"
+          },
+          {
+            "name": "ESCROW_CUSTODY_NAME_PREFIX",
+            "default": "domain-os",
+            "description": "Prefix of every escrow key secret name (\u003cprefix\u003e/escrow-keys/...). IAM policies are written against it; a stored reference keeps its full name, so changing the prefix does not orphan existing keys"
+          },
+          {
+            "name": "ESCROW_CUSTODY_KMS_ID",
+            "description": "Optional customer-managed KMS key (id, ARN or alias) that encrypts new escrow key secrets; empty uses the account's aws/secretsmanager key"
+          },
+          {
+            "name": "ESCROW_CUSTODY_ENDPOINT",
+            "description": "Secrets Manager endpoint override for development (LocalStack, e.g. http://localstack:4566). Leave empty in AWS"
+          },
+          {
+            "name": "ESCROW_CUSTODY_RECOVERY_WINDOW_DAYS",
+            "default": "30",
+            "description": "Days a destroyed escrow key secret can still be recovered (7-30) before Secrets Manager deletes it"
           }
         ]
       }
@@ -602,16 +630,6 @@
             "description": "Create missing storage buckets on startup. Local development only — production buckets are provisioned out-of-band"
           },
           {
-            "name": "ESCROW_VALIDATION_PRIVATE_KEYS",
-            "secret": true,
-            "description": "ASCII-armored OpenPGP private key block(s), concatenated, used to decrypt inbound .ryde deposits. Hold every non-retired key so deposits encrypted to the previous key still open during rollover. Never place in general config"
-          },
-          {
-            "name": "ESCROW_VALIDATION_PRIVATE_KEY_PASSPHRASE",
-            "secret": true,
-            "description": "Passphrase protecting the keys in ESCROW_VALIDATION_PRIVATE_KEYS (one passphrase for the whole ring)"
-          },
-          {
             "name": "ESCROW_VALIDATION_DEA_NAME",
             "default": "domain-os EVE",
             "description": "Data Escrow Agent name written into rdeNotification:deaName (1-255 characters)"
@@ -652,9 +670,23 @@
             "description": "How many of those identifiers are also kept verbatim so a finding can name the object rather than only its ordinal. About 60 bytes each, so it is deliberately smaller than the bound above; past it findings carry an ordinal and a byte offset instead of a name"
           },
           {
-            "name": "ESCROW_SANITIZE_HMAC_KEY",
-            "secret": true,
-            "description": "Master HMAC key for escrow derivative pseudonymisation, base64 or hex, at least 32 bytes. Tenant- and purpose-scoped subkeys are derived from it; rotating it changes every token, so derivatives made before and after are no longer joinable. Without it the sanitization activities are not registered"
+            "name": "ESCROW_CUSTODY_BACKEND",
+            "default": "none",
+            "description": "Escrow key store: none or aws-secrets-manager. With none, public keys and unsigned deposits still work, and importing or probing a private key reports KEY_STORE_NOT_CONFIGURED"
+          },
+          {
+            "name": "ESCROW_CUSTODY_AWS_REGION",
+            "required_when": "ESCROW_CUSTODY_BACKEND=aws-secrets-manager",
+            "description": "AWS region of the Secrets Manager holding escrow key material"
+          },
+          {
+            "name": "ESCROW_CUSTODY_NAME_PREFIX",
+            "default": "domain-os",
+            "description": "Prefix of every escrow key secret name (\u003cprefix\u003e/escrow-keys/...). IAM policies are written against it; a stored reference keeps its full name, so changing the prefix does not orphan existing keys"
+          },
+          {
+            "name": "ESCROW_CUSTODY_ENDPOINT",
+            "description": "Secrets Manager endpoint override for development (LocalStack, e.g. http://localstack:4566). Leave empty in AWS"
           },
           {
             "name": "ESCROW_SANITIZE_SUFFIX",
