@@ -22,6 +22,7 @@ import { getDomainCount } from '@/lib/api/domains';
 import { getRegistrars } from '@/lib/api/registrars';
 import { RegistrarSearchFilters } from '@/components/registrars/RegistrarSearchFilters';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
+import { EffectiveArrangementCard } from '@/components/escrow/keys/EffectiveArrangementCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -316,7 +317,12 @@ export default function TLDDetailPage({ params }: Props) {
                 )}
               </TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="escrow">Escrow</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="escrow" className="mt-6">
+              {activeTab === 'escrow' && tld.RyID && <EffectiveArrangementCard tenantId={tld.RyID} tld={tld.Name} />}
+            </TabsContent>
 
             <TabsContent value="phases" className="mt-6" forceMount>
               <div className={activeTab !== 'phases' ? 'hidden' : undefined}>

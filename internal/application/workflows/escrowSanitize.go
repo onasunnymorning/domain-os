@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdesanitize"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -136,6 +137,18 @@ func EscrowSanitizeWorkflow(ctx workflow.Context, params EscrowSanitizeParams) (
 		}
 	}
 
+	// 1b. Resolve the key versions for this derivative, once, into history: the
+	// source's recorded verification and decryption versions, and the
+	// receiver's active pseudonymisation version. A retry tokenises under the
+	// same key even if it was rotated in between (issue #429).
+	var keys entities.EscrowKeySelection
+	if err := workflow.ExecuteActivity(ctxShort, acts.ResolveSanitizationKeys, activities.ResolveSanitizationKeysInput{
+		Scope: params.Scope, SourceValidationRunID: bound.SourceValidationRunID, WorkflowID: wfID,
+	}).Get(ctxShort, &keys); err != nil {
+		finalizeError("keys", err)
+		return result, fmt.Errorf("ResolveSanitizationKeys(run=%s) failed: %w", state.SanitizationRunID, err)
+	}
+
 	// 2. Stream the source through the profile into the pending object.
 	state.Phase = "producing"
 	var produced activities.ProduceDerivativeOutput
@@ -145,6 +158,7 @@ func EscrowSanitizeWorkflow(ctx workflow.Context, params EscrowSanitizeParams) (
 		ArtifactKey: bound.ArtifactKey, SignatureKey: bound.SignatureKey,
 		ArtifactSHA256: bound.ArtifactSHA256, SignatureSHA256: bound.SignatureSHA256,
 		SyntheticSuffix: bound.SyntheticSuffix, StagingKey: bound.StagingKey,
+		Keys: &keys,
 	}).Get(ctxLong, &produced); err != nil {
 		finalizeError("produce", err)
 		return result, fmt.Errorf("ProduceDerivative(run=%s) failed: %w", state.SanitizationRunID, err)
@@ -166,7 +180,7 @@ func EscrowSanitizeWorkflow(ctx workflow.Context, params EscrowSanitizeParams) (
 		SyntheticSuffix: bound.SyntheticSuffix, StagingKey: bound.StagingKey,
 		DerivativeKey: bound.DerivativeKey, ManifestKey: bound.ManifestKey,
 		DerivativeSHA256: produced.DerivativeSHA256, DerivativeBytes: produced.DerivativeBytes,
-		TokenKeyID: produced.TokenKeyID, Produced: produced.Result,
+		TokenKeyID: produced.TokenKeyID, TokenKeyVersionID: produced.TokenKeyVersionID, Produced: produced.Result,
 	}).Get(ctxLong, &verified); err != nil {
 		finalizeError("verify", err)
 		return result, fmt.Errorf("VerifyDerivative(run=%s) failed: %w", state.SanitizationRunID, err)
@@ -203,6 +217,7 @@ func finishSanitize(
 		Scope: params.Scope, SanitizationRunID: bound.SanitizationRunID, WorkflowID: wfID, Result: res,
 		DerivativeKey: verified.DerivativeKey, ManifestKey: verified.ManifestKey,
 		DerivativeSHA256: produced.DerivativeSHA256, DerivativeBytes: produced.DerivativeBytes,
+		TokenKeyID: produced.TokenKeyID, TokenKeyVersionID: produced.TokenKeyVersionID,
 		CompletedAt: workflow.Now(ctx),
 	}).Get(ctxShort, nil); err != nil {
 		state.Phase, state.Error = "error", err.Error()

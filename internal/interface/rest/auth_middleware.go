@@ -16,6 +16,10 @@ import (
 // CustomClaims contains custom data we want from the Auth0 token.
 type CustomClaims struct {
 	Scope string `json:"scope"`
+	// Permissions is Auth0's RBAC claim: the API permissions assigned to the
+	// user (or granted to an M2M client). It is present only when the Auth0 API
+	// has RBAC and "Add Permissions in the Access Token" enabled.
+	Permissions []string `json:"permissions"`
 }
 
 // Validate does nothing for this example, but is required by the validator interface.
@@ -85,9 +89,11 @@ func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gi
 			return
 		}
 
-		// Set the user ID in the context (sub claim in Auth0)
+		// Set the user ID in the context (sub claim in Auth0), and the granted
+		// permissions, which authorization checks read (e.g. the escrow key registry).
 		if validatedClaims, ok := claims.(*validator.ValidatedClaims); ok {
 			c.Set("userid", validatedClaims.RegisteredClaims.Subject)
+			c.Set(authScopesKey, grantedPermissions(validatedClaims))
 		}
 	}
 }

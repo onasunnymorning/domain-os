@@ -10,13 +10,13 @@
 
 ## Overview
 
-Stage 1 of the escrow verification (EVE) service for issue #412. It takes an ICANN-style RDE deposit supplied as a `.ryde` archive plus its detached `.sig`, bound to the caller's operator tenant and a TLD, and produces an auditable, profile-aware verification decision: the detached signature is verified against the registry keys trusted for that tenant/TLD, the archive is decrypted with the service keyring and unpacked under explicit limits, the RDE XML is streamed through strict structural and content checks, an immutable validation record is persisted, and a schema-valid `rdeReport:report` plus `rdeNotification:notification` (`DVPN` on pass, `DVFN` on a received-but-invalid deposit) is written to the reports bucket.
+Stage 1 of the escrow verification (EVE) service for issue #412. It takes an ICANN-style RDE deposit supplied as a `.ryde` archive plus its detached `.sig`, bound to the caller's operator tenant and a TLD, and produces an auditable, profile-aware verification decision: the detached signature is verified against the verification keys of the TLD's depositor, the archive is decrypted with the decryption keys of its receiver (both resolved through the escrow key registry, ADR-0009) and unpacked under explicit limits, the RDE XML is streamed through strict structural and content checks, an immutable validation record is persisted, and a schema-valid `rdeReport:report` plus `rdeNotification:notification` (`DVPN` on pass, `DVFN` on a received-but-invalid deposit) is written to the reports bucket.
 
 ### Profiles
 
 | Profile | Artifact set | Signature verified | `Verified()` | Notification |
 |---|---|---|---|---|
-| `ryde+sig` (default) | `.ryde` + detached `.sig` | Yes, against the tenant/TLD trusted keys | Yes on PASS | `DVPN` / `DVFN` |
+| `ryde+sig` (default) | `.ryde` + detached `.sig` | Yes, against the depositor's verification keys | Yes on PASS | `DVPN` / `DVFN` |
 | `xml` | a single `.xml` or `.xml.gz` | No — there is none | **Never** | **None** |
 
 The `xml` profile (issue #415) runs exactly the same unpack and RDE checks; what it cannot do is say anything about who sent the deposit, so it never claims a cryptographically verified pass and never emits an ICANN notification. It exists so a plaintext deposit can be accepted as the source of a sanitized derivative.
@@ -84,11 +84,17 @@ type EscrowValidationResult struct {
 - **Retry**: Max 3 attempts, backoff 2.0
 - **Description**: Verifies the TLD belongs to the scope (SQL-enforced), checks both artifacts exist, digests them, binds to the existing deposit record for that exact pair or creates one, copies the pair once to `escrow-validation/{tenant}/{tld}/{depositID}/deposit.{ryde,sig}` in the escrow bucket, and opens a RUNNING run. Never overwrites.
 
+### 1b. Resolve Escrow Keys
+- **Activity**: `ResolveEscrowKeys` (signed profile only)
+- **Timeout**: Start-to-close 5m
+- **Retry**: Max 3 attempts
+- **Description**: Resolves the TLD's effective arrangement (TLD override → operator default → platform default, per side) and the key versions usable for this deposit's receipt time: the depositor's verification versions and the receiver's decryption versions. The selection holds references and fingerprints only and is carried in history, so a retry uses the same versions and a revalidation resolves again. Without a receiver no decryption key is selected, and a signed deposit ends ERROR with `DECRYPT_KEY_UNAVAILABLE`.
+
 ### 2. Validate Artifacts
 - **Activity**: `ValidateArtifacts`
 - **Timeout**: Start-to-close `ValidationTimeout`+10m, Heartbeat 5m
 - **Retry**: Max 2 attempts
-- **Description**: Streams the ciphertext from object storage twice: once through the detached-signature check against the trusted keys active for the tenant/TLD, then (only if that passed) through decrypt → safe unpack → strict RDE XML validation as one chained stream. Nothing touches disk; plaintext is never persisted, only digested. Returns a structured `Result` with stable codes.
+- **Description**: Streams the ciphertext from object storage twice: once through the detached-signature check against the selected verification versions, then (only if that passed) through decrypt → safe unpack → strict RDE XML validation as one chained stream. Nothing touches disk; plaintext is never persisted, only digested. Every selected version is re-checked first, so a version revoked since selection is not used; decryption material is fetched from the key store and must match the recorded fingerprint. A key store outage is returned for retry. Returns a structured `Result` with stable codes.
 
 ### 3. Emit Report and Notification
 - **Activity**: `EmitReportAndNotification`
@@ -100,7 +106,7 @@ type EscrowValidationResult struct {
 - **Activity**: `FinalizeValidationRun`
 - **Timeout**: Start-to-close 5m
 - **Retry**: Max 3 attempts
-- **Description**: One conditional UPDATE from RUNNING to the terminal outcome with findings, key fingerprints, digests, deposit metadata and artifact keys. A second finalisation is rejected and the first outcome stands.
+- **Description**: One conditional UPDATE from RUNNING to the terminal outcome with findings, key fingerprints, the key evidence (parties, arrangement revisions, verifying and decrypting key versions), digests, deposit metadata and artifact keys. A second finalisation is rejected and the first outcome stands.
 
 ## Failure Modes
 
@@ -108,7 +114,7 @@ type EscrowValidationResult struct {
 |---------|-------|-------------------|-----------------|
 | BindDeposit non-retryable | TLD not operated by scope, artifact missing, oversize signature, artifact set that does not match the profile | Workflow fails before any record exists | Fix intake, relaunch |
 | Outcome `FAIL` | Bad/untrusted signature, wrong recipient key, unsafe archive, limit breach, malformed XML, invalid RDE object, count/TLD mismatch | `DVFN` emitted, run finalised FAIL, workflow completes | None: the deposit is invalid; registry resubmits |
-| Outcome `ERROR` | Service keyring unavailable, timeout, internal error, artifact changed since intake | Run finalised ERROR, **no notification**, workflow fails | Fix the service condition, relaunch (replay binds to the same deposit, new run) |
+| Outcome `ERROR` | No usable decryption key (none selected, revoked, unreadable, fingerprint mismatch), timeout, internal error, artifact changed since intake | Run finalised ERROR, **no notification**, workflow fails | Fix the service condition, relaunch (replay binds to the same deposit, new run) |
 | Activity infrastructure error after bind | Storage/DB outage beyond retries | Run finalised ERROR via disconnected context, workflow fails | Relaunch |
 
 ## Artifacts
@@ -129,7 +135,7 @@ Not scheduled. Missing-deposit notices (`DRFN`) are a follow-on.
 Logs carry `correlation_id`, `deposit_id`, `run_id`, `tld`, `stage`, `outcome`, `codes` and nothing from the payload. Query the run table by outcome; a growing count of `ERROR` runs means a service problem, not bad deposits.
 
 ### Manual Intervention
-Relaunching with the same artifact set is safe: it binds to the existing deposit and creates a new run; earlier outcomes are never overwritten. Trusted registry keys are managed through `/escrow/trusted-keys`; the service keyring through `ESCROW_VALIDATION_PRIVATE_KEYS`.
+Relaunching with the same artifact set is safe: it binds to the existing deposit and creates a new run; earlier outcomes are never overwritten. Keys are managed through the escrow key registry (`/escrow/parties`, `/escrow/key-versions`, `/escrow/arrangements`; ADR-0009). Runs that used a key version are listed by `GET /escrow/validations?keyVersionId=`.
 
 ### Sizing the referential check
 Every other check here works in constant space. The contact/host referential check cannot: it has to have seen the whole deposit before it can say whether a reference resolves, so it holds one entry per identifier for the length of the run. `ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS` is how many, and it is a statement about the worker rather than about the deposit.

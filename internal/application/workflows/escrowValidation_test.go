@@ -24,9 +24,17 @@ func TestEscrowValidationWorkflowTestSuite(t *testing.T) {
 	suite.Run(t, new(EscrowValidationWorkflowTestSuite))
 }
 
+// evKeys is the selection the default ResolveEscrowKeys mock returns.
+var evKeys = entities.EscrowKeySelection{
+	Verify:  []entities.EscrowKeyVersionRef{{ID: [16]byte{9, 1}, Fingerprint: "SIGNER"}},
+	Decrypt: []entities.EscrowKeyVersionRef{{ID: [16]byte{9, 2}, Fingerprint: "SERVICE"}},
+}
+
 func (s *EscrowValidationWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
 	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	var acts *activities.EscrowValidationActivities
+	s.env.OnActivity(acts.ResolveEscrowKeys, mock.Anything, mock.Anything).Return(evKeys, nil).Maybe()
 }
 
 func (s *EscrowValidationWorkflowTestSuite) AfterTest(_, _ string) {
@@ -213,4 +221,50 @@ func (s *EscrowValidationWorkflowTestSuite) Test_UnsignedProfile_EmitsNoNotifica
 	s.Empty(result.NotificationKey)
 	s.NotEmpty(result.SummaryKey, "every run that produced a result gets a summary")
 	s.NotEmpty(result.ReportKey, "a decided run gets an rdeReport whatever its profile")
+}
+
+// Test_KeySelection_IsResolvedOnceAndCarriedThrough proves the selection made
+// by ResolveEscrowKeys is the one validation uses and the one finalisation
+// records (issue #429, ADR-0009 §7).
+func (s *EscrowValidationWorkflowTestSuite) Test_KeySelection_IsResolvedOnceAndCarriedThrough() {
+	s.env = s.NewTestWorkflowEnvironment()
+	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	var acts *activities.EscrowValidationActivities
+	bound := evBound()
+	sameKeys := func(k *entities.EscrowKeySelection) bool {
+		return k != nil && len(k.Decrypt) == 1 && k.Decrypt[0].Fingerprint == "SERVICE"
+	}
+	s.env.OnActivity(acts.BindDeposit, mock.Anything, mock.Anything).Return(bound, nil).Once()
+	s.env.OnActivity(acts.ResolveEscrowKeys, mock.Anything, mock.MatchedBy(func(in activities.ResolveEscrowKeysInput) bool {
+		return in.DepositID == bound.DepositID && in.Scope == "ryop1"
+	})).Return(evKeys, nil).Once()
+	s.env.OnActivity(acts.ValidateArtifacts, mock.Anything, mock.MatchedBy(func(in activities.ValidateArtifactsInput) bool {
+		return sameKeys(in.Keys)
+	})).Return(evResult(rdevalidate.OutcomePass), nil).Once()
+	s.env.OnActivity(acts.EmitReportAndNotification, mock.Anything, mock.Anything).
+		Return(activities.EmitReportOutput{ReportKey: "r.xml", NotificationKey: "n.xml", NotificationStatus: "DVPN"}, nil).Once()
+	s.env.OnActivity(acts.FinalizeValidationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeRunInput) bool {
+		return sameKeys(in.Keys)
+	})).Return(nil).Once()
+
+	s.env.ExecuteWorkflow(EscrowValidationWorkflow, evParams)
+	s.Require().NoError(s.env.GetWorkflowError())
+}
+
+// Test_KeyResolutionFailure_FinalisesAsError: a run whose keys cannot be
+// resolved is our failure, recorded ERROR, and never validated.
+func (s *EscrowValidationWorkflowTestSuite) Test_KeyResolutionFailure_FinalisesAsError() {
+	s.env = s.NewTestWorkflowEnvironment()
+	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	var acts *activities.EscrowValidationActivities
+	s.env.OnActivity(acts.BindDeposit, mock.Anything, mock.Anything).Return(evBound(), nil).Once()
+	s.env.OnActivity(acts.ResolveEscrowKeys, mock.Anything, mock.Anything).
+		Return(entities.EscrowKeySelection{}, temporal.NewNonRetryableApplicationError("registry down", "TEST", nil)).Once()
+	s.env.OnActivity(acts.FinalizeValidationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeRunInput) bool {
+		return in.Failure != "" && in.Result.Outcome == rdevalidate.OutcomeError
+	})).Return(nil).Once()
+
+	s.env.ExecuteWorkflow(EscrowValidationWorkflow, evParams)
+	s.Require().Error(s.env.GetWorkflowError())
+	s.env.AssertNotCalled(s.T(), "ValidateArtifacts", mock.Anything, mock.Anything)
 }

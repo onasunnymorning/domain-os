@@ -38,8 +38,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&SerialObservationRecord{},
 		&EscrowDepositRecord{},
 		&EscrowValidationRunRecord{},
-		&EscrowTrustedKeyRecord{},
 		&EscrowSanitizationRunRecord{},
+		&EscrowPartyRecord{},
+		&EscrowKeyVersionRecord{},
+		&EscrowArrangementRecord{},
+		&EscrowKeyAuditEventRecord{},
 	)
 	if err != nil {
 		return err
@@ -84,9 +87,8 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_sanitization_source_policy ON escrow_sanitization_runs (tenant_id, source_validation_run_id, policy_version)",
 		// escrow_sanitization_runs: tenant listing, newest first
 		"CREATE INDEX IF NOT EXISTS idx_escrow_sanitization_runs_tenant_tld_started ON escrow_sanitization_runs (tenant_id, tld, started_at DESC)",
-		// escrow_trusted_keys: ListActive predicate (tenant, tld, window)
-		"CREATE INDEX IF NOT EXISTS idx_escrow_trusted_keys_tenant_tld_valid ON escrow_trusted_keys (tenant_id, tld, valid_from)",
 	}
+	manualIndexes = append(manualIndexes, escrowKeyManualIndexes...)
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {
 			log.Printf("Warning: failed to create index: %s — %v", idx, err)
@@ -110,6 +112,9 @@ func AutoMigrate(db *gorm.DB) error {
 		"ALTER TABLE escrow_deposits DROP COLUMN IF EXISTS sig_object_key",
 		"ALTER TABLE escrow_deposits DROP COLUMN IF EXISTS sig_sha256",
 		"ALTER TABLE escrow_deposits DROP COLUMN IF EXISTS sig_bytes",
+		// escrow_trusted_keys (#412) was replaced by the key registry (#429,
+		// ADR-0009) before it held production data, so it is dropped, not migrated.
+		"DROP TABLE IF EXISTS escrow_trusted_keys",
 	}
 	for _, idx := range legacyIndexes {
 		if err := db.Exec(idx).Error; err != nil {

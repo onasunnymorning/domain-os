@@ -8,6 +8,9 @@ type ListEscrowValidationRunsFilter struct {
 	TLDEquals string
 	// OutcomeEquals restricts to one outcome (RUNNING, PASS, FAIL, ERROR).
 	OutcomeEquals string
+	// KeyVersionIDEquals restricts to runs that verified or decrypted with one
+	// key version — "which runs used this key" (issue #429).
+	KeyVersionIDEquals string
 }
 
 // ToQueryParams converts the filter to a query string fragment.
@@ -18,6 +21,9 @@ func (f ListEscrowValidationRunsFilter) ToQueryParams() string {
 	}
 	if f.OutcomeEquals != "" {
 		q += "&outcome=" + f.OutcomeEquals
+	}
+	if f.KeyVersionIDEquals != "" {
+		q += "&keyVersionId=" + f.KeyVersionIDEquals
 	}
 	return q
 }

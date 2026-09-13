@@ -43,6 +43,9 @@ type EscrowSanitizationRunRecord struct {
 	ManifestObjectKey   string
 	Counts              []byte `gorm:"type:jsonb"`
 
+	TokenKeyFingerprint string
+	TokenKeyVersionID   *uuid.UUID `gorm:"type:uuid;index"`
+
 	StartedAt   time.Time `gorm:"not null;index"`
 	CompletedAt *time.Time
 }
@@ -82,6 +85,7 @@ func toDBEscrowSanitizationRun(r *entities.EscrowSanitizationRun) (*EscrowSaniti
 		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: rawFindings, FindingTally: rawTally,
 		DerivativeObjectKey: r.DerivativeObjectKey, DerivativeSHA256: r.DerivativeSHA256,
 		DerivativeBytes: r.DerivativeBytes, ManifestObjectKey: r.ManifestObjectKey, Counts: rawCounts,
+		TokenKeyFingerprint: r.TokenKeyFingerprint, TokenKeyVersionID: r.TokenKeyVersionID,
 		StartedAt: r.StartedAt, CompletedAt: r.CompletedAt,
 	}, nil
 }
@@ -114,6 +118,7 @@ func fromDBEscrowSanitizationRun(rec *EscrowSanitizationRunRecord) (*entities.Es
 		Outcome: entities.EscrowSanitizationOutcome(rec.Outcome), StageReached: rec.StageReached, Findings: findings, FindingTally: tally,
 		DerivativeObjectKey: rec.DerivativeObjectKey, DerivativeSHA256: rec.DerivativeSHA256,
 		DerivativeBytes: rec.DerivativeBytes, ManifestObjectKey: rec.ManifestObjectKey, Counts: counts,
+		TokenKeyFingerprint: rec.TokenKeyFingerprint, TokenKeyVersionID: rec.TokenKeyVersionID,
 		StartedAt: rec.StartedAt, CompletedAt: rec.CompletedAt,
 	}, nil
 }
@@ -168,6 +173,8 @@ func (r *GormEscrowSanitizationRunRepository) Finalize(ctx context.Context, scop
 			"derivative_bytes":      rec.DerivativeBytes,
 			"manifest_object_key":   rec.ManifestObjectKey,
 			"counts":                rec.Counts,
+			"token_key_fingerprint": rec.TokenKeyFingerprint,
+			"token_key_version_id":  rec.TokenKeyVersionID,
 			"completed_at":          rec.CompletedAt,
 		})
 	if res.Error != nil {

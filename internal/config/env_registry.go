@@ -162,13 +162,10 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// ESCROW VALIDATION (EVE) — issue #412, ADR-0007
 	//
-	// The private keyring is custody material: it belongs to the secrets service
-	// and reaches the worker only by injection. Limits are configuration, not
-	// constants (design constraint 7). When the keyring is unset the worker logs
-	// a warning and does not register the validation activities.
+	// Keys are not configuration: they are managed in the escrow key registry
+	// and held in the key store (ESCROW_CUSTODY_*, issue #429, ADR-0009).
+	// Limits are configuration, not constants (design constraint 7).
 	// ═══════════════════════════════════════════
-	{Name: "ESCROW_VALIDATION_PRIVATE_KEYS", Services: []Service{ServiceWorker}, Secret: true, Description: "ASCII-armored OpenPGP private key block(s), concatenated, used to decrypt inbound .ryde deposits. Hold every non-retired key so deposits encrypted to the previous key still open during rollover. Never place in general config"},
-	{Name: "ESCROW_VALIDATION_PRIVATE_KEY_PASSPHRASE", Services: []Service{ServiceWorker}, Secret: true, Description: "Passphrase protecting the keys in ESCROW_VALIDATION_PRIVATE_KEYS (one passphrase for the whole ring)"},
 	{Name: "ESCROW_VALIDATION_DEA_NAME", Services: []Service{ServiceWorker}, Default: "domain-os EVE", Description: "Data Escrow Agent name written into rdeNotification:deaName (1-255 characters)"},
 	{Name: "ESCROW_VALIDATION_MAX_COMPRESSED_BYTES", Services: []Service{ServiceWorker}, Default: "10737418240", Description: "Largest .ryde artifact accepted for validation, in bytes (default 10 GiB)"},
 	{Name: "ESCROW_VALIDATION_MAX_UNPACKED_BYTES", Services: []Service{ServiceWorker}, Default: "53687091200", Description: "Cumulative plaintext budget across every decompression layer of one deposit, in bytes (default 50 GiB); stops archive bombs"},
@@ -178,11 +175,23 @@ var Registry = []EnvVar{
 	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", Services: []Service{ServiceWorker}, Default: "20000000", Description: "How many identifiers the contact/host referential check may hold for one deposit. It is the only check that cannot work in constant space, and each entry costs about 30 bytes, so the default is roughly 580 MB held and 670 MB at the peak — size it to the worker's memory limit. Past it the deposit is still validated and the check reports RDE_CROSS_REFERENCE_SKIPPED"},
 	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES", Services: []Service{ServiceWorker}, Default: "1000000", Description: "How many of those identifiers are also kept verbatim so a finding can name the object rather than only its ordinal. About 60 bytes each, so it is deliberately smaller than the bound above; past it findings carry an ordinal and a byte offset instead of a name"},
 
+	// ─── Escrow key store (EVE key registry, issue #429, ADR-0009) ───
+	// The key registry (parties, versions, arrangements) is application data;
+	// private and symmetric material lives in the key store. Credentials come
+	// from the AWS default chain (IRSA / task role), never from these variables.
+	// The API identity may create and delete secrets but not read them; worker
+	// identities may only read.
+	{Name: "ESCROW_CUSTODY_BACKEND", Services: []Service{ServiceAPI, ServiceWorker}, Default: "none", Description: "Escrow key store: none or aws-secrets-manager. With none, public keys and unsigned deposits still work, and importing or probing a private key reports KEY_STORE_NOT_CONFIGURED"},
+	{Name: "ESCROW_CUSTODY_AWS_REGION", Services: []Service{ServiceAPI, ServiceWorker}, RequiredWhen: "ESCROW_CUSTODY_BACKEND=aws-secrets-manager", Description: "AWS region of the Secrets Manager holding escrow key material"},
+	{Name: "ESCROW_CUSTODY_NAME_PREFIX", Services: []Service{ServiceAPI, ServiceWorker}, Default: "domain-os", Description: "Prefix of every escrow key secret name (<prefix>/escrow-keys/...). IAM policies are written against it; a stored reference keeps its full name, so changing the prefix does not orphan existing keys"},
+	{Name: "ESCROW_CUSTODY_KMS_ID", Services: []Service{ServiceAPI}, Description: "Optional customer-managed KMS key (id, ARN or alias) that encrypts new escrow key secrets; empty uses the account's aws/secretsmanager key"},
+	{Name: "ESCROW_CUSTODY_ENDPOINT", Services: []Service{ServiceAPI, ServiceWorker}, Description: "Secrets Manager endpoint override for development (LocalStack, e.g. http://localstack:4566). Leave empty in AWS"},
+	{Name: "ESCROW_CUSTODY_RECOVERY_WINDOW_DAYS", Services: []Service{ServiceAPI}, Default: "30", Description: "Days a destroyed escrow key secret can still be recovered (7-30) before Secrets Manager deletes it"},
+
 	// ─── Escrow derivative sanitization (EVE, issue #415) ───
 	// The derivative is a separate processing purpose from escrow custody: it
 	// is labelled sanitized-pseudonymized, it never replaces the deposit, and
 	// it is produced by a workflow that cannot write registry data.
-	{Name: "ESCROW_SANITIZE_HMAC_KEY", Services: []Service{ServiceWorker}, Secret: true, Description: "Master HMAC key for escrow derivative pseudonymisation, base64 or hex, at least 32 bytes. Tenant- and purpose-scoped subkeys are derived from it; rotating it changes every token, so derivatives made before and after are no longer joinable. Without it the sanitization activities are not registered"},
 	{Name: "ESCROW_SANITIZE_SUFFIX", Services: []Service{ServiceWorker}, Default: "artful-dodger", Description: "Synthetic registry suffix every in-bailiwick FQDN in a derivative is rewritten to, e.g. domain.suffix becomes domain.artful-dodger. Overridable per launch; must differ from the source TLD"},
 	{Name: "ESCROW_SANITIZE_MAX_XML_DEPTH", Services: []Service{ServiceWorker}, Default: "32", Description: "Maximum XML nesting depth accepted from a deposit being sanitized"},
 	{Name: "ESCROW_SANITIZE_MAX_ELEMENTS", Services: []Service{ServiceWorker}, Default: "1000000000", Description: "Maximum number of XML elements accepted from a deposit being sanitized. Generous by design: a large TLD legitimately produces hundreds of millions"},

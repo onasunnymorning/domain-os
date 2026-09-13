@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -34,17 +33,6 @@ type EscrowValidationRunRepository interface {
 	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowValidationRun, error)
 	ListByDeposit(ctx context.Context, scope entities.OperatorID, depositID uuid.UUID) ([]*entities.EscrowValidationRun, error)
 	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowValidationRun, string, error)
-}
-
-// EscrowTrustedKeyRepository persists the registry signing keys trusted per
-// tenant/TLD. Retire is the only state change; keys are never deleted.
-type EscrowTrustedKeyRepository interface {
-	Create(ctx context.Context, k *entities.EscrowTrustedKey) error
-	Retire(ctx context.Context, scope entities.OperatorID, id uuid.UUID, at time.Time) error
-	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowTrustedKey, error)
-	// ListActive returns keys usable to verify a signature at the given instant.
-	ListActive(ctx context.Context, scope entities.OperatorID, tld string, at time.Time) ([]*entities.EscrowTrustedKey, error)
-	List(ctx context.Context, scope entities.OperatorID, tld string) ([]*entities.EscrowTrustedKey, error)
 }
 
 // EscrowSanitizationRunRepository persists immutable sanitisation runs. Like

@@ -63,9 +63,23 @@ func NewTokenizer(master []byte, tenant, policyVersion string) (*Tokenizer, erro
 
 	// The fingerprint identifies the master key without revealing it: it is a
 	// MAC over a fixed public string, so it cannot be inverted.
+	fp, err := MasterKeyFingerprint(master)
+	if err != nil {
+		return nil, err
+	}
+	return &Tokenizer{key: sub, fingerprint: fp}, nil
+}
+
+// MasterKeyFingerprint identifies a master key without deriving a tenant
+// subkey: it is the same value Tokenizer.KeyFingerprint reports for any tenant,
+// so a key registry can record it once per key version.
+func MasterKeyFingerprint(master []byte) (string, error) {
+	if len(master) < MinTokenKeyBytes {
+		return "", ErrNoTokenKey
+	}
 	fp := hmac.New(sha256.New, master)
 	fp.Write([]byte("domain-os/sanitize-key-fingerprint"))
-	return &Tokenizer{key: sub, fingerprint: b32.EncodeToString(fp.Sum(nil))[:16]}, nil
+	return b32.EncodeToString(fp.Sum(nil))[:16], nil
 }
 
 // KeyFingerprint identifies the master key in a manifest or a run record.

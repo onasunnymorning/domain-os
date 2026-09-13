@@ -180,61 +180,6 @@ func (s *EscrowValidationSuite) TestRuns_FinalizeOnce() {
 	s.Empty(listed)
 }
 
-func (s *EscrowValidationSuite) TestTrustedKeys_WindowsAndRetirement() {
-	tx := s.db.Begin()
-	defer tx.Rollback()
-	repo := NewEscrowTrustedKeyRepository(tx)
-	ctx := context.Background()
-	a, b := s.scope("opA"), s.scope("opB")
-	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	t1 := t0.AddDate(0, 6, 0)
-
-	oldKey, err := entities.NewEscrowTrustedKey(a, "example", "AAAA0123456789ABCDEF0123456789ABCDEF0123", evKey, "old", t0, &t1)
-	s.Require().NoError(err)
-	newKey, err := entities.NewEscrowTrustedKey(a, "example", "BBBB0123456789ABCDEF0123456789ABCDEF0123", evKey, "new", t0.AddDate(0, 5, 0), nil)
-	s.Require().NoError(err)
-	otherTLD, err := entities.NewEscrowTrustedKey(a, "other", "CCCC0123456789ABCDEF0123456789ABCDEF0123", evKey, "", t0, nil)
-	s.Require().NoError(err)
-	for _, k := range []*entities.EscrowTrustedKey{oldKey, newKey, otherTLD} {
-		s.Require().NoError(repo.Create(ctx, k))
-	}
-
-	fps := func(ks []*entities.EscrowTrustedKey) []string {
-		var out []string
-		for _, k := range ks {
-			out = append(out, k.Label)
-		}
-		return out
-	}
-	active, err := repo.ListActive(ctx, a, "example", t0.AddDate(0, 1, 0))
-	s.Require().NoError(err)
-	s.Equal([]string{"old"}, fps(active))
-	active, _ = repo.ListActive(ctx, a, "example", t0.AddDate(0, 5, 15))
-	s.ElementsMatch([]string{"old", "new"}, fps(active), "overlap window: both keys verify")
-	active, _ = repo.ListActive(ctx, a, "example", t1)
-	s.Equal([]string{"new"}, fps(active), "validTo is exclusive")
-	active, _ = repo.ListActive(ctx, b, "example", t0.AddDate(0, 1, 0))
-	s.Empty(active, "other tenant sees nothing")
-
-	retireAt := t0.AddDate(0, 8, 0)
-	s.True(errors.Is(repo.Retire(ctx, b, newKey.ID, retireAt), entities.ErrEscrowTrustedKeyNotFound))
-	s.Require().NoError(repo.Retire(ctx, a, newKey.ID, retireAt))
-	s.True(errors.Is(repo.Retire(ctx, a, newKey.ID, retireAt), entities.ErrEscrowTrustedKeyAlreadyRetired))
-	active, _ = repo.ListActive(ctx, a, "example", retireAt.Add(time.Hour))
-	s.Empty(active, "retired and expired: nothing left")
-	got, err := repo.GetByID(ctx, a, newKey.ID)
-	s.Require().NoError(err)
-	s.NotNil(got.RetiredAt)
-
-	all, err := repo.List(ctx, a, "example")
-	s.Require().NoError(err)
-	s.Len(all, 2)
-	all, _ = repo.List(ctx, a, "")
-	s.Len(all, 3)
-	_, err = repo.GetByID(ctx, a, uuid.New())
-	s.True(errors.Is(err, entities.ErrEscrowTrustedKeyNotFound))
-}
-
 // ---------------------------------------------------------------------------
 // Sanitization runs (issue #415)
 // ---------------------------------------------------------------------------
@@ -300,6 +245,7 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 
 	run := s.newSanitizationRun(a, uuid.New(), uuid.New(), "rde-baseline-v1")
 	s.Require().NoError(repo.Create(ctx, run))
+	tokenVersion := uuid.New()
 
 	// Finalising a still-RUNNING entity is rejected before touching the DB.
 	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrInvalidEscrowSanitizationRun))
@@ -312,6 +258,7 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 		FindingTally: []entities.EscrowFindingTally{
 			{Code: "POLICY_UNKNOWN_ATTRIBUTE", Severity: "ERROR", Stage: "rewrite", Object: "rdeDomain:status@vendorFlag", Count: 43313},
 		},
+		TokenKeyFingerprint: "ABCDEFGHIJKLMNOP", TokenKeyVersionID: &tokenVersion,
 		CompletedAt: run.StartedAt.Add(time.Minute),
 	}))
 	s.Require().NoError(repo.Finalize(ctx, a, run))
@@ -319,6 +266,9 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 	got, err := repo.GetByID(ctx, a, run.ID)
 	s.Require().NoError(err)
 	s.Equal(entities.EscrowSanitizationPass, got.Outcome)
+	s.Equal("ABCDEFGHIJKLMNOP", got.TokenKeyFingerprint, "the pseudonymisation key is recorded (issue #429)")
+	s.Require().NotNil(got.TokenKeyVersionID)
+	s.Equal(tokenVersion, *got.TokenKeyVersionID)
 	s.Equal(evSHA2, got.DerivativeSHA256)
 	s.Equal(int64(3), got.Counts.Tokenized)
 	s.Equal(int64(2), got.Counts.ObjectsByType[entities.DOMAIN_URI])
@@ -332,4 +282,52 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 
 	// A second conditional UPDATE matches no RUNNING row.
 	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrEscrowSanitizationRunAlreadyFinal))
+}
+
+// TestRuns_KeyEvidenceRoundTripsAndFiltersByVersion covers issue #429: a run
+// records which key versions it used, and "which runs used this version" is a
+// scoped query.
+func (s *EscrowValidationSuite) TestRuns_KeyEvidenceRoundTripsAndFiltersByVersion() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	deposits := NewEscrowDepositRepository(tx)
+	runs := NewEscrowValidationRunRepository(tx)
+	ctx := context.Background()
+	a, b := s.scope("opkA"), s.scope("opkB")
+
+	d := s.newDeposit(a, "example", evSHA2, evSHA1)
+	s.Require().NoError(deposits.Create(ctx, d))
+	started := time.Now().UTC().Truncate(time.Microsecond)
+	run, err := entities.NewEscrowValidationRun(d.ID, a, "example", "wf-k", "run-k", entities.EscrowProfileRydeSig, started)
+	s.Require().NoError(err)
+	s.Require().NoError(runs.Create(ctx, run))
+
+	signing, decrypting, receiver := uuid.New(), uuid.New(), uuid.New()
+	evidence := entities.EscrowRunKeyEvidence{
+		ReceiverPartyID:        &receiver,
+		TLDArrangementRevision: 3, PlatformArrangementRevision: 1,
+		SigningKeyVersionID: &signing, DecryptionKeyVersionID: &decrypting,
+		CandidateKeyVersionIDs: []uuid.UUID{signing, decrypting},
+	}
+	s.Require().NoError(run.Finalize(entities.EscrowValidationFinalization{
+		Outcome: entities.EscrowValidationPass, StageReached: "rde", NotificationStatus: entities.EscrowNotificationDVPN,
+		SigningKeyFingerprint: "AA", DecryptionKeyFingerprint: "BB", Keys: evidence, CompletedAt: started.Add(time.Minute),
+	}))
+	s.Require().NoError(runs.Finalize(ctx, a, run))
+
+	got, err := runs.GetByID(ctx, a, run.ID)
+	s.Require().NoError(err)
+	s.Equal(evidence, got.Keys)
+
+	for _, id := range []uuid.UUID{signing, decrypting} {
+		list, _, err := runs.List(ctx, a, queries.ListItemsQuery{PageSize: 10, Filter: queries.ListEscrowValidationRunsFilter{KeyVersionIDEquals: id.String()}})
+		s.Require().NoError(err)
+		s.Require().Len(list, 1)
+		s.Equal(run.ID, list[0].ID)
+	}
+	list, _, err := runs.List(ctx, b, queries.ListItemsQuery{PageSize: 10, Filter: queries.ListEscrowValidationRunsFilter{KeyVersionIDEquals: signing.String()}})
+	s.Require().NoError(err)
+	s.Empty(list, "the key-version filter is still tenant-scoped")
+	_, _, err = runs.List(ctx, a, queries.ListItemsQuery{Filter: queries.ListEscrowValidationRunsFilter{KeyVersionIDEquals: "not-a-uuid"}})
+	s.Error(err)
 }

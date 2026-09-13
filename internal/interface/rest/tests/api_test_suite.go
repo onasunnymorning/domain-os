@@ -8,13 +8,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
 	"context"
+
+	"github.com/google/uuid"
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
@@ -50,12 +56,41 @@ type TestAPI struct {
 	WhoisService            *services.WhoisService
 }
 
+// TestAuthScopesHeader lets a test grant OAuth scopes to a request, standing in
+// for the Auth0 "scope" claim. Only MockAuthMiddleware reads it.
+const TestAuthScopesHeader = "X-Test-Auth-Scopes"
+
 // MockAuthMiddleware returns a gin.HandlerFunc that bypasses authentication.
+// Scopes named in TestAuthScopesHeader are granted to the request; without the
+// header the principal has none, like the legacy shared token.
 func MockAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if raw := c.GetHeader(TestAuthScopesHeader); raw != "" {
+			c.Request = c.Request.WithContext(appcontext.WithAuthScopes(c.Request.Context(), strings.Fields(raw)))
+		}
 		c.Next()
 	}
 }
+
+// recordingProbeStarter stands in for Temporal: it records probe requests.
+type recordingProbeStarter struct {
+	mu       sync.Mutex
+	Versions []uuid.UUID
+}
+
+func (r *recordingProbeStarter) StartEscrowKeyProbe(_ context.Context, _ entities.EscrowKeyOwner, versionID uuid.UUID, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Versions = append(r.Versions, versionID)
+	return "escrow-key-probe-" + versionID.String(), nil
+}
+
+// escrowKeyStore and escrowProbes are the key registry's test doubles, shared
+// with the specs so they can inspect what the API stored and started.
+var (
+	escrowKeyStore *secrets.MemorySecretStore
+	escrowProbes   *recordingProbeStarter
+)
 
 // NewTestAPI creates a fully wired TestAPI with all controllers registered.
 // It connects to a real Postgres database (configured via env vars) and
@@ -145,12 +180,18 @@ func NewTestAPI() (*TestAPI, error) {
 	rest.NewSyncController(router, syncService, auth)
 	rest.NewSpec5Controller(router, spec5Service, auth)
 	rest.NewIANARegistrarController(router, ianaRegistrarService, auth)
+	escrowKeyStore = secrets.NewMemorySecretStore()
+	escrowProbes = &recordingProbeStarter{}
 	rest.NewEscrowController(router, auth, rest.EscrowValidationDeps{
 		TLDs:          tldRepo,
 		Deposits:      postgres.NewEscrowDepositRepository(db),
 		Runs:          postgres.NewEscrowValidationRunRepository(db),
-		Keys:          postgres.NewEscrowTrustedKeyRepository(db),
 		Sanitizations: postgres.NewEscrowSanitizationRunRepository(db),
+		KeyRegistry: services.NewEscrowKeyService(
+			postgres.NewEscrowPartyRepository(db), postgres.NewEscrowKeyVersionRepository(db),
+			postgres.NewEscrowArrangementRepository(db), postgres.NewEscrowKeyAuditRepository(db),
+			tldRepo, escrowKeyStore, escrowProbes,
+		),
 	})
 
 	server := httptest.NewServer(router)

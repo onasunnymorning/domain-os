@@ -136,6 +136,24 @@ function Loaded({ detail }: { detail: Awaited<ReturnType<typeof getEscrowValidat
         </dl>
       </section>
 
+      {run.keys && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Keys used
+          </h2>
+          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Signing key version" value={run.keys.signingKeyVersionId} mono copyable />
+            <Field label="Decryption key version" value={run.keys.decryptionKeyVersionId} mono copyable />
+            <Field label="Depositor party" value={run.keys.depositorPartyId} mono copyable />
+            <Field label="Receiver party" value={run.keys.receiverPartyId} mono copyable />
+            <Field
+              label="Arrangement revisions"
+              value={`TLD ${run.keys.tldArrangementRevision ?? 0} · operator ${run.keys.operatorArrangementRevision ?? 0} · platform ${run.keys.platformArrangementRevision ?? 0}`}
+            />
+          </dl>
+        </section>
+      )}
+
       {deposit && (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

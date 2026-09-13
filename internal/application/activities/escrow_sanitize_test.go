@@ -3,7 +3,6 @@ package activities
 import (
 	"bytes"
 	"compress/gzip"
-	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -19,32 +18,28 @@ import (
 	"go.temporal.io/sdk/testsuite"
 )
 
-// sanitizeTokenKey is fixture material, not a credential.
-var sanitizeTokenKey = bytes.Repeat([]byte("eve-sanitize-activity-key!!!!!!!"), 2)
-
 // esFixture wires a validation world and a sanitisation world onto the same
 // fake repositories and stores, because a derivative can only exist downstream
 // of a real accepted validation run.
 type esFixture struct {
 	ev      *evFixture
 	sanRepo *fakeSanitizationRepo
-	tokens  *fakeTokenKeyProvider
-	acts    *EscrowSanitizeActivities
-	env     *testsuite.TestActivityEnvironment
+	// pseudonymise is the fixture receiver's active pseudonymisation version.
+	pseudonymise *entities.EscrowKeyVersion
+	acts         *EscrowSanitizeActivities
+	env          *testsuite.TestActivityEnvironment
 }
 
 func newESFixture(t *testing.T) *esFixture {
 	t.Helper()
-	ev := newEVFixture(t, nil, nil, nil, nil)
-	f := &esFixture{
-		ev:      ev,
-		sanRepo: newFakeSanitizationRepo(),
-		tokens:  &fakeTokenKeyProvider{key: sanitizeTokenKey},
-	}
+	ev := newEVFixture(t, nil, nil, nil, nil, nil)
+	f := &esFixture{ev: ev, sanRepo: newFakeSanitizationRepo()}
+	ev.trust(t)
+	f.pseudonymise, _ = ev.addPseudonymiseVersion(t, ev.eve, 1)
+	ev.activate(t, f.pseudonymise)
 	f.acts = NewEscrowSanitizeActivitiesWithDeps(
 		&fakeTLDRepo{owned: map[string]string{"example": "ryop1"}},
-		ev.deposits, ev.runs, f.sanRepo, ev.keyRepo,
-		ev.prov, f.tokens, ev.store,
+		ev.deposits, ev.runs, f.sanRepo, ev.resolver, ev.loader, ev.store,
 		rdevalidate.DefaultLimits(), rdesanitize.DefaultLimits(), "artful-dodger",
 	)
 	f.acts.now = func() time.Time { return time.Now().UTC().Add(time.Hour) }
@@ -87,7 +82,24 @@ func (f *esFixture) bind(t *testing.T, sourceRunID uuid.UUID, suffix string) (Bi
 	return out, nil
 }
 
+// resolveKeys runs ResolveSanitizationKeys as the workflow does.
+func (f *esFixture) resolveKeys(t *testing.T, b BindSanitizationSourceOutput) *entities.EscrowKeySelection {
+	t.Helper()
+	var sel entities.EscrowKeySelection
+	val, err := f.env.ExecuteActivity(f.acts.ResolveSanitizationKeys, ResolveSanitizationKeysInput{
+		Scope: f.ev.scope.String(), SourceValidationRunID: b.SourceValidationRunID, WorkflowID: "wf-san-1",
+	})
+	require.NoError(t, err)
+	require.NoError(t, val.Get(&sel))
+	return &sel
+}
+
 func (f *esFixture) produce(t *testing.T, b BindSanitizationSourceOutput) ProduceDerivativeOutput {
+	t.Helper()
+	return f.produceWith(t, b, f.resolveKeys(t, b))
+}
+
+func (f *esFixture) produceWith(t *testing.T, b BindSanitizationSourceOutput, keys *entities.EscrowKeySelection) ProduceDerivativeOutput {
 	t.Helper()
 	var out ProduceDerivativeOutput
 	val, err := f.env.ExecuteActivity(f.acts.ProduceDerivative, ProduceDerivativeInput{
@@ -95,6 +107,7 @@ func (f *esFixture) produce(t *testing.T, b BindSanitizationSourceOutput) Produc
 		TLD: b.TLD, SourceProfile: b.SourceProfile, ArtifactKey: b.ArtifactKey, SignatureKey: b.SignatureKey,
 		ArtifactSHA256: b.ArtifactSHA256, SignatureSHA256: b.SignatureSHA256,
 		SyntheticSuffix: b.SyntheticSuffix, StagingKey: b.StagingKey,
+		Keys: keys,
 	})
 	require.NoError(t, err)
 	require.NoError(t, val.Get(&out))
@@ -278,8 +291,11 @@ func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *test
 
 func TestEscrowSanitize_MissingTokenKeyIsAnErrorNotAQuarantine(t *testing.T) {
 	f := newESFixture(t)
-	f.tokens.err = errors.New("secrets manager unavailable")
 	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1})
+	// The receiver's only pseudonymisation key is revoked: no usable key.
+	current, err := f.ev.versions.GetByID(t.Context(), entities.OperatorEscrowKeyScope(f.ev.scope), f.pseudonymise.ID)
+	require.NoError(t, err)
+	f.ev.transition(t, current, func(v *entities.EscrowKeyVersion) error { return v.Revoke("test", false, time.Now().UTC()) }, entities.EscrowAuditVersionRevoked)
 
 	b, err := f.bind(t, sourceRunID, "")
 	require.NoError(t, err)

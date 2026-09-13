@@ -98,6 +98,7 @@ func main() {
 	// Heavy Batch
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
+	heavyBatchWorker.RegisterWorkflow(workflows.EscrowKeyProbeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
@@ -155,8 +156,9 @@ func main() {
 	heavyBatchWorker.RegisterActivity(&activities.EscrowImportActivities{})
 	drainDataWorker.RegisterActivity(&activities.EscrowImportActivities{})
 
-	// Escrow Validation / EVE (Heavy Batch). Declines to register when the
-	// decryption keyring or its stores are not configured (issue #412, ADR-0007).
+	// Escrow Validation / EVE (Heavy Batch). Declines to register when its
+	// database or object stores are not configured; keys come from the key
+	// registry per run (issue #412, ADR-0007; issue #429, ADR-0009).
 	eveActs, err := activities.NewEscrowValidationActivities()
 	if err != nil {
 		log.Printf("WARNING: escrow validation activities not available: %v", err)
@@ -164,9 +166,19 @@ func main() {
 		heavyBatchWorker.RegisterActivity(eveActs)
 	}
 
-	// Escrow derivative sanitization (Heavy Batch). Declines to register when
-	// the pseudonymisation key is absent, rather than producing derivatives
-	// whose tokens are not a real barrier to re-identification (issue #415).
+	// Escrow key registry probe (Heavy Batch, where the escrow activities that
+	// use the keys run). Registers without a key store: public keys still
+	// probe, and a private one records KEY_STORE_NOT_CONFIGURED (issue #429).
+	keyActs, err := activities.NewEscrowKeyActivities()
+	if err != nil {
+		log.Printf("WARNING: escrow key activities not available: %v", err)
+	} else {
+		heavyBatchWorker.RegisterActivity(keyActs)
+	}
+
+	// Escrow derivative sanitization (Heavy Batch). The pseudonymisation key is
+	// resolved per run from the key registry (issue #429); a run that finds no
+	// usable key records TOKEN_KEY_UNAVAILABLE rather than producing anything.
 	sanitizeActs, err := activities.NewEscrowSanitizeActivities()
 	if err != nil {
 		log.Printf("WARNING: escrow sanitization activities not available: %v", err)

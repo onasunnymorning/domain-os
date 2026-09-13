@@ -6,6 +6,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/rdesanitize"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
@@ -21,9 +22,16 @@ func TestEscrowSanitizeWorkflowTestSuite(t *testing.T) {
 	suite.Run(t, new(EscrowSanitizeWorkflowTestSuite))
 }
 
+// esKeys is the selection the default ResolveSanitizationKeys mock returns.
+var esKeys = entities.EscrowKeySelection{
+	Pseudonymise: &entities.EscrowKeyVersionRef{ID: [16]byte{9, 3}, Fingerprint: "ABCDEFGHIJKLMNOP"},
+}
+
 func (s *EscrowSanitizeWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
 	s.env.RegisterWorkflow(EscrowSanitizeWorkflow)
+	var acts *activities.EscrowSanitizeActivities
+	s.env.OnActivity(acts.ResolveSanitizationKeys, mock.Anything, mock.Anything).Return(esKeys, nil).Maybe()
 }
 
 func (s *EscrowSanitizeWorkflowTestSuite) AfterTest(_, _ string) {
@@ -161,4 +169,30 @@ func (s *EscrowSanitizeWorkflowTestSuite) Test_AlreadyDerived_DoesNothing() {
 	s.True(result.Replay)
 	s.Equal("PASS", result.Outcome)
 	s.Equal("sanitized/old.xml.gz", result.DerivativeKey)
+}
+
+// Test_KeySelection_ReachesProduceAndTheTokenKeyVersionIsRecorded proves the
+// resolved pseudonymisation version is used for the derivative and recorded
+// on the manifest and the run (issue #429).
+func (s *EscrowSanitizeWorkflowTestSuite) Test_KeySelection_ReachesProduceAndTheTokenKeyVersionIsRecorded() {
+	var acts *activities.EscrowSanitizeActivities
+	bound := esBound()
+	s.env.OnActivity(acts.BindSanitizationSource, mock.Anything, mock.Anything).Return(bound, nil).Once()
+	s.env.OnActivity(acts.ProduceDerivative, mock.Anything, mock.MatchedBy(func(in activities.ProduceDerivativeInput) bool {
+		return in.Keys != nil && in.Keys.Pseudonymise != nil && in.Keys.Pseudonymise.Fingerprint == "ABCDEFGHIJKLMNOP"
+	})).Return(activities.ProduceDerivativeOutput{
+		Result: esResult(rdesanitize.OutcomePass), DerivativeSHA256: "cc", DerivativeBytes: 128,
+		TokenKeyID: "ABCDEFGHIJKLMNOP", TokenKeyVersionID: "09030000-0000-0000-0000-000000000000",
+	}, nil).Once()
+	s.env.OnActivity(acts.VerifyDerivative, mock.Anything, mock.MatchedBy(func(in activities.VerifyDerivativeInput) bool {
+		return in.TokenKeyVersionID == "09030000-0000-0000-0000-000000000000"
+	})).Return(activities.VerifyDerivativeOutput{
+		Result: esResult(rdesanitize.OutcomePass), DerivativeKey: "sanitized/x.xml.gz", ManifestKey: "sanitized/m.json",
+	}, nil).Once()
+	s.env.OnActivity(acts.FinalizeSanitizationRun, mock.Anything, mock.MatchedBy(func(in activities.FinalizeSanitizationRunInput) bool {
+		return in.TokenKeyID == "ABCDEFGHIJKLMNOP" && in.TokenKeyVersionID == "09030000-0000-0000-0000-000000000000"
+	})).Return(nil).Once()
+
+	s.env.ExecuteWorkflow(EscrowSanitizeWorkflow, esParams)
+	s.Require().NoError(s.env.GetWorkflowError())
 }
