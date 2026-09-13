@@ -84,7 +84,7 @@ type EscrowSanitizeResult struct {
 |---------|-------|-------------------|-----------------|
 | Bind non-retryable | Source run not found for this tenant, did not pass, or its TLD is not operated by the caller | Fails before any record exists | Validate the deposit first, or launch under the right scope |
 | Outcome `QUARANTINED` | An element, attribute or namespace the profile does not classify; a DTD; a non-UTF-8 encoding; a depth/count/field-length limit | **Nothing is published**, run finalised QUARANTINED, workflow completes | Classify the field in `rdesanitize/profile.go`, bump `PolicyVersion`, re-run — the new version produces a separate derivative |
-| Outcome `ERROR` | Token key unavailable, escrow keyring unavailable, source artifact changed since validation, timeout, internal failure | Nothing published, run finalised ERROR, workflow fails | Fix the service condition and relaunch |
+| Outcome `ERROR` | No usable pseudonymisation key, no usable decryption key, source artifact changed since validation, timeout, internal failure | Nothing published, run finalised ERROR, workflow fails | Fix the service condition and relaunch |
 | Replay of a finished derivative | Same source, same policy version | Returns the existing run and its keys; produces nothing | None — this is the intended behaviour |
 
 ## Artifacts
@@ -93,7 +93,7 @@ type EscrowSanitizeResult struct {
 |----------|---------|---------|
 | `deposit-{policy}.xml.gz` | S3 escrow bucket: `escrow-sanitize-pending/{tenant}/{tld}/{depositID}/{runID}/` | Staged derivative, verified before it is published. Nothing here is authoritative — a passed derivative has already been copied to `sanitized/` — so a lifecycle rule expires the whole prefix. It is a top level prefix precisely so a rule can name it: a lifecycle filter is a literal key prefix and cannot express `*/pending/` |
 | `sanitized/deposit-{policy}.xml.gz` | same prefix | The published derivative. Never overwritten: a different policy version is a different run and a different object |
-| `sanitized/manifest-{policy}.json` | same prefix | Source and derivative checksums, tenant/TLD, policy and workflow versions, token key fingerprint, timestamps, field/action counts. No values, no excerpts |
+| `sanitized/manifest-{policy}.json` | same prefix | Source and derivative checksums, tenant/TLD, policy and workflow versions, token key fingerprint and key-registry version, timestamps, field/action counts. No values, no excerpts |
 | `escrow_sanitization_runs` | Postgres | Immutable record; unique on (tenant, source validation run, policy version) |
 
 ## Operational Notes
@@ -105,7 +105,7 @@ Not scheduled. A derivative is produced on request, after the deposit it comes f
 Logs carry `correlation_id`, `sanitization_run_id`, `source_run_id`, `tld`, `stage`, `outcome`, `codes` and nothing from the payload. A rising `QUARANTINED` count means the profile is behind the deposits, not that the deposits are bad; a rising `ERROR` count is a service problem.
 
 ### Manual Intervention
-Rotating `ESCROW_SANITIZE_HMAC_KEY` changes every token, so derivatives made before and after it are no longer joinable. The key fingerprint is recorded on every manifest so that break is visible rather than silent.
+The pseudonymisation key is the receiver's active `pseudonymise` key version in the escrow key registry (ADR-0009), resolved once by `ResolveSanitizationKeys` and carried in history: a retry tokenises under the same version even if the key was rotated meanwhile, and a revoked version is refused. Rotating it changes every token, so derivatives made before and after are no longer joinable; the registry requires an explicit confirmation to replace the active version, and the fingerprint and version id are recorded on every run and manifest so the break is visible rather than silent. The source is reopened with exactly the verification and decryption versions its validation run recorded. Without a receiver, or without an active version, the run ends ERROR with `TOKEN_KEY_UNAVAILABLE` and nothing is produced.
 
 Extending the profile is a reviewed code change followed by a `PolicyVersion` bump; re-running an already-derived source under the new version creates a separate, separately traceable derivative and never overwrites the old one.
 

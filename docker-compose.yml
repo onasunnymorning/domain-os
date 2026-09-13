@@ -167,6 +167,15 @@ services:
       - STORAGE_ACCESS_KEY=minioadmin
       - STORAGE_SECRET_KEY=minioadmin
       - STORAGE_USE_SSL=false
+      # Escrow key store (issue #429, ADR-0009). Off by default; with
+      # `--profile keystore` and ESCROW_CUSTODY_BACKEND=aws-secrets-manager it
+      # points at LocalStack. LocalStack accepts any credentials.
+      - ESCROW_CUSTODY_BACKEND=${ESCROW_CUSTODY_BACKEND:-none}
+      - ESCROW_CUSTODY_AWS_REGION=${ESCROW_CUSTODY_AWS_REGION:-us-east-1}
+      - ESCROW_CUSTODY_ENDPOINT=${ESCROW_CUSTODY_ENDPOINT:-http://localstack:4566}
+      - ESCROW_CUSTODY_NAME_PREFIX=${ESCROW_CUSTODY_NAME_PREFIX:-domain-os-dev}
+      - AWS_ACCESS_KEY_ID=${ESCROW_CUSTODY_DEV_AWS_ACCESS:-test}
+      - AWS_SECRET_ACCESS_KEY=${ESCROW_CUSTODY_DEV_AWS_SIGNING:-test}
       - STORAGE_ESCROW_BUCKET=escrow
       - STORAGE_EVENT_LOGS_BUCKET=event-logs
       - STORAGE_REPORTS_BUCKET=reports
@@ -310,6 +319,15 @@ services:
       - STORAGE_EVENT_LOGS_BUCKET=event-logs
       - STORAGE_REPORTS_BUCKET=reports
       - STORAGE_TEMP_BUCKET=temp-artifacts
+      # Escrow key store (issue #429, ADR-0009). Off by default; with
+      # `--profile keystore` and ESCROW_CUSTODY_BACKEND=aws-secrets-manager it
+      # points at LocalStack. LocalStack accepts any credentials.
+      - ESCROW_CUSTODY_BACKEND=${ESCROW_CUSTODY_BACKEND:-none}
+      - ESCROW_CUSTODY_AWS_REGION=${ESCROW_CUSTODY_AWS_REGION:-us-east-1}
+      - ESCROW_CUSTODY_ENDPOINT=${ESCROW_CUSTODY_ENDPOINT:-http://localstack:4566}
+      - ESCROW_CUSTODY_NAME_PREFIX=${ESCROW_CUSTODY_NAME_PREFIX:-domain-os-dev}
+      - AWS_ACCESS_KEY_ID=${ESCROW_CUSTODY_DEV_AWS_ACCESS:-test}
+      - AWS_SECRET_ACCESS_KEY=${ESCROW_CUSTODY_DEV_AWS_SIGNING:-test}
       # Postgres (TLD cleanup)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
@@ -377,6 +395,26 @@ services:
        mc mb -p minio/event-logs || true;
        mc mb -p minio/reports || true;
        mc mb -p minio/temp-artifacts || true"
+    networks:
+      - dos
+
+  # LocalStack — AWS Secrets Manager for the escrow key store in development
+  # (issue #429). Opt-in: `docker compose --profile keystore up localstack`.
+  # Nothing here is a real secret; in AWS the key store is Secrets Manager
+  # with split IAM (the API cannot read, workers cannot write).
+  localstack:
+    image: localstack/localstack:4.7
+    restart: unless-stopped
+    profiles: [ keystore, full ]
+    environment:
+      - SERVICES=secretsmanager
+    ports:
+      - 4566:4566
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:4566/_localstack/health" ]
+      interval: 10s
+      retries: 10
+      start_period: 10s
     networks:
       - dos
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/onasunnymorning/domain-os/internal/application/escrowkeys"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdereport"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
@@ -55,8 +56,7 @@ type EscrowValidationActivities struct {
 	tlds        repositories.TLDRepository
 	deposits    repositories.EscrowDepositRepository
 	runs        repositories.EscrowValidationRunRepository
-	keys        repositories.EscrowTrustedKeyRepository
-	keyProvider interfaces.EscrowDecryptionKeyProvider
+	keys        escrowKeyMaterial
 	escrowStore interfaces.ObjectStore
 	reportStore interfaces.ObjectStore
 	limits      rdevalidate.Limits
@@ -97,12 +97,12 @@ func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("escrow validation activities: reports bucket: %w", err)
 	}
-	// An absent keyring is not fatal: unsigned deposits are never decrypted,
-	// and a signed one still fails through the pipeline as
+	// A key store is not required: unsigned deposits are never decrypted, and a
+	// signed one without a usable key still fails through the pipeline as
 	// DECRYPT_KEY_UNAVAILABLE rather than by leaving the worker unable to run
 	// any escrow validation at all.
-	keyProvider, err := secrets.NewEnvEscrowKeyProviderOptionalFromEnv()
-	if err != nil {
+	store, err := secrets.NewEscrowSecretStoreFromEnv(context.Background())
+	if err != nil && !errors.Is(err, entities.ErrEscrowKeyStoreNotConfigured) {
 		return nil, fmt.Errorf("escrow validation activities: %w", err)
 	}
 	limits, err := loadEscrowValidationLimits()
@@ -113,8 +113,9 @@ func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
 		postgres.NewGormTLDRepo(db),
 		postgres.NewEscrowDepositRepository(db),
 		postgres.NewEscrowValidationRunRepository(db),
-		postgres.NewEscrowTrustedKeyRepository(db),
-		keyProvider, escrowStore, reportStore, limits, escrowDEAName(),
+		escrowkeys.NewResolver(postgres.NewEscrowKeyVersionRepository(db), postgres.NewEscrowArrangementRepository(db)),
+		secrets.NewEscrowKeyLoader(store, 0),
+		escrowStore, reportStore, limits, escrowDEAName(),
 	), nil
 }
 
@@ -124,15 +125,16 @@ func NewEscrowValidationActivitiesWithDeps(
 	tlds repositories.TLDRepository,
 	deposits repositories.EscrowDepositRepository,
 	runs repositories.EscrowValidationRunRepository,
-	keys repositories.EscrowTrustedKeyRepository,
-	keyProvider interfaces.EscrowDecryptionKeyProvider,
+	resolver *escrowkeys.Resolver,
+	loader interfaces.EscrowKeyMaterialLoader,
 	escrowStore, reportStore interfaces.ObjectStore,
 	limits rdevalidate.Limits,
 	deaName string,
 ) *EscrowValidationActivities {
 	return &EscrowValidationActivities{
-		tlds: tlds, deposits: deposits, runs: runs, keys: keys,
-		keyProvider: keyProvider, escrowStore: escrowStore, reportStore: reportStore,
+		tlds: tlds, deposits: deposits, runs: runs,
+		keys:        escrowKeyMaterial{resolver: resolver, loader: loader},
+		escrowStore: escrowStore, reportStore: reportStore,
 		limits: limits, deaName: deaName, now: func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -351,6 +353,54 @@ func (a *EscrowValidationActivities) copyIfAbsent(ctx context.Context, src, dst 
 }
 
 // ---------------------------------------------------------------------------
+// 1b. ResolveEscrowKeys
+// ---------------------------------------------------------------------------
+
+// ResolveEscrowKeysInput names the bound deposit whose keys to resolve.
+type ResolveEscrowKeysInput struct {
+	Scope      string    `json:"scope"`
+	DepositID  uuid.UUID `json:"depositId"`
+	WorkflowID string    `json:"workflowId"`
+}
+
+// ResolveEscrowKeys resolves, once, which key versions this run may use
+// (issue #429, ADR-0009 §7). The selection goes into workflow history, so a
+// retry of the validation uses exactly these versions and a later revalidation
+// resolves again. It reads the deposit's receipt time from the record, never
+// from the caller: historical keys are chosen by when the deposit arrived.
+func (a *EscrowValidationActivities) ResolveEscrowKeys(ctx context.Context, in ResolveEscrowKeysInput) (entities.EscrowKeySelection, error) {
+	logger := activity.GetLogger(ctx)
+	scope, err := entities.NewOperatorID(in.Scope)
+	if err != nil {
+		return entities.EscrowKeySelection{}, nonRetryable("invalid operator scope", err)
+	}
+	sel, err := a.resolveForDeposit(ctx, scope, in.DepositID)
+	if err != nil {
+		return entities.EscrowKeySelection{}, err
+	}
+	logger.Info("escrow validation: keys resolved",
+		"correlation_id", in.WorkflowID, "deposit_id", in.DepositID.String(),
+		"verify_versions", len(sel.Verify), "decrypt_versions", len(sel.Decrypt),
+		"tld_revision", sel.Arrangement.TLDRevision, "operator_revision", sel.Arrangement.OperatorRevision, "platform_revision", sel.Arrangement.PlatformRevision)
+	return sel, nil
+}
+
+func (a *EscrowValidationActivities) resolveForDeposit(ctx context.Context, scope entities.OperatorID, depositID uuid.UUID) (entities.EscrowKeySelection, error) {
+	deposit, err := a.deposits.GetByID(ctx, scope, depositID)
+	if err != nil {
+		if errors.Is(err, entities.ErrEscrowDepositNotFound) {
+			return entities.EscrowKeySelection{}, nonRetryable("deposit not found for scope", err)
+		}
+		return entities.EscrowKeySelection{}, fmt.Errorf("resolve keys: deposit: %w", err)
+	}
+	sel, err := a.keys.resolver.ResolveInbound(ctx, scope, deposit.TLD, deposit.ReceivedAt)
+	if err != nil {
+		return entities.EscrowKeySelection{}, fmt.Errorf("resolve keys: %w", err)
+	}
+	return sel, nil
+}
+
+// ---------------------------------------------------------------------------
 // 2. ValidateArtifacts
 // ---------------------------------------------------------------------------
 
@@ -366,6 +416,8 @@ type ValidateArtifactsInput struct {
 	SignatureKey    string    `json:"signatureKey"`
 	ArtifactSHA256  string    `json:"artifactSha256"`
 	SignatureSHA256 string    `json:"signatureSha256"`
+	// Keys is the selection ResolveEscrowKeys made; a signed profile requires it.
+	Keys *entities.EscrowKeySelection `json:"keys,omitempty"`
 }
 
 // ValidateArtifacts runs the streaming pipeline. It returns an error only
@@ -389,17 +441,18 @@ func (a *EscrowValidationActivities) ValidateArtifacts(ctx context.Context, in V
 	var ring openpgp.EntityList
 	var sig []byte
 	if entities.EscrowProfileIsSigned(profile) {
-		trusted, err := a.keys.ListActive(ctx, scope, in.TLD, a.now())
-		if err != nil {
+		sel := in.Keys
+		if sel == nil {
+			return rdevalidate.Result{}, nonRetryable("a signed profile needs the key selection ResolveEscrowKeys made", nil)
+		}
+		if armored, err = a.keys.trustedKeys(ctx, scope, sel); err != nil {
 			return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: trusted keys: %w", err)
 		}
-		armored = make([]string, len(trusted))
-		for i, k := range trusted {
-			armored[i] = k.ArmoredPublicKey
-		}
-		if ring, err = a.keyProvider.DecryptionKeyring(ctx); err != nil {
-			// Reported through the pipeline as DECRYPT_KEY_UNAVAILABLE (ERROR class).
-			ring = nil
+		// An empty ring is reported through the pipeline as
+		// DECRYPT_KEY_UNAVAILABLE (ERROR class); only a key store outage is
+		// returned for Temporal to retry.
+		if ring, err = a.keys.decryptionRing(ctx, scope, sel); err != nil {
+			return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: decryption keys: %w", err)
 		}
 		if sig, err = a.readSmall(ctx, in.SignatureKey, maxSignatureBytes); err != nil {
 			return rdevalidate.Result{}, fmt.Errorf("ValidateArtifacts: signature: %w", err)
@@ -600,6 +653,9 @@ type FinalizeRunInput struct {
 	NotificationKey    string             `json:"notificationKey"`
 	NotificationStatus string             `json:"notificationStatus"`
 	CompletedAt        time.Time          `json:"completedAt"`
+	// Keys is the run's key selection, recorded as evidence alongside the
+	// fingerprints the pipeline reports. Nil for unsigned profiles.
+	Keys *entities.EscrowKeySelection `json:"keys,omitempty"`
 	// Failure, when set, finalises the run as ERROR with a single INTERNAL_ERROR
 	// finding (used when an activity failed before a Result existed).
 	Failure string `json:"failure,omitempty"`
@@ -641,6 +697,7 @@ func (a *EscrowValidationActivities) FinalizeValidationRun(ctx context.Context, 
 		FindingTally:             rdevalidate.ToEntityTally(res.Tally),
 		SigningKeyFingerprint:    res.Signature.KeyFingerprint,
 		DecryptionKeyFingerprint: res.Decryption.KeyFingerprint,
+		Keys:                     in.Keys.Evidence(res.Signature.KeyFingerprint, res.Decryption.KeyFingerprint),
 		PlaintextSHA256:          res.Digests.PlaintextSHA256,
 		RDEDepositID:             res.Deposit.ID,
 		RDEKind:                  res.Deposit.Kind,

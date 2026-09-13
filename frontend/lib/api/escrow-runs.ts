@@ -73,6 +73,8 @@ export interface EscrowValidationRun {
   rdeWatermark?: string;
   signingKeyFingerprint?: string;
   decryptionKeyFingerprint?: string;
+  /** Which parties, arrangement revisions and key versions the run used (issue #429). */
+  keys?: EscrowRunKeyEvidence;
   /** Written for every run that produced a result, an ERROR one included. */
   summaryObjectKey?: string;
   reportObjectKey?: string;
@@ -199,6 +201,17 @@ export interface EscrowListResponse<T> {
   nextCursor?: string;
 }
 
+export interface EscrowRunKeyEvidence {
+  depositorPartyId?: string;
+  receiverPartyId?: string;
+  tldArrangementRevision?: number;
+  operatorArrangementRevision?: number;
+  platformArrangementRevision?: number;
+  signingKeyVersionId?: string;
+  decryptionKeyVersionId?: string;
+  candidateKeyVersionIds?: string[];
+}
+
 export interface StartEscrowValidationRequest {
   tld: string;
   /** Defaults to "ryde+sig" server-side. */
@@ -239,7 +252,7 @@ export async function startEscrowValidation(
  */
 export async function listEscrowValidations(
   tenantId: string,
-  params?: { tld?: string; outcome?: string; pagesize?: number; cursor?: string }
+  params?: { tld?: string; outcome?: string; keyVersionId?: string; pagesize?: number; cursor?: string }
 ): Promise<EscrowListResponse<EscrowValidationRun>> {
   const { data } = await apiClient.get('/escrow/validations', { ...scoped(tenantId), params });
   return data;

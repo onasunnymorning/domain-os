@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ServerOff,
   FileSearch,
+  KeyRound,
   Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ const navigation = [
   { name: 'Blocking', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Escrow Runs', href: '/escrow/validations', icon: FileSearch },
+  { name: 'Escrow Keys', href: '/escrow/keys', icon: KeyRound },
   { name: 'Documentation', href: '/docs', icon: FileText },
 ];
 

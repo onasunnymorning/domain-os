@@ -109,3 +109,38 @@ func (r RegistrarClID) Validate() error {
 func (r RegistrarClID) IsZero() bool {
 	return r == ""
 }
+
+// PlatformScope is the staff/global scope kind — the explicit third kind that
+// ADR-0006 requires, so that "the whole installation" is never spelled the same
+// way as "no scope". It carries no identifier: there is one platform.
+//
+// Its zero value is deliberately invalid. A PlatformScope exists only when the
+// authorization layer has established that the principal may act for the
+// platform (for escrow keys, an Auth0 scope claim; see ADR-0009), and it must
+// be obtained from NewPlatformScope at that point and passed down as a typed
+// parameter like any other scope.
+type PlatformScope struct {
+	granted bool
+}
+
+// ErrInvalidPlatformScope is returned when a PlatformScope was not granted.
+var ErrInvalidPlatformScope = errors.New("invalid platform scope: not granted by the authorization layer")
+
+// NewPlatformScope grants the platform scope. Call it only where the
+// principal's authority to act for the platform has just been checked.
+func NewPlatformScope() PlatformScope {
+	return PlatformScope{granted: true}
+}
+
+// Validate reports whether the scope was granted rather than zero-valued.
+func (p PlatformScope) Validate() error {
+	if !p.granted {
+		return ErrInvalidPlatformScope
+	}
+	return nil
+}
+
+// String implements the Stringer interface.
+func (p PlatformScope) String() string {
+	return "platform"
+}

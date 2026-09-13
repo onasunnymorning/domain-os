@@ -7,9 +7,7 @@ import (
 	"io"
 	"sort"
 	"sync"
-	"time"
 
-	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -201,40 +199,6 @@ func (f *fakeRunRepo) List(context.Context, entities.OperatorID, queries.ListIte
 	return nil, "", nil
 }
 
-type fakeKeyRepo struct{ keys []*entities.EscrowTrustedKey }
-
-func (f *fakeKeyRepo) Create(_ context.Context, k *entities.EscrowTrustedKey) error {
-	f.keys = append(f.keys, k)
-	return nil
-}
-func (f *fakeKeyRepo) Retire(context.Context, entities.OperatorID, uuid.UUID, time.Time) error {
-	return nil
-}
-func (f *fakeKeyRepo) GetByID(context.Context, entities.OperatorID, uuid.UUID) (*entities.EscrowTrustedKey, error) {
-	return nil, entities.ErrEscrowTrustedKeyNotFound
-}
-func (f *fakeKeyRepo) ListActive(_ context.Context, scope entities.OperatorID, tld string, at time.Time) ([]*entities.EscrowTrustedKey, error) {
-	var out []*entities.EscrowTrustedKey
-	for _, k := range f.keys {
-		if k.TenantID == scope && k.TLD == tld && k.Active(at) {
-			out = append(out, k)
-		}
-	}
-	return out, nil
-}
-func (f *fakeKeyRepo) List(context.Context, entities.OperatorID, string) ([]*entities.EscrowTrustedKey, error) {
-	return f.keys, nil
-}
-
-type fakeKeyProvider struct {
-	ring openpgp.EntityList
-	err  error
-}
-
-func (f *fakeKeyProvider) DecryptionKeyring(context.Context) (openpgp.EntityList, error) {
-	return f.ring, f.err
-}
-
 // ---- sanitization fakes (issue #415) ----
 
 type fakeSanitizationRepo struct {
@@ -299,18 +263,4 @@ func (f *fakeSanitizationRepo) FindBySourceAndPolicy(_ context.Context, scope en
 
 func (f *fakeSanitizationRepo) List(context.Context, entities.OperatorID, queries.ListItemsQuery) ([]*entities.EscrowSanitizationRun, string, error) {
 	return nil, "", nil
-}
-
-// fakeTokenKeyProvider stands in for the secrets manager. The key is fixture
-// material and never leaves the test binary.
-type fakeTokenKeyProvider struct {
-	key []byte
-	err error
-}
-
-func (f *fakeTokenKeyProvider) TokenKey(context.Context) ([]byte, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.key, nil
 }

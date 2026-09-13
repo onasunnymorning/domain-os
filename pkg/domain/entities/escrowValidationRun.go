@@ -135,7 +135,11 @@ type EscrowValidationRun struct {
 
 	SigningKeyFingerprint    string // Trusted registry key that signed the .sig
 	DecryptionKeyFingerprint string // Service key that decrypted the .ryde
-	PlaintextSHA256          string
+	// Keys records the parties, arrangement revisions and key versions the run
+	// resolved and used (issue #429, ADR-0009). Zero for unsigned profiles and
+	// for runs not yet finalised.
+	Keys            EscrowRunKeyEvidence
+	PlaintextSHA256 string
 
 	RDEDepositID string
 	RDEKind      string
@@ -198,6 +202,7 @@ type EscrowValidationFinalization struct {
 	FindingTally             []EscrowFindingTally
 	SigningKeyFingerprint    string
 	DecryptionKeyFingerprint string
+	Keys                     EscrowRunKeyEvidence
 	PlaintextSHA256          string
 	RDEDepositID             string
 	RDEKind                  string
@@ -255,6 +260,7 @@ func (r *EscrowValidationRun) Finalize(f EscrowValidationFinalization) error {
 	}
 	r.SigningKeyFingerprint = f.SigningKeyFingerprint
 	r.DecryptionKeyFingerprint = f.DecryptionKeyFingerprint
+	r.Keys = f.Keys
 	r.PlaintextSHA256 = f.PlaintextSHA256
 	r.RDEDepositID = f.RDEDepositID
 	r.RDEKind = f.RDEKind
