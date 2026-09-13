@@ -39,6 +39,9 @@ type Manifest struct {
 	// rotation shows up as a visible break in joinability instead of a silent
 	// one. It is a MAC over a fixed public string and cannot be inverted.
 	TokenKeyFingerprint string `json:"tokenKeyFingerprint"`
+	// TokenKeyVersionID is the key-registry version the token key came from
+	// (issue #429); empty when the deprecated environment key was used.
+	TokenKeyVersionID string `json:"tokenKeyVersionId,omitempty"`
 
 	WorkflowID string `json:"workflowId"` // correlation id (INV-16)
 	RunID      string `json:"runId"`      // trace id

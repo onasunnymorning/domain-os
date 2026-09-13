@@ -10,21 +10,16 @@ import (
 )
 
 // Escrow validation (EVE) sentinel errors. These are the domain vocabulary
-// for the deposit/validation-run/trusted-key aggregates; outer layers wrap
+// for the deposit and validation-run aggregates; outer layers wrap
 // them (INV-09) and never mint their own.
 var (
-	ErrInvalidEscrowDeposit               = errors.New("invalid escrow deposit")
-	ErrEscrowDepositNotFound              = errors.New("escrow deposit not found")
-	ErrInvalidEscrowDigest                = errors.New("invalid escrow artifact digest: expected 64 hex characters")
-	ErrInvalidEscrowValidationRun         = errors.New("invalid escrow validation run")
-	ErrEscrowValidationRunNotFound        = errors.New("escrow validation run not found")
-	ErrEscrowValidationRunAlreadyFinal    = errors.New("escrow validation run is already final")
-	ErrInvalidEscrowTrustedKey            = errors.New("invalid escrow trusted key")
-	ErrEscrowTrustedKeyNotFound           = errors.New("escrow trusted key not found")
-	ErrEscrowTrustedKeyAlreadyRetired     = errors.New("escrow trusted key is already retired")
-	ErrEscrowTrustedKeyInvalidWindow      = errors.New("escrow trusted key validity window is invalid")
-	ErrEscrowTrustedKeyInvalidFingerprint = errors.New("escrow trusted key fingerprint must be 40 or 64 hex characters")
-	ErrUnknownEscrowProfile               = errors.New("unknown escrow validation profile")
+	ErrInvalidEscrowDeposit            = errors.New("invalid escrow deposit")
+	ErrEscrowDepositNotFound           = errors.New("escrow deposit not found")
+	ErrInvalidEscrowDigest             = errors.New("invalid escrow artifact digest: expected 64 hex characters")
+	ErrInvalidEscrowValidationRun      = errors.New("invalid escrow validation run")
+	ErrEscrowValidationRunNotFound     = errors.New("escrow validation run not found")
+	ErrEscrowValidationRunAlreadyFinal = errors.New("escrow validation run is already final")
+	ErrUnknownEscrowProfile            = errors.New("unknown escrow validation profile")
 )
 
 var sha256HexRe = regexp.MustCompile(`^[0-9a-f]{64}$`)

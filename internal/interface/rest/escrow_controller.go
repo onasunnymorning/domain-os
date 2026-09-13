@@ -102,9 +102,12 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc, deps EscrowVali
 		grp.GET("/validations", controller.ListValidations)
 		grp.GET("/validations/:id", controller.GetValidation)
 		grp.GET("/deposits/:id", controller.GetDeposit)
-		grp.POST("/trusted-keys", controller.CreateTrustedKey)
-		grp.POST("/trusted-keys/:id/retire", controller.RetireTrustedKey)
-		grp.GET("/trusted-keys", controller.ListTrustedKeys)
+
+		// Escrow key registry: parties, keys, arrangements (issue #429, ADR-0009).
+		// The /escrow/trusted-keys API it replaces is gone.
+		if deps.KeyRegistry != nil {
+			controller.registerKeyRoutes(grp)
+		}
 
 		// EVE derivative sanitization (issue #415)
 		grp.POST("/sanitizations", controller.StartSanitization)

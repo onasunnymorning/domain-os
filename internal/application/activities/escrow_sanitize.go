@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/google/uuid"
+	"github.com/onasunnymorning/domain-os/internal/application/escrowkeys"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdesanitize"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
@@ -63,9 +63,9 @@ type EscrowSanitizeActivities struct {
 	deposits      repositories.EscrowDepositRepository
 	runs          repositories.EscrowValidationRunRepository
 	sanitizations repositories.EscrowSanitizationRunRepository
-	keys          repositories.EscrowTrustedKeyRepository
-	decryptKeys   interfaces.EscrowDecryptionKeyProvider
-	tokenKeys     interfaces.SanitizationTokenKeyProvider
+	// keys resolves and loads the verification, decryption and
+	// pseudonymisation material a derivative may use (issue #429, ADR-0009).
+	keys escrowKeyMaterial
 
 	// escrowStore holds the source deposit, the staging object and the
 	// published derivative. The custody boundary is the key prefix, not the
@@ -85,9 +85,13 @@ type EscrowSanitizeActivities struct {
 	now            func() time.Time
 }
 
-// NewEscrowSanitizeActivities wires the activities from the environment. It
-// fails when the token key is absent, so a worker without one declines to
-// register rather than quietly producing derivatives with a weak pseudonym.
+// NewEscrowSanitizeActivities wires the activities from the environment.
+//
+// No pseudonymisation key is required at start: the key comes from the key
+// registry per run, and a run that finds none records TOKEN_KEY_UNAVAILABLE
+// (ERROR) instead of producing anything. That is still "no derivative with a
+// weak pseudonym", decided per run and on the record rather than by the worker
+// silently not registering the activities.
 func NewEscrowSanitizeActivities() (*EscrowSanitizeActivities, error) {
 	var db *gorm.DB
 	var err error
@@ -110,16 +114,10 @@ func NewEscrowSanitizeActivities() (*EscrowSanitizeActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewEscrowSanitizeActivities: escrow storage: %w", err)
 	}
-	// Optional for the same reason as in escrow validation: a plaintext source
-	// deposit is re-read without decryption. The token key below is not
-	// optional — without it there is no pseudonymisation to speak of.
-	decryptKeys, err := secrets.NewEnvEscrowKeyProviderOptionalFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("NewEscrowSanitizeActivities: escrow decryption keys: %w", err)
-	}
-	tokenKeys, err := secrets.NewEnvSanitizeKeyProviderFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("NewEscrowSanitizeActivities: sanitization token key: %w", err)
+	// The key store is optional: a run without usable keys records why.
+	store, err := secrets.NewEscrowSecretStoreFromEnv(context.Background())
+	if err != nil && !errors.Is(err, entities.ErrEscrowKeyStoreNotConfigured) {
+		return nil, fmt.Errorf("NewEscrowSanitizeActivities: %w", err)
 	}
 	validateLimits, err := loadEscrowValidationLimits()
 	if err != nil {
@@ -134,8 +132,8 @@ func NewEscrowSanitizeActivities() (*EscrowSanitizeActivities, error) {
 		postgres.NewEscrowDepositRepository(db),
 		postgres.NewEscrowValidationRunRepository(db),
 		postgres.NewEscrowSanitizationRunRepository(db),
-		postgres.NewEscrowTrustedKeyRepository(db),
-		decryptKeys, tokenKeys, escrowStore,
+		escrowkeys.NewResolver(postgres.NewEscrowKeyVersionRepository(db), postgres.NewEscrowArrangementRepository(db)),
+		secrets.NewEscrowKeyLoader(store, 0), escrowStore,
 		validateLimits, limits, escrowSanitizeSuffix(),
 	), nil
 }
@@ -147,17 +145,16 @@ func NewEscrowSanitizeActivitiesWithDeps(
 	deposits repositories.EscrowDepositRepository,
 	runs repositories.EscrowValidationRunRepository,
 	sanitizations repositories.EscrowSanitizationRunRepository,
-	keys repositories.EscrowTrustedKeyRepository,
-	decryptKeys interfaces.EscrowDecryptionKeyProvider,
-	tokenKeys interfaces.SanitizationTokenKeyProvider,
+	resolver *escrowkeys.Resolver,
+	loader interfaces.EscrowKeyMaterialLoader,
 	escrowStore interfaces.ObjectStore,
 	validateLimits rdevalidate.Limits,
 	limits rdesanitize.Limits,
 	defaultSuffix string,
 ) *EscrowSanitizeActivities {
 	return &EscrowSanitizeActivities{
-		tlds: tlds, deposits: deposits, runs: runs, sanitizations: sanitizations, keys: keys,
-		decryptKeys: decryptKeys, tokenKeys: tokenKeys,
+		tlds: tlds, deposits: deposits, runs: runs, sanitizations: sanitizations,
+		keys:           escrowKeyMaterial{resolver: resolver, loader: loader},
 		escrowStore:    escrowStore,
 		validateLimits: validateLimits, limits: limits, defaultSuffix: defaultSuffix,
 		now: func() time.Time { return time.Now().UTC() },
@@ -309,6 +306,85 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 }
 
 // ---------------------------------------------------------------------------
+// 1b. ResolveSanitizationKeys
+// ---------------------------------------------------------------------------
+
+// ResolveSanitizationKeysInput names the bound source.
+type ResolveSanitizationKeysInput struct {
+	Scope                 string    `json:"scope"`
+	SourceValidationRunID uuid.UUID `json:"sourceValidationRunId"`
+	WorkflowID            string    `json:"workflowId"`
+}
+
+// ResolveSanitizationKeys resolves, once, the key versions a derivative may use
+// (issue #429, ADR-0009 §7):
+//
+//   - to reopen a signed source, exactly the verification and decryption
+//     versions the accepted validation run recorded — a derivative is made from
+//     what validation accepted, with the keys that accepted it;
+//   - to pseudonymise, the active pseudonymisation version of the TLD's
+//     effective receiver.
+//
+// The selection goes into workflow history, so a retry produces tokens under
+// the same key even if the key was rotated in between.
+func (a *EscrowSanitizeActivities) ResolveSanitizationKeys(ctx context.Context, in ResolveSanitizationKeysInput) (entities.EscrowKeySelection, error) {
+	logger := activity.GetLogger(ctx)
+	scope, err := entities.NewOperatorID(in.Scope)
+	if err != nil {
+		return entities.EscrowKeySelection{}, nonRetryableSanitize("invalid operator scope", err)
+	}
+	sel, err := a.resolveForSource(ctx, scope, in.SourceValidationRunID)
+	if err != nil {
+		return entities.EscrowKeySelection{}, err
+	}
+	pseudonymise := ""
+	if sel.Pseudonymise != nil {
+		pseudonymise = sel.Pseudonymise.ID.String()
+	}
+	logger.Info("escrow sanitization: keys resolved",
+		"correlation_id", in.WorkflowID, "source_run_id", in.SourceValidationRunID.String(),
+		"verify_versions", len(sel.Verify), "decrypt_versions", len(sel.Decrypt),
+		"pseudonymise_version", pseudonymise)
+	return sel, nil
+}
+
+func (a *EscrowSanitizeActivities) resolveForSource(ctx context.Context, scope entities.OperatorID, sourceRunID uuid.UUID) (entities.EscrowKeySelection, error) {
+	source, err := a.runs.GetByID(ctx, scope, sourceRunID)
+	if err != nil {
+		if errors.Is(err, entities.ErrEscrowValidationRunNotFound) {
+			return entities.EscrowKeySelection{}, nonRetryableSanitize("source validation run not found for this tenant", err)
+		}
+		return entities.EscrowKeySelection{}, fmt.Errorf("resolve sanitization keys: source run: %w", err)
+	}
+	deposit, err := a.deposits.GetByID(ctx, scope, source.DepositID)
+	if err != nil {
+		return entities.EscrowKeySelection{}, fmt.Errorf("resolve sanitization keys: source deposit: %w", err)
+	}
+	var sel entities.EscrowKeySelection
+	switch {
+	case !entities.EscrowProfileIsSigned(deposit.Profile):
+		// Nothing to verify or decrypt.
+	default:
+		if source.Keys.SigningKeyVersionID != nil {
+			if sel.Verify, err = a.keys.resolver.Refs(ctx, scope, *source.Keys.SigningKeyVersionID); err != nil {
+				return entities.EscrowKeySelection{}, fmt.Errorf("resolve sanitization keys: %w", err)
+			}
+		}
+		if source.Keys.DecryptionKeyVersionID != nil {
+			if sel.Decrypt, err = a.keys.resolver.Refs(ctx, scope, *source.Keys.DecryptionKeyVersionID); err != nil {
+				return entities.EscrowKeySelection{}, fmt.Errorf("resolve sanitization keys: %w", err)
+			}
+		}
+	}
+	ref, eff, err := a.keys.resolver.ResolvePseudonymisation(ctx, scope, deposit.TLD)
+	if err != nil {
+		return entities.EscrowKeySelection{}, fmt.Errorf("resolve sanitization keys: %w", err)
+	}
+	sel.Pseudonymise, sel.Arrangement = ref, eff
+	return sel, nil
+}
+
+// ---------------------------------------------------------------------------
 // 2. ProduceDerivative
 // ---------------------------------------------------------------------------
 
@@ -325,6 +401,8 @@ type ProduceDerivativeInput struct {
 	SignatureSHA256   string    `json:"signatureSha256"`
 	SyntheticSuffix   string    `json:"syntheticSuffix"`
 	StagingKey        string    `json:"stagingKey"`
+	// Keys is the selection ResolveSanitizationKeys made.
+	Keys *entities.EscrowKeySelection `json:"keys"`
 }
 
 // ProduceDerivativeOutput reports what was staged. A non-PASS result means
@@ -334,6 +412,8 @@ type ProduceDerivativeOutput struct {
 	DerivativeSHA256 string             `json:"derivativeSha256"`
 	DerivativeBytes  int64              `json:"derivativeBytes"`
 	TokenKeyID       string             `json:"tokenKeyId"`
+	// TokenKeyVersionID is the key-registry version of the token key.
+	TokenKeyVersionID string `json:"tokenKeyVersionId,omitempty"`
 }
 
 // ProduceDerivative streams the source deposit through the profile and stages
@@ -349,11 +429,21 @@ func (a *EscrowSanitizeActivities) ProduceDerivative(ctx context.Context, in Pro
 	now := a.now
 	out := ProduceDerivativeOutput{}
 
-	master, err := a.tokenKeys.TokenKey(ctx)
+	sel := in.Keys
+	if sel == nil {
+		return out, nonRetryableSanitize("a derivative needs the key selection ResolveSanitizationKeys made", nil)
+	}
+	master, tokenVersion, ok, err := a.keys.tokenKey(ctx, scope, sel)
 	if err != nil {
+		return out, fmt.Errorf("ProduceDerivative: %w", err)
+	}
+	if !ok {
 		// Our key store, not the deposit: ERROR, not a quarantine.
 		out.Result = sanitizeServiceError(rdesanitize.CodeTokenKeyUnavailable, "the sanitization token key is unavailable", now())
 		return out, nil
+	}
+	if tokenVersion != nil {
+		out.TokenKeyVersionID = tokenVersion.String()
 	}
 	tokens, err := rdesanitize.NewTokenizer(master, scope.String(), rdesanitize.PolicyVersion)
 	if err != nil {
@@ -370,7 +460,7 @@ func (a *EscrowSanitizeActivities) ProduceDerivative(ctx context.Context, in Pro
 	runCtx, cancel := context.WithTimeout(ctx, a.limits.Timeout)
 	defer cancel()
 
-	openInput, err := a.sourceInput(runCtx, in)
+	openInput, err := a.sourceInput(runCtx, in, sel)
 	if err != nil {
 		return out, err
 	}
@@ -406,7 +496,7 @@ func (a *EscrowSanitizeActivities) ProduceDerivative(ctx context.Context, in Pro
 
 // sourceInput rebuilds the validator input for the bound source, so the
 // derivative is made from exactly what validation accepted.
-func (a *EscrowSanitizeActivities) sourceInput(ctx context.Context, in ProduceDerivativeInput) (rdevalidate.Input, error) {
+func (a *EscrowSanitizeActivities) sourceInput(ctx context.Context, in ProduceDerivativeInput, sel *entities.EscrowKeySelection) (rdevalidate.Input, error) {
 	input := rdevalidate.Input{
 		Profile: in.SourceProfile,
 		OpenArtifact: func(c context.Context) (io.ReadCloser, error) {
@@ -426,19 +516,13 @@ func (a *EscrowSanitizeActivities) sourceInput(ctx context.Context, in ProduceDe
 	if err != nil {
 		return input, nonRetryableSanitize("invalid operator scope", err)
 	}
-	trusted, err := a.keys.ListActive(ctx, scope, in.TLD, a.now())
-	if err != nil {
+	if input.TrustedKeys, err = a.keys.trustedKeys(ctx, scope, sel); err != nil {
 		return input, fmt.Errorf("ProduceDerivative: trusted keys: %w", err)
 	}
-	input.TrustedKeys = make([]string, len(trusted))
-	for i, k := range trusted {
-		input.TrustedKeys[i] = k.ArmoredPublicKey
+	// An empty ring surfaces as DECRYPT_KEY_UNAVAILABLE, an ERROR-class code.
+	if input.ServiceKeys, err = a.keys.decryptionRing(ctx, scope, sel); err != nil {
+		return input, fmt.Errorf("ProduceDerivative: decryption keys: %w", err)
 	}
-	var ring openpgp.EntityList
-	if ring, err = a.decryptKeys.DecryptionKeyring(ctx); err != nil {
-		ring = nil // surfaces as DECRYPT_KEY_UNAVAILABLE, an ERROR-class code
-	}
-	input.ServiceKeys = ring
 	sig, err := a.readSmallStore(ctx, a.escrowStore, in.SignatureKey, maxSignatureBytes)
 	if err != nil {
 		return input, fmt.Errorf("ProduceDerivative: signature: %w", err)
@@ -516,6 +600,7 @@ type VerifyDerivativeInput struct {
 	DerivativeSHA256      string             `json:"derivativeSha256"`
 	DerivativeBytes       int64              `json:"derivativeBytes"`
 	TokenKeyID            string             `json:"tokenKeyId"`
+	TokenKeyVersionID     string             `json:"tokenKeyVersionId,omitempty"`
 	Produced              rdesanitize.Result `json:"produced"`
 }
 
@@ -598,7 +683,7 @@ func (a *EscrowSanitizeActivities) VerifyDerivative(ctx context.Context, in Veri
 		SourceProfile: in.SourceProfile, SourceArtifactSHA256: in.SourceArtifactSHA256,
 		DerivativeObjectKey: in.DerivativeKey, DerivativeSHA256: in.DerivativeSHA256, DerivativeBytes: in.DerivativeBytes,
 		PolicyVersion: rdesanitize.PolicyVersion, WorkflowVersion: EscrowSanitizeWorkflowVersion,
-		TokenKeyFingerprint: in.TokenKeyID, WorkflowID: in.WorkflowID, RunID: in.RunID,
+		TokenKeyFingerprint: in.TokenKeyID, TokenKeyVersionID: in.TokenKeyVersionID, WorkflowID: in.WorkflowID, RunID: in.RunID,
 		Outcome: string(res.Outcome), ReasonCodes: codeStringsSanitize(res.Codes()),
 		StartedAt: res.StartedAt, CompletedAt: res.CompletedAt,
 		SourceElements: res.SourceElements, Counts: res.Counts,
@@ -678,6 +763,8 @@ type FinalizeSanitizationRunInput struct {
 	ManifestKey       string             `json:"manifestKey"`
 	DerivativeSHA256  string             `json:"derivativeSha256"`
 	DerivativeBytes   int64              `json:"derivativeBytes"`
+	TokenKeyID        string             `json:"tokenKeyId,omitempty"`
+	TokenKeyVersionID string             `json:"tokenKeyVersionId,omitempty"`
 	CompletedAt       time.Time          `json:"completedAt"`
 	// Failure, when set, records an infrastructure failure the pipeline never
 	// got to classify.
@@ -710,6 +797,16 @@ func (a *EscrowSanitizeActivities) FinalizeSanitizationRun(ctx context.Context, 
 		FindingTally: rdesanitize.ToEntityTally(res.Tally),
 		Counts:       res.Counts,
 		CompletedAt:  completed,
+		// The key a run used is recorded whatever the outcome: a quarantined
+		// run still tells which key it would have tokenised with.
+		TokenKeyFingerprint: in.TokenKeyID,
+	}
+	if in.TokenKeyVersionID != "" {
+		id, err := uuid.Parse(in.TokenKeyVersionID)
+		if err != nil {
+			return nonRetryableSanitize("invalid token key version id", err)
+		}
+		f.TokenKeyVersionID = &id
 	}
 	// Only a PASS may reference an object; the entity enforces it too.
 	if res.Outcome == rdesanitize.OutcomePass {

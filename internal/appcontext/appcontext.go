@@ -21,6 +21,7 @@ const (
 	keyUserID        contextKey = "userid"
 	keyTraceID       contextKey = "trace_id"
 	keyCorrelationID contextKey = "correlation_id"
+	keyAuthScopes    contextKey = "auth_scopes"
 
 	// EPP session keys, populated per connection by the EPP server.
 	keyConnectionID contextKey = "cid"
@@ -37,6 +38,24 @@ func WithUserID(ctx context.Context, v string) context.Context {
 func UserID(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(keyUserID).(string)
 	return v, ok
+}
+
+// WithAuthScopes returns a copy of ctx carrying the permissions granted to the
+// authenticated principal (the Auth0 access token's RBAC "permissions" claim).
+// A principal authenticated by the legacy shared token carries none.
+func WithAuthScopes(ctx context.Context, scopes []string) context.Context {
+	return context.WithValue(ctx, keyAuthScopes, append([]string(nil), scopes...))
+}
+
+// HasAuthScope reports whether the principal was granted scope.
+func HasAuthScope(ctx context.Context, scope string) bool {
+	scopes, _ := ctx.Value(keyAuthScopes).([]string)
+	for _, s := range scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
 }
 
 // WithTraceID returns a copy of ctx carrying the trace ID — the identifier for

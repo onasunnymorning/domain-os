@@ -18,8 +18,8 @@ import (
 //
 // Operator tenant isolation is enforced here, in SQL: every scoped query
 // carries `tenant_id = ?` bound to the entities.OperatorID passed in
-// (ADR-0006). Deposits and trusted keys are immutable by absence of any
-// update path; a run is finalised by exactly one conditional UPDATE.
+// (ADR-0006). Deposits are immutable by absence of any update path; a run is
+// finalised by exactly one conditional UPDATE.
 // ---------------------------------------------------------------------------
 
 // EscrowDepositRecord is the GORM model for the escrow_deposits table.
@@ -60,38 +60,26 @@ type EscrowValidationRunRecord struct {
 	FindingTally             []byte `gorm:"type:jsonb"`
 	SigningKeyFingerprint    string
 	DecryptionKeyFingerprint string
-	PlaintextSHA256          string
-	RDEDepositID             string
-	RDEKind                  string
-	RDEResend                int
-	RDEWatermark             *time.Time
-	SummaryObjectKey         string
-	ReportObjectKey          string
-	NotificationObjectKey    string
-	NotificationStatus       string
-	StartedAt                time.Time `gorm:"not null;index"`
-	CompletedAt              *time.Time
+	// KeyEvidence is entities.EscrowRunKeyEvidence; the two version ids are
+	// also columns so "runs that used this key version" is an indexed query.
+	KeyEvidence            []byte     `gorm:"type:jsonb"`
+	SigningKeyVersionID    *uuid.UUID `gorm:"type:uuid;index"`
+	DecryptionKeyVersionID *uuid.UUID `gorm:"type:uuid;index"`
+	PlaintextSHA256        string
+	RDEDepositID           string
+	RDEKind                string
+	RDEResend              int
+	RDEWatermark           *time.Time
+	SummaryObjectKey       string
+	ReportObjectKey        string
+	NotificationObjectKey  string
+	NotificationStatus     string
+	StartedAt              time.Time `gorm:"not null;index"`
+	CompletedAt            *time.Time
 }
 
 // TableName specifies the table name for EscrowValidationRunRecord.
 func (EscrowValidationRunRecord) TableName() string { return "escrow_validation_runs" }
-
-// EscrowTrustedKeyRecord is the GORM model for the escrow_trusted_keys table.
-type EscrowTrustedKeyRecord struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
-	TenantID         string    `gorm:"not null;index"`
-	TLD              string    `gorm:"not null;index"`
-	Fingerprint      string    `gorm:"not null;size:64"`
-	ArmoredPublicKey string    `gorm:"not null;type:text"`
-	Label            string
-	ValidFrom        time.Time `gorm:"not null"`
-	ValidTo          *time.Time
-	RetiredAt        *time.Time
-	CreatedAt        time.Time
-}
-
-// TableName specifies the table name for EscrowTrustedKeyRecord.
-func (EscrowTrustedKeyRecord) TableName() string { return "escrow_trusted_keys" }
 
 // ---------- mappers ----------
 
@@ -132,7 +120,12 @@ func toDBEscrowValidationRun(r *entities.EscrowValidationRun) (*EscrowValidation
 	if err != nil {
 		return nil, fmt.Errorf("encode finding tally: %w", err)
 	}
+	keyEvidence, err := json.Marshal(r.Keys)
+	if err != nil {
+		return nil, fmt.Errorf("encode key evidence: %w", err)
+	}
 	return &EscrowValidationRunRecord{
+		KeyEvidence: keyEvidence, SigningKeyVersionID: r.Keys.SigningKeyVersionID, DecryptionKeyVersionID: r.Keys.DecryptionKeyVersionID,
 		ID: r.ID, DepositID: r.DepositID, TenantID: r.TenantID.String(), TLD: r.TLD,
 		WorkflowID: r.WorkflowID, RunID: r.RunID, Profile: r.Profile,
 		Outcome: string(r.Outcome), StageReached: r.StageReached, Findings: raw, FindingTally: rawTally,
@@ -158,8 +151,15 @@ func fromDBEscrowValidationRun(r *EscrowValidationRunRecord) (*entities.EscrowVa
 			return nil, fmt.Errorf("decode finding tally: %w", err)
 		}
 	}
+	var keys entities.EscrowRunKeyEvidence
+	if len(r.KeyEvidence) > 0 {
+		if err := json.Unmarshal(r.KeyEvidence, &keys); err != nil {
+			return nil, fmt.Errorf("decode key evidence: %w", err)
+		}
+	}
 	return &entities.EscrowValidationRun{
-		ID: r.ID, DepositID: r.DepositID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD,
+		Keys: keys,
+		ID:   r.ID, DepositID: r.DepositID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD,
 		WorkflowID: r.WorkflowID, RunID: r.RunID, Profile: r.Profile,
 		Outcome: entities.EscrowValidationOutcome(r.Outcome), StageReached: r.StageReached, Findings: findings, FindingTally: tally,
 		SigningKeyFingerprint: r.SigningKeyFingerprint, DecryptionKeyFingerprint: r.DecryptionKeyFingerprint,
@@ -169,22 +169,6 @@ func fromDBEscrowValidationRun(r *EscrowValidationRunRecord) (*entities.EscrowVa
 		NotificationStatus: entities.EscrowNotificationStatus(r.NotificationStatus),
 		StartedAt:          r.StartedAt, CompletedAt: r.CompletedAt,
 	}, nil
-}
-
-func toDBEscrowTrustedKey(k *entities.EscrowTrustedKey) *EscrowTrustedKeyRecord {
-	return &EscrowTrustedKeyRecord{
-		ID: k.ID, TenantID: k.TenantID.String(), TLD: k.TLD, Fingerprint: k.Fingerprint,
-		ArmoredPublicKey: k.ArmoredPublicKey, Label: k.Label,
-		ValidFrom: k.ValidFrom, ValidTo: k.ValidTo, RetiredAt: k.RetiredAt, CreatedAt: k.CreatedAt,
-	}
-}
-
-func fromDBEscrowTrustedKey(r *EscrowTrustedKeyRecord) *entities.EscrowTrustedKey {
-	return &entities.EscrowTrustedKey{
-		ID: r.ID, TenantID: entities.OperatorID(r.TenantID), TLD: r.TLD, Fingerprint: r.Fingerprint,
-		ArmoredPublicKey: r.ArmoredPublicKey, Label: r.Label,
-		ValidFrom: r.ValidFrom, ValidTo: r.ValidTo, RetiredAt: r.RetiredAt, CreatedAt: r.CreatedAt,
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +297,9 @@ func (r *GormEscrowValidationRunRepository) Finalize(ctx context.Context, scope 
 			"finding_tally":              rec.FindingTally,
 			"signing_key_fingerprint":    rec.SigningKeyFingerprint,
 			"decryption_key_fingerprint": rec.DecryptionKeyFingerprint,
+			"key_evidence":               rec.KeyEvidence,
+			"signing_key_version_id":     rec.SigningKeyVersionID,
+			"decryption_key_version_id":  rec.DecryptionKeyVersionID,
 			"plaintext_sha256":           rec.PlaintextSHA256,
 			"rde_deposit_id":             rec.RDEDepositID,
 			"rde_kind":                   rec.RDEKind,
@@ -370,6 +357,13 @@ func (r *GormEscrowValidationRunRepository) List(ctx context.Context, scope enti
 		if f.OutcomeEquals != "" {
 			query = query.Where("outcome = ?", f.OutcomeEquals)
 		}
+		if f.KeyVersionIDEquals != "" {
+			id, err := uuid.Parse(f.KeyVersionIDEquals)
+			if err != nil {
+				return nil, "", fmt.Errorf("EscrowValidationRun.List(keyVersionId): %w", err)
+			}
+			query = query.Where("(signing_key_version_id = ? OR decryption_key_version_id = ?)", id, id)
+		}
 	}
 	if q.PageCursor != "" {
 		t, id, err := decodeObsCursor(q.PageCursor)
@@ -402,94 +396,6 @@ func runsFromRecords(records []EscrowValidationRunRecord) ([]*entities.EscrowVal
 		out[i] = run
 	}
 	return out, nil
-}
-
-// ---------------------------------------------------------------------------
-// Trusted keys
-// ---------------------------------------------------------------------------
-
-// GormEscrowTrustedKeyRepository implements repositories.EscrowTrustedKeyRepository.
-type GormEscrowTrustedKeyRepository struct{ db *gorm.DB }
-
-// NewEscrowTrustedKeyRepository creates a new GormEscrowTrustedKeyRepository.
-func NewEscrowTrustedKeyRepository(db *gorm.DB) *GormEscrowTrustedKeyRepository {
-	return &GormEscrowTrustedKeyRepository{db: db}
-}
-
-// Create persists a trusted key registration.
-func (r *GormEscrowTrustedKeyRepository) Create(ctx context.Context, k *entities.EscrowTrustedKey) error {
-	if err := r.db.WithContext(ctx).Create(toDBEscrowTrustedKey(k)).Error; err != nil {
-		return fmt.Errorf("EscrowTrustedKey.Create(id=%s): %w", k.ID, err)
-	}
-	return nil
-}
-
-// Retire stamps retired_at on a key that is not yet retired.
-func (r *GormEscrowTrustedKeyRepository) Retire(ctx context.Context, scope entities.OperatorID, id uuid.UUID, at time.Time) error {
-	res := r.db.WithContext(ctx).Model(&EscrowTrustedKeyRecord{}).
-		Where("id = ? AND tenant_id = ? AND retired_at IS NULL", id, scope.String()).
-		Update("retired_at", at.UTC())
-	if res.Error != nil {
-		return fmt.Errorf("EscrowTrustedKey.Retire(id=%s): %w", id, res.Error)
-	}
-	if res.RowsAffected == 0 {
-		// Either not this tenant's key or already retired; distinguish for the caller.
-		var rec EscrowTrustedKeyRecord
-		if err := r.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", id, scope.String()).First(&rec).Error; err != nil {
-			return entities.ErrEscrowTrustedKeyNotFound
-		}
-		return entities.ErrEscrowTrustedKeyAlreadyRetired
-	}
-	return nil
-}
-
-// GetByID retrieves a trusted key by tenant and ID.
-func (r *GormEscrowTrustedKeyRepository) GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowTrustedKey, error) {
-	var rec EscrowTrustedKeyRecord
-	err := r.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", id, scope.String()).First(&rec).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, entities.ErrEscrowTrustedKeyNotFound
-		}
-		return nil, fmt.Errorf("EscrowTrustedKey.GetByID(id=%s): %w", id, err)
-	}
-	return fromDBEscrowTrustedKey(&rec), nil
-}
-
-// ListActive returns the keys usable to verify a signature at the instant.
-func (r *GormEscrowTrustedKeyRepository) ListActive(ctx context.Context, scope entities.OperatorID, tld string, at time.Time) ([]*entities.EscrowTrustedKey, error) {
-	at = at.UTC()
-	var records []EscrowTrustedKeyRecord
-	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND tld = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) AND (retired_at IS NULL OR retired_at > ?)",
-			scope.String(), tld, at, at, at).
-		Order("valid_from DESC, id DESC").
-		Find(&records).Error
-	if err != nil {
-		return nil, fmt.Errorf("EscrowTrustedKey.ListActive(tld=%s): %w", tld, err)
-	}
-	return keysFromRecords(records), nil
-}
-
-// List returns every key registered for a tenant/TLD, newest first.
-func (r *GormEscrowTrustedKeyRepository) List(ctx context.Context, scope entities.OperatorID, tld string) ([]*entities.EscrowTrustedKey, error) {
-	var records []EscrowTrustedKeyRecord
-	query := r.db.WithContext(ctx).Where("tenant_id = ?", scope.String())
-	if tld != "" {
-		query = query.Where("tld = ?", tld)
-	}
-	if err := query.Order("valid_from DESC, id DESC").Find(&records).Error; err != nil {
-		return nil, fmt.Errorf("EscrowTrustedKey.List(tld=%s): %w", tld, err)
-	}
-	return keysFromRecords(records), nil
-}
-
-func keysFromRecords(records []EscrowTrustedKeyRecord) []*entities.EscrowTrustedKey {
-	out := make([]*entities.EscrowTrustedKey, len(records))
-	for i := range records {
-		out[i] = fromDBEscrowTrustedKey(&records[i])
-	}
-	return out
 }
 
 func clampPageSize(n int) int {

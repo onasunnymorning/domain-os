@@ -99,6 +99,9 @@ attribute rule it anticipates is exactly the operator scope defined here.
      transact in.
    - **Staff/global is an explicit third kind**, not the absence of a filter.
      "No scope" must never be spelled the same way as "all scopes".
+     First implemented as `entities.PlatformScope` for the escrow key registry
+     ([ADR-0009](0009-escrow-parties-keys-arrangements.md)); its zero value is
+     invalid, and it sees only platform-owned records, never into operators.
 2. **Scope is a claim on the authenticated principal** — an Auth0 claim or an
    EPP login — never a caller-supplied header or parameter.
 3. **Tenant-scoped service methods are `(ctx, scope, ...)`** — ctx first, scope

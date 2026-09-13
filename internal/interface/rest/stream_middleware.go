@@ -51,6 +51,11 @@ func ContextPropagationMiddleware() gin.HandlerFunc {
 				ctx = appcontext.WithUserID(ctx, uidStr)
 			}
 		}
+		if scopes, ok := c.Get(authScopesKey); ok {
+			if list, ok := scopes.([]string); ok {
+				ctx = appcontext.WithAuthScopes(ctx, list)
+			}
+		}
 		if tid, ok := c.Get("trace_id"); ok {
 			if tidStr, ok := tid.(string); ok && tidStr != "" {
 				ctx = appcontext.WithTraceID(ctx, tidStr)

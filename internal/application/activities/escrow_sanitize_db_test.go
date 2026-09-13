@@ -46,17 +46,22 @@ func TestEscrowSanitize_NoRegistryWriteSideEffect(t *testing.T) {
 	tldRepo := postgres.NewGormTLDRepo(tx)
 	require.NoError(t, tldRepo.Create(ctx, tld))
 
-	before := registryCounts(t, tx)
-
 	deposits := postgres.NewEscrowDepositRepository(tx)
 	runs := postgres.NewEscrowValidationRunRepository(tx)
-	keys := postgres.NewEscrowTrustedKeyRepository(tx)
+	versions := postgres.NewEscrowKeyVersionRepository(tx)
+	arrangements := postgres.NewEscrowArrangementRepository(tx)
 	sanitizations := postgres.NewEscrowSanitizationRunRepository(tx)
 
 	// 1. A real accepted validation run, produced by the validation activities.
-	ev := newEVFixture(t, tldRepo, deposits, runs, keys)
+	ev := newEVFixture(t, tldRepo, deposits, runs, versions, arrangements)
 	ev.scope = entities.OperatorID(ryid)
 	ev.tld = ryid
+	// Registering the trusted key is setup and writes its own audit events;
+	// the snapshot is of what validation and sanitisation do.
+	ev.trust(t)
+	pseudonymise, _ := ev.addPseudonymiseVersion(t, ev.eve, 1)
+	ev.activate(t, pseudonymise)
+	before := registryCounts(t, tx)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{
 		TLD: ryid, Domains: 12, Contacts: 6, Hosts: 4, Registrars: 2, NNDNs: 2,
 		AuthInfo: true, SecDNS: true, Disclose: true,
@@ -75,8 +80,7 @@ func TestEscrowSanitize_NoRegistryWriteSideEffect(t *testing.T) {
 	sourceCopy := append([]byte(nil), sourceBytes...)
 
 	// 2. The derivative, against the same repositories and object store.
-	acts := NewEscrowSanitizeActivitiesWithDeps(tldRepo, deposits, runs, sanitizations, keys,
-		ev.prov, &fakeTokenKeyProvider{key: sanitizeTokenKey}, ev.store,
+	acts := NewEscrowSanitizeActivitiesWithDeps(tldRepo, deposits, runs, sanitizations, ev.resolver, ev.loader, ev.store,
 		rdevalidate.DefaultLimits(), rdesanitize.DefaultLimits(), "artful-dodger")
 	acts.now = func() time.Time { return time.Now().UTC().Add(time.Hour) }
 	var ts testsuite.WorkflowTestSuite
@@ -91,12 +95,20 @@ func TestEscrowSanitize_NoRegistryWriteSideEffect(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, val.Get(&b))
 
+	var keys entities.EscrowKeySelection
+	val, err = env.ExecuteActivity(acts.ResolveSanitizationKeys, ResolveSanitizationKeysInput{
+		Scope: ryid, SourceValidationRunID: b.SourceValidationRunID, WorkflowID: "wf-san-sidefx",
+	})
+	require.NoError(t, err)
+	require.NoError(t, val.Get(&keys))
+
 	var p ProduceDerivativeOutput
 	val, err = env.ExecuteActivity(acts.ProduceDerivative, ProduceDerivativeInput{
 		Scope: ryid, SanitizationRunID: b.SanitizationRunID, WorkflowID: "wf-san-sidefx",
 		TLD: b.TLD, SourceProfile: b.SourceProfile, ArtifactKey: b.ArtifactKey, SignatureKey: b.SignatureKey,
 		ArtifactSHA256: b.ArtifactSHA256, SignatureSHA256: b.SignatureSHA256,
 		SyntheticSuffix: b.SyntheticSuffix, StagingKey: b.StagingKey,
+		Keys: &keys,
 	})
 	require.NoError(t, err)
 	require.NoError(t, val.Get(&p))

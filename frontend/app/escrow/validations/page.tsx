@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, FileSearch, Loader2 } from 'lucide-react';
@@ -8,6 +9,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { OperatorScopeSelect } from '@/components/workflows/OperatorScopeSelect';
 import { EscrowOutcomeBadge } from '@/components/escrow/EscrowOutcomeBadge';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -29,17 +31,29 @@ const OUTCOMES = ['PASS', 'FAIL', 'ERROR', 'RUNNING'];
  * can be listed until an operator is chosen.
  */
 export default function EscrowValidationsPage() {
-  const [tenantId, setTenantId] = useState('');
+  return (
+    <Suspense fallback={null}>
+      <EscrowValidations />
+    </Suspense>
+  );
+}
+
+function EscrowValidations() {
+  const search = useSearchParams();
+  const [tenantId, setTenantId] = useState(search.get('tenantId') ?? '');
   const [tld, setTld] = useState('');
   const [outcome, setOutcome] = useState('');
+  // Set when arriving from a key version: "which runs used this key" (issue #429).
+  const [keyVersionId, setKeyVersionId] = useState(search.get('keyVersionId') ?? '');
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['escrow-validations', tenantId, tld, outcome],
+    queryKey: ['escrow-validations', tenantId, tld, outcome, keyVersionId],
     queryFn: () =>
       listEscrowValidations(tenantId, {
         pagesize: 50,
         tld: tld.trim() || undefined,
         outcome: outcome || undefined,
+        keyVersionId: keyVersionId || undefined,
       }),
     enabled: tenantId !== '',
   });
@@ -96,6 +110,15 @@ export default function EscrowValidationsPage() {
             </Select>
           </div>
         </div>
+
+        {keyVersionId && (
+          <div className="flex items-center gap-2 text-sm">
+            <Badge variant="outline" className="font-mono text-xs">key version {keyVersionId}</Badge>
+            <Button variant="ghost" size="sm" onClick={() => setKeyVersionId('')}>
+              Show all runs
+            </Button>
+          </div>
+        )}
 
         {!tenantId ? (
           <EmptyState>Choose a registry operator to list its validation runs.</EmptyState>

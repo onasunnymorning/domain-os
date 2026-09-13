@@ -51,6 +51,7 @@ Adapters providing technical capability.
 - **Database** (`db/postgres/`) — concrete repository implementations over **GORM**, dropping to raw SQL where a query needs it. Also holds the GORM persistence models, which are distinct types from the domain entities.
 - **Temporal** (`temporal/`) — client and worker configuration.
 - **Storage** (`storage/`) — S3-compatible object storage.
+- **Secrets** (`secrets/`) — escrow key custody: the key-store port's AWS Secrets Manager adapter (`secrets/awssm`), an in-memory store for tests, and the loader that turns a key version into usable material on a worker. The escrow key registry that decides which keys exist and who may use them is application data (`pkg/domain/entities`, `internal/application/escrowkeys`); see ADR-0009.
 - **External adapters** — `api/frankfurter` (FX rates), `api/mosapi` (ICANN MoSAPI), `web/ianaregistrars`, `web/icannregistrars`, `web/icannspec5` (registry data feeds), `dns/` (resolver), `auth/`.
 
 ### 4. Interface — `internal/interface/`
