@@ -43,7 +43,9 @@ STAGED → ACTIVE → HISTORICAL,   and REVOKED / DESTROYED
 - **Operators are not bound yet.** `escrow:keys:admin` applies to whichever
   operator the request names in `X-Tenant-ID`, until ADR-0002 ties principals
   to operators. Grant it only to staff.
-- **The legacy shared token** can read, but it cannot change anything.
+- **With Auth0 disabled** (`AUTH0_ENABLED=false`, local development) the static
+  `ADMIN_TOKEN` principal holds both permissions, because it already reaches
+  every other endpoint. With Auth0 enabled that token is not accepted at all.
 
 ## Environment setup (once per environment)
 
@@ -199,9 +201,20 @@ env (see `deploy/contract.json`):
   Check that the prefix in the variables matches `PREFIX` in the policies.
 
 **Local development** runs the same flow against LocalStack, with no Auth0 or
-IAM setup. Start it with `docker compose --profile keystore up localstack` and
-set `ESCROW_CUSTODY_BACKEND=aws-secrets-manager`. `docker-compose.yml` supplies
-the endpoint, prefix and dummy credentials to the api and worker services.
+IAM setup:
+
+1. Set `ESCROW_CUSTODY_BACKEND="aws-secrets-manager"` in `.env` (or in your
+   Doppler config, if that is where the api and worker read their environment).
+2. Run `make keystore`. It starts LocalStack and restarts the api and worker
+   against it; `docker-compose.yml` supplies the endpoint, prefix and dummy
+   credentials.
+3. Manage keys in the admin UI under **Escrow keys**. With Auth0 disabled the
+   static token holds both permissions, so nothing else is needed.
+
+Without step 1 everything except private keys still works: public signing keys
+and arrangements are database rows. Importing or probing a private key reports
+`KEY_STORE_NOT_CONFIGURED`. A probe needs the worker and Temporal, and the api
+and worker must share one database and one key store.
 
 ## First-time setup
 
