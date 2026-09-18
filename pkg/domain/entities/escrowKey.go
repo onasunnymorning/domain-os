@@ -305,3 +305,23 @@ func (s EscrowKeyScope) Owner() EscrowKeyOwner {
 	}
 	return OperatorKeyOwner(s.operator)
 }
+
+// EscrowKeyMaterialRejection is ErrEscrowKeyMaterialUnreadable with a reason
+// the person pasting the key can act on ("this is a private key", "OpenPGP
+// could not read it: ..."). The reason describes the *shape* of what was
+// submitted and never quotes the material itself, so it is safe to return.
+// Without one, callers fall back to the sentinel's fixed text.
+type EscrowKeyMaterialRejection struct {
+	Reason string
+}
+
+func (e *EscrowKeyMaterialRejection) Error() string { return e.Reason }
+
+// Unwrap makes errors.Is(err, ErrEscrowKeyMaterialUnreadable) true, so existing
+// handling keeps working.
+func (e *EscrowKeyMaterialRejection) Unwrap() error { return ErrEscrowKeyMaterialUnreadable }
+
+// RejectEscrowKeyMaterial builds a rejection carrying reason.
+func RejectEscrowKeyMaterial(reason string) error {
+	return &EscrowKeyMaterialRejection{Reason: reason}
+}
