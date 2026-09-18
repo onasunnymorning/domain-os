@@ -101,8 +101,13 @@ function EscrowKeys() {
           </div>
         ) : error ? (
           <Empty>
-            {isPermissionError(error) || platform
-              ? 'The platform registry needs the escrow:platform-keys:admin permission.'
+            {/* Only a 403 is a permission problem: saying so for every failure
+                sent an operator hunting for a missing role when the API was
+                simply unreachable. */}
+            {isPermissionError(error)
+              ? platform
+                ? 'The platform registry needs the escrow:platform-keys:admin permission.'
+                : 'This registry needs the escrow:keys:admin permission.'
               : escrowKeyErrorMessage(error, 'Could not load the key registry.')}
           </Empty>
         ) : (
