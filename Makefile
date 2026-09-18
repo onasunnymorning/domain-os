@@ -76,6 +76,25 @@ dev: .env doctor-quiet ## Cold machine -> running stack, migrated and seeded
 	@echo "  Next:   make test        run the suite against this stack"
 	@echo "          make dev-frontend  start the admin UI on :3002"
 
+# The escrow key store (issue #429) is opt-in locally: it is a separate
+# container, and everything except private escrow keys works without it.
+keystore: ## Start LocalStack as the escrow key store, for escrow key development
+	@echo "==> Starting LocalStack (Secrets Manager)..."
+	@$(COMPOSE_LOCAL) --profile keystore up -d --wait localstack
+	@if grep -q '^ESCROW_CUSTODY_BACKEND="\?aws-secrets-manager' .env 2>/dev/null; then \
+		echo "==> Restarting the api and worker against it..."; \
+		$(COMPOSE_LOCAL) --profile essential up -d --no-deps api worker; \
+		echo ""; \
+		echo "Key store is up. Escrow keys are managed in the admin UI under Escrow keys."; \
+	else \
+		echo ""; \
+		echo "LocalStack is up, but the api and worker still have ESCROW_CUSTODY_BACKEND=none."; \
+		echo "Set this in .env, then re-run 'make keystore':"; \
+		echo ""; \
+		echo "    ESCROW_CUSTODY_BACKEND=\"aws-secrets-manager\""; \
+		echo ""; \
+	fi
+
 # Creates .env on first run. Never overwrites an existing one, so your local
 # edits are safe; delete .env and re-run to get a clean copy.
 .env: .env.example

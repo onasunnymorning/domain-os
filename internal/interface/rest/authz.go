@@ -13,9 +13,10 @@ import (
 // request context (appcontext.WithAuthScopes, INV-15).
 const authScopesKey = "auth_scopes"
 
-// OAuth scopes checked by the admin API. They are the first per-permission
-// checks in this API (ADR-0009); ADR-0002 will generalise them. A principal
-// authenticated with the legacy shared token holds none of them.
+// Permissions checked by the admin API. They are the first per-permission
+// checks in this API (ADR-0009); ADR-0002 will generalise them. With Auth0
+// enabled a principal holds them through its Auth0 roles; with Auth0 disabled
+// the static admin token holds both, because it already reaches everything.
 const (
 	// ScopeEscrowKeysAdmin allows changing an operator's escrow parties, keys
 	// and arrangements, for the operator in the request scope.
