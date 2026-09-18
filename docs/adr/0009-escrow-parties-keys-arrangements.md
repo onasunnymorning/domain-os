@@ -170,7 +170,9 @@ fingerprints, states and reasons only, never material.
   the access token's RBAC `permissions` claim only, never from `scope`: with
   RBAC off, Auth0 grants any scope a client requests, so `scope` would let a
   user grant themselves the permission. Without RBAC the claim is absent and
-  every change fails closed. The legacy shared token carries none.
+  every change fails closed. With Auth0 disabled altogether (local development)
+  the static admin token holds both, because it is the only principal and it
+  already reaches every endpoint.
 
 ### 7. Runs bind to versions, not to "the latest key"
 

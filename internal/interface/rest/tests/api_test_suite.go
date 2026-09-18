@@ -56,13 +56,13 @@ type TestAPI struct {
 	WhoisService            *services.WhoisService
 }
 
-// TestAuthScopesHeader lets a test grant OAuth scopes to a request, standing in
-// for the Auth0 "scope" claim. Only MockAuthMiddleware reads it.
+// TestAuthScopesHeader lets a test grant permissions to a request, standing in
+// for the Auth0 "permissions" claim. Only MockAuthMiddleware reads it.
 const TestAuthScopesHeader = "X-Test-Auth-Scopes"
 
 // MockAuthMiddleware returns a gin.HandlerFunc that bypasses authentication.
-// Scopes named in TestAuthScopesHeader are granted to the request; without the
-// header the principal has none, like the legacy shared token.
+// Permissions named in TestAuthScopesHeader are granted to the request; without
+// the header the principal has none, like an Auth0 user holding no key role.
 func MockAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if raw := c.GetHeader(TestAuthScopesHeader); raw != "" {

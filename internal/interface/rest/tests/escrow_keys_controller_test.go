@@ -96,7 +96,7 @@ var _ = Describe("EscrowKeyRegistry", Ordered, func() {
 	Describe("parties and permissions", func() {
 		It("needs the permission to change anything, and a scope to read", func() {
 			body := map[string]string{"name": "Acme Registry", "kind": "RSP", "side": "external"}
-			Expect(keyReq(http.MethodPost, "/escrow/parties", ryID, "", body).Code).To(Equal(http.StatusForbidden), "the legacy token changes nothing")
+			Expect(keyReq(http.MethodPost, "/escrow/parties", ryID, "", body).Code).To(Equal(http.StatusForbidden), "a principal without the permission changes nothing")
 			Expect(keyReq(http.MethodPost, "/escrow/parties", "", opAdmin, body).Code).To(Equal(http.StatusBadRequest), "no operator and no platform permission")
 			Expect(keyReq(http.MethodGet, "/escrow/parties", "", "", nil).Code).To(Equal(http.StatusBadRequest))
 			Expect(keyReq(http.MethodGet, "/escrow/parties", ryID, "", nil).Code).To(Equal(http.StatusOK), "reading an operator's registry needs no permission")
