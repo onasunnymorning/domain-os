@@ -31,6 +31,12 @@ func (c *CustomClaims) Validate(ctx context.Context) error {
 func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gin.HandlerFunc {
 	// If Auth0 is disabled, fall back immediately to simple token auth
 	if !auth0Enabled {
+		// With Auth0 off there is one principal and it already reaches every
+		// endpoint, so withholding permissions from it would protect nothing
+		// and would only make the escrow key registry unusable in local
+		// development (ADR-0009). Grant them explicitly instead.
+		log.Printf("[Auth0Middleware] Auth0 is disabled: the static admin token grants every permission, including escrow key administration")
+		staticTokenPermissions := []string{ScopeEscrowKeysAdmin, ScopeEscrowPlatformKeysAdmin}
 		return func(c *gin.Context) {
 			authHeader := c.GetHeader("Authorization")
 			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
@@ -43,6 +49,7 @@ func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gi
 				return
 			}
 			c.Set("userid", "legacy-admin")
+			c.Set(authScopesKey, staticTokenPermissions)
 		}
 	}
 
