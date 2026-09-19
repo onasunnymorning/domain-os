@@ -41,6 +41,10 @@ type EscrowValidationRunRepository interface {
 type EscrowSanitizationRunRepository interface {
 	Create(ctx context.Context, r *entities.EscrowSanitizationRun) error
 	Finalize(ctx context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error
+	// Reopen persists a run that Reopen returned to RUNNING. It matches only a
+	// row that is still ERROR, and returns ErrEscrowSanitizationRunNotReopenable
+	// when it is not: another attempt got there first, or the run is a decision.
+	Reopen(ctx context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error
 	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error)
 	// FindBySourceAndPolicy returns the run that already derived this source
 	// under this policy version, so a replay binds instead of producing a
