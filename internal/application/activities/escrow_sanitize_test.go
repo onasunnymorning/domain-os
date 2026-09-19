@@ -3,6 +3,7 @@ package activities
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -70,10 +71,17 @@ func (f *esFixture) acceptedSource(t *testing.T, opts rdetest.DepositOpts) uuid.
 
 func (f *esFixture) bind(t *testing.T, sourceRunID uuid.UUID, suffix string) (BindSanitizationSourceOutput, error) {
 	t.Helper()
+	return f.bindAs(t, sourceRunID, suffix, "wf-san-1", "run-san-1")
+}
+
+// bindAs binds as a particular workflow execution, for tests that launch the
+// same source more than once.
+func (f *esFixture) bindAs(t *testing.T, sourceRunID uuid.UUID, suffix, workflowID, runID string) (BindSanitizationSourceOutput, error) {
+	t.Helper()
 	var out BindSanitizationSourceOutput
 	val, err := f.env.ExecuteActivity(f.acts.BindSanitizationSource, BindSanitizationSourceInput{
 		Scope: f.ev.scope.String(), SourceValidationRunID: sourceRunID.String(), SyntheticSuffix: suffix,
-		WorkflowID: "wf-san-1", RunID: "run-san-1",
+		WorkflowID: workflowID, RunID: runID,
 	})
 	if err != nil {
 		return out, err
@@ -305,6 +313,130 @@ func TestEscrowSanitize_MissingTokenKeyIsAnErrorNotAQuarantine(t *testing.T) {
 	// because our own key store is down.
 	require.Equal(t, rdesanitize.OutcomeError, p.Result.Outcome)
 	assert.True(t, p.Result.Has(rdesanitize.CodeTokenKeyUnavailable))
+}
+
+// erroredRun drives a source to a finalised ERROR the way the workflow does when
+// the receiver has no usable pseudonymisation key, and returns the run id.
+func (f *esFixture) erroredRun(t *testing.T, sourceRunID uuid.UUID) uuid.UUID {
+	t.Helper()
+	current, err := f.ev.versions.GetByID(t.Context(), entities.OperatorEscrowKeyScope(f.ev.scope), f.pseudonymise.ID)
+	require.NoError(t, err)
+	f.ev.transition(t, current, func(v *entities.EscrowKeyVersion) error { return v.Revoke("test", false, time.Now().UTC()) }, entities.EscrowAuditVersionRevoked)
+
+	b, err := f.bind(t, sourceRunID, "")
+	require.NoError(t, err)
+	p := f.produce(t, b)
+	require.Equal(t, rdesanitize.OutcomeError, p.Result.Outcome)
+	require.NoError(t, f.finalize(t, b, VerifyDerivativeOutput{Result: p.Result}, p, ""))
+	run, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, b.SanitizationRunID)
+	require.NoError(t, err)
+	require.Equal(t, entities.EscrowSanitizationError, run.Outcome)
+	return b.SanitizationRunID
+}
+
+// The incident this guards: a run ended in TOKEN_KEY_UNAVAILABLE, the operator
+// then activated a pseudonymisation key, and every relaunch just replayed the
+// stored ERROR in a few milliseconds because the unique index leaves no room
+// for a second record.
+func TestEscrowSanitize_RetryAfterAnErrorReopensTheRun(t *testing.T) {
+	f := newESFixture(t)
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 2, Contacts: 1})
+	runID := f.erroredRun(t, sourceRunID)
+
+	// The operator fixes the cause.
+	v2, _ := f.ev.addPseudonymiseVersion(t, f.ev.eve, 2)
+	f.ev.activate(t, v2)
+
+	b, err := f.bindAs(t, sourceRunID, "", "wf-san-2", "run-san-2")
+	require.NoError(t, err)
+	assert.Equal(t, runID, b.SanitizationRunID, "the retry uses the same record: the unique index allows no other")
+	assert.True(t, b.Replay)
+	assert.False(t, b.AlreadyFinal, "an ERROR is not a decision, so it is not replayed")
+
+	reopened, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, entities.EscrowSanitizationRunning, reopened.Outcome)
+	assert.Empty(t, reopened.Findings, "the previous attempt's findings do not leak into this one")
+	assert.Nil(t, reopened.CompletedAt)
+	assert.Equal(t, "wf-san-2", reopened.WorkflowID)
+	assert.Equal(t, "run-san-2", reopened.RunID)
+
+	// And the retry can now succeed end to end.
+	p := f.produce(t, b)
+	require.Equal(t, rdesanitize.OutcomePass, p.Result.Outcome, "findings: %v", p.Result.Findings)
+	v := f.verify(t, b, p, sourceRunID)
+	require.Equal(t, rdesanitize.OutcomePass, v.Result.Outcome, "findings: %v", v.Result.Findings)
+	require.NoError(t, f.finalize(t, b, v, p, ""))
+	done, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, entities.EscrowSanitizationPass, done.Outcome)
+	assert.NotEmpty(t, done.DerivativeObjectKey)
+
+	// A decision stays final: a further launch replays the PASS and produces
+	// nothing, exactly as before.
+	again, err := f.bindAs(t, sourceRunID, "", "wf-san-3", "run-san-3")
+	require.NoError(t, err)
+	assert.True(t, again.AlreadyFinal)
+	assert.Equal(t, string(entities.EscrowSanitizationPass), again.ExistingOutcome)
+	assert.Equal(t, done.DerivativeObjectKey, again.DerivativeKey)
+	unchanged, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, "wf-san-2", unchanged.WorkflowID, "a PASS is never reopened")
+}
+
+// A bad suffix is itself an ERROR, so a retry must be able to correct it.
+func TestEscrowSanitize_RetryAfterAnErrorTakesTheCorrectedSuffix(t *testing.T) {
+	f := newESFixture(t)
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1})
+	runID := f.erroredRun(t, sourceRunID)
+
+	// The source TLD is "example": deriving under it would mislabel the copy.
+	// The retry is refused before it starts, and the ERROR stays as it was so
+	// the next, corrected launch can still reopen it.
+	_, err := f.bindAs(t, sourceRunID, "example", "wf-san-2", "run-san-2")
+	require.Error(t, err)
+	run, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, entities.EscrowSanitizationError, run.Outcome, "a rejected retry leaves the record as it was")
+	assert.Equal(t, "wf-san-1", run.WorkflowID)
+
+	b, err := f.bindAs(t, sourceRunID, "Sandbox-Zone.", "wf-san-3", "run-san-3")
+	require.NoError(t, err)
+	assert.Equal(t, "sandbox-zone", b.SyntheticSuffix, "the corrected suffix replaces the one the failed attempt carried")
+	run, err = f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, "sandbox-zone", run.SyntheticSuffix)
+	assert.Equal(t, entities.EscrowSanitizationRunning, run.Outcome)
+}
+
+// Two launches can both see the ERROR. Only one reopens it; the other binds to
+// what the winner wrote instead of failing or overwriting it.
+func TestEscrowSanitize_RetryLosingTheReopenRaceBindsToTheWinner(t *testing.T) {
+	f := newESFixture(t)
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1})
+	runID := f.erroredRun(t, sourceRunID)
+	f.acts.sanitizations = losingReopenRepo{f.sanRepo}
+
+	b, err := f.bindAs(t, sourceRunID, "", "wf-loser", "run-loser")
+	require.NoError(t, err)
+	assert.Equal(t, runID, b.SanitizationRunID)
+	assert.True(t, b.Replay)
+	assert.False(t, b.AlreadyFinal)
+	run, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, runID)
+	require.NoError(t, err)
+	assert.Equal(t, "wf-winner", run.WorkflowID, "the loser did not overwrite the winner's attempt")
+}
+
+// losingReopenRepo makes another attempt win the reopen just before this one.
+type losingReopenRepo struct{ *fakeSanitizationRepo }
+
+func (r losingReopenRepo) Reopen(ctx context.Context, scope entities.OperatorID, run *entities.EscrowSanitizationRun) error {
+	winner := *run
+	winner.WorkflowID = "wf-winner"
+	if err := r.fakeSanitizationRepo.Reopen(ctx, scope, &winner); err != nil {
+		return err
+	}
+	return entities.ErrEscrowSanitizationRunNotReopenable
 }
 
 func TestEscrowSanitize_NeverLeaksAValueIntoTheRecord(t *testing.T) {

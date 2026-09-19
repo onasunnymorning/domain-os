@@ -239,6 +239,21 @@ func (f *fakeSanitizationRepo) Finalize(_ context.Context, scope entities.Operat
 	return nil
 }
 
+func (f *fakeSanitizationRepo) Reopen(_ context.Context, scope entities.OperatorID, r *entities.EscrowSanitizationRun) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row, ok := f.rows[r.ID]
+	if !ok || row.TenantID != scope {
+		return entities.ErrEscrowSanitizationRunNotFound
+	}
+	if row.Outcome != entities.EscrowSanitizationError {
+		return entities.ErrEscrowSanitizationRunNotReopenable
+	}
+	cp := *r
+	f.rows[r.ID] = &cp
+	return nil
+}
+
 func (f *fakeSanitizationRepo) GetByID(_ context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

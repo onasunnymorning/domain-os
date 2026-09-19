@@ -186,6 +186,47 @@ func (r *GormEscrowSanitizationRunRepository) Finalize(ctx context.Context, scop
 	return nil
 }
 
+// Reopen writes a run that was returned to RUNNING with a single conditional
+// UPDATE that only matches an ERROR row for this tenant. Two attempts racing to
+// retry the same run cannot both win: the loser gets zero rows affected.
+func (r *GormEscrowSanitizationRunRepository) Reopen(ctx context.Context, scope entities.OperatorID, run *entities.EscrowSanitizationRun) error {
+	if run.Outcome != entities.EscrowSanitizationRunning {
+		return fmt.Errorf("EscrowSanitizationRun.Reopen(id=%s): %w", run.ID, entities.ErrInvalidEscrowSanitizationRun)
+	}
+	rec, err := toDBEscrowSanitizationRun(run)
+	if err != nil {
+		return fmt.Errorf("EscrowSanitizationRun.Reopen(id=%s): %w", run.ID, err)
+	}
+	res := r.db.WithContext(ctx).Model(&EscrowSanitizationRunRecord{}).
+		Where("id = ? AND tenant_id = ? AND outcome = ?", run.ID, scope.String(), string(entities.EscrowSanitizationError)).
+		Updates(map[string]interface{}{
+			"outcome":               rec.Outcome,
+			"stage_reached":         rec.StageReached,
+			"findings":              rec.Findings,
+			"finding_tally":         rec.FindingTally,
+			"derivative_object_key": rec.DerivativeObjectKey,
+			"derivative_sha256":     rec.DerivativeSHA256,
+			"derivative_bytes":      rec.DerivativeBytes,
+			"manifest_object_key":   rec.ManifestObjectKey,
+			"counts":                rec.Counts,
+			"token_key_fingerprint": rec.TokenKeyFingerprint,
+			"token_key_version_id":  rec.TokenKeyVersionID,
+			"workflow_version":      rec.WorkflowVersion,
+			"synthetic_suffix":      rec.SyntheticSuffix,
+			"workflow_id":           rec.WorkflowID,
+			"run_id":                rec.RunID,
+			"started_at":            rec.StartedAt,
+			"completed_at":          nil,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("EscrowSanitizationRun.Reopen(id=%s): %w", run.ID, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return entities.ErrEscrowSanitizationRunNotReopenable
+	}
+	return nil
+}
+
 // GetByID retrieves a run by tenant and ID.
 func (r *GormEscrowSanitizationRunRepository) GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowSanitizationRun, error) {
 	var rec EscrowSanitizationRunRecord
