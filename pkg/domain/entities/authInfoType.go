@@ -77,11 +77,15 @@ const (
 	authInfoUpper  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	authInfoLower  = "abcdefghijklmnopqrstuvwxyz"
 	authInfoDigits = "0123456789"
-	// Punctuation or symbols, none of which needs escaping in EPP XML, JSON or a URL path. No "." on
-	// purpose: NormalizeString, which NewContact applies to the authInfo, strips a trailing dot, so a
-	// generated value ending in one would lose that character (and, when it was the only special
-	// character, stop being valid). Anything added here has to survive NormalizeString unchanged in any
-	// position; TestGenerateAuthInfo_SurvivesNormalization enforces that.
+	// Punctuation or symbols that need no escaping in EPP XML or JSON: no <, >, &, quotes or backslash.
+	// They are not URL-safe (#, % and ? are reserved), which is acceptable because an authInfo travels in
+	// request bodies and EPP messages here, not in a URL; one that did would have to be percent-encoded, as
+	// the wider alphabet of the frontend's generator already requires.
+	//
+	// No "." on purpose: NormalizeString, which NewContact applies to the authInfo, strips a trailing
+	// dot, so a generated value ending in one would lose that character (and, when it was the only
+	// special character, stop being valid). Anything added here has to survive NormalizeString unchanged
+	// in any position; TestGenerateAuthInfo_SurvivesNormalization enforces that.
 	authInfoSpecial = "!#$%*+-:=?@^_~"
 )
 
