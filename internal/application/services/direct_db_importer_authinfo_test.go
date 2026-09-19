@@ -2,7 +2,9 @@ package services_test
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,10 +28,17 @@ const retiredEscrowAuthInfo = "escr0W1mP*rt"
 // The importer batches at 5000 rows; seed past one batch so both batches are exercised.
 const directImportRows = 5050
 
-// authInfoTestDB connects to the throwaway test Postgres the way the other database tests do
-// (TEST_DB_HOST/TEST_DB_PORT), migrates it, and points the importer at it through the DB_* variables
-// NewDirectDBImporter reads. It fails rather than skips, like the activities database tests: the
-// proof that no shared authInfo is stored has to run wherever `make test` runs.
+// authInfoTestDB gives the test a Postgres database of its own, migrated and pointed at through the DB_*
+// variables NewDirectDBImporter reads, and drops it when the test finishes.
+//
+// It must not use the shared dos_unittests database. `go test ./...` runs packages in parallel against
+// one Postgres, other packages count rows in it (TestCountTLD counts TLDs), and these tests commit rows
+// through the importer's own connection pool, where a rolled-back transaction cannot contain them.
+// Committing to a database nobody else can see removes the interference instead of trying to tidy up after it.
+//
+// It connects the way the other database tests do (TEST_DB_HOST/TEST_DB_PORT) and fails rather than
+// skips, like the activities database tests: the proof that no shared authInfo is stored has to run
+// wherever `make test` runs.
 func authInfoTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	host, port := os.Getenv("TEST_DB_HOST"), os.Getenv("TEST_DB_PORT")
@@ -39,47 +48,46 @@ func authInfoTestDB(t *testing.T) *gorm.DB {
 	if port == "" {
 		port = "5432"
 	}
-	dsn := fmt.Sprintf("postgres://postgres:unittest@%s:%s/dos_unittests?sslmode=require", host, port)
-	db, err := gorm.Open(pgdriver.Open(dsn))
-	if err != nil && strings.Contains(err.Error(), "3D000") {
-		// Fresh container: create the database the way the postgres package tests do, then retry.
-		admin, aerr := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=postgres password=unittest sslmode=require", host, port))
-		require.NoError(t, aerr)
-		_, _ = admin.Exec("CREATE DATABASE dos_unittests")
-		_ = admin.Close()
-		db, err = gorm.Open(pgdriver.Open(dsn))
-	}
-	require.NoError(t, err, "test Postgres unavailable; run via `make test` (port 5433)")
+
+	admin, err := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=postgres password=unittest dbname=postgres sslmode=require", host, port))
+	require.NoError(t, err)
+	require.NoError(t, admin.Ping(), "test Postgres unavailable; run via `make test` (port 5433)")
+
+	suffix := make([]byte, 6)
+	_, err = rand.Read(suffix)
+	require.NoError(t, err)
+	name := "dos_import_" + hex.EncodeToString(suffix)
+	_, err = admin.Exec("CREATE DATABASE " + name) // #nosec G202 -- name is a fixed prefix plus hex, generated above
+	require.NoError(t, err)
+
+	db, err := gorm.Open(pgdriver.Open(fmt.Sprintf("postgres://postgres:unittest@%s:%s/%s?sslmode=require", host, port, name)))
+	require.NoError(t, err)
 	require.NoError(t, postgres.AutoMigrate(db))
+
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)") // #nosec G202 -- see above
+		_ = admin.Close()
+	})
 
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DB_HOST", host)
 	t.Setenv("DB_PORT", port)
 	t.Setenv("DB_USER", "postgres")
 	t.Setenv("DB_PASS", "unittest")
-	t.Setenv("DB_NAME", "dos_unittests")
+	t.Setenv("DB_NAME", name)
 	t.Setenv("DB_SSLMODE", "require")
 	return db
 }
 
 // seedFixtures creates the operator, TLD and registrar an import must reference (contacts and domains
-// are foreign-keyed to the registrar), and removes everything this test wrote when it finishes so it
-// can run again against a used database. It returns the registrar's ClID.
+// are foreign-keyed to the registrar) in the test's own database, and returns the registrar's ClID.
 func seedFixtures(t *testing.T, db *gorm.DB, tld string, gurid int) string {
 	t.Helper()
 	slug := strings.ReplaceAll(tld, ".", "") // operator and registrar IDs cannot carry a dot
 	ryID, clID := slug+"op", "rar"+slug
-	cleanup := func() {
-		db.Exec("DELETE FROM domain_hosts WHERE domain_ro_id IN (SELECT ro_id FROM domains WHERE tld_name = ?)", tld)
-		db.Exec("DELETE FROM domains WHERE tld_name = ?", tld)
-		db.Exec("DELETE FROM hosts WHERE cl_id = ?", clID)
-		db.Exec("DELETE FROM contacts WHERE cl_id = ?", clID)
-		db.Exec("DELETE FROM registrars WHERE cl_id = ?", clID)
-		db.Exec("DELETE FROM tlds WHERE name = ?", tld)
-		db.Exec("DELETE FROM registry_operators WHERE ry_id = ?", ryID)
-	}
-	cleanup()
-	t.Cleanup(cleanup)
 	ctx := context.Background()
 
 	ro, err := entities.NewRegistryOperator(ryID, "AuthInfo Import Operator", "ops@example.com")
