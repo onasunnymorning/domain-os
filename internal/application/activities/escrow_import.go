@@ -20,6 +20,7 @@ import (
 
 	gopg "github.com/go-pg/pg/v10"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/dataqa"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	pg "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -1694,7 +1695,6 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			cmd := &commands.CreateDomainCommand{
 				Name:         name.String,
 				ClID:         clid.String,
-				AuthInfo:     "escr0W1mP*rt", // strong default authinfo
 				OriginalName: original.String,
 				UName:        uname.String,
 			}
@@ -1724,6 +1724,15 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 				continue
 			}
 			cmd.ClID = mappedClID
+
+			// A deposit carries no authInfo, so mint one per domain. It is set here, on the command that
+			// both the bulk create and its per-item fallback send, so a domain keeps one value across both.
+			authInfo, aerr := entities.GenerateAuthInfo()
+			if aerr != nil {
+				rows.Close()
+				return fmt.Errorf("generate authInfo for domain import: %w", aerr)
+			}
+			cmd.AuthInfo = authInfo.String()
 
 			if registrant.Valid {
 				cmd.RegistrantID = registrant.String
@@ -2133,11 +2142,18 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 				continue
 			}
 
+			// A deposit carries no authInfo, so mint one per contact.
+			authInfo, aerr := entities.GenerateAuthInfo()
+			if aerr != nil {
+				rows.Close()
+				return fmt.Errorf("generate authInfo for contact import: %w", aerr)
+			}
+
 			cmd := &commands.CreateContactCommand{
 				ID:       id.String,
 				RoID:     roid.String,
 				Email:    email.String,
-				AuthInfo: "escr0W1mP*rt",
+				AuthInfo: authInfo.String(),
 				ClID:     mappedClID,
 			}
 			// If RoID is present but invalid or not a CONTACT RoID, clear it to auto-generate a valid one.
@@ -4193,29 +4209,15 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 
 // --- QA Staged Database ---
 
-// QACheck represents a single quality check result
-type QACheck struct {
-	Rule          string      `json:"rule"`
-	Description   string      `json:"description"`
-	Severity      string      `json:"severity"` // "error", "warning", "info"
-	Passed        bool        `json:"passed"`
-	AffectedCount int         `json:"affectedCount"`
-	Message       string      `json:"message"`
-	Detail        interface{} `json:"detail,omitempty"`
-	SampledItems  interface{} `json:"sampledItems,omitempty"`
-}
-
-// QAReport is the structured QA report for a staged database
-type QAReport struct {
-	Version   string            `json:"version"`
-	Timestamp time.Time         `json:"timestamp"`
-	Pipeline  string            `json:"pipeline"`
-	Context   map[string]string `json:"context"`
-	SourceKey string            `json:"sourceKey"`
-	Passed    bool              `json:"passed"`
-	Summary   map[string]int64  `json:"summary"`
-	Checks    []QACheck         `json:"checks"`
-}
+// QACheck and QAReport are the project-wide staged-data QA schema, shared with the other pipelines
+// (see internal/application/dataqa). They stay exported here as aliases so this package's callers and
+// its JSON report are unchanged.
+type (
+	// QACheck represents a single quality check result
+	QACheck = dataqa.QACheck
+	// QAReport is the structured QA report for a staged database
+	QAReport = dataqa.QAReport
+)
 
 // CleanOrphanedContactsArgs input for the orphan cleanup activity
 type CleanOrphanedContactsArgs struct {
@@ -4389,14 +4391,6 @@ func (a *EscrowImportActivities) CleanOrphanedContacts(ctx context.Context, args
 	}
 
 	return result, nil
-}
-
-// AddCheck adds a check to the report and updates the overall passed status
-func (r *QAReport) AddCheck(check QACheck) {
-	r.Checks = append(r.Checks, check)
-	if !check.Passed && check.Severity == "error" {
-		r.Passed = false
-	}
 }
 
 // tldForms returns the distinct lower-cased spellings of a TLD that a staged
