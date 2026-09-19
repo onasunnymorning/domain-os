@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	dbModels "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -875,6 +876,21 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 
 // --- Import NNDNs ---
 
+// newImportedNNDN maps one escrow NNDN row to its database model. The deposit
+// carries no reason, so every imported NNDN is tagged as coming from the escrow
+// import; that is what lets an operator tell them apart from names blocked by hand.
+func newImportedNNDN(aName, uName, tld, nameState string, createdAt time.Time) *dbModels.NNDN {
+	return &dbModels.NNDN{
+		Name:      strings.ToLower(aName),
+		UName:     uName,
+		TLDName:   strings.ToLower(tld),
+		NameState: nameState,
+		Reason:    commands.NNDNReasonEscrowImport,
+		CreatedAt: createdAt,
+		UpdatedAt: time.Now().UTC(),
+	}
+}
+
 func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 5000
 	var total int64
@@ -936,17 +952,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 				createdAt = t
 			}
 
-			n := &dbModels.NNDN{
-				Name:      strings.ToLower(r.AName),
-				UName:     r.UName,
-				TLDName:   strings.ToLower(tld),
-				NameState: r.NameState,
-				Reason:    "", // Not mapped from escrow directly
-				CreatedAt: createdAt,
-				UpdatedAt: time.Now().UTC(),
-			}
-
-			entitiesBatch = append(entitiesBatch, n)
+			entitiesBatch = append(entitiesBatch, newImportedNNDN(r.AName, r.UName, tld, r.NameState, createdAt))
 		}
 
 		if len(entitiesBatch) > 0 {
@@ -957,7 +963,8 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 				_, err := tx.Model(&entitiesBatch).
 					ExcludeColumn("tld").
 					OnConflict("(name) DO UPDATE").
-					Set("name_state = EXCLUDED.name_state, u_name = EXCLUDED.u_name, updated_at = EXCLUDED.updated_at").
+					// Only fill a reason that is missing (NULL or ''): one an operator set by hand is kept.
+					Set("name_state = EXCLUDED.name_state, u_name = EXCLUDED.u_name, updated_at = EXCLUDED.updated_at, reason = COALESCE(NULLIF(nndn.reason, ''), EXCLUDED.reason)").
 					Insert()
 				return err
 			})
