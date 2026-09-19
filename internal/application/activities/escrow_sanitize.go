@@ -275,6 +275,24 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 				return BindSanitizationSourceOutput{}, err
 			}
 		}
+		// The suffix is what the derivative means: every name in it carries it.
+		// A launch that names a different suffix must be told so, not handed the
+		// existing derivative as though it had produced the one it asked for —
+		// the caller would go on to use names under a suffix they did not choose.
+		// Leaving the suffix unset is a request for "whatever exists", and replays.
+		if requested := strings.TrimSpace(in.SyntheticSuffix); requested != "" {
+			normalised, nerr := entities.NormalizeEscrowTLD(requested)
+			if nerr != nil {
+				return BindSanitizationSourceOutput{}, nonRetryableSanitize("sanitization run rejected", nerr)
+			}
+			if normalised != existing.SyntheticSuffix {
+				return BindSanitizationSourceOutput{}, nonRetryableSanitize(fmt.Sprintf(
+					"this source was already sanitized under the suffix %q (run %s), so it cannot also be sanitized under %q: "+
+						"a validated deposit is sanitized once per policy version. To derive under a different suffix, "+
+						"submit the deposit for validation again and sanitize that run",
+					existing.SyntheticSuffix, existing.ID, normalised), errSanitizeSuffixConflict)
+			}
+		}
 		out.SanitizationRunID, out.Replay, out.AlreadyFinal = existing.ID, true, existing.IsFinal()
 		out.SyntheticSuffix, out.ExistingOutcome = existing.SyntheticSuffix, string(existing.Outcome)
 		if existing.IsFinal() {
@@ -617,6 +635,10 @@ func (a *EscrowSanitizeActivities) stage(ctx context.Context, key string, src io
 }
 
 var errSanitizeNotPassed = errors.New("sanitization did not pass; upload aborted")
+
+// errSanitizeSuffixConflict is the cause of a launch that names a synthetic
+// suffix other than the one an existing derivative of the same source carries.
+var errSanitizeSuffixConflict = errors.New("a derivative of this source already exists under a different suffix")
 
 type countingWriter struct{ n int64 }
 

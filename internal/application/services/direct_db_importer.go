@@ -739,9 +739,22 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				res, err = tx.Model(&dbBatch).
 					ExcludeColumn("hosts", "tld").
 					OnConflict("(name) DO UPDATE").
-					Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, tld_name = EXCLUDED.tld_name, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
+					Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
+					// A name that already exists under another TLD is not ours to
+					// update: without this guard the upsert would rewrite that
+					// domain's registrar, registrant and statuses from this deposit.
+					Where("?TableAlias.tld_name = EXCLUDED.tld_name").
 					Insert()
-				return err
+				if err != nil {
+					return err
+				}
+				// Rows the guard filtered out are not counted, so a shortfall means
+				// some domains belong to another TLD. Fail the batch rather than
+				// import a deposit that silently skipped part of itself.
+				if affected := int64(res.RowsAffected()); affected < batchLen {
+					return fmt.Errorf("%d of %d domains already exist under a different TLD than %q and were not imported; the deposit's names do not belong to this TLD", batchLen-affected, batchLen, tld)
+				}
+				return nil
 			})
 			if txErr != nil {
 				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", txErr)
@@ -750,13 +763,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			// We can't distinguish without a pre-count, so we report total processed
 			// and estimate: on first import everything is inserted, on re-import
 			// everything is updated.
-			affected := int64(res.RowsAffected())
-			if affected < batchLen {
-				// Some rows were skipped (ON CONFLICT DO NOTHING for other constraints)
-				inserted += affected
-			} else {
-				inserted += batchLen
-			}
+			inserted += batchLen
 			total += batchLen
 		}
 
