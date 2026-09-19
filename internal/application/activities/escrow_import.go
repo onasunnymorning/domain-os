@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
+	"golang.org/x/net/idna"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
@@ -4397,6 +4399,81 @@ func (r *QAReport) AddCheck(check QACheck) {
 	}
 }
 
+// tldForms returns the distinct lower-cased spellings of a TLD that a staged
+// domain name may legitimately end in: the value as given, its A-label and its
+// U-label. Conversions are best-effort — an ASCII TLD converts to itself.
+func tldForms(tld string) []string {
+	base := strings.ToLower(strings.Trim(strings.TrimSpace(tld), "."))
+	if base == "" {
+		return nil
+	}
+	forms := []string{base}
+	for _, conv := range []func(string) (string, error){idna.ToASCII, idna.ToUnicode} {
+		if f, err := conv(base); err == nil && f != "" && !slices.Contains(forms, f) {
+			forms = append(forms, f)
+		}
+	}
+	return forms
+}
+
+// checkDomainsWithinTLD fails when the staged database holds a domain that is
+// not under the TLD being imported. Ingestion upserts domains by name and
+// stamps the import's TLD on the row, so a deposit whose names carry another
+// suffix — e.g. a `.paco` derivative imported as `gza` — would re-assign every
+// existing domain of that name to the wrong TLD rather than add new ones.
+func checkDomainsWithinTLD(db *sql.DB, tld string) QACheck {
+	check := QACheck{
+		Rule:        "domains_within_tld",
+		Description: "Every staged domain name is under the TLD being imported",
+		Severity:    "error",
+	}
+	forms := tldForms(tld)
+	if forms == nil {
+		check.Message = "No TLD given — unable to verify"
+		return check
+	}
+
+	const nameExpr = "rtrim(lower(trim(name)), '.')"
+	var conds []string
+	var args []any
+	for _, f := range forms {
+		conds = append(conds, nameExpr+" <> ? AND "+nameExpr+" NOT LIKE ?")
+		args = append(args, f, "%."+f)
+	}
+	where := "(" + strings.Join(conds, ") AND (") + ")"
+
+	var outside, total int
+	if err := db.QueryRow("SELECT COUNT(*) FROM domains WHERE "+where, args...).Scan(&outside); err != nil {
+		check.AffectedCount = -1
+		check.Message = "Query failed — unable to verify"
+		return check
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM domains").Scan(&total); err != nil {
+		total = 0 // Non-fatal: only used in the message
+	}
+	check.AffectedCount = outside
+	if outside == 0 {
+		check.Passed = true
+		check.Message = fmt.Sprintf("All %d domains are under .%s", total, forms[0])
+		return check
+	}
+
+	check.Message = fmt.Sprintf("%d of %d domains are not under .%s. Importing them as .%s would re-assign any existing domain with the same name to .%s. "+
+		"The deposit was probably sanitized or renamed to a different suffix than the TLD it is being imported as", outside, total, forms[0], forms[0], forms[0])
+	if rows, err := db.Query("SELECT name FROM domains WHERE "+where+" LIMIT 50", args...); err == nil {
+		defer rows.Close()
+		var samples []map[string]string
+		for rows.Next() {
+			var name string
+			if rows.Scan(&name) == nil {
+				samples = append(samples, map[string]string{"domain": name})
+			}
+		}
+		check.SampledItems = samples
+	}
+	return check
+}
+
 // QAStagedDatabaseArgs input for the QA activity
 type QAStagedDatabaseArgs struct {
 	TLD         string
@@ -4571,6 +4648,9 @@ func (a *EscrowImportActivities) QAStagedDatabase(ctx context.Context, args QASt
 		}
 		report.AddCheck(check)
 	}
+
+	// --- Check 2b: Domains belong to the TLD being imported ---
+	report.AddCheck(checkDomainsWithinTLD(db, args.TLD))
 
 	// --- Check 3: Registrar mapping completeness ---
 	// Every distinct CLID value across all tables exists in registrar_mapping

@@ -769,3 +769,58 @@ func TestAutoFixHostOnly_NoHostsToFix(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, fixed, "empty input should return nil")
 }
+
+// A deposit whose names carry another suffix must not be importable as this
+// TLD: ingestion upserts by name and stamps the TLD, so it would move existing
+// domains of the same name into the wrong TLD.
+func TestCheckDomainsWithinTLD(t *testing.T) {
+	insert := func(t *testing.T, db *sql.DB, names ...string) {
+		t.Helper()
+		for _, n := range names {
+			_, err := db.Exec(`INSERT INTO domains (name) VALUES (?)`, n)
+			require.NoError(t, err)
+		}
+	}
+
+	tests := []struct {
+		name         string
+		tld          string
+		domains      []string
+		wantPassed   bool
+		wantOutside  int
+		wantSampleIn string
+	}{
+		{name: "all under the TLD", tld: "paco", domains: []string{"a.paco", "b.paco", "xn--e1afmkfd.paco"}, wantPassed: true},
+		{name: "case and trailing dot are ignored", tld: "PACO", domains: []string{"A.Paco", "b.paco."}, wantPassed: true},
+		{name: "second-level suffix is fine", tld: "paco", domains: []string{"a.co.paco"}, wantPassed: true},
+		{name: "paco names imported as gza", tld: "gza", domains: []string{"a.paco", "b.paco"}, wantOutside: 2, wantSampleIn: "a.paco"},
+		{name: "one stray name fails the batch", tld: "paco", domains: []string{"a.paco", "b.gza"}, wantOutside: 1, wantSampleIn: "b.gza"},
+		{name: "suffix as a substring is not a match", tld: "paco", domains: []string{"a.notpaco", "xpaco"}, wantOutside: 2},
+		{name: "U-label TLD matches A-label names", tld: "рф", domains: []string{"a.xn--p1ai"}, wantPassed: true},
+		{name: "A-label TLD matches U-label names", tld: "xn--p1ai", domains: []string{"пример.рф"}, wantPassed: true},
+		{name: "empty staged DB passes", tld: "paco", wantPassed: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupMockStagedDB(t)
+			defer db.Close()
+			insert(t, db, tt.domains...)
+
+			got := checkDomainsWithinTLD(db, tt.tld)
+
+			assert.Equal(t, "domains_within_tld", got.Rule)
+			assert.Equal(t, "error", got.Severity, "a foreign-TLD domain must block ingestion")
+			assert.Equal(t, tt.wantPassed, got.Passed, got.Message)
+			assert.Equal(t, tt.wantOutside, got.AffectedCount)
+			if tt.wantSampleIn != "" {
+				assert.Contains(t, got.SampledItems, map[string]string{"domain": tt.wantSampleIn})
+			}
+		})
+	}
+
+	t.Run("no TLD cannot be verified", func(t *testing.T) {
+		db := setupMockStagedDB(t)
+		defer db.Close()
+		assert.False(t, checkDomainsWithinTLD(db, " . ").Passed)
+	})
+}
