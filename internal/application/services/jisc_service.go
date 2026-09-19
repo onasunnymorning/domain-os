@@ -21,6 +21,20 @@ import (
 // jiscTLD is the TLD the JISC export is imported under.
 const jiscTLD = "ac.uk"
 
+// jiscQAReportName is the standard QA report file name (data-pipeline-qa): the escrow pipeline publishes
+// the same name, so anything that looks for a run's QA report by its contract name finds this one too.
+const jiscQAReportName = "qa-report.json"
+
+// jiscQAReportPath is where a run's QA report goes: qa-report.json in the run's artifact directory, which
+// sits beside the export and the staged database it describes (<export>_artifacts/). It creates the directory.
+func jiscQAReportPath(jsonPath string) (string, error) {
+	dir := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_artifacts"
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, jiscQAReportName), nil
+}
+
 // JiscService handles the import and analysis of JISC domain data
 type JiscService struct {
 	db *sql.DB
@@ -416,7 +430,10 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	if err != nil {
 		return fmt.Errorf("staged data QA could not run, nothing was written to Postgres: %w", err)
 	}
-	qaReportPath := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_qa-report.json"
+	qaReportPath, err := jiscQAReportPath(jsonPath)
+	if err != nil {
+		return fmt.Errorf("staged data QA report directory could not be created, nothing was written to Postgres: %w", err)
+	}
 	if err := qaReport.WriteFile(qaReportPath); err != nil {
 		return fmt.Errorf("staged data QA report could not be saved, nothing was written to Postgres: %w", err)
 	}
@@ -936,15 +953,20 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 				log.Printf("ERROR: Generated Contact ID '%s' is Invalid: %v", contactID, errID)
 			}
 
-			// IDEMPOTENCY CHECK — skip contacts that already exist
+			// IDEMPOTENCY CHECK — skip contacts that already exist. The authInfo is minted only for a contact
+			// that will be created, so a re-run never sends a new credential for one that is already there.
 			if !existingContacts[contactID] {
+				authInfo, aerr := entities.GenerateAuthInfo()
+				if aerr != nil {
+					return fmt.Errorf("generate authInfo for contact %s: %w", contactID, aerr)
+				}
 				contacts[contactID] = commands.CreateContactCommand{
 					ID:         contactID,
 					ClID:       rarClID,
 					CrRr:       rarClID, // Explicitly set Creator
 					UpRr:       rarClID, // Explicitly set Updater
 					Email:      email,
-					AuthInfo:   "Import-2026-Data!",
+					AuthInfo:   authInfo.String(),
 					PostalInfo: [2]*entities.ContactPostalInfo{pi, nil},
 					Status:     entities.ContactStatus{OK: true},
 				}
@@ -987,6 +1009,11 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 		regDate, _ := time.Parse("2006-01-02", d.RegisteredDate)
 		expDate, _ := time.Parse("2006-01-02", d.RegisterExpireDate)
 
+		// The export carries no authInfo, so mint one per domain.
+		domainAuthInfo, aerr := entities.GenerateAuthInfo()
+		if aerr != nil {
+			return fmt.Errorf("generate authInfo for domain %s: %w", d.DomainName, aerr)
+		}
 		domainCmds = append(domainCmds, commands.CreateDomainCommand{
 			Name:         d.DomainName,
 			ClID:         rarClID,
@@ -996,7 +1023,7 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 			BillingID:    contactID,
 			CreatedAt:    regDate,
 			ExpiryDate:   expDate,
-			AuthInfo:     "Import-2026-Data!",
+			AuthInfo:     domainAuthInfo.String(),
 			Status:       entities.DomainStatus{OK: true},
 		})
 
