@@ -412,6 +412,32 @@ func (r *GormEscrowKeyVersionRepository) ListByParty(ctx context.Context, scope 
 	return versionsFromRecords(records), nil
 }
 
+// ActivePurposesByParty groups the ACTIVE versions of the given parties by
+// party and purpose, in one query: the parties list needs this for every row
+// at once, and asking per party would be a query per party.
+func (r *GormEscrowKeyVersionRepository) ActivePurposesByParty(ctx context.Context, scope entities.EscrowKeyScope, partyIDs []uuid.UUID) (map[uuid.UUID][]entities.EscrowKeyPurpose, error) {
+	if len(partyIDs) == 0 {
+		return map[uuid.UUID][]entities.EscrowKeyPurpose{}, nil
+	}
+	q, err := escrowOwnerScope(r.db.WithContext(ctx).Model(&EscrowKeyVersionRecord{}).
+		Where("party_id IN ? AND state = ?", partyIDs, string(entities.EscrowKeyActive)), scope)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		PartyID uuid.UUID
+		Purpose string
+	}
+	if err := q.Select("DISTINCT party_id, purpose").Order("purpose ASC").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("EscrowKeyVersion.ActivePurposesByParty: %w", err)
+	}
+	active := make(map[uuid.UUID][]entities.EscrowKeyPurpose, len(rows))
+	for _, row := range rows {
+		active[row.PartyID] = append(active[row.PartyID], entities.EscrowKeyPurpose(row.Purpose))
+	}
+	return active, nil
+}
+
 // NextVersionNumber returns one more than the party and purpose's highest version.
 func (r *GormEscrowKeyVersionRepository) NextVersionNumber(ctx context.Context, scope entities.EscrowKeyScope, partyID uuid.UUID, purpose entities.EscrowKeyPurpose) (int, error) {
 	q, err := escrowOwnerScope(r.db.WithContext(ctx).Model(&EscrowKeyVersionRecord{}).Where("party_id = ? AND purpose = ?", partyID, string(purpose)), scope)

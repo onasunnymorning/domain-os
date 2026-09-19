@@ -8,11 +8,12 @@ import { toast } from 'sonner';
 import { KeyRound, Loader2, Trash2, Waypoints } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { KeyScopePicker } from '@/components/escrow/keys/KeyScopePicker';
-import { PartySelect } from '@/components/escrow/keys/PartySelect';
+import { MissingKeyNotice, PartySelect } from '@/components/escrow/keys/PartySelect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  ARRANGEMENT_SIDE_PURPOSE,
   escrowKeyErrorMessage,
   getDefaultEscrowArrangement,
   groupParties,
@@ -104,6 +105,12 @@ function Arrangements() {
   );
 }
 
+/** Where to go to fix a party that has no key: its own page, in scope. */
+function partyHref(partyId: string | undefined, tenantId?: string): string {
+  const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+  return `/escrow/keys/${partyId ?? ''}${query}`;
+}
+
 function DefaultArrangement({
   scope,
   scopeKey,
@@ -165,11 +172,35 @@ function DefaultArrangement({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Depositor (registry service provider)</Label>
-          <PartySelect parties={depositors} value={depositor} onChange={setDepositor} inheritLabel={platform ? 'None' : 'Inherit from platform'} />
+          <PartySelect
+            parties={depositors}
+            value={depositor}
+            onChange={setDepositor}
+            inheritLabel={platform ? 'None' : 'Inherit from platform'}
+            needsPurpose={ARRANGEMENT_SIDE_PURPOSE.depositor}
+          />
+          <MissingKeyNotice
+            party={depositors.find((p) => p.id === depositor)}
+            purpose={ARRANGEMENT_SIDE_PURPOSE.depositor}
+            side="depositor"
+            href={partyHref(depositor, scope.tenantId)}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>Receiver (our identity)</Label>
-          <PartySelect parties={receivers} value={receiver} onChange={setReceiver} inheritLabel={platform ? 'None' : 'Inherit from platform'} />
+          <PartySelect
+            parties={receivers}
+            value={receiver}
+            onChange={setReceiver}
+            inheritLabel={platform ? 'None' : 'Inherit from platform'}
+            needsPurpose={ARRANGEMENT_SIDE_PURPOSE.receiver}
+          />
+          <MissingKeyNotice
+            party={receivers.find((p) => p.id === receiver)}
+            purpose={ARRANGEMENT_SIDE_PURPOSE.receiver}
+            side="receiver"
+            href={partyHref(receiver, scope.tenantId)}
+          />
         </div>
       </div>
       <div className="flex gap-2">
@@ -247,11 +278,23 @@ function TLDOverrides({ tenantId, depositors, receivers }: { tenantId: string; d
         </div>
         <div className="space-y-1.5">
           <Label>Depositor</Label>
-          <PartySelect parties={depositors} value={depositor} onChange={setDepositor} inheritLabel="Inherit" />
+          <PartySelect
+            parties={depositors}
+            value={depositor}
+            onChange={setDepositor}
+            inheritLabel="Inherit"
+            needsPurpose={ARRANGEMENT_SIDE_PURPOSE.depositor}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>Receiver</Label>
-          <PartySelect parties={receivers} value={receiver} onChange={setReceiver} inheritLabel="Inherit" />
+          <PartySelect
+            parties={receivers}
+            value={receiver}
+            onChange={setReceiver}
+            inheritLabel="Inherit"
+            needsPurpose={ARRANGEMENT_SIDE_PURPOSE.receiver}
+          />
         </div>
         <Button onClick={() => add.mutate()} disabled={!tld.trim() || (!depositor && !receiver) || add.isPending}>
           Set override

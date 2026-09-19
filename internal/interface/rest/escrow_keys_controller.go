@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,15 +49,19 @@ type EscrowKeyOwnerResponse struct {
 
 // EscrowPartyResponse is the API shape of a party.
 type EscrowPartyResponse struct {
-	ID         string                 `json:"id"`
-	Owner      EscrowKeyOwnerResponse `json:"owner"`
-	Name       string                 `json:"name"`
-	Kind       string                 `json:"kind"`
-	Side       string                 `json:"side"`
-	Purposes   []string               `json:"purposes"`
-	Manageable bool                   `json:"manageable"`
-	CreatedAt  time.Time              `json:"createdAt"`
-	CreatedBy  string                 `json:"createdBy,omitempty"`
+	ID       string                 `json:"id"`
+	Owner    EscrowKeyOwnerResponse `json:"owner"`
+	Name     string                 `json:"name"`
+	Kind     string                 `json:"kind"`
+	Side     string                 `json:"side"`
+	Purposes []string               `json:"purposes"`
+	// ActivePurposes are the purposes that hold an ACTIVE key version, so a
+	// caller can tell a party that can take part in a deposit today from one
+	// that is only configured to.
+	ActivePurposes []string  `json:"activePurposes"`
+	Manageable     bool      `json:"manageable"`
+	CreatedAt      time.Time `json:"createdAt"`
+	CreatedBy      string    `json:"createdBy,omitempty"`
 }
 
 // EscrowKeyVersionResponse is the API shape of a key version. It carries the
@@ -166,7 +171,7 @@ type setArrangementRequest struct {
 
 // ---------- mapping ----------
 
-func toPartyResponse(p *entities.EscrowParty, scope entities.EscrowKeyScope) EscrowPartyResponse {
+func toPartyResponse(p *entities.EscrowParty, scope entities.EscrowKeyScope, active []entities.EscrowKeyPurpose) EscrowPartyResponse {
 	purposes := make([]string, 0, len(p.Purposes()))
 	for _, pu := range p.Purposes() {
 		if policy, err := entities.EscrowKeyPurposePolicyFor(pu); err == nil && policy.Supported {
@@ -175,9 +180,32 @@ func toPartyResponse(p *entities.EscrowParty, scope entities.EscrowKeyScope) Esc
 	}
 	return EscrowPartyResponse{
 		ID: p.ID.String(), Owner: EscrowKeyOwnerResponse{Kind: string(p.Owner.Kind), Operator: p.Owner.Operator.String()},
-		Name: p.Name, Kind: string(p.Kind), Side: string(p.Side), Purposes: purposes, Manageable: scope.CanManage(p.Owner),
+		Name: p.Name, Kind: string(p.Kind), Side: string(p.Side), Purposes: purposes,
+		ActivePurposes: purposeStrings(active), Manageable: scope.CanManage(p.Owner),
 		CreatedAt: p.CreatedAt, CreatedBy: p.CreatedBy,
 	}
+}
+
+// purposeStrings renders a purpose list as JSON strings, never nil, so a
+// caller can read "no active key" from an empty array rather than a null.
+func purposeStrings(purposes []entities.EscrowKeyPurpose) []string {
+	out := make([]string, 0, len(purposes))
+	for _, p := range purposes {
+		out = append(out, string(p))
+	}
+	return out
+}
+
+// activePurposesOf reads the active purposes off a party's own versions, for
+// the detail view, which already has them.
+func activePurposesOf(versions []*entities.EscrowKeyVersion) []entities.EscrowKeyPurpose {
+	var active []entities.EscrowKeyPurpose
+	for _, v := range versions {
+		if v.State == entities.EscrowKeyActive && !slices.Contains(active, v.Purpose) {
+			active = append(active, v.Purpose)
+		}
+	}
+	return active
 }
 
 func toKeyVersionResponse(v *entities.EscrowKeyVersion) EscrowKeyVersionResponse {
@@ -395,7 +423,7 @@ func (c *EscrowController) ListParties(ctx *gin.Context) {
 	}
 	items := make([]EscrowPartyResponse, len(parties))
 	for i, p := range parties {
-		items[i] = toPartyResponse(p, scope)
+		items[i] = toPartyResponse(p.Party, scope, p.ActivePurposes)
 	}
 	resp := gin.H{"items": items, "count": len(items)}
 	if next != "" {
@@ -428,7 +456,7 @@ func (c *EscrowController) CreateParty(ctx *gin.Context) {
 		escrowKeyError(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusCreated, toPartyResponse(p, scope))
+	ctx.JSON(http.StatusCreated, toPartyResponse(p, scope, nil))
 }
 
 // GetParty returns a party with its key versions and the arrangements using it.
@@ -460,7 +488,7 @@ func (c *EscrowController) GetParty(ctx *gin.Context) {
 	for i, a := range d.UsedBy {
 		usedBy[i] = toArrangementResponse(a)
 	}
-	ctx.JSON(http.StatusOK, gin.H{"party": toPartyResponse(d.Party, scope), "versions": versions, "usedBy": usedBy})
+	ctx.JSON(http.StatusOK, gin.H{"party": toPartyResponse(d.Party, scope, activePurposesOf(d.Versions)), "versions": versions, "usedBy": usedBy})
 }
 
 // GetPartyAudit returns a party's audit trail.
