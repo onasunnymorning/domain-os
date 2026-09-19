@@ -41,15 +41,24 @@ func TestVerifyDetached(t *testing.T) {
 		require.NotNil(t, f)
 		assert.Equal(t, CodeSigInvalid, f.Code)
 	})
-	t.Run("unknown signer is SIG_KEY_UNTRUSTED", func(t *testing.T) {
+	// A v4 key's ID is the last eight bytes of its fingerprint.
+	keyID := func(fingerprint string) string { return fingerprint[len(fingerprint)-16:] }
+
+	t.Run("unknown signer is SIG_KEY_UNTRUSTED and names both keys", func(t *testing.T) {
 		_, f := VerifyDetached(ring, bytes.NewReader(data), rdetest.Sign(t, data, stranger, false), testNow)
 		require.NotNil(t, f)
 		assert.Equal(t, CodeSigKeyUntrusted, f.Code)
+		// Which key signed, against what is registered: without both, the only
+		// way to tell a wrong key from a missing one is to read the deposit.
+		assert.Contains(t, f.Message, keyID(stranger.Fingerprint), "the key that signed")
+		assert.Contains(t, f.Message, keyID(registry.Fingerprint), "the key that is trusted")
 	})
-	t.Run("empty keyring is SIG_KEY_UNTRUSTED", func(t *testing.T) {
+	t.Run("empty keyring is SIG_KEY_UNTRUSTED and names the signer", func(t *testing.T) {
 		_, f := VerifyDetached(nil, bytes.NewReader(data), rdetest.Sign(t, data, registry, false), testNow)
 		require.NotNil(t, f)
 		assert.Equal(t, CodeSigKeyUntrusted, f.Code)
+		assert.Contains(t, f.Message, "no active trusted signing key")
+		assert.Contains(t, f.Message, keyID(registry.Fingerprint), "the key to register, if it is the registry's")
 	})
 	t.Run("garbage signature is SIG_MALFORMED", func(t *testing.T) {
 		_, f := VerifyDetached(ring, bytes.NewReader(data), []byte("not a signature"), testNow)
