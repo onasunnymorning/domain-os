@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/dsa" //nolint:staticcheck // reproducing a 2001-era GnuPG key on purpose
 	"crypto/rand"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"strings"
@@ -201,4 +202,64 @@ func TestAddPublicKey_AcceptsAKeyWhoseSubkeyCannotBeRead(t *testing.T) {
 	verified, err := openpgp.CheckDetachedSignature(ring, bytes.NewReader(deposit), bytes.NewReader(sig.Bytes()), nil)
 	require.NoError(t, err, "the reduced key verifies a signature from the registry")
 	assert.Equal(t, rdevalidate.FingerprintHex(signer), rdevalidate.FingerprintHex(verified))
+}
+
+// withSigningSubkey replaces the entity's ElGamal subkey with an RSA one,
+// which can sign. It returns the subkey's private half so a test can sign the
+// way a registry would if its deposits were signed by the subkey.
+func withSigningSubkey(t *testing.T, e *openpgp.Entity) (*openpgp.Entity, *packet.PrivateKey) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	created := e.PrimaryKey.CreationTime
+	pub := packet.NewRSAPublicKey(created, &priv.PublicKey)
+	pub.IsSubkey = true
+	sec := packet.NewRSAPrivateKey(created, priv)
+	sec.IsSubkey = true
+	e.Subkeys = []openpgp.Subkey{{PublicKey: pub, PrivateKey: sec}}
+	return e, sec
+}
+
+// TestAddPublicKey_RefusesAKeyWhoseSigningSubkeyCannotBeRead is the other half
+// of accepting a key without its subkeys. Dropping an encryption subkey costs
+// verification nothing; dropping a subkey that can sign may cost it everything,
+// because that subkey can be what signs the deposits. The key flags that would
+// say so live in the binding signature that cannot be read, so capability is
+// judged by algorithm, and the key is refused rather than stored in a state
+// that parses but cannot verify.
+func TestAddPublicKey_RefusesAKeyWhoseSigningSubkeyCannotBeRead(t *testing.T) {
+	signer, subkey := withSigningSubkey(t, legacyKey(t))
+	armored := armorPubWithoutSubkeyBinding(t, signer)
+
+	_, _, err := rdevalidate.ParseArmoredPublicKeyLenient(armored)
+	require.ErrorIs(t, err, rdevalidate.ErrPublicKeyReductionUnsafe, "the reduction is refused, not silently made")
+
+	got := publicKeyRejection(armored, err)
+	require.ErrorIs(t, got, entities.ErrEscrowKeyMaterialUnreadable)
+	var rejected *entities.EscrowKeyMaterialRejection
+	require.ErrorAs(t, got, &rejected)
+	assert.Contains(t, rejected.Reason, "may be able to sign", "the reason says what was at stake")
+	assert.Contains(t, rejected.Reason, "export the key again", "and what to ask the registry for")
+
+	// Why it matters: a deposit signed by that subkey does not verify against
+	// the primary key alone, which is what storing the reduced block would have
+	// left the pipeline holding.
+	deposit := []byte("<deposit/>")
+	sig := &packet.Signature{
+		Version: 4, SigType: packet.SigTypeBinary, PubKeyAlgo: packet.PubKeyAlgoRSA,
+		Hash: crypto.SHA256, CreationTime: time.Now(), IssuerKeyId: &subkey.KeyId,
+	}
+	h := crypto.SHA256.New()
+	_, err = h.Write(deposit)
+	require.NoError(t, err)
+	require.NoError(t, sig.Sign(h, subkey, signingConfig()))
+	var detached bytes.Buffer
+	require.NoError(t, sig.Serialize(&detached))
+
+	primaryOnly := *signer
+	primaryOnly.Subkeys = nil
+	ring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(armorPub(t, &primaryOnly)))
+	require.NoError(t, err)
+	_, err = openpgp.CheckDetachedSignature(ring, bytes.NewReader(deposit), bytes.NewReader(detached.Bytes()), nil)
+	require.Error(t, err, "the primary key alone cannot verify what the subkey signed")
 }

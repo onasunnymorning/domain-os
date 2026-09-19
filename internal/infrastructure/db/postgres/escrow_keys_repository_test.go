@@ -382,3 +382,56 @@ func (s *EscrowKeysSuite) TestAudit_ListByPartyIsScopedAndPaginated() {
 	s.Require().NoError(err)
 	s.Empty(other, "another operator cannot read the trail")
 }
+
+// TestActivePurposesByParty_ReportsWhatCanTakePartToday backs the readiness
+// signal the arrangements screen shows. A party row says which purposes it may
+// hold; only this says whether any key is actually active, which is the
+// difference between an arrangement that works and one that fails every
+// deposit. Scope is enforced the same way as everywhere else.
+func (s *EscrowKeysSuite) TestActivePurposesByParty_ReportsWhatCanTakePartToday() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	ctx := context.Background()
+	repo := NewEscrowKeyVersionRepository(tx)
+	a, b := s.op("kopC"), s.op("kopD")
+	scopeA := entities.OperatorEscrowKeyScope(a)
+
+	eve := s.createParty(tx, entities.PlatformKeyOwner(), entities.EscrowPartyDEA, entities.EscrowPartySelf)
+	rspA := s.createParty(tx, entities.OperatorKeyOwner(a), entities.EscrowPartyRSP, entities.EscrowPartyExternal)
+	staged := s.createParty(tx, entities.OperatorKeyOwner(a), entities.EscrowPartyRSP, entities.EscrowPartyExternal)
+
+	activate := func(v *entities.EscrowKeyVersion) {
+		s.Require().NoError(s.createVersion(tx, v))
+		before := v.Clone()
+		s.Require().NoError(v.RecordProbe(true, s.now))
+		s.Require().NoError(v.Activate(s.now))
+		ev, err := entities.NewEscrowKeyVersionAuditEvent(s.actx(), before, v, entities.EscrowAuditVersionActivated)
+		s.Require().NoError(err)
+		s.Require().NoError(repo.ApplyTransitions(ctx,
+			[]entities.EscrowKeyVersionTransition{{Version: v, ExpectedState: entities.EscrowKeyStaged}},
+			[]*entities.EscrowKeyAuditEvent{ev}))
+	}
+
+	activate(s.newVersion(eve, entities.EscrowKeyPurposeDecryptInbound, 1, "AAAABBBBCCCCDDDD1111222233334444AAAA5555"))
+	activate(s.newVersion(rspA, entities.EscrowKeyPurposeVerifyInbound, 1, "EEEEFFFF000011112222333344445555AAAABBBB"))
+	// Never activated: the state this signal exists to catch.
+	s.Require().NoError(s.createVersion(tx, s.newVersion(staged, entities.EscrowKeyPurposeVerifyInbound, 1, "22223333AAAABBBBCCCCDDDDEEEEFFFF00001111")))
+	// Held by the party but not active, so it must not be reported.
+	s.Require().NoError(s.createVersion(tx, s.newVersion(eve, entities.EscrowKeyPurposePseudonymise, 1, ekSym)))
+
+	ids := []uuid.UUID{eve.ID, rspA.ID, staged.ID}
+	active, err := repo.ActivePurposesByParty(ctx, scopeA, ids)
+	s.Require().NoError(err)
+	s.Equal([]entities.EscrowKeyPurpose{entities.EscrowKeyPurposeDecryptInbound}, active[eve.ID], "the staged pseudonymise key is not reported")
+	s.Equal([]entities.EscrowKeyPurpose{entities.EscrowKeyPurposeVerifyInbound}, active[rspA.ID])
+	s.NotContains(active, staged.ID, "a party whose only version is STAGED is absent")
+
+	fromB, err := repo.ActivePurposesByParty(ctx, entities.OperatorEscrowKeyScope(b), ids)
+	s.Require().NoError(err)
+	s.NotContains(fromB, rspA.ID, "never another operator's keys")
+	s.Contains(fromB, eve.ID, "platform keys are visible to every operator")
+
+	empty, err := repo.ActivePurposesByParty(ctx, scopeA, nil)
+	s.Require().NoError(err)
+	s.Empty(empty, "no parties, no query")
+}

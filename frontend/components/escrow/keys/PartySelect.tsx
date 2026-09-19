@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { AlertTriangle } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -7,24 +9,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { EscrowParty } from '@/lib/api/escrow-keys';
+import { lacksActiveKey, type EscrowKeyPurpose, type EscrowParty } from '@/lib/api/escrow-keys';
 
 const INHERIT = '__inherit__';
 
-/** Chooses a party for one side of an arrangement, or "inherit". */
+/**
+ * Chooses a party for one side of an arrangement, or "inherit".
+ *
+ * With `needsPurpose` it also says which parties hold no ACTIVE key for that
+ * purpose. Choosing one is allowed — a party is often set up before its key —
+ * but it is the state in which every deposit fails, and nothing else on the
+ * page would say so until a validation run did.
+ */
 export function PartySelect({
   parties,
   value,
   onChange,
   inheritLabel,
   disabled,
+  needsPurpose,
 }: {
   parties: EscrowParty[];
   value?: string;
   onChange: (partyId: string | undefined) => void;
   inheritLabel: string;
   disabled?: boolean;
+  needsPurpose?: EscrowKeyPurpose;
 }) {
+  const unready = (p: EscrowParty) => needsPurpose !== undefined && lacksActiveKey(p, needsPurpose);
+
   return (
     <Select value={value ?? INHERIT} onValueChange={(v) => onChange(v === INHERIT ? undefined : v)} disabled={disabled}>
       <SelectTrigger>
@@ -34,11 +47,53 @@ export function PartySelect({
         <SelectItem value={INHERIT}>{inheritLabel}</SelectItem>
         {parties.map((p) => (
           <SelectItem key={p.id} value={p.id}>
-            {p.name}
-            {p.owner.kind === 'platform' ? ' (platform)' : ''}
+            <span className="flex items-center gap-1.5">
+              {p.name}
+              {p.owner.kind === 'platform' ? ' (platform)' : ''}
+              {unready(p) && (
+                <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  no active key
+                </span>
+              )}
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * The warning under a chosen party that holds no ACTIVE key for the side it
+ * fills. It names the consequence, because "no active key" alone does not say
+ * that deposits will fail.
+ */
+export function MissingKeyNotice({
+  party,
+  purpose,
+  side,
+  href,
+}: {
+  party?: EscrowParty;
+  purpose: EscrowKeyPurpose;
+  side: 'depositor' | 'receiver';
+  href: string;
+}) {
+  if (!lacksActiveKey(party, purpose)) return null;
+  const consequence =
+    side === 'depositor'
+      ? 'every deposit it signs fails as untrusted until a public signing key is added and activated'
+      : 'every deposit sent to it fails as undecryptable until a decryption key is imported and activated';
+  return (
+    <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>
+        <Link href={href} className="font-medium underline underline-offset-2">
+          {party?.name}
+        </Link>{' '}
+        has no active key for this side: {consequence}.
+      </span>
+    </p>
   );
 }

@@ -197,6 +197,11 @@ function PartyGroup({
                   ) : (
                     <Badge variant="outline" className="text-[11px]">{p.owner.operator}</Badge>
                   )}
+                  {(p.activePurposes?.length ?? 0) === 0 && (
+                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400">
+                      no active key
+                    </Badge>
+                  )}
                   {!p.manageable && <span className="text-xs text-muted-foreground">read-only here</span>}
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />

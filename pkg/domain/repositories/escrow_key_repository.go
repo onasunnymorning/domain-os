@@ -44,6 +44,11 @@ type EscrowKeyVersionRepository interface {
 	// ListByParty returns a party's versions, newest version first. An empty
 	// purpose lists every purpose.
 	ListByParty(ctx context.Context, scope entities.EscrowKeyScope, partyID uuid.UUID, purpose entities.EscrowKeyPurpose) ([]*entities.EscrowKeyVersion, error)
+	// ActivePurposesByParty returns, for each of the given parties, the purposes
+	// that hold at least one ACTIVE version. A party with none is absent from
+	// the map. It answers "can this party actually take part in a deposit
+	// today", which is not visible from the party row itself.
+	ActivePurposesByParty(ctx context.Context, scope entities.EscrowKeyScope, partyIDs []uuid.UUID) (map[uuid.UUID][]entities.EscrowKeyPurpose, error)
 	// NextVersionNumber returns one more than the highest version of the party
 	// and purpose.
 	NextVersionNumber(ctx context.Context, scope entities.EscrowKeyScope, partyID uuid.UUID, purpose entities.EscrowKeyPurpose) (int, error)
