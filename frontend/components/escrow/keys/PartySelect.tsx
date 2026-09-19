@@ -14,12 +14,13 @@ import { lacksActiveKey, type EscrowKeyPurpose, type EscrowParty } from '@/lib/a
 const INHERIT = '__inherit__';
 
 /**
- * Chooses a party for one side of an arrangement, or "inherit".
+ * Chooses the source, or our identity, for one side — or leaves the side to
+ * follow the default above it.
  *
- * With `needsPurpose` it also says which parties hold no ACTIVE key for that
- * purpose. Choosing one is allowed — a party is often set up before its key —
- * but it is the state in which every deposit fails, and nothing else on the
- * page would say so until a validation run did.
+ * With `needsPurpose` it also marks the ones holding no active key for that
+ * side. Choosing one stays allowed: a source is routinely added before the key
+ * it will sign with arrives. But it is the state in which every deposit fails,
+ * and nothing else on the page would say so until a validation run did.
  */
 export function PartySelect({
   parties,
@@ -83,8 +84,8 @@ export function MissingKeyNotice({
   if (!lacksActiveKey(party, purpose)) return null;
   const consequence =
     side === 'depositor'
-      ? 'every deposit it signs fails as untrusted until a public signing key is added and activated'
-      : 'every deposit sent to it fails as undecryptable until a decryption key is imported and activated';
+      ? 'every deposit it signs fails verification until its public verification key is added and activated'
+      : 'no deposit encrypted to it can be opened until its decryption key is imported and activated';
   return (
     <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

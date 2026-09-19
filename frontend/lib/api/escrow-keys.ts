@@ -1,10 +1,15 @@
 /**
  * Escrow Key Registry API Client (issue #429, ADR-0009)
  *
- * Keys belong to parties, not TLDs: our own identities (e.g. EVE, the Data
- * Escrow Agent) and counterparties (the registry service providers that send
- * us deposits). A TLD only says which parties are on each side of its escrow,
- * through an arrangement that is inherited platform → operator → TLD.
+ * Keys belong to parties, not TLDs: our own identities (the ones deposits are
+ * encrypted to) and the counterparties on the other side — the sources that
+ * send deposits to us, and later the destinations we send deposits to. A TLD
+ * only says which parties are on each side of its escrow, through an
+ * arrangement that is inherited platform → operator → TLD.
+ *
+ * "Party", "kind", "side" and "purpose" are the registry's own vocabulary and
+ * stay in this module and in technical detail views. Pages speak in the
+ * direction deposits travel; `partyRole` and `PURPOSE_LABELS` translate.
  *
  * Scope. With an operator (`tenantId`) the calls send `X-Tenant-ID` and see
  * that operator's parties plus the platform's; without one they address the
@@ -157,21 +162,55 @@ export function lacksActiveKey(party: EscrowParty | undefined, purpose: EscrowKe
   return !party.activePurposes.includes(purpose);
 }
 
-/** What each purpose means, for people. The server is the authority on rules. */
-export const PURPOSE_LABELS: Record<EscrowKeyPurpose, { title: string; description: string }> = {
+/**
+ * What each purpose means, for people. The titles say what the key *does* for
+ * us rather than what it is made of: an operator who has been handed a key is
+ * looking for "the key we verify their deposits with", not for a purpose
+ * identifier. The server remains the authority on the rules.
+ */
+export const PURPOSE_LABELS: Record<
+  EscrowKeyPurpose,
+  { title: string; noun: string; description: string }
+> = {
   'decrypt-inbound': {
     title: 'Decryption key',
-    description: 'Registries encrypt their deposits to this key. Its private half stays in the key store.',
+    noun: 'decryption key',
+    description:
+      'Sources encrypt their deposits with the matching public key, so that only we can open them. The private half stays in the key store.',
   },
   'verify-inbound': {
-    title: 'Signing keys',
-    description: 'The registry signs every deposit with one of these; we verify with the public keys.',
+    title: 'Verification key',
+    noun: 'verification key',
+    description:
+      'The public key the source gave us. We use it to check that a deposit really came from them and was not altered on the way.',
   },
   pseudonymise: {
     title: 'Pseudonymisation key',
+    noun: 'pseudonymisation key',
     description:
-      'Tokenises sanitized copies of deposits. Only one version is active: rotating it means new copies no longer join with older ones.',
+      'Tokenises sanitized copies of deposits. Only one version is active at a time: rotating it means new copies no longer join with older ones.',
   },
+};
+
+/**
+ * What a party is, in the directions deposits travel. Kind and side are the
+ * registry's own classification; this is the one people work in — a source
+ * sends deposits to us, a destination receives deposits from us, and our own
+ * identities are the ones whose private keys we hold.
+ */
+export type EscrowPartyRole = 'source' | 'receiving-identity' | 'destination' | 'sending-identity';
+
+export function partyRole(party: Pick<EscrowParty, 'kind' | 'side'>): EscrowPartyRole {
+  if (party.side === 'self') return party.kind === 'DEA' ? 'receiving-identity' : 'sending-identity';
+  return party.kind === 'RSP' ? 'source' : 'destination';
+}
+
+/** One line saying which way deposits move, for a party header. */
+export const ROLE_SUMMARY: Record<EscrowPartyRole, string> = {
+  source: 'Sends escrow deposits to us.',
+  'receiving-identity': 'One of our identities. Deposits sent to us are encrypted to it, and we open them with its private key.',
+  destination: 'Receives escrow deposits from us.',
+  'sending-identity': 'One of our identities. It signs the deposits we send out.',
 };
 
 // =============================================================================
@@ -323,12 +362,12 @@ export async function getEffectiveEscrowArrangement(tenantId: string, tld: strin
 // Helpers
 // =============================================================================
 
-/** Groups parties the way people think about them. */
+/** Groups parties by the direction deposits travel, the way people ask for them. */
 export function groupParties(parties: EscrowParty[]) {
   return {
     ourIdentities: parties.filter((p) => p.side === 'self'),
-    registryProviders: parties.filter((p) => p.kind === 'RSP' && p.side === 'external'),
-    escrowAgents: parties.filter((p) => p.kind === 'DEA' && p.side === 'external'),
+    sources: parties.filter((p) => partyRole(p) === 'source'),
+    destinations: parties.filter((p) => partyRole(p) === 'destination'),
   };
 }
 
