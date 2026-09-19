@@ -417,4 +417,61 @@ func (s *RegistrarSuite) TestListRegistrarsFilteringAndSorting() {
 	}
 	require.True(s.T(), orderIdx2 < orderIdx3, "reg2 (3) should be before reg3 (2)")
 	require.True(s.T(), orderIdx3 < orderIdx1, "reg3 (2) should be before reg1 (1)")
+
+	// Test 4: DomainCount is scoped to the TLD filter, and domain_count sorting
+	// ranks on that scoped count rather than the registrar's global total.
+	// reg3 holds 2 domains overall but only 1 under .net.
+	resTLDScoped, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 10,
+		Filter: queries.ListRegistrarsFilter{
+			TLD:       "net",
+			SortBy:    "domain_count",
+			SortOrder: "desc",
+		},
+	})
+	require.NoError(s.T(), err)
+
+	var scoped2, scoped3 *entities.RegistrarListItem
+	var scopedIdx2, scopedIdx3 int = -1, -1
+	for i, item := range resTLDScoped {
+		switch item.ClID.String() {
+		case "reg-id-2":
+			scoped2, scopedIdx2 = item, i
+		case "reg-id-3":
+			scoped3, scopedIdx3 = item, i
+		}
+	}
+	require.NotNil(s.T(), scoped2)
+	require.NotNil(s.T(), scoped3)
+
+	require.Equal(s.T(), 3, scoped2.DomainCount, "reg2 has 3 .net domains")
+	require.Equal(s.T(), 1, scoped3.DomainCount, "reg3 has 1 .net domain, not its global 2")
+	require.True(s.T(), scopedIdx2 < scopedIdx3, "reg2 (3 in .net) should be before reg3 (1 in .net)")
+
+	// Test 5: paging with the composite "<count>|<clid>" cursor walks the
+	// TLD-scoped, domain_count-ordered list without repeating or dropping rows.
+	pageFilter := queries.ListRegistrarsFilter{
+		TLD:       "net",
+		SortBy:    "domain_count",
+		SortOrder: "desc",
+	}
+	page1, cursor1, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize: 1,
+		Filter:   pageFilter,
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), page1, 1)
+	require.Equal(s.T(), "reg-id-2", page1[0].ClID.String())
+	require.Equal(s.T(), 3, page1[0].DomainCount)
+	require.Equal(s.T(), "3|reg-id-2", cursor1)
+
+	page2, _, err := repo.List(context.Background(), queries.ListItemsQuery{
+		PageSize:   1,
+		PageCursor: cursor1,
+		Filter:     pageFilter,
+	})
+	require.NoError(s.T(), err)
+	require.Len(s.T(), page2, 1)
+	require.Equal(s.T(), "reg-id-3", page2[0].ClID.String())
+	require.Equal(s.T(), 1, page2[0].DomainCount, "second page stays TLD-scoped")
 }

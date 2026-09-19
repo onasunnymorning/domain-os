@@ -82,16 +82,6 @@ export function useDomainDNS(name: string, enabled = true) {
   });
 }
 
-export function useDomainCountsForRegistrars(tldName: string, clids: string[]) {
-  return useQueries({
-    queries: clids.map((clid) => ({
-      queryKey: ["domains", "count", { tld_equals: tldName, clid_equals: clid }],
-      queryFn: () => getDomainCount({ tld_equals: tldName, clid_equals: clid }),
-      staleTime: 60000,
-    })),
-  });
-}
-
 export function useDomainQuote(payload: QuoteRequest | null) {
   return useQuery({
     queryKey: ["domain", "quote", payload],

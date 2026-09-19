@@ -138,28 +138,42 @@ func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListI
 	// Base query from table
 	dbQuery := r.db.WithContext(ctx).Table("registrars")
 
-	// Select optimized query fields joining aggregated count and TLD string
-	selectFields := "registrars.cl_id, name, gur_id, status, autorenew, iana_status, " +
-		"COALESCE(dc.domain_count, 0) as domain_count, " +
-		"COALESCE(ac.tld_list, '') as tld_list"
-	
-	dbQuery = dbQuery.Select(selectFields).
-		Joins("LEFT JOIN (SELECT cl_id AS dc_cl_id, COUNT(*) as domain_count FROM domains GROUP BY cl_id) dc ON dc.dc_cl_id = registrars.cl_id").
-		Joins("LEFT JOIN (SELECT registrar_cl_id AS ac_cl_id, string_agg(tld_name, ',') as tld_list FROM accreditations GROUP BY registrar_cl_id) ac ON ac.ac_cl_id = registrars.cl_id")
-
-	// Add filters if provided
+	// Resolve the filter before building the joins: domain_count is scoped to
+	// filter.TLD when one is set, so the join depends on it.
 	var filter queries.ListRegistrarsFilter
 	if params.Filter != nil {
 		var ok bool
 		filter, ok = params.Filter.(queries.ListRegistrarsFilter)
 		if !ok {
 			return nil, "", ErrInvalidFilterType
-		} else {
-			var err error
-			dbQuery, err = setRegistrarFilters(dbQuery, filter)
-			if err != nil {
-				return nil, "", err
-			}
+		}
+	}
+
+	// Select optimized query fields joining aggregated count and TLD string
+	selectFields := "registrars.cl_id, name, gur_id, status, autorenew, iana_status, " +
+		"COALESCE(dc.domain_count, 0) as domain_count, " +
+		"COALESCE(ac.tld_list, '') as tld_list"
+
+	// When listing the registrars accredited for one TLD, domain_count has to
+	// count only that TLD's domains. An unscoped count would both display and
+	// sort by the registrar's global DUMs on a per-TLD page.
+	domainCountJoin := "LEFT JOIN (SELECT cl_id AS dc_cl_id, COUNT(*) as domain_count FROM domains GROUP BY cl_id) dc ON dc.dc_cl_id = registrars.cl_id"
+	domainCountArgs := []any{}
+	if filter.TLD != "" {
+		domainCountJoin = "LEFT JOIN (SELECT cl_id AS dc_cl_id, COUNT(*) as domain_count FROM domains WHERE tld_name = ? GROUP BY cl_id) dc ON dc.dc_cl_id = registrars.cl_id"
+		domainCountArgs = append(domainCountArgs, filter.TLD)
+	}
+
+	dbQuery = dbQuery.Select(selectFields).
+		Joins(domainCountJoin, domainCountArgs...).
+		Joins("LEFT JOIN (SELECT registrar_cl_id AS ac_cl_id, string_agg(tld_name, ',') as tld_list FROM accreditations GROUP BY registrar_cl_id) ac ON ac.ac_cl_id = registrars.cl_id")
+
+	// Add filters if provided
+	if params.Filter != nil {
+		var err error
+		dbQuery, err = setRegistrarFilters(dbQuery, filter)
+		if err != nil {
+			return nil, "", err
 		}
 	}
 
