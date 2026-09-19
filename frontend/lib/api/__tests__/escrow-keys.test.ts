@@ -80,14 +80,15 @@ describe('escrow key registry client', () => {
     expect(escrowKeyErrorMessage(new Error('x'), 'fallback')).toBe('fallback');
   });
 
-  it('groups parties by role and explains inheritance', () => {
+  it('groups parties by the direction deposits travel, and explains inheritance', () => {
     const groups = groupParties([
       party({ id: 'eve' }),
       party({ id: 'acme', kind: 'RSP', side: 'external' }),
+      party({ id: 'agent', kind: 'DEA', side: 'external' }),
     ]);
-    expect(groups.ourIdentities.map((p) => p.id)).toEqual(['eve']);
-    expect(groups.registryProviders.map((p) => p.id)).toEqual(['acme']);
-    expect(groups.escrowAgents).toEqual([]);
+    expect(groups.ourIdentities.map((p: EscrowParty) => p.id)).toEqual(['eve']);
+    expect(groups.sources.map((p: EscrowParty) => p.id)).toEqual(['acme']);
+    expect(groups.destinations.map((p: EscrowParty) => p.id)).toEqual(['agent']);
     expect(inheritedFromLabel('operator')).toBe('inherited from operator default');
     expect(inheritedFromLabel('tld')).toBe('set for this TLD');
   });
