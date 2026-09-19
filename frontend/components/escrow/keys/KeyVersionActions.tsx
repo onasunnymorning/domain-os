@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Download, Loader2, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -23,17 +22,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   activateEscrowKeyVersion,
   deactivateEscrowKeyVersion,
   destroyEscrowKeyVersion,
   escrowKeyErrorMessage,
-  getEscrowPublicKey,
   probeEscrowKeyVersion,
   revokeEscrowKeyVersion,
   type EscrowKeyScope,
   type EscrowKeyVersion,
 } from '@/lib/api/escrow-keys';
+import { downloadPublicKey } from '@/lib/escrow/publicKey';
 
 type Dialogs = 'none' | 'replace' | 'revoke' | 'destroy';
 
@@ -49,12 +49,17 @@ interface KeyVersionActionsProps {
  * Lifecycle actions for one key version. The server decides what is allowed;
  * the menu only offers what makes sense in the current state, and every
  * destructive step asks for confirmation proportionate to its consequences.
+ *
+ * Retiring and revoking are kept apart on purpose. Retiring is the routine end
+ * of a rotation and keeps older deposits readable; revoking is the emergency
+ * one and takes effect even mid-run. They are one menu apart, so the copy has
+ * to carry the difference.
  */
 export function KeyVersionActions({ scope, version, replacesActive, manageable }: KeyVersionActionsProps) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<Dialogs>('none');
   const [reason, setReason] = useState('');
-  const [compromised, setCompromised] = useState(false);
+  const [compromised, setCompromised] = useState<'yes' | 'no' | ''>('');
   const [fingerprint, setFingerprint] = useState('');
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['escrow-party', scope.tenantId ?? '', version.partyId] });
@@ -69,13 +74,7 @@ export function KeyVersionActions({ scope, version, replacesActive, manageable }
 
   const download = async () => {
     try {
-      const armored = await getEscrowPublicKey(scope, version.id);
-      const url = URL.createObjectURL(new Blob([armored], { type: 'application/pgp-keys' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${version.fingerprint}.asc`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadPublicKey(scope, version.id, version.fingerprint);
     } catch (err) {
       toast.error(escrowKeyErrorMessage(err, 'Could not download the public key'));
     }
@@ -107,25 +106,25 @@ export function KeyVersionActions({ scope, version, replacesActive, manageable }
                   onClick={() =>
                     run.mutate(async () => {
                       await probeEscrowKeyVersion(scope, version.id);
-                      toast.success('Probe started. Refresh in a moment to see the result.');
+                      toast.success('Testing the key. Refresh in a moment to see the result.');
                     })
                   }
                 >
-                  Probe on a worker
+                  Test on a worker
                 </DropdownMenuItem>
               )}
               {version.state === 'STAGED' && (
                 <DropdownMenuItem
                   disabled={needsProbe && !version.lastProbeOk}
                   onClick={activate}
-                  title={needsProbe && !version.lastProbeOk ? 'Needs a successful probe first' : undefined}
+                  title={needsProbe && !version.lastProbeOk ? 'A worker has to read and use the key before it can be activated' : undefined}
                 >
                   Activate
                 </DropdownMenuItem>
               )}
               {version.state === 'ACTIVE' && (
                 <DropdownMenuItem onClick={() => run.mutate(() => deactivateEscrowKeyVersion(scope, version.id))}>
-                  Deactivate (keep for older deposits)
+                  Retire (keep for older deposits)
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -171,7 +170,7 @@ export function KeyVersionActions({ scope, version, replacesActive, manageable }
           if (!o) {
             setDialog('none');
             setReason('');
-            setCompromised(false);
+            setCompromised('');
           }
         }}
       >
@@ -179,19 +178,36 @@ export function KeyVersionActions({ scope, version, replacesActive, manageable }
           <DialogHeader>
             <DialogTitle>Revoke version {version.version}</DialogTitle>
             <DialogDescription>
-              A revoked key is withdrawn from every use immediately, including validations already in progress. To
-              stop using a key for new deposits only, deactivate it instead.
+              Revoking blocks this key immediately, everywhere, including validations already in progress. To stop
+              using it for new deposits while older deposits it opened stay readable, retire it instead.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="revoke-reason">Reason</Label>
               <Input id="revoke-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Kept in the history, and visible to anyone reviewing this key later.</p>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={compromised} onCheckedChange={(v) => setCompromised(v === true)} />
-              The private key may be known to someone else
-            </label>
+            {/* Asked as a question with two answers rather than a checkbox:
+                whether the material is in someone else's hands decides what
+                has to happen next, and an unticked box is not an answer. */}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Is the key material compromised?</legend>
+              <RadioGroup value={compromised} onValueChange={(v) => setCompromised(v === 'yes' ? 'yes' : 'no')} className="gap-2">
+                <label className="flex items-start gap-2 text-sm" htmlFor="revoke-not-compromised">
+                  <RadioGroupItem id="revoke-not-compromised" value="no" className="mt-0.5" />
+                  <span>
+                    No — withdrawing it as a precaution or because it is no longer used.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm" htmlFor="revoke-compromised">
+                  <RadioGroupItem id="revoke-compromised" value="yes" className="mt-0.5" />
+                  <span>
+                    Yes — it may be known to someone else. Whoever holds the matching key has to be told.
+                  </span>
+                </label>
+              </RadioGroup>
+            </fieldset>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog('none')}>
@@ -199,8 +215,8 @@ export function KeyVersionActions({ scope, version, replacesActive, manageable }
             </Button>
             <Button
               variant="destructive"
-              disabled={reason.trim() === ''}
-              onClick={() => run.mutate(() => revokeEscrowKeyVersion(scope, version.id, reason.trim(), compromised))}
+              disabled={reason.trim() === '' || compromised === ''}
+              onClick={() => run.mutate(() => revokeEscrowKeyVersion(scope, version.id, reason.trim(), compromised === 'yes'))}
             >
               Revoke
             </Button>

@@ -42,7 +42,7 @@ describe('AddKeyVersionDialog', () => {
     );
     renderDialog('decrypt-inbound');
 
-    const key = screen.getByLabelText('ASCII-armored private key') as HTMLTextAreaElement;
+    const key = screen.getByLabelText('Private decryption key') as HTMLTextAreaElement;
     const passphrase = screen.getByLabelText('Passphrase') as HTMLInputElement;
     fireEvent.change(key, { target: { value: privateBlock } });
     fireEvent.change(passphrase, { target: { value: 'hunter2' } });
@@ -65,7 +65,7 @@ describe('AddKeyVersionDialog', () => {
 
   it('clears secrets when closed without sending', () => {
     const { onOpenChange } = renderDialog('decrypt-inbound');
-    const key = screen.getByLabelText('ASCII-armored private key') as HTMLTextAreaElement;
+    const key = screen.getByLabelText('Private decryption key') as HTMLTextAreaElement;
     fireEvent.change(key, { target: { value: privateBlock } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -83,9 +83,9 @@ describe('AddKeyVersionDialog', () => {
 
   it('refuses to send a private key pasted into the public field', () => {
     renderDialog('verify-inbound');
-    fireEvent.change(screen.getByLabelText('ASCII-armored public key'), { target: { value: privateBlock } });
+    fireEvent.change(screen.getByLabelText('Public verification key'), { target: { value: privateBlock } });
 
-    expect(screen.getByRole('alert').textContent).toContain('That is a private key');
+    expect(screen.getByRole('alert').textContent).toContain('appears to be a private key');
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
     expect(api.addEscrowPublicKey).not.toHaveBeenCalled();
   });
@@ -98,7 +98,7 @@ describe('AddKeyVersionDialog', () => {
       })
     );
     const { onOpenChange } = renderDialog('verify-inbound');
-    const field = screen.getByLabelText('ASCII-armored public key') as HTMLTextAreaElement;
+    const field = screen.getByLabelText('Public verification key') as HTMLTextAreaElement;
     fireEvent.change(field, { target: { value: publicBlock } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 

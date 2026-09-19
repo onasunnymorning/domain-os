@@ -13,8 +13,9 @@ import {
 } from '@/lib/api/escrow-keys';
 
 /**
- * Who deposits for a TLD and who receives, after inheritance, and where each
- * side came from. Most TLDs set nothing and inherit both.
+ * Where this top-level domain's deposits come from and who receives them,
+ * after inheritance, with the level each side was settled at. Most set nothing
+ * and inherit both.
  */
 export function EffectiveArrangementCard({ tenantId, tld }: { tenantId: string; tld: string }) {
   const effective = useQuery({
@@ -35,7 +36,7 @@ export function EffectiveArrangementCard({ tenantId, tld }: { tenantId: string; 
     <Card>
       <CardHeader>
         <CardTitle>Escrow</CardTitle>
-        <CardDescription>The parties on each side of this TLD&apos;s deposits.</CardDescription>
+        <CardDescription>Who sends this top-level domain&apos;s deposits, and which of our identities receives them.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {effective.isLoading ? (
@@ -44,15 +45,27 @@ export function EffectiveArrangementCard({ tenantId, tld }: { tenantId: string; 
           <p className="text-sm text-muted-foreground">The escrow arrangement could not be loaded.</p>
         ) : (
           <dl className="grid gap-4 sm:grid-cols-2">
-            <Side label="Depositor" hint="Signs the deposits; we verify with its keys." side={effective.data?.depositor} byId={byId} tenantId={tenantId} />
-            <Side label="Receiver" hint="Our identity the deposits are encrypted to." side={effective.data?.receiver} byId={byId} tenantId={tenantId} />
+            <Side
+              label="Deposits come from"
+              hint="The source that signs the deposits. We check the signature with its public key."
+              side={effective.data?.depositor}
+              byId={byId}
+              tenantId={tenantId}
+            />
+            <Side
+              label="Received by"
+              hint="Our identity the deposits are encrypted to, and whose private key opens them."
+              side={effective.data?.receiver}
+              byId={byId}
+              tenantId={tenantId}
+            />
           </dl>
         )}
         <Link
           href={`/escrow/arrangements?tenantId=${encodeURIComponent(tenantId)}`}
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
         >
-          Manage arrangements <ArrowRight className="h-3.5 w-3.5" />
+          Change this, or the defaults it follows <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </CardContent>
     </Card>
@@ -87,7 +100,7 @@ function Side({
             <span className="block text-xs text-muted-foreground">{inheritedFromLabel(side.from)}</span>
           </>
         ) : (
-          <span className="text-muted-foreground">Not set</span>
+          <span className="text-muted-foreground">Not set — deposits for this top-level domain cannot be processed</span>
         )}
       </dd>
     </div>
