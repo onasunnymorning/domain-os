@@ -121,6 +121,87 @@ func TestEscrowSanitizationRun_FinalizeOnlyPassCarriesADerivative(t *testing.T) 
 	})
 }
 
+func TestEscrowSanitizationRun_ReopenOnlyFromError(t *testing.T) {
+	started := time.Now()
+	done := started.Add(time.Minute)
+	retryAt := started.Add(time.Hour)
+	reopening := EscrowSanitizationReopening{
+		WorkflowVersion: "escrow-sanitize/2", SyntheticSuffix: "Sandbox-Zone.", WorkflowID: "wf-2", RunID: "run-2", StartedAt: retryAt,
+	}
+	errored := func(t *testing.T) *EscrowSanitizationRun {
+		t.Helper()
+		r := newSanitizationRun(t, started)
+		require.NoError(t, r.Finalize(EscrowSanitizationFinalization{
+			Outcome: EscrowSanitizationError, StageReached: "source",
+			Findings:            []EscrowFinding{{Code: "TOKEN_KEY_UNAVAILABLE", Severity: "ERROR", Stage: "source", Message: "m"}},
+			TokenKeyFingerprint: "fp", CompletedAt: done,
+		}))
+		return r
+	}
+
+	t.Run("an errored run returns to RUNNING as a fresh attempt", func(t *testing.T) {
+		r := errored(t)
+		id := r.ID
+		require.NoError(t, r.Reopen(reopening))
+
+		assert.Equal(t, id, r.ID, "it is the same record")
+		assert.Equal(t, EscrowSanitizationRunning, r.Outcome)
+		assert.False(t, r.IsFinal())
+		assert.Empty(t, r.Findings, "the failed attempt's findings are cleared")
+		assert.Empty(t, r.StageReached)
+		assert.Empty(t, r.TokenKeyFingerprint)
+		assert.Nil(t, r.CompletedAt)
+		assert.Equal(t, "wf-2", r.WorkflowID)
+		assert.Equal(t, "run-2", r.RunID)
+		assert.Equal(t, "escrow-sanitize/2", r.WorkflowVersion)
+		assert.Equal(t, "sandbox-zone", r.SyntheticSuffix, "the suffix is normalised like any other name")
+		assert.True(t, r.StartedAt.Equal(retryAt))
+
+		// And it can finish again, once.
+		require.NoError(t, r.Finalize(EscrowSanitizationFinalization{
+			Outcome: EscrowSanitizationQuarantined, StageReached: "rewrite", CompletedAt: retryAt.Add(time.Minute),
+		}))
+		assert.True(t, errors.Is(r.Reopen(reopening), ErrEscrowSanitizationRunNotReopenable), "a decision is final")
+	})
+
+	t.Run("a decision is never reopened", func(t *testing.T) {
+		for _, f := range []EscrowSanitizationFinalization{
+			{Outcome: EscrowSanitizationPass, StageReached: "verify", DerivativeObjectKey: "k", DerivativeSHA256: testSHA,
+				DerivativeBytes: 1, ManifestObjectKey: "m", CompletedAt: done},
+			{Outcome: EscrowSanitizationQuarantined, StageReached: "rewrite", CompletedAt: done},
+		} {
+			r := newSanitizationRun(t, started)
+			require.NoError(t, r.Finalize(f))
+			err := r.Reopen(reopening)
+			assert.True(t, errors.Is(err, ErrEscrowSanitizationRunNotReopenable), "%s: %v", f.Outcome, err)
+			assert.Equal(t, f.Outcome, r.Outcome)
+			assert.Equal(t, "wf-1", r.WorkflowID, "a refused reopen changes nothing")
+		}
+	})
+
+	t.Run("a run that is still running has nothing to reopen", func(t *testing.T) {
+		r := newSanitizationRun(t, started)
+		assert.True(t, errors.Is(r.Reopen(reopening), ErrEscrowSanitizationRunNotReopenable))
+	})
+
+	t.Run("an invalid attempt is refused and leaves the error in place", func(t *testing.T) {
+		for name, mutate := range map[string]func(*EscrowSanitizationReopening){
+			"no workflow version":       func(o *EscrowSanitizationReopening) { o.WorkflowVersion = "" },
+			"no workflow id":            func(o *EscrowSanitizationReopening) { o.WorkflowID = " " },
+			"no start time":             func(o *EscrowSanitizationReopening) { o.StartedAt = time.Time{} },
+			"an unusable suffix":        func(o *EscrowSanitizationReopening) { o.SyntheticSuffix = "not a name!" },
+			"a suffix equal to the TLD": func(o *EscrowSanitizationReopening) { o.SyntheticSuffix = "Example." },
+		} {
+			r := errored(t)
+			o := reopening
+			mutate(&o)
+			assert.True(t, errors.Is(r.Reopen(o), ErrInvalidEscrowSanitizationRun), name)
+			assert.Equal(t, EscrowSanitizationError, r.Outcome, name)
+			assert.Equal(t, "wf-1", r.WorkflowID, name)
+		}
+	})
+}
+
 func TestEscrowValidationRunIsSanitizableSource(t *testing.T) {
 	scope := testScope(t)
 	started := time.Now()

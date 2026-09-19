@@ -142,6 +142,17 @@ escrow keyring gone, the source artifact changed since validation, timeout) and
 fails the workflow. Quarantining is a statement about a deposit and must not be
 made because our own key store is down.
 
+Only `PASS` and `QUARANTINED` are final. An `ERROR` says nothing about the
+deposit and published nothing, so the next launch for the same source and policy
+version **reopens that same record** (back to `RUNNING`, with the new workflow
+and run ids, and a corrected synthetic suffix if one is given) instead of
+replaying it. It has to be the same record: the unique index above leaves no
+room for a second one, so treating `ERROR` as final would make a single missing
+key or store outage permanent for that source. The reopen is one conditional
+`UPDATE ... WHERE outcome = 'ERROR'`, so two racing launches converge on one
+attempt, and the failed attempt's findings are written to the activity log
+before they are cleared.
+
 ### 6. Deviation: the derivative shares the escrow bucket
 
 The ticket asks for a distinct bucket and a restricted IAM role. **The user
