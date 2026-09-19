@@ -7,26 +7,32 @@ page is only the procedures.
 
 ## The model in one paragraph
 
-Keys belong to **parties**, not TLDs.
+Keys belong to the organisation they identify, not to a TLD. The screens are
+arranged in the direction deposits travel, and this page uses their words; the
+record's own classification (`kind`, `side`, `purpose`) is in
+[ADR-0009](adr/0009-escrow-parties-keys-arrangements.md) and stays in the API.
 
-- **Our identities** hold private keys in the key store. EVE, our Data Escrow
-  Agent, holds a *decryption key* that registries encrypt deposits to, and a
-  *pseudonymisation key* for sanitized copies.
-- **Registry service providers** are counterparties. We only hold their public
-  *signing keys*.
+- **Escrow sources** send deposits to us. We hold each source's **verification
+  key** — its public key — and check every deposit against it.
+- **Our receiving identities** are the identities deposits are encrypted to.
+  EVE, our Data Escrow Agent, holds a **decryption key** whose private half
+  stays in the key store, and a **pseudonymisation key** for sanitized copies.
+- **Escrow destinations** receive deposits from us. Sending deposits out is not
+  built yet, so the section is empty.
 
-An **arrangement** says, for a TLD, which provider deposits and which of our
-identities receives. It is set once as a platform default or an operator
-default, and overridden per TLD only where a TLD differs.
+**Defaults and overrides** say, for a TLD, where its deposits come from and
+which of our identities receives them. Set once as a platform default or an
+operator default, and overridden for a single TLD only where that TLD differs.
 
-Every key has **versions** that move through these states:
+Every key has **versions**. The screens name the states plainly, and the record
+keeps the name in brackets:
 
 ```
-STAGED → ACTIVE → HISTORICAL,   and REVOKED / DESTROYED
+Added (STAGED) → Active (ACTIVE) → Retired (HISTORICAL),   and Revoked / Destroyed
 ```
 
-- **HISTORICAL** means "not for new deposits, still opens older ones".
-- **REVOKED** means "unusable, even for runs already in progress".
+- **Retired** means "not for new deposits, still opens older ones".
+- **Revoked** means "unusable, even for runs already in progress".
 
 ## Permissions
 
@@ -88,7 +94,7 @@ In the Auth0 dashboard of the tenant named by `AUTH0_DOMAIN`:
    ```
 
    The list should hold the permissions of the role. For a platform key admin,
-   choosing *Platform registry* under **Escrow keys** loads the registry
+   choosing *Platform registry* under **Escrow Setup** loads the registry
    instead of the permission notice.
 
 ### 2. AWS: choose the name prefix and encryption key
@@ -195,9 +201,9 @@ env (see `deploy/contract.json`):
 - **No credential variables.** Credentials come only from the AWS default
   chain, meaning the role from step 3.
 - **Check the wiring.** Redeploy, then run *First-time setup* below. The first
-  import proves the API can write, and its automatic probe proves a worker can
+  import proves the API can write, and the test it starts proves a worker can
   read. An import failing with `KEY_STORE_UNAVAILABLE` points at the API role;
-  a probe failing with it points at the worker role or the KMS key policy.
+  a test failing with it points at the worker role or the KMS key policy.
   Check that the prefix in the variables matches `PREFIX` in the policies.
 
 **Local development** runs the same flow against LocalStack, with no Auth0 or
@@ -208,64 +214,66 @@ IAM setup:
 2. Run `make keystore`. It starts LocalStack and restarts the api and worker
    against it; `docker-compose.yml` supplies the endpoint, prefix and dummy
    credentials.
-3. Manage keys in the admin UI under **Escrow keys**. With Auth0 disabled the
+3. Manage keys in the admin UI under **Escrow Setup**. With Auth0 disabled the
    static token holds both permissions, so nothing else is needed.
 
-Without step 1 everything except private keys still works: public signing keys
-and arrangements are database rows. Importing or probing a private key reports
-`KEY_STORE_NOT_CONFIGURED`. A probe needs the worker and Temporal, and the api
-and worker must share one database and one key store.
+Without step 1 everything except private keys still works: verification keys
+and the defaults and overrides are database rows. Importing or testing a private
+key reports `KEY_STORE_NOT_CONFIGURED`. A test needs the worker and Temporal,
+and the api and worker must share one database and one key store.
 
 ## First-time setup
 
-1. **Open the platform registry.** In **Escrow keys**, choose *Platform
+1. **Open the platform registry.** In **Escrow Setup**, choose *Platform
    registry* (this needs the platform permission).
-2. **Create our identity.** Add a DEA identity, for example "EVE".
-3. **Add EVE's decryption key.** Paste the armored private key and its
+2. **Add a receiving identity**, for example "EVE".
+3. **Add its decryption key.** Paste the armored private key and its
    passphrase. The key stays passphrase-protected in the key store, and the
-   form clears as soon as it is submitted. A worker probes the key
-   automatically; once the probe shows **passed**, **Activate** it.
-4. **Generate EVE's pseudonymisation key.** Wait for the probe to pass, then
+   form clears as soon as it is submitted. A worker tests the key
+   automatically; once the test shows **passed**, **Activate** it.
+4. **Generate its pseudonymisation key.** Wait for the test to pass, then
    activate it.
-5. **Set the platform default receiver.** In **Escrow arrangements**, set it to
-   EVE.
-6. **Set each operator's depositor.** For each operator, add its registry
-   service provider(s). Either add them under the operator, or add them once in
-   the platform registry as catalogue entries and use them from the operator.
-   Add each provider's public signing key and activate it (public keys need no
-   probe). Then set the operator's **default depositor**.
-7. **Add TLD overrides only where needed.** A TLD whose provider or receiver
-   differs gets an override. Check a TLD's **Escrow** tab: each side shows where
-   it is inherited from.
+5. **Set who receives by default.** Under **Defaults & overrides**, set
+   *Received by* to EVE.
+6. **Add each operator's source.** For each operator, add the organisation that
+   will deposit. Either add it under the operator, or add it once in the
+   platform registry, where every operator can use it. Add that source's
+   **verification key** and activate it — a public key needs no test — then set
+   the operator's *Deposits come from*.
+7. **Add overrides only where needed.** A top-level domain whose source or
+   receiving identity differs gets an override. Its **Escrow** tab shows each
+   side and where it is inherited from.
 
-## Rotating EVE's decryption key
+## Rotating a receiving identity's decryption key
 
-1. **Add and activate the new version.** Add it on EVE's decryption key and
-   wait for its probe to pass. Activate it; both versions are now ACTIVE.
-2. **Hand the new public key to the registries.** Use the download button on
-   the version, and give each registry the date from which to encrypt to it.
-3. **Deactivate the old version after the overlap.** It becomes HISTORICAL: new
-   deposits no longer select it, but deposits received before deactivation
-   still open with it, so revalidating a retained deposit keeps working.
-4. **Destroy only when nothing depends on it.** Destroy the old version only
-   once no retained deposit depends on it, and repeat its fingerprint to
-   confirm. Check with **runs** on the version, which lists the validation runs
-   that used it.
+1. **Add the replacement and activate it.** Use **Add replacement** on the
+   decryption key and wait for its test to pass. Activate it; both versions are
+   now active, and the card reads *Rotation in progress*.
+2. **Hand the new public key to each source.** Use *Download the public key to
+   give out* on the version, and tell each source the date from which to
+   encrypt to it.
+3. **Retire the old version after the overlap.** *Retire (keep for older
+   deposits)*: new deposits no longer select it, but deposits received before
+   it was retired still open with it, so revalidating a retained deposit keeps
+   working.
+4. **Destroy only when nothing depends on it.** Destroy the old version once no
+   retained deposit depends on it, and type its fingerprint to confirm. Check
+   with **runs** on the version, which lists the validation runs that used it.
 
-## Rotating a registry's signing key
+## Rotating a source's verification key
 
-1. **Add the provider's new public key and activate it.** Both versions verify
+1. **Add the source's new public key and activate it.** Both versions verify
    during the overlap.
-2. **Deactivate the old version.** Do it when the provider stops signing with
-   it. Retained deposits signed before then still verify on revalidation.
+2. **Retire the old version** when the source stops signing with it. Retained
+   deposits signed before then still verify on revalidation.
 
 ## Rotating the pseudonymisation key
 
-Generate a new version, wait for the probe to pass, and activate it. The UI asks
-you to confirm the replacement, because tokens in new sanitized copies do not
+Generate a new version, wait for the test to pass, and activate it. You are
+asked to confirm the replacement, because tokens in new sanitized copies do not
 join with older ones.
 
-- The previous version becomes HISTORICAL.
+- The previous version is retired.
 - A derivative run already in progress finishes under the key it started with.
 - Every run and manifest records the version it used.
 
@@ -275,10 +283,10 @@ join with older ones.
    takes effect immediately, including for retries of runs that already
    selected the version. Those end ERROR with `DECRYPT_KEY_UNAVAILABLE` (or
    `TOKEN_KEY_UNAVAILABLE`); they never send a DVFN.
-2. **Replace a decryption key urgently.** Import a replacement, probe it,
-   activate it, and send the registries the new public key.
-3. **Handle a compromised signing key with the provider.** Revoke our copy of
-   the key and add the provider's replacement.
+2. **Replace a decryption key urgently.** Import a replacement, test it,
+   activate it, and send every source the new public key.
+3. **Handle a compromised signing key with the source.** Revoke our copy of its
+   verification key and add the replacement the source gives you.
 4. **Destroy after investigation.** When the investigation no longer needs the
    version, destroy it. Its record, fingerprint and audit trail stay.
 
@@ -286,7 +294,8 @@ join with older ones.
 
 | Question | Answer |
 |---|---|
-| Which keys did a run use? | The run page's **Keys used** section: parties, arrangement revisions, and the verifying and decrypting versions. |
+| Is escrow ready? | The status beside each source and receiving identity, on **Escrow Setup** and at the top of its page. It reports the worst thing true of the keys that entity needs. |
+| Which keys did a run use? | The run page's **Keys used** section: the source, the receiving identity, the arrangement revisions, and the verifying and decrypting versions. |
 | Which runs used a version? | **runs** on the version, or `GET /escrow/validations?keyVersionId=`. |
-| Who changed what, when? | The **History** tab of the party. The same events go to the event outbox as `escrow.*`. |
-| Why can't a version be activated? | Its probe has not passed. **Probe on a worker** again and read the result. Codes: `KEY_STORE_NOT_CONFIGURED`, `KEY_STORE_UNAVAILABLE`, `SECRET_NOT_FOUND`, `MATERIAL_UNREADABLE`, `FINGERPRINT_MISMATCH`, `ROUND_TRIP_FAILED`. |
+| Who changed what, when? | The **History** tab of the source or identity. The same events go to the event outbox as `escrow.*`. |
+| Why can't a version be activated? | Its test has not passed. **Test on a worker** again and read the result. Codes: `KEY_STORE_NOT_CONFIGURED`, `KEY_STORE_UNAVAILABLE`, `SECRET_NOT_FOUND`, `MATERIAL_UNREADABLE`, `FINGERPRINT_MISMATCH`, `ROUND_TRIP_FAILED`. |

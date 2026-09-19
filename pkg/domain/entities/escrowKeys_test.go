@@ -73,6 +73,15 @@ func TestNewEscrowParty_PurposesDerivedFromRole(t *testing.T) {
 	assert.Equal(t, []EscrowKeyPurpose{EscrowKeyPurposeVerifyInbound}, rsp.Purposes())
 	assert.True(t, rsp.CanDeposit())
 
+	// Role is the same kind/side fact in the words the API and the interface
+	// use. It is derived here so that every client stops deriving it, each in
+	// its own vocabulary.
+	assert.Equal(t, EscrowRoleReceivingIdentity, eve.Role())
+	assert.Equal(t, EscrowRoleSource, rsp.Role())
+	assert.Equal(t, EscrowRoleSendingIdentity, (&EscrowParty{Kind: EscrowPartyRSP, Side: EscrowPartySelf}).Role())
+	assert.Equal(t, EscrowRoleDestination, (&EscrowParty{Kind: EscrowPartyDEA, Side: EscrowPartyExternal}).Role())
+	assert.Equal(t, EscrowPartyRole(""), (&EscrowParty{Kind: "BANK", Side: EscrowPartySelf}).Role())
+
 	_, err := NewEscrowParty(PlatformKeyOwner(), "our rsp", EscrowPartyRSP, EscrowPartySelf, "t", keyNow)
 	assert.ErrorIs(t, err, ErrEscrowPartyRoleNotSupported, "outbound roles arrive with escrow targets")
 	_, err = NewEscrowParty(PlatformKeyOwner(), "a dea", EscrowPartyDEA, EscrowPartyExternal, "t", keyNow)
