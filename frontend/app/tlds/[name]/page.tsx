@@ -6,7 +6,6 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useTLD } from '@/lib/hooks/useTLDs';
 import { useAccreditForTLD, useDeaccreditForTLD } from '@/lib/hooks/useAccreditations';
 import { useRegistrars } from '@/lib/hooks/useRegistrars';
-import { useDomainCountsForRegistrars } from '@/lib/hooks/useDomains';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +17,6 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { accreditationsApi } from '@/lib/api/accreditations';
-import { getDomainCount } from '@/lib/api/domains';
 import { getRegistrars } from '@/lib/api/registrars';
 import { RegistrarSearchFilters } from '@/components/registrars/RegistrarSearchFilters';
 import { PhaseTimeline } from '@/components/phases/PhaseTimeline';
@@ -74,6 +72,10 @@ export default function TLDDetailPage({ params }: Props) {
       pagesize: pageSize,
       cursor,
       tld: tldName,
+      // Order server-side: sorting a single page client-side ranked only the 50
+      // registrars that happened to land on it, hiding the largest ones.
+      sort_by: 'domain_count',
+      sort_order: 'desc',
     };
     const q = (debouncedSearch || '').trim();
     if (q) {
@@ -90,26 +92,37 @@ export default function TLDDetailPage({ params }: Props) {
   const accreditForTLD = useAccreditForTLD(tldName);
   const deaccreditForTLD = useDeaccreditForTLD(tldName);
 
-  // Fetch DUMs for accredited registrars
-  const regAccClIDs = useMemo(() => regAccData?.Data?.map(r => r.ClID) || [], [regAccData]);
-  const domainCountsQueries = useDomainCountsForRegistrars(tldName, regAccClIDs);
-  
+  // DUMs come back on the list payload itself, scoped to this TLD by the `tld`
+  // filter, so no per-registrar count fan-out is needed.
   const domainCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    regAccClIDs.forEach((clid, index) => {
-      counts[clid] = domainCountsQueries[index]?.data?.Count ?? 0;
+    (regAccData?.Data ?? []).forEach(r => {
+      counts[r.ClID] = r.DomainCount ?? 0;
     });
     return counts;
-  }, [regAccClIDs, domainCountsQueries]);
+  }, [regAccData]);
 
-  const sortedRegistrars = useMemo(() => {
-    if (!regAccData?.Data) return [];
-    return [...regAccData.Data].sort((a, b) => {
-      const countA = domainCounts[a.ClID] || 0;
-      const countB = domainCounts[b.ClID] || 0;
-      return countB - countA;
-    });
-  }, [regAccData, domainCounts]);
+  // Already ordered by domain_count desc server-side.
+  const sortedRegistrars = useMemo(() => regAccData?.Data ?? [], [regAccData]);
+
+  // The DUMs share card summarises the whole TLD, so it needs every accredited
+  // registrar rather than the table's current (paged, searchable) slice.
+  const dumsShareParams = useMemo(() => ({
+    pagesize: 1000,
+    tld: tldName,
+    sort_by: 'domain_count',
+    sort_order: 'desc',
+  }), [tldName]);
+  const { data: dumsShareData } = useRegistrars(dumsShareParams);
+
+  const dumsShare = useMemo(
+    () => (dumsShareData?.Data ?? []).map(r => ({
+      name: r.Name,
+      clid: r.ClID,
+      value: r.DomainCount ?? 0,
+    })),
+    [dumsShareData]
+  );
 
   // Add accreditation modal state (search registrars)
   const [addOpen, setAddOpen] = useState(false);
@@ -198,25 +211,13 @@ export default function TLDDetailPage({ params }: Props) {
         tld: tldName,
         name_like: regAccParams.name_like,
         gurid_equals: regAccParams.gurid_equals,
+        sort_by: 'domain_count',
+        sort_order: 'desc',
       };
       const res = await getRegistrars(exportParams);
       const registrars = res.Data || [];
-      
-      // 2. Fetch TLD-specific domain counts for each registrar in parallel
-      const counts = await Promise.all(
-        registrars.map(async (r) => {
-          try {
-            const countRes = await getDomainCount({ tld_equals: tldName, clid_equals: r.ClID });
-            return { clid: r.ClID, count: countRes?.Count ?? 0 };
-          } catch {
-            return { clid: r.ClID, count: 0 };
-          }
-        })
-      );
-      
-      const countsMap = new Map(counts.map(c => [c.clid, c.count]));
 
-      // 3. Generate CSV content
+      // 2. Generate CSV content. DomainCount is TLD-scoped by the `tld` filter.
       const headers = ['Client ID', 'Name', 'IANA ID', 'Status', 'Auto-renew', 'DUMs'];
       const rows = registrars.map(r => [
         r.ClID,
@@ -224,7 +225,7 @@ export default function TLDDetailPage({ params }: Props) {
         r.GurID || '',
         r.Status,
         r.Autorenew ? 'Enabled' : 'Disabled',
-        countsMap.get(r.ClID) || 0
+        r.DomainCount ?? 0
       ]);
 
       const csvContent = [
@@ -296,8 +297,8 @@ export default function TLDDetailPage({ params }: Props) {
               isLoading={isLoading} 
               onClick={() => handleTabChange('registrars')} 
             />
-            <TLDDUMsPieChartCard 
-              data={sortedRegistrars.map(r => ({ name: r.Name, clid: r.ClID, value: domainCounts[r.ClID] || 0 }))} 
+            <TLDDUMsPieChartCard
+              data={dumsShare}
               onClick={() => handleTabChange('registrars')}
             />
           </div>
@@ -403,13 +404,11 @@ export default function TLDDetailPage({ params }: Props) {
                           </TableHeader>
                           <TableBody>
                             {sortedRegistrars.map((r: RegistrarListItem) => {
-                              const clidIndex = regAccClIDs.indexOf(r.ClID);
-                              const isCountLoading = clidIndex >= 0 ? domainCountsQueries[clidIndex]?.isLoading : false;
                               const count = domainCounts[r.ClID] || 0;
                               return (
                               <TableRow key={r.ClID}>
                                 <TableCell className="text-right whitespace-nowrap font-mono text-muted-foreground" title={count.toLocaleString()}>
-                                  {isCountLoading ? <Skeleton className="h-4 w-8 inline-block" /> : formatCompactNumber(count)}
+                                  {formatCompactNumber(count)}
                                 </TableCell>
                                 <TableCell className="font-mono">
                                   <Link href={`/registrars/${encodeURIComponent(r.ClID)}`} className="text-primary hover:underline">{r.ClID}</Link>
