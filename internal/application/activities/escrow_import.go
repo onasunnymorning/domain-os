@@ -19,6 +19,7 @@ import (
 
 	gopg "github.com/go-pg/pg/v10"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/dataqa"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	pg "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -4206,29 +4207,15 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 
 // --- QA Staged Database ---
 
-// QACheck represents a single quality check result
-type QACheck struct {
-	Rule          string      `json:"rule"`
-	Description   string      `json:"description"`
-	Severity      string      `json:"severity"` // "error", "warning", "info"
-	Passed        bool        `json:"passed"`
-	AffectedCount int         `json:"affectedCount"`
-	Message       string      `json:"message"`
-	Detail        interface{} `json:"detail,omitempty"`
-	SampledItems  interface{} `json:"sampledItems,omitempty"`
-}
-
-// QAReport is the structured QA report for a staged database
-type QAReport struct {
-	Version   string            `json:"version"`
-	Timestamp time.Time         `json:"timestamp"`
-	Pipeline  string            `json:"pipeline"`
-	Context   map[string]string `json:"context"`
-	SourceKey string            `json:"sourceKey"`
-	Passed    bool              `json:"passed"`
-	Summary   map[string]int64  `json:"summary"`
-	Checks    []QACheck         `json:"checks"`
-}
+// QACheck and QAReport are the project-wide staged-data QA schema, shared with the other pipelines
+// (see internal/application/dataqa). They stay exported here as aliases so this package's callers and
+// its JSON report are unchanged.
+type (
+	// QACheck represents a single quality check result
+	QACheck = dataqa.QACheck
+	// QAReport is the structured QA report for a staged database
+	QAReport = dataqa.QAReport
+)
 
 // CleanOrphanedContactsArgs input for the orphan cleanup activity
 type CleanOrphanedContactsArgs struct {
@@ -4402,14 +4389,6 @@ func (a *EscrowImportActivities) CleanOrphanedContacts(ctx context.Context, args
 	}
 
 	return result, nil
-}
-
-// AddCheck adds a check to the report and updates the overall passed status
-func (r *QAReport) AddCheck(check QACheck) {
-	r.Checks = append(r.Checks, check)
-	if !check.Passed && check.Severity == "error" {
-		r.Passed = false
-	}
 }
 
 // QAStagedDatabaseArgs input for the QA activity
