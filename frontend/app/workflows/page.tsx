@@ -38,7 +38,6 @@ function WorkflowsPageContent() {
 
   const addRun = useWorkflowStore((s) => s.addRun);
   const setModalOpen = useWorkflowStore((s) => s.setModalOpen);
-  const selectRun = useWorkflowStore((s) => s.selectRun);
 
   const { data: registry, isLoading } = useQuery({
     queryKey: ['workflow-registry'],
@@ -78,7 +77,6 @@ function WorkflowsPageContent() {
 
   const handleLaunched = (run: WorkflowRun) => {
     addRun(run);
-    selectRun(run.workflowId);
     setModalOpen(true);
   };
 

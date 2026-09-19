@@ -60,7 +60,6 @@ export function useDeleteTLD() {
   const queryClient = useQueryClient();
   const addRun = useWorkflowStore((s) => s.addRun);
   const setModalOpen = useWorkflowStore((s) => s.setModalOpen);
-  const selectRun = useWorkflowStore((s) => s.selectRun);
   
   return useMutation({
     mutationFn: ({ name, keepTLDAndPhases }: { name: string, keepTLDAndPhases: boolean }) => tldsApi.triggerCleanup(name, keepTLDAndPhases),
@@ -84,7 +83,6 @@ export function useDeleteTLD() {
       };
 
       addRun(run);
-      selectRun(data.workflowId);
       setModalOpen(true);
 
       toast.success(`Cleanup workflow started for .${variables.name}`, {
