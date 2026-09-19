@@ -31,7 +31,7 @@ func gateRecords(names ...string) []jisc.JiscDomain {
 
 func readQAReport(t *testing.T, jsonPath string) dataqa.QAReport {
 	t.Helper()
-	raw, err := os.ReadFile(strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_qa-report.json")
+	raw, err := os.ReadFile(filepath.Join(strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath))+"_artifacts", "qa-report.json"))
 	require.NoError(t, err, "the QA report must be written before the gate decides")
 	var report dataqa.QAReport
 	require.NoError(t, json.Unmarshal(raw, &report))
