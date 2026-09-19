@@ -1692,7 +1692,6 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			cmd := &commands.CreateDomainCommand{
 				Name:         name.String,
 				ClID:         clid.String,
-				AuthInfo:     "escr0W1mP*rt", // strong default authinfo
 				OriginalName: original.String,
 				UName:        uname.String,
 			}
@@ -1722,6 +1721,15 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 				continue
 			}
 			cmd.ClID = mappedClID
+
+			// A deposit carries no authInfo, so mint one per domain. It is set here, on the command that
+			// both the bulk create and its per-item fallback send, so a domain keeps one value across both.
+			authInfo, aerr := entities.GenerateAuthInfo()
+			if aerr != nil {
+				rows.Close()
+				return fmt.Errorf("generate authInfo for domain import: %w", aerr)
+			}
+			cmd.AuthInfo = authInfo.String()
 
 			if registrant.Valid {
 				cmd.RegistrantID = registrant.String
@@ -2131,11 +2139,18 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 				continue
 			}
 
+			// A deposit carries no authInfo, so mint one per contact.
+			authInfo, aerr := entities.GenerateAuthInfo()
+			if aerr != nil {
+				rows.Close()
+				return fmt.Errorf("generate authInfo for contact import: %w", aerr)
+			}
+
 			cmd := &commands.CreateContactCommand{
 				ID:       id.String,
 				RoID:     roid.String,
 				Email:    email.String,
-				AuthInfo: "escr0W1mP*rt",
+				AuthInfo: authInfo.String(),
 				ClID:     mappedClID,
 			}
 			// If RoID is present but invalid or not a CONTACT RoID, clear it to auto-generate a valid one.

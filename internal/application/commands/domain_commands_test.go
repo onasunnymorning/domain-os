@@ -52,7 +52,6 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				UpRr:       "test",
 				CreatedAt:  time.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
 				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
@@ -83,7 +82,6 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				UpRr:       "test",
 				CreatedAt:  time.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
 				ExpiryDate: time.Time(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-				AuthInfo:   "escr0W1mP*rt",
 				Status: entities.DomainStatus{
 					Inactive: true,
 				},
@@ -129,7 +127,12 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 			_, err := cmd.FromRdeDomain(tc.rdeDomain)
 			require.Equal(t, tc.wantErr, err)
 			if err == nil {
-				require.Equal(t, tc.cmd, cmd)
+				// An escrow deposit carries no authInfo, so it is generated: check it is valid, then
+				// compare everything else exactly.
+				require.NoError(t, entities.AuthInfoType(cmd.AuthInfo).Validate())
+				want := *tc.cmd
+				want.AuthInfo = cmd.AuthInfo
+				require.Equal(t, &want, cmd)
 			}
 		})
 	}
