@@ -26,7 +26,7 @@ describe('MissingKeyNotice', () => {
       <MissingKeyNotice party={party()} purpose="verify-inbound" side="depositor" href="/escrow/keys/core" />
     );
     expect(screen.getByText(/no active key for this side/)).toBeInTheDocument();
-    expect(screen.getByText(/fails as untrusted/)).toBeInTheDocument();
+    expect(screen.getByText(/fails verification/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'core' })).toHaveAttribute('href', '/escrow/keys/core');
   });
 
@@ -54,10 +54,10 @@ describe('MissingKeyNotice', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('warns about decryption, not signing, on the receiver side', () => {
+  it('warns about opening deposits, not signing, on the receiver side', () => {
     render(
       <MissingKeyNotice party={party({ name: 'migrations' })} purpose="decrypt-inbound" side="receiver" href="/escrow/keys/eve" />
     );
-    expect(screen.getByText(/fails as undecryptable/)).toBeInTheDocument();
+    expect(screen.getByText(/can be opened until its decryption key/)).toBeInTheDocument();
   });
 });

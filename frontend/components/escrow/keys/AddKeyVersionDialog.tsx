@@ -51,14 +51,14 @@ function pasteProblem(armored: string, mode: 'private' | 'public'): string | nul
 
   if (blocks(other) > 0 && blocks(wanted) === 0) {
     return mode === 'public'
-      ? 'That is a private key. Paste the registry\u2019s public key instead \u2014 and treat this one as compromised, since it has been on the clipboard.'
-      : 'That is a public key. Importing a decryption key needs the private half.';
+      ? 'This appears to be a private key, not a public key. Do not use it here \u2014 and because private key material has been on the clipboard, treat it as exposed and tell whoever owns it.'
+      : 'This appears to be a public key. Opening a deposit needs the private half of the key it was encrypted to.';
   }
   if (mode === 'public' && blocks('PRIVATE') > 0) {
-    return 'This holds a private key as well. Paste only the registry\u2019s public key.';
+    return 'This holds a private key as well. Paste only the public key \u2014 and tell whoever owns the private one that it has been on the clipboard.';
   }
   if (blocks(wanted) === 0) return `This should start with ${header(wanted)}`;
-  if (blocks(wanted) > 1) return 'This holds more than one key. Add one per version, so each gets its own lifecycle.';
+  if (blocks(wanted) > 1) return 'This holds more than one key. Add one per version, so each can be activated, retired and traced on its own.';
   if (!text.includes(endLine(wanted))) return 'The end line is missing \u2014 the paste looks cut off.';
   return null;
 }
@@ -117,8 +117,8 @@ export function AddKeyVersionDialog({ scope, partyId, purpose, open, onOpenChang
       queryClient.invalidateQueries({ queryKey: ['escrow-party', scope.tenantId ?? '', partyId] });
       const added =
         mode === 'public'
-          ? `Added version ${version.version}. Activate it when the registry starts signing with it.`
-          : `Added version ${version.version}. A worker is probing it; activate it once the probe passes.`;
+          ? `Added version ${version.version}. Activate it when the source starts signing with it.`
+          : `Added version ${version.version}. We are checking that a worker can use it; activate it once that passes.`;
       // A key accepted with a change says so, and stays on screen until dismissed.
       if (version.notice) {
         toast.warning(added, { description: version.notice, duration: Infinity });
@@ -152,7 +152,7 @@ export function AddKeyVersionDialog({ scope, partyId, purpose, open, onOpenChang
   const label = PURPOSE_LABELS[purpose];
   const problem = mode === 'generate' ? null : pasteProblem(armored, mode);
   const canSubmit = mode === 'generate' || (armored.trim() !== '' && problem === null);
-  const blockLabel = mode === 'private' ? 'ASCII-armored private key' : 'ASCII-armored public key';
+  const blockLabel = mode === 'private' ? 'Private decryption key' : 'Public verification key';
   // Enough lines to recognise a key, never so many that the buttons are pushed
   // off-screen: a key is thirty-odd lines and is meant to be pasted, not read.
   const fieldClass = 'h-44 max-h-[30vh] resize-y overflow-auto font-mono text-xs leading-relaxed';
@@ -209,11 +209,21 @@ export function AddKeyVersionDialog({ scope, partyId, purpose, open, onOpenChang
                   setRejection(null);
                 }}
               />
-              <p className="text-xs text-muted-foreground">
-                {mode === 'private'
-                  ? 'Paste the whole block, header and end line included. It goes straight to the key store and is never shown again.'
-                  : 'Paste the whole block, header and end line included, exactly as the registry sent it.'}
-              </p>
+              {/* Which of the two keys this is, said before the paste rather
+                  than after: a private key pasted into a public field cannot
+                  be taken back off the clipboard. */}
+              {mode === 'private' ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                  <strong className="font-medium">This is secret material.</strong> Paste only the private key of one
+                  of our own identities. It is sent once to the key store, cleared from this form immediately, and
+                  never shown again.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  This key is not secret: the source gave it to us so we can check its signatures. Paste the whole
+                  block, header and end line included, exactly as they sent it.
+                </p>
+              )}
             </div>
           )}
 
@@ -228,15 +238,16 @@ export function AddKeyVersionDialog({ scope, partyId, purpose, open, onOpenChang
                 onChange={(e) => setPassphrase(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Sent once to the key store with the key, which stays protected by it there. Neither is ever shown again.
+                The passphrase that unlocks the key above. Sent once to the key store, where it keeps protecting the
+                key. Neither is ever shown again.
               </p>
             </div>
           )}
 
           {mode === 'generate' && (
             <p className="text-sm text-muted-foreground">
-              The key is created in the key store and never leaves it. It starts as a staged version; activating it
-              replaces the current one.
+              The key is created inside the key store and never leaves it — there is nothing to paste and nothing
+              to keep safe here. It is added but not in use; activating it replaces the current one.
             </p>
           )}
 

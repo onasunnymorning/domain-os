@@ -29,9 +29,13 @@ import {
 } from '@/lib/api/escrow-keys';
 
 /**
- * Arrangements say which parties are on each side of a TLD's deposits:
- * platform default → operator default → TLD override, independently for the
- * depositor and the receiver. Most TLDs need nothing here.
+ * Where each top-level domain's deposits come from, and which of our
+ * identities receives them.
+ *
+ * Both sides resolve the same way and independently — platform default, then
+ * operator default, then an override for one top-level domain — so a domain
+ * can take a different source while still being received by the platform
+ * identity. Most set nothing here and inherit both.
  */
 export default function EscrowArrangementsPage() {
   return (
@@ -64,17 +68,17 @@ function Arrangements() {
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold">
               <Waypoints className="h-6 w-6" />
-              Escrow arrangements
+              Escrow defaults &amp; overrides
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Who deposits for a TLD, and which of our identities receives. Set defaults once; override a TLD only
-              when it differs.
+              Which source sends the deposits for a top-level domain, and which of our identities receives them. Set
+              the default once; override a single top-level domain only when it differs.
             </p>
           </div>
           <Button variant="outline" asChild>
             <Link href={platform ? '/escrow/keys' : `/escrow/keys?tenantId=${encodeURIComponent(tenantId)}`} className="gap-1.5">
               <KeyRound className="h-4 w-4" />
-              Parties &amp; keys
+              Sources &amp; keys
             </Link>
           </Button>
         </div>
@@ -90,14 +94,14 @@ function Arrangements() {
 
         {!chosen ? null : parties.isError ? (
           <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            {escrowKeyErrorMessage(parties.error, 'Could not load the key registry for this scope.')}
+            {escrowKeyErrorMessage(parties.error, 'Could not load the escrow setup for this scope.')}
           </p>
         ) : parties.isLoading ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         ) : (
           <>
-            <DefaultArrangement scope={scope} scopeKey={scopeKey} platform={platform} depositors={groups.registryProviders} receivers={groups.ourIdentities} />
-            {!platform && <TLDOverrides tenantId={tenantId} depositors={groups.registryProviders} receivers={groups.ourIdentities} />}
+            <DefaultArrangement scope={scope} scopeKey={scopeKey} platform={platform} depositors={groups.sources} receivers={groups.ourIdentities} />
+            {!platform && <TLDOverrides tenantId={tenantId} depositors={groups.sources} receivers={groups.ourIdentities} />}
           </>
         )}
       </div>
@@ -164,19 +168,19 @@ function DefaultArrangement({
         <h2 className="font-semibold">{platform ? 'Platform default' : 'Operator default'}</h2>
         <p className="text-sm text-muted-foreground">
           {platform
-            ? 'Applies to every operator that sets nothing itself. Only platform parties can be used here.'
-            : 'Applies to every TLD of this operator that sets nothing itself.'}
+            ? 'Applies to every operator that sets nothing itself. Only platform-owned sources and identities can be used here.'
+            : 'Applies to every top-level domain of this operator that sets nothing itself.'}
           {current.data && ` Revision ${current.data.revision}.`}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Depositor (registry service provider)</Label>
+          <Label>Deposits come from</Label>
           <PartySelect
             parties={depositors}
             value={depositor}
             onChange={setDepositor}
-            inheritLabel={platform ? 'None' : 'Inherit from platform'}
+            inheritLabel={platform ? 'Not set' : 'Use the platform default'}
             needsPurpose={ARRANGEMENT_SIDE_PURPOSE.depositor}
           />
           <MissingKeyNotice
@@ -187,12 +191,12 @@ function DefaultArrangement({
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Receiver (our identity)</Label>
+          <Label>Received by (one of our identities)</Label>
           <PartySelect
             parties={receivers}
             value={receiver}
             onChange={setReceiver}
-            inheritLabel={platform ? 'None' : 'Inherit from platform'}
+            inheritLabel={platform ? 'Not set' : 'Use the platform default'}
             needsPurpose={ARRANGEMENT_SIDE_PURPOSE.receiver}
           />
           <MissingKeyNotice
@@ -248,13 +252,16 @@ function TLDOverrides({ tenantId, depositors, receivers }: { tenantId: string; d
     onError: (err) => toast.error(escrowKeyErrorMessage(err, 'Could not remove the override')),
   });
 
-  const side = (id?: string) => (id ? names.get(id) ?? id : 'inherited');
+  const side = (id?: string) => (id ? names.get(id) ?? id : 'the default');
 
   return (
     <section className="space-y-3 rounded-lg border border-border p-4">
       <div>
-        <h2 className="font-semibold">TLD overrides</h2>
-        <p className="text-sm text-muted-foreground">Only for TLDs whose depositor or receiver differs from the default.</p>
+        <h2 className="font-semibold">Overrides for one top-level domain</h2>
+        <p className="text-sm text-muted-foreground">
+          Only for a top-level domain whose source, or the identity that receives for it, differs from the default
+          above. Each side is overridden on its own; the other keeps following the default.
+        </p>
       </div>
       {(overrides.data?.items ?? []).length > 0 && (
         <ul className="divide-y divide-border rounded-md border">
@@ -262,9 +269,12 @@ function TLDOverrides({ tenantId, depositors, receivers }: { tenantId: string; d
             <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
               <span>
                 <span className="font-medium">.{a.tld}</span>
-                <span className="text-muted-foreground"> — depositor {side(a.depositorPartyId)}, receiver {side(a.receiverPartyId)} · rev {a.revision}</span>
+                <span className="text-muted-foreground">
+                  {' '}— from {side(a.depositorPartyId)}, received by {side(a.receiverPartyId)}
+                </span>
+                <span className="text-xs text-muted-foreground"> · revision {a.revision}</span>
               </span>
-              <Button variant="ghost" size="icon" aria-label={`Remove override for ${a.tld}`} onClick={() => remove.mutate(a.tld ?? '')}>
+              <Button variant="ghost" size="icon" aria-label={`Remove the override for ${a.tld}`} onClick={() => remove.mutate(a.tld ?? '')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </li>
@@ -273,26 +283,26 @@ function TLDOverrides({ tenantId, depositors, receivers }: { tenantId: string; d
       )}
       <div className="grid gap-3 sm:grid-cols-4 sm:items-end">
         <div className="space-y-1.5">
-          <Label htmlFor="override-tld">TLD</Label>
+          <Label htmlFor="override-tld">Top-level domain</Label>
           <Input id="override-tld" placeholder="example" value={tld} onChange={(e) => setTld(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Depositor</Label>
+          <Label>Deposits come from</Label>
           <PartySelect
             parties={depositors}
             value={depositor}
             onChange={setDepositor}
-            inheritLabel="Inherit"
+            inheritLabel="Use the operator default"
             needsPurpose={ARRANGEMENT_SIDE_PURPOSE.depositor}
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Receiver</Label>
+          <Label>Received by</Label>
           <PartySelect
             parties={receivers}
             value={receiver}
             onChange={setReceiver}
-            inheritLabel="Inherit"
+            inheritLabel="Use the operator default"
             needsPurpose={ARRANGEMENT_SIDE_PURPOSE.receiver}
           />
         </div>
