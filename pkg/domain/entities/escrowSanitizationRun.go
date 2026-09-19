@@ -13,7 +13,10 @@ var (
 	ErrInvalidEscrowSanitizationRun      = errors.New("invalid escrow sanitization run")
 	ErrEscrowSanitizationRunNotFound     = errors.New("escrow sanitization run not found")
 	ErrEscrowSanitizationRunAlreadyFinal = errors.New("escrow sanitization run is already final")
-	ErrEscrowSourceNotAccepted           = errors.New("escrow validation run is not an accepted source for sanitization")
+	// ErrEscrowSanitizationRunNotReopenable: only a run that ended in ERROR may
+	// be tried again.
+	ErrEscrowSanitizationRunNotReopenable = errors.New("escrow sanitization run can only be reopened from ERROR")
+	ErrEscrowSourceNotAccepted            = errors.New("escrow validation run is not an accepted source for sanitization")
 )
 
 // EscrowDerivativeLabel is the required label for the output of a sanitisation
@@ -51,8 +54,10 @@ type EscrowSanitizationCounts struct {
 	Rewritten   int64 `json:"rewritten"`
 }
 
-// EscrowSanitizationRun is the immutable record of one attempt to derive a
-// sanitized-pseudonymized copy of an already-validated deposit.
+// EscrowSanitizationRun is the record of the attempt to derive a
+// sanitized-pseudonymized copy of an already-validated deposit. A PASS or
+// QUARANTINED outcome is immutable; an ERROR (the service could not decide) may
+// be reopened and tried again, see Reopen.
 //
 // The source is never modified, never re-checksummed and never re-labelled:
 // the raw deposit stays the authoritative custody artifact and this record only
@@ -235,6 +240,63 @@ func (r *EscrowSanitizationRun) Finalize(f EscrowSanitizationFinalization) error
 // IsFinal reports whether the run has reached a terminal outcome.
 func (r *EscrowSanitizationRun) IsFinal() bool {
 	return r.Outcome != EscrowSanitizationRunning
+}
+
+// EscrowSanitizationReopening is what a fresh attempt at an errored run
+// replaces: the attempt's own identity, and the suffix and workflow version it
+// will run under.
+type EscrowSanitizationReopening struct {
+	WorkflowVersion string
+	SyntheticSuffix string
+	WorkflowID      string
+	RunID           string
+	StartedAt       time.Time
+}
+
+// Reopen returns an ERROR run to RUNNING so the service can try again.
+//
+// ERROR means the service could not decide (a token key was missing, the key
+// store was down), so it says nothing about the deposit and nothing was
+// published. PASS and QUARANTINED are decisions and stay final: a derivative
+// is never overwritten. The unique index on (tenant, source, policy version)
+// would otherwise make one transient failure permanent for that source.
+//
+// The previous attempt's findings are cleared with its outcome; the caller is
+// responsible for logging them first.
+func (r *EscrowSanitizationRun) Reopen(o EscrowSanitizationReopening) error {
+	if r.Outcome != EscrowSanitizationError {
+		return ErrEscrowSanitizationRunNotReopenable
+	}
+	if strings.TrimSpace(o.WorkflowVersion) == "" {
+		return errors.Join(ErrInvalidEscrowSanitizationRun, errors.New("workflowVersion is required"))
+	}
+	if strings.TrimSpace(o.WorkflowID) == "" {
+		return errors.Join(ErrInvalidEscrowSanitizationRun, errors.New("workflowID is required"))
+	}
+	if o.StartedAt.IsZero() {
+		return errors.Join(ErrInvalidEscrowSanitizationRun, errors.New("startedAt is required"))
+	}
+	// A retry may carry a corrected suffix (a bad one is itself an ERROR), so it
+	// is validated exactly as on creation.
+	normSuffix, err := NormalizeEscrowTLD(o.SyntheticSuffix)
+	if err != nil {
+		return errors.Join(ErrInvalidEscrowSanitizationRun, err)
+	}
+	if normSuffix == r.TLD {
+		return errors.Join(ErrInvalidEscrowSanitizationRun, errors.New("the synthetic suffix must differ from the source TLD"))
+	}
+
+	r.Outcome = EscrowSanitizationRunning
+	r.StageReached = ""
+	r.Findings = []EscrowFinding{}
+	r.FindingTally = nil
+	r.DerivativeObjectKey, r.DerivativeSHA256, r.DerivativeBytes, r.ManifestObjectKey = "", "", 0, ""
+	r.Counts = EscrowSanitizationCounts{}
+	r.TokenKeyFingerprint, r.TokenKeyVersionID = "", nil
+	r.WorkflowVersion, r.SyntheticSuffix = o.WorkflowVersion, normSuffix
+	r.WorkflowID, r.RunID = o.WorkflowID, o.RunID
+	r.StartedAt, r.CompletedAt = o.StartedAt.UTC(), nil
+	return nil
 }
 
 // FindingCodes returns the distinct finding codes in order of first appearance.

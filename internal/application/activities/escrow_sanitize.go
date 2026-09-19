@@ -197,9 +197,9 @@ type BindSanitizationSourceOutput struct {
 	// SourceValidationRunID echoes the bound source so later steps do not have
 	// to re-parse the launch parameter.
 	SourceValidationRunID uuid.UUID `json:"sourceValidationRunIdBound"`
-	// AlreadyFinal reports that this source has already been derived under this
-	// policy version and the earlier run reached a terminal state. There is
-	// nothing left to do and nothing to overwrite.
+	// AlreadyFinal reports that this source has already been decided under this
+	// policy version (PASS or QUARANTINED). There is nothing left to do and
+	// nothing to overwrite. An earlier ERROR is not final: it is reopened.
 	AlreadyFinal    bool   `json:"alreadyFinal"`
 	ExistingOutcome string `json:"existingOutcome,omitempty"`
 }
@@ -264,6 +264,17 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 	existing, err := a.sanitizations.FindBySourceAndPolicy(ctx, scope, source.ID, rdesanitize.PolicyVersion)
 	switch {
 	case err == nil:
+		// An ERROR is the service failing to decide (a missing token key, a
+		// store outage), not a decision about this deposit, and nothing was
+		// published. Treating it as final would make every such failure
+		// permanent for the source, because the unique index leaves no room for
+		// a second record. PASS and QUARANTINED are decisions and stay final.
+		if existing.Outcome == entities.EscrowSanitizationError {
+			existing, err = a.reopenErrored(ctx, scope, existing, suffix, in)
+			if err != nil {
+				return BindSanitizationSourceOutput{}, err
+			}
+		}
 		out.SanitizationRunID, out.Replay, out.AlreadyFinal = existing.ID, true, existing.IsFinal()
 		out.SyntheticSuffix, out.ExistingOutcome = existing.SyntheticSuffix, string(existing.Outcome)
 		if existing.IsFinal() {
@@ -303,6 +314,42 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 		"source_run_id", source.ID.String(), "tld", deposit.TLD, "stage", string(rdesanitize.StageSource),
 		"policy_version", rdesanitize.PolicyVersion, "replay", out.Replay)
 	return out, nil
+}
+
+// reopenErrored returns a run that ended in ERROR to RUNNING for a new attempt
+// and returns the record the caller should bind to.
+//
+// If another attempt reopened it first, that attempt's record is returned
+// instead, so two launches converge on one run exactly as a concurrent Create
+// does.
+func (a *EscrowSanitizeActivities) reopenErrored(
+	ctx context.Context, scope entities.OperatorID, run *entities.EscrowSanitizationRun, suffix string, in BindSanitizationSourceInput,
+) (*entities.EscrowSanitizationRun, error) {
+	// Reopening clears the findings, so the failure being retried is logged
+	// first: it is the only place it survives.
+	activity.GetLogger(ctx).Warn("escrow sanitization: reopening a run that ended in ERROR",
+		"correlation_id", in.WorkflowID, "sanitization_run_id", run.ID.String(),
+		"previous_workflow_id", run.WorkflowID, "previous_codes", run.FindingCodes(), "previous_stage", run.StageReached)
+
+	if err := run.Reopen(entities.EscrowSanitizationReopening{
+		WorkflowVersion: EscrowSanitizeWorkflowVersion, SyntheticSuffix: suffix,
+		WorkflowID: in.WorkflowID, RunID: in.RunID, StartedAt: a.now(),
+	}); err != nil {
+		return nil, nonRetryableSanitize("sanitization run rejected", err)
+	}
+	err := a.sanitizations.Reopen(ctx, scope, run)
+	switch {
+	case err == nil:
+		return run, nil
+	case errors.Is(err, entities.ErrEscrowSanitizationRunNotReopenable):
+		current, ferr := a.sanitizations.FindBySourceAndPolicy(ctx, scope, run.SourceValidationRunID, run.PolicyVersion)
+		if ferr != nil {
+			return nil, fmt.Errorf("BindSanitizationSource: reopen run: %w", ferr)
+		}
+		return current, nil
+	default:
+		return nil, fmt.Errorf("BindSanitizationSource: reopen run: %w", err)
+	}
 }
 
 // ---------------------------------------------------------------------------

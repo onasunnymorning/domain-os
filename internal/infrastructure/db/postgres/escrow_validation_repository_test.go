@@ -284,6 +284,73 @@ func (s *EscrowValidationSuite) TestSanitizationRuns_FinalizeOnce() {
 	s.True(errors.Is(repo.Finalize(ctx, a, run), entities.ErrEscrowSanitizationRunAlreadyFinal))
 }
 
+// TestSanitizationRuns_ReopenOnlyAnError covers the retry of a run that ended
+// in ERROR. The unique index leaves that run as the only record the source can
+// ever have under the policy, so it has to be reopened in place, and only while
+// it is still an ERROR.
+func (s *EscrowValidationSuite) TestSanitizationRuns_ReopenOnlyAnError() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewEscrowSanitizationRunRepository(tx)
+	ctx := context.Background()
+	a, b := s.scope("opA"), s.scope("opB")
+
+	run := s.newSanitizationRun(a, uuid.New(), uuid.New(), "rde-baseline-v1")
+	s.Require().NoError(repo.Create(ctx, run))
+	keyVersion := uuid.New()
+	s.Require().NoError(run.Finalize(entities.EscrowSanitizationFinalization{
+		Outcome: entities.EscrowSanitizationError, StageReached: "source",
+		Findings:            []entities.EscrowFinding{{Code: "TOKEN_KEY_UNAVAILABLE", Severity: "ERROR", Stage: "source", Message: "m"}},
+		TokenKeyFingerprint: "ABCDEFGHIJKLMNOP", TokenKeyVersionID: &keyVersion,
+		CompletedAt: run.StartedAt.Add(time.Minute),
+	}))
+	s.Require().NoError(repo.Finalize(ctx, a, run))
+
+	// Reopening a still-RUNNING entity is rejected before touching the DB.
+	s.True(errors.Is(repo.Reopen(ctx, a, run), entities.ErrInvalidEscrowSanitizationRun))
+
+	retryAt := run.StartedAt.Add(time.Hour).UTC().Truncate(time.Microsecond)
+	s.Require().NoError(run.Reopen(entities.EscrowSanitizationReopening{
+		WorkflowVersion: "escrow-sanitize/2", SyntheticSuffix: "sandbox-zone", WorkflowID: "wf-2", RunID: "run-2", StartedAt: retryAt,
+	}))
+
+	// Another tenant cannot reopen it.
+	s.True(errors.Is(repo.Reopen(ctx, b, run), entities.ErrEscrowSanitizationRunNotReopenable))
+	stillErrored, err := repo.GetByID(ctx, a, run.ID)
+	s.Require().NoError(err)
+	s.Equal(entities.EscrowSanitizationError, stillErrored.Outcome)
+
+	s.Require().NoError(repo.Reopen(ctx, a, run))
+	got, err := repo.GetByID(ctx, a, run.ID)
+	s.Require().NoError(err)
+	s.Equal(entities.EscrowSanitizationRunning, got.Outcome)
+	s.Empty(got.Findings, "the failed attempt's findings are gone")
+	s.Empty(got.TokenKeyFingerprint)
+	s.Nil(got.TokenKeyVersionID)
+	s.Nil(got.CompletedAt)
+	s.Equal("wf-2", got.WorkflowID)
+	s.Equal("run-2", got.RunID)
+	s.Equal("escrow-sanitize/2", got.WorkflowVersion)
+	s.Equal("sandbox-zone", got.SyntheticSuffix)
+	s.True(got.StartedAt.Equal(retryAt))
+
+	// A second reopen matches no ERROR row: the first attempt won.
+	s.True(errors.Is(repo.Reopen(ctx, a, run), entities.ErrEscrowSanitizationRunNotReopenable))
+
+	// The run finishes normally afterwards, once.
+	s.Require().NoError(got.Finalize(entities.EscrowSanitizationFinalization{
+		Outcome: entities.EscrowSanitizationQuarantined, StageReached: "rewrite", CompletedAt: retryAt.Add(time.Minute),
+	}))
+	s.Require().NoError(repo.Finalize(ctx, a, got))
+
+	// A decision is never reopened, even by a caller that forces the state.
+	got.Outcome = entities.EscrowSanitizationRunning
+	s.True(errors.Is(repo.Reopen(ctx, a, got), entities.ErrEscrowSanitizationRunNotReopenable))
+	final, err := repo.GetByID(ctx, a, run.ID)
+	s.Require().NoError(err)
+	s.Equal(entities.EscrowSanitizationQuarantined, final.Outcome)
+}
+
 // TestRuns_KeyEvidenceRoundTripsAndFiltersByVersion covers issue #429: a run
 // records which key versions it used, and "which runs used this version" is a
 // scoped query.
