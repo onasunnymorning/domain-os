@@ -54,13 +54,16 @@ export const useWorkflowStore = create<WorkflowStore>()(
       modalOpen: false,
       selectedRunId: null,
 
+      // Adding a run also selects it: every launch path opens the control
+      // center right after, and it must land on the run that was just launched
+      // rather than falling back to the oldest one.
       addRun: (run) =>
         set((state) => {
-          // Prevent duplicates by workflowId
+          // Prevent duplicates by workflowId, but still point at the existing one
           if (state.runs.some((r) => r.workflowId === run.workflowId)) {
-            return state;
+            return { selectedRunId: run.workflowId };
           }
-          return { runs: [...state.runs, run] };
+          return { runs: [...state.runs, run], selectedRunId: run.workflowId };
         }),
 
       updateRun: (workflowId, patch) =>
