@@ -48,10 +48,10 @@ type ToEntityResult struct {
 
 // ToEntity converts the RDEDomain to a Domain entity
 func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
-	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
-	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
+	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we generate a random one to import the data
+	aInfo, err := GenerateAuthInfo()
 	if err != nil {
-		return nil, err // Untestable, just catching the error incase we edit two lines above
+		return nil, err // Only if the system's entropy source fails; never fall back to a fixed value
 	}
 	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, string(aInfo))
 	if err != nil {

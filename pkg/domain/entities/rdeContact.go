@@ -60,10 +60,10 @@ func (c *RDEContact) ToEntity() (*Contact, error) {
 	if err != nil {
 		return nil, err // Untestable until implementation of Disclose.ToEntity()
 	}
-	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we will generate a random one to import the data
-	aInfo, err := NewAuthInfoType("escr0W1mP*rt")
+	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we generate a random one to import the data
+	aInfo, err := GenerateAuthInfo()
 	if err != nil {
-		return nil, err // Untestable, just catching the error incase our AuthInfoType is validation changes
+		return nil, err // Only if the system's entropy source fails; never fall back to a fixed value
 	}
 	// Create a new contact object
 	contact, err := NewContact(c.ID, c.RoID, c.Email, aInfo.String(), c.ClID)

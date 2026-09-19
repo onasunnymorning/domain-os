@@ -667,3 +667,26 @@ func TestGetDomainStatusFromRDEDomainStatus(t *testing.T) {
 	}
 
 }
+
+// An escrow deposit has no authInfo (RFC 9022), so ToEntity has to make one. It must be compliant and
+// must differ between objects: a value shared by every imported domain is a transfer credential for all of them.
+func TestRDEDomain_ToEntity_GeneratesAuthInfo(t *testing.T) {
+	newRDEDomain := func() *RDEDomain {
+		return &RDEDomain{
+			Name:       "apex.domains",
+			RoID:       "12345_DOM-APEX",
+			ClID:       "GoMamma",
+			Registrant: "GoMamma",
+		}
+	}
+
+	seen := map[AuthInfoType]struct{}{}
+	for i := 0; i < 200; i++ {
+		result, err := newRDEDomain().ToEntity()
+		require.NoError(t, err)
+		require.NoError(t, result.Domain.AuthInfo.Validate())
+		require.NotEqual(t, "escr0W1mP*rt", result.Domain.AuthInfo.String())
+		seen[result.Domain.AuthInfo] = struct{}{}
+	}
+	require.Len(t, seen, 200)
+}

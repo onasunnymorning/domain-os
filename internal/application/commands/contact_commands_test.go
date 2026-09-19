@@ -84,10 +84,9 @@ func TestFromRdeContact(t *testing.T) {
 				UpRr:   "myRegstrarID",
 			},
 			cmd: &CreateContactCommand{
-				ID:       "validClID",
-				Email:    "email@me.com",
-				AuthInfo: "escr0W1mP*rt",
-				ClID:     "myRegstrarID",
+				ID:    "validClID",
+				Email: "email@me.com",
+				ClID:  "myRegstrarID",
 				Status: entities.ContactStatus{
 					OK: true,
 				},
@@ -146,11 +145,10 @@ func TestFromRdeContact(t *testing.T) {
 				UpRr:   "myRegstrarID",
 			},
 			cmd: &CreateContactCommand{
-				ID:       "validClID",
-				RoID:     "12345_CONT-APEX",
-				Email:    "email@me.com",
-				AuthInfo: "escr0W1mP*rt",
-				ClID:     "myRegstrarID",
+				ID:    "validClID",
+				RoID:  "12345_CONT-APEX",
+				Email: "email@me.com",
+				ClID:  "myRegstrarID",
 				Status: entities.ContactStatus{
 					OK: true,
 				},
@@ -391,7 +389,12 @@ func TestFromRdeContact(t *testing.T) {
 			err := cmd.FromRdeContact(tc.rdeContact)
 			require.ErrorIs(t, err, tc.wantErr)
 			if err == nil {
-				require.Equal(t, tc.cmd, cmd)
+				// An escrow deposit carries no authInfo, so it is generated: check it is valid, then
+				// compare everything else exactly.
+				require.NoError(t, entities.AuthInfoType(cmd.AuthInfo).Validate())
+				want := *tc.cmd
+				want.AuthInfo = cmd.AuthInfo
+				require.Equal(t, &want, cmd)
 			}
 		})
 	}
