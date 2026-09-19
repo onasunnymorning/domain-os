@@ -4460,7 +4460,7 @@ func checkDomainsWithinTLD(db *sql.DB, tld string) QACheck {
 
 	check.Message = fmt.Sprintf("%d of %d domains are not under .%s. Importing them as .%s would re-assign any existing domain with the same name to .%s. "+
 		"The deposit was probably sanitized or renamed to a different suffix than the TLD it is being imported as", outside, total, forms[0], forms[0], forms[0])
-	if rows, err := db.Query("SELECT name FROM domains WHERE "+where+" LIMIT 50", args...); err == nil {
+	if rows, err := db.Query("SELECT name FROM domains WHERE "+where+" LIMIT 50", args...); err == nil { // #nosec G202 -- where is built only from a constant column expression and "?" placeholders; the TLD forms are bound as parameters
 		defer rows.Close()
 		var samples []map[string]string
 		for rows.Next() {
