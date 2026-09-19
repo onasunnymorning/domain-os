@@ -24,6 +24,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
+	"golang.org/x/net/idna"
 	"gorm.io/gorm"
 )
 
@@ -323,8 +324,13 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 	out.StagingKey = fmt.Sprintf("%s/%s/%s/%s/%s/deposit-%s.xml.gz",
 		escrowSanitizePendingPrefix, scope.String(), deposit.TLD, deposit.ID, out.SanitizationRunID, rdesanitize.PolicyVersion)
 	if !out.AlreadyFinal {
-		out.DerivativeKey = prefix + "/sanitized/deposit-" + rdesanitize.PolicyVersion + ".xml.gz"
-		out.ManifestKey = prefix + "/sanitized/manifest-" + rdesanitize.PolicyVersion + ".json"
+		// The browser and curl both name a download after the key's last
+		// segment, so that segment says which deposit and which suffix the file
+		// is: an operator with several derivatives in a Downloads folder can
+		// tell them apart without opening the manifest.
+		tag := sanitizedFileTag(out.SyntheticSuffix, source.RDEWatermark)
+		out.DerivativeKey = prefix + "/sanitized/deposit-" + rdesanitize.PolicyVersion + tag + ".xml.gz"
+		out.ManifestKey = prefix + "/sanitized/manifest-" + rdesanitize.PolicyVersion + tag + ".json"
 	}
 
 	logger.Info("escrow sanitization: source bound",
@@ -332,6 +338,34 @@ func (a *EscrowSanitizeActivities) BindSanitizationSource(ctx context.Context, i
 		"source_run_id", source.ID.String(), "tld", deposit.TLD, "stage", string(rdesanitize.StageSource),
 		"policy_version", rdesanitize.PolicyVersion, "replay", out.Replay)
 	return out, nil
+}
+
+// sanitizedFileTag is the "_<suffix>_<watermark date>" part of a published
+// derivative's file name. Either part is left out when it is unknown, so a
+// source with no watermark still gets a usable name.
+//
+// The suffix is reduced to lowercase ASCII letters, digits and hyphens: it is an
+// operator-supplied label that ends up in an object key and, from there, in a
+// file name on someone else's disk.
+func sanitizedFileTag(suffix string, watermark *time.Time) string {
+	var b strings.Builder
+	label := strings.ToLower(strings.Trim(strings.TrimSpace(suffix), "."))
+	if ascii, err := idna.ToASCII(label); err == nil && ascii != "" {
+		label = ascii
+	}
+	label = strings.Trim(strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return '-'
+	}, label), "-")
+	if label != "" {
+		b.WriteString("_" + label)
+	}
+	if watermark != nil && !watermark.IsZero() {
+		b.WriteString("_" + watermark.UTC().Format("2006-01-02"))
+	}
+	return b.String()
 }
 
 // reopenErrored returns a run that ended in ERROR to RUNNING for a new attempt
