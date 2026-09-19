@@ -57,8 +57,29 @@ func TestVerifyDetached(t *testing.T) {
 		_, f := VerifyDetached(nil, bytes.NewReader(data), rdetest.Sign(t, data, registry, false), testNow)
 		require.NotNil(t, f)
 		assert.Equal(t, CodeSigKeyUntrusted, f.Code)
-		assert.Contains(t, f.Message, "no active trusted signing key")
+		assert.Contains(t, f.Message, "no active verification key")
 		assert.Contains(t, f.Message, keyID(registry.Fingerprint), "the key to register, if it is the registry's")
+	})
+	// The finding message is what an operator reads at the moment a deposit
+	// fails, and the only way to act on it is on the escrow setup screens. If
+	// it names the key something those screens do not, the reader is sent
+	// hunting. This locks the words, not the sentences.
+	t.Run("refusals are worded as the escrow setup screens are", func(t *testing.T) {
+		var messages []string
+		_, f := VerifyDetached(nil, bytes.NewReader(data), rdetest.Sign(t, data, registry, false), testNow)
+		require.NotNil(t, f)
+		messages = append(messages, f.Message)
+		_, f = VerifyDetached(ring, bytes.NewReader(data), rdetest.Sign(t, data, stranger, false), testNow)
+		require.NotNil(t, f)
+		messages = append(messages, f.Message)
+		_, _, f = Decrypt(nil, bytes.NewReader(data), testNow)
+		require.NotNil(t, f)
+		messages = append(messages, f.Message)
+		for _, msg := range messages {
+			assert.NotContains(t, msg, "trusted", msg)
+			assert.NotContains(t, msg, "service key", msg)
+			assert.NotContains(t, msg, "tenant/TLD", msg)
+		}
 	})
 	t.Run("garbage signature is SIG_MALFORMED", func(t *testing.T) {
 		_, f := VerifyDetached(ring, bytes.NewReader(data), []byte("not a signature"), testNow)

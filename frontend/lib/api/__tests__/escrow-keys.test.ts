@@ -12,6 +12,7 @@ import {
   inheritedFromLabel,
   isPermissionError,
   listEscrowParties,
+  partyRole,
   escrowKeyErrorMessage,
   activateEscrowKeyVersion,
   type EscrowParty,
@@ -91,5 +92,18 @@ describe('escrow key registry client', () => {
     expect(groups.destinations.map((p: EscrowParty) => p.id)).toEqual(['agent']);
     expect(inheritedFromLabel('operator')).toBe('inherited from operator default');
     expect(inheritedFromLabel('tld')).toBe('set for this TLD');
+  });
+
+  it('takes the role the server derived, and still derives one when it is absent', () => {
+    // The server sends `role` now, so there is one mapping rather than one per
+    // client. Kind and side are still sent and still correct, which is what
+    // lets an older response, or a role this build has no words for, fall
+    // back instead of showing nothing.
+    expect(partyRole({ ...party({ id: 'x', kind: 'RSP', side: 'external' }), role: 'source' })).toBe('source');
+    expect(partyRole(party({ id: 'x', kind: 'RSP', side: 'external' }))).toBe('source');
+    expect(partyRole(party({ id: 'eve' }))).toBe('receiving-identity');
+    expect(
+      partyRole({ ...party({ id: 'eve' }), role: 'custodian' } as unknown as EscrowParty),
+    ).toBe('receiving-identity');
   });
 });

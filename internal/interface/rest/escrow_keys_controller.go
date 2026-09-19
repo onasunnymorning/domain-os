@@ -49,12 +49,19 @@ type EscrowKeyOwnerResponse struct {
 
 // EscrowPartyResponse is the API shape of a party.
 type EscrowPartyResponse struct {
-	ID       string                 `json:"id"`
-	Owner    EscrowKeyOwnerResponse `json:"owner"`
-	Name     string                 `json:"name"`
-	Kind     string                 `json:"kind"`
-	Side     string                 `json:"side"`
-	Purposes []string               `json:"purposes"`
+	ID    string                 `json:"id"`
+	Owner EscrowKeyOwnerResponse `json:"owner"`
+	Name  string                 `json:"name"`
+	Kind  string                 `json:"kind"`
+	Side  string                 `json:"side"`
+	// Role is kind and side said in the direction deposits travel: "source",
+	// "receiving-identity", and, once escrow targets exist, "destination" and
+	// "sending-identity". It is derived, so it adds nothing a client could not
+	// work out — but every client was working it out, and each in its own
+	// words. Kind and side stay: they are what the record and the resolver
+	// match on, and a client that already reads them is unaffected.
+	Role     string   `json:"role"`
+	Purposes []string `json:"purposes"`
 	// ActivePurposes are the purposes that hold an ACTIVE key version, so a
 	// caller can tell a party that can take part in a deposit today from one
 	// that is only configured to.
@@ -180,7 +187,7 @@ func toPartyResponse(p *entities.EscrowParty, scope entities.EscrowKeyScope, act
 	}
 	return EscrowPartyResponse{
 		ID: p.ID.String(), Owner: EscrowKeyOwnerResponse{Kind: string(p.Owner.Kind), Operator: p.Owner.Operator.String()},
-		Name: p.Name, Kind: string(p.Kind), Side: string(p.Side), Purposes: purposes,
+		Name: p.Name, Kind: string(p.Kind), Side: string(p.Side), Role: string(p.Role()), Purposes: purposes,
 		ActivePurposes: purposeStrings(active), Manageable: scope.CanManage(p.Owner),
 		CreatedAt: p.CreatedAt, CreatedBy: p.CreatedBy,
 	}

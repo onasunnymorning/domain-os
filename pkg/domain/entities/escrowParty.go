@@ -41,8 +41,46 @@ type EscrowParty struct {
 	CreatedBy string
 }
 
-// escrowPartyPurposes derives what a party's keys may be used for. Reserved
-// roles return purposes whose policy is not Supported.
+// EscrowPartyRole is what a party is in the direction deposits travel.
+//
+// It is derived from Kind and Side and adds no state. Kind and side stay the
+// record's classification, because the resolver, the arrangements and the
+// persisted audit match on them; the role is the same fact in the words the
+// operator-facing surfaces use, so nobody outside this package has to know
+// that an escrow source is an RSP on the external side.
+type EscrowPartyRole string
+
+const (
+	// EscrowRoleSource sends escrow deposits to us and signs them.
+	EscrowRoleSource EscrowPartyRole = "source"
+	// EscrowRoleReceivingIdentity is one of our own identities: deposits sent
+	// to us are encrypted to it, and we open them with its private key.
+	EscrowRoleReceivingIdentity EscrowPartyRole = "receiving-identity"
+	// EscrowRoleSendingIdentity is one of our own identities, which signs the
+	// deposits we send out. Reserved: it arrives with escrow targets.
+	EscrowRoleSendingIdentity EscrowPartyRole = "sending-identity"
+	// EscrowRoleDestination receives escrow deposits from us. Reserved, as above.
+	EscrowRoleDestination EscrowPartyRole = "destination"
+)
+
+// escrowPartyPurposes derives what a party's keys may be used for, and
+// escrowPartyRole derives what that party is called wherever a person reads
+// it. Both are functions of kind x side, so the table below is the whole
+// mapping between this record's classification and the vocabulary of the API
+// and the interface:
+//
+//	kind x side      role                 purposes                       the interface calls it
+//	DEA x self       receiving-identity   decrypt-inbound, pseudonymise  one of our receiving identities
+//	RSP x external   source               verify-inbound                 an escrow source
+//	RSP x self       sending-identity     sign-outbound (reserved)       one of our sending identities
+//	DEA x external   destination          encrypt-outbound (reserved)    an escrow destination
+//
+// The purposes are named for a person in the same way: decrypt-inbound is the
+// receiving identity's "decryption key", verify-inbound is the source's
+// "verification key", and pseudonymise is the "pseudonymisation key".
+//
+// Reserved roles return purposes whose policy is not Supported, which is what
+// NewEscrowParty refuses on.
 func escrowPartyPurposes(kind EscrowPartyKind, side EscrowPartySide) []EscrowKeyPurpose {
 	switch {
 	case kind == EscrowPartyDEA && side == EscrowPartySelf:
@@ -55,6 +93,23 @@ func escrowPartyPurposes(kind EscrowPartyKind, side EscrowPartySide) []EscrowKey
 		return []EscrowKeyPurpose{EscrowKeyPurposeEncryptOutbound}
 	default:
 		return nil
+	}
+}
+
+// escrowPartyRole names the party in the direction deposits travel. See the
+// table at escrowPartyPurposes.
+func escrowPartyRole(kind EscrowPartyKind, side EscrowPartySide) EscrowPartyRole {
+	switch {
+	case kind == EscrowPartyDEA && side == EscrowPartySelf:
+		return EscrowRoleReceivingIdentity
+	case kind == EscrowPartyRSP && side == EscrowPartyExternal:
+		return EscrowRoleSource
+	case kind == EscrowPartyRSP && side == EscrowPartySelf:
+		return EscrowRoleSendingIdentity
+	case kind == EscrowPartyDEA && side == EscrowPartyExternal:
+		return EscrowRoleDestination
+	default:
+		return ""
 	}
 }
 
@@ -99,6 +154,12 @@ func NewEscrowParty(owner EscrowKeyOwner, name string, kind EscrowPartyKind, sid
 // Purposes returns what this party's keys may be used for.
 func (p *EscrowParty) Purposes() []EscrowKeyPurpose {
 	return escrowPartyPurposes(p.Kind, p.Side)
+}
+
+// Role returns what this party is in the direction deposits travel. It is
+// empty only for a kind/side combination that cannot exist.
+func (p *EscrowParty) Role() EscrowPartyRole {
+	return escrowPartyRole(p.Kind, p.Side)
 }
 
 // AllowsPurpose reports whether a key of this purpose may belong to the party,

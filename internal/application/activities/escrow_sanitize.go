@@ -439,7 +439,7 @@ func (a *EscrowSanitizeActivities) ProduceDerivative(ctx context.Context, in Pro
 	}
 	if !ok {
 		// Our key store, not the deposit: ERROR, not a quarantine.
-		out.Result = sanitizeServiceError(rdesanitize.CodeTokenKeyUnavailable, "the sanitization token key is unavailable", now())
+		out.Result = sanitizeServiceError(rdesanitize.CodeTokenKeyUnavailable, "the receiving identity has no usable pseudonymisation key, so no sanitized copy can be made", now())
 		return out, nil
 	}
 	if tokenVersion != nil {
@@ -447,7 +447,7 @@ func (a *EscrowSanitizeActivities) ProduceDerivative(ctx context.Context, in Pro
 	}
 	tokens, err := rdesanitize.NewTokenizer(master, scope.String(), rdesanitize.PolicyVersion)
 	if err != nil {
-		out.Result = sanitizeServiceError(rdesanitize.CodeTokenKeyUnavailable, "the sanitization token key is unusable", now())
+		out.Result = sanitizeServiceError(rdesanitize.CodeTokenKeyUnavailable, "the receiving identity's active pseudonymisation key could not be used", now())
 		return out, nil
 	}
 	out.TokenKeyID = tokens.KeyFingerprint()
@@ -853,7 +853,7 @@ func sanitizeSourceFailure(open rdevalidate.Result, at time.Time) rdesanitize.Re
 	msg := "the validated source could not be reopened as validation left it"
 	for _, c := range open.Codes() {
 		if c == rdevalidate.CodeDecryptKeyUnavailable {
-			code, msg = rdesanitize.CodeTokenKeyUnavailable, "the escrow decryption keyring is unavailable"
+			code, msg = rdesanitize.CodeTokenKeyUnavailable, "the receiving identity has no usable decryption key, so the validated source cannot be reopened"
 			break
 		}
 	}
