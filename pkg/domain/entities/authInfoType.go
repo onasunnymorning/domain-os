@@ -74,10 +74,15 @@ const (
 	// below, carries roughly 100 bits of entropy.
 	GENERATED_AUTHINFO_LENGTH = 16
 
-	authInfoUpper   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	authInfoLower   = "abcdefghijklmnopqrstuvwxyz"
-	authInfoDigits  = "0123456789"
-	authInfoSpecial = "!#$%*+-.:=?@^_~" // punctuation or symbols, none of which needs escaping in EPP XML, JSON or a URL path
+	authInfoUpper  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	authInfoLower  = "abcdefghijklmnopqrstuvwxyz"
+	authInfoDigits = "0123456789"
+	// Punctuation or symbols, none of which needs escaping in EPP XML, JSON or a URL path. No "." on
+	// purpose: NormalizeString, which NewContact applies to the authInfo, strips a trailing dot, so a
+	// generated value ending in one would lose that character (and, when it was the only special
+	// character, stop being valid). Anything added here has to survive NormalizeString unchanged in any
+	// position; TestGenerateAuthInfo_SurvivesNormalization enforces that.
+	authInfoSpecial = "!#$%*+-:=?@^_~"
 )
 
 // generatedAuthInfoClasses are the character classes a generated authInfo draws from. One

@@ -154,3 +154,41 @@ func TestByteSource_RefillsAcrossBlocks(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+// A generated authInfo passes through NormalizeString on its way into a Contact (NewContact), and a
+// value that changes there is not the value we minted: dropping a trailing "." turned some generated
+// values invalid, so an import would have had contacts rejected at random. This checks every character
+// of the alphabet in every position, which no sample of random draws can guarantee.
+func TestGenerateAuthInfo_SurvivesNormalization(t *testing.T) {
+	filler := "Ab3xyzwvutsr" // valid on its own; the character under test is added around it
+	for _, class := range generatedAuthInfoClasses {
+		for _, c := range class {
+			for name, s := range map[string]string{
+				"leading":  string(c) + filler,
+				"middle":   filler[:6] + string(c) + filler[6:],
+				"trailing": filler + string(c),
+			} {
+				require.Equal(t, s, NormalizeString(s), "%q is changed by NormalizeString when %s", c, name)
+			}
+		}
+	}
+}
+
+// The generator is only useful if what it returns is accepted by the constructors an import goes through,
+// so run a large sample through the real ones rather than only through Validate.
+func TestGenerateAuthInfo_AcceptedByEntityConstructors(t *testing.T) {
+	// The failure this guards against occurred about once per 2,800 values, so the sample must be well beyond that.
+	const n = 60000
+	for i := 0; i < n; i++ {
+		a, err := GenerateAuthInfo()
+		require.NoError(t, err)
+
+		c, err := NewContact("validClID", "12345_CONT-APEX", "email@me.com", a.String(), "myRegstrarID")
+		require.NoError(t, err, "NewContact rejected generated authInfo %q", a)
+		require.Equal(t, a, c.AuthInfo, "NewContact changed generated authInfo %q", a)
+
+		d, err := NewDomain("12345_DOM-APEX", "apex.domains", "myRegstrarID", a.String())
+		require.NoError(t, err, "NewDomain rejected generated authInfo %q", a)
+		require.Equal(t, a, d.AuthInfo)
+	}
+}
