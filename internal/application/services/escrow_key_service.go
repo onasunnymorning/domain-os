@@ -152,6 +152,10 @@ func (s *EscrowKeyService) manageableParty(ctx context.Context, scope entities.E
 type EscrowKeyVersionCreated struct {
 	Version         *entities.EscrowKeyVersion
 	ProbeWorkflowID string
+	// Notice reports something the operator should know about what was stored,
+	// when the key was accepted with a change (subkeys dropped). Empty
+	// otherwise. It never describes key material.
+	Notice string
 }
 
 func secretName(v *entities.EscrowKeyVersion) string {
@@ -307,8 +311,15 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 	if policy.Material != entities.EscrowKeyMaterialOpenPGPPublic {
 		return nil, entities.ErrEscrowKeyMaterialNotApplicable
 	}
-	entity, err := rdevalidate.ParseArmoredPublicKey(cmd.ArmoredPublicKey)
-	if err != nil {
+	// A key whose subkeys cannot be read is accepted without them: the subkeys
+	// play no part in verifying a deposit, and what is stored is the reduced
+	// block, so the pipeline reads exactly what was accepted here.
+	entity, stored, err := rdevalidate.ParseArmoredPublicKeyLenient(cmd.ArmoredPublicKey)
+	var notice string
+	switch {
+	case errors.Is(err, rdevalidate.ErrPublicKeyHasNoUsableSubkeys):
+		notice = "This key's subkeys could not be read and were left out. Signatures are made by the primary key, so verification is unaffected."
+	case err != nil:
 		return nil, publicKeyRejection(cmd.ArmoredPublicKey, err)
 	}
 	fingerprint := rdevalidate.FingerprintHex(entity)
@@ -318,7 +329,7 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 	}
 	actx := s.auditContext(ctx)
 	v, err := entities.NewEscrowKeyVersion(entities.EscrowKeyVersionSpec{
-		Party: p, Purpose: purpose, Version: n, Fingerprint: fingerprint, ArmoredPublicKey: cmd.ArmoredPublicKey,
+		Party: p, Purpose: purpose, Version: n, Fingerprint: fingerprint, ArmoredPublicKey: stored,
 		NotBefore: cmd.NotBefore, NotAfter: cmd.NotAfter, KeyExpiresAt: secrets.KeyExpiry(entity),
 		CreatedBy: actx.Actor, At: actx.At,
 	})
@@ -332,7 +343,7 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 	if err := s.versions.Create(ctx, v, ev); err != nil {
 		return nil, fmt.Errorf("create key version: %w", err)
 	}
-	return &EscrowKeyVersionCreated{Version: v}, nil
+	return &EscrowKeyVersionCreated{Version: v, Notice: notice}, nil
 }
 
 // publicKeyRejection turns a parse failure into a reason the person pasting the
