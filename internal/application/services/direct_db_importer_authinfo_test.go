@@ -67,9 +67,12 @@ func authInfoTestDB(t *testing.T) *gorm.DB {
 // can run again against a used database. It returns the registrar's ClID.
 func seedFixtures(t *testing.T, db *gorm.DB, tld string, gurid int) string {
 	t.Helper()
-	ryID, clID := tld+"op", "rar"+tld
+	slug := strings.ReplaceAll(tld, ".", "") // operator and registrar IDs cannot carry a dot
+	ryID, clID := slug+"op", "rar"+slug
 	cleanup := func() {
+		db.Exec("DELETE FROM domain_hosts WHERE domain_ro_id IN (SELECT ro_id FROM domains WHERE tld_name = ?)", tld)
 		db.Exec("DELETE FROM domains WHERE tld_name = ?", tld)
+		db.Exec("DELETE FROM hosts WHERE cl_id = ?", clID)
 		db.Exec("DELETE FROM contacts WHERE cl_id = ?", clID)
 		db.Exec("DELETE FROM registrars WHERE cl_id = ?", clID)
 		db.Exec("DELETE FROM tlds WHERE name = ?", tld)

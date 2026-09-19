@@ -18,6 +18,9 @@ import (
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
+// jiscTLD is the TLD the JISC export is imported under.
+const jiscTLD = "ac.uk"
+
 // JiscService handles the import and analysis of JISC domain data
 type JiscService struct {
 	db *sql.DB
@@ -30,6 +33,14 @@ func NewJiscService() *JiscService {
 
 // GenerateEscrowDB generates a standard escrow SQLite DB from JISC JSON
 func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
+	_, err := s.generateEscrowDB(jsonPath)
+	return err
+}
+
+// generateEscrowDB does the work of GenerateEscrowDB and also returns the number of source records it
+// decoded, which the QA step compares with what actually reached the staged database: inserts here log
+// and skip their errors, so the staged counts can silently fall short of the source.
+func (s *JiscService) generateEscrowDB(jsonPath string) (int64, error) {
 	// Determine output filename: same as jsonPath but .db
 	dbPath := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + ".db"
 
@@ -39,19 +50,19 @@ func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
 	var err error
 	s.db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return 0, fmt.Errorf("failed to open database: %w", err)
 	}
 	defer s.db.Close()
 
 	// Create Standard Escrow Schema
 	if err := s.createEscrowSchema(); err != nil {
-		return fmt.Errorf("failed to create escrow schema: %w", err)
+		return 0, fmt.Errorf("failed to create escrow schema: %w", err)
 	}
 
 	// Begin transaction
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 
@@ -79,7 +90,7 @@ func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
 	log.Printf("Importing data from %s...", jsonPath)
 	file, err := os.Open(jsonPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer file.Close()
 
@@ -87,17 +98,17 @@ func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
 	// Read opening bracket
 	t, err := dec.Token()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if delim, ok := t.(json.Delim); !ok || delim != '[' {
-		return fmt.Errorf("expected start of JSON array")
+		return 0, fmt.Errorf("expected start of JSON array")
 	}
 
 	count := 0
 	for dec.More() {
 		var d jisc.JiscDomain
 		if err := dec.Decode(&d); err != nil {
-			return err
+			return 0, err
 		}
 
 		// 1. Registrar
@@ -186,10 +197,10 @@ func (s *JiscService) GenerateEscrowDB(jsonPath string) error {
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return 0, err
 	}
 	fmt.Printf("\rProcessed %d domains. DB created at %s\n", count, dbPath)
-	return nil
+	return int64(count), nil
 }
 
 func (s *JiscService) createEscrowSchema() error {
@@ -304,7 +315,8 @@ func (s *JiscService) createEscrowSchema() error {
 func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	// 1. Generate SQLite from JSON
 	start := time.Now()
-	if err := s.GenerateEscrowDB(jsonPath); err != nil {
+	parsedDomains, err := s.generateEscrowDB(jsonPath)
+	if err != nil {
 		return fmt.Errorf("failed to generate escrow db: %w", err)
 	}
 	log.Printf("SQLite generation took %v", time.Since(start))
@@ -387,7 +399,39 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	}
 	log.Printf("Registrar Mapping built. %d registrars mapped (%d missing in PG, mapped to fallback).", len(clidMap), missingCount)
 
-	// 4. Run Import Phases
+	// 4. QA gate. Nothing has been written to Postgres yet; everything above only read. Validate the staged
+	// data and stop here if it fails, rather than discovering the problem partway through the writes below
+	// (data-pipeline-qa, INV-05). The report is written first so an operator can see why the run stopped.
+	existingClIDs := make(map[string]struct{}, len(pgRegistrars))
+	for _, r := range pgRegistrars {
+		existingClIDs[r.ClID] = struct{}{}
+	}
+	qaReport, err := RunJiscStagedQA(sqliteDB, JiscQAInput{
+		SourceKey:     jsonPath,
+		TLD:           jiscTLD,
+		ParsedDomains: parsedDomains,
+		ClIDMap:       clidMap,
+		ExistingClIDs: existingClIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("staged data QA could not run, nothing was written to Postgres: %w", err)
+	}
+	qaReportPath := strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_qa-report.json"
+	if err := qaReport.WriteFile(qaReportPath); err != nil {
+		return fmt.Errorf("staged data QA report could not be saved, nothing was written to Postgres: %w", err)
+	}
+	log.Printf("QA report saved to: %s (passed=%t)", qaReportPath, qaReport.Passed)
+	if !qaReport.Passed {
+		failed := qaReport.Failed()
+		rules := make([]string, len(failed))
+		for i, c := range failed {
+			log.Printf("QA FAILED %s: %s", c.Rule, c.Message)
+			rules[i] = c.Rule
+		}
+		return fmt.Errorf("staged data failed QA (%s), nothing was written to Postgres; see %s", strings.Join(rules, ", "), qaReportPath)
+	}
+
+	// 5. Run Import Phases
 	noopHeartbeat := func(s string) {} // CLI doesn't need heartbeat callbacks
 
 	log.Println("Importing Contacts...")
@@ -407,7 +451,7 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	log.Println("Importing Domains...")
 	// TLD is assumed ac.uk from context, but maybe verify/pass?
 	// The importer needs tld arg.
-	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, "ac.uk", clidMap, "", noopHeartbeat)
+	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, jiscTLD, clidMap, "", noopHeartbeat)
 	if err != nil {
 		return fmt.Errorf("ImportDomains failed: %w", err)
 	}
