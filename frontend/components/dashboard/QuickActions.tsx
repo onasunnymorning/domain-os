@@ -14,7 +14,6 @@ import type { WorkflowRun } from '@/lib/stores/useWorkflowStore';
 import {
   Import,
   Users,
-  Camera,
   Zap,
 } from 'lucide-react';
 
@@ -36,13 +35,6 @@ const FEATURED_WORKFLOWS = [
     gradient: 'from-blue-500/10 to-blue-600/5',
     iconColor: 'text-blue-600 dark:text-blue-400',
     iconBg: 'bg-blue-100 dark:bg-blue-950/40',
-  },
-  {
-    key: 'take-snapshot',
-    icon: Camera,
-    gradient: 'from-violet-500/10 to-violet-600/5',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-    iconBg: 'bg-violet-100 dark:bg-violet-950/40',
   },
 ];
 
@@ -75,7 +67,7 @@ export function QuickActions() {
           <Zap className="h-4 w-4 text-primary" />
           <h3 className="text-base font-semibold">Quick Actions</h3>
         </div>
-        {Array.from({ length: 3 }).map((_, i) => (
+        {Array.from({ length: FEATURED_WORKFLOWS.length }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg" />
         ))}
       </div>

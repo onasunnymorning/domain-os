@@ -42,12 +42,6 @@ const ARTIFACT_FIELDS: Record<string, Record<string, string>> = {
     manifestKey: 'Cleanup Manifest',
     backupKey: 'Backup Archive',
   },
-  'take-snapshot': {
-    snapshotKey: 'Snapshot (JSONL)',
-    manifestKey: 'Manifest',
-    SnapshotKey: 'Snapshot (JSONL)',
-    ManifestKey: 'Manifest',
-  },
   // A validation run always emits the summary; the rdeReport needs a decision
   // and the notification needs a signature, so those two keys are often empty.
   'escrow-validation': {
@@ -616,13 +610,6 @@ export function WorkflowResult({ workflowId, workflowType, status, signalName, o
           rejectText: 'Cancel Deletion',
           approveToast: 'Deletion approved — cleanup starting',
           rejectToast: 'Deletion cancelled',
-        };
-      case 'ConfirmSeedFromSnapshot':
-        return {
-          approveText: 'Confirm Seed',
-          rejectText: 'Cancel Seed',
-          approveToast: 'Seed approved — database import starting',
-          rejectToast: 'Seed cancelled',
         };
       case 'ConfirmEscrowImport':
       default:
