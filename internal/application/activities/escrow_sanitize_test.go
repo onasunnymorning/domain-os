@@ -257,6 +257,48 @@ func TestEscrowSanitize_ReplayBindsToTheExistingDerivative(t *testing.T) {
 	assert.Equal(t, first.DerivativeKey, again.DerivativeKey)
 }
 
+// Asking for a suffix other than the one the existing derivative carries used
+// to be answered with that derivative and no error, so a caller who asked for
+// `.gza` was handed a `.paco` file and imported it as `gza`.
+func TestEscrowSanitize_DifferentSuffixIsRefusedNotReplayed(t *testing.T) {
+	f := newESFixture(t)
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1, Contacts: 1})
+
+	first, err := f.bind(t, sourceRunID, "paco")
+	require.NoError(t, err)
+	require.Equal(t, "paco", first.SyntheticSuffix)
+
+	_, err = f.bindAs(t, sourceRunID, "gza", "wf-san-2", "run-san-2")
+	require.Error(t, err, "a derivative under another suffix cannot stand in for the one requested")
+	assert.True(t, isNonRetryable(err), "retrying the same request cannot succeed")
+	assert.Contains(t, err.Error(), `"paco"`, "the message names the suffix that exists")
+	assert.Contains(t, err.Error(), `"gza"`, "and the one that was asked for")
+	assert.Contains(t, err.Error(), first.SanitizationRunID.String())
+
+	run, err := f.sanRepo.GetByID(t.Context(), f.ev.scope, first.SanitizationRunID)
+	require.NoError(t, err)
+	assert.Equal(t, "paco", run.SyntheticSuffix, "the refused launch leaves the existing run as it was")
+	assert.Equal(t, "wf-san-1", run.WorkflowID)
+}
+
+// The same suffix, spelled differently, is still the same suffix, and leaving it
+// unset means "whatever exists" — both keep replaying.
+func TestEscrowSanitize_SameOrUnsetSuffixStillReplays(t *testing.T) {
+	f := newESFixture(t)
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1, Contacts: 1})
+
+	first, err := f.bind(t, sourceRunID, "paco")
+	require.NoError(t, err)
+
+	for _, suffix := range []string{"", "paco", "PACO.", " paco "} {
+		again, err := f.bindAs(t, sourceRunID, suffix, "wf-san-2", "run-san-2")
+		require.NoError(t, err, "suffix %q", suffix)
+		assert.True(t, again.Replay, "suffix %q", suffix)
+		assert.Equal(t, first.SanitizationRunID, again.SanitizationRunID, "suffix %q", suffix)
+		assert.Equal(t, "paco", again.SyntheticSuffix, "suffix %q", suffix)
+	}
+}
+
 func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *testing.T) {
 	f := newESFixture(t)
 	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1, Contacts: 1, VendorExtension: true})
