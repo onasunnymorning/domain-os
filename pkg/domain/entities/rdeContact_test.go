@@ -809,3 +809,32 @@ func TestGetContactStatusFromRDEContactStatus_EmptyStatus(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrInvalidContactStatus)
 }
+
+// An escrow deposit has no authInfo (RFC 9022), so ToEntity has to make one. It must be compliant and
+// must differ between objects: a value shared by every imported contact is a credential for all of them.
+func TestRDEContact_ToEntity_GeneratesAuthInfo(t *testing.T) {
+	newRDEContact := func() *RDEContact {
+		return &RDEContact{
+			ID:     "validClID",
+			RoID:   "12345_CONT-APEX",
+			Email:  "email@me.com",
+			ClID:   "myRegstrarID",
+			Status: []RDEContactStatus{{S: "ok"}},
+			PostalInfo: []RDEContactPostalInfo{{
+				Type:    "int",
+				Name:    "name",
+				Address: RDEAddress{Street: []string{"street"}, City: "Ollantaytambo", PostalCode: "pc", CountryCode: "PE"},
+			}},
+		}
+	}
+
+	seen := map[AuthInfoType]struct{}{}
+	for i := 0; i < 200; i++ {
+		contact, err := newRDEContact().ToEntity()
+		require.NoError(t, err)
+		require.NoError(t, contact.AuthInfo.Validate())
+		require.NotEqual(t, "escr0W1mP*rt", contact.AuthInfo.String())
+		seen[contact.AuthInfo] = struct{}{}
+	}
+	require.Len(t, seen, 200)
+}
