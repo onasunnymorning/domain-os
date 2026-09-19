@@ -309,7 +309,7 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 	}
 	entity, err := rdevalidate.ParseArmoredPublicKey(cmd.ArmoredPublicKey)
 	if err != nil {
-		return nil, errors.Join(entities.ErrEscrowKeyMaterialUnreadable, errors.New("expected exactly one ASCII-armored OpenPGP public key"))
+		return nil, publicKeyRejection(cmd.ArmoredPublicKey, err)
 	}
 	fingerprint := rdevalidate.FingerprintHex(entity)
 	n, err := s.nextVersion(ctx, scope, p, purpose, fingerprint)
@@ -333,6 +333,29 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 		return nil, fmt.Errorf("create key version: %w", err)
 	}
 	return &EscrowKeyVersionCreated{Version: v}, nil
+}
+
+// publicKeyRejection turns a parse failure into a reason the person pasting the
+// key can act on. OpenPGP's own message describes the structure of the block —
+// never its contents — so it is passed through: a registry key this library
+// cannot read is a key we could not verify a deposit with either, and the
+// operator needs to know which check failed to take it up with the registry.
+func publicKeyRejection(armored string, err error) error {
+	switch {
+	case strings.Contains(armored, "PRIVATE KEY BLOCK"):
+		return entities.RejectEscrowKeyMaterial("that is a private key. Paste only the public key block (-----BEGIN PGP PUBLIC KEY BLOCK-----); ask the registry for its public key if that is all you have")
+	case !strings.Contains(armored, "BEGIN PGP PUBLIC KEY BLOCK"):
+		return entities.RejectEscrowKeyMaterial("this does not look like an ASCII-armored OpenPGP public key: it must start with -----BEGIN PGP PUBLIC KEY BLOCK-----")
+	case strings.Contains(err.Error(), "expected exactly one key"):
+		return entities.RejectEscrowKeyMaterial("this block holds more than one key. Add one key per version, so each gets its own lifecycle")
+	default:
+		// OpenPGP rejects some keys from the 2000s outright (an unverifiable
+		// self-signature, an algorithm it does not implement). Say so plainly:
+		// the same library verifies deposits, so accepting the key here would
+		// only move the failure to the first deposit.
+		return entities.RejectEscrowKeyMaterial("OpenPGP could not read this key: " + err.Error() +
+			". The deposit pipeline uses the same library, so this key could not verify a signature either — ask the registry for a current key")
+	}
 }
 
 // GenerateSymmetricKey creates a random symmetric key version in the key store
