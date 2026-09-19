@@ -187,7 +187,7 @@ func OpenDeposit(ctx context.Context, in Input, res *Result, now func() time.Tim
 		res.StageReached = StageDecrypt
 		heartbeat(StageDecrypt, "decrypting deposit")
 		if len(in.ServiceKeys) == 0 {
-			res.Add(Finding{Code: CodeDecryptKeyUnavailable, Severity: SeverityError, Stage: StageDecrypt, Message: "no service decryption key is available", At: now()})
+			res.Add(Finding{Code: CodeDecryptKeyUnavailable, Severity: SeverityError, Stage: StageDecrypt, Message: noDecryptionKeyMessage, At: now()})
 			st.Close()
 			return nil, nil, false
 		}

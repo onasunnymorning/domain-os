@@ -49,6 +49,12 @@ export interface EscrowParty {
   side: EscrowPartySide;
   purposes: EscrowKeyPurpose[];
   /**
+   * What the party is in the direction deposits travel, as the server names
+   * it. Optional only because a server older than this field does not send it;
+   * `partyRole` falls back to deriving it from kind and side.
+   */
+  role?: EscrowPartyRole;
+  /**
    * The purposes that hold an ACTIVE key version. `purposes` says what the
    * party may do; this says what it can do today. Undefined only when the
    * server did not report it.
@@ -200,7 +206,17 @@ export const PURPOSE_LABELS: Record<
  */
 export type EscrowPartyRole = 'source' | 'receiving-identity' | 'destination' | 'sending-identity';
 
-export function partyRole(party: Pick<EscrowParty, 'kind' | 'side'>): EscrowPartyRole {
+const ROLES: EscrowPartyRole[] = ['source', 'receiving-identity', 'destination', 'sending-identity'];
+
+/**
+ * The server derives this too, and its answer wins: one mapping, in the layer
+ * that owns the record. The fallback is for a server that predates the `role`
+ * field — and for the same reason an unrecognised value falls back rather than
+ * being shown, since a future role we have no words for is worse than the two
+ * facts it was derived from.
+ */
+export function partyRole(party: Pick<EscrowParty, 'kind' | 'side'> & { role?: string }): EscrowPartyRole {
+  if (party.role && (ROLES as string[]).includes(party.role)) return party.role as EscrowPartyRole;
   if (party.side === 'self') return party.kind === 'DEA' ? 'receiving-identity' : 'sending-identity';
   return party.kind === 'RSP' ? 'source' : 'destination';
 }
@@ -365,7 +381,10 @@ export async function getEffectiveEscrowArrangement(tenantId: string, tld: strin
 /** Groups parties by the direction deposits travel, the way people ask for them. */
 export function groupParties(parties: EscrowParty[]) {
   return {
-    ourIdentities: parties.filter((p) => p.side === 'self'),
+    ourIdentities: parties.filter((p) => {
+      const role = partyRole(p);
+      return role === 'receiving-identity' || role === 'sending-identity';
+    }),
     sources: parties.filter((p) => partyRole(p) === 'source'),
     destinations: parties.filter((p) => partyRole(p) === 'destination'),
   };

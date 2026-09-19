@@ -165,25 +165,45 @@ not before — the rules are still settling.
 Worth doing where the backend produces something a person reads, and worth
 refusing where it would churn identifiers that systems depend on.
 
-### Worth doing
+### Worth doing — done
+
+All four shipped together; the entries below record what changed and why, so
+the reasoning survives the diff.
 
 - **Human-readable strings in validation findings.** A `SIG_KEY_UNTRUSTED`
-  finding says "no active trusted signing key is registered for this
+  finding said "no active trusted signing key is registered for this
   tenant/TLD"; the interface calls that a *verification key* belonging to a
   *source*. These strings are free text next to a stable result code, they are
-  what an operator reads when something fails, and they are the one place the
-  two vocabularies visibly disagree. Check the notification snapshot tests
-  before changing them.
+  what an operator reads when something fails, and they were the one place the
+  two vocabularies visibly disagreed. Reworded in
+  `internal/application/rdevalidate/pgp.go` and `pipeline.go` (signature and
+  decryption) and in `internal/application/activities/escrow_sanitize.go` (the
+  pseudonymisation and reopen failures). The two "no decryption key" sites —
+  the pipeline short-circuit and `Decrypt` itself — now share one constant, so
+  one missing key cannot produce two different sentences. A test in
+  `pgp_test.go` asserts the refusals contain neither "trusted" nor "service
+  key" nor "tenant/TLD", which locks the words without freezing the sentences.
 - **A `role` field on the party response** (`source` | `receiving-identity` |
-  `destination` | `sending-identity`), additive. The kind × side mapping is
-  currently re-derived by each client; one authority is better, and it costs a
-  computed field.
-- **The mapping table above, in the entity source.** `escrowPartyPurposes` in
-  `pkg/domain/entities/escrowParty.go` is where someone meets kind × side for
-  the first time; a comment naming what each combination is called in the
-  interface is close to free.
-- **Aligning the runbook and any new prose** with the interface's words, so an
-  operator who read the screen recognises the procedure.
+  `destination` | `sending-identity`), additive. Derived in the entity
+  (`EscrowParty.Role`), returned by `toPartyResponse`, and preferred by the
+  frontend's `partyRole`, which still falls back to deriving from kind and side
+  — for an older server, and for a role a future build has no words for.
+- **The mapping table, in the entity source.** The doc comment on
+  `escrowPartyPurposes` now carries kind × side → role → purposes → what the
+  interface calls it, in one table, with the key names beside it.
+- **The runbook, aligned with the screens** (`docs/escrow_keys_runbook.md`):
+  sources and receiving identities instead of providers and DEA identities,
+  verification key instead of signing key, retire instead of deactivate, test
+  instead of probe, Escrow Setup instead of Escrow keys. The AWS, IAM and
+  configuration sections keep their own vocabulary — they describe the system,
+  not the screen.
+
+One boundary held deliberately: the DVFN result messages in
+`internal/application/rdereport/codes.go` are unchanged. That table is part of
+an emitted document with a different audience — ICANN and the registry, in the
+escrow industry's words — and it is declared append-only. The finding message
+still reaches the DVFN as the free-text description, which is where our prose
+belongs.
 
 ### Not worth doing
 

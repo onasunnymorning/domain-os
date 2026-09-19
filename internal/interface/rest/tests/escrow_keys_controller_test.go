@@ -108,6 +108,10 @@ var _ = Describe("EscrowKeyRegistry", Ordered, func() {
 			rsp := decode[rest.EscrowPartyResponse](resp)
 			Expect(rsp.Owner).To(Equal(rest.EscrowKeyOwnerResponse{Kind: "operator", Operator: ryID}))
 			Expect(rsp.Purposes).To(Equal([]string{"verify-inbound"}))
+			// Derived server-side so that every client stops deriving it, each
+			// in its own words. Kind and side are still sent: they are what
+			// the record and the resolver match on.
+			Expect(rsp.Role).To(Equal("source"))
 			rspID = rsp.ID
 
 			resp = keyReq(http.MethodPost, "/escrow/parties", "", platform, map[string]string{"name": "EVE", "kind": "DEA", "side": "self"})
@@ -115,6 +119,7 @@ var _ = Describe("EscrowKeyRegistry", Ordered, func() {
 			eve := decode[rest.EscrowPartyResponse](resp)
 			Expect(eve.Owner.Kind).To(Equal("platform"))
 			Expect(eve.Purposes).To(ConsistOf("decrypt-inbound", "pseudonymise"))
+			Expect(eve.Role).To(Equal("receiving-identity"))
 			eveID = eve.ID
 
 			resp = keyReq(http.MethodPost, "/escrow/parties", otherRy, opAdmin, map[string]string{"name": "Other RSP", "kind": "RSP", "side": "external"})

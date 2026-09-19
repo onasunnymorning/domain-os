@@ -54,9 +54,17 @@ func ParseArmoredPublicKey(armored string) (*openpgp.Entity, error) {
 	return el[0], nil
 }
 
-// ParseTrustedKeyring parses the armored trusted public keys for a tenant/TLD.
-// A key that fails to parse is reported as a WARNING finding (by index, never
-// by content) and skipped, so one bad registration cannot break the others.
+// ParseTrustedKeyring parses the armored verification keys registered for the
+// escrow source of a tenant/TLD. A key that fails to parse is reported as a
+// WARNING finding (by index, never by content) and skipped, so one bad
+// registration cannot break the others.
+//
+// Finding messages here and below are written in the words the escrow setup
+// screens use — verification key, escrow source, receiving identity — because
+// this is what an operator reads at the moment a deposit fails, and it is no
+// help to be sent looking for a "trusted key" that is labelled something else
+// everywhere they can act on it. The Code beside each message is the stable
+// identifier; only the prose follows the interface.
 func ParseTrustedKeyring(armored []string, now time.Time) (openpgp.EntityList, []Finding) {
 	var ring openpgp.EntityList
 	var findings []Finding
@@ -66,7 +74,7 @@ func ParseTrustedKeyring(armored []string, now time.Time) (openpgp.EntityList, [
 			findings = append(findings, Finding{
 				Code: CodeSigKeyUntrusted, Severity: SeverityWarning, Stage: StageSignature,
 				ObjectType: "trusted-key", Locator: "trustedKey[" + itoa(i) + "]",
-				Message: "trusted key could not be parsed and was skipped", At: now,
+				Message: "a verification key registered for this escrow source could not be read, and was skipped", At: now,
 			})
 			continue
 		}
@@ -109,7 +117,7 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 	}
 
 	if len(keyring) == 0 {
-		return fail(CodeSigKeyUntrusted, "no active trusted signing key is registered for this tenant/TLD; the deposit was signed by "+signedBy)
+		return fail(CodeSigKeyUntrusted, "this top-level domain's escrow source has no active verification key, so nothing here can confirm who sent the deposit; it was signed by "+signedBy)
 	}
 
 	cfg := pgpConfig(now)
@@ -124,8 +132,8 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 		var sigErr pgperrors.SignatureError
 		switch {
 		case errors.Is(err, pgperrors.ErrUnknownIssuer):
-			return fail(CodeSigKeyUntrusted, "signature was made by "+signedBy+
-				", which is not trusted for this tenant/TLD; trusted here: "+strings.Join(trustedKeyIDs(keyring), ", "))
+			return fail(CodeSigKeyUntrusted, "the deposit was signed by "+signedBy+
+				", which is not among the verification keys active for this top-level domain's escrow source; active here: "+strings.Join(trustedKeyIDs(keyring), ", "))
 		case errors.As(err, &sigErr):
 			return fail(CodeSigInvalid, "signature does not verify over the deposit: the artifact or the signature was altered")
 		default:
@@ -143,9 +151,10 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 }
 
 // trustedKeyIDs lists what a keyring would accept a signature from — each
-// entity's primary key and its signing subkeys — so a refusal can say what is
-// registered next to what signed. The list is capped: it goes into the
-// notification the registry receives, and a long one helps nobody.
+// entity's primary key and its signing subkeys — so a refusal can say which
+// verification keys are active next to the key that signed. The list is
+// capped: it goes into the notification the registry receives, and a long one
+// helps nobody.
 func trustedKeyIDs(ring openpgp.EntityList) []string {
 	const max = 4
 	var ids []string
@@ -189,6 +198,11 @@ func parseSignaturePacket(sig []byte) (*packet.Signature, error) {
 	return s, nil
 }
 
+// noDecryptionKeyMessage is shared with the pipeline, which reaches the same
+// condition one step earlier: an operator should not read two different
+// sentences for one missing key.
+const noDecryptionKeyMessage = "the receiving identity for this top-level domain has no usable decryption key, so the deposit cannot be opened"
+
 // Decrypt opens an OpenPGP message with the service keyring. go-crypto tries
 // every private key in the list, so key rollover needs no extra logic here;
 // which key succeeded is reported for audit. The returned MessageDetails'
@@ -199,12 +213,12 @@ func Decrypt(keyring openpgp.EntityList, ciphertext io.Reader, now time.Time) (*
 		return nil, DecryptionInfo{}, &Finding{Code: code, Severity: SeverityError, Stage: StageDecrypt, ObjectType: "deposit", Message: msg, At: now}
 	}
 	if len(keyring) == 0 {
-		return fail(CodeDecryptKeyUnavailable, "no service decryption key is available")
+		return fail(CodeDecryptKeyUnavailable, noDecryptionKeyMessage)
 	}
 	md, err := openpgp.ReadMessage(ciphertext, keyring, nil, pgpConfig(now))
 	if err != nil {
 		if errors.Is(err, pgperrors.ErrKeyIncorrect) {
-			return fail(CodeDecryptNotForServiceKey, "deposit is not encrypted to any current service key")
+			return fail(CodeDecryptNotForServiceKey, "the deposit is not encrypted to any active decryption key of our receiving identity; the sender may still be using a public key we have retired")
 		}
 		return fail(CodeDecryptFailed, "deposit could not be decrypted: ciphertext is malformed or corrupt")
 	}
