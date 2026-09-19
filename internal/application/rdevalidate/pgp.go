@@ -196,3 +196,105 @@ func IsIntegrityError(err error) bool {
 	var sigErr pgperrors.SignatureError
 	return errors.As(err, &sigErr)
 }
+
+// ErrPublicKeyHasNoUsableSubkeys is returned with the reduced entity when a
+// key could only be read after dropping its subkeys.
+var ErrPublicKeyHasNoUsableSubkeys = errors.New("the key's subkeys could not be read and were dropped")
+
+// ParseArmoredPublicKeyLenient parses a public key, and when OpenPGP refuses
+// the block only because of its subkeys, parses the primary key alone.
+//
+// Registry signing keys from the 2000s reach us with an encryption subkey whose
+// binding signature this library cannot read — it was stripped by an export, or
+// it is signed with a hash the library does not implement — and OpenPGP then
+// refuses the whole key ("subkey packet not followed by signature"). The subkey
+// has no part in verifying a deposit: the signature is made by the primary key,
+// which is also what the fingerprint identifies. Dropping the subkeys keeps the
+// key usable for verification and loses nothing that verification needs.
+//
+// Nothing else is relaxed. The primary key's own self-signature is still
+// verified, so this cannot turn an unauthenticated key into a trusted one. On
+// success after a reduction the returned armored block is the reduced key —
+// store that, so every later reader sees what was accepted here — and the error
+// is ErrPublicKeyHasNoUsableSubkeys, which callers report rather than fail on.
+func ParseArmoredPublicKeyLenient(armored string) (*openpgp.Entity, string, error) {
+	entity, err := ParseArmoredPublicKey(armored)
+	if err == nil {
+		return entity, armored, nil
+	}
+	reduced, rerr := primaryKeyOnly(armored)
+	if rerr != nil {
+		return nil, "", err // the original failure is the one worth reporting
+	}
+	entity, rerr = ParseArmoredPublicKey(reduced)
+	if rerr != nil {
+		return nil, "", err
+	}
+	return entity, reduced, ErrPublicKeyHasNoUsableSubkeys
+}
+
+// primaryKeyOnly re-serialises a public key block as its primary key, user IDs
+// and the signatures over them, stopping at the first subkey.
+func primaryKeyOnly(armored string) (string, error) {
+	block, err := armor.Decode(strings.NewReader(armored))
+	if err != nil {
+		return "", err
+	}
+	reader := packet.NewReader(block.Body)
+	var kept []packet.Packet
+	for {
+		p, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// An unreadable packet before any subkey means the reduction would
+			// change more than the subkeys; leave the key to the strict parser.
+			if len(kept) == 0 {
+				return "", err
+			}
+			break
+		}
+		switch pkt := p.(type) {
+		case *packet.PublicKey:
+			if pkt.IsSubkey {
+				continue // the subkeys are what we are dropping
+			}
+			if len(kept) > 0 {
+				return "", errors.New("more than one primary key in the block")
+			}
+			kept = append(kept, pkt)
+		case *packet.UserId, *packet.Signature:
+			if len(kept) == 0 {
+				return "", errors.New("the block does not start with a public key")
+			}
+			kept = append(kept, pkt)
+		}
+	}
+	if len(kept) == 0 {
+		return "", errors.New("no primary key found")
+	}
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range kept {
+		var serr error
+		switch pkt := p.(type) {
+		case *packet.PublicKey:
+			serr = pkt.Serialize(w)
+		case *packet.UserId:
+			serr = pkt.Serialize(w)
+		case *packet.Signature:
+			serr = pkt.Serialize(w)
+		}
+		if serr != nil {
+			return "", serr
+		}
+	}
+	if err := w.Close(); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}

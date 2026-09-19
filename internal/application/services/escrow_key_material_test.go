@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,14 @@ import (
 // been signing escrow deposits for twenty years, and when it cannot, it says
 // which check failed rather than "could not be read".
 
+// signingConfig drops the salt notation this library adds by default, which
+// the tooling of that era never produced. The self-signatures below set SHA-1
+// themselves; the library will not sign with it, only read it.
+func signingConfig() *packet.Config {
+	no := false
+	return &packet.Config{NonDeterministicSignaturesViaNotation: &no}
+}
+
 // legacyKey builds a DSA-1024 primary key with an ElGamal encryption subkey and
 // SHA-1 self-signatures — the shape GnuPG 1.4 produced.
 func legacyKey(t *testing.T) *openpgp.Entity {
@@ -37,8 +46,7 @@ func legacyKey(t *testing.T) *openpgp.Entity {
 		t.Fatal(err)
 	}
 	created := time.Date(2001, 8, 5, 0, 0, 0, 0, time.UTC)
-	no := false
-	cfg := &packet.Config{NonDeterministicSignaturesViaNotation: &no}
+	cfg := signingConfig()
 
 	egPriv := &elgamal.PrivateKey{}
 	egPriv.P = params.P
@@ -139,4 +147,58 @@ func TestPublicKeyRejection_SaysWhichCheckFailed(t *testing.T) {
 			assert.NotContains(t, rejected.Reason, "body", "the reason never quotes the submitted block")
 		})
 	}
+}
+
+// armorPubWithoutSubkeyBinding writes the key the way the registry keys from
+// the 2000s reach us: primary, user ID, self-signature, then the encryption
+// subkey with no binding signature after it. OpenPGP refuses the whole block
+// with "subkey packet not followed by signature".
+func armorPubWithoutSubkeyBinding(t *testing.T, e *openpgp.Entity) string {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	require.NoError(t, err)
+	require.NoError(t, e.PrimaryKey.Serialize(w))
+	for _, id := range e.Identities {
+		require.NoError(t, id.UserId.Serialize(w))
+		for _, sig := range id.Signatures {
+			require.NoError(t, sig.Serialize(w))
+		}
+	}
+	for _, sub := range e.Subkeys {
+		require.NoError(t, sub.PublicKey.Serialize(w))
+	}
+	require.NoError(t, w.Close())
+	return buf.String()
+}
+
+// TestAddPublicKey_AcceptsAKeyWhoseSubkeyCannotBeRead covers the registry key
+// that prompted this: an encryption subkey with no readable binding signature.
+// The subkey has no part in verifying a deposit, so the key is accepted without
+// it — and what is stored must still verify a signature made by the primary.
+func TestAddPublicKey_AcceptsAKeyWhoseSubkeyCannotBeRead(t *testing.T) {
+	signer := legacyKey(t)
+	armored := armorPubWithoutSubkeyBinding(t, signer)
+
+	_, strictErr := rdevalidate.ParseArmoredPublicKey(armored)
+	require.ErrorContains(t, strictErr, "subkey packet not followed by signature", "the failure this reproduces")
+
+	entity, stored, err := rdevalidate.ParseArmoredPublicKeyLenient(armored)
+	require.ErrorIs(t, err, rdevalidate.ErrPublicKeyHasNoUsableSubkeys, "accepted, and says what was dropped")
+	require.NotNil(t, entity)
+	assert.Empty(t, entity.Subkeys, "the unreadable subkey is gone")
+	assert.Equal(t, rdevalidate.FingerprintHex(signer), rdevalidate.FingerprintHex(entity),
+		"the fingerprint still identifies the registry's key")
+
+	// What matters: a deposit signature made by that key still verifies against
+	// what we stored, using the same library the pipeline uses.
+	deposit := []byte("<deposit/>")
+	var sig bytes.Buffer
+	require.NoError(t, openpgp.DetachSign(&sig, signer, bytes.NewReader(deposit), signingConfig()))
+
+	ring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(stored))
+	require.NoError(t, err, "the stored block is readable on its own")
+	verified, err := openpgp.CheckDetachedSignature(ring, bytes.NewReader(deposit), bytes.NewReader(sig.Bytes()), nil)
+	require.NoError(t, err, "the reduced key verifies a signature from the registry")
+	assert.Equal(t, rdevalidate.FingerprintHex(signer), rdevalidate.FingerprintHex(verified))
 }

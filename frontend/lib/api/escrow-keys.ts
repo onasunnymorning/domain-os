@@ -73,6 +73,8 @@ export interface EscrowKeyVersion {
   createdAt: string;
   createdBy?: string;
   probeWorkflowId?: string;
+  /** Set when the key was accepted with a change, e.g. unreadable subkeys left out. */
+  notice?: string;
 }
 
 export interface EscrowArrangement {
