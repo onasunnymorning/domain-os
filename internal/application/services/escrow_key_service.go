@@ -102,9 +102,35 @@ func (s *EscrowKeyService) CreateParty(ctx context.Context, scope entities.Escro
 	return p, nil
 }
 
-// ListParties lists the parties visible in the scope.
-func (s *EscrowKeyService) ListParties(ctx context.Context, scope entities.EscrowKeyScope, q queries.ListItemsQuery) ([]*entities.EscrowParty, string, error) {
-	return s.parties.List(ctx, scope, q)
+// EscrowPartyListItem is a party as a list shows it: the party, plus the
+// purposes it can take part in today. A party row says which purposes it may
+// hold, never whether any key is actually active — the difference between a
+// party that works and one that fails every deposit.
+type EscrowPartyListItem struct {
+	Party          *entities.EscrowParty
+	ActivePurposes []entities.EscrowKeyPurpose
+}
+
+// ListParties lists the parties visible in the scope, each with the purposes
+// that hold an ACTIVE key version.
+func (s *EscrowKeyService) ListParties(ctx context.Context, scope entities.EscrowKeyScope, q queries.ListItemsQuery) ([]EscrowPartyListItem, string, error) {
+	parties, next, err := s.parties.List(ctx, scope, q)
+	if err != nil {
+		return nil, "", err
+	}
+	ids := make([]uuid.UUID, 0, len(parties))
+	for _, p := range parties {
+		ids = append(ids, p.ID)
+	}
+	active, err := s.versions.ActivePurposesByParty(ctx, scope, ids)
+	if err != nil {
+		return nil, "", fmt.Errorf("list active key purposes: %w", err)
+	}
+	items := make([]EscrowPartyListItem, len(parties))
+	for i, p := range parties {
+		items[i] = EscrowPartyListItem{Party: p, ActivePurposes: active[p.ID]}
+	}
+	return items, next, nil
 }
 
 // GetParty returns a visible party with its versions and usage.
@@ -311,14 +337,15 @@ func (s *EscrowKeyService) AddPublicKey(ctx context.Context, scope entities.Escr
 	if policy.Material != entities.EscrowKeyMaterialOpenPGPPublic {
 		return nil, entities.ErrEscrowKeyMaterialNotApplicable
 	}
-	// A key whose subkeys cannot be read is accepted without them: the subkeys
-	// play no part in verifying a deposit, and what is stored is the reduced
-	// block, so the pipeline reads exactly what was accepted here.
+	// A key whose encryption subkey cannot be read is accepted without it: an
+	// encryption subkey plays no part in verifying a deposit, and what is
+	// stored is the reduced block, so the pipeline reads exactly what was
+	// accepted here. A subkey that could sign is never dropped this way.
 	entity, stored, err := rdevalidate.ParseArmoredPublicKeyLenient(cmd.ArmoredPublicKey)
 	var notice string
 	switch {
 	case errors.Is(err, rdevalidate.ErrPublicKeyHasNoUsableSubkeys):
-		notice = "This key's subkeys could not be read and were left out. Signatures are made by the primary key, so verification is unaffected."
+		notice = "This key's encryption subkey could not be read and was left out. Deposits are verified with the primary key, which is unaffected."
 	case err != nil:
 		return nil, publicKeyRejection(cmd.ArmoredPublicKey, err)
 	}
@@ -357,6 +384,10 @@ func publicKeyRejection(armored string, err error) error {
 		return entities.RejectEscrowKeyMaterial("that is a private key. Paste only the public key block (-----BEGIN PGP PUBLIC KEY BLOCK-----); ask the registry for its public key if that is all you have")
 	case !strings.Contains(armored, "BEGIN PGP PUBLIC KEY BLOCK"):
 		return entities.RejectEscrowKeyMaterial("this does not look like an ASCII-armored OpenPGP public key: it must start with -----BEGIN PGP PUBLIC KEY BLOCK-----")
+	case errors.Is(err, rdevalidate.ErrPublicKeyReductionUnsafe):
+		// Storing it would leave a key that parses and then fails to verify
+		// the deposits it was registered for, which is worse than refusing.
+		return entities.RejectEscrowKeyMaterial("this key could only be read by dropping a subkey that may be able to sign, and a deposit signed by that subkey would then fail verification. Ask the registry to export the key again (gpg --export --armor), or for the key it signs deposits with today")
 	case strings.Contains(err.Error(), "expected exactly one key"):
 		return entities.RejectEscrowKeyMaterial("this block holds more than one key. Add one key per version, so each gets its own lifecycle")
 	default:

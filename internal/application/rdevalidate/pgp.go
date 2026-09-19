@@ -84,9 +84,6 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 		_, _ = io.Copy(io.Discard, data)
 		return SignatureInfo{}, &Finding{Code: code, Severity: SeverityError, Stage: StageSignature, ObjectType: "signature", Message: msg, At: now}
 	}
-	if len(keyring) == 0 {
-		return fail(CodeSigKeyUntrusted, "no active trusted signing key is registered for this tenant/TLD")
-	}
 	// Only an armored signature may be trimmed: a binary packet can legitimately
 	// start or end with a byte that happens to be a whitespace value.
 	armored := bytes.HasPrefix(bytes.TrimLeft(sig, " \t\r\n"), []byte(pgpArmorPrefix))
@@ -98,9 +95,21 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 		return fail(CodeSigMalformed, "detached signature is empty")
 	}
 
+	// Parsed before the keyring is judged, so a refusal can name the key that
+	// signed. Which key that is, against what is registered, is the whole
+	// answer to "why was this deposit not trusted" — and a key ID is public
+	// metadata, never material.
 	sigPacket, perr := parseSignaturePacket(trimmed)
 	if perr != nil {
 		return fail(CodeSigMalformed, "detached signature could not be parsed as an OpenPGP signature packet")
+	}
+	signedBy := "an unidentified key"
+	if sigPacket.IssuerKeyId != nil {
+		signedBy = "key " + keyIDHex(*sigPacket.IssuerKeyId)
+	}
+
+	if len(keyring) == 0 {
+		return fail(CodeSigKeyUntrusted, "no active trusted signing key is registered for this tenant/TLD; the deposit was signed by "+signedBy)
 	}
 
 	cfg := pgpConfig(now)
@@ -115,7 +124,8 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 		var sigErr pgperrors.SignatureError
 		switch {
 		case errors.Is(err, pgperrors.ErrUnknownIssuer):
-			return fail(CodeSigKeyUntrusted, "signature was made by a key that is not trusted for this tenant/TLD")
+			return fail(CodeSigKeyUntrusted, "signature was made by "+signedBy+
+				", which is not trusted for this tenant/TLD; trusted here: "+strings.Join(trustedKeyIDs(keyring), ", "))
 		case errors.As(err, &sigErr):
 			return fail(CodeSigInvalid, "signature does not verify over the deposit: the artifact or the signature was altered")
 		default:
@@ -130,6 +140,30 @@ func VerifyDetached(keyring openpgp.EntityList, data io.Reader, sig []byte, now 
 		info.KeyID = keyIDHex(*sigPacket.IssuerKeyId)
 	}
 	return info, nil
+}
+
+// trustedKeyIDs lists what a keyring would accept a signature from — each
+// entity's primary key and its signing subkeys — so a refusal can say what is
+// registered next to what signed. The list is capped: it goes into the
+// notification the registry receives, and a long one helps nobody.
+func trustedKeyIDs(ring openpgp.EntityList) []string {
+	const max = 4
+	var ids []string
+	for _, e := range ring {
+		if e.PrimaryKey != nil {
+			ids = append(ids, keyIDHex(e.PrimaryKey.KeyId))
+		}
+		for _, sk := range e.Subkeys {
+			if sk.PublicKey != nil && sk.PublicKey.CanSign() {
+				ids = append(ids, keyIDHex(sk.PublicKey.KeyId))
+			}
+		}
+	}
+	if len(ids) > max {
+		rest := len(ids) - max
+		ids = append(ids[:max:max], "and "+itoa(rest)+" more")
+	}
+	return ids
 }
 
 func parseSignaturePacket(sig []byte) (*packet.Signature, error) {
@@ -201,16 +235,28 @@ func IsIntegrityError(err error) bool {
 // key could only be read after dropping its subkeys.
 var ErrPublicKeyHasNoUsableSubkeys = errors.New("the key's subkeys could not be read and were dropped")
 
+// ErrPublicKeyReductionUnsafe is returned when a key could only be read by
+// dropping material that might sign. Dropping it would leave a key that parses
+// and then silently fails to verify the deposits it was registered for, so the
+// key is refused instead.
+var ErrPublicKeyReductionUnsafe = errors.New("the key can only be read by dropping a subkey that may be able to sign")
+
 // ParseArmoredPublicKeyLenient parses a public key, and when OpenPGP refuses
-// the block only because of its subkeys, parses the primary key alone.
+// the block only because of an encryption subkey, parses the primary key alone.
 //
 // Registry signing keys from the 2000s reach us with an encryption subkey whose
 // binding signature this library cannot read — it was stripped by an export, or
 // it is signed with a hash the library does not implement — and OpenPGP then
-// refuses the whole key ("subkey packet not followed by signature"). The subkey
-// has no part in verifying a deposit: the signature is made by the primary key,
-// which is also what the fingerprint identifies. Dropping the subkeys keeps the
-// key usable for verification and loses nothing that verification needs.
+// refuses the whole key ("subkey packet not followed by signature"). An
+// encryption subkey has no part in verifying a deposit: the signature is made
+// by the primary key, which is also what the fingerprint identifies. Dropping
+// it keeps the key usable for verification and loses nothing verification needs.
+//
+// That reasoning holds only while everything dropped is incapable of signing,
+// so it is checked rather than assumed: a key whose unreadable subkey could
+// sign, or that hides material this library cannot identify, is refused with
+// ErrPublicKeyReductionUnsafe. Capability is judged by algorithm, because the
+// key flags live in the very binding signature that cannot be read.
 //
 // Nothing else is relaxed. The primary key's own self-signature is still
 // verified, so this cannot turn an unauthenticated key into a trusted one. On
@@ -222,28 +268,42 @@ func ParseArmoredPublicKeyLenient(armored string) (*openpgp.Entity, string, erro
 	if err == nil {
 		return entity, armored, nil
 	}
-	reduced, rerr := primaryKeyOnly(armored)
+	reduced, unsafe, rerr := primaryKeyOnly(armored)
 	if rerr != nil {
 		return nil, "", err // the original failure is the one worth reporting
 	}
+	if unsafe {
+		return nil, "", ErrPublicKeyReductionUnsafe
+	}
 	entity, rerr = ParseArmoredPublicKey(reduced)
 	if rerr != nil {
+		return nil, "", err
+	}
+	// A primary key that cannot sign leaves nothing to verify deposits with,
+	// which makes the reduction pointless: report the original failure.
+	if !entity.PrimaryKey.CanSign() {
 		return nil, "", err
 	}
 	return entity, reduced, ErrPublicKeyHasNoUsableSubkeys
 }
 
 // primaryKeyOnly re-serialises a public key block as its primary key, user IDs
-// and the signatures over them, stopping at the first subkey.
-func primaryKeyOnly(armored string) (string, error) {
+// and the signatures over them, dropping the subkeys. It also reports whether
+// dropping them is unsafe: a subkey whose algorithm can sign, or a packet this
+// library cannot identify, could be what signs the registry's deposits.
+//
+// It reads with NextWithUnsupported because Next silently skips packets it
+// cannot parse, and a signing subkey in an algorithm this library does not
+// implement would then be dropped without anyone noticing.
+func primaryKeyOnly(armored string) (reducedBlock string, unsafe bool, err error) {
 	block, err := armor.Decode(strings.NewReader(armored))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	reader := packet.NewReader(block.Body)
 	var kept []packet.Packet
 	for {
-		p, err := reader.Next()
+		p, err := reader.NextWithUnsupported()
 		if err == io.EOF {
 			break
 		}
@@ -251,33 +311,42 @@ func primaryKeyOnly(armored string) (string, error) {
 			// An unreadable packet before any subkey means the reduction would
 			// change more than the subkeys; leave the key to the strict parser.
 			if len(kept) == 0 {
-				return "", err
+				return "", false, err
 			}
-			break
+			// Past that point the rest of the block is unaccounted for, and it
+			// may hold the key that signs.
+			return "", true, nil
 		}
 		switch pkt := p.(type) {
+		case *packet.UnsupportedPacket:
+			// Something is here that this library cannot read. What it would
+			// drop cannot be established, so the reduction is not safe.
+			return "", true, nil
 		case *packet.PublicKey:
 			if pkt.IsSubkey {
-				continue // the subkeys are what we are dropping
+				if pkt.CanSign() {
+					return "", true, nil // this is what dropping would cost
+				}
+				continue // an encryption subkey is what we are dropping
 			}
 			if len(kept) > 0 {
-				return "", errors.New("more than one primary key in the block")
+				return "", false, errors.New("more than one primary key in the block")
 			}
 			kept = append(kept, pkt)
 		case *packet.UserId, *packet.Signature:
 			if len(kept) == 0 {
-				return "", errors.New("the block does not start with a public key")
+				return "", false, errors.New("the block does not start with a public key")
 			}
 			kept = append(kept, pkt)
 		}
 	}
 	if len(kept) == 0 {
-		return "", errors.New("no primary key found")
+		return "", false, errors.New("no primary key found")
 	}
 	var buf bytes.Buffer
 	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	for _, p := range kept {
 		var serr error
@@ -290,11 +359,11 @@ func primaryKeyOnly(armored string) (string, error) {
 			serr = pkt.Serialize(w)
 		}
 		if serr != nil {
-			return "", serr
+			return "", false, serr
 		}
 	}
 	if err := w.Close(); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return buf.String(), nil
+	return buf.String(), false, nil
 }

@@ -43,6 +43,12 @@ export interface EscrowParty {
   kind: EscrowPartyKind;
   side: EscrowPartySide;
   purposes: EscrowKeyPurpose[];
+  /**
+   * The purposes that hold an ACTIVE key version. `purposes` says what the
+   * party may do; this says what it can do today. Undefined only when the
+   * server did not report it.
+   */
+  activePurposes?: EscrowKeyPurpose[];
   /** Whether this scope may change the party (platform parties are read-only to operators). */
   manageable: boolean;
   createdAt: string;
@@ -129,6 +135,26 @@ export interface EscrowKeyList<T> {
   items: T[];
   count: number;
   nextCursor?: string;
+}
+
+/**
+ * The purpose each side of an arrangement needs an ACTIVE key for: the
+ * depositor's signature is verified with its public key, and the deposit is
+ * decrypted with the receiver's private one.
+ */
+export const ARRANGEMENT_SIDE_PURPOSE = {
+  depositor: 'verify-inbound',
+  receiver: 'decrypt-inbound',
+} as const satisfies Record<'depositor' | 'receiver', EscrowKeyPurpose>;
+
+/**
+ * Whether a party is known to have no ACTIVE key for a purpose — the state in
+ * which choosing it for an arrangement silently fails every deposit. A party
+ * whose active purposes the server did not report is never called out.
+ */
+export function lacksActiveKey(party: EscrowParty | undefined, purpose: EscrowKeyPurpose): boolean {
+  if (!party?.activePurposes) return false;
+  return !party.activePurposes.includes(purpose);
 }
 
 /** What each purpose means, for people. The server is the authority on rules. */

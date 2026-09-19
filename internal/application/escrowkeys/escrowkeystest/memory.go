@@ -5,6 +5,7 @@ package escrowkeystest
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -94,6 +95,29 @@ func (r *Versions) ListByParty(_ context.Context, scope entities.EscrowKeyScope,
 		return out[i].Version > out[j].Version
 	})
 	return out, nil
+}
+
+// ActivePurposesByParty implements the repository.
+func (r *Versions) ActivePurposesByParty(_ context.Context, scope entities.EscrowKeyScope, partyIDs []uuid.UUID) (map[uuid.UUID][]entities.EscrowKeyPurpose, error) {
+	wanted := make(map[uuid.UUID]bool, len(partyIDs))
+	for _, id := range partyIDs {
+		wanted[id] = true
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	active := map[uuid.UUID][]entities.EscrowKeyPurpose{}
+	for _, v := range r.rows {
+		if !wanted[v.PartyID] || v.State != entities.EscrowKeyActive || !scope.CanSee(v.Owner) {
+			continue
+		}
+		if !slices.Contains(active[v.PartyID], v.Purpose) {
+			active[v.PartyID] = append(active[v.PartyID], v.Purpose)
+		}
+	}
+	for id := range active {
+		slices.Sort(active[id])
+	}
+	return active, nil
 }
 
 // NextVersionNumber implements the repository.
