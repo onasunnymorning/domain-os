@@ -256,7 +256,14 @@ func escrowKeyError(ctx *gin.Context, err error) {
 	case errors.Is(err, entities.ErrEscrowKeyStoreNotConfigured), errors.Is(err, entities.ErrEscrowKeyStoreUnavailable):
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": fixedEscrowKeyMessage(err)})
 	case errors.Is(err, entities.ErrEscrowKeyMaterialUnreadable):
-		// Deliberately generic: never reflect anything about submitted material.
+		// A rejection carries a reason about the shape of what was submitted,
+		// never its contents. Without one, stay generic: the private-key path
+		// must not say whether the block or the passphrase was wrong.
+		var rejected *entities.EscrowKeyMaterialRejection
+		if errors.As(err, &rejected) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": rejected.Reason})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "the key material could not be read: expected exactly one ASCII-armored OpenPGP key of the right kind, unlockable with the given passphrase"})
 	case errors.Is(err, entities.ErrInvalidEscrowParty), errors.Is(err, entities.ErrInvalidEscrowKeyVersion),
 		errors.Is(err, entities.ErrInvalidEscrowArrangement), errors.Is(err, entities.ErrEscrowPartyRoleNotSupported),

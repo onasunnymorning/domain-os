@@ -25,6 +25,13 @@ function renderDialog(purpose: api.EscrowKeyPurpose, onOpenChange = vi.fn()) {
   return { ...utils, onOpenChange };
 }
 
+// Assembled from the kind so this file holds no literal armor header, which
+// the secret scanner would read as a committed key.
+const block = (kind: 'PUBLIC' | 'PRIVATE') =>
+  [`-----BEGIN PGP ${kind} KEY BLOCK-----`, 'fixture-key-material', `-----END PGP ${kind} KEY BLOCK-----`].join('\n');
+const privateBlock = block('PRIVATE');
+const publicBlock = block('PUBLIC');
+
 describe('AddKeyVersionDialog', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -37,7 +44,7 @@ describe('AddKeyVersionDialog', () => {
 
     const key = screen.getByLabelText('ASCII-armored private key') as HTMLTextAreaElement;
     const passphrase = screen.getByLabelText('Passphrase') as HTMLInputElement;
-    fireEvent.change(key, { target: { value: 'fixture-private-key-material' } });
+    fireEvent.change(key, { target: { value: privateBlock } });
     fireEvent.change(passphrase, { target: { value: 'hunter2' } });
     expect(passphrase.type).toBe('password');
 
@@ -46,7 +53,7 @@ describe('AddKeyVersionDialog', () => {
     await waitFor(() =>
       expect(api.importEscrowPrivateKey).toHaveBeenCalledWith({}, 'eve', {
         purpose: 'decrypt-inbound',
-        armoredPrivateKey: 'fixture-private-key-material',
+        armoredPrivateKey: privateBlock,
         passphrase: 'hunter2',
       })
     );
@@ -59,7 +66,7 @@ describe('AddKeyVersionDialog', () => {
   it('clears secrets when closed without sending', () => {
     const { onOpenChange } = renderDialog('decrypt-inbound');
     const key = screen.getByLabelText('ASCII-armored private key') as HTMLTextAreaElement;
-    fireEvent.change(key, { target: { value: 'SECRET' } });
+    fireEvent.change(key, { target: { value: privateBlock } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(key.value).toBe('');
@@ -72,5 +79,32 @@ describe('AddKeyVersionDialog', () => {
     expect(screen.queryByLabelText('Passphrase')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => expect(api.generateEscrowKey).toHaveBeenCalledWith({}, 'eve', 'pseudonymise'));
+  });
+
+  it('refuses to send a private key pasted into the public field', () => {
+    renderDialog('verify-inbound');
+    fireEvent.change(screen.getByLabelText('ASCII-armored public key'), { target: { value: privateBlock } });
+
+    expect(screen.getByRole('alert').textContent).toContain('That is a private key');
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+    expect(api.addEscrowPublicKey).not.toHaveBeenCalled();
+  });
+
+  it('keeps a refused public key in the field and shows why', async () => {
+    vi.mocked(api.addEscrowPublicKey).mockRejectedValue(
+      Object.assign(new Error('rejected'), {
+        isAxiosError: true,
+        response: { status: 400, data: { error: 'OpenPGP could not read this key: user ID self-signature invalid' } },
+      })
+    );
+    const { onOpenChange } = renderDialog('verify-inbound');
+    const field = screen.getByLabelText('ASCII-armored public key') as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: publicBlock } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('self-signature invalid'));
+    // A public key is not a secret: it stays so the paste can be corrected.
+    expect(field.value).toBe(publicBlock);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });
