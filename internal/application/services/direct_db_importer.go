@@ -691,6 +691,8 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			// auth_info on conflict, so re-running a batch cannot replace one already stored.
 			authInfo, aerr := entities.GenerateAuthInfo()
 			if aerr != nil {
+				// Nothing is left open to close here: rows and sRows were closed above and this loop walks an
+				// in-memory slice. (ImportContacts differs: it generates while still reading rows, so it closes them.)
 				return total, inserted, updated, fmt.Errorf("generate authInfo for domain import: %w", aerr)
 			}
 
