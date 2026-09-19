@@ -85,6 +85,9 @@ type EscrowKeyVersionResponse struct {
 	CreatedAt        time.Time  `json:"createdAt"`
 	CreatedBy        string     `json:"createdBy,omitempty"`
 	ProbeWorkflowID  string     `json:"probeWorkflowId,omitempty"`
+	// Notice is what the operator should know about a key that was accepted
+	// with a change, e.g. subkeys that could not be read and were left out.
+	Notice string `json:"notice,omitempty"`
 }
 
 // EscrowArrangementResponse is the API shape of one arrangement revision.
@@ -511,6 +514,7 @@ func (c *EscrowController) versionCreated(ctx *gin.Context, out *services.Escrow
 	}
 	resp := toKeyVersionResponse(out.Version)
 	resp.ProbeWorkflowID = out.ProbeWorkflowID
+	resp.Notice = out.Notice
 	ctx.JSON(http.StatusCreated, resp)
 }
 

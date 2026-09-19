@@ -115,11 +115,16 @@ export function AddKeyVersionDialog({ scope, partyId, purpose, open, onOpenChang
     },
     onSuccess: (version) => {
       queryClient.invalidateQueries({ queryKey: ['escrow-party', scope.tenantId ?? '', partyId] });
-      toast.success(
+      const added =
         mode === 'public'
           ? `Added version ${version.version}. Activate it when the registry starts signing with it.`
-          : `Added version ${version.version}. A worker is probing it; activate it once the probe passes.`
-      );
+          : `Added version ${version.version}. A worker is probing it; activate it once the probe passes.`;
+      // A key accepted with a change says so, and stays on screen until dismissed.
+      if (version.notice) {
+        toast.warning(added, { description: version.notice, duration: Infinity });
+      } else {
+        toast.success(added);
+      }
       clearSecrets();
       onOpenChange(false);
     },
