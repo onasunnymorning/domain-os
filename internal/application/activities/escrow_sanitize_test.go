@@ -169,7 +169,9 @@ func TestEscrowSanitize_EndToEnd(t *testing.T) {
 	assert.False(t, b.Replay)
 	assert.Equal(t, "artful-dodger", b.SyntheticSuffix, "the configured default applies when none is given")
 	assert.Equal(t, rdesanitize.PolicyVersion, b.PolicyVersion)
-	assert.Contains(t, b.DerivativeKey, "/sanitized/deposit-"+rdesanitize.PolicyVersion+".xml.gz")
+	// The published file name carries the suffix and the source watermark date.
+	assert.Contains(t, b.DerivativeKey, "/sanitized/deposit-"+rdesanitize.PolicyVersion+"_artful-dodger_2026-09-08.xml.gz")
+	assert.Contains(t, b.ManifestKey, "/sanitized/manifest-"+rdesanitize.PolicyVersion+"_artful-dodger_2026-09-08.json")
 
 	p := f.produce(t, b)
 	require.Equal(t, rdesanitize.OutcomePass, p.Result.Outcome, "findings: %v", p.Result.Findings)
@@ -550,4 +552,28 @@ func TestEscrowSanitize_SuffixOverride(t *testing.T) {
 	raw, _ := f.ev.store.get(b.DerivativeKey)
 	assert.Contains(t, gunzip(t, raw), "<rdeHeader:tld>sandbox-zone</rdeHeader:tld>")
 	assert.NotContains(t, strings.ToLower(gunzip(t, raw)), ".example<")
+}
+
+func TestSanitizedFileTag(t *testing.T) {
+	wm := time.Date(2026, 9, 17, 23, 30, 0, 0, time.FixedZone("x", -5*3600))
+	zero := time.Time{}
+	cases := []struct {
+		name   string
+		suffix string
+		wm     *time.Time
+		want   string
+	}{
+		{"suffix and watermark, the latter in UTC", "wild", &wm, "_wild_2026-09-18"},
+		{"no watermark", "wild", nil, "_wild"},
+		{"zero watermark", "wild", &zero, "_wild"},
+		{"no suffix", "", &wm, "_2026-09-18"},
+		{"case, dots and separators are normalised", " .Artful.Dodger/../ ", &wm, "_artful-dodger_2026-09-18"},
+		{"idn is punycoded", "bücher", &wm, "_xn--bcher-kva_2026-09-18"},
+		{"nothing usable", "///", nil, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, sanitizedFileTag(c.suffix, c.wm))
+		})
+	}
 }
