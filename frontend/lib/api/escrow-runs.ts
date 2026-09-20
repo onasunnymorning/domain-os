@@ -7,7 +7,7 @@
  */
 
 import { apiClient } from './client';
-import type { WorkflowStartResponse } from './workflows';
+import { getStorageDownloadURL, type WorkflowStartResponse } from './workflows';
 
 // =============================================================================
 // Types
@@ -142,6 +142,21 @@ export interface EscrowValidationRunDetail {
 }
 
 /**
+ * One object namespace's declared and observed totals (`SummaryCount` in
+ * internal/application/rdereport/summary.go).
+ *
+ * `status` exists because "declared != observed" is not always a mismatch:
+ * rdeEppParams and rdePolicy carry nothing countable, so a header declaring one
+ * of each against zero observed is `not-checked`, and correct.
+ */
+export interface EscrowSummaryCount {
+  uri: string;
+  declared?: number;
+  observed: number;
+  status: 'match' | 'mismatch' | 'undeclared' | 'not-checked';
+}
+
+/**
  * The findings summary written to the reports bucket as `summary.json`.
  *
  * It is the only artifact carrying the findings, and its `byCode` tally is the
@@ -173,7 +188,7 @@ export interface EscrowValidationSummary {
     watermark?: string;
     headerFound: boolean;
     layout?: string;
-    counts: Array<{ uri: string; declared?: number; observed: number; matches: boolean }>;
+    counts: EscrowSummaryCount[];
   };
   digests: { artifactSha256?: string; signatureSha256?: string; plaintextSha256?: string };
   keys: { signingFingerprint?: string; decryptionFingerprint?: string; innerSigned?: boolean };
@@ -268,6 +283,23 @@ export async function getEscrowValidation(
 ): Promise<EscrowValidationRunDetail> {
   const { data } = await apiClient.get(`/escrow/validations/${id}`, scoped(tenantId));
   return data;
+}
+
+/**
+ * Read a run's `summary.json` from the reports bucket.
+ *
+ * Object counts live only there, not on the run record. The bytes come from a
+ * presigned URL rather than this API, so a bucket that does not allow the
+ * browser's origin fails this call while every other endpoint keeps working;
+ * callers must treat it as optional.
+ */
+export async function getEscrowValidationSummary(
+  objectKey: string
+): Promise<EscrowValidationSummary> {
+  const { url } = await getStorageDownloadURL(objectKey);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch validation summary: HTTP ${response.status}`);
+  return response.json();
 }
 
 /**
