@@ -16,7 +16,7 @@ graph TB
     subgraph "Queue Taxonomy"
         Q1["⚡ fast-ops\\nLow-latency, short-lived\\nDNS checks, FX updates"]
         Q2["🔄 scheduled\\nPeriodic background work\\nEvent relay, event prune, spec5 sync"]
-        Q3["📦 heavy-batch\\nLong-running, resource-intensive\\nEscrow import, snapshots, TLD cleanup"]
+        Q3["📦 heavy-batch\\nLong-running, resource-intensive\\nEscrow import, escrow validation, TLD cleanup"]
         Q4["♻️ lifecycle\\nState-machine transitions\\nExpiry, purge, restore, tombstone backfill"]
     end
 \`\`\`
@@ -25,7 +25,7 @@ The four queues are:
 
 - **\`fast-ops\`** — Low-latency, short-lived operations. Operator-facing tasks like DNS drift checks and FX rate updates that must complete in seconds to minutes.
 - **\`scheduled\`** — Periodic background work. Event relay, event pruning, Spec5 sync, and registrar sync jobs that run on a fixed cadence.
-- **\`heavy-batch\`** — Long-running, resource-intensive operations. Escrow imports, full snapshots, seed-from-snapshot, and TLD cleanups that can run for hours.
+- **\`heavy-batch\`** — Long-running, resource-intensive operations. Escrow imports, escrow validation and sanitization, and TLD cleanups that can run for hours.
 - **\`lifecycle\`** — State-machine transitions. Domain expiry loops, purge loops, restore workflows, and tombstone backfills that manage domain lifecycle state.
 
 ---
@@ -64,8 +64,6 @@ This ensures that resource limits, poller counts, and scaling policies can be tu
 | RestoreWorkflow | ~5 min | Scheduled (4h) | DB updates | \`lifecycle\` |
 | Escrow Import | up to 10h | Ad-hoc | S3 → staged DB → bulk ingest | \`heavy-batch\` |
 | TLD Cleanup | up to 12h | Ad-hoc | DB bulk delete (5M+ rows) | \`heavy-batch\` |
-| Take Snapshot | up to 12h | Ad-hoc | Full DB dump → S3 | \`heavy-batch\` |
-| Seed from Snapshot | up to 12h | Ad-hoc | S3 → full DB restore | \`heavy-batch\` |
 
 ---
 
@@ -133,7 +131,7 @@ Hosts the \`fast-ops\`, \`scheduled\`, and \`lifecycle\` workers. These queues h
 
 ### Unit B — Scale to zero
 
-Hosts the \`heavy-batch\` worker. Escrow imports, snapshots, and TLD cleanups are rare (a few times per week at most) but extremely resource-intensive. Keeping this worker at zero replicas until needed saves compute costs while ensuring heavy operations get dedicated resources when they run.
+Hosts the \`heavy-batch\` worker. Escrow imports and TLD cleanups are rare (a few times per week at most) but extremely resource-intensive. Keeping this worker at zero replicas until needed saves compute costs while ensuring heavy operations get dedicated resources when they run.
 
 ---
 

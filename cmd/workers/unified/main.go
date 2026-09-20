@@ -101,8 +101,6 @@ func main() {
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowKeyProbeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.SeedFromSnapshotWorkflow)
 
 	// Lifecycle
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
@@ -115,8 +113,6 @@ func main() {
 	drainDataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 	drainDataWorker.RegisterWorkflow(workflows.UpdateFX)
 	drainDataWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
-	drainDataWorker.RegisterWorkflow(workflows.TakeSnapshotWorkflow)
-	drainDataWorker.RegisterWorkflow(workflows.SeedFromSnapshotWorkflow)
 	drainDataWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
 	drainDataWorker.RegisterWorkflow(workflows.EventRelay)
 	drainDataWorker.RegisterWorkflow(workflows.EventPrune)
@@ -256,22 +252,6 @@ func main() {
 		drainDataWorker.RegisterActivity(tldActs.PlanTLDCleanup)
 		drainDataWorker.RegisterActivity(tldActs.BackupTLDAssets)
 		drainDataWorker.RegisterActivity(tldActs.DeleteTLDAssets)
-	}
-
-	// Snapshot Activities (Heavy Batch + Drain Data)
-	snapActs, err := activities.NewSnapshotActivities()
-	if err != nil {
-		log.Printf("WARNING: Snapshot activities not available (DB/S3 not configured): %v", err)
-	} else {
-		heavyBatchWorker.RegisterActivity(snapActs.TakeSnapshot)
-		heavyBatchWorker.RegisterActivity(snapActs.ValidateSnapshot)
-		heavyBatchWorker.RegisterActivity(snapActs.SeedFromSnapshot)
-		heavyBatchWorker.RegisterActivity(snapActs.ListSnapshots)
-
-		drainDataWorker.RegisterActivity(snapActs.TakeSnapshot)
-		drainDataWorker.RegisterActivity(snapActs.ValidateSnapshot)
-		drainDataWorker.RegisterActivity(snapActs.SeedFromSnapshot)
-		drainDataWorker.RegisterActivity(snapActs.ListSnapshots)
 	}
 
 	// Spec5 Sweep Activities (Scheduled + Drain Data)

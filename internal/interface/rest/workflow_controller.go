@@ -453,35 +453,6 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		workflow = workflows.RestoreWorkflow
 		args = []interface{}{loopParams}
 
-	case "take-snapshot":
-		var snapParams workflows.TakeSnapshotParams
-		if req.Params != nil {
-			if label, ok := req.Params["label"].(string); ok {
-				snapParams.Label = label
-			}
-			if note, ok := req.Params["note"].(string); ok {
-				snapParams.Note = note
-			}
-		}
-		// Use the label in the workflow ID for easy identification in S3
-		if snapParams.Label != "" {
-			wfID = fmt.Sprintf("snapshot-%s-%s", snapParams.Label, ts)
-		} else {
-			wfID = fmt.Sprintf("snapshot-%s", ts)
-		}
-		workflow = workflows.TakeSnapshotWorkflow
-		args = []interface{}{snapParams}
-
-	case "seed-from-snapshot":
-		snapshotKey, _ := req.Params["snapshotKey"].(string)
-		if snapshotKey == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "snapshotKey is required for seed-from-snapshot"})
-			return
-		}
-		wfID = fmt.Sprintf("seed-from-snapshot-%s", ts)
-		workflow = workflows.SeedFromSnapshotWorkflow
-		args = []interface{}{workflows.SeedFromSnapshotParams{SnapshotKey: snapshotKey}}
-
 	case "tombstone-backfill":
 		var backfillParams workflows.TombstoneBackfillParams
 		if req.Params != nil {
