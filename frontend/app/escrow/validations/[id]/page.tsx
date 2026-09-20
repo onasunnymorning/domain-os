@@ -6,12 +6,12 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { EscrowOutcomeBadge } from '@/components/escrow/EscrowOutcomeBadge';
+import { EscrowRunOverview } from '@/components/escrow/EscrowRunOverview';
 import { EscrowFindingsPanel } from '@/components/escrow/EscrowFindingsPanel';
 import { EscrowArtifactLinks } from '@/components/escrow/EscrowArtifactLinks';
-import { Badge } from '@/components/ui/badge';
 import { CopyButton } from '@/components/ui/copy-button';
 import { getEscrowValidation } from '@/lib/api/escrow-runs';
+import { formatUtc } from '@/lib/escrow/runOverview';
 
 export default function EscrowValidationRunPage() {
   return (
@@ -80,29 +80,7 @@ function Loaded({ detail }: { detail: Awaited<ReturnType<typeof getEscrowValidat
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{run.tld}</h1>
-        <EscrowOutcomeBadge outcome={run.outcome} />
-        <Badge variant="outline" className="font-mono text-xs">
-          {run.profile}
-        </Badge>
-        {run.verified ? (
-          <Badge
-            variant="outline"
-            className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-          >
-            cryptographically verified
-          </Badge>
-        ) : (
-          <Badge
-            variant="outline"
-            title="Only a signed deposit that passed can be a verified pass."
-            className="text-muted-foreground"
-          >
-            not verified
-          </Badge>
-        )}
-      </div>
+      <EscrowRunOverview run={run} deposit={deposit} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -113,11 +91,8 @@ function Loaded({ detail }: { detail: Awaited<ReturnType<typeof getEscrowValidat
           <Field label="Deposit ID" value={run.depositId} mono copyable />
           <Field label="Stage reached" value={run.stageReached} />
           <Field label="Workflow ID" value={run.workflowId} mono copyable />
-          <Field label="Started" value={new Date(run.startedAt).toLocaleString()} />
-          <Field
-            label="Completed"
-            value={run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'}
-          />
+          <Field label="Started" value={formatUtc(run.startedAt)} />
+          <Field label="Completed" value={formatUtc(run.completedAt)} />
           <Field
             label="Notification"
             value={
@@ -127,10 +102,7 @@ function Loaded({ detail }: { detail: Awaited<ReturnType<typeof getEscrowValidat
           />
           <Field label="RDE deposit ID" value={run.rdeDepositId} mono />
           <Field label="RDE kind" value={run.rdeKind} />
-          <Field
-            label="Watermark"
-            value={run.rdeWatermark ? new Date(run.rdeWatermark).toLocaleString() : undefined}
-          />
+          <Field label="Watermark" value={run.rdeWatermark ? formatUtc(run.rdeWatermark) : undefined} />
           <Field label="Plaintext SHA-256" value={run.plaintextSha256} mono copyable />
           <Field label="Signing key" value={run.signingKeyFingerprint} mono />
         </dl>
@@ -162,7 +134,7 @@ function Loaded({ detail }: { detail: Awaited<ReturnType<typeof getEscrowValidat
           <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Submitted by" value={deposit.submittedBy} />
             <Field label="Intake ref" value={deposit.intakeRef} />
-            <Field label="Received" value={new Date(deposit.receivedAt).toLocaleString()} />
+            <Field label="Received" value={formatUtc(deposit.receivedAt)} />
             <Field label="Artifact" value={deposit.artifactObjectKey} mono copyable />
             <Field label="Artifact SHA-256" value={deposit.artifactSha256} mono copyable />
             <Field label="Artifact bytes" value={deposit.artifactBytes?.toLocaleString()} />
