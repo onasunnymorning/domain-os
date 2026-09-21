@@ -31,9 +31,13 @@ export const phasesApi = {
     return response.data;
   },
 
-  // Delete a phase
-  delete: async (tldName: string, phaseName: string): Promise<void> => {
-    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}`);
+  // Delete a phase. Deletes are confined to one registry operator's TLDs, so
+  // the request names the operator that runs this TLD (X-Tenant-ID, ADR-0006);
+  // the API refuses a delete that names none.
+  delete: async (tldName: string, phaseName: string, operatorId: string): Promise<void> => {
+    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}`, {
+      headers: { 'X-Tenant-ID': operatorId },
+    });
   },
 
   // End a phase (set end date)

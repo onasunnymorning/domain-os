@@ -46,7 +46,7 @@ func (s *NNDNSuite) SetupSuite() {
 func (s *NNDNSuite) TearDownSuite() {
 	if s.tld != "" {
 		tldRepo := NewGormTLDRepo(s.db)
-		err := tldRepo.DeleteByName(context.Background(), s.tld)
+		err := tldRepo.DeleteByName(context.Background(), testPlatformScope, s.tld)
 		require.NoError(s.T(), err)
 	}
 	if s.ry != nil {
@@ -110,7 +110,7 @@ func (s *NNDNSuite) TestDeleteNNDN() {
 	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
 	require.NoError(s.T(), err)
 
-	err = repo.DeleteNNDN(context.Background(), createdNNDN.Name.String())
+	err = repo.DeleteNNDN(context.Background(), testPlatformScope, createdNNDN.Name.String())
 	require.NoError(s.T(), err)
 
 	_, err = repo.GetNNDN(context.Background(), createdNNDN.Name.String())
@@ -250,4 +250,31 @@ func (s *NNDNSuite) TestCreateNNDN_Error() {
 	duplicateNNDN, _ := entities.NewNNDN("example." + s.tld)
 	_, err = repo.CreateNNDN(context.Background(), duplicateNNDN)
 	require.Error(s.T(), err)
+}
+
+// The NNDN half of the #415 guard: an entity whose TLDName was changed must not
+// re-file the reservation under another TLD, and an update must not insert.
+func (s *NNDNSuite) TestUpdateNNDNCannotChangeTLDOrInsert() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormNNDNRepository(tx)
+
+	nndn, err := entities.NewNNDN("tldguard." + s.tld)
+	require.NoError(s.T(), err)
+	created, err := repo.CreateNNDN(context.Background(), nndn)
+	require.NoError(s.T(), err)
+
+	created.TLDName = "someothertld"
+	_, err = repo.UpdateNNDN(context.Background(), created)
+	require.ErrorIs(s.T(), err, entities.ErrNNDNNotFound)
+
+	unchanged, err := repo.GetNNDN(context.Background(), "tldguard."+s.tld)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), s.tld, unchanged.TLDName.String())
+
+	absent := &entities.NNDN{Name: entities.DomainName("never-created." + s.tld), TLDName: entities.DomainName(s.tld), NameState: entities.NNDNStateBlocked}
+	_, err = repo.UpdateNNDN(context.Background(), absent)
+	require.ErrorIs(s.T(), err, entities.ErrNNDNNotFound)
+	_, err = repo.GetNNDN(context.Background(), "never-created."+s.tld)
+	require.ErrorIs(s.T(), err, entities.ErrNNDNNotFound, "the update must not have created the NNDN")
 }

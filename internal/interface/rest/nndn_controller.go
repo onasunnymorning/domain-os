@@ -149,12 +149,21 @@ func (ctrl *NNDNController) ListNNDNs(ctx *gin.Context) {
 // @Param name path string true "NNDN name"
 // @Success 204
 // @Failure 500
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Router /nndns/{name} [delete]
 func (ctrl *NNDNController) DeleteNNDNByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	err := ctrl.nndnService.DeleteNNDNByName(ctx.Request.Context(), name)
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	err := ctrl.nndnService.DeleteNNDNByName(ctx.Request.Context(), scope, name)
 	if err != nil {
+		if errors.Is(err, entities.ErrNNDNNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

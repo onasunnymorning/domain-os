@@ -3,6 +3,7 @@ package activities
 import (
 	"context"
 	"fmt"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"log"
 	"os"
 
@@ -231,9 +232,13 @@ func (a *LifecycleActivities) BatchPurgeDomains(ctx context.Context, correlation
 		}
 		chunk := domainNames[i:end]
 
-		batchResult := a.DomainService.BatchPurgeDomains(ctx, chunk)
+		// The purge loop sweeps every TLD by design, so it runs with the
+		// platform scope. This is where that is granted: the worker runs the
+		// schedule itself, and no request or operator is involved (ADR-0006).
+		batchResult := a.DomainService.BatchPurgeDomains(ctx, entities.PlatformRegistryScope(entities.NewPlatformScope()), chunk)
 		result.Succeeded = append(result.Succeeded, batchResult.Succeeded...)
 		result.Failed = append(result.Failed, batchResult.Failed...)
+		result.Skipped = append(result.Skipped, batchResult.Skipped...)
 
 		activity.RecordHeartbeat(ctx, fmt.Sprintf("purged %d/%d domains", end, len(domainNames)))
 

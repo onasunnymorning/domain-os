@@ -96,7 +96,10 @@ func TestDirectDBImporter_ImportDomains_DoesNotReassignAnotherTLDsDomain(t *test
 	_, _, _, err = importer.ImportDomains(context.Background(), staged, "gza", nil, "", func(string) {})
 
 	require.Error(t, err, "a name that exists under another TLD must fail the import")
-	require.Contains(t, err.Error(), "different TLD")
+	// Two layers can refuse this and they word it the same way: the upsert's
+	// tld_name guard when the name already exists, and ck_domains_name_under_tld
+	// when the proposed row itself is mis-filed. Either is a pass.
+	require.Contains(t, err.Error(), "do not belong to this TLD")
 
 	var got struct {
 		TLDName, ClID, RegistrantID string

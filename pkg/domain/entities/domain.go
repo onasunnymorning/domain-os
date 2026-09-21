@@ -12,11 +12,16 @@ const (
 )
 
 var (
-	ErrDomainNotFound                  = errors.New("domain not found")
-	ErrDomainAlreadyExists             = errors.New("domain already exists")
-	ErrInvalidDomain                   = errors.New("invalid domain")
-	ErrTLDAsDomain                     = errors.New("can't create a TLD as a domain")
-	ErrInvalidDomainRoID               = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	ErrDomainNotFound      = errors.New("domain not found")
+	ErrDomainAlreadyExists = errors.New("domain already exists")
+	ErrInvalidDomain       = errors.New("invalid domain")
+	ErrTLDAsDomain         = errors.New("can't create a TLD as a domain")
+	ErrInvalidDomainRoID   = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	// ErrTLDNameDoesNotMatchDomain is returned when TLDName is not the domain's
+	// own parent. The two are redundant state and a drifted pair puts the
+	// domain in one TLD for policy and another for listing, zone building and
+	// cleanup — see issue #415 and ck_domains_name_under_tld.
+	ErrTLDNameDoesNotMatchDomain       = errors.New("Domain.TLDName is not the TLD the domain name belongs to")
 	ErrUNameFieldReservedForIDNDomains = errors.New("UName field is reserved for IDN domains")
 	ErrOriginalNameFieldReservedForIDN = errors.New("OriginalName field is reserved for IDN domains")
 	ErrOriginalNameShouldBeAlabel      = errors.New("OriginalName field should be an A-label")
@@ -183,6 +188,11 @@ func (d *Domain) Validate() error {
 	}
 	if err := d.Name.Validate(); err != nil {
 		return err
+	}
+	// A domain belongs to exactly one TLD, and its name says which. TLDName
+	// repeats that, so it is checked rather than trusted.
+	if !d.Name.IsUnderTLD(d.TLDName) {
+		return ErrTLDNameDoesNotMatchDomain
 	}
 	if err := d.ClID.Validate(); err != nil {
 		return err

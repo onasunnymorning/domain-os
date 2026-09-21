@@ -309,6 +309,20 @@ func (a *TestAPI) DELETE(path string) *httptest.ResponseRecorder {
 	return toRecorder(resp)
 }
 
+// DELETEAs performs a DELETE as the given registry operator, sending it in
+// X-Tenant-ID the way the frontend does. Deleting a domain, NNDN, phase or TLD
+// needs an operator scope (or the platform permission, which this harness's
+// unauthenticated server never grants) — see rest.RegistryScopeFromRequest.
+func (a *TestAPI) DELETEAs(path, tenantID string) *httptest.ResponseRecorder {
+	req, _ := http.NewRequest(http.MethodDelete, a.Server.URL+path, nil)
+	req.Header.Set("X-Tenant-ID", tenantID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(fmt.Sprintf("DELETE %s failed: %v", path, err))
+	}
+	return toRecorder(resp)
+}
+
 // PATCH performs a PATCH request with a JSON body and returns the response recorder.
 func (a *TestAPI) PATCH(path string, body interface{}) *httptest.ResponseRecorder {
 	payloadBytes, _ := json.Marshal(body)

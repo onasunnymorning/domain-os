@@ -61,7 +61,7 @@ func (repo *MocktldRepository) List(ctx context.Context, params queries.ListItem
 }
 
 // DeleteByName deletes a TLD by name
-func (repo *MocktldRepository) DeleteByName(ctx context.Context, name string) error {
+func (repo *MocktldRepository) DeleteByName(ctx context.Context, _ entities.RegistryScope, name string) error {
 	for i, tld := range repo.Tlds {
 		if tld.Name.String() == name {
 			repo.Tlds = append(repo.Tlds[:i], repo.Tlds[i+1:]...)
@@ -211,7 +211,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// Delete the first TLD
-	err = service.DeleteTLDByName(context.Background(), "apex")
+	err = service.DeleteTLDByName(context.Background(), testPlatformScope, "apex")
 	if err != nil {
 		t.Error(err)
 	}
@@ -226,7 +226,7 @@ func TestTLDService_DeleteTLDByName(t *testing.T) {
 	}
 
 	// Delete the second TLD
-	err = service.DeleteTLDByName(context.Background(), "com.apex")
+	err = service.DeleteTLDByName(context.Background(), testPlatformScope, "com.apex")
 	if err != nil {
 		t.Error(err)
 	}

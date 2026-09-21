@@ -105,7 +105,7 @@ var _ = Describe("TLDController", Ordered, func() {
 	})
 
 	It("should delete the TLD", func() {
-		resp := api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		resp := api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 

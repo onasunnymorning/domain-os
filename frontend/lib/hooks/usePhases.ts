@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { phasesApi } from '@/lib/api/phases';
+import { tldsApi } from '@/lib/api/tlds';
 import { Phase, CategorizedPhases, PhaseStatus } from '@/lib/types/phase';
 
 // Utility functions to determine phase status
@@ -121,12 +122,21 @@ export function useCreatePhase(tldName: string) {
   });
 }
 
-// Hook to delete a phase
+// Hook to delete a phase. The API confines deletes to the operator that runs
+// the TLD, so the TLD's operator (RyID) is sent with the request. It comes from
+// the same ['tld', name] query the TLD page already holds, so this is normally
+// a cache hit rather than another round trip.
 export function useDeletePhase(tldName: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (phaseName: string) => phasesApi.delete(tldName, phaseName),
+    mutationFn: async (phaseName: string) => {
+      const tld = await queryClient.fetchQuery({
+        queryKey: ['tld', tldName],
+        queryFn: () => tldsApi.get(tldName),
+      });
+      return phasesApi.delete(tldName, phaseName, tld.RyID);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
     },

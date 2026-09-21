@@ -57,8 +57,9 @@ func (n *NNDN) toNNDN() *entities.NNDN {
 // fromNNDN converts a domain model NNDN to a NNDN.
 func fromNNDN(n *entities.NNDN) *NNDN {
 	return &NNDN{
-		Name:      n.Name.String(),
-		UName:     n.UName.String(),
+		Name:  n.Name.String(),
+		UName: n.UName.String(),
+		// Copied, not derived — see ToDBDomain for why.
 		TLDName:   n.TLDName.String(),
 		NameState: string(n.NameState),
 		Reason:    string(n.Reason),
@@ -92,21 +93,40 @@ func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 	return gormNNDN.toNNDN(), nil
 }
 
+// UpdateNNDN updates an NNDN in the database.
+//
+// An UPDATE rather than a Save, for the reasons in DomainRepository.UpdateDomain:
+// Save inserts when the row is missing, and the tld_name in the WHERE stops an
+// entity whose TLDName was changed from re-filing the reservation under another
+// TLD (#415).
+//
+// A missing row now reports ErrNNDNNotFound. It used to map gorm's
+// ErrRecordNotFound to ErrTLDNotFound, which Save could not return anyway.
 func (r *GormNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	gormNNDN := fromNNDN(nndn)
-	err := r.db.WithContext(ctx).Save(gormNNDN).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, entities.ErrTLDNotFound
-		}
-		return nil, err
+	gormNNDN.UpdatedAt = time.Now().UTC() // Save() used to stamp this; see UpdateDomain
+	res := r.db.WithContext(ctx).
+		Model(&NNDN{}).
+		Where("name = ? AND tld_name = ?", gormNNDN.Name, gormNNDN.TLDName).
+		Select("*").
+		Updates(gormNNDN)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, entities.ErrNNDNNotFound
 	}
 	return gormNNDN.toNNDN(), nil
 }
 
-func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, name string) error {
-	result := r.db.WithContext(ctx).Where("Name = ?", name).Delete(&NNDN{})
-	return result.Error
+// DeleteNNDN deletes an NNDN by its name, within scope. An NNDN that does not
+// exist, or that is in a TLD outside the scope, is ErrNNDNNotFound.
+func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, scope entities.RegistryScope, name string) error {
+	q, err := scopeToTLDs(r.db.WithContext(ctx).Where("name = ?", name), scope)
+	if err != nil {
+		return err
+	}
+	return deletedOrNotFound(q.Delete(&NNDN{}), entities.ErrNNDNNotFound)
 }
 
 func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error) {

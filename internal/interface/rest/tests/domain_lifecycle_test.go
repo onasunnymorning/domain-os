@@ -356,7 +356,7 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 	// ================================================================== //
 
 	It("should fail to delete IDN domain that has hosts attached", func() {
-		resp := api.DELETE(fmt.Sprintf("/domains/%s", idnDomainName))
+		resp := api.DELETEAs(fmt.Sprintf("/domains/%s", idnDomainName), ryID)
 		// The domain has hosts — expect it to fail
 		Expect(resp.Code).To(SatisfyAny(
 			Equal(http.StatusBadRequest),
@@ -375,12 +375,12 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 	})
 
 	It("should delete the IDN domain after host removal", func() {
-		resp := api.DELETE(fmt.Sprintf("/domains/%s", idnDomainName))
+		resp := api.DELETEAs(fmt.Sprintf("/domains/%s", idnDomainName), ryID)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 
 	It("should delete the lifecycle domain", func() {
-		resp := api.DELETE(fmt.Sprintf("/domains/%s", domainName))
+		resp := api.DELETEAs(fmt.Sprintf("/domains/%s", domainName), ryID)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 
@@ -411,11 +411,11 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		api.DELETE(fmt.Sprintf("/registrars/%s", registrarClID))
 
 		// TLD phases (delete before TLD)
-		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaPhase))
-		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, launchPhase))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaPhase), ryID)
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, launchPhase), ryID)
 
 		// TLD
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 
 		// Registry Operator
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))

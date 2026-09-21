@@ -29,7 +29,7 @@ func (s *AccreditationSuite) SetupSuite() {
 	_ = rarRepo.Delete(context.Background(), "199-myrar")
 
 	tldRepo := NewGormTLDRepo(s.db)
-	_ = tldRepo.DeleteByName(context.Background(), "apex")
+	_ = tldRepo.DeleteByName(context.Background(), testPlatformScope, "apex")
 
 	roRepo := NewGORMRegistryOperatorRepository(s.db)
 	_ = roRepo.DeleteByRyID(context.Background(), "apex")
@@ -83,7 +83,7 @@ func (s *AccreditationSuite) TearDownSuite() {
 	}
 	if s.tld != nil {
 		tldRepo := NewGormTLDRepo(s.db)
-		_ = tldRepo.DeleteByName(context.Background(), s.tld.Name.String())
+		_ = tldRepo.DeleteByName(context.Background(), testPlatformScope, s.tld.Name.String())
 	}
 	if s.ry != nil {
 		ryRepo := NewGORMRegistryOperatorRepository(s.db)
@@ -140,9 +140,11 @@ func (s *AccreditationSuite) TestListRegistrarTLDs() {
 	err := repo.CreateAccreditation(context.Background(), s.tld.Name.String(), s.rar.ClID.String())
 	s.Require().NoError(err)
 
-	// Insert a mock domain for this registrar and TLD
+	// Insert a mock domain for this registrar and TLD. The name has to sit
+	// under s.tld: ck_domains_name_under_tld refuses a row whose name and
+	// tld_name disagree (#415).
 	err = tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
-		2001, "domain-accred-test.com", s.rar.ClID.String(), s.tld.Name.String(), time.Now(), "auth").Error
+		2001, "domain-accred-test."+s.tld.Name.String(), s.rar.ClID.String(), s.tld.Name.String(), time.Now(), "auth").Error
 	s.Require().NoError(err)
 
 	tlds, err := repo.ListRegistrarTLDs(context.Background(), 10, "", s.rar.ClID.String())

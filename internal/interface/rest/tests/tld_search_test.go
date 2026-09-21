@@ -255,7 +255,7 @@ var _ = Describe("TLDSearch", Ordered, func() {
 		// Delete all TLDs (reverse order doesn't matter, but SLDs reference ccTLDs
 		// so delete SLDs first)
 		for i := len(tlds) - 1; i >= 0; i-- {
-			api.DELETE(fmt.Sprintf("/tlds/%s", tlds[i].name))
+			api.DELETEAs(fmt.Sprintf("/tlds/%s", tlds[i].name), tlds[i].ryID)
 		}
 
 		// Delete Registry Operators
