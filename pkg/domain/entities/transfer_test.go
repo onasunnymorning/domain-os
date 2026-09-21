@@ -10,8 +10,9 @@ import (
 
 func TestNewDomainTransfer(t *testing.T) {
 	transferGracePolicyDays := 5
-	expectedExpiresAt := time.Now().UTC().AddDate(0, 0, transferGracePolicyDays)
+	before := time.Now().UTC()
 	domainTransfer := NewDomainTransfer(transferGracePolicyDays)
+	after := time.Now().UTC()
 
 	if domainTransfer.ID == uuid.Nil {
 		t.Errorf("expected a valid UUID, got %v", domainTransfer.ID)
@@ -25,9 +26,13 @@ func TestNewDomainTransfer(t *testing.T) {
 		t.Errorf("expected a valid RequestedAt time, got %v", domainTransfer.CreatedAt)
 	}
 
-	// Expiry date should be 5 days from now + a little processing time
-	if !domainTransfer.ExpiryDate.After(expectedExpiresAt) {
-		t.Errorf("expected ExpiryDate %v, got %v", expectedExpiresAt, domainTransfer.ExpiryDate)
+	// Expiry date should be the grace-policy number of days after creation.
+	// Bracket the call rather than compare strictly against one reading: two
+	// consecutive time.Now() calls can return the same instant.
+	earliest := before.AddDate(0, 0, transferGracePolicyDays)
+	latest := after.AddDate(0, 0, transferGracePolicyDays)
+	if domainTransfer.ExpiryDate.Before(earliest) || domainTransfer.ExpiryDate.After(latest) {
+		t.Errorf("expected ExpiryDate in [%v, %v], got %v", earliest, latest, domainTransfer.ExpiryDate)
 	}
 }
 
@@ -98,9 +103,9 @@ func TestDomainTransfer_ApproveDeny(t *testing.T) {
 				}
 				if tc.expectedError == nil {
 					assert.Equal(t, TransferStatusApproved, tc.transfer.Status)
-					time.Sleep(1 * time.Millisecond) // sleep to ensure the time is different
-					assert.True(t, tc.transfer.AcceptDate.Before(time.Now().UTC()))
-					assert.True(t, tc.transfer.UpdatedAt.Before(time.Now().UTC()))
+					now := time.Now().UTC()
+					assert.False(t, tc.transfer.AcceptDate.After(now))
+					assert.False(t, tc.transfer.UpdatedAt.After(now))
 				}
 			case TransferStatusDenied:
 				err := tc.transfer.deny("correlationID", "reason")
@@ -108,8 +113,7 @@ func TestDomainTransfer_ApproveDeny(t *testing.T) {
 					t.Errorf("expected error %v, got %v", tc.expectedError, err)
 				}
 				if tc.expectedError == nil {
-					time.Sleep(1 * time.Millisecond) // sleep to ensure the time is different
-					assert.True(t, tc.transfer.UpdatedAt.Before(time.Now().UTC()))
+					assert.False(t, tc.transfer.UpdatedAt.After(time.Now().UTC()))
 				}
 			}
 		})
