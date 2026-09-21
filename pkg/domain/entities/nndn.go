@@ -20,6 +20,13 @@ var (
 	ErrNNDNNotFound  = errors.New("NNDN not found")
 	ErrInvalidNNDN   = errors.New("invalid NNDN")
 	ErrDuplicateNNDN = errors.New("duplicate NNDN")
+	// ErrNNDNTLDNameDoesNotMatch mirrors ErrTLDNameDoesNotMatchDomain: an NNDN
+	// filed under a TLD its name does not belong to is reserved in one TLD and
+	// invisible in the other. See issue #415 and ck_nndns_name_under_tld.
+	ErrNNDNTLDNameDoesNotMatch = errors.New("NNDN.TLDName is not the TLD the NNDN name belongs to")
+	// ErrInvalidNNDNState is returned for a NameState outside the three RFC
+	// 9022 values.
+	ErrInvalidNNDNState = errors.New("invalid NNDN NameState")
 )
 
 // NNDN represents a non-standard domain Name object in a domain Name registry.
@@ -90,5 +97,30 @@ func NewNNDN(name string) (*NNDN, error) {
 		nndn.UName = DomainName(uName)
 	}
 
+	if err := nndn.Validate(); err != nil {
+		return nil, err
+	}
+
 	return nndn, nil
+}
+
+// Validate checks the two things that can be wrong about an NNDN once its name
+// has parsed: the TLD it is filed under, and its state.
+//
+// TLDName repeats what the name already says, exactly as it does on Domain, so
+// it is checked rather than trusted — an NNDN under the wrong TLD blocks a name
+// in one TLD while leaving it free in the other.
+func (n *NNDN) Validate() error {
+	if err := n.Name.Validate(); err != nil {
+		return err
+	}
+	if !n.Name.IsUnderTLD(n.TLDName) {
+		return ErrNNDNTLDNameDoesNotMatch
+	}
+	switch n.NameState {
+	case NNDNStateBlocked, NNDNStateWithheld, NNDNStateMirrored:
+	default:
+		return ErrInvalidNNDNState
+	}
+	return nil
 }

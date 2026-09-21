@@ -57,8 +57,9 @@ func (n *NNDN) toNNDN() *entities.NNDN {
 // fromNNDN converts a domain model NNDN to a NNDN.
 func fromNNDN(n *entities.NNDN) *NNDN {
 	return &NNDN{
-		Name:      n.Name.String(),
-		UName:     n.UName.String(),
+		Name:  n.Name.String(),
+		UName: n.UName.String(),
+		// Copied, not derived — see ToDBDomain for why.
 		TLDName:   n.TLDName.String(),
 		NameState: string(n.NameState),
 		Reason:    string(n.Reason),

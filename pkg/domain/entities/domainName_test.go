@@ -167,3 +167,31 @@ func TestDomainName_IsIDN(t *testing.T) {
 	}
 
 }
+
+func TestIsUnderTLD(t *testing.T) {
+	cases := []struct {
+		name, tld string
+		want      bool
+	}{
+		{"example.paco", "paco", true},
+		{"paco", "paco", true},
+		{"example.paco", "gza", false},
+		{"examplepaco", "paco", false},
+		{"a.b.paco", "paco", false},
+		{"a.b.paco", "b.paco", true},
+		{"example.ac.uk", "ac.uk", true},
+		{"example.ac.uk", "uk", false},
+		{"EXAMPLE.PACO", "paco", true},
+		{"example.paco.", "paco", true},
+		{"example.paco", "PACO.", true},
+		{"example.paco", "", false},
+		{"", "paco", false},
+		{".paco", "paco", true},
+	}
+	for _, c := range cases {
+		d := DomainName(c.name)
+		if got := d.IsUnderTLD(DomainName(c.tld)); got != c.want {
+			t.Errorf("DomainName(%q).IsUnderTLD(%q) = %v, want %v", c.name, c.tld, got, c.want)
+		}
+	}
+}

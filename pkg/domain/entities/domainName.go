@@ -58,6 +58,34 @@ func (d *DomainName) ParentDomain() string {
 	return strings.Join(labels[1:], ".")
 }
 
+// IsUnderTLD reports whether d belongs to tld: either d is the TLD itself (an
+// apex record) or it is one label directly beneath it.
+//
+// "One label beneath" and not merely "ends with the TLD", for the same reason
+// the database CHECK is written that way: where a registry runs both `uk` and
+// `co.uk` as TLDs, x.co.uk is a `co.uk` name, and calling it a `uk` name files
+// it under the wrong operator (ADR-0006). Comparison is case-insensitive and
+// tolerates a trailing dot on either side, because a deposit may carry one.
+//
+// Both NewDomain and NewNNDN derive TLDName with ParentDomain(), so this is the
+// same rule read back rather than a second, looser one. See issue #415.
+func (d *DomainName) IsUnderTLD(tld DomainName) bool {
+	name := strings.ToLower(strings.Trim(d.String(), "."))
+	parent := strings.ToLower(strings.Trim(tld.String(), "."))
+	if parent == "" || name == "" {
+		return false
+	}
+	if name == parent {
+		return true
+	}
+	suffix := "." + parent
+	if !strings.HasSuffix(name, suffix) {
+		return false
+	}
+	label := strings.TrimSuffix(name, suffix)
+	return label != "" && !strings.Contains(label, ".")
+}
+
 // Returns the first label of the domain name
 func (d *DomainName) Label() string {
 	labels := strings.Split(string(*d), ".")
