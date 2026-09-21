@@ -3,57 +3,23 @@ package services_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/stretchr/testify/require"
-	pgdriver "gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
 
 // TestDirectDBImporter_ImportNNDNs_ReasonBackfill runs the importer against a
 // real Postgres to prove the upsert's reason handling: new names are tagged,
 // names that already exist without a reason are backfilled, and a reason an
-// operator set by hand survives a re-import. Skips when no test Postgres is
-// reachable; `make test` provides one on TEST_DB_PORT (5433).
+// operator set by hand survives a re-import. It runs in a database of its own
+// (authInfoTestDB); `make test` provides the Postgres on TEST_DB_PORT (5433).
 func TestDirectDBImporter_ImportNNDNs_ReasonBackfill(t *testing.T) {
-	host, port := os.Getenv("TEST_DB_HOST"), os.Getenv("TEST_DB_PORT")
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	if port == "" {
-		port = "5432"
-	}
-	dsn := fmt.Sprintf("postgres://postgres:unittest@%s:%s/dos_unittests?sslmode=require", host, port)
-	gdb, err := gorm.Open(pgdriver.Open(dsn))
-	if err != nil && strings.Contains(err.Error(), "3D000") {
-		// Fresh container: the postgres package tests normally create the
-		// database, but this package may run first. Create it and retry.
-		admin, aerr := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=postgres password=unittest sslmode=require", host, port))
-		require.NoError(t, aerr)
-		_, _ = admin.Exec("CREATE DATABASE dos_unittests")
-		_ = admin.Close()
-		gdb, err = gorm.Open(pgdriver.Open(dsn))
-	}
-	if err != nil {
-		t.Skipf("test Postgres unavailable, skipping: %v", err)
-	}
-	require.NoError(t, postgres.AutoMigrate(gdb))
+	gdb := authInfoTestDB(t)
 
-	// The importer reads its connection from DB_* variables.
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DB_HOST", host)
-	t.Setenv("DB_PORT", port)
-	t.Setenv("DB_USER", "postgres")
-	t.Setenv("DB_PASS", "unittest")
-	t.Setenv("DB_NAME", "dos_unittests")
-	t.Setenv("DB_SSLMODE", "require")
 	importer, err := services.NewDirectDBImporter()
 	require.NoError(t, err)
 	defer importer.PG.Close()
