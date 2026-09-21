@@ -43,9 +43,14 @@ func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name st
 	return phase.ToEntity(), nil
 }
 
-// DeletePhaseByName deletes a phase by its name
-func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error {
-	return r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld).Delete(&Phase{}).Error
+// DeletePhaseByTLDAndName deletes a phase, within scope. A phase that does not
+// exist, or whose TLD is outside the scope, is ErrPhaseNotFound.
+func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, scope entities.RegistryScope, tld, name string) error {
+	q, err := scopeToTLDs(r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld), scope)
+	if err != nil {
+		return err
+	}
+	return deletedOrNotFound(q.Delete(&Phase{}), entities.ErrPhaseNotFound)
 }
 
 // UpdatePhase updates a phase. It will Omit Price and Fee updates. Use specific prices and fees repository for that

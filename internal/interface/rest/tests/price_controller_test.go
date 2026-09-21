@@ -264,10 +264,10 @@ var _ = Describe("PriceController", Ordered, func() {
 		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s/prices/%s", tldName, phaseName, "EUR"))
 
 		// Phase
-		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, phaseName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, phaseName), ryID)
 
 		// TLD
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 
 		// Registry Operator
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))

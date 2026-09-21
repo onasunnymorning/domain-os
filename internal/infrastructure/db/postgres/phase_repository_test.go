@@ -50,7 +50,7 @@ func (s *PhaseSuite) SetupSuite() {
 func (s *PhaseSuite) TearDownSuite() {
 	if s.TLDName != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(context.Background(), s.TLDName)
+		_ = repo.DeleteByName(context.Background(), testPlatformScope, s.TLDName)
 	}
 	if s.ry != nil {
 		roRepo := NewGORMRegistryOperatorRepository(s.db)
@@ -140,16 +140,16 @@ func (s *PhaseSuite) TestPhaseRepo_DeletePhaseByName() {
 	s.Require().NotNil(createdPhase)
 
 	// Delete the Phase
-	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
+	err = repo.DeletePhaseByTLDAndName(context.Background(), testPlatformScope, s.TLDName, phase.Name.String())
 	s.Require().NoError(err)
 
 	// Fetch the Phase again
 	_, err = repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
 	s.Require().Error(err)
 
-	// Try and delete a phase again (should not error)
-	err = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, phase.Name.String())
-	s.Require().NoError(err)
+	// A second delete matches nothing and says so — see DeleteDomainByID's test.
+	err = repo.DeletePhaseByTLDAndName(context.Background(), testPlatformScope, s.TLDName, phase.Name.String())
+	s.Require().ErrorIs(err, entities.ErrPhaseNotFound)
 
 }
 

@@ -193,12 +193,12 @@ var _ = Describe("NNDNController", Ordered, func() {
 	// ================================================================== //
 
 	It("should delete NNDN 1", func() {
-		resp := api.DELETE(fmt.Sprintf("/nndns/%s", nndn1))
+		resp := api.DELETEAs(fmt.Sprintf("/nndns/%s", nndn1), ryID)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 
 	It("should handle delete of already-deleted NNDN 1", func() {
-		resp := api.DELETE(fmt.Sprintf("/nndns/%s", nndn1))
+		resp := api.DELETEAs(fmt.Sprintf("/nndns/%s", nndn1), ryID)
 		Expect(resp.Code).To(SatisfyAny(
 			Equal(http.StatusNoContent),
 			Equal(http.StatusNotFound),
@@ -233,11 +233,11 @@ var _ = Describe("NNDNController", Ordered, func() {
 	// ------------------------------------------------------------------ //
 	AfterAll(func() {
 		// NNDNs
-		api.DELETE(fmt.Sprintf("/nndns/%s", nndn1))
-		api.DELETE(fmt.Sprintf("/nndns/%s", nndn2))
+		api.DELETEAs(fmt.Sprintf("/nndns/%s", nndn1), ryID)
+		api.DELETEAs(fmt.Sprintf("/nndns/%s", nndn2), ryID)
 
 		// TLD
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 
 		// Registry Operator
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))

@@ -7,8 +7,8 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -122,12 +122,12 @@ func TestInProcessToolExecutor_GetTLD_Found(t *testing.T) {
 					{Currency: "USD", RegistrationAmount: 1000, RenewalAmount: 1000, TransferAmount: 1000, RestoreAmount: 5000},
 				},
 				Policy: entities.PhasePolicy{
-					MinLabelLength: 3,
-					MaxLabelLength: 63,
-					RedemptionGP:   30,
+					MinLabelLength:  3,
+					MaxLabelLength:  63,
+					RedemptionGP:    30,
 					PendingDeleteGP: 5,
-					AllowAutoRenew: &allowAutoRenew,
-					BaseCurrency:   "USD",
+					AllowAutoRenew:  &allowAutoRenew,
+					BaseCurrency:    "USD",
 				},
 			},
 		},
@@ -214,7 +214,9 @@ func (m *mockDomainSvc) GetDomainByName(ctx context.Context, name string, preloa
 func (m *mockDomainSvc) Create(context.Context, *commands.CreateDomainCommand) (*entities.Domain, error) {
 	panic("not used")
 }
-func (m *mockDomainSvc) DeleteDomainByName(context.Context, string) error { panic("not used") }
+func (m *mockDomainSvc) DeleteDomainByName(context.Context, entities.RegistryScope, string, bool) error {
+	panic("not used")
+}
 func (m *mockDomainSvc) ListDomains(context.Context, queries.ListItemsQuery) ([]*entities.Domain, string, error) {
 	panic("not used")
 }
@@ -290,7 +292,9 @@ func (m *mockDomainSvc) ExpireDomain(context.Context, string) (*entities.Domain,
 func (m *mockDomainSvc) RestoreDomain(context.Context, string) (*entities.Domain, error) {
 	panic("not used")
 }
-func (m *mockDomainSvc) PurgeDomain(context.Context, string) error         { panic("not used") }
+func (m *mockDomainSvc) PurgeDomain(context.Context, entities.RegistryScope, string) error {
+	panic("not used")
+}
 func (m *mockDomainSvc) GetNSRecordsPerTLD(context.Context, queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
 	panic("not used")
 }
@@ -319,7 +323,9 @@ func (m *mockTLDSvc) CreateTLD(context.Context, *commands.CreateTLDCommand) (*en
 func (m *mockTLDSvc) ListTLDs(context.Context, queries.ListItemsQuery) ([]*entities.TLD, string, error) {
 	panic("not used")
 }
-func (m *mockTLDSvc) DeleteTLDByName(context.Context, string) error { panic("not used") }
+func (m *mockTLDSvc) DeleteTLDByName(context.Context, entities.RegistryScope, string) error {
+	panic("not used")
+}
 func (m *mockTLDSvc) GetTLDHeader(context.Context, string) (*entities.TLDHeader, error) {
 	panic("not used")
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/miekg/dns"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +30,7 @@ func (m *mockDomainService) GetDomainByName(ctx context.Context, name string, pr
 func (m *mockDomainService) Create(context.Context, *commands.CreateDomainCommand) (*entities.Domain, error) {
 	panic("not implemented")
 }
-func (m *mockDomainService) DeleteDomainByName(context.Context, string) error {
+func (m *mockDomainService) DeleteDomainByName(context.Context, entities.RegistryScope, string, bool) error {
 	panic("not implemented")
 }
 func (m *mockDomainService) ListDomains(context.Context, queries.ListItemsQuery) ([]*entities.Domain, string, error) {
@@ -114,7 +114,7 @@ func (m *mockDomainService) ExpireDomain(context.Context, string) (*entities.Dom
 func (m *mockDomainService) RestoreDomain(context.Context, string) (*entities.Domain, error) {
 	panic("not implemented")
 }
-func (m *mockDomainService) PurgeDomain(context.Context, string) error {
+func (m *mockDomainService) PurgeDomain(context.Context, entities.RegistryScope, string) error {
 	panic("not implemented")
 }
 func (m *mockDomainService) GetNSRecordsPerTLD(context.Context, queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error) {
@@ -147,7 +147,7 @@ func (m *mockTLDService) CreateTLD(context.Context, *commands.CreateTLDCommand) 
 func (m *mockTLDService) ListTLDs(context.Context, queries.ListItemsQuery) ([]*entities.TLD, string, error) {
 	panic("not implemented")
 }
-func (m *mockTLDService) DeleteTLDByName(context.Context, string) error {
+func (m *mockTLDService) DeleteTLDByName(context.Context, entities.RegistryScope, string) error {
 	panic("not implemented")
 }
 func (m *mockTLDService) GetTLDHeader(context.Context, string) (*entities.TLDHeader, error) {
@@ -372,12 +372,12 @@ func TestGetTLD_Found(t *testing.T) {
 					{Currency: "USD", RegistrationAmount: 1000, RenewalAmount: 1000, TransferAmount: 1000, RestoreAmount: 5000},
 				},
 				Policy: entities.PhasePolicy{
-					MinLabelLength: 3,
-					MaxLabelLength: 63,
-					RedemptionGP:   30,
+					MinLabelLength:  3,
+					MaxLabelLength:  63,
+					RedemptionGP:    30,
 					PendingDeleteGP: 5,
-					AllowAutoRenew: &allowAutoRenew,
-					BaseCurrency:   "USD",
+					AllowAutoRenew:  &allowAutoRenew,
+					BaseCurrency:    "USD",
 				},
 			},
 			// Historical phase — should NOT appear in output

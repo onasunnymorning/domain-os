@@ -270,8 +270,8 @@ var _ = Describe("AccreditationController", Ordered, func() {
 		api.DELETE(fmt.Sprintf("/registrars/%s", rar2ClID))
 
 		// TLDs
-		api.DELETE(fmt.Sprintf("/tlds/%s", gTLDName))
-		api.DELETE(fmt.Sprintf("/tlds/%s", ccTLDName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", gTLDName), ryID)
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", ccTLDName), ryID)
 
 		// Registry Operator
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))

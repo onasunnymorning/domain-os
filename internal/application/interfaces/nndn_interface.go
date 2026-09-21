@@ -12,6 +12,6 @@ type NNDNService interface {
 	CreateNNDN(ctx context.Context, cmd *commands.CreateNNDNCommand) (*entities.NNDN, error)
 	GetNNDNByName(ctx context.Context, name string) (*entities.NNDN, error)
 	ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error)
-	DeleteNNDNByName(ctx context.Context, name string) error
+	DeleteNNDNByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error)
 }

@@ -11,7 +11,8 @@ type PhaseRepository interface {
 	CreatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
 	// GetPhaseByTLDAndName retrieves a phase by TLD and name preloaded with prices and fees
 	GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error)
-	DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error
+	// DeletePhaseByTLDAndName deletes within scope; out of scope reads as not found.
+	DeletePhaseByTLDAndName(ctx context.Context, scope entities.RegistryScope, tld, name string) error
 	UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
 	ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error)
