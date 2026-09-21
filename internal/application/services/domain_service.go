@@ -526,9 +526,25 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 		return err
 	}
 
-	// Update the Domain which will save the association as well
+	// Update the domain's own columns, then write the link explicitly. The
+	// update used to carry the association along, which also meant it rewrote
+	// the host rows themselves from this domain's copy of them — hosts are
+	// shared across domains and TLDs, so that is not an update path's business
+	// (#415). UpdateDomain no longer touches associations.
 	_, err = s.domainRepository.UpdateDomain(ctx, dom)
 	if err != nil {
+		return err
+	}
+
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+	linkedHostRoid, err := dom.Hosts[i].RoID.Int64()
+	if err != nil {
+		return err
+	}
+	if err := s.domainRepository.AddHostToDomain(ctx, domRoidInt, linkedHostRoid); err != nil {
 		return err
 	}
 
@@ -586,9 +602,25 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 		return err
 	}
 
-	// Update the Domain which will save the association as well
+	// Update the domain's own columns, then write the link explicitly. The
+	// update used to carry the association along, which also meant it rewrote
+	// the host rows themselves from this domain's copy of them — hosts are
+	// shared across domains and TLDs, so that is not an update path's business
+	// (#415). UpdateDomain no longer touches associations.
 	_, err = s.domainRepository.UpdateDomain(ctx, dom)
 	if err != nil {
+		return err
+	}
+
+	domRoidInt, err := dom.RoID.Int64()
+	if err != nil {
+		return err
+	}
+	linkedHostRoid, err := dom.Hosts[i].RoID.Int64()
+	if err != nil {
+		return err
+	}
+	if err := s.domainRepository.AddHostToDomain(ctx, domRoidInt, linkedHostRoid); err != nil {
 		return err
 	}
 

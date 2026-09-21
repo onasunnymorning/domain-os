@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/netip"
@@ -543,6 +544,26 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 
 // --- Import Domains ---
 
+// explainNameUnderTLDViolation turns the database's check-constraint error into
+// the same sentence the upsert guard gives.
+//
+// The guard above only sees names that already exist: a deposit whose names
+// belong to another TLD entirely is caught one layer down, by
+// ck_domains_name_under_tld, which rejects the proposed row before ON CONFLICT
+// is reached. Both mean the same thing to the operator reading the workflow
+// failure, so they should read the same. See issue #415.
+func explainNameUnderTLDViolation(err error, tld string) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr pg.Error
+	if errors.As(err, &pgErr) && pgErr.Field('C') == "23514" &&
+		strings.Contains(err.Error(), "ck_domains_name_under_tld") {
+		return fmt.Errorf("the deposit's names do not belong to this TLD: a name was filed under %q that is not directly beneath it (%w)", tld, err)
+	}
+	return err
+}
+
 func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
 	const batchSize = 5000
 	var total int64
@@ -774,7 +795,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				return nil
 			})
 			if txErr != nil {
-				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", txErr)
+				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", explainNameUnderTLDViolation(txErr, tld))
 			}
 			// For ON CONFLICT DO UPDATE, RowsAffected = all rows (inserts + updates).
 			// We can't distinguish without a pre-count, so we report total processed

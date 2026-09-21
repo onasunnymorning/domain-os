@@ -521,6 +521,9 @@ db-reset: ## Reset the database (removes volume and recreates)
 db-dump: ## Dump the local PostgreSQL database (add SQL=1 for plain SQL format)
 	@$(DOPPLER) sh -c 'DB_HOST=localhost ./scripts/pg-dump-local.sh $(if $(SQL),--sql,)'
 
+db-validate-constraints: ## Report the name/tld_name CHECK constraints and validate them where the data is clean
+	@$(DOPPLER) sh -c 'DB_HOST=localhost go run ./cmd/tools/dbconstraints'
+
 
 ###################
 # Frontend
