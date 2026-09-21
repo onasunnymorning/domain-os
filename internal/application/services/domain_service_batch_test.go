@@ -10,6 +10,7 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -288,7 +289,7 @@ func TestBatchPurgeDomains_Success(t *testing.T) {
 	domRepo.On("DeleteDomainByName", mock.Anything, "purge-me.com").Return(nil)
 	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
-	result := svc.BatchPurgeDomains(context.Background(), names)
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, names)
 
 	assert.Len(t, result.Succeeded, 1)
 	assert.Contains(t, result.Succeeded, "purge-me.com")
@@ -318,7 +319,7 @@ func TestBatchPurgeDomains_CannotBePurged(t *testing.T) {
 	domRepo.On("GetDomainsByNames", mock.Anything, names, true).
 		Return([]*entities.Domain{dom}, nil)
 
-	result := svc.BatchPurgeDomains(context.Background(), names)
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, names)
 
 	assert.Empty(t, result.Succeeded)
 	assert.Len(t, result.Failed, 1)
@@ -357,7 +358,7 @@ func TestBatchPurgeDomains_WithDropCatch(t *testing.T) {
 	domRepo.On("DeleteDomainByName", mock.Anything, "drop.com").Return(nil)
 	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
-	result := svc.BatchPurgeDomains(context.Background(), names)
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, names)
 
 	assert.Len(t, result.Succeeded, 1)
 	assert.Empty(t, result.Failed)
@@ -377,7 +378,7 @@ func TestBatchPurgeDomains_EmptyList(t *testing.T) {
 		new(mockFXRepository),
 	)
 
-	result := svc.BatchPurgeDomains(context.Background(), []string{})
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, []string{})
 
 	assert.Empty(t, result.Succeeded)
 	assert.Empty(t, result.Failed)
@@ -402,7 +403,7 @@ func TestBatchPurgeDomains_FetchError(t *testing.T) {
 	domRepo.On("GetDomainsByNames", mock.Anything, names, true).
 		Return(nil, errors.New("db error"))
 
-	result := svc.BatchPurgeDomains(context.Background(), names)
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, names)
 
 	assert.Empty(t, result.Succeeded)
 	assert.Len(t, result.Failed, 1)
@@ -428,7 +429,7 @@ func TestBatchPurgeDomains_DomainNotFound(t *testing.T) {
 	domRepo.On("GetDomainsByNames", mock.Anything, names, true).
 		Return([]*entities.Domain{}, nil) // no domains returned
 
-	result := svc.BatchPurgeDomains(context.Background(), names)
+	result := svc.BatchPurgeDomains(context.Background(), testPlatformScope, names)
 
 	// Already purged (e.g. by an earlier retry of the same batch) — a no-op,
 	// not a failure. This is what makes purge retries converge.
@@ -1016,4 +1017,45 @@ func TestPartitionExpiredDomains_FetchError(t *testing.T) {
 	for _, f := range result.Failures {
 		assert.Contains(t, f.Error, "batch fetch failed")
 	}
+}
+
+// A purge in one operator's scope must leave another operator's domain exactly
+// as it was. Purge changes the domain before deleting it — host links, an
+// NNDN for drop-catch, a tombstone — so refusing only at the final delete
+// would be too late (#415, ADR-0006).
+func TestBatchPurgeDomains_OutOfScopeTouchesNothing(t *testing.T) {
+	domRepo := new(repositories.MockDomainRepository)
+	eventPub := new(batchMockEventPublisher)
+	tldRepo := new(mockTLDRepository)
+	nndnRepo := new(mockNNDNRepository)
+
+	svc := newTestBatchDomainService(
+		domRepo,
+		repositories.NewMockHostRepository(),
+		new(repositories.MockRegistrarRepository),
+		tldRepo,
+		nndnRepo,
+		eventPub,
+		new(mockPhaseRepository),
+		new(mockPremiumLabelRepository),
+		new(mockFXRepository),
+	)
+
+	dom := newTestDomain("someone-elses.com", "rar1", "2002_DOM-APEX", time.Now().UTC().AddDate(-1, 0, 0))
+	dom.RGPStatus.PurgeDate = time.Now().UTC().AddDate(0, 0, -1)
+	dom.DropCatch = true // would create an NNDN if the purge got that far
+	names := []string{"someone-elses.com"}
+
+	domRepo.On("GetDomainsByNames", mock.Anything, names, true).Return([]*entities.Domain{dom}, nil)
+	other, err := entities.NewOperatorID("OtherRy")
+	require.NoError(t, err)
+	tldRepo.On("GetByNameForOperator", mock.Anything, other, "com").Return(nil, entities.ErrTLDNotFound)
+
+	result := svc.BatchPurgeDomains(context.Background(), entities.OperatorRegistryScope(other), names)
+
+	require.Len(t, result.Failed, 1)
+	assert.Equal(t, "someone-elses.com", result.Failed[0].DomainName)
+	assert.Empty(t, result.Succeeded)
+	domRepo.AssertNotCalled(t, "DeleteDomainByName", mock.Anything, mock.Anything)
+	nndnRepo.AssertNotCalled(t, "CreateNNDN", mock.Anything, mock.Anything)
 }

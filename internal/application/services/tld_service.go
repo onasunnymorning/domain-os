@@ -114,7 +114,7 @@ func (svc *TLDService) ListTLDs(ctx context.Context, params queries.ListItemsQue
 }
 
 // DeleteTLDByName deletes a TLD by name. To prevent accidental deletions, we check if there are no active phases for the TLD before deleting it.
-func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
+func (svc *TLDService) DeleteTLDByName(ctx context.Context, scope entities.RegistryScope, name string) error {
 	tld, err := svc.tldRepository.GetByName(ctx, name, false)
 	if err != nil {
 		if err == entities.ErrTLDNotFound {
@@ -127,7 +127,7 @@ func (svc *TLDService) DeleteTLDByName(ctx context.Context, name string) error {
 	if len(tld.GetCurrentPhases()) != 0 {
 		return ErrCannotDeleteTLDWithActivePhases
 	}
-	err = svc.tldRepository.DeleteByName(ctx, name)
+	err = svc.tldRepository.DeleteByName(ctx, scope, name)
 	if err != nil {
 		return err
 	}

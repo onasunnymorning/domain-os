@@ -127,3 +127,35 @@ func TestScopeTypesMarshalAsPlainStrings(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `"sh8013"`, string(registrar))
 }
+
+func TestRegistryScope_Validate(t *testing.T) {
+	op, err := NewOperatorID("SomeRy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name       string
+		scope      RegistryScope
+		wantErr    bool
+		isPlatform bool
+	}{
+		{"operator", OperatorRegistryScope(op), false, false},
+		{"platform", PlatformRegistryScope(NewPlatformScope()), false, true},
+		{"zero value is not a scope", RegistryScope{}, true, false},
+		{"ungranted platform is not a scope", PlatformRegistryScope(PlatformScope{}), true, false},
+		{"malformed operator", OperatorRegistryScope(OperatorID("x")), true, false},
+		{"both at once is not a scope", RegistryScope{platform: NewPlatformScope(), operator: op}, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.scope.Validate()
+			if (err != nil) != c.wantErr {
+				t.Fatalf("Validate() = %v, wantErr %v", err, c.wantErr)
+			}
+			if c.scope.IsPlatform() != c.isPlatform {
+				t.Fatalf("IsPlatform() = %v, want %v", c.scope.IsPlatform(), c.isPlatform)
+			}
+		})
+	}
+}

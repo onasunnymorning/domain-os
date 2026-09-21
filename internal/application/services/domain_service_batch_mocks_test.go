@@ -38,7 +38,7 @@ func (m *mockTLDRepository) Update(ctx context.Context, tld *entities.TLD) error
 	return m.Called(ctx, tld).Error(0)
 }
 
-func (m *mockTLDRepository) DeleteByName(ctx context.Context, name string) error {
+func (m *mockTLDRepository) DeleteByName(ctx context.Context, _ entities.RegistryScope, name string) error {
 	return m.Called(ctx, name).Error(0)
 }
 
@@ -77,7 +77,7 @@ func (m *mockNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN
 	return args.Get(0).(*entities.NNDN), args.Error(1)
 }
 
-func (m *mockNNDNRepository) DeleteNNDN(ctx context.Context, name string) error {
+func (m *mockNNDNRepository) DeleteNNDN(ctx context.Context, _ entities.RegistryScope, name string) error {
 	return m.Called(ctx, name).Error(0)
 }
 
@@ -124,7 +124,7 @@ func (m *mockPhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, nam
 	return args.Get(0).(*entities.Phase), args.Error(1)
 }
 
-func (m *mockPhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error {
+func (m *mockPhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, _ entities.RegistryScope, tld, name string) error {
 	return m.Called(ctx, tld, name).Error(0)
 }
 

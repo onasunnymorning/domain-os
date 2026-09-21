@@ -24,6 +24,11 @@ const (
 	// ScopeEscrowPlatformKeysAdmin allows changing the platform's escrow
 	// parties, keys and default arrangement, and reading the platform view.
 	ScopeEscrowPlatformKeysAdmin = "escrow:platform-keys:admin" //nolint:gosec // G101: an OAuth scope name, not a credential
+	// ScopeRegistryPlatformAdmin allows destructive registry operations —
+	// deleting domains, NNDNs, phases and TLDs — across every TLD, rather than
+	// within one operator's. Without it a request must name its operator in
+	// X-Tenant-ID and is confined to that operator's TLDs (#415, ADR-0006).
+	ScopeRegistryPlatformAdmin = "registry:platform:admin"
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,
