@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"gorm.io/gorm"
@@ -49,12 +50,26 @@ func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, tld, name
 }
 
 // UpdatePhase updates a phase. It will Omit Price and Fee updates. Use specific prices and fees repository for that
+//
+// An UPDATE rather than a Save, for the reasons in DomainRepository.UpdateDomain,
+// and the tld_name in the WHERE keeps a phase from being moved to another TLD
+// by an entity whose TLDName was changed (#415). A phase carries a TLD's launch
+// policy, prices and fees, so moving one moves all three.
 func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := r.db.WithContext(ctx).Omit("Prices").Omit("Fees").Save(gormPhase).Error
-	if err != nil {
-		return nil, err
+	gormPhase.UpdatedAt = time.Now().UTC() // Save() used to stamp this; see UpdateDomain
+	res := r.db.WithContext(ctx).
+		Model(&Phase{}).
+		Where("id = ? AND tld_name = ?", gormPhase.ID, gormPhase.TLDName).
+		Select("*").
+		Omit("Prices", "Fees").
+		Updates(gormPhase)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, entities.ErrPhaseNotFound
 	}
 	return gormPhase.ToEntity(), nil
 }
