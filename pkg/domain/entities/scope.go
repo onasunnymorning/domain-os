@@ -144,3 +144,70 @@ func (p PlatformScope) Validate() error {
 func (p PlatformScope) String() string {
 	return "platform"
 }
+
+// ErrInvalidRegistryScope is returned when a RegistryScope is neither exactly
+// an operator nor exactly the platform.
+var ErrInvalidRegistryScope = errors.New("invalid registry scope: it is either an operator or the platform")
+
+// RegistryScope is the typed caller scope for destructive operations on
+// registry objects — domains, NNDNs, phases and TLDs. It is exactly one of:
+//
+//   - an operator, which may act only on objects in TLDs it operates
+//     (RegistryOperator.RyID -> TLD.RyID -> object.TLDName, ADR-0006);
+//   - the platform, which may act on any TLD — the scheduled lifecycle jobs,
+//     and staff holding the platform permission.
+//
+// It exists because a mistake on one TLD must not reach another (#415): an
+// operator-scoped delete is enforced in SQL, so a name that belongs to someone
+// else's TLD is indistinguishable from a name that does not exist.
+//
+// Like every scope it is a parameter after ctx, never ambient, and its zero
+// value is invalid — the whole installation is never spelled the same way as
+// "no scope".
+type RegistryScope struct {
+	platform PlatformScope
+	operator OperatorID
+}
+
+// OperatorRegistryScope scopes a registry operation to one operator's TLDs.
+func OperatorRegistryScope(op OperatorID) RegistryScope {
+	return RegistryScope{operator: op}
+}
+
+// PlatformRegistryScope scopes a registry operation to every TLD. Obtain the
+// PlatformScope where the authority to act for the platform was just checked.
+func PlatformRegistryScope(p PlatformScope) RegistryScope {
+	return RegistryScope{platform: p}
+}
+
+// Validate checks that exactly one kind was set and that it is valid.
+func (s RegistryScope) Validate() error {
+	isPlatform := s.platform.Validate() == nil
+	switch {
+	case isPlatform && s.operator == "":
+		return nil
+	case !isPlatform && s.operator != "":
+		if err := s.operator.Validate(); err != nil {
+			return errors.Join(ErrInvalidRegistryScope, err)
+		}
+		return nil
+	default:
+		return ErrInvalidRegistryScope
+	}
+}
+
+// IsPlatform reports whether the scope is the platform.
+func (s RegistryScope) IsPlatform() bool {
+	return s.platform.Validate() == nil && s.operator == ""
+}
+
+// Operator returns the operator of an operator scope, or "" for the platform.
+func (s RegistryScope) Operator() OperatorID { return s.operator }
+
+// String implements the Stringer interface, for logs and errors.
+func (s RegistryScope) String() string {
+	if s.IsPlatform() {
+		return "platform"
+	}
+	return "operator:" + s.operator.String()
+}

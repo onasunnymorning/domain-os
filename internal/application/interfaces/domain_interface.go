@@ -13,7 +13,7 @@ type DomainService interface {
 	// These are ADMIN services
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error)
-	DeleteDomainByName(ctx context.Context, name string) error
+	DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string, dropHosts bool) error
 	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
 	UpdateDomain(ctx context.Context, name string, cmd *commands.UpdateDomainCommand) (*entities.Domain, error)
 	AddHostToDomain(ctx context.Context, name string, hostRoID string, force bool) error
@@ -51,7 +51,7 @@ type DomainService interface {
 	// RestoreDomain restores a domain as a registrar
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
 	// PurgeDomain purges a domain after it has reached it's purge date
-	PurgeDomain(ctx context.Context, domainName string) error
+	PurgeDomain(ctx context.Context, scope entities.RegistryScope, domainName string) error
 
 	// These are DNS services
 	GetNSRecordsPerTLD(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)

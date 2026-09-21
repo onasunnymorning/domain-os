@@ -58,9 +58,17 @@ func (svc *NNDNService) ListNNDNs(ctx context.Context, params queries.ListItemsQ
 	return svc.nndnRepository.ListNNDNs(ctx, params)
 }
 
-// DeleteNNDNByName deletes an NNDN by its name
-func (svc *NNDNService) DeleteNNDNByName(ctx context.Context, name string) error {
-	return svc.nndnRepository.DeleteNNDN(ctx, name)
+// DeleteNNDNByName deletes an NNDN by its name, within scope. Deleting an NNDN
+// that does not exist is a no-op, as it always was; one that exists in a TLD
+// outside the scope is ErrNNDNNotFound, not a silent success.
+func (svc *NNDNService) DeleteNNDNByName(ctx context.Context, scope entities.RegistryScope, name string) error {
+	if _, err := svc.nndnRepository.GetNNDN(ctx, name); err != nil {
+		if errors.Is(err, entities.ErrNNDNNotFound) {
+			return nil
+		}
+		return err
+	}
+	return svc.nndnRepository.DeleteNNDN(ctx, scope, name)
 }
 
 // Count returns the number of NNDNs in the repository optionally filtered by the provided query

@@ -252,10 +252,10 @@ var _ = Describe("DomainStatus", Ordered, func() {
 	//  AfterAll: best-effort cleanup (no assertions)                      //
 	// ------------------------------------------------------------------ //
 	AfterAll(func() {
-		api.DELETE(fmt.Sprintf("/domains/%s", domainName))
+		api.DELETEAs(fmt.Sprintf("/domains/%s", domainName), ryID)
 		api.DELETE(fmt.Sprintf("/contacts/%s", contactID))
 		api.DELETE(fmt.Sprintf("/registrars/%s", registrarClID))
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))
 	})
 })

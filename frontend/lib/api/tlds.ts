@@ -92,8 +92,13 @@ export const tldsApi = {
     return data as TLD;
   },
   
-  delete: async (name: string) => {
-    const { data } = await apiClient.delete(`/tlds/${name}`);
+  // Deletes the TLD row directly. The UI deletes TLDs through the cleanup
+  // workflow instead (triggerCleanup); this is kept for direct use, and like
+  // every registry delete it names the operator that runs the TLD.
+  delete: async (name: string, operatorId: string) => {
+    const { data } = await apiClient.delete(`/tlds/${name}`, {
+      headers: { 'X-Tenant-ID': operatorId },
+    });
     return data;
   },
 

@@ -210,6 +210,7 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	existingDomain := &entities.Domain{
 		RoID:       "123_DOM-APEX",
 		Name:       "example.com",
+		TLDName:    "com",
 		ClID:       "client123",
 		AuthInfo:   "sTr0N5p@zzWqRD",
 		ExpiryDate: time.Now().AddDate(1, 0, 0),
@@ -290,4 +291,3 @@ func TestDomainService_ListEventsByDomain(t *testing.T) {
 	assert.Equal(t, domainName, events[0].Subject)
 	repo.AssertExpectations(t)
 }
-

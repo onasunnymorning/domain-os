@@ -154,9 +154,19 @@ func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItem
 	return tlds, newCursor, nil
 }
 
-// Delete deletes a TLD from the database
-func (repo *GormTLDRepository) DeleteByName(ctx context.Context, name string) error {
-	return repo.db.WithContext(ctx).Where("name = ?", name).Delete(&TLD{}).Error
+// DeleteByName deletes a TLD, within scope. The tlds table carries the
+// operator directly, so an operator scope is a plain ry_id match rather than
+// the tld_name subquery the other tables need. A TLD that does not exist, or
+// that another operator runs, is ErrTLDNotFound.
+func (repo *GormTLDRepository) DeleteByName(ctx context.Context, scope entities.RegistryScope, name string) error {
+	if err := scope.Validate(); err != nil {
+		return err
+	}
+	q := repo.db.WithContext(ctx).Where("name = ?", name)
+	if !scope.IsPlatform() {
+		q = q.Where("ry_id = ?", scope.Operator().String())
+	}
+	return deletedOrNotFound(q.Delete(&TLD{}), entities.ErrTLDNotFound)
 }
 
 // Update updates a TLD in the database

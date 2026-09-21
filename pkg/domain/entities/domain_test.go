@@ -215,6 +215,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -226,6 +227,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_CONT-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -237,6 +239,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.-domaintesttld",
+				TLDName:  "-domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -248,6 +251,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "g",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -259,6 +263,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "S",
 				Status:   DomainStatus{OK: true},
@@ -270,6 +275,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{},
@@ -281,6 +287,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "de.domaintesttld",
+				TLDName:      "domaintesttld",
 				OriginalName: "de.domaintesttld",
 				ClID:         "GoMamma",
 				AuthInfo:     "STr0mgP@ZZ",
@@ -293,6 +300,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				UName:    "andere.domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
@@ -309,6 +317,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_DOM-APEX",
 				Name:     "de.domaintesttld",
+				TLDName:  "domaintesttld",
 				UName:    "de.domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
@@ -323,6 +332,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "Dztys40879-RADIO",
 				Name:     "path.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -336,6 +346,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:     "12345_CONT-APEX",
 				Name:     "path.domaintesttld",
+				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
 				AuthInfo: "STr0mgP@ZZ",
 				Status:   DomainStatus{OK: true},
@@ -347,6 +358,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
+				TLDName:      "domaintesttld",
 				UName:        "cariño.domaintesttld",
 				OriginalName: "xn--carioo-zwa.domaintesttld",
 				ClID:         "GoMamma",
@@ -360,6 +372,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
+				TLDName:      "domaintesttld",
 				UName:        "cariño.domaintesttld",
 				OriginalName: "cariño.domaintesttld",
 				ClID:         "GoMamma",
@@ -373,6 +386,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
+				TLDName:      "domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",
 				AuthInfo:     "STr0mgP@ZZ",
@@ -385,6 +399,7 @@ func TestDomain_Validate(t *testing.T) {
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
+				TLDName:      "domaintesttld",
 				UName:        "fûkûp.domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",
@@ -394,10 +409,63 @@ func TestDomain_Validate(t *testing.T) {
 			want: ErrUNameDoesNotMatchDomain,
 		},
 		{
+			// The #415 shape: a .paco name carrying gza as its TLD. Policy
+			// would come from one TLD and listing, zone building and cleanup
+			// from the other.
+			name: "TLDName is a different TLD than the name's",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "example.paco",
+				TLDName:  "gza",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: ErrTLDNameDoesNotMatchDomain,
+		},
+		{
+			name: "TLDName is missing",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "example.paco",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: ErrTLDNameDoesNotMatchDomain,
+		},
+		{
+			// A name two levels down belongs to the TLD directly above it, not
+			// to that TLD's parent.
+			name: "TLDName is the parent of the name's own TLD",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "example.ac.uk",
+				TLDName:  "uk",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: ErrTLDNameDoesNotMatchDomain,
+		},
+		{
+			name: "a multi-label TLD is fine",
+			domain: &Domain{
+				RoID:     "12345_DOM-APEX",
+				Name:     "example.ac.uk",
+				TLDName:  "ac.uk",
+				ClID:     "GoMamma",
+				AuthInfo: "STr0mgP@ZZ",
+				Status:   DomainStatus{OK: true},
+			},
+			want: nil,
+		},
+		{
 			name: "Domain Name and OriginalName are the same",
 			domain: &Domain{
 				RoID:         "12345_DOM-APEX",
 				Name:         "xn--cario-rta.domaintesttld",
+				TLDName:      "domaintesttld",
 				UName:        "cariño.domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",

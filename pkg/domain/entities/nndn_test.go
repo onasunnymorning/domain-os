@@ -78,3 +78,44 @@ func TestNewNNDN(t *testing.T) {
 		})
 	}
 }
+
+func TestNNDN_Validate(t *testing.T) {
+	testcases := []struct {
+		name string
+		nndn *NNDN
+		want error
+	}{
+		{
+			name: "valid",
+			nndn: &NNDN{Name: "reserved.paco", TLDName: "paco", NameState: NNDNStateBlocked},
+			want: nil,
+		},
+		{
+			// The #415 shape, on the table the domain guard does not cover.
+			name: "filed under another TLD",
+			nndn: &NNDN{Name: "reserved.paco", TLDName: "gza", NameState: NNDNStateBlocked},
+			want: ErrNNDNTLDNameDoesNotMatch,
+		},
+		{
+			name: "no TLDName",
+			nndn: &NNDN{Name: "reserved.paco", NameState: NNDNStateWithheld},
+			want: ErrNNDNTLDNameDoesNotMatch,
+		},
+		{
+			name: "multi-label TLD",
+			nndn: &NNDN{Name: "reserved.ac.uk", TLDName: "ac.uk", NameState: NNDNStateMirrored},
+			want: nil,
+		},
+		{
+			name: "unknown state",
+			nndn: &NNDN{Name: "reserved.paco", TLDName: "paco", NameState: "reserved-ish"},
+			want: ErrInvalidNNDNState,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.nndn.Validate())
+		})
+	}
+}

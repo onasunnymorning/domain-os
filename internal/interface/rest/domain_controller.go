@@ -192,28 +192,23 @@ func (ctrl *DomainController) BulkCreate(ctx *gin.Context) {
 // @Success 204
 // @Failure 404
 // @Failure 500
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Router /domains/{name} [delete]
 func (ctrl *DomainController) DeleteDomainByName(ctx *gin.Context) {
 	name := ctx.Param("name")
 
-	if ctx.Query("drophosts") == "true" {
-
-		err := ctrl.domainService.RemoveAllDomainHosts(ctx.Request.Context(), name)
-		if err != nil {
-			if errors.Is(err, entities.ErrDomainNotFound) {
-				ctx.JSON(404, gin.H{"error": err.Error()})
-				return
-			}
-			ctx.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
 	}
 
-	err := ctrl.domainService.DeleteDomainByName(ctx.Request.Context(), name)
+	// A domain that does not exist is still a 204 — the service stays
+	// idempotent for that. ErrDomainNotFound from here means the domain exists
+	// in a TLD outside the caller's scope, and that is not a success.
+	err := ctrl.domainService.DeleteDomainByName(ctx.Request.Context(), scope, name, ctx.Query("drophosts") == "true")
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainNotFound) {
-			// Return 204 if the domain was not found to make idempotent
-			ctx.JSON(204, nil)
+			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
@@ -1286,12 +1281,21 @@ func (ctrl *DomainController) GetQuote(ctx *gin.Context) {
 // @Success 204
 // @Failure 425
 // @Failure 500
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Router /domains/{name}/purge [delete]
 func (ctrl *DomainController) Purge(ctx *gin.Context) {
-	err := ctrl.domainService.PurgeDomain(ctx.Request.Context(), ctx.Param("name"))
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	err := ctrl.domainService.PurgeDomain(ctx.Request.Context(), scope, ctx.Param("name"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDomainDeleteNotAllowed) {
 			ctx.JSON(425, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})

@@ -65,11 +65,11 @@ func (s *FeeSuite) SetupSuite() {
 func (s *FeeSuite) TearDownSuite() {
 	if s.TLDName != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(context.Background(), s.TLDName)
+		_ = repo.DeleteByName(context.Background(), testPlatformScope, s.TLDName)
 	}
 	if s.PhaseName != "" {
 		repo := NewGormPhaseRepository(s.db)
-		_ = repo.DeletePhaseByTLDAndName(context.Background(), s.TLDName, s.PhaseName)
+		_ = repo.DeletePhaseByTLDAndName(context.Background(), testPlatformScope, s.TLDName, s.PhaseName)
 	}
 	if s.Ry != nil {
 		repo := NewGORMRegistryOperatorRepository(s.db)

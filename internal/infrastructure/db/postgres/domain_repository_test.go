@@ -131,7 +131,7 @@ func (s *DomainSuite) SetupSuite() {
 func (s *DomainSuite) TearDownSuite() {
 	if s.tld != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(context.Background(), s.tld)
+		_ = repo.DeleteByName(context.Background(), testPlatformScope, s.tld)
 	}
 	if s.rarClid != "" {
 		repo := NewGormRegistrarRepository(s.db)
@@ -223,7 +223,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().Equal(int64(1), count)
 
 	// try and delete the domain with hosts associated, should fail
-	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	err = repo.DeleteDomainByName(context.Background(), testPlatformScope, createdDomain.Name.String())
 	s.Require().Error(err)
 }
 
@@ -282,7 +282,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	s.Require().Equal(len(domain.Hosts), len(glue))
 
 	// try and delete the domain with hosts associated, should fail
-	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	err = repo.DeleteDomainByName(context.Background(), testPlatformScope, createdDomain.Name.String())
 	s.Require().Error(err)
 }
 
@@ -485,19 +485,19 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 
 	// Delete the domain
 	roid, _ := createdDomain.RoID.Int64()
-	err = repo.DeleteDomainByID(context.Background(), roid)
+	err = repo.DeleteDomainByID(context.Background(), testPlatformScope, roid)
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted
 	_, err = repo.GetDomainByID(context.Background(), roid, false)
 	s.Require().Error(err)
 
-	err = repo.DeleteDomainByID(context.Background(), roid)
-	s.Require().NoError(err)
-
-	// Ensure the domain was deleted
-	_, err = repo.GetDomainByID(context.Background(), roid, false)
-	s.Require().Error(err)
+	// A second delete matches nothing. The repository says so rather than
+	// reporting success: a scoped delete of another operator's domain also
+	// matches nothing, and must not look like it worked. Idempotency for a
+	// domain that genuinely is not there is the service's call.
+	err = repo.DeleteDomainByID(context.Background(), testPlatformScope, roid)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound)
 }
 
 func (s *DomainSuite) TestDomainRepository_ListDomains() {
@@ -1155,4 +1155,45 @@ func (s *DomainSuite) TestDomainRepository_BulkCreate() {
 		s.Require().Equal(0, len(retrievedDomain.Hosts),
 			"domain %d was not supposed to have hosts, but found %d", i, len(retrievedDomain.Hosts))
 	}
+}
+
+// An entity whose TLDName has been changed must not move the domain between
+// TLDs — and therefore between operators (ADR-0006). This is #415 arriving
+// through the repository instead of the bulk importer.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainCannotChangeTLD() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	domain, err := entities.NewDomain("1234_DOM-APEX", "tldguard.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	created, err := repo.Create(context.Background(), domain)
+	s.Require().NoError(err)
+
+	created.TLDName = "domaintesttld0" // a real, different TLD of this suite
+	created.ClID = "domaintestRar"
+	_, err = repo.UpdateDomain(context.Background(), created)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound, "a domain in another TLD is not this one to update")
+
+	unchanged, err := repo.GetDomainByName(context.Background(), "tldguard.domaintesttld", false)
+	s.Require().NoError(err)
+	s.Require().Equal("domaintesttld", unchanged.TLDName.String(), "the domain must stay in its own TLD")
+}
+
+// Save() inserted when no row matched, so an update path could create a domain.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	domain, err := entities.NewDomain("9999_DOM-APEX", "never-created.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+
+	_, err = repo.UpdateDomain(context.Background(), domain)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound)
+
+	_, err = repo.GetDomainByName(context.Background(), "never-created.domaintesttld", false)
+	s.Require().Error(err, "the update must not have created the domain")
 }

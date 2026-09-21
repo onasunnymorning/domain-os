@@ -15,7 +15,8 @@ type DomainRepository interface {
 	Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error)
 	UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
-	DeleteDomainByName(ctx context.Context, name string) error
+	// DeleteDomainByName deletes within scope; out of scope reads as not found.
+	DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
 	AddHostToDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
@@ -73,7 +74,7 @@ func (m *MockDomainRepository) UpdateDomain(ctx context.Context, d *entities.Dom
 }
 
 // DeleteDomainByName deletes a domain by its name
-func (m *MockDomainRepository) DeleteDomainByName(ctx context.Context, name string) error {
+func (m *MockDomainRepository) DeleteDomainByName(ctx context.Context, _ entities.RegistryScope, name string) error {
 	args := m.Called(ctx, name)
 	return args.Error(0)
 }

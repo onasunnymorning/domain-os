@@ -106,24 +106,56 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 	return result, nil
 }
 
-// UpdateDomain updates a domain in the database
+// UpdateDomain updates a domain in the database.
+//
+// It is an UPDATE, not a Save. Save() writes the row by primary key and inserts
+// it when no row matches, so a stale or hand-built entity could create a domain
+// through an update path, and it writes the Hosts association too — links have
+// their own methods (AddHostToDomain, RemoveHostFromDomain) and do not belong
+// in a column update.
+//
+// The tld_name in the WHERE is the #415 guard: an entity whose TLDName has been
+// changed away from the row's own TLD matches nothing and is reported as
+// missing, rather than moving the domain between TLDs — and therefore between
+// operators (ADR-0006).
 func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
-	err := dr.db.WithContext(ctx).Save(dbDomain).Error
-	if err != nil {
-		return nil, err
+	// Save() let GORM stamp updated_at; an explicit Select("*") does not, and
+	// no caller sets it. Stamp it here so the column keeps meaning what it did.
+	dbDomain.UpdatedAt = time.Now().UTC()
+	res := dr.db.WithContext(ctx).
+		Model(&Domain{}).
+		Where("ro_id = ? AND tld_name = ?", dbDomain.RoID, dbDomain.TLDName).
+		Select("*").
+		Omit("Hosts").
+		Updates(dbDomain)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, entities.ErrDomainNotFound
 	}
 	return ToDomain(dbDomain), nil
 }
 
-// DeleteDomain deletes a domain from the database by its id
-func (dr *DomainRepository) DeleteDomainByID(ctx context.Context, id int64) error {
-	return dr.db.WithContext(ctx).Delete(&Domain{}, id).Error
+// DeleteDomainByID deletes a domain by its roid, within scope. A domain that
+// does not exist, or that is in a TLD outside the scope, is ErrDomainNotFound.
+func (dr *DomainRepository) DeleteDomainByID(ctx context.Context, scope entities.RegistryScope, id int64) error {
+	q, err := scopeToTLDs(dr.db.WithContext(ctx).Where("ro_id = ?", id), scope)
+	if err != nil {
+		return err
+	}
+	return deletedOrNotFound(q.Delete(&Domain{}), entities.ErrDomainNotFound)
 }
 
-// DeleteDomain deletes a domain from the database by its name
-func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, name string) error {
-	return dr.db.WithContext(ctx).Where("name = ?", name).Delete(&Domain{}).Error
+// DeleteDomainByName deletes a domain by its name, within scope. A domain that
+// does not exist, or that is in a TLD outside the scope, is ErrDomainNotFound.
+func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string) error {
+	q, err := scopeToTLDs(dr.db.WithContext(ctx).Where("name = ?", name), scope)
+	if err != nil {
+		return err
+	}
+	return deletedOrNotFound(q.Delete(&Domain{}), entities.ErrDomainNotFound)
 }
 
 // ListDomains retrieves domains from the database applying optional filters and cursor-based pagination.
