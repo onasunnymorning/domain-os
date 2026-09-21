@@ -110,6 +110,12 @@ func ToDBDomain(d *entities.Domain) *Domain {
 		dbDomain.BillingID = &s
 	}
 	dbDomain.ClID = d.ClID.String()
+	// Copied, not derived. Deriving it here would look like the safer choice,
+	// but it launders exactly the input we want refused: the escrow importer
+	// stamps the TLD the deposit is being imported as, and both its ON CONFLICT
+	// guard and ck_domains_name_under_tld detect a mis-filed deposit only
+	// because that intent travels with the row. Domain.Validate() and the
+	// constraint reject a mismatch; this mapper must not hide one.
 	dbDomain.TLDName = d.TLDName.String()
 	dbDomain.ExpiryDate = d.ExpiryDate
 	dbDomain.DropCatch = d.DropCatch

@@ -1156,3 +1156,44 @@ func (s *DomainSuite) TestDomainRepository_BulkCreate() {
 			"domain %d was not supposed to have hosts, but found %d", i, len(retrievedDomain.Hosts))
 	}
 }
+
+// An entity whose TLDName has been changed must not move the domain between
+// TLDs — and therefore between operators (ADR-0006). This is #415 arriving
+// through the repository instead of the bulk importer.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainCannotChangeTLD() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	domain, err := entities.NewDomain("1234_DOM-APEX", "tldguard.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+	created, err := repo.Create(context.Background(), domain)
+	s.Require().NoError(err)
+
+	created.TLDName = "domaintesttld0" // a real, different TLD of this suite
+	created.ClID = "domaintestRar"
+	_, err = repo.UpdateDomain(context.Background(), created)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound, "a domain in another TLD is not this one to update")
+
+	unchanged, err := repo.GetDomainByName(context.Background(), "tldguard.domaintesttld", false)
+	s.Require().NoError(err)
+	s.Require().Equal("domaintesttld", unchanged.TLDName.String(), "the domain must stay in its own TLD")
+}
+
+// Save() inserted when no row matched, so an update path could create a domain.
+func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+
+	domain, err := entities.NewDomain("9999_DOM-APEX", "never-created.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	domain.ClID = "domaintestRar"
+
+	_, err = repo.UpdateDomain(context.Background(), domain)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound)
+
+	_, err = repo.GetDomainByName(context.Background(), "never-created.domaintesttld", false)
+	s.Require().Error(err, "the update must not have created the domain")
+}

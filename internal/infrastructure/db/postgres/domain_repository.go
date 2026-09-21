@@ -106,12 +106,34 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 	return result, nil
 }
 
-// UpdateDomain updates a domain in the database
+// UpdateDomain updates a domain in the database.
+//
+// It is an UPDATE, not a Save. Save() writes the row by primary key and inserts
+// it when no row matches, so a stale or hand-built entity could create a domain
+// through an update path, and it writes the Hosts association too — links have
+// their own methods (AddHostToDomain, RemoveHostFromDomain) and do not belong
+// in a column update.
+//
+// The tld_name in the WHERE is the #415 guard: an entity whose TLDName has been
+// changed away from the row's own TLD matches nothing and is reported as
+// missing, rather than moving the domain between TLDs — and therefore between
+// operators (ADR-0006).
 func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
-	err := dr.db.WithContext(ctx).Save(dbDomain).Error
-	if err != nil {
-		return nil, err
+	// Save() let GORM stamp updated_at; an explicit Select("*") does not, and
+	// no caller sets it. Stamp it here so the column keeps meaning what it did.
+	dbDomain.UpdatedAt = time.Now().UTC()
+	res := dr.db.WithContext(ctx).
+		Model(&Domain{}).
+		Where("ro_id = ? AND tld_name = ?", dbDomain.RoID, dbDomain.TLDName).
+		Select("*").
+		Omit("Hosts").
+		Updates(dbDomain)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, entities.ErrDomainNotFound
 	}
 	return ToDomain(dbDomain), nil
 }
