@@ -64,8 +64,11 @@ func (s *ConstraintSuite) TearDownSuite() {
 	s.db.Exec(`DELETE FROM domains WHERE cl_id = ?`, ckRar)
 	s.db.Exec(`DELETE FROM nndns WHERE tld_name IN ?`, ckTLDs)
 	tldRepo := NewGormTLDRepo(s.db)
-	for _, name := range ckTLDs {
-		_ = tldRepo.DeleteByName(ctx, name)
+	if op, err := entities.NewOperatorID(ckRy); err == nil {
+		scope := entities.OperatorRegistryScope(op)
+		for _, name := range ckTLDs {
+			_ = tldRepo.DeleteByName(ctx, scope, name)
+		}
 	}
 	_ = NewGormRegistrarRepository(s.db).Delete(ctx, ckRar)
 	_ = NewGORMRegistryOperatorRepository(s.db).DeleteByRyID(ctx, ckRy)

@@ -4,44 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/stretchr/testify/require"
-	pgdriver "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
 
-// domainsImportDB connects to the throwaway test Postgres the way the other
-// DB-backed tests do (TEST_DB_HOST/TEST_DB_PORT), points the importer's own
-// DB_* environment at it, and drops the foreign keys on domains so a row can be
-// seeded without building a registry, registrar and contact around it. The
-// behaviour under test is the upsert, not referential integrity.
+// domainsImportDB gives the test a database of its own (see authInfoTestDB for
+// why it must not be the shared dos_unittests) and drops the foreign keys on
+// domains so a row can be seeded without building a registry, registrar and
+// contact around it. The behaviour under test is the upsert, not referential
+// integrity. Dropping them in the shared database also took exclusive locks on
+// domains and registrars while the postgres package's suite used them, which
+// deadlocked, and stripped constraints that suite asserts.
 func domainsImportDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	host, port := os.Getenv("TEST_DB_HOST"), os.Getenv("TEST_DB_PORT")
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	if port == "" {
-		port = "5432"
-	}
-	dsn := fmt.Sprintf("postgres://postgres:unittest@%s:%s/dos_unittests?sslmode=require", host, port)
-	db, err := gorm.Open(pgdriver.Open(dsn))
-	if err != nil && strings.Contains(err.Error(), "3D000") {
-		admin, aerr := sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=postgres password=unittest sslmode=require", host, port))
-		require.NoError(t, aerr)
-		_, _ = admin.Exec("CREATE DATABASE dos_unittests")
-		_ = admin.Close()
-		db, err = gorm.Open(pgdriver.Open(dsn))
-	}
-	require.NoError(t, err, "test Postgres unavailable; run via `make test` (port 5433)")
-	require.NoError(t, postgres.AutoMigrate(db))
+	db := authInfoTestDB(t)
 
 	var fks []string
 	require.NoError(t, db.Raw(`SELECT conname FROM pg_constraint WHERE conrelid = 'domains'::regclass AND contype = 'f'`).Scan(&fks).Error)
@@ -49,13 +30,6 @@ func domainsImportDB(t *testing.T) *gorm.DB {
 		require.NoError(t, db.Exec(fmt.Sprintf(`ALTER TABLE domains DROP CONSTRAINT IF EXISTS %q`, fk)).Error)
 	}
 
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DB_HOST", host)
-	t.Setenv("DB_PORT", port)
-	t.Setenv("DB_USER", "postgres")
-	t.Setenv("DB_PASS", "unittest")
-	t.Setenv("DB_NAME", "dos_unittests")
-	t.Setenv("DB_SSLMODE", "require")
 	return db
 }
 
