@@ -122,6 +122,21 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// A domain or NNDN name must belong to the TLD it is filed under — see
+	// constraints.go for why the database is where that is enforced.
+	//
+	// Unlike the index loops above, a failure here is fatal: a constraint that
+	// was never created looks exactly like one that is holding. The statements
+	// are PL/pgSQL, so they only run on Postgres — several unit suites migrate
+	// an in-memory SQLite database through this same function.
+	if db.Dialector.Name() == "postgres" {
+		for _, stmt := range nameUnderTLDConstraints() {
+			if err := db.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("failed to add name/tld_name constraint: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
