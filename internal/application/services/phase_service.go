@@ -76,7 +76,7 @@ func (svc *PhaseService) GetPhaseByTLDAndName(ctx context.Context, tld, name str
 }
 
 // DeletePhaseByTLDAndName deletes a phase by its name
-func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tldName, name string) error {
+func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, scope entities.RegistryScope, tldName, name string) error {
 	tld, err := svc.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
 		// If the TLD is not found, there aren't any phases, so we return nil to stay idempotent
@@ -98,7 +98,7 @@ func (svc *PhaseService) DeletePhaseByTLDAndName(ctx context.Context, tldName, n
 	}
 
 	// If there were no errors, remove the phase from the repository
-	err = svc.phaseRepo.DeletePhaseByTLDAndName(ctx, tldName, name)
+	err = svc.phaseRepo.DeletePhaseByTLDAndName(ctx, scope, tldName, name)
 	if err != nil {
 		return err
 	}

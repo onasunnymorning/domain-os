@@ -46,7 +46,7 @@ func (s *NNDNSuite) SetupSuite() {
 func (s *NNDNSuite) TearDownSuite() {
 	if s.tld != "" {
 		tldRepo := NewGormTLDRepo(s.db)
-		err := tldRepo.DeleteByName(context.Background(), s.tld)
+		err := tldRepo.DeleteByName(context.Background(), testPlatformScope, s.tld)
 		require.NoError(s.T(), err)
 	}
 	if s.ry != nil {
@@ -110,7 +110,7 @@ func (s *NNDNSuite) TestDeleteNNDN() {
 	createdNNDN, err := repo.CreateNNDN(context.Background(), nndn)
 	require.NoError(s.T(), err)
 
-	err = repo.DeleteNNDN(context.Background(), createdNNDN.Name.String())
+	err = repo.DeleteNNDN(context.Background(), testPlatformScope, createdNNDN.Name.String())
 	require.NoError(s.T(), err)
 
 	_, err = repo.GetNNDN(context.Background(), createdNNDN.Name.String())

@@ -16,6 +16,7 @@ type TLDRepository interface {
 	GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error)
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error)
 	Update(ctx context.Context, tld *entities.TLD) error
-	DeleteByName(ctx context.Context, name string) error
+	// DeleteByName deletes within scope; another operator's TLD reads as not found.
+	DeleteByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error)
 }

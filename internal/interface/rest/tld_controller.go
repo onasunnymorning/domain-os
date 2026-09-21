@@ -133,14 +133,23 @@ func (ctrl *TLDController) ListTLDs(ctx *gin.Context) {
 // @Success 204
 // @Failure 400
 // @Failure 500
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Router /tlds/{tldName} [delete]
 func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	name := ctx.Param("tldName")
 
-	err := ctrl.tldService.DeleteTLDByName(ctx.Request.Context(), name)
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	err := ctrl.tldService.DeleteTLDByName(ctx.Request.Context(), scope, name)
 	if err != nil {
 		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrTLDNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})

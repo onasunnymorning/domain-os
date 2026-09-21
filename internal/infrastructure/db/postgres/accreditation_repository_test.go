@@ -29,7 +29,7 @@ func (s *AccreditationSuite) SetupSuite() {
 	_ = rarRepo.Delete(context.Background(), "199-myrar")
 
 	tldRepo := NewGormTLDRepo(s.db)
-	_ = tldRepo.DeleteByName(context.Background(), "apex")
+	_ = tldRepo.DeleteByName(context.Background(), testPlatformScope, "apex")
 
 	roRepo := NewGORMRegistryOperatorRepository(s.db)
 	_ = roRepo.DeleteByRyID(context.Background(), "apex")
@@ -83,7 +83,7 @@ func (s *AccreditationSuite) TearDownSuite() {
 	}
 	if s.tld != nil {
 		tldRepo := NewGormTLDRepo(s.db)
-		_ = tldRepo.DeleteByName(context.Background(), s.tld.Name.String())
+		_ = tldRepo.DeleteByName(context.Background(), testPlatformScope, s.tld.Name.String())
 	}
 	if s.ry != nil {
 		ryRepo := NewGORMRegistryOperatorRepository(s.db)
