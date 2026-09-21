@@ -104,9 +104,14 @@ func (r *GormNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN
 	return gormNNDN.toNNDN(), nil
 }
 
-func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, name string) error {
-	result := r.db.WithContext(ctx).Where("Name = ?", name).Delete(&NNDN{})
-	return result.Error
+// DeleteNNDN deletes an NNDN by its name, within scope. An NNDN that does not
+// exist, or that is in a TLD outside the scope, is ErrNNDNNotFound.
+func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, scope entities.RegistryScope, name string) error {
+	q, err := scopeToTLDs(r.db.WithContext(ctx).Where("name = ?", name), scope)
+	if err != nil {
+		return err
+	}
+	return deletedOrNotFound(q.Delete(&NNDN{}), entities.ErrNNDNNotFound)
 }
 
 func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error) {

@@ -175,7 +175,7 @@ var _ = Describe("DomainController", Ordered, func() {
 	})
 
 	It("should delete the domain", func() {
-		resp := api.DELETE(fmt.Sprintf("/domains/%s", domainName))
+		resp := api.DELETEAs(fmt.Sprintf("/domains/%s", domainName), ryID)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 
@@ -188,7 +188,7 @@ var _ = Describe("DomainController", Ordered, func() {
 		// Best-effort cleanup in reverse order of creation
 		api.DELETE(fmt.Sprintf("/contacts/%s", contactID))
 		api.DELETE(fmt.Sprintf("/registrars/%s", registrarClID))
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))
 	})
 })

@@ -277,7 +277,7 @@ var _ = Describe("PhaseController", Ordered, func() {
 	// ================================================================== //
 
 	It("should fail to delete a currently active phase", func() {
-		resp := api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName))
+		resp := api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName), ryID)
 		Expect(resp.Code).To(Equal(http.StatusBadRequest))
 	})
 
@@ -302,14 +302,14 @@ var _ = Describe("PhaseController", Ordered, func() {
 	// ------------------------------------------------------------------ //
 	AfterAll(func() {
 		// Phases (delete before TLD)
-		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, launchName))
-		api.DELETE(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, launchName), ryID)
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName), ryID)
 
 		// Premium list
 		api.DELETE(fmt.Sprintf("/premium/lists/%s", plName))
 
 		// TLD
-		api.DELETE(fmt.Sprintf("/tlds/%s", tldName))
+		api.DELETEAs(fmt.Sprintf("/tlds/%s", tldName), ryID)
 
 		// Registry Operator
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))

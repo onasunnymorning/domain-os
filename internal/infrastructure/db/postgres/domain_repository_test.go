@@ -131,7 +131,7 @@ func (s *DomainSuite) SetupSuite() {
 func (s *DomainSuite) TearDownSuite() {
 	if s.tld != "" {
 		repo := NewGormTLDRepo(s.db)
-		_ = repo.DeleteByName(context.Background(), s.tld)
+		_ = repo.DeleteByName(context.Background(), testPlatformScope, s.tld)
 	}
 	if s.rarClid != "" {
 		repo := NewGormRegistrarRepository(s.db)
@@ -223,7 +223,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	s.Require().Equal(int64(1), count)
 
 	// try and delete the domain with hosts associated, should fail
-	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	err = repo.DeleteDomainByName(context.Background(), testPlatformScope, createdDomain.Name.String())
 	s.Require().Error(err)
 }
 
@@ -282,7 +282,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	s.Require().Equal(len(domain.Hosts), len(glue))
 
 	// try and delete the domain with hosts associated, should fail
-	err = repo.DeleteDomainByName(context.Background(), createdDomain.Name.String())
+	err = repo.DeleteDomainByName(context.Background(), testPlatformScope, createdDomain.Name.String())
 	s.Require().Error(err)
 }
 
@@ -485,19 +485,19 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 
 	// Delete the domain
 	roid, _ := createdDomain.RoID.Int64()
-	err = repo.DeleteDomainByID(context.Background(), roid)
+	err = repo.DeleteDomainByID(context.Background(), testPlatformScope, roid)
 	s.Require().NoError(err)
 
 	// Ensure the domain was deleted
 	_, err = repo.GetDomainByID(context.Background(), roid, false)
 	s.Require().Error(err)
 
-	err = repo.DeleteDomainByID(context.Background(), roid)
-	s.Require().NoError(err)
-
-	// Ensure the domain was deleted
-	_, err = repo.GetDomainByID(context.Background(), roid, false)
-	s.Require().Error(err)
+	// A second delete matches nothing. The repository says so rather than
+	// reporting success: a scoped delete of another operator's domain also
+	// matches nothing, and must not look like it worked. Idempotency for a
+	// domain that genuinely is not there is the service's call.
+	err = repo.DeleteDomainByID(context.Background(), testPlatformScope, roid)
+	s.Require().ErrorIs(err, entities.ErrDomainNotFound)
 }
 
 func (s *DomainSuite) TestDomainRepository_ListDomains() {

@@ -45,7 +45,7 @@ func (s *DNSRecordSuite) SetupSuite() {
 func (s *DNSRecordSuite) TearDownSuite() {
 	if s.tldName != "" {
 		tldRepo := NewGormTLDRepo(s.db)
-		err := tldRepo.DeleteByName(context.Background(), s.tldName)
+		err := tldRepo.DeleteByName(context.Background(), testPlatformScope, s.tldName)
 		s.Require().NoError(err)
 	}
 	if s.ry != nil {

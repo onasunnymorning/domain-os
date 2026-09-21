@@ -335,18 +335,59 @@ func (s *DomainService) GetDomainByName(ctx context.Context, name string, preloa
 	return s.domainRepository.GetDomainByName(ctx, name, preloadHosts)
 }
 
+// ensureInScope refuses, before anything is changed, a domain in a TLD the
+// scope may not act on. The repository delete enforces the same rule in SQL,
+// but purge and drophosts change the domain first — its host links, an NNDN,
+// a tombstone — and an out-of-scope request must leave no trace on another
+// operator's domain (#415, ADR-0006). Out of scope reads as not found.
+func (s *DomainService) ensureInScope(ctx context.Context, scope entities.RegistryScope, tld entities.DomainName) error {
+	if err := scope.Validate(); err != nil {
+		return err
+	}
+	if scope.IsPlatform() {
+		return nil
+	}
+	if _, err := s.tldRepo.GetByNameForOperator(ctx, scope.Operator(), tld.String()); err != nil {
+		if errors.Is(err, entities.ErrTLDNotFound) {
+			return entities.ErrDomainNotFound
+		}
+		return err
+	}
+	return nil
+}
+
 // DeleteDomainByName deletes a domain identified by its name.
 // This is an admin delete and will remove the domain from the system unless the repository does not allow it.
 // If you want to purge a domain as part of its normal domain lifecycle, use the PurgeDomain method.
 // It takes a context for managing request-scoped values and cancellation,
 // and the name of the domain to be deleted.
 // It returns an error if the deletion fails.
-func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) error {
+//
+// With dropHosts the domain's host links are removed first — after the scope
+// check, so an out-of-scope request cannot strip another operator's domain.
+func (s *DomainService) DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string, dropHosts bool) error {
 	// We don't want to fail of a deleting a domain because it doesn't exist - idemp.
 	prevState, _ := s.GetDomainByName(ctx, name, false)
 
-	err := s.domainRepository.DeleteDomainByName(ctx, name)
+	if prevState != nil {
+		if err := s.ensureInScope(ctx, scope, prevState.TLDName); err != nil {
+			return err
+		}
+	}
+	if dropHosts {
+		if err := s.RemoveAllDomainHosts(ctx, name); err != nil {
+			return err
+		}
+	}
+
+	err := s.domainRepository.DeleteDomainByName(ctx, scope, name)
 	if err != nil {
+		// Still idempotent for a domain that genuinely is not there. But one
+		// that exists and was not deleted is outside the caller's scope, and
+		// that must not come back as a success (#415, ADR-0006).
+		if errors.Is(err, entities.ErrDomainNotFound) && prevState == nil {
+			return nil
+		}
 		return err
 	}
 
@@ -389,10 +430,15 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, name string) err
 // 5. Deletes the domain from the repository.
 //
 // 6. Logs a lifecycle event for the domain.
-func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
+func (s *DomainService) PurgeDomain(ctx context.Context, scope entities.RegistryScope, name string) error {
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
+		return err
+	}
+
+	// Before any of the steps below touches the domain.
+	if err := s.ensureInScope(ctx, scope, dom.TLDName); err != nil {
 		return err
 	}
 
@@ -456,7 +502,7 @@ func (s *DomainService) PurgeDomain(ctx context.Context, name string) error {
 	}
 
 	// Delete the domain
-	err = s.domainRepository.DeleteDomainByName(ctx, name)
+	err = s.domainRepository.DeleteDomainByName(ctx, scope, name)
 	if err != nil {
 		return err
 	}
@@ -2269,7 +2315,7 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 // Idempotent under retries: a domain that no longer exists was purged by an
 // earlier (partially completed) attempt or deleted concurrently — it is
 // reported as Skipped, not failed.
-func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string) BatchResult {
+func (svc *DomainService) BatchPurgeDomains(ctx context.Context, scope entities.RegistryScope, names []string) BatchResult {
 	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
 
 	if len(names) == 0 {
@@ -2296,6 +2342,13 @@ func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string)
 		if !ok {
 			// Already purged (by an earlier retry) or deleted concurrently.
 			result.Skipped = append(result.Skipped, name)
+			continue
+		}
+
+		// Before any of the steps below touches the domain. A no-op for the
+		// platform scope the purge loop runs with.
+		if err := svc.ensureInScope(ctx, scope, dom.TLDName); err != nil {
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("not in scope %s: %v", scope, err)})
 			continue
 		}
 
@@ -2329,8 +2382,14 @@ func (svc *DomainService) BatchPurgeDomains(ctx context.Context, names []string)
 			}
 		}
 
-		// Delete the domain
-		if err := svc.domainRepository.DeleteDomainByName(ctx, name); err != nil {
+		// Delete the domain. Gone between the listing and here means an earlier
+		// retry or a concurrent purge got it first — the same as the not-listed
+		// case above, so it is skipped rather than failed.
+		if err := svc.domainRepository.DeleteDomainByName(ctx, scope, name); err != nil {
+			if errors.Is(err, entities.ErrDomainNotFound) {
+				result.Skipped = append(result.Skipped, name)
+				continue
+			}
 			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("delete failed: %v", err)})
 			continue
 		}

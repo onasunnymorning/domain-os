@@ -96,7 +96,7 @@ func (f *fakeTLDRepo) List(context.Context, queries.ListItemsQuery) ([]*entities
 func (f *fakeTLDRepo) Update(context.Context, *entities.TLD) error {
 	return errors.New("not implemented")
 }
-func (f *fakeTLDRepo) DeleteByName(context.Context, string) error {
+func (f *fakeTLDRepo) DeleteByName(context.Context, entities.RegistryScope, string) error {
 	return errors.New("not implemented")
 }
 func (f *fakeTLDRepo) Count(context.Context, queries.ListTldsFilter) (int64, error) {

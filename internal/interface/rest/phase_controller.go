@@ -160,12 +160,21 @@ func (ctrl *PhaseController) EndPhase(ctx *gin.Context) {
 // @Param phaseName path string true "Phase name"
 // @Success 204
 // @Failure 500
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Router /tlds/{tldName}/phases/{phaseName} [delete]
 func (ctrl *PhaseController) DeletePhase(ctx *gin.Context) {
-	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx.Request.Context(), ctx.Param("tldName"), ctx.Param("phaseName"))
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	err := ctrl.phaseService.DeletePhaseByTLDAndName(ctx.Request.Context(), scope, ctx.Param("tldName"), ctx.Param("phaseName"))
 	if err != nil {
 		if errors.Is(err, entities.ErrDeleteCurrentPhase) || errors.Is(err, entities.ErrDeleteHistoricPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrPhaseNotFound) || errors.Is(err, entities.ErrTLDNotFound) {
+			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})

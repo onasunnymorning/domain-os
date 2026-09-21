@@ -11,7 +11,7 @@ import (
 type PhaseService interface {
 	CreatePhase(ctx context.Context, cmd *commands.CreatePhaseCommand) (*entities.Phase, error)
 	GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error)
-	DeletePhaseByTLDAndName(ctx context.Context, tld, name string) error
+	DeletePhaseByTLDAndName(ctx context.Context, scope entities.RegistryScope, tld, name string) error
 	ListPhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	ListActivePhasesByTLD(ctx context.Context, tld string, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error)
