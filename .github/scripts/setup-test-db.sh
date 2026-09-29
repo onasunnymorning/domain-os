@@ -8,6 +8,12 @@
 # test database can coexist with a `make dev` stack already holding 5432 —
 # otherwise running the suite straight after starting the dev stack fails on a
 # port collision rather than on anything to do with the code.
+#
+# POSTGRES_DB creates dos_unittests while the container initialises, before
+# Postgres accepts TCP connections. Without it, the first test packages to run
+# each found the database missing and issued CREATE DATABASE themselves; under
+# a parallel `go test ./...` two of them raced, and the loser died on
+# "duplicate key value violates unique constraint pg_database_datname_index".
 set -euo pipefail
 
 CONTAINER_NAME="${1:-testdb}"
@@ -22,6 +28,7 @@ docker run --rm -d \
   -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
   -e POSTGRES_PASSWORD=unittest \
   -e POSTGRES_USER=postgres \
+  -e POSTGRES_DB=dos_unittests \
   --name "$CONTAINER_NAME" \
   -p "${HOST_PORT}:5432" \
   postgres:16.1 \
