@@ -11,7 +11,18 @@ type Contract struct {
 	SchemaVersion  string                     `json:"schema_version"`
 	Generated      string                     `json:"generated"`
 	Services       map[string]ServiceContract `json:"services"`
+	Jobs           map[string]JobContract     `json:"jobs"`
 	Infrastructure []InfraComponent           `json:"infrastructure"`
+}
+
+// JobContract describes a one-off task an environment runs to completion, as
+// opposed to a long-running service. `migrate` is the only one: infra runs it
+// before rolling services and must stop the release if it exits non-zero
+// (docs/adr/0010-database-migrations.md).
+type JobContract struct {
+	Image   string          `json:"image"`
+	Command []string        `json:"command"`
+	EnvVars ContractEnvVars `json:"env_vars"`
 }
 
 // ServiceContract describes a single deployable service.
@@ -131,6 +142,24 @@ var serviceMetaRegistry = []serviceMeta{
 	},
 }
 
+// jobMeta holds the static metadata for each one-off job.
+type jobMeta struct {
+	ContractName string
+	Image        string
+	Command      []string
+	Services     []Service // env-registry scope whose vars the job reads
+}
+
+// jobMetaRegistry lists the one-off jobs in the contract.
+var jobMetaRegistry = []jobMeta{
+	{
+		ContractName: "migrate",
+		Image:        "gprins/domain-os-api",
+		Command:      []string{"/ryAdminAPI", "migrate"},
+		Services:     []Service{ServiceMigrate},
+	},
+}
+
 // infraComponentSpec declares a shared infrastructure component. UsedBy is not
 // listed here: it is derived from the env registry, so the two cannot drift.
 // A service uses the component iff it declares any of ProbeVars.
@@ -204,6 +233,16 @@ func GenerateContract() (*Contract, error) {
 	for _, meta := range serviceMetaRegistry {
 		groups[meta.ContractName] = &envGroup{}
 	}
+	// Jobs are grouped the same way, keyed "job:<name>" so a job can never
+	// collide with a service of the same name.
+	jobToContract := make(map[Service]string)
+	for _, meta := range jobMetaRegistry {
+		key := "job:" + meta.ContractName
+		groups[key] = &envGroup{}
+		for _, svc := range meta.Services {
+			jobToContract[svc] = key
+		}
+	}
 
 	for _, envVar := range Registry {
 		// Skip CLI-only and runtime-detection vars — not relevant for deployment
@@ -222,6 +261,9 @@ func GenerateContract() (*Contract, error) {
 			}
 			if contractName, ok := serviceToContract[svc]; ok {
 				contractServices[contractName] = true
+			}
+			if jobKey, ok := jobToContract[svc]; ok {
+				contractServices[jobKey] = true
 			}
 		}
 
@@ -278,10 +320,29 @@ func GenerateContract() (*Contract, error) {
 		services[meta.ContractName] = svc
 	}
 
+	jobs := make(map[string]JobContract, len(jobMetaRegistry))
+	for _, meta := range jobMetaRegistry {
+		g := groups["job:"+meta.ContractName]
+		job := JobContract{
+			Image:   meta.Image,
+			Command: meta.Command,
+			EnvVars: ContractEnvVars{Required: g.required, Optional: g.optional},
+		}
+		if job.EnvVars.Required == nil {
+			job.EnvVars.Required = []ContractEnvVar{}
+		}
+		if job.EnvVars.Optional == nil {
+			job.EnvVars.Optional = []ContractEnvVar{}
+		}
+		jobs[meta.ContractName] = job
+	}
+
+	// Schema 4 added "jobs" (the migrate job).
 	contract := &Contract{
-		SchemaVersion:  "3",
+		SchemaVersion:  "4",
 		Generated:      time.Now().UTC().Format(time.RFC3339),
 		Services:       services,
+		Jobs:           jobs,
 		Infrastructure: buildInfrastructure(serviceToContract),
 	}
 

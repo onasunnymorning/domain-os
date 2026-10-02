@@ -19,6 +19,9 @@ const (
 	ServiceMCP      Service = "mcp"
 	ServiceWhois    Service = "whois"
 	ServiceCLI      Service = "cli"
+	// ServiceMigrate is the one-off `ryAdminAPI migrate` job (contract "jobs"),
+	// not a long-running service. It reads only the database connection vars.
+	ServiceMigrate Service = "migrate"
 )
 
 // EnvVar documents a single environment variable.
@@ -59,14 +62,15 @@ var Registry = []EnvVar{
 	// DATABASE_URL falls back to DB_* when it is unset, so neither is Required on
 	// its own. The DB_* set is the production credential path on AWS ECS — a
 	// secret-store password injected as DB_PASS never has to survive URL parsing.
-	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker}, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."},
-	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
-	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
-	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
-	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI}, Default: "disable", Description: "PostgreSQL SSL mode"},
-	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Run GORM AutoMigrate on startup"},
+	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker, ServiceMigrate}, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."},
+	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
+	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
+	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
+	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "disable", Description: "PostgreSQL SSL mode"},
+	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Migrate the schema on startup (local development). Deployed environments leave this false and run the `migrate` job before rolling services - see docs/adr/0010-database-migrations.md"},
+	{Name: "SCHEMA_GUARD", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP}, Default: "enforce", Description: "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"},
 
 	// ═══════════════════════════════════════════
 	// AUTH0

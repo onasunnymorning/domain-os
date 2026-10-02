@@ -10,6 +10,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/worker"
@@ -17,6 +18,11 @@ import (
 
 func main() {
 	log.Printf("unified-worker version=%s sha=%s", buildinfo.Version, buildinfo.GitSHA)
+
+	// Refuse to run activities against a schema older than this build. The
+	// worker opens its real connections inside activities, so this check gets
+	// a short-lived connection of its own, before anything polls a queue.
+	checkSchema()
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 
@@ -309,5 +315,24 @@ func main() {
 		// deferred Close never runs on this path, so it is not closed twice.
 		client.Close()
 		os.Exit(1) //nolint:gocritic // exitAfterDefer: the deferred Close is what the line above just did explicitly, precisely because os.Exit skips it.
+	}
+}
+
+// checkSchema runs the schema guard (docs/adr/0010-database-migrations.md) and
+// exits when it refuses. A connection failure is fatal too: a worker that
+// cannot reach the database cannot do useful work, and failing here names the
+// cause instead of failing every activity later.
+func checkSchema() {
+	db, err := postgres.NewConnectionFromEnv()
+	if err != nil {
+		log.Fatalf("schema guard: cannot connect to the database: %v", err)
+	}
+	defer func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}()
+	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf); err != nil {
+		os.Exit(1)
 	}
 }
