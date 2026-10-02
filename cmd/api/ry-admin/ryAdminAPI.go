@@ -212,8 +212,9 @@ func main() {
 	// passes; in deployed environments the migrate step must have run first.
 	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
 	if err := postgres.EnforceSchemaGuard(gormDB, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
-		_ = logger.Sync()
-		os.Exit(1)
+		// Fatal syncs the logger and exits 1, matching the other startup
+		// failures in this function.
+		logger.Fatal("Refusing to start: schema guard", zap.Error(err))
 	}
 
 	// Set up EventPublisher (PostgreSQL outbox)

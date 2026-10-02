@@ -327,12 +327,13 @@ func checkSchema() {
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
 	}
-	defer func() {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	}()
-	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf); err != nil {
+	guardErr := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf)
+	// Close explicitly rather than with defer: the refusal path exits, and a
+	// deferred close would never run.
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	if guardErr != nil {
 		os.Exit(1)
 	}
 }
