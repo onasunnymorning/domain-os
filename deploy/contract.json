@@ -1,6 +1,6 @@
 {
-  "schema_version": "3",
-  "generated": "2026-09-13T04:53:55Z",
+  "schema_version": "4",
+  "generated": "2026-10-02T17:55:46Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -59,7 +59,12 @@
           {
             "name": "AUTO_MIGRATE",
             "default": "false",
-            "description": "Run GORM AutoMigrate on startup"
+            "description": "Migrate the schema on startup (local development). Deployed environments leave this false and run the `migrate` job before rolling services - see docs/adr/0010-database-migrations.md"
+          },
+          {
+            "name": "SCHEMA_GUARD",
+            "default": "enforce",
+            "description": "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"
           },
           {
             "name": "AUTH0_ENABLED",
@@ -436,6 +441,11 @@
             "description": "PostgreSQL SSL mode"
           },
           {
+            "name": "SCHEMA_GUARD",
+            "default": "enforce",
+            "description": "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"
+          },
+          {
             "name": "MCP_TRANSPORT",
             "default": "stdio",
             "description": "MCP transport mode: 'stdio' for local IDE, 'http' for container deployment"
@@ -502,6 +512,11 @@
             "name": "DB_SSLMODE",
             "default": "disable",
             "description": "PostgreSQL SSL mode"
+          },
+          {
+            "name": "SCHEMA_GUARD",
+            "default": "enforce",
+            "description": "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"
           },
           {
             "name": "AUTH0_ENABLED",
@@ -728,6 +743,56 @@
       "env_vars": {
         "required": [],
         "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          }
+        ]
+      }
+    }
+  },
+  "jobs": {
+    "migrate": {
+      "image": "gprins/domain-os-api",
+      "command": [
+        "/ryAdminAPI",
+        "migrate"
+      ],
+      "env_vars": {
+        "required": [],
+        "optional": [
+          {
+            "name": "DATABASE_URL",
+            "secret": true,
+            "description": "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."
+          },
           {
             "name": "DB_USER",
             "default": "postgres",
