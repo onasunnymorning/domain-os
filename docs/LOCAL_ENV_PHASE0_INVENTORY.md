@@ -29,7 +29,7 @@ Note on the Go `toolchain` directive: it was added and then reverted. This modul
 | **Services** | **RabbitMQ does not exist anywhere in this repo.** Actual set — see table below. | 🔴 halt |
 | **Versions** | `go.mod` says `go 1.26.5`, no `toolchain` directive. No `.tool-versions`. README claims "Go 1.21+" (stale by 5 minors). Frontend `.nvmrc` = 22, `engines.node` = `>=20 <23`; this machine runs node **v25.6.1** — already out of range. Two images unpinned. | 🔴 halt |
 | **Config** | Three competing sources — see "Config sources". | 🔴 halt |
-| **Migrations** | No migration files and no migration tool. GORM `AutoMigrate` runs on API boot, gated by `AUTO_MIGRATE=true`. Repeatable, but schema is defined only by Go structs. | ✅ answered |
+| **Migrations** | No migration files and no migration tool. GORM `AutoMigrate` runs on API boot, gated by `AUTO_MIGRATE=true`. Repeatable, but schema is defined only by Go structs. *(Since 2026-10-02: locally still `AUTO_MIGRATE=true`; deployed environments run `ryAdminAPI migrate` and services check `schema_version` — [ADR 0010](adr/0010-database-migrations.md).)* | ✅ answered |
 | **Seed data** | **No seed mechanism exists.** Closest thing: `admin-init` runs `ryAdminAPI init-registrars`, which is not a seeder (see "Boot path"). `initdata/icannRegistrarList.csv` is a public ICANN download, unused by the boot path. | ✅ answered |
 | **Test suite** | **Green.** `go test ./...` → exit 0, 29 packages ok, 0 failures, 36 with no test files. Full run ≈ 4 min warm. | ✅ answered |
 | **External deps** | Yes, three of them, all in the boot path. See "Halt conditions" #1. | 🔴 halt |

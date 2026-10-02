@@ -135,6 +135,17 @@ func main() {
 		return
 	}
 
+	// Check for migrate command: the deployed path that changes the schema.
+	// Runs as a one-off task before services roll; exits non-zero on failure.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		if err := runMigrate(logger); err != nil {
+			logger.Error("migrate: failed", zap.Error(err))
+			_ = logger.Sync()
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Check for seed command. Unlike init-registrars, this reaches no network:
 	// it is the local-development path and must work fully offline.
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
@@ -194,6 +205,16 @@ func main() {
 	}
 	if err != nil {
 		logger.Panic("Failed to connect to the database", zap.Error(err))
+	}
+
+	// Refuse to serve on a schema older than this build. With AUTO_MIGRATE=true
+	// the connection above has just migrated and recorded the version, so this
+	// passes; in deployed environments the migrate step must have run first.
+	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
+	if err := postgres.EnforceSchemaGuard(gormDB, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
+		// Fatal syncs the logger and exits 1, matching the other startup
+		// failures in this function.
+		logger.Fatal("Refusing to start: schema guard", zap.Error(err))
 	}
 
 	// Set up EventPublisher (PostgreSQL outbox)

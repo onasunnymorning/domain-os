@@ -56,6 +56,13 @@ func run() int {
 		return 1
 	}
 
+	// Refuse to serve on a schema older than this build
+	// (docs/adr/0010-database-migrations.md).
+	schemaLog := func(format string, args ...any) { slog.Info(fmt.Sprintf(format, args...)) }
+	if err := postgres.EnforceSchemaGuard(gormDB, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
+		return 1
+	}
+
 	// Set up repositories and services.
 	// Each service is wired with only the repositories it needs for read-only
 	// tools. Unused dependencies are passed as nil with comments explaining why.
