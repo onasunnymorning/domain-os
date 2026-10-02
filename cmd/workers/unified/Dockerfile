@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
       -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
       -o /out/unified-worker ./cmd/workers/unified
 
-FROM alpine:3.21.4
+FROM alpine:3.21.8
 RUN apk upgrade --no-cache
 # Copy seed data (used by lifecycle worker for registrar sync)
 COPY ./initdata /app/initdata
