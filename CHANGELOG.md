@@ -1,4 +1,19 @@
 <a name="unreleased"></a>
+## [0.10.0](https://github.com/onasunnymorning/domain-os/compare/v0.9.0...v0.10.0) (2026-10-02)
+
+
+### Features
+
+* **db:** one migrator, guarded consumers - `ryAdminAPI migrate` and a schema_version guard ([7f74ab6](https://github.com/onasunnymorning/domain-os/commit/7f74ab6cfeca51d4ef55eb04344ff9461fdfd3d4))
+* **db:** one migrator, guarded consumers - ryAdminAPI migrate + schema_version guard ([b2e3561](https://github.com/onasunnymorning/domain-os/commit/b2e35613c890ec7ffcf435be22b2aebe0919ac63))
+
+
+### Bug Fixes
+
+* **db:** satisfy gocritic in the schema guard and migrate paths ([6f77fbc](https://github.com/onasunnymorning/domain-os/commit/6f77fbc313f011b90d0cc05b12ef8cbd056ed763))
+* **deps:** bump axios to ^1.20.0 and audit-fix brace-expansion ([403b0bf](https://github.com/onasunnymorning/domain-os/commit/403b0bf3c726662c0255450bcfcf92c04c6560aa))
+* **docker:** bump runtime base to alpine:3.21.8 to pick up OpenSSL/Python fixes ([34a7130](https://github.com/onasunnymorning/domain-os/commit/34a713074fbc4be8ce8da08d2e979bdacef96a9d))
+
 ## [0.9.0](https://github.com/onasunnymorning/domain-os/compare/v0.8.4...v0.9.0) (2026-09-29)
 
 
