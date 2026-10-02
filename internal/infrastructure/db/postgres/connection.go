@@ -221,7 +221,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 	}
 
 	if cfg.AutoMigrate {
-		if err = autoMigrateOnConnect(gormDB); err != nil {
+		if err := autoMigrateOnConnect(gormDB); err != nil {
 			return gormDB, err
 		}
 	} else {
@@ -242,7 +242,7 @@ func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error
 	}
 
 	if autoMigrate {
-		if err = autoMigrateOnConnect(gormDB); err != nil {
+		if err := autoMigrateOnConnect(gormDB); err != nil {
 			return gormDB, err
 		}
 	} else {
