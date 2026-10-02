@@ -78,7 +78,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 
 # Create API release image
-FROM alpine:3.21.4 AS admin-api
+FROM alpine:3.21.8 AS admin-api
 
 ## Install security patches and dnsviz dependencies
 RUN apk upgrade --no-cache && \
