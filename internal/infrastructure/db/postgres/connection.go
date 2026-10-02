@@ -1,11 +1,16 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"strings"
+	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 
 	_ "github.com/lib/pq"     // Standard postgres driver (in case we need to create the database)
 	"gorm.io/driver/postgres" // Gorm postgres driver
@@ -194,8 +199,15 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 		if strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
-				log.Println(err)
-				return nil, fmt.Errorf("failed to create database: %w", err)
+				// Two processes starting against an empty cluster (e.g. two
+				// `migrate` runs) both see the database missing; the loser's
+				// CREATE DATABASE fails on the catalog's unique index. The
+				// database exists either way, so carry on and connect.
+				if !isDuplicateDatabaseError(err) {
+					log.Println(err)
+					return nil, fmt.Errorf("failed to create database: %w", err)
+				}
+				log.Printf("Database '%s' was created concurrently by another process", cfg.DBName)
 			}
 			// Retry the connection after creating the database
 			gormDB, err = gorm.Open(postgres.Open(dsn))
@@ -209,9 +221,8 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 	}
 
 	if cfg.AutoMigrate {
-		log.Println("Auto migrating database")
-		if err = AutoMigrate(gormDB); err != nil {
-			return gormDB, fmt.Errorf("failed to migrate database: %w", err)
+		if err := autoMigrateOnConnect(gormDB); err != nil {
+			return gormDB, err
 		}
 	} else {
 		log.Println("Skipping auto migration")
@@ -231,13 +242,57 @@ func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error
 	}
 
 	if autoMigrate {
-		log.Println("Auto migrating database")
-		if err = AutoMigrate(gormDB); err != nil {
-			return gormDB, fmt.Errorf("failed to migrate database: %w", err)
+		if err := autoMigrateOnConnect(gormDB); err != nil {
+			return gormDB, err
 		}
 	} else {
 		log.Println("Skipping auto migration")
 	}
 
 	return gormDB, nil
+}
+
+// autoMigrateOnConnect is the AUTO_MIGRATE=true path (local development,
+// docker-compose, the registrar importer). It goes through the same Migrate as
+// `ryAdminAPI migrate` - advisory lock, AutoMigrate, schema_version - so a
+// locally migrated database passes the schema guard like a deployed one, and
+// two processes starting together serialise instead of deadlocking.
+func autoMigrateOnConnect(gormDB *gorm.DB) error {
+	log.Println("Auto migrating database")
+	err := Migrate(context.Background(), gormDB, MigrateOptions{
+		Version:     buildinfo.Version,
+		GitSHA:      buildinfo.GitSHA,
+		LockTimeout: 10 * time.Minute,
+		Logf:        log.Printf,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+	return nil
+}
+
+// NewConnectionFromEnv opens a connection the way every domain-os process
+// does: DATABASE_URL when set, otherwise the DB_* variables. It never
+// migrates - callers that should migrate call Migrate explicitly.
+func NewConnectionFromEnv() (*gorm.DB, error) {
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		return NewConnectionFromURL(dbURL, false)
+	}
+	return NewConnection(Config{
+		User:    os.Getenv("DB_USER"),
+		Pass:    os.Getenv("DB_PASS"),
+		Host:    os.Getenv("DB_HOST"),
+		Port:    os.Getenv("DB_PORT"),
+		DBName:  os.Getenv("DB_NAME"),
+		SSLmode: os.Getenv("DB_SSLMODE"),
+	})
+}
+
+// isDuplicateDatabaseError reports whether err is Postgres refusing a CREATE
+// DATABASE because the database already exists - either the clean
+// duplicate_database error (42P04) or, when two creates race, the unique
+// violation on pg_database's name index.
+func isDuplicateDatabaseError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "already exists") || strings.Contains(msg, "pg_database_datname_index")
 }
