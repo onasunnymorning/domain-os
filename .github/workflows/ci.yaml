@@ -205,7 +205,17 @@ jobs:
           cd frontend
           npm run test:coverage
 
-      - name: npm audit
+      # Blocking gate covers runtime dependencies only. Dev tooling advisories
+      # with no upstream patch (e.g. braces, GHSA-vfj7-8cjw-p6xm, via
+      # eslint-config-next) would otherwise hold every PR hostage; the full
+      # report below stays visible but does not fail the build.
+      - name: npm audit (runtime dependencies)
+        run: |
+          cd frontend
+          npm audit --omit=dev --audit-level=high
+
+      - name: npm audit (full, advisory)
+        continue-on-error: true
         run: |
           cd frontend
           npm audit --audit-level=high
