@@ -113,6 +113,9 @@ func NewEscrowController(e *gin.Engine, handler gin.HandlerFunc, deps EscrowVali
 		grp.POST("/sanitizations", controller.StartSanitization)
 		grp.GET("/sanitizations", controller.ListSanitizations)
 		grp.GET("/sanitizations/:id", controller.GetSanitization)
+
+		// Synthetic deposits for testing and demos — made-up data, no tenant scope
+		grp.POST("/synthetic", controller.GenerateSynthetic)
 	}
 	return controller
 }
