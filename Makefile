@@ -390,6 +390,7 @@ ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Arc
 	@echo "    INV-01 telemetry off the delivery path   INV-03 vendor LLM SDK boundary"
 	@echo "    INV-07 errors wrapped with %w            INV-12 Temporal workflow logging"
 	@echo "    INV-14 domain layer imports inward       INV-15 typed context keys"
+	@echo "    INV-17 env read only at composition root"
 	@golangci-lint run --config .golangci.arch.yml ./... || { \
 		echo ""; \
 		echo "❌ Architecture gate FAILED. Each finding names the invariant it breaks."; \
