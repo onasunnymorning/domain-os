@@ -17,6 +17,15 @@ COPY . .
 # No NEXT_PUBLIC_* build args: they resolve at runtime via next-runtime-env,
 # so this image is environment-agnostic. See docs/adr/0001-runtime-env-configuration.md
 
+# Version and commit are properties of this artifact, not of the environment:
+# next.config.ts inlines them into the bundle (lib/build-info.ts), so they cannot
+# be overridden at runtime. Defaults make a local `docker build` show "dev".
+# Declared late so a changed version only invalidates the build layer.
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ENV APP_BUILD_VERSION=${VERSION} \
+    APP_BUILD_COMMIT=${GIT_SHA}
+
 # Build without --turbopack (unsupported in production for Next.js 15.5.x)
 ENV __NEXT_CONTINUE_EXPERIMENTAL=1
 RUN npx next build
@@ -32,12 +41,6 @@ ENV NODE_ENV=production
 # sigstore, …) are the sole source of HIGH CVEs in this image.
 RUN apk upgrade --no-cache && \
     rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
-
-# NEXT_PUBLIC_APP_VERSION is intentionally NOT baked in. next-runtime-env reads
-# it from the container environment at startup (see lib/env.ts), so a single
-# image serves every version and releases are promoted by digest rather than
-# rebuilt. The deployment sets it; the contract declares it for the frontend.
-# See docs/adr/0001-runtime-env-configuration.md and docs/ci-cd.md.
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

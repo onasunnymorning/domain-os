@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-02T17:55:46Z",
+  "generated": "2026-10-03T03:17:59Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -365,11 +365,6 @@
           {
             "name": "NEXT_PUBLIC_AUTH0_AUDIENCE",
             "description": "Auth0 API identifier for token audience"
-          },
-          {
-            "name": "NEXT_PUBLIC_APP_VERSION",
-            "default": "0.0.0",
-            "description": "App version displayed in UI. Injected at container start by next-runtime-env (not baked into the image); the deployment sets it to the release version"
           },
           {
             "name": "NEXT_PUBLIC_TEMPORAL_UI_URL",
