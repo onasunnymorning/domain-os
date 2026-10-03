@@ -52,6 +52,11 @@ const eslintConfig = [
     },
   },
   {
+    // Build-time constants (next.config.ts stamps them, lib/build-info.ts reads them); not runtime configuration.
+    files: ["lib/build-info.ts", "next.config.ts"],
+    rules: { "no-restricted-syntax": "off" },
+  },
+  {
     // Test setup bridges process.env into the mocked env() accessor.
     files: ["vitest.setup.ts"],
     rules: { "no-restricted-syntax": "off" },

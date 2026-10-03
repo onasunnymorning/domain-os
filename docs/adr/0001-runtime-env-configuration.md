@@ -61,12 +61,15 @@ failure mode for Sentry. `disableNextScript` emits a plain inline `<script>`,
 which the browser executes in document order, before any bundle chunk. Without it,
 `window.__ENV` is `undefined` when PostHog initialises.
 
-### Why `NEXT_PUBLIC_APP_VERSION` is still stamped at build
+### Why the app version is not a runtime variable
 
-The app version is genuinely build-time metadata; a runtime-overridable version
-string would be a lie waiting to happen. It is set as an `ENV` in the Dockerfile's
-**runner** stage (not the builder), so `PublicEnvScript` picks it up like any other
-runtime variable while still being overridable with `docker run -e` for debugging.
+The app version (and the git SHA beside it) is build-time metadata of the artifact;
+a runtime-overridable version string would be a lie waiting to happen, and a stale
+value in Doppler or infra would silently shadow the real one. It is therefore not
+an env var at all: the Dockerfile builder stage takes `VERSION`/`GIT_SHA` build
+args, exposes them as `APP_BUILD_VERSION`/`APP_BUILD_COMMIT`, and `next.config.ts`
+inlines them into the bundle. `lib/build-info.ts` is the only reader. Unstamped
+builds show `dev`.
 
 ### Why the `NEXT_PUBLIC_` prefix is retained
 
