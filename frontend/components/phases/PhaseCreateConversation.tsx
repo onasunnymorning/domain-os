@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SystemBubble, UserBubble, ConversationProgress, StepInput } from '@/components/shared/ChatBubbles';
 import { cn } from '@/lib/utils';
 import {
@@ -70,12 +71,18 @@ interface FeeEntry {
   refundable: boolean;
 }
 
-type ContactPolicyPreset = 'thick' | 'thin' | 'custom';
 type ContactPolicyValue = 'mandatory' | 'optional' | 'prohibited';
+
+const CONTACT_POLICY_VALUES: ContactPolicyValue[] = ['mandatory', 'optional', 'prohibited'];
+const CONTACT_ROLES = [
+  { role: 'registrant', key: 'customRegistrant', label: 'Registrant' },
+  { role: 'tech', key: 'customTech', label: 'Tech' },
+  { role: 'admin', key: 'customAdmin', label: 'Admin' },
+  { role: 'billing', key: 'customBilling', label: 'Billing' },
+] as const;
 
 interface PolicyState {
   requiresValidation: boolean;
-  contactPreset: ContactPolicyPreset;
   registrantPolicy: ContactPolicyValue;
   techPolicy: ContactPolicyValue;
   adminPolicy: ContactPolicyValue;
@@ -94,9 +101,8 @@ interface PolicyState {
 
 const DEFAULT_POLICY: PolicyState = {
   requiresValidation: false,
-  contactPreset: 'thick',
   registrantPolicy: 'mandatory',
-  techPolicy: 'mandatory',
+  techPolicy: 'optional',
   adminPolicy: 'optional',
   billingPolicy: 'optional',
   useDefaultLifecycle: true,
@@ -144,7 +150,7 @@ type WizardAction =
   | { type: 'SKIP_FEES' }
   | { type: 'CONTINUE_TO_VALIDATION' }
   | { type: 'SET_VALIDATION'; requires: boolean }
-  | { type: 'SET_DATA_POLICY'; preset: ContactPolicyPreset; registrant: ContactPolicyValue; tech: ContactPolicyValue; admin: ContactPolicyValue; billing: ContactPolicyValue }
+  | { type: 'SET_DATA_POLICY'; registrant: ContactPolicyValue; tech: ContactPolicyValue; admin: ContactPolicyValue; billing: ContactPolicyValue }
   | { type: 'SET_LIFECYCLE'; policy: Partial<PolicyState> }
   | { type: 'SUBMIT' }
   | { type: 'SUBMIT_SUCCESS'; name: string; pricingWarning?: string }
@@ -200,7 +206,7 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'SET_VALIDATION':
       return { ...state, step: 'data-policy', policy: { ...state.policy, requiresValidation: action.requires }, error: null };
     case 'SET_DATA_POLICY':
-      return { ...state, step: 'lifecycle', policy: { ...state.policy, contactPreset: action.preset, registrantPolicy: action.registrant, techPolicy: action.tech, adminPolicy: action.admin, billingPolicy: action.billing }, error: null };
+      return { ...state, step: 'lifecycle', policy: { ...state.policy, registrantPolicy: action.registrant, techPolicy: action.tech, adminPolicy: action.admin, billingPolicy: action.billing }, error: null };
     case 'SET_LIFECYCLE':
       return { ...state, step: 'review', policy: { ...state.policy, ...action.policy }, error: null };
     case 'SUBMIT':
@@ -305,11 +311,10 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
   const [feeRefundable, setFeeRefundable] = useState(false);
   const [feeError, setFeeError] = useState<string | null>(null);
 
-  // Policy inputs (custom data policy)
-  const [showCustomPolicy, setShowCustomPolicy] = useState(false);
+  // Policy inputs (contact data policy)
   const [customContactPolicy, setCustomContactPolicy] = useState({
     customRegistrant: 'mandatory' as ContactPolicyValue,
-    customTech: 'mandatory' as ContactPolicyValue,
+    customTech: 'optional' as ContactPolicyValue,
     customAdmin: 'optional' as ContactPolicyValue,
     customBilling: 'optional' as ContactPolicyValue,
   });
@@ -366,10 +371,9 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
       setFeeError(null);
       setOverlapWarning(null);
       setContinuityInfo(null);
-      setShowCustomPolicy(false);
       setCustomContactPolicy({
         customRegistrant: 'mandatory',
-        customTech: 'mandatory',
+        customTech: 'optional',
         customAdmin: 'optional',
         customBilling: 'optional',
       });
@@ -586,15 +590,15 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
             console.error('Failed to add fees:', err);
           }
 
-          // Update policy if non-default
+          // Update policy
           try {
             const p = state.policy;
             const policyPayload: Record<string, any> = {};
             if (p.requiresValidation) policyPayload.requiresValidation = true;
-            if (p.registrantPolicy !== 'mandatory') policyPayload.registrantContactDataPolicy = p.registrantPolicy;
-            if (p.techPolicy !== 'mandatory') policyPayload.techContactDataPolicy = p.techPolicy;
-            if (p.adminPolicy !== 'optional') policyPayload.adminContactDataPolicy = p.adminPolicy;
-            if (p.billingPolicy !== 'optional') policyPayload.billingContactDataPolicy = p.billingPolicy;
+            policyPayload.registrantContactDataPolicy = p.registrantPolicy;
+            policyPayload.techContactDataPolicy = p.techPolicy;
+            policyPayload.adminContactDataPolicy = p.adminPolicy;
+            policyPayload.billingContactDataPolicy = p.billingPolicy;
             if (!p.useDefaultLifecycle) {
               policyPayload.registrationGP = p.registrationGP;
               policyPayload.renewalGP = p.renewalGP;
@@ -1167,98 +1171,51 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
           {/* ── Step: Data Policy ────────────────────────────────────── */}
           {currentIndex >= stepOrder.indexOf('data-policy') && (
             <SystemBubble icon={ScrollText}>
-              Contact data policy — which contact types should be collected?
+              Contact data policy — should each contact type be mandatory, optional or prohibited?
             </SystemBubble>
           )}
 
           {state.step === 'data-policy' && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 ml-10 space-y-3">
-              <div className="grid grid-cols-1 gap-2">
-                <button
-                  onClick={() => dispatch({ type: 'SET_DATA_POLICY', preset: 'thick', registrant: 'mandatory', tech: 'mandatory', admin: 'optional', billing: 'optional' })}
-                  className="text-left rounded-lg border-2 border-primary/30 bg-primary/5 hover:border-primary/50 p-3 transition-all duration-200 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold group-hover:text-primary">Thick (recommended)</div>
-                    <Badge variant="secondary" className="text-[10px]">2025 gTLD RDP</Badge>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-                    Registrant &amp; Tech required, Admin &amp; Billing optional.
-                  </p>
-                </button>
-                <button
-                  onClick={() => dispatch({ type: 'SET_DATA_POLICY', preset: 'thin', registrant: 'mandatory', tech: 'prohibited', admin: 'prohibited', billing: 'prohibited' })}
-                  className="text-left rounded-lg border-2 border-border/60 hover:border-primary/50 hover:bg-primary/5 p-3 transition-all duration-200 group"
-                >
-                  <div className="text-sm font-semibold text-muted-foreground group-hover:text-primary">Thin</div>
-                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-                    Registrant required only. Tech, Admin &amp; Billing rejected.
-                  </p>
-                </button>
-                <button
-                  onClick={() => setShowCustomPolicy(true)}
-                  className="text-left rounded-lg border-2 border-border/60 hover:border-primary/50 hover:bg-primary/5 p-3 transition-all duration-200 group"
-                >
-                  <div className="text-sm font-semibold text-muted-foreground group-hover:text-primary">Custom</div>
-                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-                    Set each contact type individually.
-                  </p>
-                </button>
-              </div>
-
-              {showCustomPolicy && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-200 rounded-lg border bg-muted/30 p-3 space-y-2.5">
-                  {(['registrant', 'tech', 'admin', 'billing'] as const).map((role) => (
-                    <div key={role} className="flex items-center justify-between">
-                      <Label className="text-xs capitalize">{role}</Label>
-                      <div className="flex gap-1">
-                        {(['mandatory', 'optional', 'prohibited'] as const).map((val) => (
-                          <button
-                            key={val}
-                            onClick={() => {
-                              const key = `custom${role.charAt(0).toUpperCase() + role.slice(1)}` as keyof typeof customContactPolicy;
-                              setCustomContactPolicy(prev => ({ ...prev, [key]: val }));
-                            }}
-                            className={cn(
-                              'px-2 py-0.5 rounded text-[10px] font-medium border transition-colors',
-                              customContactPolicy[`custom${role.charAt(0).toUpperCase() + role.slice(1)}` as keyof typeof customContactPolicy] === val
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-border text-muted-foreground hover:border-primary/30'
-                            )}
-                          >
-                            {val}
-                          </button>
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2.5">
+                {CONTACT_ROLES.map(({ role, key, label }) => (
+                  <div key={role} className="flex items-center justify-between gap-3">
+                    <Label className="text-xs">{label}</Label>
+                    <Select
+                      value={customContactPolicy[key]}
+                      onValueChange={(val) => setCustomContactPolicy(prev => ({ ...prev, [key]: val as ContactPolicyValue }))}
+                    >
+                      <SelectTrigger className="h-8 w-40 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONTACT_POLICY_VALUES.map((val) => (
+                          <SelectItem key={val} value={val} className="text-xs capitalize">{val}</SelectItem>
                         ))}
-                      </div>
-                    </div>
-                  ))}
-                  <Button
-                    size="sm"
-                    className="w-full mt-2 gap-1.5"
-                    onClick={() => {
-                      dispatch({
-                        type: 'SET_DATA_POLICY',
-                        preset: 'custom',
-                        registrant: customContactPolicy.customRegistrant,
-                        tech: customContactPolicy.customTech,
-                        admin: customContactPolicy.customAdmin,
-                        billing: customContactPolicy.customBilling,
-                      });
-                      setShowCustomPolicy(false);
-                    }}
-                  >
-                    <ArrowRight className="h-3.5 w-3.5" /> Confirm policy
-                  </Button>
-                </div>
-              )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  className="w-full mt-2 gap-1.5"
+                  onClick={() => dispatch({
+                    type: 'SET_DATA_POLICY',
+                    registrant: customContactPolicy.customRegistrant,
+                    tech: customContactPolicy.customTech,
+                    admin: customContactPolicy.customAdmin,
+                    billing: customContactPolicy.customBilling,
+                  })}
+                >
+                  <ArrowRight className="h-3.5 w-3.5" /> Confirm policy
+                </Button>
+              </div>
             </div>
           )}
 
           {pastStep('data-policy') && (
             <UserBubble>
-              {state.policy.contactPreset === 'thick' ? 'Thick data policy' :
-               state.policy.contactPreset === 'thin' ? 'Thin data policy' :
-               `Custom: Reg=${state.policy.registrantPolicy}, Tech=${state.policy.techPolicy}, Admin=${state.policy.adminPolicy}, Billing=${state.policy.billingPolicy}`}
+              {`Registrant=${state.policy.registrantPolicy}, Tech=${state.policy.techPolicy}, Admin=${state.policy.adminPolicy}, Billing=${state.policy.billingPolicy}`}
             </UserBubble>
           )}
 
@@ -1399,7 +1356,9 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span>Contact data</span>
-                      <span className="capitalize">{state.policy.contactPreset}</span>
+                      <span className="capitalize">
+                        Reg {state.policy.registrantPolicy}, Tech {state.policy.techPolicy}, Admin {state.policy.adminPolicy}, Billing {state.policy.billingPolicy}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span>Lifecycle</span>

@@ -3126,7 +3126,7 @@ func (a *EscrowImportActivities) ResolveRegistrars(ctx context.Context, args Res
 	`
 	rows, err := db.Query(query)
 	if err != nil {
-		// Fallback: domains/hosts/contacts tables may not exist yet (thin TLD)
+		// Fallback: domains/hosts/contacts tables may not exist yet (e.g. registrar-only escrow)
 		activity.GetLogger(ctx).Warn("Could not query with object counts, falling back", "error", err)
 		rows, err = db.Query(`SELECT ID, name, gurID, 0 AS domain_count, 0 AS host_count, 0 AS contact_count, COALESCE(email,'') AS email, COALESCE(voice,'') AS voice, COALESCE(url,'') AS url FROM registrars`)
 	}
