@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { getAppVersion } from '@/lib/env';
+import { formatAppVersion } from '@/lib/env';
 import {
   Building2,
   FileText,
@@ -168,7 +168,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
           <div className="pt-2 px-4 border-t border-border/30">
             <p className="px-3 py-2 text-xs text-muted-foreground">
-              v{getAppVersion()}
+              {formatAppVersion()}
             </p>
           </div>
         </div>
