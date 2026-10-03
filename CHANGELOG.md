@@ -1,4 +1,22 @@
 <a name="unreleased"></a>
+## [0.11.0](https://github.com/onasunnymorning/domain-os/compare/v0.10.0...v0.11.0) (2026-10-03)
+
+
+### Features
+
+* **escrow:** generate synthetic RDE deposits as .xml.gz ([b7c874b](https://github.com/onasunnymorning/domain-os/commit/b7c874b480ef5b38180930dfa148e517a8f33cbd))
+* **escrow:** generate synthetic RDE deposits as .xml.gz ([a2dab92](https://github.com/onasunnymorning/domain-os/commit/a2dab92fb6b7f1000c9f00c6bc412b1c24d2b98c))
+* **frontend:** per-contact policy dropdowns in phase create wizard ([62936f1](https://github.com/onasunnymorning/domain-os/commit/62936f1db9fc30b79dcf8b0057b99356c367341c))
+* **frontend:** stamp version and commit into the UI at build time ([f22530c](https://github.com/onasunnymorning/domain-os/commit/f22530c8cc13240a5a05d848f825972e3cedce77))
+* **frontend:** stamp version and commit into the UI at build time ([710efd3](https://github.com/onasunnymorning/domain-os/commit/710efd30a483b9b07c34d14a41834ddea9828d6b))
+
+
+### Bug Fixes
+
+* **frontend:** drop .env.local un-ignore rule from .gitignore ([f8e9fea](https://github.com/onasunnymorning/domain-os/commit/f8e9feafe0a4e73704c3e5df04cebe906eb72a6f))
+* **frontend:** stop tracking .env.local ([e5c4f24](https://github.com/onasunnymorning/domain-os/commit/e5c4f24d8d4d694837a48583146dcf046eda9ee4))
+* **frontend:** stop tracking .env.local ([91268ad](https://github.com/onasunnymorning/domain-os/commit/91268ad3b7361bddd2f0b642a71a50e1b8fd2a29))
+
 ## [0.10.0](https://github.com/onasunnymorning/domain-os/compare/v0.9.0...v0.10.0) (2026-10-02)
 
 
