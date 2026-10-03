@@ -1,4 +1,12 @@
 <a name="unreleased"></a>
+## [0.11.1](https://github.com/onasunnymorning/domain-os/compare/v0.11.0...v0.11.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **make:** run test-integration under its own compose project ([de49d0d](https://github.com/onasunnymorning/domain-os/commit/de49d0da16c31752593459c50969e22901a1a668))
+* **make:** run test-integration under its own compose project ([213f25f](https://github.com/onasunnymorning/domain-os/commit/213f25fe53ec7cd7852e280d2bd219d65fad9960))
+
 ## [0.11.0](https://github.com/onasunnymorning/domain-os/compare/v0.10.0...v0.11.0) (2026-10-03)
 
 
