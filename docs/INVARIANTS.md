@@ -42,6 +42,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-14 | Domain layer does not import inward | **B** | Invariants |
 | INV-15 | Context values are carried on typed keys | A | Invariants |
 | INV-16 | correlation_id = Temporal Workflow ID; trace_id = Run ID | **B** | Invariants |
+| INV-17 | The process environment is read only at the composition root | **B** | Invariants |
 | ~~UNR-01~~ | Retired — promoted to INV-14 on 2026-08-25 | — | — |
 | ~~UNR-02~~ | Retired — promoted to INV-15 on 2026-08-25 | — | — |
 | ~~UNR-03~~ | Retired — resolved 2026-08-25 | — | — |
@@ -360,6 +361,20 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 **The cheap completion** is to derive the correlation ID inside [`prepareRequest`](../internal/application/activities/helpers.go#L74) from `activity.GetInfo(ctx).WorkflowExecution.ID` when the explicit argument is empty, mirroring what [`getTemporalRunID`](../internal/application/activities/helpers.go#L60) already does for the Run ID. That would make the mapping automatic, close gap 1, and let the 31 threaded parameters be retired incrementally.
 
+## INV-17 — The process environment is read only at the composition root
+
+*Confirmed 2026-10-03.*
+
+**Rule.** `os.Getenv` and `os.LookupEnv` are called only under `cmd/**` and `internal/config/**`, and in tests. Everything else receives its configuration as typed values through its constructor.
+
+**Why.** This rule is about *where* env vars are read, not how many there are; the inventory is already governed. [`internal/config/env_registry.go`](../internal/config/env_registry.go) documents every variable, and `TestEnvRegistryDrift` fails CI on any variable that is not in it. A read scattered through activities and services has three costs. A missing or malformed value surfaces as a failure deep inside a workflow, not at startup. The code cannot be tested without mutating process state. And the same parsing is repeated with drifting defaults: 20 files rebuild the Postgres DSN from `DB_*` themselves, e.g. [`lifecycleActivities.go:32`](../internal/application/activities/lifecycleActivities.go#L32). The worst instance runs in `init()` and stores the result in package globals: [`activities/variables.go:16`](../internal/application/activities/variables.go#L16).
+
+**Class: B.** As of 2026-10-03, 31 files outside the composition root hold 152 call sites; 16 of those files, with 110 of the sites, are in `internal/application/activities`. All 31 are allowlisted by name, with per-file counts, in [`.golangci.arch.yml`](../.golangci.arch.yml). Every other file is gated.
+
+**Direction.** Migrate one file at a time, when it is already being changed. Load its values once at startup into a typed struct in `internal/config`, failing fast on anything missing, then inject the struct and delete the file's allowlist line. A shared DB config with one `DSN()` method retires most of the activity backlog in one move.
+
+---
+
 # Proposed — resolved 2026-08-25
 
 **This section is closed.** All ten Class C candidates have been answered. Six were promoted to invariants, four were retired without promotion. **No `PROP-nn` ID is live**, none should be cited in review, and none will be reused.
@@ -438,9 +453,10 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-14 | **ENFORCED (with 2 exceptions)** | `depguard` (`.golangci.arch.yml`) | — | `internal/**` denied from `pkg/domain/**`. `fx_interface.go` and `tldDNSRecord_repository.go` are allowlisted by name with a comment naming their fixes ([#400](https://github.com/onasunnymorning/domain-os/issues/400) / [PR #405](https://github.com/onasunnymorning/domain-os/pull/405), [#401](https://github.com/onasunnymorning/domain-os/issues/401)); remove the two allowlist lines when those land. Verified narrow — a new violation in any other `pkg/domain` file fails the build. |
 | INV-15 | **ENFORCED** | `staticcheck` SA1029 (`.golangci.arch.yml`) | — | Live in the `arch-lint` job, scoped to SA1029 alone. The rest of `staticcheck` is configured separately in `.golangci.yml`, which is also blocking as of [#411](https://github.com/onasunnymorning/domain-os/issues/411); the split is kept so a change to the main config cannot quietly relax this rule. Landed green with no exceptions. |
 | INV-16 | partial | custom analyser | M | Can assert every `workflow.ExecuteActivity` call passing a correlation argument passes `getWorkflowID(ctx)`. Cannot assert semantic correctness. Deriving the value in `prepareRequest` would make most of it unnecessary. |
+| INV-17 | **ENFORCED (with 31 exceptions)** | `forbidigo` (`.golangci.arch.yml`) | — | `os.Getenv`/`os.LookupEnv` denied outside `cmd/`, `internal/config/` and `_test.go`, matched by type, so an aliased `os` import does not escape the rule. The 31-file backlog is allowlisted by path with per-file counts; delete each line as its file is migrated to injected config. Tested with a file that adds a read outside the allowlist: the gate fails on it. Complements the env-var drift tests, which govern *which* variables exist; this rule governs *where* they are read. |
 | ~~UNR-03~~ | — | — | — | **Resolved 2026-08-25** — `architecture.md`, `stack.md` and `.cursorrules` corrected. Doc-vs-code drift is not mechanically checkable; the mitigation is that rules now live in one evidenced place and the narrative docs delegate to it. |
 
-**Enforcement status.** Seven rules are now enforced in CI by the `arch-lint` job, which runs [`.golangci.arch.yml`](../.golangci.arch.yml) and fails the build. The same checks run locally via `make ci-arch`, and are wired into `make ci-local` so the local pipeline matches GitHub Actions. The rules: `INV-01`, `INV-03`, `INV-12` (workflows) and `INV-14` (two named exceptions) via `depguard`; `INV-07` via `errorlint` (eight named exceptions); `INV-15` via `staticcheck` SA1029; and `INV-06` as an architecture test. The gate is currently green, and each rule has been verified to fail on an injected violation rather than merely to pass.
+**Enforcement status.** Eight rules are now enforced in CI by the `arch-lint` job, which runs [`.golangci.arch.yml`](../.golangci.arch.yml) and fails the build. The same checks run locally via `make ci-arch`, and are wired into `make ci-local` so the local pipeline matches GitHub Actions. The rules: `INV-01`, `INV-03`, `INV-12` (workflows) and `INV-14` (two named exceptions) via `depguard`; `INV-07` via `errorlint` (eight named exceptions); `INV-15` via `staticcheck` SA1029; `INV-17` via `forbidigo` (31 named exceptions); and `INV-06` as an architecture test. The gate is currently green, and each rule has been verified to fail on an injected violation rather than merely to pass.
 
 **The main lint pass is enforced too, as of [#411](https://github.com/onasunnymorning/domain-os/issues/411).**
 
