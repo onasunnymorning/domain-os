@@ -30,9 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — .env.local has no secrets and is committed for shared dev defaults
+# env files — never commit; .env.local can carry NEXT_PUBLIC_API_TOKEN (the dev ADMIN_TOKEN)
 .env*.local
-!.env.local
 .env.production*
 
 # vercel
