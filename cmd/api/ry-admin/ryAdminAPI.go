@@ -337,11 +337,13 @@ func main() {
 	if allowedOrigins == "" {
 		allowedOrigins = "http://localhost:3000"
 	}
+	// ExposeHeaders: Content-Disposition and the seed let a cross-origin UI
+	// name and reproduce a synthetic deposit download (POST /escrow/synthetic).
 	corsConfig := cors.Config{
 		AllowOrigins:     strings.Split(allowedOrigins, ","),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID"},
-		ExposeHeaders:    []string{"Content-Length"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Disposition", rest.SyntheticSeedHeader},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}

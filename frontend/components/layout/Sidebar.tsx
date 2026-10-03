@@ -16,6 +16,7 @@ import {
   ServerOff,
   FileSearch,
   KeyRound,
+  FlaskConical,
   Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ const navigation = [
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Escrow Runs', href: '/escrow/validations', icon: FileSearch },
   { name: 'Escrow Setup', href: '/escrow/keys', icon: KeyRound },
+  { name: 'Synthetic Deposit', href: '/escrow/synthetic', icon: FlaskConical },
   { name: 'Documentation', href: '/docs', icon: FileText },
 ];
 
