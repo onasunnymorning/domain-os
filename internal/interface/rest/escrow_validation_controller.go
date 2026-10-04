@@ -158,6 +158,14 @@ func (c *EscrowController) scopedTLD(ctx *gin.Context, rawTLD string) (entities.
 	return scope, tld, true
 }
 
+// escrowValidationWorkflowID names an API- or Launchpad-started validation.
+// The timestamp keeps IDs readable and sortable; the random suffix keeps two
+// launches for one TLD in the same second from colliding, which a timestamp
+// alone did. sFTP intakes name theirs after the upload instead.
+func escrowValidationWorkflowID(tld string, now time.Time) string {
+	return "escrow-validation-" + tld + "-" + now.UTC().Format("20060102-150405") + "-" + uuid.NewString()[:8]
+}
+
 // StartValidation launches the EscrowValidationWorkflow for a .ryde/.sig pair.
 // @Summary Validate an RDE deposit (signed .ryde+.sig, or unsigned .xml/.xml.gz)
 // @Tags Escrow
@@ -207,7 +215,7 @@ func (c *EscrowController) StartValidation(ctx *gin.Context) {
 	defer cli.Close()
 
 	now := time.Now().UTC()
-	wfID := "escrow-validation-" + tld + "-" + now.Format("20060102-150405")
+	wfID := escrowValidationWorkflowID(tld, now)
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{ID: wfID, TaskQueue: cfg.WorkerQueue},
 		workflows.EscrowValidationWorkflow, workflows.EscrowValidationParams{
 			Scope: scope.String(), TLD: tld, Profile: profile,

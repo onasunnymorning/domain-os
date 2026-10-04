@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ type scheduleSpec struct {
 // desiredSchedules returns the canonical list of schedules that must exist.
 // This is the single source of truth — add or remove schedules here.
 func desiredSchedules() []scheduleSpec {
+	sweep := escrowIntakeSweepInterval()
 	return []scheduleSpec{
 		{
 			ID:            "expiry-loop",
@@ -113,7 +115,45 @@ func desiredSchedules() []scheduleSpec {
 			CatchupWindow: 24 * time.Hour,
 			Note:          "Prunes archived events daily — managed by bootstrap",
 		},
+		{
+			// Always registered: ESCROW_INTAKE_SFTP_ENABLED gates the work inside
+			// the sweep, so turning intake off needs no schedule deletion.
+			ID:            "escrow-intake-sweep",
+			Workflow:      workflows.EscrowIntakeSweepWorkflow,
+			Queue:         temporal.QueueScheduled,
+			Interval:      sweep,
+			Offset:        0,
+			Args:          []interface{}{workflows.EscrowIntakeSweepParams{}},
+			CatchupWindow: sweep,
+			Note:          "Starts validation of escrow deposits received over sFTP — managed by bootstrap",
+		},
 	}
+}
+
+const (
+	defaultEscrowIntakeSweepInterval = 2 * time.Minute
+	minEscrowIntakeSweepInterval     = 30 * time.Second
+)
+
+// escrowIntakeSweepInterval reads ESCROW_INTAKE_SWEEP_INTERVAL. A bad value
+// falls back to the default rather than costing the worker its other
+// schedules; a value below the minimum is raised to it, since a sweep that
+// overlaps the previous one is skipped anyway.
+func escrowIntakeSweepInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("ESCROW_INTAKE_SWEEP_INTERVAL"))
+	if raw == "" {
+		return defaultEscrowIntakeSweepInterval
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		log.Printf("[infra] WARNING: ESCROW_INTAKE_SWEEP_INTERVAL=%q is not a positive duration; using %s", raw, defaultEscrowIntakeSweepInterval) // #nosec G706 -- %q escapes control characters, so the value cannot forge a log line
+		return defaultEscrowIntakeSweepInterval
+	}
+	if d < minEscrowIntakeSweepInterval {
+		log.Printf("[infra] WARNING: ESCROW_INTAKE_SWEEP_INTERVAL=%q is below the minimum; using %s", raw, minEscrowIntakeSweepInterval) // #nosec G706 -- %q escapes control characters, so the value cannot forge a log line
+		return minEscrowIntakeSweepInterval
+	}
+	return d
 }
 
 // EnsureTemporalInfrastructure is a self-healing startup routine that ensures

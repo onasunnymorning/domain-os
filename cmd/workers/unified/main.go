@@ -100,12 +100,14 @@ func main() {
 	scheduledWorker.RegisterWorkflow(workflows.EventPrune)
 	scheduledWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
 	scheduledWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
+	scheduledWorker.RegisterWorkflow(workflows.EscrowIntakeSweepWorkflow)
 
 	// Heavy Batch
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowKeyProbeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
+	heavyBatchWorker.RegisterWorkflow(workflows.EscrowIntakeWorkflow)
 	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
 
 	// Lifecycle
@@ -166,6 +168,18 @@ func main() {
 		log.Printf("WARNING: escrow validation activities not available: %v", err)
 	} else {
 		heavyBatchWorker.RegisterActivity(eveActs)
+	}
+
+	// Escrow sFTP intake. The sweep lists the inbox on Scheduled; each intake
+	// claims and settles its pair on Heavy Batch, beside the validation it
+	// starts. Registered even when ESCROW_INTAKE_SFTP_ENABLED is off, so the
+	// always-present schedule finds nothing to do rather than failing.
+	intakeActs, err := activities.NewEscrowIntakeActivities()
+	if err != nil {
+		log.Printf("WARNING: escrow intake activities not available: %v", err)
+	} else {
+		scheduledWorker.RegisterActivity(intakeActs)
+		heavyBatchWorker.RegisterActivity(intakeActs)
 	}
 
 	// Escrow key registry probe (Heavy Batch, where the escrow activities that
