@@ -1,4 +1,20 @@
 <a name="unreleased"></a>
+## [0.12.0](https://github.com/onasunnymorning/domain-os/compare/v0.11.0...v0.12.0) (2026-10-04)
+
+
+### Features
+
+* **escrow:** validate deposits that arrive over sFTP ([4cec120](https://github.com/onasunnymorning/domain-os/commit/4cec12037c70d0e2e0451f4146bae08ca958645a))
+* **escrow:** validate deposits that arrive over sFTP ([85ac62a](https://github.com/onasunnymorning/domain-os/commit/85ac62a9224c43aecc5fa14dac18b59506623074))
+
+
+### Bug Fixes
+
+* **make:** run test-integration under its own compose project ([de49d0d](https://github.com/onasunnymorning/domain-os/commit/de49d0da16c31752593459c50969e22901a1a668))
+* **make:** run test-integration under its own compose project ([213f25f](https://github.com/onasunnymorning/domain-os/commit/213f25fe53ec7cd7852e280d2bd219d65fad9960))
+* **tilt:** let worktrees share the main local stack, and fix the frontend's env ([d3b5897](https://github.com/onasunnymorning/domain-os/commit/d3b5897555e29eed92569d34a8c31d9d976f332e))
+* **tilt:** let worktrees share the main local stack, and fix the frontend's env ([6768172](https://github.com/onasunnymorning/domain-os/commit/6768172888806d91c3d80e989f1207511939995a))
+
 ## [0.11.0](https://github.com/onasunnymorning/domain-os/compare/v0.10.0...v0.11.0) (2026-10-03)
 
 
