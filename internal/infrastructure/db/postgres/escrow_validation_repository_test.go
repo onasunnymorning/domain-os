@@ -191,6 +191,32 @@ func (s *EscrowValidationSuite) newSanitizationRun(scope entities.OperatorID, so
 	return r
 }
 
+func (s *EscrowValidationSuite) TestRuns_GetByWorkflowID() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	deposits := NewEscrowDepositRepository(tx)
+	runs := NewEscrowValidationRunRepository(tx)
+	ctx := context.Background()
+	a, b := s.scope("opA"), s.scope("opB")
+
+	d := s.newDeposit(a, "example", evSHA1, evSHA2)
+	s.Require().NoError(deposits.Create(ctx, d))
+	started := time.Now().UTC().Truncate(time.Microsecond)
+	run, err := entities.NewEscrowValidationRun(d.ID, a, "example", "escrow-intake-opA-example-1-validation", "run-1", entities.EscrowProfileRydeSig, started)
+	s.Require().NoError(err)
+	s.Require().NoError(runs.Create(ctx, run))
+
+	got, err := runs.GetByWorkflowID(ctx, a, "escrow-intake-opA-example-1-validation")
+	s.Require().NoError(err)
+	s.Equal(run.ID, got.ID)
+
+	// Another tenant never sees it, and a workflow that bound nothing has no run.
+	_, err = runs.GetByWorkflowID(ctx, b, "escrow-intake-opA-example-1-validation")
+	s.True(errors.Is(err, entities.ErrEscrowValidationRunNotFound))
+	_, err = runs.GetByWorkflowID(ctx, a, "escrow-intake-opA-example-2-validation")
+	s.True(errors.Is(err, entities.ErrEscrowValidationRunNotFound))
+}
+
 func (s *EscrowValidationSuite) TestSanitizationRuns_OneDerivativePerSourceAndPolicy() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
