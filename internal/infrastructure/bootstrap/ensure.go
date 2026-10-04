@@ -30,9 +30,18 @@ type scheduleSpec struct {
 	Note          string        // Human-readable description shown in Temporal UI
 }
 
+// Options carries the schedule settings that come from configuration. The
+// composition root reads them (INV-17).
+type Options struct {
+	// EscrowIntakeSweepInterval is how often escrow-intake-sweep runs; see
+	// config.EscrowIntakeSweepInterval.
+	EscrowIntakeSweepInterval time.Duration
+}
+
 // desiredSchedules returns the canonical list of schedules that must exist.
 // This is the single source of truth — add or remove schedules here.
-func desiredSchedules() []scheduleSpec {
+func desiredSchedules(opts Options) []scheduleSpec {
+	sweep := opts.EscrowIntakeSweepInterval
 	return []scheduleSpec{
 		{
 			ID:            "expiry-loop",
@@ -113,6 +122,18 @@ func desiredSchedules() []scheduleSpec {
 			CatchupWindow: 24 * time.Hour,
 			Note:          "Prunes archived events daily — managed by bootstrap",
 		},
+		{
+			// Always registered: ESCROW_INTAKE_SFTP_ENABLED gates the work inside
+			// the sweep, so turning intake off needs no schedule deletion.
+			ID:            "escrow-intake-sweep",
+			Workflow:      workflows.EscrowIntakeSweepWorkflow,
+			Queue:         temporal.QueueScheduled,
+			Interval:      sweep,
+			Offset:        0,
+			Args:          []interface{}{workflows.EscrowIntakeSweepParams{}},
+			CatchupWindow: sweep,
+			Note:          "Starts validation of escrow deposits received over sFTP — managed by bootstrap",
+		},
 	}
 }
 
@@ -127,11 +148,11 @@ func desiredSchedules() []scheduleSpec {
 //   - If a schedule already matches, it is silently skipped.
 //
 // Call this once at worker startup, after the Temporal client is connected.
-func EnsureTemporalInfrastructure(c client.Client) {
+func EnsureTemporalInfrastructure(c client.Client, opts Options) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	schedules := desiredSchedules()
+	schedules := desiredSchedules(opts)
 	created, updated, upToDate := 0, 0, 0
 
 	for _, spec := range schedules {
