@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type EscrowKeyProbeWorkflowTestSuite struct {
@@ -22,7 +23,7 @@ func TestEscrowKeyProbeWorkflowTestSuite(t *testing.T) {
 
 func (s *EscrowKeyProbeWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowKeyProbeWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowKeyProbeWorkflow, workflow.RegisterOptions{Name: EscrowKeyProbeTypeName})
 	s.env.RegisterActivity(&activities.EscrowKeyActivities{})
 }
 

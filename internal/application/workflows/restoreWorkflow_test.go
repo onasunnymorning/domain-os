@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type RestoreWorkflowTestSuite struct {
@@ -23,7 +24,7 @@ type RestoreWorkflowTestSuite struct {
 
 func (s *RestoreWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(RestoreWorkflow)
+	s.env.RegisterWorkflowWithOptions(RestoreWorkflow, workflow.RegisterOptions{Name: RestoreTypeName})
 
 	// Register stub function for string-based batch activity so the test env can resolve it
 	s.env.RegisterActivityWithOptions(

@@ -5,6 +5,12 @@ package serialdrift
 
 import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
+// WorkflowTypeName is the Temporal workflow type CheckSerialDriftWorkflow is
+// registered under. It lives here, not in the workflows package, because the
+// zone-slaving service starts the workflow by name and cannot import workflows
+// (workflows imports services). workflows.CheckSerialDriftTypeName aliases it.
+const WorkflowTypeName = "CheckSerialDrift"
+
 // Params is the input to CheckSerialDriftWorkflow.
 // When SlavingID is set, the workflow loads config from the DB record.
 // When SlavingID is empty (ad-hoc run), the workflow uses the inline

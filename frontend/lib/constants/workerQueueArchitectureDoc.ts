@@ -61,7 +61,7 @@ This ensures that resource limits, poller counts, and scaling policies can be tu
 | TombstoneBackfill | ~30 min | Ad-hoc | DB scan + writes | \`lifecycle\` |
 | ExpiryLoop | ~30 min | Scheduled (hourly) | DB updates | \`lifecycle\` |
 | PurgeLoop | ~30 min | Scheduled (hourly) | DB deletes + tombstones | \`lifecycle\` |
-| RestoreWorkflow | ~5 min | Scheduled (4h) | DB updates | \`lifecycle\` |
+| Restore | ~5 min | Scheduled (4h) | DB updates | \`lifecycle\` |
 | Escrow Import | up to 10h | Ad-hoc | S3 → staged DB → bulk ingest | \`heavy-batch\` |
 | TLD Cleanup | up to 12h | Ad-hoc | DB bulk delete (5M+ rows) | \`heavy-batch\` |
 

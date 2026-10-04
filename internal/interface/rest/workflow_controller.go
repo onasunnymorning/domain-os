@@ -147,7 +147,7 @@ func (c *WorkflowController) StartRegistrarSync(ctx *gin.Context) {
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        "sync-registrars-" + time.Now().Format("20060102-150405"),
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{})
+	}, workflows.SyncRegistrarsTypeName, workflows.SyncRegistrarsParams{})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -204,7 +204,7 @@ func (c *WorkflowController) StartTLDCleanup(ctx *gin.Context) {
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.TLDCleanupWorkflow, params)
+	}, workflows.TLDCleanupTypeName, params)
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start cleanup workflow: " + err.Error()})
@@ -332,7 +332,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			return
 		}
 		wfID = fmt.Sprintf("escrow-import-%s-%s", tld, ts)
-		workflow = workflows.EscrowImportWorkflow
+		workflow = workflows.EscrowImportTypeName
 		args = []interface{}{workflows.EscrowImportParams{TLD: tld, ObjectKey: objectKey, Options: options}}
 
 	case "tld-cleanup":
@@ -346,7 +346,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		}
 		keepTLDAndPhases, _ := req.Params["keepTLDAndPhases"].(bool)
 		wfID = fmt.Sprintf("tld-cleanup-%s-%s", tld, ts)
-		workflow = workflows.TLDCleanupWorkflow
+		workflow = workflows.TLDCleanupTypeName
 		args = []interface{}{workflows.TLDCleanupParams{TLD: tld, KeepTLDAndPhases: keepTLDAndPhases}}
 
 	case "sync-registrars":
@@ -360,7 +360,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			}
 		}
 		wfID = fmt.Sprintf("sync-registrars-%s", ts)
-		workflow = workflows.SyncRegistrarsWorkflow
+		workflow = workflows.SyncRegistrarsTypeName
 		args = []interface{}{loopParams}
 
 	case "update-fx":
@@ -380,7 +380,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 
 	case "sync-spec5":
 		wfID = fmt.Sprintf("sync-spec5-%s", ts)
-		workflow = workflows.SyncSpec5Workflow
+		workflow = workflows.SyncSpec5TypeName
 		args = nil
 
 	case "spec5-sweep":
@@ -401,7 +401,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			}
 		}
 		wfID = fmt.Sprintf("spec5-sweep-%s", ts)
-		workflow = workflows.Spec5SweepWorkflow
+		workflow = workflows.Spec5SweepTypeName
 		args = []interface{}{sweepParams}
 
 	case "expiry-loop":
@@ -450,7 +450,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			}
 		}
 		wfID = fmt.Sprintf("restore-workflow-%s", ts)
-		workflow = workflows.RestoreWorkflow
+		workflow = workflows.RestoreTypeName
 		args = []interface{}{loopParams}
 
 	case "tombstone-backfill":
@@ -510,7 +510,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		}
 
 		wfID = fmt.Sprintf("serial-drift-%s-%s", zone, ts)
-		workflow = workflows.CheckSerialDriftWorkflow
+		workflow = workflows.CheckSerialDriftTypeName
 		args = []interface{}{serialdrift.Params{
 			TenantID:  operatorScope,
 			SlavingID: slavingID,
@@ -558,7 +558,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			submittedBy = uid
 		}
 		wfID = escrowValidationWorkflowID(tld, time.Now())
-		workflow = workflows.EscrowValidationWorkflow
+		workflow = workflows.EscrowValidationTypeName
 		args = []interface{}{workflows.EscrowValidationParams{
 			Scope: scope.String(), TLD: tld, Profile: profile,
 			ArtifactObjectKey: artifactKey, SignatureObjectKey: sigKey,
@@ -584,7 +584,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 			requestedBy = uid
 		}
 		wfID = fmt.Sprintf("escrow-sanitize-%s", sourceRunID)
-		workflow = workflows.EscrowSanitizeWorkflow
+		workflow = workflows.EscrowSanitizeTypeName
 		args = []interface{}{workflows.EscrowSanitizeParams{
 			Scope: scope.String(), SourceValidationRunID: sourceRunID,
 			SyntheticSuffix: suffix, RequestedBy: requestedBy,

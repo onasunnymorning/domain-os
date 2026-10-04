@@ -57,7 +57,7 @@ services:
 
   # Replaces the base image's `init-registrars` with the offline seeder.
   #
-  # init-registrars starts SyncRegistrarsWorkflow, which reaches
+  # init-registrars starts the SyncRegistrars workflow, which reaches
   # https://www.iana.org/assignments/registrar-ids/registrar-ids.xml. That makes
   # a first run fail on any machine that is offline, behind a corporate proxy, or
   # simply on hotel wifi — and it produces no domains to work with even when it
