@@ -129,7 +129,7 @@ type EscrowValidationResult struct {
 ## Operational Notes
 
 ### Scheduling
-Not scheduled. Missing-deposit notices (`DRFN`) are a follow-on.
+Not scheduled itself. Deposits uploaded over sFTP are validated automatically: the `escrow-intake-sweep` schedule starts an `EscrowIntakeWorkflow` per pair, which runs this workflow as its child (see `escrowIntakeSweep.doc.md`). API and Launchpad launches are unchanged. Missing-deposit notices (`DRFN`) are a follow-on.
 
 ### Monitoring
 Logs carry `correlation_id`, `deposit_id`, `run_id`, `tld`, `stage`, `outcome`, `codes` and nothing from the payload. Query the run table by outcome; a growing count of `ERROR` runs means a service problem, not bad deposits.

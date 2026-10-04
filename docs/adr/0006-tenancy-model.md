@@ -192,6 +192,20 @@ than the code it ships with.
 - **`askg`'s `CallerScope`** (`internal/askg/result.go:62`) is a `UserID`, not a
   tenant, and is not threaded into tool execution. It is out of scope here and
   remains as `INV-02` described it.
+- **The sFTP escrow intake takes operator scope from an object key**
+  (`internal/application/activities/escrow_intake.go`). It does not come from a
+  request principal. The `<RyID>` segment of `sftp/inbox/<RyID>/<tld>/` counts
+  as an authenticated intake context, because the infrastructure gives the
+  operator no way to choose it:
+  - SFTPGo chroots each sFTP account to its own prefix;
+  - each account writes as a per-operator IAM role;
+  - the escrow bucket policy denies a write under that prefix to every other
+    principal (alpaca-infra `docs/sftp-intake.md`).
+
+  The scope is then used like any other: typed with `entities.NewOperatorID`,
+  passed as a parameter, and re-checked by `BindDeposit` against TLD ownership.
+  This rests on infrastructure this repository does not control. If those
+  fences change, this source of scope must be re-examined.
 
 ## Explicitly deferred
 

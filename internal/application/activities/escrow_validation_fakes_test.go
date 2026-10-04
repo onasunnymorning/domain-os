@@ -195,6 +195,17 @@ func (f *fakeRunRepo) ListByDeposit(_ context.Context, scope entities.OperatorID
 	}
 	return out, nil
 }
+func (f *fakeRunRepo) GetByWorkflowID(_ context.Context, scope entities.OperatorID, workflowID string) (*entities.EscrowValidationRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if r.TenantID == scope && r.WorkflowID == workflowID {
+			cp := *r
+			return &cp, nil
+		}
+	}
+	return nil, entities.ErrEscrowValidationRunNotFound
+}
 func (f *fakeRunRepo) List(context.Context, entities.OperatorID, queries.ListItemsQuery) ([]*entities.EscrowValidationRun, string, error) {
 	return nil, "", nil
 }

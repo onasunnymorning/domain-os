@@ -557,7 +557,7 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		if uid, ok := appcontext.UserID(ctx.Request.Context()); ok && uid != "" {
 			submittedBy = uid
 		}
-		wfID = fmt.Sprintf("escrow-validation-%s-%s", tld, ts)
+		wfID = escrowValidationWorkflowID(tld, time.Now())
 		workflow = workflows.EscrowValidationWorkflow
 		args = []interface{}{workflows.EscrowValidationParams{
 			Scope: scope.String(), TLD: tld, Profile: profile,

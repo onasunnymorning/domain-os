@@ -26,8 +26,10 @@ func TestEscrowValidationDoesNotTouchImport(t *testing.T) {
 		"internal/application/rdesanitize/*.go",
 		"internal/application/activities/escrow_validation*.go",
 		"internal/application/activities/escrow_sanitize*.go",
+		"internal/application/activities/escrow_intake*.go",
 		"internal/application/workflows/escrowValidation.go",
 		"internal/application/workflows/escrowSanitize.go",
+		"internal/application/workflows/escrowIntake*.go",
 		"internal/infrastructure/secrets/*.go",
 	} {
 		matches, err := filepath.Glob(filepath.Join(root, pattern))
