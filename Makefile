@@ -15,6 +15,10 @@ DOPPLER := doppler run --
 DOCKER_COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
 COMPOSE_CI_FILE := docker-compose-ci.yml
+# The CI compose file runs under its own project so its `down -v` can only ever
+# remove its own volumes. Sharing `domain-os` with the dev stack meant
+# `make test-integration` deleted domain-os_db along with the test data.
+COMPOSE_CI_PROJECT := domain-os-ci
 COMPOSE_LOCAL_FILE := docker-compose.local.yml
 
 # The local stack. No Doppler: local development must work with nothing but a
@@ -172,8 +176,10 @@ clean: ## Clean up containers, volumes, and build artifacts
 clean-docker: ## Nuclear cleanup of all domain-os Docker resources
 	@echo "Removing all domain-os containers, networks, and volumes..."
 	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_FILE) --profile full down -v --remove-orphans 2>/dev/null || true
-	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) -p domain-os down -v --remove-orphans 2>/dev/null || true
+	@$(DOPPLER) $(DOCKER_COMPOSE) -f $(COMPOSE_CI_FILE) -p $(COMPOSE_CI_PROJECT) down -v --remove-orphans 2>/dev/null || true
 	@docker ps -aq --filter label=com.docker.compose.project=domain-os \
+		| xargs docker rm -f 2>/dev/null || true
+	@docker ps -aq --filter label=com.docker.compose.project=$(COMPOSE_CI_PROJECT) \
 		| xargs docker rm -f 2>/dev/null || true
 	@docker network ls -q --filter name=domain-os \
 		| xargs docker network rm 2>/dev/null || true
@@ -217,27 +223,25 @@ test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (req
 	@echo "Running integration tests with Postman/Newman..."
 	@echo "NOTE: This requires POSTMAN_COLLECTION_ID, POSTMAN_ENVIRONMENT_ID, and POSTMAN_API_KEY in Doppler"
 	@echo "Cleaning up previous test environment..."
-	@COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) \
-		-p domain-os -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true
-	@docker ps -aq --filter label=com.docker.compose.project=domain-os \
+	@COMPOSE_PROJECT_NAME=$(COMPOSE_CI_PROJECT) $(DOPPLER) $(DOCKER_COMPOSE) \
+		-p $(COMPOSE_CI_PROJECT) -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true
+	@docker ps -aq --filter label=com.docker.compose.project=$(COMPOSE_CI_PROJECT) \
 		| xargs docker rm -f 2>/dev/null || true
-	@docker network ls -q --filter name=domain-os_dos \
-		| xargs docker network rm 2>/dev/null || true
-	@docker volume rm domain-os_temporal_pgdata 2>/dev/null || true
+	@docker network rm $(COMPOSE_CI_PROJECT)_dos 2>/dev/null || true
+	@docker volume rm $(COMPOSE_CI_PROJECT)_temporal_pgdata 2>/dev/null || true
 	@echo "Building image for branch $(BRANCH) with commit $(GIT_SHA)..."
 	@docker build -t gprins/domain-os-api:$(TAG) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_SHA=$(GIT_SHA) .
 	@echo "Starting integration test containers (will run Postman tests via Newman)..."
-	@export BRANCH=$(TAG) && COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) \
-		$(DOCKER_COMPOSE) -p domain-os --profile essential -f $(COMPOSE_CI_FILE) \
+	@export BRANCH=$(TAG) && COMPOSE_PROJECT_NAME=$(COMPOSE_CI_PROJECT) $(DOPPLER) \
+		$(DOCKER_COMPOSE) -p $(COMPOSE_CI_PROJECT) --profile essential -f $(COMPOSE_CI_FILE) \
 		up --remove-orphans --abort-on-container-exit --exit-code-from test; \
 	EXIT_CODE=$$?; \
 	echo "Cleaning up integration test containers..."; \
-	COMPOSE_PROJECT_NAME=domain-os $(DOPPLER) $(DOCKER_COMPOSE) \
-		-p domain-os -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true; \
-	docker network ls -q --filter name=domain-os_dos \
-		| xargs docker network rm 2>/dev/null || true; \
+	COMPOSE_PROJECT_NAME=$(COMPOSE_CI_PROJECT) $(DOPPLER) $(DOCKER_COMPOSE) \
+		-p $(COMPOSE_CI_PROJECT) -f $(COMPOSE_CI_FILE) down -v --remove-orphans 2>/dev/null || true; \
+	docker network rm $(COMPOSE_CI_PROJECT)_dos 2>/dev/null || true; \
 	exit $$EXIT_CODE
 	@echo "Integration tests complete!"
 
@@ -390,6 +394,7 @@ ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Arc
 	@echo "    INV-01 telemetry off the delivery path   INV-03 vendor LLM SDK boundary"
 	@echo "    INV-07 errors wrapped with %w            INV-12 Temporal workflow logging"
 	@echo "    INV-14 domain layer imports inward       INV-15 typed context keys"
+	@echo "    INV-17 env read only at composition root"
 	@golangci-lint run --config .golangci.arch.yml ./... || { \
 		echo ""; \
 		echo "❌ Architecture gate FAILED. Each finding names the invariant it breaks."; \
