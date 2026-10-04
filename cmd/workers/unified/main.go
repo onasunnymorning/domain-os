@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -34,7 +36,11 @@ func main() {
 
 	// Self-healing infrastructure: ensure all schedules exist.
 	// Idempotent — safe to run on every startup/deploy.
-	bootstrap.EnsureTemporalInfrastructure(client)
+	sweepInterval, err := config.EscrowIntakeSweepInterval()
+	if err != nil {
+		log.Printf("WARNING: %v", err) // #nosec G706 -- the value is quoted with %q, which escapes control characters
+	}
+	bootstrap.EnsureTemporalInfrastructure(client, bootstrap.Options{EscrowIntakeSweepInterval: sweepInterval})
 
 	// Self-healing infrastructure: ensure all storage buckets exist.
 	// Idempotent — safe to run on every startup/deploy.
@@ -174,8 +180,7 @@ func main() {
 	// claims and settles its pair on Heavy Batch, beside the validation it
 	// starts. Registered even when ESCROW_INTAKE_SFTP_ENABLED is off, so the
 	// always-present schedule finds nothing to do rather than failing.
-	intakeActs, err := activities.NewEscrowIntakeActivities()
-	if err != nil {
+	if intakeActs, err := newEscrowIntakeActivities(); err != nil {
 		log.Printf("WARNING: escrow intake activities not available: %v", err)
 	} else {
 		scheduledWorker.RegisterActivity(intakeActs)
@@ -336,6 +341,27 @@ func main() {
 // exits when it refuses. A connection failure is fatal too: a worker that
 // cannot reach the database cannot do useful work, and failing here names the
 // cause instead of failing every activity later.
+// newEscrowIntakeActivities wires the sFTP intake activities from the
+// environment (INV-17): its configuration, the database holding validation
+// runs, and the escrow bucket.
+func newEscrowIntakeActivities() (*activities.EscrowIntakeActivities, error) {
+	cfg, err := config.LoadEscrowIntake()
+	if err != nil {
+		return nil, err
+	}
+	db, err := postgres.NewConnectionFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	store, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("escrow bucket: %w", err)
+	}
+	return activities.NewEscrowIntakeActivities(store, postgres.NewEscrowValidationRunRepository(db), activities.EscrowIntakeConfig{
+		Enabled: cfg.Enabled, AllowPlaintext: cfg.AllowPlaintext, Prefix: cfg.Prefix,
+	})
+}
+
 func checkSchema() {
 	db, err := postgres.NewConnectionFromEnv()
 	if err != nil {

@@ -6,21 +6,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
-	"gorm.io/gorm"
 )
 
 // ---------------------------------------------------------------------------
@@ -84,8 +79,8 @@ var escrowIntakeRyIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{3,16}$`)
 // or delete an archived deposit or an API upload.
 var reservedEscrowPrefixes = []string{escrowValidationPrefix + "/", "uploads/"}
 
-// EscrowIntakeConfig is the intake's configuration, read from the
-// ESCROW_INTAKE_SFTP_* variables.
+// EscrowIntakeConfig is the intake's configuration. The composition root reads
+// it from the ESCROW_INTAKE_SFTP_* variables (config.LoadEscrowIntake, INV-17).
 type EscrowIntakeConfig struct {
 	// Enabled turns the sweep on. Off, it lists nothing.
 	Enabled bool
@@ -94,7 +89,8 @@ type EscrowIntakeConfig struct {
 	// deposit is personal data in the clear, which a real Registry Operator
 	// should never send, so it is for test and simulation environments.
 	AllowPlaintext bool
-	// Prefix is the normalised bucket prefix; see normalizeEscrowIntakePrefix.
+	// Prefix is the bucket prefix the sFTP server writes under, as configured;
+	// empty means the default. NewEscrowIntakeActivities normalises it.
 	Prefix string
 }
 
@@ -106,78 +102,20 @@ type EscrowIntakeActivities struct {
 	now   func() time.Time
 }
 
-// NewEscrowIntakeActivities builds the activities from the environment. The
-// schedule exists whether or not intake is enabled, so a worker with
-// ESCROW_INTAKE_SFTP_ENABLED unset still registers these, and the sweep finds
-// nothing to do.
-func NewEscrowIntakeActivities() (*EscrowIntakeActivities, error) {
-	cfg, err := loadEscrowIntakeConfig()
+// NewEscrowIntakeActivities builds the activities. The schedule exists whether
+// or not intake is enabled, so a worker with intake off still registers these,
+// and the sweep finds nothing to do. It refuses a prefix that is the bucket
+// root or overlaps an area other code owns.
+func NewEscrowIntakeActivities(store interfaces.IntakeObjectStore, runs repositories.EscrowValidationRunRepository, cfg EscrowIntakeConfig) (*EscrowIntakeActivities, error) {
+	prefix, err := normalizeEscrowIntakePrefix(cfg.Prefix)
 	if err != nil {
 		return nil, fmt.Errorf("escrow intake activities: %w", err)
 	}
-	var db *gorm.DB
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		db, err = postgres.NewConnection(postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("escrow intake activities: database: %w", err)
-	}
-	store, err := storage.NewS3ClientFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("escrow intake activities: escrow bucket: %w", err)
-	}
-	return NewEscrowIntakeActivitiesWithDeps(store, postgres.NewEscrowValidationRunRepository(db), cfg), nil
-}
-
-// NewEscrowIntakeActivitiesWithDeps builds the activities from explicit
-// dependencies (tests, alternative composition roots). cfg.Prefix must already
-// be normalised; see normalizeEscrowIntakePrefix.
-func NewEscrowIntakeActivitiesWithDeps(store interfaces.IntakeObjectStore, runs repositories.EscrowValidationRunRepository, cfg EscrowIntakeConfig) *EscrowIntakeActivities {
+	cfg.Prefix = prefix
 	return &EscrowIntakeActivities{
 		store: store, runs: runs, cfg: cfg,
 		now: func() time.Time { return time.Now().UTC() },
-	}
-}
-
-// loadEscrowIntakeConfig reads ESCROW_INTAKE_SFTP_ENABLED,
-// ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT and ESCROW_INTAKE_SFTP_PREFIX.
-func loadEscrowIntakeConfig() (EscrowIntakeConfig, error) {
-	enabled, err := envBoolDefaultFalse("ESCROW_INTAKE_SFTP_ENABLED", os.Getenv("ESCROW_INTAKE_SFTP_ENABLED"))
-	if err != nil {
-		return EscrowIntakeConfig{}, err
-	}
-	plaintext, err := envBoolDefaultFalse("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", os.Getenv("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT"))
-	if err != nil {
-		return EscrowIntakeConfig{}, err
-	}
-	prefix, err := normalizeEscrowIntakePrefix(os.Getenv("ESCROW_INTAKE_SFTP_PREFIX"))
-	if err != nil {
-		return EscrowIntakeConfig{}, err
-	}
-	return EscrowIntakeConfig{Enabled: enabled, AllowPlaintext: plaintext, Prefix: prefix}, nil
-}
-
-// envBoolDefaultFalse parses an optional boolean variable. Unset is false; a
-// value that is not a boolean is an error rather than a silent false.
-func envBoolDefaultFalse(name, raw string) (bool, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return false, nil
-	}
-	v, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, fmt.Errorf("%s=%q: %w", name, raw, err)
-	}
-	return v, nil
+	}, nil
 }
 
 // normalizeEscrowIntakePrefix turns the configured prefix into the form the

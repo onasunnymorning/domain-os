@@ -13,7 +13,7 @@ import (
 )
 
 func Test_desiredSchedules_AllDefined(t *testing.T) {
-	specs := desiredSchedules()
+	specs := desiredSchedules(testOptions)
 
 	// We must have exactly 9 schedules.
 	require.Len(t, specs, 9, "expected 9 schedules in desiredSchedules()")
@@ -130,7 +130,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		s, ok := byID["escrow-intake-sweep"]
 		require.True(t, ok, "missing schedule escrow-intake-sweep")
 		assert.Equal(t, temporal.QueueScheduled, s.Queue)
-		assert.Equal(t, escrowIntakeSweepInterval(), s.Interval)
+		assert.Equal(t, testOptions.EscrowIntakeSweepInterval, s.Interval)
 		assert.Equal(t, s.Interval, s.CatchupWindow)
 		require.Len(t, s.Args, 1)
 		_, ok = s.Args[0].(workflows.EscrowIntakeSweepParams)
@@ -139,30 +139,10 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	})
 }
 
-func Test_escrowIntakeSweepInterval(t *testing.T) {
-	for _, tc := range []struct {
-		raw  string
-		want time.Duration
-	}{
-		{"", 2 * time.Minute},
-		{"5m", 5 * time.Minute},
-		{" 90s ", 90 * time.Second},
-		{"10s", 30 * time.Second}, // raised to the minimum
-		{"soon", 2 * time.Minute}, // unparseable: the default
-		{"-1m", 2 * time.Minute},  // not positive: the default
-		{"0s", 2 * time.Minute},   // not positive: the default
-		{"30s", 30 * time.Second}, // the minimum itself
-		{"24h", 24 * time.Hour},   // no upper bound
-	} {
-		t.Run(tc.raw, func(t *testing.T) {
-			t.Setenv("ESCROW_INTAKE_SWEEP_INTERVAL", tc.raw)
-			assert.Equal(t, tc.want, escrowIntakeSweepInterval())
-		})
-	}
-}
+var testOptions = Options{EscrowIntakeSweepInterval: 5 * time.Minute}
 
 func Test_desiredSchedules_UniqueIDs(t *testing.T) {
-	specs := desiredSchedules()
+	specs := desiredSchedules(testOptions)
 	ids := make(map[string]bool, len(specs))
 	for _, s := range specs {
 		assert.False(t, ids[s.ID], "duplicate schedule ID: %s", s.ID)
