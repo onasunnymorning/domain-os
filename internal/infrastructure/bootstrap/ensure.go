@@ -21,7 +21,7 @@ import (
 // scheduleSpec defines a schedule to be ensured on startup.
 type scheduleSpec struct {
 	ID            string        // Deterministic, fixed ID — makes Create idempotent
-	Workflow      interface{}   // Workflow function reference
+	Workflow      interface{}   // Workflow type name (string) or function reference; see scheduleDrifted
 	Queue         string        // Task queue to run on
 	Interval      time.Duration // How often to run
 	Offset        time.Duration // Offset within the interval
@@ -65,7 +65,7 @@ func desiredSchedules(opts Options) []scheduleSpec {
 		},
 		{
 			ID:            "restore-loop",
-			Workflow:      workflows.RestoreWorkflow,
+			Workflow:      workflows.RestoreTypeName,
 			Queue:         temporal.QueueLifecycle,
 			Interval:      4 * time.Hour,
 			Offset:        time.Hour,
@@ -75,7 +75,7 @@ func desiredSchedules(opts Options) []scheduleSpec {
 		},
 		{
 			ID:            "sync-registrars",
-			Workflow:      workflows.SyncRegistrarsWorkflow,
+			Workflow:      workflows.SyncRegistrarsTypeName,
 			Queue:         temporal.QueueScheduled,
 			Interval:      24 * time.Hour,
 			Offset:        2 * time.Hour,
@@ -95,7 +95,7 @@ func desiredSchedules(opts Options) []scheduleSpec {
 		},
 		{
 			ID:            "sync-spec5",
-			Workflow:      workflows.SyncSpec5Workflow,
+			Workflow:      workflows.SyncSpec5TypeName,
 			Queue:         temporal.QueueScheduled,
 			Interval:      24 * time.Hour,
 			Offset:        4 * time.Hour,
@@ -126,7 +126,7 @@ func desiredSchedules(opts Options) []scheduleSpec {
 			// Always registered: ESCROW_INTAKE_SFTP_ENABLED gates the work inside
 			// the sweep, so turning intake off needs no schedule deletion.
 			ID:            "escrow-intake-sweep",
-			Workflow:      workflows.EscrowIntakeSweepWorkflow,
+			Workflow:      workflows.EscrowIntakeSweepTypeName,
 			Queue:         temporal.QueueScheduled,
 			Interval:      sweep,
 			Offset:        0,
@@ -261,6 +261,15 @@ func ensureSchedule(ctx context.Context, c client.Client, spec scheduleSpec) (sc
 			input.Description.Schedule.State = &client.ScheduleState{
 				Note: spec.Note,
 			}
+			// Repoint the action at the desired workflow type. The persisted
+			// action keeps the type it was created with, so a renamed workflow
+			// would otherwise keep firing under its old name. Args stay as the
+			// SDK returned them (already-encoded payloads).
+			if name, ok := spec.Workflow.(string); ok {
+				if action, ok := input.Description.Schedule.Action.(*client.ScheduleWorkflowAction); ok {
+					action.Workflow = name
+				}
+			}
 			return &client.ScheduleUpdate{
 				Schedule: &input.Description.Schedule,
 			}, nil
@@ -295,6 +304,16 @@ func scheduleDrifted(desc client.ScheduleDescription, spec scheduleSpec) bool {
 		if action.TaskQueue != spec.Queue {
 			log.Printf("[infra] Schedule %q task queue drifted: have %q, want %q", spec.ID, action.TaskQueue, spec.Queue)
 			return true
+		}
+
+		// Check workflow type. Describe returns it as a string. Specs that hold
+		// a function reference are skipped: those workflows register under
+		// their function name, which has never changed.
+		if want, ok := spec.Workflow.(string); ok {
+			if have, _ := action.Workflow.(string); have != want {
+				log.Printf("[infra] Schedule %q workflow type drifted: have %q, want %q", spec.ID, have, want)
+				return true
+			}
 		}
 	}
 

@@ -163,7 +163,7 @@ func RestoreWorkflow(ctx workflow.Context, params RestoreLoopParams) (RestoreLoo
 			" restored domains processed — continuing in a new run to drain the remainder.")
 		nextParams := params
 		nextParams.ContinuationCount++
-		return result, workflow.NewContinueAsNewError(ctx, RestoreWorkflow, nextParams)
+		return result, workflow.NewContinueAsNewError(ctx, RestoreTypeName, nextParams)
 	}
 
 	return result, nil

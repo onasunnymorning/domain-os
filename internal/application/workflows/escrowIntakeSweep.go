@@ -93,7 +93,7 @@ func EscrowIntakeSweepWorkflow(ctx workflow.Context, params EscrowIntakeSweepPar
 			ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_ABANDON,
 			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 		})
-		futures = append(futures, started{pair: pair, fut: workflow.ExecuteChildWorkflow(childCtx, EscrowIntakeWorkflow, EscrowIntakeParams{
+		futures = append(futures, started{pair: pair, fut: workflow.ExecuteChildWorkflow(childCtx, EscrowIntakeTypeName, EscrowIntakeParams{
 			Scope: pair.Scope, TLD: pair.TLD, Profile: pair.Profile, IntakeID: pair.IntakeID,
 			ArtifactKey: pair.ArtifactKey, SignatureKey: pair.SignatureKey, ReceivedAt: pair.ReceivedAt,
 		})})

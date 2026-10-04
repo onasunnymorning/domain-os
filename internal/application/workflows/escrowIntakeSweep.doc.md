@@ -18,9 +18,9 @@ A deposit is one of:
 - a signed pair, `<base>.ryde` with `<base>.sig`, validated with the `ryde+sig` profile;
 - **only when `ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT` is true**, a lone unsigned `<name>.xml` or `<name>.xml.gz`, validated with the `xml` profile. It needs no partner file.
 
-Plaintext is off by default. An unsigned deposit is registry data in the clear at rest: sFTP encrypts the transfer, but the bucket holds the file under SSE-S3 only, whereas a `.ryde` stays encrypted until the validator opens it. No real Registry Operator should send one, so plaintext intake is meant for test and simulation environments. While it is off, such files stay in the inbox, are counted as `plaintextRefused` in the sweep result, and expire with the bucket's lifecycle rule. The sweep reads the inbox and starts one `EscrowIntakeWorkflow` per pair. That intake then owns its pair to the end:
+Plaintext is off by default. An unsigned deposit is registry data in the clear at rest: sFTP encrypts the transfer, but the bucket holds the file under SSE-S3 only, whereas a `.ryde` stays encrypted until the validator opens it. No real Registry Operator should send one, so plaintext intake is meant for test and simulation environments. While it is off, such files stay in the inbox, are counted as `plaintextRefused` in the sweep result, and expire with the bucket's lifecycle rule. The sweep reads the inbox and starts one `EscrowIntake` per pair. That intake then owns its pair to the end:
 1. It moves the pair out of the operator's reach.
-2. It validates the pair with the unchanged `EscrowValidationWorkflow`.
+2. It validates the pair with the unchanged `EscrowValidation`.
 3. It settles the uploaded copy.
 
 The `<RyID>` path segment is the authenticated intake context that issue #412 requires. The operator never chooses it, and the bucket policy lets only that operator's role write under it. The TLD comes from the directory the file was uploaded into. `BindDeposit` then checks that the TLD belongs to that operator, and the validator checks it against the RDE header. The file name is never used to bind a deposit.
@@ -31,9 +31,9 @@ The `<RyID>` path segment is the authenticated intake context that issue #412 re
 graph TD
     S["Schedule: every 2 min, overlap SKIP"] --> L["ListIntakePairs: inbox listing, pairing"]
     L -->|disabled| X["Done: nothing to do"]
-    L -->|per pair| C["Start EscrowIntakeWorkflow (ID from the upload, REJECT_DUPLICATE, ABANDON)"]
+    L -->|per pair| C["Start EscrowIntake (ID from the upload, REJECT_DUPLICATE, ABANDON)"]
     C --> CL["ClaimIntakePair: inbox to claimed"]
-    CL --> V["Child: EscrowValidationWorkflow"]
+    CL --> V["Child: EscrowValidation"]
     V --> ST{"SettleIntakePair: run row for the child?"}
     ST -->|yes| A["archived: delete the claimed copy"]
     ST -->|no| R["rejected: move to rejected/"]
@@ -103,7 +103,7 @@ Each intake returns `EscrowIntakeResult`:
 1. **ClaimIntakePair** (30 min; 5 attempts).
    - Moves both files to `claimed/` (copy, then delete). This is safe to retry from any point.
    - From then on the operator can neither see nor rename them.
-2. **EscrowValidationWorkflow** (child; ID `<intakeID workflow>-validation`).
+2. **EscrowValidation** (child; ID `<intakeID workflow>-validation`).
    - `profile` as listed (`ryde+sig`, or `xml` with no signature key), `SubmittedBy=sftp:<RyID>`, `IntakeRef=sftp:<inbox key>`, `ReceivedAt` = the latest upload time.
    - Claiming a plaintext deposit is refused, non-retryably, if `ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT` was turned off after the sweep listed it; the file stays in the inbox.
    - Its failure does not fail the intake.

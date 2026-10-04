@@ -102,7 +102,7 @@ func EscrowIntakeWorkflow(ctx workflow.Context, params EscrowIntakeParams) (Escr
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	})
 	var validated EscrowValidationResult
-	if err := workflow.ExecuteChildWorkflow(childCtx, EscrowValidationWorkflow, EscrowValidationParams{
+	if err := workflow.ExecuteChildWorkflow(childCtx, EscrowValidationTypeName, EscrowValidationParams{
 		Scope: params.Scope, TLD: params.TLD, Profile: profile,
 		ArtifactObjectKey: claimed.ArtifactKey, SignatureObjectKey: claimed.SignatureKey,
 		SubmittedBy: "sftp:" + params.Scope,

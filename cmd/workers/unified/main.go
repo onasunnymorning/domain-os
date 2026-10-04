@@ -16,6 +16,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/workflow"
 )
 
 func main() {
@@ -95,49 +96,55 @@ func main() {
 	})
 
 	// --- Workflows Registration ---
+	//
+	// Workflows whose function name ends in "Workflow" register under an explicit
+	// type name without the suffix (see workflows/workflow_type_names.go). The
+	// drain workers must use the same names as the live ones: a workflow's type
+	// is persisted in its history, and every worker that polls its queue has to
+	// agree on it.
 
 	// Fast Ops
-	fastOpsWorker.RegisterWorkflow(workflows.CheckSerialDriftWorkflow)
+	fastOpsWorker.RegisterWorkflowWithOptions(workflows.CheckSerialDriftWorkflow, workflow.RegisterOptions{Name: workflows.CheckSerialDriftTypeName})
 	fastOpsWorker.RegisterWorkflow(workflows.UpdateFX)
 
 	// Scheduled
-	scheduledWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncSpec5Workflow, workflow.RegisterOptions{Name: workflows.SyncSpec5TypeName})
 	scheduledWorker.RegisterWorkflow(workflows.EventRelay)
 	scheduledWorker.RegisterWorkflow(workflows.EventPrune)
-	scheduledWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
-	scheduledWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
-	scheduledWorker.RegisterWorkflow(workflows.EscrowIntakeSweepWorkflow)
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.Spec5SweepWorkflow, workflow.RegisterOptions{Name: workflows.Spec5SweepTypeName})
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: workflows.SyncRegistrarsTypeName})
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.EscrowIntakeSweepWorkflow, workflow.RegisterOptions{Name: workflows.EscrowIntakeSweepTypeName})
 
 	// Heavy Batch
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowKeyProbeWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowIntakeWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowImportWorkflow, workflow.RegisterOptions{Name: workflows.EscrowImportTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowValidationWorkflow, workflow.RegisterOptions{Name: workflows.EscrowValidationTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowKeyProbeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowKeyProbeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowSanitizeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowSanitizeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowIntakeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowIntakeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.TLDCleanupWorkflow, workflow.RegisterOptions{Name: workflows.TLDCleanupTypeName})
 
 	// Lifecycle
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
-	lifecycleWorker.RegisterWorkflow(workflows.RestoreWorkflow)
+	lifecycleWorker.RegisterWorkflowWithOptions(workflows.RestoreWorkflow, workflow.RegisterOptions{Name: workflows.RestoreTypeName})
 	lifecycleWorker.RegisterWorkflow(workflows.TombstoneBackfill)
 
 	// Drain Data (Deprecated data-pipeline)
-	drainDataWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
-	drainDataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.EscrowImportWorkflow, workflow.RegisterOptions{Name: workflows.EscrowImportTypeName})
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.TLDCleanupWorkflow, workflow.RegisterOptions{Name: workflows.TLDCleanupTypeName})
 	drainDataWorker.RegisterWorkflow(workflows.UpdateFX)
-	drainDataWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
-	drainDataWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.SyncSpec5Workflow, workflow.RegisterOptions{Name: workflows.SyncSpec5TypeName})
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.Spec5SweepWorkflow, workflow.RegisterOptions{Name: workflows.Spec5SweepTypeName})
 	drainDataWorker.RegisterWorkflow(workflows.EventRelay)
 	drainDataWorker.RegisterWorkflow(workflows.EventPrune)
 	drainDataWorker.RegisterWorkflow(workflows.TombstoneBackfill)
-	drainDataWorker.RegisterWorkflow(workflows.CheckSerialDriftWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.CheckSerialDriftWorkflow, workflow.RegisterOptions{Name: workflows.CheckSerialDriftTypeName})
 
 	// Drain Lifecycle (Deprecated object-lifecycle)
 	drainLifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	drainLifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
-	drainLifecycleWorker.RegisterWorkflow(workflows.RestoreWorkflow)
-	drainLifecycleWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
+	drainLifecycleWorker.RegisterWorkflowWithOptions(workflows.RestoreWorkflow, workflow.RegisterOptions{Name: workflows.RestoreTypeName})
+	drainLifecycleWorker.RegisterWorkflowWithOptions(workflows.SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: workflows.SyncRegistrarsTypeName})
 
 	// --- Activities Registration ---
 

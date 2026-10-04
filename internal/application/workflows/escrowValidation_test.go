@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type EscrowValidationWorkflowTestSuite struct {
@@ -32,7 +33,7 @@ var evKeys = entities.EscrowKeySelection{
 
 func (s *EscrowValidationWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowValidationWorkflow, workflow.RegisterOptions{Name: EscrowValidationTypeName})
 	var acts *activities.EscrowValidationActivities
 	s.env.OnActivity(acts.ResolveEscrowKeys, mock.Anything, mock.Anything).Return(evKeys, nil).Maybe()
 }
@@ -228,7 +229,7 @@ func (s *EscrowValidationWorkflowTestSuite) Test_UnsignedProfile_EmitsNoNotifica
 // records (issue #429, ADR-0009 §7).
 func (s *EscrowValidationWorkflowTestSuite) Test_KeySelection_IsResolvedOnceAndCarriedThrough() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowValidationWorkflow, workflow.RegisterOptions{Name: EscrowValidationTypeName})
 	var acts *activities.EscrowValidationActivities
 	bound := evBound()
 	sameKeys := func(k *entities.EscrowKeySelection) bool {
@@ -255,7 +256,7 @@ func (s *EscrowValidationWorkflowTestSuite) Test_KeySelection_IsResolvedOnceAndC
 // resolved is our failure, recorded ERROR, and never validated.
 func (s *EscrowValidationWorkflowTestSuite) Test_KeyResolutionFailure_FinalisesAsError() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowValidationWorkflow, workflow.RegisterOptions{Name: EscrowValidationTypeName})
 	var acts *activities.EscrowValidationActivities
 	s.env.OnActivity(acts.BindDeposit, mock.Anything, mock.Anything).Return(evBound(), nil).Once()
 	s.env.OnActivity(acts.ResolveEscrowKeys, mock.Anything, mock.Anything).

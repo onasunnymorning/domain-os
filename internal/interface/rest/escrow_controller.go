@@ -241,7 +241,7 @@ func (c *EscrowController) StartImport(ctx *gin.Context) {
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{
 		ID:        wfID,
 		TaskQueue: cfg.WorkerQueue,
-	}, workflows.EscrowImportWorkflow, workflows.EscrowImportParams{
+	}, workflows.EscrowImportTypeName, workflows.EscrowImportParams{
 		TLD:       req.TLD,
 		ObjectKey: req.ObjectKey,
 		Options:   req.Options,

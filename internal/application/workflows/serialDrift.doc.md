@@ -1,4 +1,4 @@
-# Serial Drift Monitor — `CheckSerialDriftWorkflow`
+# Serial Drift Monitor — `CheckSerialDrift`
 
 | Field | Value |
 |-------|-------|

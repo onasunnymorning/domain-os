@@ -17,10 +17,6 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-// checkSerialDriftWorkflowName is the registered name of the workflow.
-// Using a string reference avoids importing the workflows package.
-const checkSerialDriftWorkflowName = "CheckSerialDriftWorkflow"
-
 // ZoneSlavingService provides application-level operations for zone slaving monitors.
 type ZoneSlavingService struct {
 	repo repositories.SerialDriftRepository
@@ -151,7 +147,7 @@ func (s *ZoneSlavingService) createSchedule(ctx context.Context, scope entities.
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        sid + "-run",
-			Workflow:  checkSerialDriftWorkflowName,
+			Workflow:  serialdrift.WorkflowTypeName,
 			Args:      []interface{}{params},
 			TaskQueue: temporal.QueueFastOps,
 		},

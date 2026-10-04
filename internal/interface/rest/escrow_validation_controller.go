@@ -217,7 +217,7 @@ func (c *EscrowController) StartValidation(ctx *gin.Context) {
 	now := time.Now().UTC()
 	wfID := escrowValidationWorkflowID(tld, now)
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{ID: wfID, TaskQueue: cfg.WorkerQueue},
-		workflows.EscrowValidationWorkflow, workflows.EscrowValidationParams{
+		workflows.EscrowValidationTypeName, workflows.EscrowValidationParams{
 			Scope: scope.String(), TLD: tld, Profile: profile,
 			ArtifactObjectKey: req.ArtifactObjectKey, SignatureObjectKey: req.SignatureObjectKey,
 			SubmittedBy: submittedBy, IntakeRef: req.IntakeRef, ReceivedAt: now,

@@ -100,6 +100,20 @@ type EscrowStagingParams struct {
 func EscrowStagingWorkflow(ctx workflow.Context, tld string, s3Key string) error { ... }
 ```
 
+#### Registered Type Name
+
+The Go function keeps its `Workflow` suffix (`TLDCleanupWorkflow`); the **Temporal type name** does not (`TLDCleanup`). The type name is what Temporal persists in history, in schedule actions and in visibility (UI "Workflow Type" column, `WorkflowType = "…"` queries, the `workflow_type` metric label), so it is set explicitly rather than inherited from the function name.
+
+1. Add a constant to `internal/application/workflows/workflow_type_names.go`, e.g. `TLDCleanupTypeName = "TLDCleanup"`.
+2. Register with it, on every worker that polls the queue, including drain workers:
+   `w.RegisterWorkflowWithOptions(workflows.TLDCleanupWorkflow, workflow.RegisterOptions{Name: workflows.TLDCleanupTypeName})`
+3. Start the workflow **by that constant** from anywhere that does not register it (API controllers, `ry-admin`, schedules, child workflows, `NewContinueAsNewError`). A worker's alias exists only in the process that registered it, so passing the function from the API server would send the old name.
+4. In tests, register with the same option (`env.RegisterWorkflowWithOptions(fn, workflow.RegisterOptions{Name: …})`) so string lookups and `OnWorkflow` mocks resolve.
+
+A workflow whose function name has no `Workflow` suffix (`ExpiryLoop`) needs none of this. `TestWorkflowTypeNames` pins each constant to its function.
+
+> **Renaming is a migration.** Changing a registered name strands running executions and existing schedule actions that still carry the old one. Plan for draining or a temporary legacy registration; see section 2.6 (Deprecate).
+
 #### Workflow ID Convention
 
 Use a consistent pattern across all workflows:
@@ -390,8 +404,8 @@ import "go.temporal.io/sdk/worker"
 func RegisterLifecycleWorkflows(w worker.Worker, acts LifecycleActivities) {
     w.RegisterWorkflow(ExpiryLoop)
     w.RegisterWorkflow(PurgeLoop)
-    w.RegisterWorkflow(RestoreWorkflow)
-    w.RegisterWorkflow(SyncRegistrarsWorkflow)
+    w.RegisterWorkflowWithOptions(RestoreWorkflow, workflow.RegisterOptions{Name: RestoreTypeName})
+    w.RegisterWorkflowWithOptions(SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: SyncRegistrarsTypeName})
 
     w.RegisterActivity(acts.CheckDomainCanAutoRenew)
     w.RegisterActivity(acts.GetExpiredDomainCount)
