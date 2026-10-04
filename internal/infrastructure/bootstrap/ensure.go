@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -31,10 +30,18 @@ type scheduleSpec struct {
 	Note          string        // Human-readable description shown in Temporal UI
 }
 
+// Options carries the schedule settings that come from configuration. The
+// composition root reads them (INV-17).
+type Options struct {
+	// EscrowIntakeSweepInterval is how often escrow-intake-sweep runs; see
+	// config.EscrowIntakeSweepInterval.
+	EscrowIntakeSweepInterval time.Duration
+}
+
 // desiredSchedules returns the canonical list of schedules that must exist.
 // This is the single source of truth — add or remove schedules here.
-func desiredSchedules() []scheduleSpec {
-	sweep := escrowIntakeSweepInterval()
+func desiredSchedules(opts Options) []scheduleSpec {
+	sweep := opts.EscrowIntakeSweepInterval
 	return []scheduleSpec{
 		{
 			ID:            "expiry-loop",
@@ -130,32 +137,6 @@ func desiredSchedules() []scheduleSpec {
 	}
 }
 
-const (
-	defaultEscrowIntakeSweepInterval = 2 * time.Minute
-	minEscrowIntakeSweepInterval     = 30 * time.Second
-)
-
-// escrowIntakeSweepInterval reads ESCROW_INTAKE_SWEEP_INTERVAL. A bad value
-// falls back to the default rather than costing the worker its other
-// schedules; a value below the minimum is raised to it, since a sweep that
-// overlaps the previous one is skipped anyway.
-func escrowIntakeSweepInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("ESCROW_INTAKE_SWEEP_INTERVAL"))
-	if raw == "" {
-		return defaultEscrowIntakeSweepInterval
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil || d <= 0 {
-		log.Printf("[infra] WARNING: ESCROW_INTAKE_SWEEP_INTERVAL=%q is not a positive duration; using %s", raw, defaultEscrowIntakeSweepInterval) // #nosec G706 -- %q escapes control characters, so the value cannot forge a log line
-		return defaultEscrowIntakeSweepInterval
-	}
-	if d < minEscrowIntakeSweepInterval {
-		log.Printf("[infra] WARNING: ESCROW_INTAKE_SWEEP_INTERVAL=%q is below the minimum; using %s", raw, minEscrowIntakeSweepInterval) // #nosec G706 -- %q escapes control characters, so the value cannot forge a log line
-		return minEscrowIntakeSweepInterval
-	}
-	return d
-}
-
 // EnsureTemporalInfrastructure is a self-healing startup routine that ensures
 // all required Temporal schedules exist with the correct configuration. It is
 // idempotent — safe to call on every deploy.
@@ -167,11 +148,11 @@ func escrowIntakeSweepInterval() time.Duration {
 //   - If a schedule already matches, it is silently skipped.
 //
 // Call this once at worker startup, after the Temporal client is connected.
-func EnsureTemporalInfrastructure(c client.Client) {
+func EnsureTemporalInfrastructure(c client.Client, opts Options) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	schedules := desiredSchedules()
+	schedules := desiredSchedules(opts)
 	created, updated, upToDate := 0, 0, 0
 
 	for _, spec := range schedules {

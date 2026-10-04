@@ -128,7 +128,9 @@ func newIntakeFixture(t *testing.T, enabled bool) *intakeFixture {
 func newIntakeFixtureWith(t *testing.T, cfg EscrowIntakeConfig) *intakeFixture {
 	t.Helper()
 	f := &intakeFixture{store: newFakeIntakeStore(), runs: newFakeRunRepo(), now: time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)}
-	f.acts = NewEscrowIntakeActivitiesWithDeps(f.store, f.runs, cfg)
+	acts, err := NewEscrowIntakeActivities(f.store, f.runs, cfg)
+	require.NoError(t, err)
+	f.acts = acts
 	f.acts.now = func() time.Time { return f.now }
 	var ts testsuite.WorkflowTestSuite
 	f.env = ts.NewTestActivityEnvironment()
@@ -204,34 +206,17 @@ func TestNormalizeEscrowIntakePrefix(t *testing.T) {
 	}
 }
 
-func TestLoadEscrowIntakeConfig(t *testing.T) {
-	t.Setenv("ESCROW_INTAKE_SFTP_ENABLED", "")
-	t.Setenv("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", "")
-	t.Setenv("ESCROW_INTAKE_SFTP_PREFIX", "")
-	cfg, err := loadEscrowIntakeConfig()
+func TestNewEscrowIntakeActivities_Prefix(t *testing.T) {
+	acts, err := NewEscrowIntakeActivities(newFakeIntakeStore(), newFakeRunRepo(), EscrowIntakeConfig{})
 	require.NoError(t, err)
-	assert.Equal(t, EscrowIntakeConfig{Prefix: "sftp/"}, cfg, "intake and plaintext are both off unless switched on")
+	assert.Equal(t, "sftp/", acts.cfg.Prefix, "an unset prefix is the default")
 
-	t.Setenv("ESCROW_INTAKE_SFTP_ENABLED", "true")
-	t.Setenv("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", "true")
-	cfg, err = loadEscrowIntakeConfig()
+	acts, err = NewEscrowIntakeActivities(newFakeIntakeStore(), newFakeRunRepo(), EscrowIntakeConfig{Prefix: "/intake"})
 	require.NoError(t, err)
-	assert.True(t, cfg.Enabled)
-	assert.True(t, cfg.AllowPlaintext)
+	assert.Equal(t, "intake/", acts.cfg.Prefix)
 
-	t.Setenv("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", "yes please")
-	_, err = loadEscrowIntakeConfig()
-	require.Error(t, err, "a value that is not a boolean is a configuration error, not 'off'")
-
-	t.Setenv("ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", "")
-	t.Setenv("ESCROW_INTAKE_SFTP_ENABLED", "maybe")
-	_, err = loadEscrowIntakeConfig()
-	require.Error(t, err)
-
-	t.Setenv("ESCROW_INTAKE_SFTP_ENABLED", "true")
-	t.Setenv("ESCROW_INTAKE_SFTP_PREFIX", "uploads")
-	_, err = loadEscrowIntakeConfig()
-	require.Error(t, err)
+	_, err = NewEscrowIntakeActivities(newFakeIntakeStore(), newFakeRunRepo(), EscrowIntakeConfig{Prefix: "uploads"})
+	require.Error(t, err, "a prefix overlapping another area is refused at construction")
 }
 
 // ---- parsing and pairing ----
