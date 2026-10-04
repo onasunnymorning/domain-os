@@ -22,7 +22,7 @@ pull-based and partial:
   apex — SOA, NS, glue, DS, DNSKEY — with string rendering, but no producer
   or consumer of a complete zone exists.
 - The **verification half of the loop is already built**:
-  `CheckSerialDriftWorkflow`
+  `CheckSerialDrift`
   (`internal/application/workflows/serialDrift.go`) monitors SOA serial
   propagation across a master/slave nameserver fleet using RFC 1982
   arithmetic, and `ZoneSlavingService` manages the monitored configurations.

@@ -72,7 +72,7 @@ something else.
   `mirrored`) and a free-text `Reason`. The field's own comment calls the
   Reason "a basic form of categorization".
 - **Spec 5 labels are a reference list, not a guard.** The global
-  `spec5_labels` table is refreshed by `SyncSpec5Workflow` from ICANN's
+  `spec5_labels` table is refreshed by `SyncSpec5` from ICANN's
   [`ReservedNames.xml`](https://www.icann.org/sites/default/files/packages/reserved-names/ReservedNames.xml)
   plus hardcoded lists in
   [`icannspec5/`](../../internal/infrastructure/web/icannspec5/).
@@ -80,7 +80,7 @@ something else.
     `red-cross2`, `red-cross-international`, `IGOs`, `IGOs-2`) or a section
     tag from the **2013** RA numbering (`spec5_1`, `spec5_2`, `spec5_4`,
     `spec5_5`).
-  - Registration does not consult the table. `Spec5SweepWorkflow` reports
+  - Registration does not consult the table. `Spec5Sweep` reports
     domains that already match a label, after the fact.
 - **The UI picked the wrong word.** The UI calls the NNDN list "Blocking" in
   the sidebar

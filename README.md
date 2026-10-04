@@ -137,12 +137,12 @@ Each box is an **Activity** — a single Go function that does one thing. The **
 |---|---|---|
 | **ExpiryLoop** | Scans for expired domains, auto-renews or expires them | Hourly (scheduled) |
 | **PurgeLoop** | Removes domains past their redemption grace period | Periodic (scheduled) |
-| **RestoreWorkflow** | Processes domains pending restore — clears status, force-renews | Periodic (scheduled) |
-| **SyncRegistrarsWorkflow** | Syncs local registrars with IANA/ICANN registry data, creates new ones, updates status | Periodic (scheduled) |
+| **Restore** | Processes domains pending restore — clears status, force-renews | Periodic (scheduled) |
+| **SyncRegistrars** | Syncs local registrars with IANA/ICANN registry data, creates new ones, updates status | Periodic (scheduled) |
 | **UpdateFX** | Refreshes exchange rates for USD, EUR, GBP, PEN, RUB, CAD, AUD | Periodic (scheduled) |
 | **EscrowStagingWorkflow** | Multi-step escrow import: validate → parse → collate → map registrars → stage | On demand (via API) |
 | **EscrowIngestionWorkflow** | Bulk-ingests staged escrow data: contacts → hosts → domains → NNDNs → link hosts → accredit registrars | Triggered by staging (child workflow) |
-| **TLDCleanupWorkflow** | Safely removes all assets for a TLD. Plans the cleanup, waits for human confirmation signal, backs up to S3, then deletes. | On demand (via API) |
+| **TLDCleanup** | Safely removes all assets for a TLD. Plans the cleanup, waits for human confirmation signal, backs up to S3, then deletes. | On demand (via API) |
 
 ### Activities — the building blocks
 

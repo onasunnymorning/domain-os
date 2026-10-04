@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -90,7 +91,7 @@ func (s *TLDCleanupWorkflowTestSuite) SetupTest() {
 	s.env.RegisterActivity(s.tldActs.DeleteTLDAssets)
 
 	// We must register the workflow too, to receive signals
-	s.env.RegisterWorkflow(TLDCleanupWorkflow)
+	s.env.RegisterWorkflowWithOptions(TLDCleanupWorkflow, workflow.RegisterOptions{Name: TLDCleanupTypeName})
 }
 
 func (s *TLDCleanupWorkflowTestSuite) seedTestData() {

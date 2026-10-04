@@ -150,7 +150,7 @@ sequenceDiagram
 
 ## Backfill Workflow
 
-The \`TombstoneBackfillWorkflow\` scans historical \`domain.purged\` events and creates tombstones for domains that were purged before the tombstone system was in place.
+The \`TombstoneBackfill\` workflow scans historical \`domain.purged\` events and creates tombstones for domains that were purged before the tombstone system was in place.
 
 ### Process
 

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type SyncRegistrarsWorkflowTestSuite struct {
@@ -22,7 +23,7 @@ type SyncRegistrarsWorkflowTestSuite struct {
 
 func (s *SyncRegistrarsWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(SyncRegistrarsWorkflow)
+	s.env.RegisterWorkflowWithOptions(SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: SyncRegistrarsTypeName})
 }
 
 func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_FirstImport() {
