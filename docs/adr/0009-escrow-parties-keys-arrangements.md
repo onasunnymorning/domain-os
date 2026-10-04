@@ -148,7 +148,7 @@ fingerprints, states and reasons only, never material.
   secrets, but **not read them**. The worker role may only read and describe.
 - **Proving a key works.** The API holds a private key only for the duration of
   an import request. That a worker can actually use a version is proven on the
-  worker by `EscrowKeyProbeWorkflow`, which fetches, unlocks, matches the
+  worker by `EscrowKeyProbe`, which fetches, unlocks, matches the
   fingerprint and does a round trip (for a symmetric key, derives a tokenizer).
   - **Every probe is audited, passed or failed.** A probe is a worker reading
     secret material, which is exactly what custody audit is for.

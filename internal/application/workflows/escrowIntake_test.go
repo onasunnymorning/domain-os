@@ -30,8 +30,8 @@ func TestEscrowIntakeSweepTestSuite(t *testing.T) {
 
 func (s *EscrowIntakeSweepTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowIntakeSweepWorkflow)
-	s.env.RegisterWorkflow(EscrowIntakeWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowIntakeSweepWorkflow, workflow.RegisterOptions{Name: EscrowIntakeSweepTypeName})
+	s.env.RegisterWorkflowWithOptions(EscrowIntakeWorkflow, workflow.RegisterOptions{Name: EscrowIntakeTypeName})
 }
 
 func (s *EscrowIntakeSweepTestSuite) AfterTest(_, _ string) {
@@ -139,8 +139,8 @@ func TestEscrowIntakeTestSuite(t *testing.T) {
 
 func (s *EscrowIntakeTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowIntakeWorkflow)
-	s.env.RegisterWorkflow(EscrowValidationWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowIntakeWorkflow, workflow.RegisterOptions{Name: EscrowIntakeTypeName})
+	s.env.RegisterWorkflowWithOptions(EscrowValidationWorkflow, workflow.RegisterOptions{Name: EscrowValidationTypeName})
 }
 
 func (s *EscrowIntakeTestSuite) AfterTest(_, _ string) {

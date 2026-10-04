@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type SyncSpec5WorkflowTestSuite struct {
@@ -18,7 +19,7 @@ type SyncSpec5WorkflowTestSuite struct {
 
 func (s *SyncSpec5WorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(SyncSpec5Workflow)
+	s.env.RegisterWorkflowWithOptions(SyncSpec5Workflow, workflow.RegisterOptions{Name: SyncSpec5TypeName})
 }
 
 func (s *SyncSpec5WorkflowTestSuite) Test_SyncSpec5Workflow_Success() {

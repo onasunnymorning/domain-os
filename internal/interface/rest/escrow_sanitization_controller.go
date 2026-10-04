@@ -162,7 +162,7 @@ func (c *EscrowController) StartSanitization(ctx *gin.Context) {
 	// source collides rather than racing to produce two derivatives.
 	wfID := "escrow-sanitize-" + source.TLD + "-" + source.ID.String()
 	we, err := cli.ExecuteWorkflow(ctx.Request.Context(), client.StartWorkflowOptions{ID: wfID, TaskQueue: cfg.WorkerQueue},
-		workflows.EscrowSanitizeWorkflow, workflows.EscrowSanitizeParams{
+		workflows.EscrowSanitizeTypeName, workflows.EscrowSanitizeParams{
 			Scope: scope.String(), SourceValidationRunID: source.ID.String(),
 			SyntheticSuffix: req.SyntheticSuffix, RequestedBy: requestedBy,
 		})

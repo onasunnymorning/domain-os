@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type Spec5SweepWorkflowTestSuite struct {
@@ -18,7 +19,7 @@ type Spec5SweepWorkflowTestSuite struct {
 
 func (s *Spec5SweepWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(Spec5SweepWorkflow)
+	s.env.RegisterWorkflowWithOptions(Spec5SweepWorkflow, workflow.RegisterOptions{Name: Spec5SweepTypeName})
 }
 
 func (s *Spec5SweepWorkflowTestSuite) Test_Spec5SweepWorkflow_Success() {

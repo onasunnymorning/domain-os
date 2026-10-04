@@ -363,7 +363,7 @@ func (TemporalEscrowKeyProbeStarter) StartEscrowKeyProbe(ctx context.Context, ow
 	defer cli.Close()
 	wfID := "escrow-key-probe-" + versionID.String() + "-" + time.Now().UTC().Format("20060102-150405")
 	we, err := cli.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: wfID, TaskQueue: cfg.WorkerQueue},
-		workflows.EscrowKeyProbeWorkflow, workflows.EscrowKeyProbeParams{
+		workflows.EscrowKeyProbeTypeName, workflows.EscrowKeyProbeParams{
 			Owner: activities.OwnerRefFor(owner), VersionID: versionID.String(), RequestedBy: requestedBy,
 		})
 	if err != nil {
