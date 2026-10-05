@@ -49,7 +49,7 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		return
 	}
 
-	logger.Info("No registrars found. Triggering SyncRegistrarsWorkflow...")
+	logger.Info("No registrars found. Triggering SyncRegistrars workflow...")
 
 	// Connect to Temporal
 	tCfg := temporal.NewClientConfigFromEnv(temporal.QueueScheduled)
@@ -65,10 +65,10 @@ func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 		TaskQueue: tCfg.WorkerQueue,
 	}
 
-	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsWorkflow, workflows.SyncRegistrarsParams{})
+	we, err := cli.ExecuteWorkflow(context.Background(), workflowOptions, workflows.SyncRegistrarsTypeName, workflows.SyncRegistrarsParams{})
 	if err != nil {
 		logger.Fatal("Failed to start workflow", zap.Error(err))
 	}
 
-	logger.Info("Started SyncRegistrarsWorkflow", zap.String("WorkflowID", we.GetID()), zap.String("RunID", we.GetRunID()))
+	logger.Info("Started SyncRegistrars workflow", zap.String("WorkflowID", we.GetID()), zap.String("RunID", we.GetRunID()))
 }

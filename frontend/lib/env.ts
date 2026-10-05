@@ -1,4 +1,5 @@
 import { env } from 'next-runtime-env';
+import { buildCommit, buildVersion } from './build-info';
 
 /**
  * Runtime environment accessors.
@@ -26,7 +27,19 @@ export const getAuth0ClientId = () => env('NEXT_PUBLIC_AUTH0_CLIENT_ID') || '';
 
 export const getAuth0Audience = () => env('NEXT_PUBLIC_AUTH0_AUDIENCE') || '';
 
-export const getAppVersion = () => env('NEXT_PUBLIC_APP_VERSION') || '1.0.0';
+/** Stamped into the image at build time (lib/build-info.ts); 'dev' when unstamped. */
+export const getAppVersion = () => buildVersion();
+
+/** Full git SHA of the build; '' when unstamped. Use formatAppVersion for display. */
+export const getAppCommit = () => buildCommit();
+
+/** "v0.10.0 · a1b2c3d" for a release build, "dev" when unstamped. */
+export const formatAppVersion = () => {
+  const version = getAppVersion();
+  const commit = getAppCommit();
+  const label = /^\d/.test(version) ? `v${version}` : version;
+  return commit && commit !== 'unknown' ? `${label} · ${commit.slice(0, 7)}` : label;
+};
 
 /**
  * External tool URLs have no localhost fallback: in a deployed environment an

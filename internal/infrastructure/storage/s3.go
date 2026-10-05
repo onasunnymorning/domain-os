@@ -16,6 +16,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 )
 
 type S3Client struct {
@@ -265,17 +266,65 @@ func (s *S3Client) UploadFile(ctx context.Context, key, path, contentType string
 	return err
 }
 
+// maxSingleCopyBytes is the largest object S3 copies in one request. Above it
+// the copy must be multipart (UploadPartCopy); a plain CopyObject fails.
+const maxSingleCopyBytes = 5 << 30
+
 // CopyObject performs a server-side copy of srcKey to dstKey within the same bucket.
 // No data is downloaded — the copy happens entirely on the S3/MinIO server.
+//
+// Objects up to 5 GiB are copied in one request. Larger ones go through
+// minio's ComposeObject, which copies in parts: escrow deposits are accepted up
+// to 10 GiB (ESCROW_VALIDATION_MAX_COMPRESSED_BYTES), and a single-request copy
+// of one would fail. ComposeObject is not used for everything because its
+// single-request path is unreachable (it requires Start == -1, which source
+// validation rejects), so it would turn every small copy into a multipart one.
 func (s *S3Client) CopyObject(ctx context.Context, srcKey, dstKey string) error {
-	_, err := s.client.CopyObject(ctx,
-		minio.CopyDestOptions{Bucket: s.bucket, Object: dstKey},
-		minio.CopySrcOptions{Bucket: s.bucket, Object: srcKey},
-	)
+	dst := minio.CopyDestOptions{Bucket: s.bucket, Object: dstKey}
+	src := minio.CopySrcOptions{Bucket: s.bucket, Object: srcKey}
+	info, err := s.client.StatObject(ctx, s.bucket, srcKey, minio.StatObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("CopyObject(src=%s, dst=%s): stat source: %w", srcKey, dstKey, err)
+	}
+	if info.Size > maxSingleCopyBytes {
+		_, err = s.client.ComposeObject(ctx, dst, src)
+	} else {
+		_, err = s.client.CopyObject(ctx, dst, src)
+	}
 	if err != nil {
 		return fmt.Errorf("CopyObject(src=%s, dst=%s): %w", srcKey, dstKey, err)
 	}
 	return nil
+}
+
+// RemoveObject deletes key. Deleting a key that does not exist is not an
+// error, which makes it safe to retry.
+func (s *S3Client) RemoveObject(ctx context.Context, key string) error {
+	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("RemoveObject(key=%s): %w", key, err)
+	}
+	return nil
+}
+
+// ListObjectsInfo lists up to limit objects under prefix, recursively, with the
+// metadata a caller needs to tell one upload from another. A limit of 0 or less
+// means no cap. Stopping early cancels the listing rather than draining it.
+func (s *S3Client) ListObjectsInfo(ctx context.Context, prefix string, limit int) ([]interfaces.ObjectInfo, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	out := []interfaces.ObjectInfo{}
+	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("ListObjectsInfo(prefix=%s): %w", prefix, obj.Err)
+		}
+		out = append(out, interfaces.ObjectInfo{
+			Key: obj.Key, Size: obj.Size, ETag: obj.ETag, LastModified: obj.LastModified.UTC(),
+		})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 // ListObjectKeys lists object keys under a given prefix. If recursive is true, it descends into sub-prefixes.

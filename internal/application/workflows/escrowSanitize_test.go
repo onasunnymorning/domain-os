@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type EscrowSanitizeWorkflowTestSuite struct {
@@ -29,7 +30,7 @@ var esKeys = entities.EscrowKeySelection{
 
 func (s *EscrowSanitizeWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowSanitizeWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowSanitizeWorkflow, workflow.RegisterOptions{Name: EscrowSanitizeTypeName})
 	var acts *activities.EscrowSanitizeActivities
 	s.env.OnActivity(acts.ResolveSanitizationKeys, mock.Anything, mock.Anything).Return(esKeys, nil).Maybe()
 }

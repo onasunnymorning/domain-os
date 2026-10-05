@@ -179,6 +179,14 @@ var Registry = []EnvVar{
 	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_OBJECTS", Services: []Service{ServiceWorker}, Default: "20000000", Description: "How many identifiers the contact/host referential check may hold for one deposit. It is the only check that cannot work in constant space, and each entry costs about 30 bytes, so the default is roughly 580 MB held and 670 MB at the peak — size it to the worker's memory limit. Past it the deposit is still validated and the check reports RDE_CROSS_REFERENCE_SKIPPED"},
 	{Name: "ESCROW_VALIDATION_MAX_CROSS_REFERENCE_NAMES", Services: []Service{ServiceWorker}, Default: "1000000", Description: "How many of those identifiers are also kept verbatim so a finding can name the object rather than only its ordinal. About 60 bytes each, so it is deliberately smaller than the bound above; past it findings carry an ordinal and a byte offset instead of a name"},
 
+	// ─── Escrow sFTP intake (alpaca-infra docs/sftp-intake.md) ───
+	// Deposits arrive over sFTP into <prefix>inbox/<RyID>/<tld>/ in the escrow
+	// bucket. The prefix is a contract with the infrastructure that writes it.
+	{Name: "ESCROW_INTAKE_SFTP_ENABLED", Services: []Service{ServiceWorker}, Default: "false", Description: "Validate escrow deposits that arrive over sFTP: the escrow-intake-sweep schedule always runs, and finds nothing to do while this is false"},
+	{Name: "ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", Services: []Service{ServiceWorker}, Default: "false", Description: "Also accept a lone unsigned <name>.xml or <name>.xml.gz uploaded over sFTP as a deposit, validated with the plaintext profile. Unsigned deposits are registry data in the clear at rest, so keep this off outside test and simulation environments; while off they are left in the inbox and counted in the sweep result"},
+	{Name: "ESCROW_INTAKE_SFTP_PREFIX", Services: []Service{ServiceWorker}, Default: "sftp/", Description: "Escrow bucket prefix the sFTP server writes under; deposits are read from <prefix>inbox/<RyID>/<tld>/ and moved to <prefix>claimed/ and <prefix>rejected/. Must not overlap escrow-validation/ or uploads/"},
+	{Name: "ESCROW_INTAKE_SWEEP_INTERVAL", Services: []Service{ServiceWorker}, Default: "2m", Description: "How often the sFTP intake sweep looks for new deposits (Go duration, at least 30s). Applied to the schedule when the worker starts"},
+
 	// ─── Escrow key store (EVE key registry, issue #429, ADR-0009) ───
 	// The key registry (parties, versions, arrangements) is application data;
 	// private and symmetric material lives in the key store. Credentials come
@@ -215,7 +223,6 @@ var Registry = []EnvVar{
 	{Name: "NEXT_PUBLIC_AUTH0_DOMAIN", Services: []Service{ServiceFrontend}, Description: "Auth0 tenant domain for SPA login"},
 	{Name: "NEXT_PUBLIC_AUTH0_CLIENT_ID", Services: []Service{ServiceFrontend}, Description: "Auth0 SPA application client ID"},
 	{Name: "NEXT_PUBLIC_AUTH0_AUDIENCE", Services: []Service{ServiceFrontend}, Description: "Auth0 API identifier for token audience"},
-	{Name: "NEXT_PUBLIC_APP_VERSION", Services: []Service{ServiceFrontend}, Default: "0.0.0", Description: "App version displayed in UI. Injected at container start by next-runtime-env (not baked into the image); the deployment sets it to the release version"},
 	{Name: "NEXT_PUBLIC_TEMPORAL_UI_URL", Services: []Service{ServiceFrontend}, Description: "Temporal Cloud UI URL for workflow links"},
 	{Name: "NEXT_PUBLIC_TEMPORAL_NAMESPACE", Services: []Service{ServiceFrontend}, Default: "default", Description: "Temporal namespace used to build schedule deep-links"},
 	{Name: "NEXT_PUBLIC_STORAGE_UI_URL", Services: []Service{ServiceFrontend}, Description: "S3 storage browser URL"},

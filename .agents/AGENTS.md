@@ -48,9 +48,10 @@ Also update `example.env`, and `frontend/.env.local` if local dev needs a value.
   anyone with a browser. `isSecret()` in `internal/config/contract.go` classifies all
   `NEXT_PUBLIC_*` vars as non-secret on purpose.
 - **Do not add `NEXT_PUBLIC_*` build args to `frontend/Dockerfile`.** Infra sets
-  plain container env and `next-runtime-env` reads them at container start — this
-  includes `NEXT_PUBLIC_APP_VERSION`, which is injected at runtime like the rest,
-  not baked into the image, so the frontend image is version-agnostic.
+  plain container env and `next-runtime-env` reads them at container start — the
+  app version is not an env var at all: it is inlined at build time from the
+  `VERSION`/`GIT_SHA` build args via `next.config.ts` and `lib/build-info.ts`
+  (a property of the image, not the environment).
 - **Do not remove the `next-runtime-env` entry from `overrides` in
   `frontend/package.json`.** The package declares `next` and `react` as both
   `dependencies` and `peerDependencies`; without the override npm installs a nested

@@ -4,7 +4,11 @@
       "release-type": "simple",
       "bump-minor-pre-major": true,
       "extra-files": [
-        "frontend/package.json",
+        {
+          "type": "json",
+          "path": "frontend/package.json",
+          "jsonpath": "$.version"
+        },
         "deploy/helm/dos/Chart.yaml",
         "deploy/helm/v2/admin-api/Chart.yaml",
         "deploy/helm/v2/workers/Chart.yaml"

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type EscrowImportWorkflowTestSuite struct {
@@ -19,7 +20,7 @@ type EscrowImportWorkflowTestSuite struct {
 
 func (s *EscrowImportWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
-	s.env.RegisterWorkflow(EscrowImportWorkflow)
+	s.env.RegisterWorkflowWithOptions(EscrowImportWorkflow, workflow.RegisterOptions{Name: EscrowImportTypeName})
 }
 
 func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_Success() {

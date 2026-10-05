@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -9,11 +10,13 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/workflow"
 )
 
 func main() {
@@ -34,7 +37,11 @@ func main() {
 
 	// Self-healing infrastructure: ensure all schedules exist.
 	// Idempotent — safe to run on every startup/deploy.
-	bootstrap.EnsureTemporalInfrastructure(client)
+	sweepInterval, err := config.EscrowIntakeSweepInterval()
+	if err != nil {
+		log.Printf("WARNING: %v", err) // #nosec G706 -- the value is quoted with %q, which escapes control characters
+	}
+	bootstrap.EnsureTemporalInfrastructure(client, bootstrap.Options{EscrowIntakeSweepInterval: sweepInterval})
 
 	// Self-healing infrastructure: ensure all storage buckets exist.
 	// Idempotent — safe to run on every startup/deploy.
@@ -89,47 +96,55 @@ func main() {
 	})
 
 	// --- Workflows Registration ---
+	//
+	// Workflows whose function name ends in "Workflow" register under an explicit
+	// type name without the suffix (see workflows/workflow_type_names.go). The
+	// drain workers must use the same names as the live ones: a workflow's type
+	// is persisted in its history, and every worker that polls its queue has to
+	// agree on it.
 
 	// Fast Ops
-	fastOpsWorker.RegisterWorkflow(workflows.CheckSerialDriftWorkflow)
+	fastOpsWorker.RegisterWorkflowWithOptions(workflows.CheckSerialDriftWorkflow, workflow.RegisterOptions{Name: workflows.CheckSerialDriftTypeName})
 	fastOpsWorker.RegisterWorkflow(workflows.UpdateFX)
 
 	// Scheduled
-	scheduledWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncSpec5Workflow, workflow.RegisterOptions{Name: workflows.SyncSpec5TypeName})
 	scheduledWorker.RegisterWorkflow(workflows.EventRelay)
 	scheduledWorker.RegisterWorkflow(workflows.EventPrune)
-	scheduledWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
-	scheduledWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.Spec5SweepWorkflow, workflow.RegisterOptions{Name: workflows.Spec5SweepTypeName})
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: workflows.SyncRegistrarsTypeName})
+	scheduledWorker.RegisterWorkflowWithOptions(workflows.EscrowIntakeSweepWorkflow, workflow.RegisterOptions{Name: workflows.EscrowIntakeSweepTypeName})
 
 	// Heavy Batch
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowValidationWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowKeyProbeWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.EscrowSanitizeWorkflow)
-	heavyBatchWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowImportWorkflow, workflow.RegisterOptions{Name: workflows.EscrowImportTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowValidationWorkflow, workflow.RegisterOptions{Name: workflows.EscrowValidationTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowKeyProbeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowKeyProbeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowSanitizeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowSanitizeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.EscrowIntakeWorkflow, workflow.RegisterOptions{Name: workflows.EscrowIntakeTypeName})
+	heavyBatchWorker.RegisterWorkflowWithOptions(workflows.TLDCleanupWorkflow, workflow.RegisterOptions{Name: workflows.TLDCleanupTypeName})
 
 	// Lifecycle
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
-	lifecycleWorker.RegisterWorkflow(workflows.RestoreWorkflow)
+	lifecycleWorker.RegisterWorkflowWithOptions(workflows.RestoreWorkflow, workflow.RegisterOptions{Name: workflows.RestoreTypeName})
 	lifecycleWorker.RegisterWorkflow(workflows.TombstoneBackfill)
 
 	// Drain Data (Deprecated data-pipeline)
-	drainDataWorker.RegisterWorkflow(workflows.EscrowImportWorkflow)
-	drainDataWorker.RegisterWorkflow(workflows.TLDCleanupWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.EscrowImportWorkflow, workflow.RegisterOptions{Name: workflows.EscrowImportTypeName})
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.TLDCleanupWorkflow, workflow.RegisterOptions{Name: workflows.TLDCleanupTypeName})
 	drainDataWorker.RegisterWorkflow(workflows.UpdateFX)
-	drainDataWorker.RegisterWorkflow(workflows.SyncSpec5Workflow)
-	drainDataWorker.RegisterWorkflow(workflows.Spec5SweepWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.SyncSpec5Workflow, workflow.RegisterOptions{Name: workflows.SyncSpec5TypeName})
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.Spec5SweepWorkflow, workflow.RegisterOptions{Name: workflows.Spec5SweepTypeName})
 	drainDataWorker.RegisterWorkflow(workflows.EventRelay)
 	drainDataWorker.RegisterWorkflow(workflows.EventPrune)
 	drainDataWorker.RegisterWorkflow(workflows.TombstoneBackfill)
-	drainDataWorker.RegisterWorkflow(workflows.CheckSerialDriftWorkflow)
+	drainDataWorker.RegisterWorkflowWithOptions(workflows.CheckSerialDriftWorkflow, workflow.RegisterOptions{Name: workflows.CheckSerialDriftTypeName})
 
 	// Drain Lifecycle (Deprecated object-lifecycle)
 	drainLifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	drainLifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
-	drainLifecycleWorker.RegisterWorkflow(workflows.RestoreWorkflow)
-	drainLifecycleWorker.RegisterWorkflow(workflows.SyncRegistrarsWorkflow)
+	drainLifecycleWorker.RegisterWorkflowWithOptions(workflows.RestoreWorkflow, workflow.RegisterOptions{Name: workflows.RestoreTypeName})
+	drainLifecycleWorker.RegisterWorkflowWithOptions(workflows.SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: workflows.SyncRegistrarsTypeName})
 
 	// --- Activities Registration ---
 
@@ -166,6 +181,17 @@ func main() {
 		log.Printf("WARNING: escrow validation activities not available: %v", err)
 	} else {
 		heavyBatchWorker.RegisterActivity(eveActs)
+	}
+
+	// Escrow sFTP intake. The sweep lists the inbox on Scheduled; each intake
+	// claims and settles its pair on Heavy Batch, beside the validation it
+	// starts. Registered even when ESCROW_INTAKE_SFTP_ENABLED is off, so the
+	// always-present schedule finds nothing to do rather than failing.
+	if intakeActs, err := newEscrowIntakeActivities(); err != nil {
+		log.Printf("WARNING: escrow intake activities not available: %v", err)
+	} else {
+		scheduledWorker.RegisterActivity(intakeActs)
+		heavyBatchWorker.RegisterActivity(intakeActs)
 	}
 
 	// Escrow key registry probe (Heavy Batch, where the escrow activities that
@@ -322,6 +348,27 @@ func main() {
 // exits when it refuses. A connection failure is fatal too: a worker that
 // cannot reach the database cannot do useful work, and failing here names the
 // cause instead of failing every activity later.
+// newEscrowIntakeActivities wires the sFTP intake activities from the
+// environment (INV-17): its configuration, the database holding validation
+// runs, and the escrow bucket.
+func newEscrowIntakeActivities() (*activities.EscrowIntakeActivities, error) {
+	cfg, err := config.LoadEscrowIntake()
+	if err != nil {
+		return nil, err
+	}
+	db, err := postgres.NewConnectionFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	store, err := storage.NewS3ClientFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("escrow bucket: %w", err)
+	}
+	return activities.NewEscrowIntakeActivities(store, postgres.NewEscrowValidationRunRepository(db), activities.EscrowIntakeConfig{
+		Enabled: cfg.Enabled, AllowPlaintext: cfg.AllowPlaintext, Prefix: cfg.Prefix,
+	})
+}
+
 func checkSchema() {
 	db, err := postgres.NewConnectionFromEnv()
 	if err != nil {
