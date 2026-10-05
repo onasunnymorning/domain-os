@@ -101,6 +101,22 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "escrowSanitize.doc.md",
 		},
 		{
+			Key:          "escrow-intake-sweep",
+			Name:         "Escrow sFTP Intake Sweep",
+			Description:  "Finds complete deposits that Registry Operators uploaded over sFTP (.ryde/.sig pairs, and unsigned .xml/.xml.gz when plaintext intake is allowed) and starts one intake per deposit, which claims it, validates it with Escrow Validation (EVE) and settles the uploaded copy.",
+			Queue:        temporal.QueueScheduled,
+			Category:     "data",
+			Tags:         []string{"data", "escrow", "eve", "sftp", "GO"},
+			Scheduled:    true,
+			ScheduleInfo: "Every 2 minutes (ESCROW_INTAKE_SWEEP_INTERVAL)",
+			ScheduleID:   "escrow-intake-sweep",
+			Steps: []WorkflowStep{
+				{Key: "list-intake-pairs", Label: "List inbox deposits", ActivityName: "ListIntakePairs"},
+				{Key: "start-intakes", Label: "Start one intake per deposit"},
+			},
+			docFile: "escrowIntakeSweep.doc.md",
+		},
+		{
 			Key:         "tld-cleanup",
 			Name:        "TLD Cleanup",
 			Description: "Backs up and removes all assets associated with a TLD after confirmation",

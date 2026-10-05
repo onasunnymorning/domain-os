@@ -32,6 +32,11 @@ type EscrowValidationRunRepository interface {
 	Finalize(ctx context.Context, scope entities.OperatorID, r *entities.EscrowValidationRun) error
 	GetByID(ctx context.Context, scope entities.OperatorID, id uuid.UUID) (*entities.EscrowValidationRun, error)
 	ListByDeposit(ctx context.Context, scope entities.OperatorID, depositID uuid.UUID) ([]*entities.EscrowValidationRun, error)
+	// GetByWorkflowID returns the run opened by the given Temporal workflow, or
+	// entities.ErrEscrowValidationRunNotFound if that workflow never bound a
+	// deposit. A run exists exactly when the deposit reached the archive, which
+	// is what the sFTP intake needs to know before deleting its copy.
+	GetByWorkflowID(ctx context.Context, scope entities.OperatorID, workflowID string) (*entities.EscrowValidationRun, error)
 	List(ctx context.Context, scope entities.OperatorID, q queries.ListItemsQuery) ([]*entities.EscrowValidationRun, string, error)
 }
 

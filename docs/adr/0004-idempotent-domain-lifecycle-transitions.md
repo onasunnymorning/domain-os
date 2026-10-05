@@ -16,7 +16,7 @@ purge, plus restore completion) is driven by three Temporal workflows on the
 |----------|----------|----------|
 | `expiry-loop` | `ExpiryLoop` | hourly |
 | `purge-loop` | `PurgeLoop` | hourly, +30 min offset |
-| `restore-loop` | `RestoreWorkflow` | every 4 hours |
+| `restore-loop` | `Restore` | every 4 hours |
 
 An investigation of this system (July 2026) confirmed the architecture —
 **scheduled sweeps over indexed DB state, with Temporal as scheduler, retry

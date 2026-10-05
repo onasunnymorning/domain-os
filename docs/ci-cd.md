@@ -46,6 +46,20 @@ The version comes from the git tag (release-please owns tags) via
 stamps it into each binary (build-arg → `buildinfo.Version`, surfaced at
 `/ping`), and the release build tags the images with it.
 
+### Tracing what a running UI shows
+
+The frontend sidebar shows `v<version> · <sha7>` (e.g. `v0.10.0 · a1b2c3d`),
+or `dev` for an unstamped local build. Both come from the release build's
+`VERSION` and `GIT_SHA` build args, the same values that tag the image:
+
+- `v0.10.0` → the `v0.10.0` git tag / GitHub release / `CHANGELOG.md` entry, and
+  the Docker Hub tag `gprins/domain-os-frontend:0.10.0`.
+- `a1b2c3d` → `git show a1b2c3d`, the exact commit the image was built from
+  (disambiguates a rebuilt or patched image).
+- The API reports the same pair at `GET /ping` (`version`, `git_sha`).
+
+Never hand-edit these; to change what the UI shows, cut a release.
+
 ## Workflows
 
 ### `ci.yaml` — every PR and every push to `main`

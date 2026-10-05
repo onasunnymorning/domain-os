@@ -137,12 +137,12 @@ Each box is an **Activity** — a single Go function that does one thing. The **
 |---|---|---|
 | **ExpiryLoop** | Scans for expired domains, auto-renews or expires them | Hourly (scheduled) |
 | **PurgeLoop** | Removes domains past their redemption grace period | Periodic (scheduled) |
-| **RestoreWorkflow** | Processes domains pending restore — clears status, force-renews | Periodic (scheduled) |
-| **SyncRegistrarsWorkflow** | Syncs local registrars with IANA/ICANN registry data, creates new ones, updates status | Periodic (scheduled) |
+| **Restore** | Processes domains pending restore — clears status, force-renews | Periodic (scheduled) |
+| **SyncRegistrars** | Syncs local registrars with IANA/ICANN registry data, creates new ones, updates status | Periodic (scheduled) |
 | **UpdateFX** | Refreshes exchange rates for USD, EUR, GBP, PEN, RUB, CAD, AUD | Periodic (scheduled) |
 | **EscrowStagingWorkflow** | Multi-step escrow import: validate → parse → collate → map registrars → stage | On demand (via API) |
 | **EscrowIngestionWorkflow** | Bulk-ingests staged escrow data: contacts → hosts → domains → NNDNs → link hosts → accredit registrars | Triggered by staging (child workflow) |
-| **TLDCleanupWorkflow** | Safely removes all assets for a TLD. Plans the cleanup, waits for human confirmation signal, backs up to S3, then deletes. | On demand (via API) |
+| **TLDCleanup** | Safely removes all assets for a TLD. Plans the cleanup, waits for human confirmation signal, backs up to S3, then deletes. | On demand (via API) |
 
 ### Activities — the building blocks
 
@@ -279,6 +279,7 @@ EPP and WHOIS are published high because 700 and 43 are privileged ports: Docker
 | `password authentication failed for user "postgres"` | You have a Postgres volume from an earlier install, created with a different password. Postgres only applies `POSTGRES_PASSWORD` when it initialises an *empty* data directory, so changing `DB_PASS` in `.env` has no effect on an existing volume. Fix: `make reset && make dev`. |
 | Database is in a weird state | `make reset && make dev` — destroys volumes and rebuilds from empty. This is expected to work at any time; if it doesn't, that's a bug. |
 | `make dev-frontend` fails on the Node version | The frontend needs Node 22 (`frontend/.nvmrc`). `nvm use` or `asdf install`. The backend and the test suite do not need Node at all. |
+| `make local` in a worktree: which data am I on? | By default a git worktree shares the main checkout's stack: the same Compose project and volumes and the same Temporal history (`local/temporal.db` in the main checkout). Tilt prints which one at startup. `LOCAL_STACK=isolated make local` gives the worktree its own empty stack instead. Either way, only one stack can run at a time. |
 | Something asks for a Doppler login | You ran a maintainer target. `make dev`, `make test`, `make down`, `make reset`, and `make doctor` never touch Doppler; `make dev-doppler`, `make askg`, and `make local` do. |
 
 **Local requires no cloud credentials and no network egress after the initial image pulls.** There is no AWS key, no Grafana Cloud token, no Auth0 tenant, and no Doppler login in the boot or test path. If something asks you for a credential, that is a bug — please report it rather than working around it.

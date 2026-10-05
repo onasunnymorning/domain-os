@@ -333,6 +333,24 @@ func (r *GormEscrowValidationRunRepository) GetByID(ctx context.Context, scope e
 	return fromDBEscrowValidationRun(&rec)
 }
 
+// GetByWorkflowID retrieves the run a workflow opened. A workflow opens at
+// most one run (BindDeposit creates it once per execution), but the newest is
+// taken in case a reset re-ran the bind under the same workflow ID.
+func (r *GormEscrowValidationRunRepository) GetByWorkflowID(ctx context.Context, scope entities.OperatorID, workflowID string) (*entities.EscrowValidationRun, error) {
+	var rec EscrowValidationRunRecord
+	err := r.db.WithContext(ctx).
+		Where("workflow_id = ? AND tenant_id = ?", workflowID, scope.String()).
+		Order("started_at DESC, id DESC").
+		First(&rec).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrEscrowValidationRunNotFound
+		}
+		return nil, fmt.Errorf("EscrowValidationRun.GetByWorkflowID(workflowID=%s): %w", workflowID, err)
+	}
+	return fromDBEscrowValidationRun(&rec)
+}
+
 // ListByDeposit returns every run for a deposit, newest first.
 func (r *GormEscrowValidationRunRepository) ListByDeposit(ctx context.Context, scope entities.OperatorID, depositID uuid.UUID) ([]*entities.EscrowValidationRun, error) {
 	var records []EscrowValidationRunRecord

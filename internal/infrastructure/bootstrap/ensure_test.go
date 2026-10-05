@@ -13,10 +13,10 @@ import (
 )
 
 func Test_desiredSchedules_AllDefined(t *testing.T) {
-	specs := desiredSchedules()
+	specs := desiredSchedules(testOptions)
 
-	// We must have exactly 8 schedules.
-	require.Len(t, specs, 8, "expected 8 schedules in desiredSchedules()")
+	// We must have exactly 9 schedules.
+	require.Len(t, specs, 9, "expected 9 schedules in desiredSchedules()")
 
 	// Map by ID for easy lookup
 	byID := make(map[string]scheduleSpec, len(specs))
@@ -53,6 +53,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	t.Run("restore-loop", func(t *testing.T) {
 		s, ok := byID["restore-loop"]
 		require.True(t, ok, "missing schedule restore-loop")
+		assert.Equal(t, workflows.RestoreTypeName, s.Workflow)
 		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
 		assert.Equal(t, 4*time.Hour, s.Interval)
 		assert.Equal(t, time.Hour, s.Offset)
@@ -66,6 +67,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	t.Run("sync-registrars", func(t *testing.T) {
 		s, ok := byID["sync-registrars"]
 		require.True(t, ok, "missing schedule sync-registrars")
+		assert.Equal(t, workflows.SyncRegistrarsTypeName, s.Workflow)
 		assert.Equal(t, temporal.QueueScheduled, s.Queue)
 		assert.Equal(t, 24*time.Hour, s.Interval)
 		assert.Equal(t, 2*time.Hour, s.Offset)
@@ -125,10 +127,25 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		assert.True(t, ok, "EventPrune args should be EventPruneParams, got %T", s.Args[0])
 		assert.NotEmpty(t, s.Note)
 	})
+
+	t.Run("escrow-intake-sweep", func(t *testing.T) {
+		s, ok := byID["escrow-intake-sweep"]
+		require.True(t, ok, "missing schedule escrow-intake-sweep")
+		assert.Equal(t, workflows.EscrowIntakeSweepTypeName, s.Workflow)
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
+		assert.Equal(t, testOptions.EscrowIntakeSweepInterval, s.Interval)
+		assert.Equal(t, s.Interval, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.EscrowIntakeSweepParams)
+		assert.True(t, ok, "EscrowIntakeSweepWorkflow args should be EscrowIntakeSweepParams, got %T", s.Args[0])
+		assert.NotEmpty(t, s.Note)
+	})
 }
 
+var testOptions = Options{EscrowIntakeSweepInterval: 5 * time.Minute}
+
 func Test_desiredSchedules_UniqueIDs(t *testing.T) {
-	specs := desiredSchedules()
+	specs := desiredSchedules(testOptions)
 	ids := make(map[string]bool, len(specs))
 	for _, s := range specs {
 		assert.False(t, ids[s.ID], "duplicate schedule ID: %s", s.ID)
@@ -258,4 +275,50 @@ func Test_scheduleDrifted(t *testing.T) {
 		desc.Schedule.State = nil
 		assert.True(t, scheduleDrifted(desc, spec))
 	})
+}
+
+func Test_desiredSchedules_RenamedWorkflowsUseTypeNames(t *testing.T) {
+	// These workflows are registered under a name without the "Workflow"
+	// suffix. A schedule must name that type, not the Go function: the worker's
+	// alias does not exist in the process that creates the schedule.
+	want := map[string]string{
+		"restore-loop":        workflows.RestoreTypeName,
+		"sync-registrars":     workflows.SyncRegistrarsTypeName,
+		"sync-spec5":          workflows.SyncSpec5TypeName,
+		"escrow-intake-sweep": workflows.EscrowIntakeSweepTypeName,
+	}
+	got := make(map[string]interface{})
+	for _, s := range desiredSchedules(testOptions) {
+		got[s.ID] = s.Workflow
+	}
+	for id, name := range want {
+		assert.Equal(t, name, got[id], "schedule %s", id)
+	}
+}
+
+func Test_scheduleDrifted_WorkflowType(t *testing.T) {
+	spec := scheduleSpec{
+		ID:            "test",
+		Workflow:      "Restore",
+		Queue:         "q",
+		Interval:      time.Hour,
+		CatchupWindow: time.Hour,
+		Note:          "n",
+	}
+	desc := func(workflowType interface{}) client.ScheduleDescription {
+		return client.ScheduleDescription{Schedule: client.Schedule{
+			Spec:   &client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: time.Hour}}},
+			Action: &client.ScheduleWorkflowAction{TaskQueue: "q", Workflow: workflowType},
+			Policy: &client.SchedulePolicies{Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP, CatchupWindow: time.Hour},
+			State:  &client.ScheduleState{Note: "n"},
+		}}
+	}
+
+	assert.False(t, scheduleDrifted(desc("Restore"), spec), "same type is not drift")
+	assert.True(t, scheduleDrifted(desc("RestoreWorkflow"), spec), "a schedule still on the old type name must be repointed")
+
+	// Function-reference specs name workflows that were never renamed.
+	fnSpec := spec
+	fnSpec.Workflow = workflows.ExpiryLoop
+	assert.False(t, scheduleDrifted(desc("ExpiryLoop"), fnSpec))
 }

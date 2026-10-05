@@ -14,6 +14,28 @@ docker_prune_settings(disable=False, max_age_mins=360, num_builds=0, interval_hr
 # Read TILT_MODE from environment: 'native' (default) or 'docker'
 tilt_mode = os.getenv('TILT_MODE', 'native').lower()
 
+# ─── Which stack: shared (default) or isolated ────────────────────────────────
+# A git worktree shares the main checkout's local stack: the same Compose
+# project, so the same db/minio/redis volumes, and the same Temporal state
+# file. Left to itself, Tilt names the Compose project after the directory the
+# Tiltfile is in, so every worktree would boot against fresh, empty volumes.
+# Only one stack can run at a time anyway: they all publish the same ports.
+#
+# LOCAL_STACK=isolated gives a worktree its own throwaway stack instead. In the
+# main checkout both modes are the same thing.
+local_stack = os.getenv('LOCAL_STACK', 'shared').lower()
+if local_stack not in ('shared', 'isolated'):
+    fail('LOCAL_STACK must be "shared" or "isolated", not "%s"' % local_stack)
+if local_stack == 'shared':
+    common_dir = str(local('git rev-parse --path-format=absolute --git-common-dir', quiet=True)).strip()
+    stack_root = os.path.dirname(common_dir)
+else:
+    stack_root = config.main_dir
+compose_project = os.path.basename(stack_root).lower()
+state_dir = os.path.join(stack_root, 'local')
+local("mkdir -p '%s'" % state_dir, quiet=True)
+print('local stack: %s (compose project "%s", temporal state in %s)' % (local_stack, compose_project, state_dir))
+
 # In native mode we use the 'dev_personal' Doppler config, which inherits from
 # 'dev' but overrides Docker-network hostnames with localhost equivalents:
 #   DB_HOST=localhost  REDIS_HOST=localhost  STORAGE_ENDPOINT=localhost:9000
@@ -23,7 +45,7 @@ DOPPLER_DOCKER = 'doppler run --'
 
 if tilt_mode == 'docker':
     # ─── Docker Mode: everything runs as containers ───────────────────────────
-    docker_compose('./docker-compose.yml', profiles=['full'], env_file='.env.tilt')
+    docker_compose('./docker-compose.yml', profiles=['full'], env_file='.env.tilt', project_name=compose_project)
 
     docker_build('gprins/domain-os-api:'      + tag, '.', dockerfile='Dockerfile',                        build_args={'SKIP_SWAG': 'true'})
     docker_build('gprins/domain-os-whois:'          + tag, '.', dockerfile='./cmd/whois/Dockerfile')
@@ -49,7 +71,7 @@ if tilt_mode == 'docker':
 
 else:
     # ─── Native Mode: infra in Docker, Go + Temporal on host ──────────────────
-    docker_compose('./docker-compose.yml', profiles=['infra'], env_file='.env.tilt')
+    docker_compose('./docker-compose.yml', profiles=['infra'], env_file='.env.tilt', project_name=compose_project)
 
     dc_resource('db',               labels=['infrastructure'])
     dc_resource('redis',            labels=['infrastructure'])
@@ -65,7 +87,7 @@ else:
             '--port', '7233',
             '--ui-port', '8233',
             '--namespace', 'default',
-            '--db-filename', './local/temporal.db',
+            '--db-filename', os.path.join(state_dir, 'temporal.db'),
             '--log-format', 'pretty',
         ]),
         readiness_probe=probe(
@@ -125,16 +147,28 @@ else:
     )
 
 # ─── Frontend: always native (Next.js dev server) ─────────────────────────────
+# The frontend calls the API with ADMIN_TOKEN, so it needs the token of the
+# Doppler config the API runs under. Tilt itself runs under `doppler run`
+# (config dev), but the native API reads dev_personal, whose token differs.
+if tilt_mode == 'docker':
+    api_token = os.getenv('ADMIN_TOKEN', 'devtoken')
+else:
+    api_token = str(local(
+        'doppler secrets get ADMIN_TOKEN --config dev_personal --plain 2>/dev/null || echo devtoken',
+        quiet=True, echo_off=True,
+    )).strip()
 local_resource(
     'frontend',
-    serve_cmd='cd frontend && PORT=3002 npm run dev',
-    env={
+    # npm writes node_modules/.package-lock.json on install, so this installs
+    # into a fresh worktree, and again whenever the lockfile is newer.
+    serve_cmd='cd frontend && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci --no-audit --no-fund; } && PORT=3002 npm run dev',
+    # serve_env, not env: Tilt passes env only to cmd, never to serve_cmd.
+    serve_env={
         'NEXT_PUBLIC_API_URL':         'http://localhost:8080',
-        'NEXT_PUBLIC_API_TOKEN':       os.getenv('ADMIN_TOKEN', 'devtoken'),
+        'NEXT_PUBLIC_API_TOKEN':       api_token,
         'NEXT_PUBLIC_AUTH0_ENABLED':   'false',
         'NEXT_PUBLIC_TEMPORAL_UI_URL':  'http://localhost:8233',  # native temporal CLI UI; docker mode uses :8081
         'NEXT_PUBLIC_STORAGE_UI_URL':  'http://localhost:9001',   # MinIO console from docker-compose
-        'NEXT_PUBLIC_APP_VERSION':     version + '-dev',
     },
     deps=[
         'frontend/package.json',
