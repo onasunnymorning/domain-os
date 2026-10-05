@@ -28,6 +28,28 @@ something else.
 > docs and new identifiers. Docs should not assume either of the other two
 > meanings.
 
+**Glossary: two vocabularies**
+
+The product keeps the industry meaning of "reserved" and maps it to the
+contract's terms, so each side is used where it belongs.
+
+| Concept | Product vocabulary (UI, docs, API) | Contract vocabulary (RA, ICANN-facing) |
+|---|---|---|
+| A domain the operator owns, sponsored by 9998/9999 | **Reserved domain** | Name for which the Registry Operator acts as Registrar (Spec 5 §3) |
+| A label the registry will not register | **Blocked name** | "Reserved Names" (the Spec 5 schedule), and withheld names (Spec 5 §3.3, RA 2.6) |
+| The ICANN schedule of reserved labels | **Specification 5 names** (category `spec5`) | Specification 5, Schedule of Reserved Names |
+
+Rules that keep the two apart:
+
+- The product uses "reserved" only for domains the operator owns. IANA already
+  lists 9998 and 9999 as "Reserved for … Registry Operator acts as Registrar",
+  so on the registrar side the product and ICANN agree.
+- The ICANN schedule is labelled **Specification 5 names** in the UI. No
+  label on the Blocked names page says "reserved", otherwise the clash returns
+  inside that page.
+- Outputs that follow the RA's wording (ICANN-facing reports and exports) use
+  the contract vocabulary.
+
 **What exists today**
 
 - **Two operator registrar accounts per TLD.** Every TLD auto-provisions two
@@ -374,7 +396,8 @@ RA §2.6, the answer is:
     a redirect.
 - **Columns.** Category is the primary grouping. The RFC state (`blocked` /
   `withheld` / `mirrored`) shows as a secondary "Status" column. For `spec5`
-  rows the section is shown with the category.
+  rows the section is shown with the category. The `spec5` category is
+  labelled **Specification 5 names**, never "reserved" (see the glossary).
 - **TLD page.** It shows two tiles:
   - **Reserved domains:** count, billable vs non-billable.
   - **Blocked names:** count, by category.
