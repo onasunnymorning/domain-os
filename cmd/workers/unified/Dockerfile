@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS builder
 WORKDIR /app
 # Dependencies come from the committed vendor tree, not the module proxy: the
 # build stays hermetic and cannot fail on a proxy outage. go.mod/go.sum are
