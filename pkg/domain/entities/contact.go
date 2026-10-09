@@ -55,6 +55,10 @@ var (
 	ErrInvalidContactRoID              = fmt.Errorf("invalid Contact.RoID.ObjectIdentifier(), expecting '%s'", CONTACT_ROID_ID)
 )
 
+// ErrInvalidDomainContactType is a domain's <contact> reference whose type attribute is not admin, tech or billing. It is a case of ErrInvalidContact,
+// which NewContact also uses for every failure to build a contact, so a caller that must tell the two apart checks for this one first.
+var ErrInvalidDomainContactType = fmt.Errorf("%w: type must be admin, tech or billing", ErrInvalidContact)
+
 // Contact is the contact Entity struct Based on https://www.rfc-editor.org/rfc/rfc5733#section-3.1.2
 type Contact struct {
 	ID         ClIDType              `json:"ID" example:"sh8013" extensions:"x-order=0"`                          // The contact identifier as supplied by the registrar, this should be used by all references to the contact

@@ -69,7 +69,7 @@ var entityRules = []struct {
 	{entities.ErrEmptyClientID, "clID: is empty"},
 	{entities.ErrInvalidRegistrarClID, "clID: is not a valid registrar identifier"},
 	{entities.ErrInvalidClIDType, "clID, crRr, upRr, registrant or contact: is not a valid EPP client identifier (3 to 16 characters)"},
-	{entities.ErrInvalidContact, "contact: type attribute must be admin, tech or billing"},
+	{entities.ErrInvalidDomainContactType, "contact: type attribute must be admin, tech or billing"},
 
 	// statuses.
 	{entities.ErrInvalidDomainStatusCombination, "status: the statuses on this domain cannot be held at once"},
@@ -114,7 +114,7 @@ var entityRules = []struct {
 
 	// the object-level catch-alls, last: every rule above is a case of one.
 	{entities.ErrInvalidDomain, "the assembled domain failed its final validation"},
-	{entities.ErrInvalidContactPostalInfo, "the assembled contact failed its final validation"},
+	{entities.ErrInvalidContact, "the assembled contact failed its final validation"},
 	{entities.ErrInvalidRegistrar, "the assembled registrar failed its final validation"},
 	{entities.ErrInvalidNNDN, "the assembled NNDN failed its final validation"},
 }
