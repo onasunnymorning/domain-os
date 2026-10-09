@@ -137,7 +137,7 @@ func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
 				}
 				domain.BillingID = c
 			default:
-				return nil, ErrInvalidContact
+				return nil, ErrInvalidDomainContactType
 			}
 		}
 	}
