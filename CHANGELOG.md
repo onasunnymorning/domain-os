@@ -1,4 +1,13 @@
 <a name="unreleased"></a>
+## [0.12.1](https://github.com/onasunnymorning/domain-os/compare/v0.12.0...v0.12.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.9 and refresh api image tiff ([2fd0ff0](https://github.com/onasunnymorning/domain-os/commit/2fd0ff0f9b635637234cd9a4afa0de194991109a))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([fbc5b22](https://github.com/onasunnymorning/domain-os/commit/fbc5b22491892f42a3c1a08aa961421d7b687adc))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([1882fc2](https://github.com/onasunnymorning/domain-os/commit/1882fc2c8e71cfbdf89e3ab5f2470d1c316d67d8))
+
 ## [0.12.0](https://github.com/onasunnymorning/domain-os/compare/v0.11.0...v0.12.0) (2026-10-04)
 
 
