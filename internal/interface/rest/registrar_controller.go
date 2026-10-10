@@ -208,12 +208,12 @@ func (ctrl *RegistrarController) Create(ctx *gin.Context) {
 
 // BulkCreate godoc
 // @Summary Bulk create Registrars
-// @Description Bulk create Registrars can create up to 1000 registrars at a time
+// @Description Bulk create Registrars can create up to 1000 registrars at a time. Registrars that collide on a unique constraint (e.g. a name that is already taken) are skipped rather than failing the batch; the response lists the ClIDs that were created and those that were skipped.
 // @Tags Registrars
 // @Accept json
 // @Produce json
 // @Param registrars body []commands.CreateRegistrarCommand true "Registrars"
-// @Success 201
+// @Success 201 {object} response.BulkCreateRegistrarsResult
 // @Failure 400
 // @Failure 500
 // @Router /registrars/bulk [post]
@@ -228,7 +228,7 @@ func (ctrl *RegistrarController) BulkCreate(ctx *gin.Context) {
 		return
 	}
 
-	err := ctrl.rarService.BulkCreate(ctx.Request.Context(), cmd)
+	created, err := ctrl.rarService.BulkCreate(ctx.Request.Context(), cmd)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidRegistrar) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
@@ -239,7 +239,21 @@ func (ctrl *RegistrarController) BulkCreate(ctx *gin.Context) {
 
 	}
 
-	ctx.JSON(201, nil)
+	// Rows that collide on a unique constraint are skipped rather than failing the
+	// batch, so tell the caller which ones did not make it.
+	createdSet := make(map[string]struct{}, len(created))
+	for _, clid := range created {
+		createdSet[clid] = struct{}{}
+	}
+	skipped := []string{}
+	for _, c := range cmd {
+		clid := entities.NormalizeString(c.ClID)
+		if _, ok := createdSet[clid]; !ok {
+			skipped = append(skipped, clid)
+		}
+	}
+
+	ctx.JSON(201, response.BulkCreateRegistrarsResult{Created: created, Skipped: skipped})
 }
 
 // DeleteRegistrarByClID godoc

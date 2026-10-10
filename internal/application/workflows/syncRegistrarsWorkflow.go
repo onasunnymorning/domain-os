@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
@@ -66,7 +67,7 @@ type SyncUpdatedRegistrar struct {
 // SyncRegistrarsFailure records a single registrar sync failure.
 type SyncRegistrarsFailure struct {
 	ClID      string `json:"clId"`
-	Operation string `json:"operation"` // "create", "update-status", "update-iana-status"
+	Operation string `json:"operation"` // "create", "create-conflict", "update-status", "update-iana-status"
 	Error     string `json:"error"`
 }
 
@@ -79,6 +80,46 @@ func (r *SyncRegistrarsResult) addFailure(clID, operation, errMsg string) {
 			Operation: operation,
 			Error:     errMsg,
 		})
+	}
+}
+
+// recordCreates folds the outcome of one bulk create chunk into the result.
+// The API skips rows that collide on a unique constraint and still answers 201,
+// so Created counts only what was inserted and every skipped registrar is
+// reported as a failure instead of being counted as created.
+func (r *SyncRegistrarsResult) recordCreates(chunk []commands.CreateRegistrarCommand, res response.BulkCreateRegistrarsResult) {
+	skipped := make(map[string]struct{}, len(res.Skipped))
+	for _, clid := range res.Skipped {
+		skipped[clid] = struct{}{}
+	}
+	for _, cmd := range chunk {
+		if _, ok := skipped[cmd.ClID]; ok {
+			r.addFailure(cmd.ClID, "create-conflict", "registrar was not inserted: a unique constraint (name or ClID) is already taken")
+			continue
+		}
+		r.Created++
+		r.TotalProcessed++
+		if len(r.CreatedItems) < maxSyncDetailSamples {
+			r.CreatedItems = append(r.CreatedItems, SyncCreatedRegistrar{
+				ClID:       cmd.ClID,
+				Name:       cmd.Name,
+				GurID:      cmd.GurID,
+				Status:     cmd.Status,
+				IANAStatus: string(cmd.IANAStatus),
+			})
+		}
+	}
+}
+
+// addFailureNotes appends the operator-facing summary notes for failures.
+func (r *SyncRegistrarsResult) addFailureNotes() {
+	if r.Failed == 0 {
+		return
+	}
+	r.Notes = append(r.Notes, "Completed with failures — review the failures list for details")
+	if r.Failed > maxSyncFailureSamples {
+		r.Notes = append(r.Notes, "Failure details capped at "+strconv.Itoa(maxSyncFailureSamples)+
+			" samples; total failures: "+strconv.Itoa(r.Failed))
 	}
 }
 
@@ -192,27 +233,17 @@ func syncRegistrarsBootstrap(ctx workflow.Context, params SyncRegistrarsParams, 
 
 	// Process the creates in chunks via ExecuteActivity
 	for chunk := range commands.ChunkCreateRegistrarCommands(cmds, 100) {
-		bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, nil)
+		var bulkRes response.BulkCreateRegistrarsResult
+		bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, &bulkRes)
 		if bulkCreateErr != nil {
 			result.CompletedAt = workflow.Now(ctx)
 			result.Notes = append(result.Notes, "failed bulk creating registrars: "+bulkCreateErr.Error())
 			logger.Error("failed bulk creating registrars", "error", bulkCreateErr)
 			return result, bulkCreateErr
 		}
-		for _, cmd := range chunk {
-			result.Created++
-			result.TotalProcessed++
-			if len(result.CreatedItems) < maxSyncDetailSamples {
-				result.CreatedItems = append(result.CreatedItems, SyncCreatedRegistrar{
-					ClID:       cmd.ClID,
-					Name:       cmd.Name,
-					GurID:      cmd.GurID,
-					Status:     cmd.Status,
-					IANAStatus: string(cmd.IANAStatus),
-				})
-			}
-		}
+		result.recordCreates(chunk, bulkRes)
 	}
+	result.addFailureNotes()
 
 	result.Skipped = result.TotalIANA - result.Created
 	result.CompletedAt = workflow.Now(ctx)
@@ -290,28 +321,23 @@ func syncRegistrarsIncremental(ctx workflow.Context, params SyncRegistrarsParams
 		return result, nil
 	}
 
+	if n := len(plan.RenamedForUniqueness); n > 0 {
+		result.Notes = append(result.Notes, strconv.Itoa(n)+
+			" registrar name(s) collided with an existing registrar and were created with a numeric suffix: "+
+			strings.Join(plan.RenamedForUniqueness, ", "))
+	}
+
 	// Step 6: Apply creates in chunks
 	for chunk := range commands.ChunkCreateRegistrarCommands(plan.Creates, 100) {
-		bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, nil)
+		var bulkRes response.BulkCreateRegistrarsResult
+		bulkCreateErr := workflow.ExecuteActivity(ctx, activities.BulkCreateRegistrars, workflowID, chunk).Get(ctx, &bulkRes)
 		if bulkCreateErr != nil {
 			result.CompletedAt = workflow.Now(ctx)
 			result.Notes = append(result.Notes, "failed to apply registrar creates: "+bulkCreateErr.Error())
 			logger.Error("failed to apply registrar creates", "error", bulkCreateErr)
 			return result, bulkCreateErr
 		}
-		for _, cmd := range chunk {
-			result.Created++
-			result.TotalProcessed++
-			if len(result.CreatedItems) < maxSyncDetailSamples {
-				result.CreatedItems = append(result.CreatedItems, SyncCreatedRegistrar{
-					ClID:       cmd.ClID,
-					Name:       cmd.Name,
-					GurID:      cmd.GurID,
-					Status:     cmd.Status,
-					IANAStatus: string(cmd.IANAStatus),
-				})
-			}
-		}
+		result.recordCreates(chunk, bulkRes)
 	}
 
 	// Step 7: Apply status updates in a single batched activity
@@ -369,13 +395,7 @@ func syncRegistrarsIncremental(ctx workflow.Context, params SyncRegistrarsParams
 	result.CompletedAt = workflow.Now(ctx)
 
 	// Add summary notes
-	if result.Failed > 0 {
-		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
-		if result.Failed > maxSyncFailureSamples {
-			result.Notes = append(result.Notes, "Failure details capped at "+strconv.Itoa(maxSyncFailureSamples)+
-				" samples; total failures: "+strconv.Itoa(result.Failed))
-		}
-	}
+	result.addFailureNotes()
 
 	return result, nil
 }

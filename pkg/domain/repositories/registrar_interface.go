@@ -13,7 +13,10 @@ type RegistrarRepository interface {
 	GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error)
 	GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error)
 	Create(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
-	BulkCreate(ctx context.Context, cmds []*entities.Registrar) error
+	// BulkCreate inserts the registrars and returns the ClIDs that were actually
+	// inserted. Rows that violate a unique constraint (e.g. a name that is already
+	// taken) are skipped without error, so the result can be shorter than the input.
+	BulkCreate(ctx context.Context, cmds []*entities.Registrar) ([]string, error)
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error)
@@ -45,9 +48,10 @@ func (m *MockRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 }
 
 // BulkCreate creates multiple registrars
-func (m *MockRegistrarRepository) BulkCreate(ctx context.Context, cmds []*entities.Registrar) error {
+func (m *MockRegistrarRepository) BulkCreate(ctx context.Context, cmds []*entities.Registrar) ([]string, error) {
 	args := m.Called(ctx, cmds)
-	return args.Error(0)
+	inserted, _ := args.Get(0).([]string)
+	return inserted, args.Error(1)
 }
 
 // Update updates a registrar

@@ -365,8 +365,8 @@ func (m *mockRegistrarRepo) GetByClID(ctx context.Context, clid string, preloadT
 func (m *mockRegistrarRepo) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
 	return nil, nil
 }
-func (m *mockRegistrarRepo) BulkCreate(ctx context.Context, rars []*entities.Registrar) error {
-	return nil
+func (m *mockRegistrarRepo) BulkCreate(ctx context.Context, rars []*entities.Registrar) ([]string, error) {
+	return nil, nil
 }
 func (m *mockRegistrarRepo) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
 	return rar, nil
