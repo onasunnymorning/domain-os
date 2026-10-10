@@ -167,6 +167,10 @@ type DepositOpts struct {
 	VendorExtension bool
 	// EppParams adds the rdeEppParams block including its DCP policy statement.
 	EppParams bool
+	// ContactTransfer adds the transfer data RFC 9022 §5 defines for a contact
+	// (rdeContact:trnData). It is part of the standard, so a deposit carrying it
+	// validates, and the sanitisation profile classifies it.
+	ContactTransfer bool
 	// DTD prepends a document type declaration.
 	DTD bool
 	// Encoding overrides the XML declaration's encoding (e.g. "ISO-8859-1").
@@ -318,6 +322,18 @@ func BuildXML(o DepositOpts) []byte {
       </rdeContact:disclose>
 `
 		}
+		transfer := ""
+		if o.ContactTransfer {
+			transfer = `      <rdeContact:trDate>2025-06-01T00:00:00Z</rdeContact:trDate>
+      <rdeContact:trnData>
+        <rdeContact:trStatus>clientApproved</rdeContact:trStatus>
+        <rdeContact:reRr>registrar1</rdeContact:reRr>
+        <rdeContact:reDate>2025-05-25T00:00:00Z</rdeContact:reDate>
+        <rdeContact:acRr>registrar1</rdeContact:acRr>
+        <rdeContact:acDate>2025-06-01T00:00:00Z</rdeContact:acDate>
+      </rdeContact:trnData>
+`
+		}
 		authInfo := ""
 		if o.AuthInfo {
 			authInfo = `      <rdeContact:authInfo>
@@ -344,8 +360,8 @@ func BuildXML(o DepositOpts) []byte {
       <rdeContact:clID>registrar1</rdeContact:clID>
       <rdeContact:crRr>registrar1</rdeContact:crRr>
       <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
-%s%s    </rdeContact:contact>
-`, i, i, name, org, i, i, i, disclose, authInfo)
+%s%s%s    </rdeContact:contact>
+`, i, i, name, org, i, i, i, transfer, disclose, authInfo)
 	}
 	for i := 1; i <= o.Hosts; i++ {
 		fmt.Fprintf(&b, `    <rdeHost:host>
@@ -600,6 +616,16 @@ type Pair struct {
 func BuildPair(t testing.TB, o DepositOpts, recipient, signer KeyPair) Pair {
 	t.Helper()
 	xml := BuildXML(o)
+	plain := BuildPayload(t, o, xml)
+	ryde := Encrypt(t, plain, recipient)
+	return Pair{Ryde: ryde, Sig: Sign(t, ryde, signer, false), XML: xml, Plaintext: plain}
+}
+
+// BuildPairFromXML wraps, encrypts and signs a document the caller has already
+// shaped — typically BuildXML output with one defect introduced by hand. The
+// signature is correct, so a rejection can only come from the XML.
+func BuildPairFromXML(t testing.TB, o DepositOpts, xml []byte, recipient, signer KeyPair) Pair {
+	t.Helper()
 	plain := BuildPayload(t, o, xml)
 	ryde := Encrypt(t, plain, recipient)
 	return Pair{Ryde: ryde, Sig: Sign(t, ryde, signer, false), XML: xml, Plaintext: plain}

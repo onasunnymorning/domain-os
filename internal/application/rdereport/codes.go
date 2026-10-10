@@ -35,6 +35,12 @@ var resultCodes = map[rdevalidate.Code]resultCode{
 	rdevalidate.CodeXMLMalformed: {4401, "Deposit XML is not well-formed."},
 	rdevalidate.CodeXMLNoDeposit: {4402, "Deposit XML has no rde:deposit element."},
 	rdevalidate.CodeXMLNoHeader:  {4403, "Deposit XML has no rdeHeader:header element."},
+	// 4404-4406: schema conformance. 4404 carries the specific rule and line in
+	// the finding's message; the code says only that the XML does not conform to
+	// the published RFC 8909 / RFC 9022 schemas.
+	rdevalidate.CodeXMLSchemaInvalid:      {4404, "Deposit XML does not conform to the published RDE schemas."},
+	rdevalidate.CodeXMLDTDNotSupported:    {4405, "Deposit XML carries a document type declaration, which is not supported."},
+	rdevalidate.CodeXMLPrologNotSupported: {4406, "Deposit XML does not start as UTF-8 XML."},
 
 	rdevalidate.CodeRDEHeaderTLDMismatch:     {4501, "Header TLD does not match the TLD the deposit was submitted for."},
 	rdevalidate.CodeRDECountMismatch:         {4502, "Header object count does not match the deposit contents."},

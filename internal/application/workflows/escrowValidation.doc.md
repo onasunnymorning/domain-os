@@ -94,7 +94,7 @@ type EscrowValidationResult struct {
 - **Activity**: `ValidateArtifacts`
 - **Timeout**: Start-to-close `ValidationTimeout`+10m, Heartbeat 5m
 - **Retry**: Max 2 attempts
-- **Description**: Streams the ciphertext from object storage twice: once through the detached-signature check against the selected verification versions, then (only if that passed) through decrypt → safe unpack → strict RDE XML validation as one chained stream. Nothing touches disk; plaintext is never persisted, only digested. Every selected version is re-checked first, so a version revoked since selection is not used; decryption material is fetched from the key store and must match the recorded fingerprint. A key store outage is returned for retry. Returns a structured `Result` with stable codes.
+- **Description**: Streams the ciphertext from object storage twice: once through the detached-signature check against the selected verification versions, then (only if that passed) through decrypt → safe unpack → strict RDE XML validation as one chained stream. The same plaintext stream is also piped, in parallel, into libxml2 (`xmllint --stream`) which enforces the pinned deposit XSDs; a PASS requires both. See ADR-0012. Nothing touches disk; plaintext is never persisted, only digested. Every selected version is re-checked first, so a version revoked since selection is not used; decryption material is fetched from the key store and must match the recorded fingerprint. A key store outage is returned for retry. Returns a structured `Result` with stable codes.
 
 ### 3. Emit Report and Notification
 - **Activity**: `EmitReportAndNotification`
@@ -113,8 +113,8 @@ type EscrowValidationResult struct {
 | Failure | Cause | Workflow Behavior | Manual Recovery |
 |---------|-------|-------------------|-----------------|
 | BindDeposit non-retryable | TLD not operated by scope, artifact missing, oversize signature, artifact set that does not match the profile | Workflow fails before any record exists | Fix intake, relaunch |
-| Outcome `FAIL` | Bad/untrusted signature, wrong recipient key, unsafe archive, limit breach, malformed XML, invalid RDE object, count/TLD mismatch | `DVFN` emitted, run finalised FAIL, workflow completes | None: the deposit is invalid; registry resubmits |
-| Outcome `ERROR` | No usable decryption key (none selected, revoked, unreadable, fingerprint mismatch), timeout, internal error, artifact changed since intake | Run finalised ERROR, **no notification**, workflow fails | Fix the service condition, relaunch (replay binds to the same deposit, new run) |
+| Outcome `FAIL` | Bad/untrusted signature, wrong recipient key, unsafe archive, limit breach, malformed XML, **XML that does not conform to the pinned RFC 8909 / RFC 9022 schemas (`XML_SCHEMA_INVALID`)**, a document type declaration, invalid RDE object, count/TLD mismatch | `DVFN` emitted, run finalised FAIL, workflow completes | None: the deposit is invalid; registry resubmits |
+| Outcome `ERROR` | No usable decryption key (none selected, revoked, unreadable, fingerprint mismatch), timeout, internal error, **the schema validation engine is unavailable or failed (`XML_SCHEMA_ENGINE_UNAVAILABLE`: xmllint missing, schema set failing its self-test, engine crash)**, artifact changed since intake | Run finalised ERROR, **no notification**, workflow fails | Fix the service condition, relaunch (replay binds to the same deposit, new run) |
 | Activity infrastructure error after bind | Storage/DB outage beyond retries | Run finalised ERROR via disconnected context, workflow fails | Relaunch |
 
 ## Artifacts

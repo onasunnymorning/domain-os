@@ -88,7 +88,7 @@ func newEVFixture(t *testing.T, tldRepo repositories.TLDRepository, depRepo repo
 	if tldRepo == nil {
 		tldRepo = &fakeTLDRepo{owned: map[string]string{"example": "ryop1"}}
 	}
-	f.acts = NewEscrowValidationActivitiesWithDeps(tldRepo, depRepo, runRepo, f.resolver, f.loader, f.store, f.reports, rdevalidate.DefaultLimits(), "domain-os EVE (test)")
+	f.acts = NewEscrowValidationActivitiesWithDeps(tldRepo, depRepo, runRepo, f.resolver, f.loader, f.store, f.reports, rdevalidate.DefaultLimits(), "domain-os EVE (test)", rdetest.SchemaEngine(t))
 	f.acts.now = func() time.Time { return time.Now().UTC().Add(time.Hour) } // after key creation
 	var ts testsuite.WorkflowTestSuite
 	f.env = ts.NewTestActivityEnvironment()
@@ -530,6 +530,71 @@ func TestEscrowValidationActivities_BadSignatureIsDVFN(t *testing.T) {
 	final, _ := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
 	assert.Equal(t, entities.EscrowValidationFail, final.Outcome)
 	assert.Equal(t, []string{string(rdevalidate.CodeSigInvalid)}, final.FindingCodes())
+}
+
+// The defect that motivated schema enforcement, end to end: a signed,
+// encrypted deposit with no rdeMenu used to be PASS with no findings.
+func TestEscrowValidationActivities_SchemaInvalidDepositIsDVFN(t *testing.T) {
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
+	opts := rdetest.DepositOpts{TLD: "example", Domains: 2, Contacts: 1, Hosts: 1, Registrars: 1}
+	xml := string(rdetest.BuildXML(opts))
+	start := strings.Index(xml, "  <rde:rdeMenu>")
+	end := strings.Index(xml, "</rde:rdeMenu>\n") + len("</rde:rdeMenu>\n")
+	require.True(t, start > 0 && end > start)
+	// The deposit also carries an element of its own invention. Its name may
+	// appear in the run record's Object, but never in the DVFN.
+	broken := strings.Replace(xml[:start]+xml[end:], "  <rde:watermark>", "  <rde:zzCanaryElem9/>\n  <rde:watermark>", 1)
+	pair := rdetest.BuildPairFromXML(t, opts, []byte(broken), f.service, f.registry)
+	rydeKey, sigKey := f.upload(t, "no-menu", pair)
+
+	b, err := f.bind(t, rydeKey, sigKey)
+	require.NoError(t, err)
+	res := f.validate(t, b)
+	require.Equal(t, rdevalidate.OutcomeFail, res.Outcome, "findings: %+v", res.Findings)
+	assert.False(t, res.Verified())
+	assert.Equal(t, f.registry.Fingerprint, res.Signature.KeyFingerprint, "the signature verified; the XML is what failed")
+	assert.Contains(t, res.Codes(), rdevalidate.CodeXMLSchemaInvalid)
+
+	emitted, err := f.emit(t, b, res)
+	require.NoError(t, err)
+	assert.Equal(t, "DVFN", emitted.NotificationStatus)
+	notif, _ := f.reports.get(emitted.NotificationKey)
+	assert.Contains(t, string(notif), `code="4404"`, "schema findings reach the DVFN through the result-code table")
+	assert.NotContains(t, string(notif), "zzCanaryElem9", "the notification carries messages and locators, never an element name the deposit invented")
+	xmllintOK(t, notif)
+
+	summary, ok := f.reports.get(emitted.SummaryKey)
+	require.True(t, ok)
+	assert.Contains(t, string(summary), string(rdevalidate.CodeXMLSchemaInvalid), "schema findings ride the existing findings mechanism")
+
+	require.NoError(t, f.finalize(t, b, res, emitted, ""))
+	final, _ := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
+	assert.Equal(t, entities.EscrowValidationFail, final.Outcome)
+	assert.Contains(t, final.FindingCodes(), string(rdevalidate.CodeXMLSchemaInvalid))
+}
+
+// A worker whose schema engine is broken records ERROR: no notification, no
+// verified claim, whatever the deposit looks like.
+func TestEscrowValidationActivities_BrokenSchemaEngineIsErrorNotPass(t *testing.T) {
+	f := newEVFixture(t, nil, nil, nil, nil, nil)
+	f.acts.schema = rdeschema.NewXMLLint(rdeschema.Config{Binary: "/nonexistent/xmllint"})
+	pair := rdetest.BuildPair(t, rdetest.DepositOpts{TLD: "example"}, f.service, f.registry)
+	rydeKey, sigKey := f.upload(t, "ok", pair)
+	b, err := f.bind(t, rydeKey, sigKey)
+	require.NoError(t, err)
+
+	res := f.validate(t, b)
+	assert.Equal(t, rdevalidate.OutcomeError, res.Outcome)
+	assert.False(t, res.Verified())
+	assert.Contains(t, res.Codes(), rdevalidate.CodeSchemaEngineUnavailable)
+
+	emitted, err := f.emit(t, b, res)
+	require.NoError(t, err)
+	assert.Empty(t, emitted.NotificationKey)
+	assert.Empty(t, emitted.NotificationStatus)
+	require.NoError(t, f.finalize(t, b, res, emitted, ""))
+	final, _ := f.runs.GetByID(t.Context(), f.scope, b.ValidationRunID)
+	assert.Equal(t, entities.EscrowValidationError, final.Outcome)
 }
 
 func TestEscrowValidationActivities_TenantCannotBindForeignTLD(t *testing.T) {

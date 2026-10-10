@@ -534,7 +534,8 @@ func (s *rewriteState) pop() {
 }
 
 // attributes validates every attribute against the profile and returns the ones
-// to emit. Namespace declarations always pass; schema hints are dropped.
+// to emit. Namespace declarations always pass; schema hints and the attributes
+// the profile removes are dropped.
 //
 // Every attribute on the element is checked even once one has been refused: an
 // element that carries one unclassified attribute often carries several, and
@@ -555,6 +556,10 @@ func (s *rewriteState) attributes(scope map[string]string, key string, attrs []x
 				Object: s.namespaceName(scope, a.Name), Locator: s.locator(),
 				Message: "attribute is in a namespace the profile does not classify", At: at})
 			s.refuse()
+			continue
+		}
+		if s.rw.Profile.DropsAttribute(s.parentKey(), key, a.Name.Local) {
+			s.res.Counts.Dropped++
 			continue
 		}
 		if !s.rw.Profile.AllowsAttribute(s.parentKey(), key, a.Name.Local) {

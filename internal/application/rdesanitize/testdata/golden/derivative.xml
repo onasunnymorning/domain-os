@@ -44,11 +44,11 @@
       <rdeRegistrar:crDate>2025-01-01T00:00:00Z</rdeRegistrar:crDate>
     </rdeRegistrar:registrar>
     <rdeContact:contact>
-      <rdeContact:id>CWZSYO6OFV3SAVW7</rdeContact:id>
-      <rdeContact:roid>W2XSS2R5UDSF-RDE</rdeContact:roid>
+      <rdeContact:id>CWYQLIOP3KVBMR34</rdeContact:id>
+      <rdeContact:roid>AVJA5IX6TQBP-RDE</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <contact:name>Contact RJDETQ3AVXA2</contact:name>
+        <contact:name>Contact CLGPNMBMDUKN</contact:name>
         
         <contact:addr>
           
@@ -58,7 +58,7 @@
         </contact:addr>
       </rdeContact:postalInfo>
       
-      <rdeContact:email>vkf4e5lyzttujhbs@example.invalid</rdeContact:email>
+      <rdeContact:email>m2qph3cpu2p2jcvm@example.invalid</rdeContact:email>
       <rdeContact:clID>registrar1</rdeContact:clID>
       <rdeContact:crRr>registrar1</rdeContact:crRr>
       <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
@@ -72,11 +72,11 @@
       
     </rdeContact:contact>
     <rdeContact:contact>
-      <rdeContact:id>CMZHCA5HUSEMBCEM</rdeContact:id>
-      <rdeContact:roid>GQ7LQCX3EBIA-RDE</rdeContact:roid>
+      <rdeContact:id>CGUUQ2BYVJXCMXYJ</rdeContact:id>
+      <rdeContact:roid>O5Y6HAMEM7IR-RDE</rdeContact:roid>
       <rdeContact:status s="ok"/>
       <rdeContact:postalInfo type="int">
-        <contact:name>Contact WRBAWA3HKLAU</contact:name>
+        <contact:name>Contact GQOZ5EXFWZOE</contact:name>
         
         <contact:addr>
           
@@ -86,7 +86,7 @@
         </contact:addr>
       </rdeContact:postalInfo>
       
-      <rdeContact:email>2fdj54o4o5uzin6v@example.invalid</rdeContact:email>
+      <rdeContact:email>wbinhhdutkuvcnbj@example.invalid</rdeContact:email>
       <rdeContact:clID>registrar1</rdeContact:clID>
       <rdeContact:crRr>registrar1</rdeContact:crRr>
       <rdeContact:crDate>2025-01-01T00:00:00Z</rdeContact:crDate>
@@ -121,9 +121,9 @@
       <rdeDomain:name>example-1.artful-dodger</rdeDomain:name>
       <rdeDomain:roid>1_DOM-APEX</rdeDomain:roid>
       <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>CWZSYO6OFV3SAVW7</rdeDomain:registrant>
-      <rdeDomain:contact type="admin">CWZSYO6OFV3SAVW7</rdeDomain:contact>
-      <rdeDomain:contact type="tech">CWZSYO6OFV3SAVW7</rdeDomain:contact>
+      <rdeDomain:registrant>CWYQLIOP3KVBMR34</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">CWYQLIOP3KVBMR34</rdeDomain:contact>
+      <rdeDomain:contact type="tech">CWYQLIOP3KVBMR34</rdeDomain:contact>
       <rdeDomain:ns>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
         <domain:hostObj>ns1.example-1.artful-dodger</domain:hostObj>
@@ -152,9 +152,9 @@
       <rdeDomain:name>example-2.artful-dodger</rdeDomain:name>
       <rdeDomain:roid>2_DOM-APEX</rdeDomain:roid>
       <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>CWZSYO6OFV3SAVW7</rdeDomain:registrant>
-      <rdeDomain:contact type="admin">CWZSYO6OFV3SAVW7</rdeDomain:contact>
-      <rdeDomain:contact type="tech">CWZSYO6OFV3SAVW7</rdeDomain:contact>
+      <rdeDomain:registrant>CWYQLIOP3KVBMR34</rdeDomain:registrant>
+      <rdeDomain:contact type="admin">CWYQLIOP3KVBMR34</rdeDomain:contact>
+      <rdeDomain:contact type="tech">CWYQLIOP3KVBMR34</rdeDomain:contact>
       <rdeDomain:ns>
         <domain:hostObj>ns1.outside.example.net</domain:hostObj>
         <domain:hostObj>ns2.example-1.artful-dodger</domain:hostObj>
@@ -185,7 +185,7 @@
       <rdeDomain:uName>βόλος.artful-dodger</rdeDomain:uName>
       <rdeDomain:idnTableId>Greek</rdeDomain:idnTableId>
       <rdeDomain:status s="ok"/>
-      <rdeDomain:registrant>CWZSYO6OFV3SAVW7</rdeDomain:registrant>
+      <rdeDomain:registrant>CWYQLIOP3KVBMR34</rdeDomain:registrant>
       <rdeDomain:clID>registrar1</rdeDomain:clID>
       <rdeDomain:crRr>registrar1</rdeDomain:crRr>
       <rdeDomain:crDate>2025-01-01T00:00:00Z</rdeDomain:crDate>

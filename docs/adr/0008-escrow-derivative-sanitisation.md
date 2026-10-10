@@ -213,6 +213,30 @@ types, so an object's children are not always in the object's own namespace;
 classification is by resolved namespace for that reason, and getting it wrong is
 caught by the conformance test rather than by review.
 
+## Amendment: profile v2 (schema enforcement, ADR-0012)
+
+With runtime schema validation ([ADR-0012](0012-escrow-runtime-schema-validation.md)) a
+source is a PASS only if it conforms to RFC 8909 / RFC 9022, which sharpens two
+things in this ADR.
+
+- **The profile must cover the standard, not a sample of it.**
+  `rde-baseline-v1` had no entry for contact transfer data
+  (`rdeContact:trnData` and its children), the six `rde:deletes` record types,
+  the `registrar`, `ppsp`, `reseller` and `contentTag` header elements, or the
+  `rcdn`/`registrarId`/`mirroringNS` attributes. A conformant deposit using any
+  of them validated and then quarantined. `rde-baseline-v2` classifies them:
+  transfer data is retained like the domain's; delete records follow the entries
+  of the objects they name (so a deleted contact carries the same token as the
+  contact); `ppsp` and `reseller` are tokenised, `registrar` retained, and
+  `contentTag` and `rcdn` removed (the latter is the source TLD). A profile
+  coverage test derives the full element/attribute set from the pinned XSDs and
+  fails if the profile leaves any of it unclassified.
+- **Tokens change with the version.** Tokens are keyed by policy version, so a
+  v2 derivative's pseudonyms do not join v1's. That is the property the version
+  exists to give, and it is why the bump is deliberate.
+- **`authInfo` still never survives**, but it no longer arrives in a validated
+  source: RFC 9022 defines none, so a deposit carrying one FAILs validation.
+
 ## Action Items
 
 1. [ ] Provision a lifecycle rule expiring `escrow-validation/**/pending/`.
