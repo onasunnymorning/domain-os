@@ -33,6 +33,15 @@ const (
 	CodeXMLNoDeposit Code = "XML_NO_DEPOSIT"
 	CodeXMLNoHeader  Code = "XML_NO_HEADER"
 
+	// Schema conformance. Every deposit is checked against the pinned RFC 8909
+	// / RFC 9022 schemas, so a PASS means the XML conforms — not merely that
+	// the elements the Go checks look at are present.
+	CodeXMLSchemaInvalid        Code = "XML_SCHEMA_INVALID"            // the deposit breaks the pinned schemas; the rule says how
+	CodeXMLDTDNotSupported      Code = "XML_DTD_NOT_SUPPORTED"         // a document type declaration; unsupported by design, see rdeschema.RejectDocType
+	CodeXMLPrologNotSupported   Code = "XML_PROLOG_NOT_SUPPORTED"      // not UTF-8 XML the schema check can inspect
+	CodeXMLSchemaCheckTruncated Code = "XML_SCHEMA_CHECK_TRUNCATED"    // INFO: not every schema violation is listed, or checking stopped early
+	CodeSchemaEngineUnavailable Code = "XML_SCHEMA_ENGINE_UNAVAILABLE" // -> ERROR: the check could not run, so the deposit is neither valid nor invalid
+
 	// --- rde ---
 	CodeRDEHeaderTLDMismatch     Code = "RDE_HEADER_TLD_MISMATCH"
 	CodeRDECountMismatch         Code = "RDE_COUNT_MISMATCH"
@@ -79,9 +88,10 @@ const (
 // errorClassCodes are service-side conditions under which the run cannot
 // honestly decide either way. They yield Outcome ERROR (no notification).
 var errorClassCodes = map[Code]bool{
-	CodeDecryptKeyUnavailable: true,
-	CodeValidationTimeout:     true,
-	CodeInternal:              true,
+	CodeDecryptKeyUnavailable:   true,
+	CodeValidationTimeout:       true,
+	CodeInternal:                true,
+	CodeSchemaEngineUnavailable: true,
 }
 
 // IsErrorClass reports whether the code maps to Outcome ERROR rather than FAIL.

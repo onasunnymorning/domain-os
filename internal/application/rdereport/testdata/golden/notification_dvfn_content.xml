@@ -17,6 +17,14 @@
       <iirdea:msg>Header object count does not match the deposit contents.</iirdea:msg>
       <iirdea:description>header declares 4 objects, deposit contains 2</iirdea:description>
     </iirdea:result>
+    <iirdea:result code="4404">
+      <iirdea:msg>Deposit XML does not conform to the published RDE schemas.</iirdea:msg>
+      <iirdea:description>element rdeDomain:status is not allowed at this position; the schema allows: rdeDomain:roid (line=74)</iirdea:description>
+    </iirdea:result>
+    <iirdea:result code="4404">
+      <iirdea:msg>Deposit XML does not conform to the published RDE schemas.</iirdea:msg>
+      <iirdea:description>element rdeDomain:status is not allowed at this position; the schema allows: rdeDomain:roid (line=89)</iirdea:description>
+    </iirdea:result>
   </rdeNotification:results>
   <rdeNotification:reDate>2026-09-08T03:15:00Z</rdeNotification:reDate>
   <rdeNotification:vaDate>2026-09-08T05:15:00Z</rdeNotification:vaDate>

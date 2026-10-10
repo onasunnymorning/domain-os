@@ -13,6 +13,7 @@ For architectural shape see [`architecture.md`](architecture.md); for architectu
 - **Workflow engine**: **Temporal** — long-running, restart-safe flows: escrow import, lifecycle sweeps, zone serial drift, FX updates, event relay.
 - **Event delivery**: **transactional outbox**, not a message broker. Domain events are written to a `domain_events` table and drained by a Temporal relay workflow that archives to object storage. **There is no AMQP/RabbitMQ, Kafka, NATS, SNS or SQS anywhere in this codebase** — see `INV-01`.
 - **Caching / rate limiting**: **Redis** — currently backing EPP rate limiting.
+- **XML schema validation**: **libxml2's `xmllint`**, driven as a streaming subprocess by the escrow validator (`internal/application/rdeschema`) and installed in the worker image. The XSDs are embedded in the binary. See `docs/adr/0012-escrow-runtime-schema-validation.md`.
 - **Object storage**: **MinIO** (S3-compatible) — escrow deposits, snapshots, event archives.
 - **Authentication**: **Auth0** — JWT validation via `go-jwt-middleware/v2`, with a legacy static-token fallback.
 - **Registry protocols**: **EPP** (`dotse/epp-client`, `internetstiftelsen-oss/epp-lib`), **WHOIS** (`likexian/whois`, `whois-parser`), **DNS** (`miekg/dns`).

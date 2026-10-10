@@ -17,7 +17,7 @@ func TestTokenizer_DeterministicPerTenantAndPurpose(t *testing.T) {
 	require.NoError(t, err)
 	b, err := NewTokenizer(testKey, "ryop2", PolicyVersion)
 	require.NoError(t, err)
-	nextPolicy, err := NewTokenizer(testKey, "ryop1", "rde-baseline-v2")
+	nextPolicy, err := NewTokenizer(testKey, "ryop1", "rde-baseline-next")
 	require.NoError(t, err)
 
 	// Deterministic: the same value in the same tenant always tokenises the

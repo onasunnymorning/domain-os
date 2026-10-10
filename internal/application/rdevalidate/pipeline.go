@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 )
 
 // Input is everything one run needs. Nothing here touches disk: the artifact
@@ -35,6 +36,12 @@ type Input struct {
 
 	TrustedKeys []string           // armored public keys active for the tenant/TLD
 	ServiceKeys openpgp.EntityList // unlocked private keys, most recent first
+
+	// Schema enforces the pinned deposit schemas over the same stream the Go
+	// checks read. It is required: a run without one ends ERROR with
+	// XML_SCHEMA_ENGINE_UNAVAILABLE and never PASS, so omitting it cannot turn
+	// the check off.
+	Schema rdeschema.Engine
 
 	BoundTLD  string
 	Limits    Limits
@@ -254,11 +261,18 @@ func Run(ctx context.Context, in Input) (res Result) {
 	v := &XMLValidator{BoundTLD: in.BoundTLD, Now: now, Heartbeat: in.Heartbeat,
 		MaxCrossReferenceObjects: in.Limits.MaxCrossReferenceObjects,
 		MaxCrossReferenceNames:   in.Limits.MaxCrossReferenceNames}
-	summary, findings := v.Validate(ctx, entry.Reader)
+	// The schema engine reads the stream through the same tee: one decrypt,
+	// one unpack, two consumers, and no plaintext written anywhere.
+	schema := startSchema(ctx, in, &res, now)
+	if schema != nil {
+		defer schema.sess.Abort() // a no-op once settled; covers a panic below
+	}
+	summary, findings := v.Validate(ctx, schema.wrap(entry.Reader))
 	res.Deposit = summary
 	for _, f := range findings {
 		res.Add(f)
 	}
+	schema.settle(ctx, &res, now)
 	res.StageReached = StageRDE
 	if ctx.Err() != nil && !res.Has(CodeValidationTimeout) {
 		res.Add(timeoutFinding(StageRDE, now()))

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/escrowkeys"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdereport"
+	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
@@ -61,7 +63,11 @@ type EscrowValidationActivities struct {
 	reportStore interfaces.ObjectStore
 	limits      rdevalidate.Limits
 	deaName     string
-	now         func() time.Time
+	// schema enforces the pinned deposit schemas on every run. It is never
+	// nil: an engine that cannot run is still an Engine, and says so by
+	// failing to start, which a run records as ERROR rather than skipping.
+	schema rdeschema.Engine
+	now    func() time.Time
 }
 
 // NewEscrowValidationActivities builds the activities from the environment,
@@ -109,13 +115,25 @@ func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("escrow validation activities: limits: %w", err)
 	}
+	// The schema engine is built, and proven with a known-good and a known-bad
+	// document, here at start-up. A worker without a working one still
+	// registers — a worker that cannot be scheduled would strand the workflow,
+	// where a recorded ERROR tells an operator exactly what to fix — but it
+	// says so now and on every run, and it can never pass a deposit.
+	schema := rdeschema.NewXMLLint(rdeschema.Config{})
+	if err := schema.Err(); err != nil {
+		log.Printf("ERROR: escrow validation: the XML schema engine is unavailable and every deposit will be recorded as ERROR until it is fixed: %v", err)
+	} else {
+		digest, _ := rdeschema.SetDigest()
+		log.Printf("escrow validation: schema engine %s, pinned schema set sha256=%s", schema.Description(), digest)
+	}
 	return NewEscrowValidationActivitiesWithDeps(
 		postgres.NewGormTLDRepo(db),
 		postgres.NewEscrowDepositRepository(db),
 		postgres.NewEscrowValidationRunRepository(db),
 		escrowkeys.NewResolver(postgres.NewEscrowKeyVersionRepository(db), postgres.NewEscrowArrangementRepository(db)),
 		secrets.NewEscrowKeyLoader(store, 0),
-		escrowStore, reportStore, limits, escrowDEAName(),
+		escrowStore, reportStore, limits, escrowDEAName(), schema,
 	), nil
 }
 
@@ -130,12 +148,13 @@ func NewEscrowValidationActivitiesWithDeps(
 	escrowStore, reportStore interfaces.ObjectStore,
 	limits rdevalidate.Limits,
 	deaName string,
+	schema rdeschema.Engine,
 ) *EscrowValidationActivities {
 	return &EscrowValidationActivities{
 		tlds: tlds, deposits: deposits, runs: runs,
 		keys:        escrowKeyMaterial{resolver: resolver, loader: loader},
 		escrowStore: escrowStore, reportStore: reportStore,
-		limits: limits, deaName: deaName, now: func() time.Time { return time.Now().UTC() },
+		limits: limits, deaName: deaName, schema: schema, now: func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -475,6 +494,7 @@ func (a *EscrowValidationActivities) ValidateArtifacts(ctx context.Context, in V
 		BoundTLD:                in.TLD,
 		Limits:                  a.limits,
 		Now:                     a.now,
+		Schema:                  a.schema,
 		Heartbeat: func(stage rdevalidate.Stage, detail string) {
 			activity.RecordHeartbeat(ctx, string(stage)+": "+detail)
 		},
