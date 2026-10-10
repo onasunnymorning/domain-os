@@ -7,7 +7,15 @@ import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 // derivative of the same source under the same version — so changing the table
 // below without changing this constant would make two different outputs
 // indistinguishable. Bump it in the same commit as any classification change.
-const PolicyVersion = "rde-baseline-v1"
+//
+// v2 closed the gap between the profile and what RFC 8909/9022 let a deposit
+// contain: contact transfer data, the DIFF/INCR delete records, the registrar,
+// reseller and privacy/proxy header variants, and the optional count and
+// nameState attributes were declared by the standard and validated, but the
+// profile had no entry for them, so a conformant deposit that used any of them
+// was quarantined. TestProfileClassifiesEverythingAConformantDepositCanContain
+// derives the list from the pinned schemas so it cannot reopen.
+const PolicyVersion = "rde-baseline-v2"
 
 // EPP namespace URIs the RDE mapping composes with. pkg/domain/entities
 // declares the rde* ones; these are the object mappings underneath.
@@ -125,12 +133,15 @@ var (
 type Profile struct {
 	elements   map[string]Action
 	attributes map[string][]string
+	// dropped lists optional attributes that are recognised and removed: the
+	// attribute equivalent of a drop action. Same key shape as attributes.
+	dropped map[string][]string
 }
 
 // BaselineProfile returns the shipped profile. It is built fresh so a caller
 // cannot mutate the shared table.
 func BaselineProfile() *Profile {
-	return &Profile{elements: baselineElements(), attributes: baselineAttributes()}
+	return &Profile{elements: baselineElements(), attributes: baselineAttributes(), dropped: baselineDroppedAttributes()}
 }
 
 // Version returns the policy version this profile implements.
@@ -169,6 +180,21 @@ func (p *Profile) AllowsAttribute(parentKey, key, attr string) bool {
 	return false
 }
 
+// DropsAttribute reports whether an attribute is removed from the derivative
+// rather than copied. It is only ever an optional attribute: removing a
+// required one would make the derivative schema-invalid.
+func (p *Profile) DropsAttribute(parentKey, key, attr string) bool {
+	if parentKey != "" {
+		if dropped, ok := p.dropped[parentKey+">"+key]; ok {
+			return contains(dropped, attr)
+		}
+	}
+	if dropped, ok := p.dropped[key]; ok {
+		return contains(dropped, attr)
+	}
+	return false
+}
+
 func contains(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {
@@ -203,6 +229,32 @@ func baselineElements() map[string]Action {
 		"rdeHeader:header": keep,
 		"rdeHeader:tld":    rewriteFQDN,
 		"rdeHeader:count":  keep,
+		// The header names the repository it describes: a TLD, or for a
+		// registrar-escrow deposit a registrar, a privacy/proxy service
+		// provider or a reseller, exactly one of which RFC 9022 requires, so
+		// none can be removed. The registrar is an IANA identifier and is
+		// retained like every other registrar identifier here. A reseller or
+		// privacy/proxy provider is a free-form token naming an organisation
+		// that ICANN does not publish, so it is tokenised, deterministically,
+		// like a contact id. contentTag is optional free text and is removed.
+		"rdeHeader:registrar":  keep,
+		"rdeHeader:ppsp":       tokenID,
+		"rdeHeader:reseller":   tokenID,
+		"rdeHeader:contentTag": drop,
+
+		// ---- deletions (DIFF and INCR deposits, RFC 8909 §5.2.2) ----
+		// A delete record names an object by its identifier, so its children
+		// are classified by the same entries as the objects they identify: a
+		// deleted domain's name is suffix-rewritten, a deleted contact's id is
+		// tokenised to the same token the contact had, and a host's name and
+		// roid are retained with the host records. The element itself is a
+		// container and is kept.
+		"rdeDomain:delete":    keep,
+		"rdeHost:delete":      keep,
+		"rdeContact:delete":   keep,
+		"rdeRegistrar:delete": keep,
+		"rdeIDN:delete":       keep,
+		"rdeNNDN:delete":      keep,
 
 		// ---- domain ----
 		"rdeDomain:domain":       keep,
@@ -282,8 +334,17 @@ func baselineElements() map[string]Action {
 		"rdeContact:upRr":       keep,
 		"rdeContact:upDate":     keep,
 		"rdeContact:trDate":     keep,
-		"rdeContact:authInfo":   drop,
-		"rdeContact:disclose":   keep,
+		// Transfer data (RFC 9022 §5.1) is the contact twin of the domain's
+		// trnData above and is classified the same way: a status, two
+		// registrar identifiers (retained, as everywhere) and two timestamps.
+		"rdeContact:trnData":  keep,
+		"rdeContact:trStatus": keep,
+		"rdeContact:reRr":     keep,
+		"rdeContact:reDate":   keep,
+		"rdeContact:acRr":     keep,
+		"rdeContact:acDate":   keep,
+		"rdeContact:authInfo": drop,
+		"rdeContact:disclose": keep,
 		// A contact's postal information and disclosure block are
 		// contact:postalInfoType and contact:discloseType, so their children are
 		// in the contact-1.0 namespace even though the object is rdeContact.
@@ -359,10 +420,26 @@ func baselineElements() map[string]Action {
 	return m
 }
 
+// baselineDroppedAttributes lists optional attributes that are removed.
+//
+// rdeHeader:count/@rcdn is the TLD label a registrar-escrow deposit's count is
+// reported for. It is the source registry's own name, which the header's tld
+// element and every domain name have already had replaced by the synthetic
+// suffix; copying it would hand back exactly what that rewrite hides. It is
+// optional, so removing it keeps the derivative schema-valid.
+func baselineDroppedAttributes() map[string][]string {
+	return map[string][]string{
+		"rdeHeader:count": {"rcdn"},
+	}
+}
+
 func baselineAttributes() map[string][]string {
 	return map[string][]string{
-		"rde:deposit":     {"type", "id", "prevId", "resend"},
-		"rdeHeader:count": {"uri"},
+		"rde:deposit": {"type", "id", "prevId", "resend"},
+		// uri says what is counted and registrarId is the same IANA identifier
+		// the header element carries. rcdn is not copied: see
+		// baselineDroppedAttributes.
+		"rdeHeader:count": {"uri", "registrarId"},
 
 		"rdeDomain:status":    {"s", "lang"},
 		"rdeDomain:rgpStatus": {"s", "lang"},
@@ -389,10 +466,16 @@ func baselineAttributes() map[string][]string {
 		"rdeContact:disclose>contact:addr": {"type"},
 		"rdeContact:crRr":                  {"client"},
 		"rdeContact:upRr":                  {"client"},
+		"rdeContact:reRr":                  {"client"},
+		"rdeContact:acRr":                  {"client"},
 
 		"rdeRegistrar:postalInfo": {"type"},
 		"rdeRegistrar:voice":      {"x"},
 		"rdeRegistrar:fax":        {"x"},
+
+		// mirroringNS is a boolean flag about how the name is served, and says
+		// nothing about who registered it.
+		"rdeNNDN:nameState": {"mirroringNS"},
 
 		"rdeIDN:idnTableRef": {"id"},
 		"rdePolicy:policy":   {"scope", "element", "type"},

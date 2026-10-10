@@ -161,7 +161,7 @@ func gunzip(t *testing.T, b []byte) string {
 func TestEscrowSanitize_EndToEnd(t *testing.T) {
 	f := newESFixture(t)
 	opts := rdetest.DepositOpts{Domains: 3, Contacts: 2, Hosts: 2, Registrars: 1, NNDNs: 1,
-		AuthInfo: true, SecDNS: true, Disclose: true, SharedContact: true, IDNDomain: true}
+		SecDNS: true, Disclose: true, SharedContact: true, IDNDomain: true, ContactTransfer: true}
 	sourceRunID := f.acceptedSource(t, opts)
 
 	b, err := f.bind(t, sourceRunID, "")
@@ -301,16 +301,22 @@ func TestEscrowSanitize_SameOrUnsetSuffixStillReplays(t *testing.T) {
 	}
 }
 
-func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *testing.T) {
+// The source is a real PASS and still cannot be transformed: it is deeper than
+// this sanitiser accepts. (The profile classifies everything the standard
+// allows — a test derives that from the XSDs — so a validated source can no
+// longer quarantine for an unknown element or namespace; the document-shape
+// limits are what is left to refuse it on.)
+func TestEscrowSanitize_QuarantinesAnOutOfLimitsSourceWithoutPublishing(t *testing.T) {
 	f := newESFixture(t)
-	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1, Contacts: 1, VendorExtension: true})
+	sourceRunID := f.acceptedSource(t, rdetest.DepositOpts{Domains: 1, Contacts: 1})
+	f.acts.limits.MaxXMLDepth = 3
 
 	b, err := f.bind(t, sourceRunID, "")
 	require.NoError(t, err)
 	p := f.produce(t, b)
 
 	require.Equal(t, rdesanitize.OutcomeQuarantined, p.Result.Outcome, "codes: %v", p.Result.Codes())
-	assert.True(t, p.Result.Has(rdesanitize.CodePolicyUnknownNamespace))
+	assert.True(t, p.Result.Has(rdesanitize.CodeLimitXMLDepth))
 	_, staged := f.ev.store.get(b.StagingKey)
 	assert.False(t, staged, "a refused rewrite stores nothing, not even in the staging prefix")
 	_, published := f.ev.store.get(b.DerivativeKey)
@@ -322,23 +328,16 @@ func TestEscrowSanitize_QuarantinesAnUnclassifiedSourceWithoutPublishing(t *test
 	require.NoError(t, err)
 	assert.Equal(t, entities.EscrowSanitizationQuarantined, run.Outcome)
 	assert.Empty(t, run.DerivativeObjectKey, "a quarantined run points at nothing")
-	assert.Contains(t, run.FindingCodes(), string(rdesanitize.CodePolicyUnknownNamespace))
-
-	// The record is the only place an operator sees this run, so it has to
-	// carry both halves: which profile entries are missing, and how much of
-	// the source depends on each. Findings keeps one example per gap; the
-	// tally counts every occurrence.
+	assert.Contains(t, run.FindingCodes(), string(rdesanitize.CodeLimitXMLDepth))
 	require.NotEmpty(t, run.FindingTally, "a quarantined run records its tally")
-	var gaps int
+	var rows int
 	for _, e := range run.FindingTally {
-		if e.Code != string(rdesanitize.CodePolicyUnknownNamespace) {
-			continue
+		if e.Code == string(rdesanitize.CodeLimitXMLDepth) {
+			rows++
+			assert.Positive(t, e.Count)
 		}
-		gaps++
-		assert.NotEmpty(t, e.Object, "a tally row names the gap it counts")
-		assert.Positive(t, e.Count)
 	}
-	assert.Positive(t, gaps, "tally: %+v", run.FindingTally)
+	assert.Positive(t, rows, "tally: %+v", run.FindingTally)
 }
 
 func TestEscrowSanitize_MissingTokenKeyIsAnErrorNotAQuarantine(t *testing.T) {

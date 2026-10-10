@@ -64,7 +64,7 @@ func TestEscrowSanitize_NoRegistryWriteSideEffect(t *testing.T) {
 	before := registryCounts(t, tx)
 	pair := rdetest.BuildPair(t, rdetest.DepositOpts{
 		TLD: ryid, Domains: 12, Contacts: 6, Hosts: 4, Registrars: 2, NNDNs: 2,
-		AuthInfo: true, SecDNS: true, Disclose: true,
+		SecDNS: true, Disclose: true, ContactTransfer: true,
 	}, ev.service, ev.registry)
 	rydeKey, sigKey := ev.upload(t, ryid+"_2026-09-08_full_S1_R0", pair)
 	bound, err := ev.bind(t, rydeKey, sigKey)
