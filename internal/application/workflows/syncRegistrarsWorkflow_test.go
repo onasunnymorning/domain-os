@@ -45,7 +45,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_FirstImport() {
 	s.env.OnActivity(activities.MakeCreateRegistrarCommands, mock.Anything, mock.Anything, csvRars, ianaRars).Return(createCmds, nil)
 
 	// Bulk Create
-	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, mock.Anything, createCmds).Return(nil)
+	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, mock.Anything, createCmds).Return(response.BulkCreateRegistrarsResult{Created: []string{"CL1"}}, nil)
 
 	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
@@ -61,6 +61,52 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_FirstImport() {
 	// Verify created items detail
 	s.Require().Len(result.CreatedItems, 1)
 	s.Equal("CL1", result.CreatedItems[0].ClID)
+}
+
+// A create the API skipped on a unique constraint must not be reported as created.
+// Before this was tracked, the same skipped registrars were counted as created on
+// every run.
+func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_SkippedCreatesAreReportedNotCounted() {
+	s.env.OnActivity(activities.SyncIanaRegistrars, mock.Anything, mock.Anything).Return(nil)
+	s.env.OnActivity(activities.CountRegistrars, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 5}, nil)
+
+	ianaRars := []entities.IANARegistrar{
+		{Name: "iana1", GurID: 1, Status: entities.IANARegistrarStatusAccredited},
+		{Name: "iana2", GurID: 2, Status: entities.IANARegistrarStatusAccredited},
+	}
+	s.env.OnActivity(activities.GetIANARegistrars, mock.Anything, mock.Anything, mock.Anything).Return(ianaRars, nil)
+
+	existingRars := []entities.RegistrarListItem{}
+	s.env.OnActivity(activities.GetRegistrarListItems, mock.Anything, mock.Anything, mock.Anything).Return(existingRars, nil)
+
+	plan := activities.DiffPlanResult{
+		Creates: []commands.CreateRegistrarCommand{
+			{ClID: "1-iana1", GurID: 1, Name: "iana1"},
+			{ClID: "2-iana2", GurID: 2, Name: "iana2"},
+		},
+		Updates:              []commands.UpdateRegistrarStatusCommand{},
+		RenamedForUniqueness: []string{"2-iana2"},
+	}
+	s.env.OnActivity(activities.DiffAndPlanRegistrars, mock.Anything, mock.Anything, ianaRars, existingRars).Return(plan, nil)
+
+	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, mock.Anything, plan.Creates).Return(
+		response.BulkCreateRegistrarsResult{Created: []string{"1-iana1"}, Skipped: []string{"2-iana2"}}, nil)
+
+	s.env.ExecuteWorkflow(SyncRegistrarsWorkflow, SyncRegistrarsParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+
+	var result SyncRegistrarsResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(1, result.Created)
+	s.Equal(1, result.TotalProcessed)
+	s.Equal(1, result.Failed)
+	s.Require().Len(result.CreatedItems, 1)
+	s.Equal("1-iana1", result.CreatedItems[0].ClID)
+	s.Require().Len(result.Failures, 1)
+	s.Equal("2-iana2", result.Failures[0].ClID)
+	s.Equal("create-conflict", result.Failures[0].Operation)
+	s.Contains(result.Notes, "Completed with failures — review the failures list for details")
 }
 
 func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_Success() {
@@ -89,7 +135,7 @@ func (s *SyncRegistrarsWorkflowTestSuite) Test_SyncRegistrars_UpdatePath_Success
 	s.env.OnActivity(activities.DiffAndPlanRegistrars, mock.Anything, mock.Anything, ianaRars, existingRars).Return(plan, nil)
 
 	// Bulk Create the creates
-	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, mock.Anything, plan.Creates).Return(nil)
+	s.env.OnActivity(activities.BulkCreateRegistrars, mock.Anything, mock.Anything, plan.Creates).Return(response.BulkCreateRegistrarsResult{Created: []string{"2-iana2"}}, nil)
 
 	// No bulk update because Updates is empty
 

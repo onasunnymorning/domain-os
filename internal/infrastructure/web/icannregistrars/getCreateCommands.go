@@ -12,7 +12,7 @@ import (
 // GetCreateCommands takes a slice of CSVRegistrars and a slice of IANARegistrars and returns a slice of CreateRegistrarCommands
 func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.IANARegistrar) ([]commands.CreateRegistrarCommand, error) {
 	skipped := []string{}
-	seen := make(map[string]bool)
+	usedNames := make(map[string]struct{})
 	var createCommands []commands.CreateRegistrarCommand
 
 	// Create a dummy postalinfo that will be overwritten if there is data, otherwise it will make it easy to find the missing data
@@ -52,10 +52,8 @@ func GetCreateCommands(csvRegistrars []CSVRegistrar, icannRegistrars []entities.
 			return nil, fmt.Errorf("error creating ClID for registrar %d - %s: %v", irar.GurID, irar.Name, err)
 		}
 
-		if seen[irar.Name] {
-			irar.Name += "-2"
-		}
-		seen[irar.Name] = true
+		// Registrar names are unique in the registry; IANA's are not.
+		irar.Name = entities.UniqueRegistrarName(irar.Name, usedNames)
 
 		// Create the command with dummy information
 		cmd := commands.CreateRegistrarCommand{

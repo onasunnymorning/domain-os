@@ -132,8 +132,12 @@ func importRegistrars(c *cli.Context) error {
 	pbar := progressbar.New(len(createCommands))
 	// Process the commands in chunks of 100
 	for chunk := range commands.ChunkCreateRegistrarCommands(createCommands, c.Int("chunksize")) {
-		if err := activities.BulkCreateRegistrars(context.Background(), correlationID, chunk); err != nil {
+		res, err := activities.BulkCreateRegistrars(context.Background(), correlationID, chunk)
+		if err != nil {
 			return cli.Exit(err, 1)
+		}
+		if len(res.Skipped) > 0 {
+			log.Printf("[WARN] %d registrars were not inserted (name or ClID already taken): %v\n", len(res.Skipped), res.Skipped)
 		}
 		pbar.Add(len(chunk))
 	}
