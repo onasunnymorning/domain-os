@@ -1,7 +1,7 @@
 # The main Build image to build all our binaries.
 # Pinned to the native build platform so Go cross-compiles to the target arch
 # (GOARCH below) instead of running under QEMU emulation on the arm64 leg.
-FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS build
 
 WORKDIR /
 ENV CGO_ENABLED=0
@@ -81,8 +81,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:3.21.8 AS admin-api
 
 ## Install security patches and dnsviz dependencies
+## tiff is named (it arrives with graphviz) so a CVE fix in it changes this
+## layer's text: the CI build cache keys on the command and would otherwise
+## keep serving the tiff the last `apk upgrade` found.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography && \
+    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff && \
     pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image

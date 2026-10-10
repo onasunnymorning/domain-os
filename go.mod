@@ -1,6 +1,6 @@
 module github.com/onasunnymorning/domain-os
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
