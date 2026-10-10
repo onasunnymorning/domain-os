@@ -95,18 +95,56 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	return soredDbRar, nil
 }
 
-// Bulk Create Creates multiple registrars in the repository.
-// Uses ON CONFLICT DO NOTHING so that re-runs and name collisions
-// (e.g. IANA name changes producing a new ClID but same Name) are
-// silently skipped instead of failing the entire batch.
-func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) error {
+// Bulk Create Creates multiple registrars in the repository and returns the ClIDs
+// that were actually inserted.
+// Uses ON CONFLICT DO NOTHING so that re-runs and name collisions are skipped
+// instead of failing the entire batch. Because skipped rows are silent, the
+// inserted ClIDs are read back with RETURNING; callers must compare them to what
+// they asked for rather than assume the whole batch landed.
+func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) ([]string, error) {
+	if len(rars) == 0 {
+		return []string{}, nil
+	}
 	dbRars := make([]*Registrar, len(rars))
 	for i, rar := range rars {
 		dbRars[i] = ToDBRegistrar(rar)
 	}
-	return r.db.WithContext(ctx).Omit("TLDs").
-		Clauses(clause.OnConflict{DoNothing: true}).
-		Create(dbRars).Error // We omit TLDs as we manage these through the Accreditation repository
+
+	// Build the INSERT with GORM, but run it ourselves so that RETURNING yields
+	// exactly the inserted rows. Scanning a conflict-skipping insert back into the
+	// input slice is not reliable: GORM pairs returned rows with input rows by
+	// position, which shifts as soon as one row is skipped.
+	// We omit TLDs as we manage these through the Accreditation repository.
+	stmt := r.db.WithContext(ctx).Session(&gorm.Session{DryRun: true}).Omit("TLDs").
+		Clauses(
+			clause.OnConflict{DoNothing: true},
+			clause.Returning{Columns: []clause.Column{{Name: "cl_id"}}},
+		).
+		Create(dbRars)
+	if stmt.Error != nil {
+		return nil, stmt.Error
+	}
+
+	// Run the generated statement on the same connection pool (or open transaction)
+	// GORM would have used, exactly as its own create callback does.
+	rows, err := r.db.WithContext(ctx).Statement.ConnPool.QueryContext(ctx, stmt.Statement.SQL.String(), stmt.Statement.Vars...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	inserted := []string{}
+	for rows.Next() {
+		var clid string
+		if err := rows.Scan(&clid); err != nil {
+			return nil, err
+		}
+		inserted = append(inserted, clid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return inserted, nil
 }
 
 // Update Updates a registrar in the repository

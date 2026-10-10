@@ -243,6 +243,49 @@ func getValidRegistrarPostalInfoArr() [2]*entities.RegistrarPostalInfo {
 	}
 }
 
+// BulkCreate skips rows that collide on a unique constraint without erroring, so
+// it must report which rows actually landed. The sync workflow and the
+// registrar.bulk_created event depend on this: without it, a registrar whose
+// name is already taken is reported as created on every run.
+func (s *RegistrarSuite) TestBulkCreate_ReturnsOnlyInsertedClIDs() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormRegistrarRepository(tx)
+	ctx := context.Background()
+
+	newRar := func(clid, name string, gurid int) *entities.Registrar {
+		rar, err := entities.NewRegistrar(clid, name, "bulk@example.com", gurid, getValidRegistrarPostalInfoArr())
+		require.NoError(s.T(), err)
+		return rar
+	}
+	holder := newRar("9801-holder", "Bulk Name Holder", 9801)
+	collider := newRar("9802-collider", "Bulk Name Holder", 9802) // same name, new ClID
+	fresh := newRar("9803-fresh", "Bulk Fresh Name", 9803)
+
+	inserted, err := repo.BulkCreate(ctx, []*entities.Registrar{holder})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"9801-holder"}, inserted)
+
+	// The collider is skipped on the name constraint; the fresh row still lands,
+	// and the insert reports exactly that.
+	inserted, err = repo.BulkCreate(ctx, []*entities.Registrar{collider, fresh})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"9803-fresh"}, inserted)
+
+	_, err = repo.GetByClID(ctx, "9802-collider", false)
+	require.ErrorIs(s.T(), err, entities.ErrRegistrarNotFound)
+
+	// Re-running the same batch inserts nothing.
+	inserted, err = repo.BulkCreate(ctx, []*entities.Registrar{holder, fresh})
+	require.NoError(s.T(), err)
+	require.Empty(s.T(), inserted)
+
+	// An empty batch is a no-op, not an invalid INSERT.
+	inserted, err = repo.BulkCreate(ctx, nil)
+	require.NoError(s.T(), err)
+	require.Empty(s.T(), inserted)
+}
+
 func (s *RegistrarSuite) TestCountRegistrars() {
 	tx := s.db.Begin()
 	defer tx.Rollback()

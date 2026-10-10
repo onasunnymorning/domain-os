@@ -47,28 +47,45 @@ func (s *RegistrarService) Create(ctx context.Context, cmd *commands.CreateRegis
 }
 
 // Bulk Create new registrars
-func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.CreateRegistrarCommand) error {
+func (s *RegistrarService) BulkCreate(ctx context.Context, cmds []*commands.CreateRegistrarCommand) ([]string, error) {
 	rars, err := bulkRarFromCmd(cmds)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = s.registrarRepository.BulkCreate(ctx, rars)
+	inserted, err := s.registrarRepository.BulkCreate(ctx, rars)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// The repository skips rows that collide on a unique constraint, so only
+	// announce what was actually created.
+	if skipped := len(cmds) - len(inserted); skipped > 0 {
+		fmt.Printf("registrar bulk create: %d of %d registrars were not inserted (unique constraint conflict)\n", skipped, len(cmds))
+	}
+	if len(inserted) == 0 {
+		return inserted, nil
 	}
 
 	// Log the registrar lifecycle events, recording which registrars were
 	// created so the batch is auditable from the event payload alone.
-	clids := make([]string, 0, len(cmds))
-	for _, cmd := range cmds {
-		clids = append(clids, cmd.ClID)
+	insertedSet := make(map[string]struct{}, len(inserted))
+	for _, clid := range inserted {
+		insertedSet[clid] = struct{}{}
+	}
+	createdCmds := make([]*commands.CreateRegistrarCommand, 0, len(inserted))
+	createdRars := make([]*entities.Registrar, 0, len(inserted))
+	for i, rar := range rars {
+		if _, ok := insertedSet[rar.ClID.String()]; ok {
+			createdCmds = append(createdCmds, cmds[i])
+			createdRars = append(createdRars, rar)
+		}
 	}
 	event := entities.NewRegistrarLifecycleEvent("", entities.RegistrarEventTypeCreate)
-	event.ClientIDs = clids
-	s.publishRegistrarEvent(ctx, "registrar.bulk_created", fmt.Sprintf("bulk created %d registrars", len(cmds)), event, cmds, rars, nil)
+	event.ClientIDs = inserted
+	s.publishRegistrarEvent(ctx, "registrar.bulk_created", fmt.Sprintf("bulk created %d registrars", len(inserted)), event, createdCmds, createdRars, nil)
 
-	return nil
+	return inserted, nil
 }
 
 // GetByClID returns a registrar by its ClID

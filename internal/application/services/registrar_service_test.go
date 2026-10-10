@@ -13,6 +13,8 @@ import (
 type MockRegistrarRepository struct {
 	Registrars   map[string]*entities.Registrar
 	UpdateCalled bool
+	// ConflictClIDs simulates rows the database skips on a unique constraint.
+	ConflictClIDs map[string]bool
 }
 
 func (m *MockRegistrarRepository) GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error) {
@@ -44,11 +46,16 @@ func (m *MockRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	return rar, nil
 }
 
-func (m *MockRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) error {
+func (m *MockRegistrarRepository) BulkCreate(ctx context.Context, rars []*entities.Registrar) ([]string, error) {
+	inserted := []string{}
 	for _, rar := range rars {
+		if m.ConflictClIDs[rar.ClID.String()] {
+			continue
+		}
 		m.Registrars[rar.ClID.String()] = rar
+		inserted = append(inserted, rar.ClID.String())
 	}
-	return nil
+	return inserted, nil
 }
 
 func (m *MockRegistrarRepository) Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error) {
@@ -158,8 +165,12 @@ func TestRegistrarService_BulkCreate_RecordsClientIDs(t *testing.T) {
 	pub := &capturingPublisher{}
 	service := NewRegistrarService(repo, pub)
 
-	if err := service.BulkCreate(ctx, cmds); err != nil {
+	created, err := service.BulkCreate(ctx, cmds)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(created) != len(cmds) {
+		t.Fatalf("expected %d created ClIDs, got %d (%v)", len(cmds), len(created), created)
 	}
 
 	if len(pub.events) != 1 {
@@ -179,6 +190,80 @@ func TestRegistrarService_BulkCreate_RecordsClientIDs(t *testing.T) {
 		if payload.ClientIDs[i] != clid {
 			t.Errorf("ClientIDs[%d]: got %q, want %q", i, payload.ClientIDs[i], clid)
 		}
+	}
+}
+
+// bulkCreateFixture builds three valid registrar create commands.
+func bulkCreateFixture(t *testing.T) []*commands.CreateRegistrarCommand {
+	t.Helper()
+	pi, err := entities.NewRegistrarPostalInfo(entities.PostalInfoEnumTypeINT, mustAddress(t))
+	if err != nil {
+		t.Fatalf("unexpected error building postal info: %v", err)
+	}
+	return []*commands.CreateRegistrarCommand{
+		{ClID: "9995-pdt-1", Name: "PDT 1", Email: "a@b.co", GurID: 9995, PostalInfo: [2]*entities.RegistrarPostalInfo{pi}},
+		{ClID: "9996-pdt-2", Name: "PDT 2", Email: "a@b.co", GurID: 9996, PostalInfo: [2]*entities.RegistrarPostalInfo{pi}},
+		{ClID: "9997-sla-monitor", Name: "SLA", Email: "a@b.co", GurID: 9997, PostalInfo: [2]*entities.RegistrarPostalInfo{pi}},
+	}
+}
+
+// TestRegistrarService_BulkCreate_NothingInsertedEmitsNoEvent guards the daily
+// sync noise: when every row is skipped on a unique constraint, nothing was
+// created, so no registrar.bulk_created event may be published.
+func TestRegistrarService_BulkCreate_NothingInsertedEmitsNoEvent(t *testing.T) {
+	cmds := bulkCreateFixture(t)
+	conflicts := map[string]bool{}
+	for _, c := range cmds {
+		conflicts[c.ClID] = true
+	}
+	repo := &MockRegistrarRepository{Registrars: map[string]*entities.Registrar{}, ConflictClIDs: conflicts}
+	pub := &capturingPublisher{}
+	service := NewRegistrarService(repo, pub)
+
+	created, err := service.BulkCreate(context.Background(), cmds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected no created ClIDs, got %v", created)
+	}
+	if len(pub.events) != 0 {
+		t.Fatalf("expected no events when nothing was inserted, got %d", len(pub.events))
+	}
+}
+
+// TestRegistrarService_BulkCreate_PartialInsertReportsOnlyInserted verifies the
+// event and the returned ClIDs describe the rows that landed, not the request.
+func TestRegistrarService_BulkCreate_PartialInsertReportsOnlyInserted(t *testing.T) {
+	cmds := bulkCreateFixture(t)
+	repo := &MockRegistrarRepository{
+		Registrars:    map[string]*entities.Registrar{},
+		ConflictClIDs: map[string]bool{"9996-pdt-2": true},
+	}
+	pub := &capturingPublisher{}
+	service := NewRegistrarService(repo, pub)
+
+	created, err := service.BulkCreate(context.Background(), cmds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"9995-pdt-1", "9997-sla-monitor"}
+	if len(created) != len(want) || created[0] != want[0] || created[1] != want[1] {
+		t.Fatalf("created: got %v, want %v", created, want)
+	}
+
+	if len(pub.events) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(pub.events))
+	}
+	if got := pub.events[0].Description; got != "bulk created 2 registrars" {
+		t.Errorf("description: got %q, want %q", got, "bulk created 2 registrars")
+	}
+	payload, ok := pub.events[0].Data.(*entities.RegistrarLifecycleEvent)
+	if !ok {
+		t.Fatalf("expected payload of type *RegistrarLifecycleEvent, got %T", pub.events[0].Data)
+	}
+	if len(payload.ClientIDs) != 2 || payload.ClientIDs[0] != want[0] || payload.ClientIDs[1] != want[1] {
+		t.Errorf("ClientIDs: got %v, want %v", payload.ClientIDs, want)
 	}
 }
 
