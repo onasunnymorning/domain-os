@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/onasunnymorning/domain-os/internal/application/rdeschema"
 	"github.com/onasunnymorning/domain-os/internal/application/rdevalidate/rdetest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,7 @@ import (
 
 type pipelineFixture struct {
 	service, oldService, registry, stranger rdetest.KeyPair
+	schema                                  rdeschema.Engine
 }
 
 func newPipelineFixture(t *testing.T) pipelineFixture {
@@ -31,6 +33,7 @@ func newPipelineFixture(t *testing.T) pipelineFixture {
 		oldService: rdetest.NewKeyPair(t, "eve-service-previous"),
 		registry:   rdetest.NewKeyPair(t, "registry-signer"),
 		stranger:   rdetest.NewKeyPair(t, "stranger"),
+		schema:     rdetest.SchemaEngine(t),
 	}
 }
 
@@ -47,6 +50,7 @@ func (f pipelineFixture) input(ryde, sig []byte) Input {
 		BoundTLD:     "example",
 		Limits:       DefaultLimits(),
 		Now:          func() time.Time { return testNow },
+		Schema:       f.schema,
 	}
 }
 
@@ -293,13 +297,15 @@ func TestRun_ReplayIsDeterministic(t *testing.T) {
 
 // plaintextInput builds the unsigned counterpart of pipelineFixture.input: no
 // signature, no trusted keys and no service keyring at all.
-func plaintextInput(artifact []byte) Input {
+func plaintextInput(t *testing.T, artifact []byte) Input {
+	t.Helper()
 	return Input{
 		Profile:      ProfilePlaintextXML,
 		OpenArtifact: openBytes(artifact),
 		BoundTLD:     "example",
 		Limits:       DefaultLimits(),
 		Now:          func() time.Time { return testNow },
+		Schema:       rdetest.SchemaEngine(t),
 	}
 }
 
@@ -315,7 +321,7 @@ func TestRun_PlaintextXML_PassButNeverVerified(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := rdetest.DepositOpts{TLD: "example", Layout: tc.layout, Domains: 4, Contacts: 2, Hosts: 1, Registrars: 1}
 			artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
-			in := plaintextInput(artifact)
+			in := plaintextInput(t, artifact)
 			in.ExpectedArtifactSHA256 = sha(artifact)
 
 			res := Run(context.Background(), in)
@@ -340,7 +346,7 @@ func TestRun_PlaintextXML_FailsClosedOnBadContent(t *testing.T) {
 	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutXML, HeaderTLD: "other"}
 	artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
 
-	res := Run(context.Background(), plaintextInput(artifact))
+	res := Run(context.Background(), plaintextInput(t, artifact))
 
 	require.Equal(t, OutcomeFail, res.Outcome)
 	assert.True(t, res.Has(CodeRDEHeaderTLDMismatch), "codes: %v", res.Codes())
@@ -350,7 +356,7 @@ func TestRun_PlaintextXML_FailsClosedOnBadContent(t *testing.T) {
 func TestRun_PlaintextXML_RejectsSwappedArtifact(t *testing.T) {
 	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutXML}
 	artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
-	in := plaintextInput(artifact)
+	in := plaintextInput(t, artifact)
 	in.ExpectedArtifactSHA256 = sha([]byte("a different artifact"))
 
 	res := Run(context.Background(), in)
@@ -362,7 +368,7 @@ func TestRun_PlaintextXML_RejectsSwappedArtifact(t *testing.T) {
 func TestRun_PlaintextXML_EnforcesCompressedSizeLimit(t *testing.T) {
 	opts := rdetest.DepositOpts{TLD: "example", Layout: rdetest.LayoutXML}
 	artifact := rdetest.BuildPayload(t, opts, rdetest.BuildXML(opts))
-	in := plaintextInput(artifact)
+	in := plaintextInput(t, artifact)
 	in.Limits.MaxCompressedBytes = int64(len(artifact) - 1)
 
 	res := Run(context.Background(), in)
@@ -378,7 +384,7 @@ func TestRun_PlaintextXML_RejectsEncryptedArtifact(t *testing.T) {
 	opts := rdetest.DepositOpts{TLD: "example"}
 	pair := rdetest.BuildPair(t, opts, f.service, f.registry)
 
-	res := Run(context.Background(), plaintextInput(pair.Ryde))
+	res := Run(context.Background(), plaintextInput(t, pair.Ryde))
 
 	require.Equal(t, OutcomeFail, res.Outcome)
 	assert.True(t, res.Has(CodeArchiveUnsupportedLayout), "codes: %v", res.Codes())

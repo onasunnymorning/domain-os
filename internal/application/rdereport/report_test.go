@@ -47,6 +47,7 @@ func runFixture(t *testing.T, opts rdetest.DepositOpts, breakSig bool) rdevalida
 		BoundTLD:     "example",
 		Limits:       rdevalidate.DefaultLimits(),
 		Now:          func() time.Time { return time.Now().UTC().Add(time.Hour) },
+		Schema:       rdetest.SchemaEngine(t),
 	})
 	// Pin non-deterministic fields.
 	res.Signature.SignedAt = fixedSigned
@@ -272,6 +273,7 @@ func TestResultCodes_CoverEveryFailureCode(t *testing.T) {
 		rdevalidate.CodeArchiveUnsupportedLayout, rdevalidate.CodeArchiveUnsafeEntry, rdevalidate.CodeArchiveLimitFileCount,
 		rdevalidate.CodeArchiveLimitUnpackedSize, rdevalidate.CodeArchiveLimitNesting, rdevalidate.CodeArchiveNoXML,
 		rdevalidate.CodeXMLMalformed, rdevalidate.CodeXMLNoDeposit, rdevalidate.CodeXMLNoHeader,
+		rdevalidate.CodeXMLSchemaInvalid, rdevalidate.CodeXMLDTDNotSupported, rdevalidate.CodeXMLPrologNotSupported,
 		rdevalidate.CodeRDEHeaderTLDMismatch, rdevalidate.CodeRDECountMismatch, rdevalidate.CodeRDEObjectDecodeError,
 		rdevalidate.CodeRDEObjectInvalid, rdevalidate.CodeRDERequiredObjectMissing,
 	}
@@ -299,7 +301,10 @@ func TestBuildNotification_DVFN_OmitsTheObjectIdentifier(t *testing.T) {
 
 	var objects []string
 	for _, f := range res.Findings {
-		if f.Severity == rdevalidate.SeverityError && f.Object != "" {
+		// A schema finding's Object is an element name; where the schemas
+		// declare it, it is also vocabulary the message states on purpose, so
+		// this test looks at the findings whose Object is deposit data.
+		if f.Severity == rdevalidate.SeverityError && f.Object != "" && f.Code != rdevalidate.CodeXMLSchemaInvalid {
 			objects = append(objects, f.Object)
 		}
 	}

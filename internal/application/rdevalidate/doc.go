@@ -1,8 +1,14 @@
 // Package rdevalidate is the pure escrow-verification (EVE) core for issue
 // #412: it verifies a detached OpenPGP signature over a .ryde deposit,
 // decrypts it with the service keyring, unpacks the payload under explicit
-// limits, streams the RDE XML through strict structural and content checks,
-// and turns everything it learns into a structured, auditable Result.
+// limits, streams the RDE XML through strict structural and content checks
+// while a schema engine (internal/application/rdeschema) enforces the pinned
+// RFC 8909 / RFC 9022 XSDs over the very same stream, and turns everything it
+// learns into a structured, auditable Result.
+//
+// A deposit passes only if both the Go checks and the schema check pass. The
+// schema check cannot be skipped: with no engine, or one that fails, the run is
+// ERROR (XML_SCHEMA_ENGINE_UNAVAILABLE), never PASS.
 //
 // It has no database, object-storage or Temporal dependency, in the same way
 // internal/application/serialdrift holds pure decision logic: the activities
