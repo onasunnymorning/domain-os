@@ -213,3 +213,99 @@ func TestDiffAndPlanRegistrars_BasicScenarios(t *testing.T) {
 		}
 	})
 }
+
+// Registrar names are unique in the registry but IANA's are not. A create whose
+// name is already taken used to be planned as-is, silently dropped by the insert
+// (ON CONFLICT DO NOTHING) and then re-planned on every daily run.
+func TestDiffAndPlanRegistrars_NameCollisions(t *testing.T) {
+	iana := func(gurID int, name string) entities.IANARegistrar {
+		return entities.IANARegistrar{GurID: gurID, Name: name, Status: entities.IANARegistrarStatusAccredited}
+	}
+	existing := func(ir entities.IANARegistrar) entities.RegistrarListItem {
+		clid, _ := ir.CreateClID()
+		return entities.RegistrarListItem{
+			ClID:       clid,
+			Name:       ir.Name,
+			GurID:      ir.GurID,
+			Status:     entities.RegistrarStatusOK,
+			IANAStatus: entities.IANARegistrarStatusAccredited,
+		}
+	}
+	plan := func(t *testing.T, ianas []entities.IANARegistrar, ex []entities.RegistrarListItem) DiffPlanResult {
+		t.Helper()
+		p, err := DiffAndPlanRegistrars(context.Background(), "corr", ianas, ex)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return p
+	}
+
+	t.Run("name taken by an existing registrar gets a suffix", func(t *testing.T) {
+		held := iana(100, "Shared Name Inc")
+		newcomer := iana(900, "Shared Name Inc")
+
+		p := plan(t, []entities.IANARegistrar{held, newcomer}, []entities.RegistrarListItem{existing(held)})
+
+		if len(p.Creates) != 1 {
+			t.Fatalf("expected 1 create, got %d", len(p.Creates))
+		}
+		if p.Creates[0].Name != "Shared Name Inc-2" {
+			t.Fatalf("expected suffixed name, got %q", p.Creates[0].Name)
+		}
+		if len(p.RenamedForUniqueness) != 1 || p.RenamedForUniqueness[0] != p.Creates[0].ClID {
+			t.Fatalf("expected the create to be reported as renamed, got %v", p.RenamedForUniqueness)
+		}
+	})
+
+	t.Run("two new registrars sharing a name in one plan", func(t *testing.T) {
+		a := iana(901, "Twin Registrar")
+		b := iana(902, "Twin Registrar")
+
+		p := plan(t, []entities.IANARegistrar{a, b}, nil)
+
+		if len(p.Creates) != 2 {
+			t.Fatalf("expected 2 creates, got %d", len(p.Creates))
+		}
+		if p.Creates[0].Name != "Twin Registrar" || p.Creates[1].Name != "Twin Registrar-2" {
+			t.Fatalf("unexpected names: %q, %q", p.Creates[0].Name, p.Creates[1].Name)
+		}
+	})
+
+	t.Run("a collision on the normalized form is caught", func(t *testing.T) {
+		held := iana(100, "Dotted Name Ltd")
+		newcomer := iana(903, "Dotted Name Ltd.")
+
+		p := plan(t, []entities.IANARegistrar{held, newcomer}, []entities.RegistrarListItem{existing(held)})
+
+		if len(p.Creates) != 1 || p.Creates[0].Name != "Dotted Name Ltd-2" {
+			t.Fatalf("expected one create named %q, got %+v", "Dotted Name Ltd-2", p.Creates)
+		}
+	})
+
+	t.Run("converges once the suffixed registrar exists", func(t *testing.T) {
+		held := iana(100, "Shared Name Inc")
+		newcomer := iana(900, "Shared Name Inc")
+		created := existing(newcomer)
+		created.Name = "Shared Name Inc-2"
+
+		p := plan(t, []entities.IANARegistrar{held, newcomer}, []entities.RegistrarListItem{existing(held), created})
+
+		if len(p.Creates) != 0 {
+			t.Fatalf("expected no creates on the second run, got %d", len(p.Creates))
+		}
+		if len(p.RenamedForUniqueness) != 0 {
+			t.Fatalf("expected nothing renamed, got %v", p.RenamedForUniqueness)
+		}
+	})
+
+	t.Run("non-colliding create keeps its name", func(t *testing.T) {
+		p := plan(t, []entities.IANARegistrar{iana(904, "Unique Registrar")}, nil)
+
+		if len(p.Creates) != 1 || p.Creates[0].Name != "Unique Registrar" {
+			t.Fatalf("expected an unchanged name, got %+v", p.Creates)
+		}
+		if len(p.RenamedForUniqueness) != 0 {
+			t.Fatalf("expected nothing renamed, got %v", p.RenamedForUniqueness)
+		}
+	})
+}
