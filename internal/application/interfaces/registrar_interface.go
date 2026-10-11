@@ -13,7 +13,10 @@ type RegistrarService interface {
 	GetByClID(ctx context.Context, clid string, preloadTLDs bool) (*entities.Registrar, error)
 	GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error)
 	Create(ctx context.Context, rar *commands.CreateRegistrarCommand) (*entities.Registrar, error)
-	BulkCreate(ctx context.Context, rars []*commands.CreateRegistrarCommand) error
+	// BulkCreate creates the registrars and returns the ClIDs that were actually
+	// inserted, which can be fewer than requested when a row collides on a unique
+	// constraint (such as a name that is already taken).
+	BulkCreate(ctx context.Context, rars []*commands.CreateRegistrarCommand) ([]string, error)
 	Update(ctx context.Context, rar *entities.Registrar) (*entities.Registrar, error)
 	Delete(ctx context.Context, clid string) error
 	List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error)
