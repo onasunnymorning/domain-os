@@ -22,6 +22,20 @@ cases:
     findings:
       - {code: DECRYPT_KEY_UNAVAILABLE, severity: ERROR}
     outcome: ERROR
+  - name: schema violation fails
+    findings:
+      - {code: XML_SCHEMA_INVALID, severity: ERROR}
+      - {code: XML_SCHEMA_CHECK_TRUNCATED, severity: INFO}
+    outcome: FAIL
+  - name: a schema check that could not run is an error, not a pass and not a failure
+    findings:
+      - {code: XML_SCHEMA_ENGINE_UNAVAILABLE, severity: ERROR}
+    outcome: ERROR
+  - name: an unavailable schema engine outranks a failure the Go checks found
+    findings:
+      - {code: RDE_COUNT_MISMATCH, severity: ERROR}
+      - {code: XML_SCHEMA_ENGINE_UNAVAILABLE, severity: ERROR}
+    outcome: ERROR
   - name: timeout after deposit errors is still an error
     findings:
       - {code: XML_MALFORMED, severity: ERROR}

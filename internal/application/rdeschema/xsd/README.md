@@ -1,8 +1,21 @@
-# Published XML schemas (test data)
+# Published XML schemas
 
-These XSDs are used **only by tests**, to prove that the XML this service emits
-is schema-valid against the published standards rather than against our own Go
-structs. Nothing at runtime loads them, and no runtime CGO is involved.
+These XSDs serve two purposes:
+
+- **Tests** use them to prove that the XML this service emits (reports,
+  notifications, derivatives) is schema-valid against the published standards
+  rather than against our own Go structs.
+- **The EVE validator enforces `deposit-schemas.xsd` at runtime** on every
+  deposit it validates, so a PASS means the deposit conforms to RFC 8909 /
+  RFC 9022 and the EPP mappings they compose with. The files are embedded in
+  the worker binary (`go:embed`), extracted to a private temp directory at
+  start-up and handed to `xmllint --stream`; nothing is fetched and a deposit
+  cannot select a schema (`xsi:schemaLocation` hints are ignored). See
+  [ADR-0012](../../../../docs/adr/0012-escrow-runtime-schema-validation.md).
+
+Adding a schema to the pinned set means adding the file here **and** importing
+it from `deposit-schemas.xsd` — a drift test fails otherwise. That is also the
+whole extension policy: see the ADR.
 
 Two wrapper schemas load a set of namespaces in dependency order. The published
 schemas import each other by namespace without a `schemaLocation`, so without a
@@ -11,7 +24,7 @@ wrapper libxml2 cannot resolve them.
 | Wrapper | Covers | Used by |
 |---|---|---|
 | `eve-schemas.xsd` | `rdeReport`, `rdeNotification`, `iirdea` and their dependencies | `rdereport`, escrow-validation activity tests |
-| `deposit-schemas.xsd` | a complete RDE deposit and the EPP object mappings it composes with | `rdesanitize` derivative conformance |
+| `deposit-schemas.xsd` | a complete RDE deposit and the EPP object mappings it composes with | **runtime enforcement (`rdevalidate`)**, `rdesanitize` derivative conformance |
 
 ## Sources
 
@@ -37,7 +50,7 @@ wrapper libxml2 cannot resolve them.
 | `contact-1.0.xsd` | RFC 5733 §4 | `urn:ietf:params:xml:ns:contact-1.0` |
 | `secDNS-1.1.xsd` | RFC 5910 §4 | `urn:ietf:params:xml:ns:secDNS-1.1` |
 | `rgp-1.0.xsd` | RFC 3915 §5 | `urn:ietf:params:xml:ns:rgp-1.0` |
-| `eve-schemas.xsd`, `deposit-schemas.xsd` | this repository | wrappers for `xmllint` |
+| `eve-schemas.xsd`, `deposit-schemas.xsd` | this repository | wrappers that load the namespaces in dependency order |
 
 Retrieved 2026-09-08 (registry-interface drafts) and 2026-09-09 (RFC set) from
 `https://www.ietf.org/archive/id/draft-lozano-icann-registry-interfaces-26.txt`

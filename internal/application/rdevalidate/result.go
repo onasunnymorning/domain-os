@@ -267,6 +267,12 @@ func (r Result) TotalFindings() int {
 	return n
 }
 
+// tallySnapshot is the in-progress tally as a slice, for checks that need to
+// ask what the run has found so far.
+func (r *Result) tallySnapshot() []FindingTally {
+	return r.materialiseTally()
+}
+
 // materialiseTally turns the in-progress map into the ordered exported slice.
 // The order is stage, then severity, then code, so goldens and diffs are
 // stable across runs of the same deposit.

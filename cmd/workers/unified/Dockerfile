@@ -22,6 +22,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM alpine:3.21.8
 RUN apk upgrade --no-cache
+# xmllint runs every escrow deposit through the pinned RDE schemas (EVE schema
+# enforcement). The schemas themselves are embedded in the worker binary; the
+# validator is the one external dependency. The version call is the build-time
+# proof it is installed and runs: a worker image without it would record ERROR
+# on every deposit, so it must not be possible to build one.
+RUN apk add --no-cache libxml2-utils \
+    && xmllint --version
 # Copy seed data (used by lifecycle worker for registrar sync)
 COPY ./initdata /app/initdata
 # Create a non-root user and group
