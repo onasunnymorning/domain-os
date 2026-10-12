@@ -1,4 +1,23 @@
 <a name="unreleased"></a>
+## [0.13.0](https://github.com/onasunnymorning/domain-os/compare/v0.12.0...v0.13.0) (2026-10-12)
+
+
+### Features
+
+* **escrow:** enforce pinned RDE XML schemas at runtime so EVE PASS means conformant ([03567f6](https://github.com/onasunnymorning/domain-os/commit/03567f6082e3d1d9b45d1299a4fb79cda6a3fee7))
+* **escrow:** enforce the pinned RDE XML schemas at runtime so PASS means conformant ([49363ca](https://github.com/onasunnymorning/domain-os/commit/49363cab898a35d89c3b34e3c7ca0bfc15f5f1b4))
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.9 and refresh api image tiff ([2fd0ff0](https://github.com/onasunnymorning/domain-os/commit/2fd0ff0f9b635637234cd9a4afa0de194991109a))
+* **deps:** bump golang.org/x/net to v0.60.0 for CVE-2026-78669 ([85edab1](https://github.com/onasunnymorning/domain-os/commit/85edab1f7abac419f285c7acf0b393fe87501226))
+* **deps:** bump golang.org/x/net to v0.60.0 to clear the Trivy HIGH failing the image builds ([3aa652f](https://github.com/onasunnymorning/domain-os/commit/3aa652fad3384671c19799767285536a6fd9b19f))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([fbc5b22](https://github.com/onasunnymorning/domain-os/commit/fbc5b22491892f42a3c1a08aa961421d7b687adc))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([1882fc2](https://github.com/onasunnymorning/domain-os/commit/1882fc2c8e71cfbdf89e3ab5f2470d1c316d67d8))
+* stop sync-registrars re-announcing registrars it never creates ([62b48c6](https://github.com/onasunnymorning/domain-os/commit/62b48c6b8fdb25ba93e9938ac22adcfb8ac75399))
+* stop sync-registrars re-announcing registrars it never creates ([a90ce35](https://github.com/onasunnymorning/domain-os/commit/a90ce357ec3391939c2347e87507a0d6a50df45c))
+
 ## [0.12.0](https://github.com/onasunnymorning/domain-os/compare/v0.11.0...v0.12.0) (2026-10-04)
 
 
