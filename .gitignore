@@ -58,3 +58,45 @@ docs/*.yaml
 
 # don't publish these
 temporal-certs/
+# Build output at the repo root (S7, 2026-09-23 architecture review).
+# `go build ./cmd/<x>` run from the root writes a binary named after the last
+# path element of the package, and ~250 MB of those got committed. Build into
+# bin/ instead (Makefile.epp and Makefile.epp-server already do). One entry per
+# `package main` under cmd/; add a line here when you add one there. Anchored
+# with a leading slash so the cmd/ source directories of the same name are not
+# ignored. escrowImport is a retired command, kept because the binary was
+# committed once.
+/bin/
+/askg
+/dbconstraints
+/dbimporter
+/epp
+/epp-client
+/escrow
+/escrowImport
+/gencontract
+/genenvexample
+/import
+/importer
+/jisc
+/lifecycle
+/mcp
+/mosapi
+/play
+/ry-admin
+/sync
+/unified
+/whois
+/whoisLoad
+
+# Local analysis output and scratch copies at the root. Escrow deposit dumps
+# and analysis databases can carry registrar or registrant contact data; this
+# repo is public.
+/*.bak
+/*.db
+/*.sqlite
+/analysis_debug.json
+/test_input.json
+/coverage.html
+/api-coverage.html
+/agent-coverage.html
