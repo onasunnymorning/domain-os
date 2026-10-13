@@ -166,11 +166,17 @@ func dialNoGreeting(t *testing.T, addr string) *client {
 // counts itself, then the XML.
 func (c *client) send(xml string) {
 	c.t.Helper()
+	require.NoError(c.t, c.trySend(xml))
+}
+
+// trySend writes a frame and returns the write error, for frames the server
+// may close the connection on before it has read them in full.
+func (c *client) trySend(xml string) error {
 	frame := make([]byte, 4+len(xml))
 	binary.BigEndian.PutUint32(frame, uint32(len(frame))) // #nosec G115 -- test frames are far below 4 GiB
 	copy(frame[4:], xml)
 	_, err := c.conn.Write(frame)
-	require.NoError(c.t, err)
+	return err
 }
 
 func (c *client) read() *etree.Document {

@@ -109,7 +109,10 @@ func TestOversizeFrameClosesTheSession(t *testing.T) {
 	cfg.Limits.MaxFrameBytes = 4096
 	ts := startServer(t, cfg)
 	c := dial(t, ts.addr)
-	c.send(cmdXML("<logout/>", "BIG-"+strings.Repeat("x", 5000)))
+	// The server closes as soon as it has read the header, so the rest of the
+	// write may hit a closed connection (broken pipe, reset). That is the
+	// behaviour under test, not a failure; the close is what is asserted.
+	_ = c.trySend(cmdXML("<logout/>", "BIG-"+strings.Repeat("x", 5000)))
 	c.requireClosed()
 }
 
