@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<epp:epp xmlns:epp="urn:ietf:params:xml:ns:epp-1.0">
+  <epp:command>
+    <epp:logout/>
+    <epp:clTRID>ABC-12346</epp:clTRID>
+  </epp:command>
+</epp:epp>

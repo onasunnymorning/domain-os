@@ -28,7 +28,7 @@ func TestSessionLifecycle(t *testing.T) {
 	c.requireClosed()
 
 	assert.Equal(t, 1.0, ts.counter(t, "logins", loginSuccess))
-	assert.Equal(t, 1.0, ts.counter(t, "commands", "domain:check", "1000"))
+	assert.Equal(t, 1.0, ts.counter(t, "commands", testRegistrar, "domain:check", "1000"))
 	assert.Eventually(t, func() bool { return ts.sessions.len() == 0 }, 2*time.Second, 10*time.Millisecond, "the session is deregistered on close")
 	assert.Equal(t, 0.0, gauge(t, ts.metrics.sessionsActive))
 }
@@ -76,7 +76,7 @@ func TestUnboundCommands(t *testing.T) {
 	requireCode(t, c.roundTrip(info), "2101")
 	requireCode(t, c.roundTrip(cmdXML("<frobnicate/>", "FRB-1")), "2000")
 	requireCode(t, c.roundTrip(domainCheckXML("CHK-3")), "1000")
-	assert.Equal(t, 1.0, ts.counter(t, "commands", "domain:info", "2101"))
+	assert.Equal(t, 1.0, ts.counter(t, "commands", testRegistrar, "domain:info", "2101"))
 }
 
 func TestFramesRejectedBeforeDispatch(t *testing.T) {
@@ -198,7 +198,7 @@ func TestMetricsEndpoint(t *testing.T) {
 		`epp_sessions_active 1`,
 		`epp_connections_total{outcome="accepted"} 1`,
 		`epp_logins_total{result="success"} 1`,
-		`epp_commands_total{code="1000",command="login"} 1`,
+		`epp_commands_total{clid="registrar1",code="1000",command="login"} 1`,
 		`epp_command_duration_seconds_bucket`,
 		`epp_frame_bytes_bucket`,
 		`epp_server_cert_not_after_timestamp_seconds`,

@@ -50,6 +50,10 @@ func main() {
 // write per credential per interval, however many logins (ADR 0014).
 const useFlushInterval = time.Minute
 
+// auditPruneInterval is how often audit records past retention are deleted.
+// Every node prunes; the deletes are idempotent.
+const auditPruneInterval = time.Hour
+
 func run(cfg config.EPP, logger *slog.Logger) error {
 	if cfg.TLS.SelfSigned {
 		logger.Warn("EPP server is presenting a self-signed certificate (EPP_TLS_SELF_SIGNED=true); local development only")
@@ -66,10 +70,10 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		return fmt.Errorf("connect to the database at %s:%s: %w", cfg.DB.Host, cfg.DB.Port, err)
 	}
 	if sqlDB, err := db.DB(); err == nil {
-		// Logins and the credential refresh are the only queries; a small
-		// pool keeps a node from crowding out the API and workers.
-		sqlDB.SetMaxOpenConns(10)
-		sqlDB.SetMaxIdleConns(2)
+		// Logins, the credential refresh, checks and the audit log share
+		// a bounded pool, so a node cannot crowd out the API and workers.
+		sqlDB.SetMaxOpenConns(cfg.DB.MaxOpenConns)
+		sqlDB.SetMaxIdleConns(max(2, cfg.DB.MaxOpenConns/4))
 	}
 	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
@@ -115,10 +119,18 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
 	}, cfg.Sessions.Lease, nil)
 
+	domains := services.NewEPPDomainService(
+		postgres.NewDomainRepository(db), postgres.NewGormNNDNRepository(db),
+		postgres.NewGormTLDRepo(db), postgres.NewGormPhaseRepository(db),
+		cfg.Commands.CheckParallelism)
+	audit := services.NewEPPAuditService(postgres.NewEPPTransactionRepository(db), cfg.Audit.Buffer)
+
 	srv, err = epp.NewServer(epp.Options{
 		Config:        cfg,
 		Authenticator: auth,
 		Sessions:      sessions,
+		Domains:       domains,
+		Audit:         audit,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})
@@ -133,6 +145,17 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		defer close(flushed)
 		flushUses(flushCtx, uses, logger)
 	}()
+
+	// The audit writer outlives the drain: commands finishing during it
+	// still queue records, which it writes before it stops.
+	auditCtx, stopAudit := context.WithCancel(context.Background())
+	defer stopAudit()
+	audited := make(chan struct{})
+	go func() {
+		defer close(audited)
+		audit.Run(auditCtx, 10*time.Second, srv.ReportAuditBatchError)
+	}()
+	go pruneAudit(flushCtx, audit, cfg.Audit.Retention, logger)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
@@ -180,6 +203,8 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 
 	stopFlush()
 	<-flushed
+	stopAudit()
+	<-audited
 
 	opsCtx, cancelOps := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelOps()
@@ -206,6 +231,27 @@ func flushUses(ctx context.Context, uses *services.EPPCredentialUseRecorder, log
 		}
 		if err := uses.Flush(ctx); err != nil {
 			logger.Warn("EPP credential last-used times not written; retrying next interval", "error", err)
+		}
+	}
+}
+
+// pruneAudit deletes audit records past retention every
+// auditPruneInterval, starting at once.
+func pruneAudit(ctx context.Context, audit *services.EPPAuditService, retention time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(auditPruneInterval)
+	defer ticker.Stop()
+	for {
+		n, err := audit.Prune(ctx, retention)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			logger.Warn("EPP audit records past retention not deleted; retrying next interval", "deleted", n, "error", err)
+		case n > 0:
+			logger.Info("EPP audit records past retention deleted", "deleted", n, "retention", retention.String())
+		}
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
 		}
 	}
 }

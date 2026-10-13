@@ -3,9 +3,11 @@
 // calls.
 //
 // Logins are authenticated against registrars' EPP credentials (ADR 0014).
-// Only greeting, login, logout and a placeholder domain:check are bound. The target architecture, and the phased
-// plan for reaching it, is docs/epp/ARCHITECTURE.md; every setting is listed
-// in docs/epp/POLICY_REFERENCE.md.
+// Every command is validated against Go models of the EPP schemas (ADR 0016)
+// and recorded in the audit log. Greeting, login, logout and domain:check are
+// bound. The target architecture, and the phased plan for reaching it, is
+// docs/epp/ARCHITECTURE.md; every setting is listed in
+// docs/epp/POLICY_REFERENCE.md.
 package epp
 
 import (
@@ -49,7 +51,11 @@ type Options struct {
 	Authenticator interfaces.EPPAuthenticator
 	// Sessions is the cluster-wide session registry, with its caps. Required.
 	Sessions interfaces.EPPSessionTracker
-	Logger   *slog.Logger
+	// Domains answers domain commands. Required.
+	Domains interfaces.EPPDomainService
+	// Audit records every command and response. Required.
+	Audit  interfaces.EPPAuditLog
+	Logger *slog.Logger
 	// NewID returns a unique identifier, used for session IDs and svTRIDs.
 	// It must be unique across every node, not just this one.
 	NewID func() string
@@ -65,6 +71,9 @@ type Server struct {
 	metrics  *metrics
 	tracker  interfaces.EPPSessionTracker
 	auth     interfaces.EPPAuthenticator
+	domains  interfaces.EPPDomainService
+	auditLog interfaces.EPPAuditLog
+	policy   commandPolicy
 	watch    credentialWatch
 	logger   *slog.Logger
 	newID    func() string
@@ -90,12 +99,21 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Sessions == nil {
 		return nil, errors.New("epp: Options.Sessions is required")
 	}
+	if opts.Domains == nil {
+		return nil, errors.New("epp: Options.Domains is required")
+	}
+	if opts.Audit == nil {
+		return nil, errors.New("epp: Options.Audit is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
 		metrics:  newMetrics(),
 		tracker:  opts.Sessions,
 		auth:     opts.Authenticator,
+		domains:  opts.Domains,
+		auditLog: opts.Audit,
+		policy:   allowAll{},
 		logger:   opts.Logger,
 		newID:    opts.NewID,
 		served:   make(chan struct{}),
@@ -220,6 +238,13 @@ func (s *Server) Ready() bool {
 // unreachable, for epp_policy_store_degraded{store="lockout"}.
 func (s *Server) ReportLockoutDegraded(degraded bool) {
 	s.reportStoreDegraded(storeLockout, degraded)
+}
+
+// ReportAuditBatchError records a failed write of a batch of queued audit
+// records, which the audit log retries.
+func (s *Server) ReportAuditBatchError(err error) {
+	s.metrics.auditErrors.WithLabelValues(auditStageBatch).Inc()
+	s.logger.Error("EPP audit batch not written; retrying", "error", err)
 }
 
 func (s *Server) reportStoreDegraded(store string, degraded bool) {

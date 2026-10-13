@@ -44,8 +44,12 @@ type session struct {
 	conn        *tls.Conn
 	connectedAt time.Time
 	loginTimer  *time.Timer
-	// failedLogins is only touched by the session's own goroutine.
+	// failedLogins, objects and extensions are only touched by the
+	// session's own goroutine. objects and extensions are the services the
+	// session logged in with.
 	failedLogins int
+	objects      []string
+	extensions   []string
 
 	state         atomic.Int32
 	auth          atomic.Pointer[entities.EPPAuthenticatedLogin] // set by a successful <login>

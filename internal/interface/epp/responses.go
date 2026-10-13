@@ -6,10 +6,21 @@ import (
 
 	"github.com/beevik/etree"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // serverID is the <svID> in the greeting.
 const serverID = "domain-os EPP"
+
+// supportedObjects are the object services the greeting offers and a
+// <login> may ask for. Contact and host commands are not bound yet and are
+// answered 2101.
+var supportedObjects = []string{nsDomain, nsContact, nsHost}
+
+// supportedExtensions are the extensions the greeting offers and a <login>
+// may ask for. None is implemented yet.
+var supportedExtensions []string
 
 // greetingDocument builds the RFC 5730 §2.4 greeting.
 func greetingDocument(now time.Time) *etree.Document {
@@ -20,8 +31,14 @@ func greetingDocument(now time.Time) *etree.Document {
 	menu := g.CreateElement("svcMenu")
 	menu.CreateElement("version").SetText("1.0")
 	menu.CreateElement("lang").SetText("en")
-	for _, uri := range []string{nsDomain, nsContact, nsHost} {
+	for _, uri := range supportedObjects {
 		menu.CreateElement("objURI").SetText(uri)
+	}
+	if len(supportedExtensions) > 0 {
+		ext := menu.CreateElement("svcExtension")
+		for _, uri := range supportedExtensions {
+			ext.CreateElement("extURI").SetText(uri)
+		}
 	}
 	addDataCollectionPolicy(g)
 	return doc
@@ -81,14 +98,22 @@ func newEPPDocument() (*etree.Document, *etree.Element) {
 	return doc, epp
 }
 
-// placeholderCheckData is the fixed <domain:chkData> the stub domain:check
-// returns. It does not reflect the names asked about; the real handler is
-// Phase 4 of docs/epp/ARCHITECTURE.md.
-func placeholderCheckData() *etree.Element {
+// checkData builds <domain:chkData> from check results, in request order.
+func checkData(results []*queries.DomainCheckResult) *etree.Element {
 	chk := etree.NewElement("domain:chkData")
 	chk.CreateAttr("xmlns:domain", nsDomain)
-	name := chk.CreateElement("domain:cd").CreateElement("domain:name")
-	name.CreateAttr("avail", "1")
-	name.SetText("geoff.smoketestcnic")
+	for _, r := range results {
+		cd := chk.CreateElement("domain:cd")
+		name := cd.CreateElement("domain:name")
+		avail := "0"
+		if r.Available {
+			avail = "1"
+		}
+		name.CreateAttr("avail", avail)
+		name.SetText(r.DomainName)
+		if !r.Available && r.Reason != "" {
+			cd.CreateElement("domain:reason").SetText(r.Reason)
+		}
+	}
 	return chk
 }

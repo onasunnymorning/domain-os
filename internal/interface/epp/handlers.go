@@ -3,6 +3,8 @@ package epp
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,6 +56,11 @@ func loginFailureReason(err error) string {
 // locked out, the answer is 2501 and the session closes.
 func (s *Server) login(ctx context.Context, cmd *command) {
 	sess := cmd.session
+	cmd.attemptedLogin = elementText(cmd.doc, "//login/clID")
+	objects, extensions, ok := s.negotiate(cmd)
+	if !ok {
+		return
+	}
 	loginCmd := commands.EPPLoginCommand{
 		LoginID:     elementText(cmd.doc, "//login/clID"),
 		Password:    elementText(cmd.doc, "//login/pw"),
@@ -128,6 +135,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		}
 		auth.ReplacementPasswordID = replaced
 	}
+	sess.objects, sess.extensions = objects, extensions
 	sess.authAt.Store(time.Now().UnixNano())
 	sess.auth.Store(auth)
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
@@ -146,6 +154,31 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	cmd.respond(epplib.StatusSuccess, "", nil)
 }
 
+// negotiate reads the services a <login> asks for. Every object service
+// must be one the greeting offers, or the login is answered 2307
+// (unimplemented object service); every extension likewise, or 2103
+// (unimplemented extension). Neither counts as a failed login: no
+// credential has been checked.
+func (s *Server) negotiate(cmd *command) (objects, extensions []string, ok bool) {
+	for _, el := range cmd.doc.FindElements("//login/svcs/objURI") {
+		uri := strings.TrimSpace(el.Text())
+		if !slices.Contains(supportedObjects, uri) {
+			cmd.respond(epplib.StatusUnimplementedObjectService, "Unimplemented object service; "+uri+" is not offered", nil)
+			return nil, nil, false
+		}
+		objects = append(objects, uri)
+	}
+	for _, el := range cmd.doc.FindElements("//login/svcs/svcExtension/extURI") {
+		uri := strings.TrimSpace(el.Text())
+		if !slices.Contains(supportedExtensions, uri) {
+			cmd.respond(epplib.StatusUnimplementedExtension, "Unimplemented extension; "+uri+" is not offered", nil)
+			return nil, nil, false
+		}
+		extensions = append(extensions, uri)
+	}
+	return objects, extensions, true
+}
+
 func elementText(doc *etree.Document, path string) string {
 	if el := doc.FindElement(path); el != nil {
 		return strings.TrimSpace(el.Text())
@@ -160,9 +193,27 @@ func (s *Server) logout(_ context.Context, cmd *command) {
 	cmd.closeAfterResponse()
 }
 
-// domainCheck answers <domain:check> with a fixed placeholder response. It
-// does not look at the names asked about; the real handler is Phase 4 of
-// docs/epp/ARCHITECTURE.md.
-func (s *Server) domainCheck(_ context.Context, cmd *command) {
-	cmd.respond(epplib.StatusSuccess, "", placeholderCheckData())
+// domainCheck answers <domain:check>: whether each name is available, in
+// the order asked. More names than EPP_MAX_CHECK_NAMES is 2306; a registry
+// that cannot answer is 2400.
+func (s *Server) domainCheck(ctx context.Context, cmd *command) {
+	var names []string
+	for _, el := range cmd.doc.FindElements("/epp/command/check/*/name") {
+		names = append(names, strings.Join(strings.Fields(el.Text()), " "))
+	}
+	cmd.objects = names
+	s.metrics.checkNames.Observe(float64(len(names)))
+	if max := s.cfg.Commands.MaxCheckNames; len(names) > max {
+		cmd.respond(epplib.StatusParameterPolicyError, fmt.Sprintf("Parameter value policy error; at most %d names per check", max), nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	results, err := s.domains.Check(ctx, names)
+	if err != nil {
+		s.logger.Error("EPP domain check failed", "connection_id", cmd.session.id, "svtrid", cmd.svTRID, "error", err)
+		cmd.respond(epplib.StatusCommandFailed, "", nil)
+		return
+	}
+	cmd.respond(epplib.StatusSuccess, "", checkData(results))
 }

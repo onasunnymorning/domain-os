@@ -68,8 +68,11 @@ func TestNewPasswordReplacesTheOldOne(t *testing.T) {
 func TestInvalidNewPasswordLeavesTheSessionLoggedOut(t *testing.T) {
 	ts := startServer(t, testConfig())
 	c := dial(t, ts.addr)
-	requireCode(t, c.roundTrip(loginAsXML(testLogin, testPassword, "short", "NEW")), "2306")
+	// Within the schema's 6 to 16 characters, but not printable ASCII.
+	requireCode(t, c.roundTrip(loginAsXML(testLogin, testPassword, "pässwörd-01", "NEW")), "2306")
 	requireCode(t, c.roundTrip(domainCheckXML("CHK")), "2002") // still not logged in
+	// Outside the schema, it is a syntax error before the password rules.
+	requireCode(t, c.roundTrip(loginAsXML(testLogin, testPassword, "short", "NEW")), "2001")
 	c.login()
 }
 
@@ -119,7 +122,7 @@ func TestCredentialStoreOutage(t *testing.T) {
 func TestNotReadyUntilTheAllowlistLoads(t *testing.T) {
 	creds := newTestCredentials(t)
 	creds.store.Fail(errors.New("database starting"))
-	srv, err := NewServer(Options{Config: testConfig(), Authenticator: creds.authenticator(), Sessions: creds.tracker(testConfig()), Logger: discardLogger(), NewID: func() string { return "x" }})
+	srv, err := NewServer(creds.options(testConfig(), func() string { return "x" }))
 	require.NoError(t, err)
 	creds.server = srv
 	l := listenLoopback(t)
