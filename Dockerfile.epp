@@ -69,12 +69,13 @@ RUN chown -R epp:epp /app
 # Switch to non-root user
 USER epp
 
-# Expose EPP port (700)
-EXPOSE 700
+# EPP (700) and the ops port (9700: /healthz, /readyz, /metrics)
+EXPOSE 700 9700
 
-# Health check - verify EPP port is listening
+# Health check on the ops port. A TCP probe on 700 would be a failed TLS
+# handshake every interval.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD nc -z localhost 700 || exit 1
+    CMD wget -q -O /dev/null http://localhost:9700/readyz || exit 1
 
 # Run the EPP server
 CMD ["/app/epp-server"]

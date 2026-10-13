@@ -107,8 +107,10 @@ var serviceMetaRegistry = []serviceMeta{
 		Image:        "gprins/domain-os-epp",
 		Port:         700,
 		Protocol:     "tls",
-		HealthCheck:  &HealthCheck{Type: "tcp", Port: 700},
-		Services:     []Service{ServiceEPP},
+		// The ops port, not 700: a TCP probe on 700 is a failed TLS handshake
+		// every interval, which is noise in epp_connections_total.
+		HealthCheck: &HealthCheck{Type: "http", Path: "/readyz", Port: 9700},
+		Services:    []Service{ServiceEPP},
 	},
 	{
 		ContractName: "whois",

@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-03T15:54:07Z",
+  "generated": "2026-10-13T17:04:24Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -284,8 +284,9 @@
       "protocol": "tls",
       "env_injection": "runtime",
       "health_check": {
-        "type": "tcp",
-        "port": 700
+        "type": "http",
+        "path": "/readyz",
+        "port": 9700
       },
       "env_vars": {
         "required": [],
@@ -299,6 +300,101 @@
             "name": "EPP_PORT",
             "default": "700",
             "description": "EPP server TCP listen port"
+          },
+          {
+            "name": "EPP_OPS_PORT",
+            "default": "9700",
+            "description": "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"
+          },
+          {
+            "name": "EPP_TLS_CERT_FILE",
+            "required_when": "EPP_TLS_SELF_SIGNED=false",
+            "description": "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. A path, not credential material: the file itself is mounted from the secret store"
+          },
+          {
+            "name": "EPP_TLS_KEY_FILE",
+            "required_when": "EPP_TLS_SELF_SIGNED=false",
+            "description": "Path to the PEM private key for EPP_TLS_CERT_FILE. A path, not credential material: the key file itself is mounted from the secret store"
+          },
+          {
+            "name": "EPP_TLS_SELF_SIGNED",
+            "default": "false",
+            "description": "Present a generated self-signed certificate instead of EPP_TLS_CERT_FILE. Local development only"
+          },
+          {
+            "name": "EPP_TLS_RELOAD_INTERVAL",
+            "default": "1m",
+            "description": "How often the certificate files are checked for a renewal"
+          },
+          {
+            "name": "EPP_PROXY_PROTOCOL",
+            "default": "false",
+            "description": "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-IP limits see only the balancer"
+          },
+          {
+            "name": "EPP_PROXY_TRUSTED_CIDRS",
+            "required_when": "EPP_PROXY_PROTOCOL=true",
+            "description": "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"
+          },
+          {
+            "name": "EPP_MAX_CONNECTIONS",
+            "default": "2000",
+            "description": "Open connections allowed on one node"
+          },
+          {
+            "name": "EPP_MAX_HANDSHAKES",
+            "default": "200",
+            "description": "TLS handshakes allowed in progress on one node"
+          },
+          {
+            "name": "EPP_MAX_FRAME_BYTES",
+            "default": "65536",
+            "description": "Largest EPP frame accepted, including its 4-byte header. A larger frame closes the session"
+          },
+          {
+            "name": "EPP_XML_MAX_DEPTH",
+            "default": "32",
+            "description": "Deepest element nesting accepted in a frame"
+          },
+          {
+            "name": "EPP_XML_MAX_ELEMENTS",
+            "default": "2000",
+            "description": "Most elements accepted in a frame"
+          },
+          {
+            "name": "EPP_HANDSHAKE_TIMEOUT",
+            "default": "10s",
+            "description": "Time from TCP accept (including any PROXY header) to a completed TLS handshake"
+          },
+          {
+            "name": "EPP_LOGIN_TIMEOUT",
+            "default": "30s",
+            "description": "Time from greeting to a successful \u003clogin\u003e"
+          },
+          {
+            "name": "EPP_IDLE_TIMEOUT",
+            "default": "10m",
+            "description": "Time a session may wait between commands"
+          },
+          {
+            "name": "EPP_READ_TIMEOUT",
+            "default": "30s",
+            "description": "Time to read one frame once it has started"
+          },
+          {
+            "name": "EPP_WRITE_TIMEOUT",
+            "default": "60s",
+            "description": "Time to write one response"
+          },
+          {
+            "name": "EPP_MAX_SESSION_DURATION",
+            "default": "24h",
+            "description": "Longest a session may stay open"
+          },
+          {
+            "name": "EPP_DRAIN_TIMEOUT",
+            "default": "30s",
+            "description": "On SIGTERM, time allowed for sessions to finish before their connections are closed"
           },
           {
             "name": "EPP_USERNAME",

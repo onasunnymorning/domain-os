@@ -115,7 +115,9 @@ else:
 
     local_resource(
         'epp-server',
-        serve_cmd=DOPPLER_NATIVE + ' go run ./cmd/epp',
+        # Self-signed: there is no real certificate locally. The ops endpoint
+        # (/healthz, /readyz, /metrics) is on EPP_OPS_PORT, 9700 by default.
+        serve_cmd=DOPPLER_NATIVE + ' env EPP_TLS_SELF_SIGNED=true go run ./cmd/epp',
         deps=['./internal', './pkg', './cmd/epp'],
         labels=['app'],
         auto_init=False,

@@ -2,93 +2,84 @@ package epp
 
 import (
 	"context"
-	"log/slog"
+	"strings"
 
-	"github.com/beevik/etree"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
-
-	"github.com/onasunnymorning/domain-os/internal/appcontext"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
 
-// handlers holds what the command handlers share. Every handler adheres to
-// epp-lib's CommandFunc signature, and has no error path: when a write fails
-// the connection is already gone.
-type handlers struct {
-	limiter *middleware.RateLimiter // nil disables limiting
-	logger  *slog.Logger
-}
-
-// greeting sends the server greeting, both on connect and in reply to <hello>.
-func (h *handlers) greeting(_ context.Context, rw epplib.Writer, _ *etree.Document) {
-	_, _ = rw.Write([]byte(greetingXML()))
-}
+// Login results for epp_logins_total.
+const (
+	loginSuccess = "success"
+	loginFailure = "failure"
+	loginLocked  = "locked"
+)
 
 // login handles <login>.
 //
 // It does not authenticate: any request carrying a clID and a pw succeeds.
 // Real authentication is Phase 2 of docs/epp/ARCHITECTURE.md.
-func (h *handlers) login(ctx context.Context, rw epplib.Writer, doc *etree.Document) {
-	clID := doc.FindElement("//clID")
-	pw := doc.FindElement("//pw")
-
-	var username string
-	if clID != nil {
-		username = clID.Text()
+func (s *Server) login(ctx context.Context, cmd *command) {
+	var clID string
+	if el := cmd.doc.FindElement("//login/clID"); el != nil {
+		clID = strings.TrimSpace(el.Text())
 	}
-	clientIP, _ := appcontext.ClientIP(ctx)
-	h.logger.Info("EPP login attempt", "clid", username, "client_ip", clientIP)
+	pw := cmd.doc.FindElement("//login/pw")
+	sess := cmd.session
+	s.logger.Info("EPP login attempt", "connection_id", sess.id, "clid", clID, "client_ip", sess.clientIP)
 
-	if h.limiter != nil && username != "" {
-		locked, err := h.limiter.IsAccountLocked(ctx, username)
+	if s.limiter != nil && clID != "" {
+		locked, err := s.limiter.IsAccountLocked(ctx, clID)
 		if err != nil {
-			h.logger.Error("EPP account lock status unavailable", "clid", username, "error", err)
+			s.logger.Error("EPP account lock status unavailable", "clid", clID, "error", err)
 		}
 		if locked {
-			h.logger.Warn("EPP login refused: account locked", "clid", username, "client_ip", clientIP)
-			_, _ = rw.Write([]byte(authErrorXML("account locked")))
+			s.metrics.logins.WithLabelValues(loginLocked).Inc()
+			s.logger.Warn("EPP login refused: account locked", "connection_id", sess.id, "clid", clID, "client_ip", sess.clientIP)
+			cmd.respond(epplib.StatusAuthenticationError, "Authentication error; account locked", nil)
 			return
 		}
 	}
 
 	// TODO: Implement actual authentication logic here
-	authSuccess := username != "" && pw != nil
-
-	if !authSuccess {
-		if h.limiter != nil && username != "" && clientIP != "" {
-			if err := h.limiter.RecordFailedLogin(ctx, username, clientIP); err != nil {
-				h.logger.Warn("EPP failed login recorded", "clid", username, "client_ip", clientIP, "error", err)
+	if clID == "" || pw == nil {
+		if s.limiter != nil && clID != "" {
+			if err := s.limiter.RecordFailedLogin(ctx, clID, sess.clientIP); err != nil {
+				s.logger.Warn("EPP failed login recorded", "clid", clID, "client_ip", sess.clientIP, "error", err)
 			}
 		}
-		_, _ = rw.Write([]byte(authErrorXML("invalid credentials")))
+		s.metrics.logins.WithLabelValues(loginFailure).Inc()
+		cmd.respond(epplib.StatusAuthenticationError, "Authentication error; invalid credentials", nil)
 		return
 	}
 
-	if h.limiter != nil && username != "" && clientIP != "" {
-		if err := h.limiter.ClearFailedLogins(ctx, username, clientIP); err != nil {
-			h.logger.Error("EPP failed logins not cleared", "clid", username, "client_ip", clientIP, "error", err)
+	if s.limiter != nil {
+		if err := s.limiter.ClearFailedLogins(ctx, clID, sess.clientIP); err != nil {
+			s.logger.Error("EPP failed logins not cleared", "clid", clID, "client_ip", sess.clientIP, "error", err)
 		}
-
-		// TODO: carry the registrar ID for connection tracking. Enriching ctx
-		// here is pointless while this handler neither propagates nor returns
-		// it — the value was silently dropped. Wire it through the connection
-		// once authentication above is real.
 	}
 
-	_, _ = rw.Write([]byte(loginResponseXML()))
+	sess.loginTimer.Stop()
+	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
+		// The login timeout fired while this command was being handled.
+		cmd.respond(epplib.StatusCommandUseError, "Command use error; login timeout expired", nil)
+		cmd.closeAfterResponse()
+		return
+	}
+	sess.clID.Store(&clID)
+	s.metrics.logins.WithLabelValues(loginSuccess).Inc()
+	cmd.respond(epplib.StatusSuccess, "", nil)
 }
 
-// logout handles <logout> and closes the connection after replying.
-func (h *handlers) logout(ctx context.Context, rw epplib.Writer, _ *etree.Document) {
-	connectionID, _ := appcontext.ConnectionID(ctx)
-	h.logger.Info("EPP logout", "connection_id", connectionID)
-	_, _ = rw.Write([]byte(logoutResponseXML()))
-	rw.CloseAfterWrite()
+// logout handles <logout> and closes the session after replying.
+func (s *Server) logout(_ context.Context, cmd *command) {
+	s.logger.Info("EPP logout", "connection_id", cmd.session.id, "clid", cmd.session.loggedInAs())
+	cmd.respond(epplib.StatusEndingSession, "", nil)
+	cmd.closeAfterResponse()
 }
 
 // domainCheck answers <domain:check> with a fixed placeholder response. It
-// does not look at the names asked about; real handlers are Phase 4 of
+// does not look at the names asked about; the real handler is Phase 4 of
 // docs/epp/ARCHITECTURE.md.
-func (h *handlers) domainCheck(_ context.Context, rw epplib.Writer, _ *etree.Document) {
-	_, _ = rw.Write([]byte(placeholderDomainCheckXML()))
+func (s *Server) domainCheck(_ context.Context, cmd *command) {
+	cmd.respond(epplib.StatusSuccess, "", placeholderCheckData())
 }

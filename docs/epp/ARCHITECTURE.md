@@ -10,12 +10,10 @@
 
 ## Where it stands today
 
-The server is a **protocol stub**:
-- It binds greeting, `<hello>`, login, logout and a placeholder `domain:check` that ignores the names it is asked about.
+The transport and session layer is in place (Phase 1). The command surface is still a **protocol stub**:
+- It binds `<hello>`, login, logout and a placeholder `domain:check` that ignores the names it is asked about. Every other RFC 5730 command is answered 2101 (unimplemented).
 - **Login is not authenticated.** Any request carrying a clID and a pw succeeds.
-- The client certificate is requested but **not verified** (`tls.RequireAnyClientCert`).
-- The server certificate is self-signed, generated at boot and valid for one day.
-- Transaction IDs are fixed placeholders.
+- The client certificate is required but **not verified** (`tls.RequireAnyClientCert`).
 
 The Redis limiter has known structural flaws, all fixed by redesign rather than patching:
 - **Connection counts drift.** They use INCR/DECR with a 5-minute TTL, so a session open longer than that drops out of the count, and a crashed node leaks counts until the TTL expires.
@@ -44,7 +42,7 @@ The Redis limiter has known structural flaws, all fixed by redesign rather than 
 - On SIGTERM the node stops accepting, finishes in-flight commands and closes sessions within a drain timeout.
 - Health, readiness and `/metrics` are served on a separate ops port.
 
-*Today:* plain TCP listener, TLS 1.2 minimum, no PROXY protocol, no allowlist, no drain, no ops port.
+*Today:* everything in this section except the source-IP allowlist, which is Phase 2. The server certificate comes from file and is hot-reloaded. PROXY protocol, the per-node connection and handshake caps, the handshake timeout, drain on SIGTERM and the ops port are all in place.
 
 ## 2. Identity & credentials
 
@@ -101,7 +99,7 @@ A login must pass three checks:
 - **Caps** apply per registrar, per login, per family, per source IP and per node. Over the cap, the server answers 2502 and closes.
 - **Operators can list live sessions and kill one** through the admin API. They can also kill every session that authenticated with a given credential, which is the second half of a compromise retire (§2).
 
-*Today:* epp-lib's idle, read, write and total timeouts apply. There is no state machine, and counting uses the drifting counters described above.
+*Today:* the state machine and every timeout are in place. Each node keeps its own registry of live sessions, which drain uses. The cluster-wide lease registry, the caps that use it and the admin actions are Phase 3. Until then, connection counting across nodes uses the drifting counters described above.
 
 ## 4. Frame & protocol hygiene
 
@@ -111,7 +109,7 @@ A login must pass three checks:
 - **Per-command object caps** (names per check, nameservers, DS records). A breach returns 2306.
 - `clTRID` is echoed. `svTRID` is globally unique and doubles as the correlation ID in logs and audit.
 
-*Today:* the maximum frame is 1000 bytes, which is too small for a real create with DNSSEC. There is no XSD validation and there are no caps.
+*Today:* the frame size, DTD rejection, depth and element caps, the clTRID echo and the unique svTRID are in place. Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. XSD validation is Phase 4, and per-command object caps are Phase 5.
 
 ## 5. Policy enforcement
 
@@ -138,8 +136,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 
 - **Prometheus metrics:**
   - `epp_sessions_active{registrar,login,node}`
-  - `epp_connections_total{outcome}`
-  - `epp_tls_handshake_failures_total{reason}`
+  - `epp_connections_total{outcome}`: accepted, or why a connection was refused or closed early (node cap, handshake cap, failed handshake, login timeout, limiter, draining)
   - `epp_logins_total{result}`
   - `epp_commands_total{registrar,command,object,code}`
   - `epp_command_duration_seconds`
@@ -153,7 +150,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 - **Audit log** of every command and response, keyed by svTRID and clTRID, with `pw`, `newPW` and `authInfo` redacted. It is written durably (not telemetry, per INV-01) with configurable retention.
 - **Structured `slog` only.**
 
-*Today:* structured JSON `slog`. No metrics, no audit log.
+*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total`, `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. The series with registrar or login labels arrive with authentication (Phase 2) and the session registry (Phase 3). There is no audit log yet.
 
 ---
 
@@ -164,7 +161,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | This document, ADR 0013, policy reference skeleton. Server moved to `internal/interface/epp`. Typed config in `internal/config/epp.go`. `slog` throughout. One end-to-end TLS session test | **Done** |
-| 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | Planned |
+| 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | **Done** |
 | 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | Planned |
 | 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | Planned |
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
