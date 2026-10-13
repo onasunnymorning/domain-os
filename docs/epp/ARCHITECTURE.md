@@ -98,7 +98,7 @@ A login must pass three checks:
 - Every session is a lease in Redis, written by one atomic script at connect (source cap) and at login (registrar and login caps; a login's own session cap overrides the default). Over the source cap the connection closes before the greeting; over a registrar or login cap `<login>` is answered 2502.
 - Each node renews its sessions every heartbeat, writing the command count and last command time, and puts back any the registry lost. So after a Redis outage the registry heals within one heartbeat, and a crashed node's sessions expire with their leases.
 - If Redis cannot answer, the node applies the same caps to its own sessions (fail-open, ADR 0013) and sets `epp_policy_store_degraded{store="sessions"}`.
-- The admin API lists sessions (`GET /epp/sessions`, filterable by registrar, login, source and credential) and ends them (`DELETE /epp/sessions/{id}`, or by filter, including by credential), over Redis pub/sub to whichever node holds the session. A kill is recorded as an `epp.session.killed` event. See [POLICY_REFERENCE.md § Sessions](POLICY_REFERENCE.md#sessions).
+- The admin API lists sessions (`GET /epp/sessions`, filterable by registrar, login, source and credential) and ends them (`DELETE /epp/sessions/{id}`, or by filter, including by credential), over Redis pub/sub to whichever node holds the session. Each kill request is recorded as an `epp.session.kill_requested` event before it is sent. See [POLICY_REFERENCE.md § Sessions](POLICY_REFERENCE.md#sessions).
 
 ## 4. Frame & protocol hygiene
 

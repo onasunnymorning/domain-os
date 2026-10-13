@@ -17,8 +17,11 @@ type EPPSessions struct {
 	mu       sync.Mutex
 	now      func() time.Time
 	sessions map[string]memSession
-	subs     []chan string
-	err      error
+	// closed keeps a closed session from being renewed back, as the Redis
+	// registry's tombstones do.
+	closed map[string]time.Time
+	subs   []chan string
+	err    error
 }
 
 type memSession struct {
@@ -28,7 +31,7 @@ type memSession struct {
 
 // NewEPPSessions returns an empty registry.
 func NewEPPSessions() *EPPSessions {
-	return &EPPSessions{now: time.Now, sessions: map[string]memSession{}}
+	return &EPPSessions{now: time.Now, sessions: map[string]memSession{}, closed: map[string]time.Time{}}
 }
 
 // Fail makes every method return err wrapped in
@@ -108,6 +111,9 @@ func (r *EPPSessions) Renew(_ context.Context, sessions []*entities.EPPSession, 
 	}
 	now := r.now()
 	for _, s := range sessions {
+		if until, ok := r.closed[s.ID]; ok && now.Before(until) {
+			continue
+		}
 		r.sessions[s.ID] = memSession{s: *s, expires: now.Add(lease)}
 	}
 	return nil
@@ -121,6 +127,7 @@ func (r *EPPSessions) Close(_ context.Context, s *entities.EPPSession) error {
 		return err
 	}
 	delete(r.sessions, s.ID)
+	r.closed[s.ID] = r.now().Add(10 * time.Minute)
 	return nil
 }
 

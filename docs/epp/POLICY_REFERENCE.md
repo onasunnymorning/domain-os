@@ -134,7 +134,7 @@ In place (Phase 3), as server settings; the policy engine (Phase 5) makes the ca
 | `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`) |
 | `EPP_MAX_SESSIONS_PER_REGISTRAR` | `10` | Logged-in sessions per registrar, across every node and login. Over it, `<login>` is answered 2502 and the session closes |
 | `EPP_MAX_SESSIONS_PER_LOGIN` | `10` | Logged-in sessions per login, across every node. A login's own `session_cap` ([Credentials](#credentials-admin-api)) overrides it. Over it, 2502 |
-| `EPP_SESSION_LEASE` | `90s` | How long a session stays in the registry without a renewal. A crashed node's sessions disappear after this |
+| `EPP_SESSION_LEASE` | `90s` | How long a session stays in the registry without a renewal. A crashed node's sessions disappear after this. Lease times use Redis's clock, not the nodes', so clock skew between nodes does not matter. A closed session cannot be renewed back by a heartbeat that read it just before it closed |
 | `EPP_SESSION_HEARTBEAT` | `30s` | How often a node renews its sessions. At most half the lease, so one missed renewal never drops a live session. The registry's command count and last command time are this fresh |
 | `EPP_NODE_ID` | the hostname | The node's name in the registry |
 | Sessions per family | 40, *(Phase 5)* | Needs registrar families |
@@ -150,7 +150,7 @@ In place (Phase 3), as server settings; the policy engine (Phase 5) makes the ca
 | End a session | `DELETE /epp/sessions/{id}` → 202 |
 | End every session of a registrar, login or source, or that used a credential | `DELETE /epp/sessions?clid=` (or `login`, `client_ip`, `credential_id`) → 202. At least one filter is required |
 
-Ending a session publishes a request every node receives; the node holding the session closes it within moments (`epp_sessions_ended_total{reason="admin_kill"}`). The answer is 202: a node that cannot reach Redis at that instant misses the request. Each ended session is recorded as an `epp.session.killed` outbox event with the operator as actor. A compromise retire of a credential ends its sessions on its own, within `EPP_CREDENTIAL_REFRESH_INTERVAL`; ending them by `credential_id` is immediate.
+Ending a session first records an `epp.session.kill_requested` outbox event per session, with the operator as actor; if that cannot be written, nothing is sent and the request fails. Then it publishes a request every node receives, and the node holding the session closes it within moments (`epp_sessions_ended_total{reason="admin_kill"}`). The answer is 202: a node that cannot reach Redis at that instant misses the request. A compromise retire of a credential ends its sessions on its own, within `EPP_CREDENTIAL_REFRESH_INTERVAL`; ending them by `credential_id` is immediate.
 
 ### Authentication
 

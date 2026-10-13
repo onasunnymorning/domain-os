@@ -94,11 +94,15 @@ func (s *EPPSession) UsedCredential(id uuid.UUID) bool {
 	return slices.Contains(s.CredentialIDs, id)
 }
 
-// EventEPPSessionKilled is the outbox event for an operator ending a session.
-const EventEPPSessionKilled = "epp.session.killed"
+// EventEPPSessionKillRequested is the outbox event for an operator asking
+// for a session to be ended. It is written before the request is sent, so
+// every request has its record; a request that could not be sent leaves the
+// record of an attempt, and the operator sees the failure.
+const EventEPPSessionKillRequested = "epp.session.kill_requested"
 
-// EPPSessionKilledData is the payload of an epp.session.killed event.
-type EPPSessionKilledData struct {
+// EPPSessionKillRequestedData is the payload of an
+// epp.session.kill_requested event.
+type EPPSessionKillRequestedData struct {
 	SessionID string   `json:"session_id"`
 	ClID      ClIDType `json:"clid,omitempty"`
 	LoginID   ClIDType `json:"login_id,omitempty"`

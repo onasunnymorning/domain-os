@@ -83,7 +83,7 @@ func (s *Server) openInRegistry(ctx context.Context, sess *session) error {
 	s.reportStoreDegraded(storeSessions, true)
 	s.logger.Warn("EPP session registry unavailable; applying the caps on this node only", "client_ip", sess.clientIP, "error", err)
 	caps := s.tracker.Caps()
-	if s.sessions.count(func(o *session) bool { return o.source == sess.source }) >= caps.PerSource {
+	if s.sessions.count(func(o *session) bool { return o != sess && o.source == sess.source }) >= caps.PerSource {
 		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitSource, Cap: caps.PerSource}
 	}
 	return nil
@@ -91,7 +91,8 @@ func (s *Server) openInRegistry(ctx context.Context, sess *session) error {
 
 // authenticateInRegistry records who the session logged in as, under the
 // registrar's and the login's caps, failing open to this node's own sessions
-// like openInRegistry.
+// like openInRegistry. The fallback counts leave sess out: it is already
+// registered locally, and counting it would refuse a login under its cap.
 func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth *entities.EPPAuthenticatedLogin) error {
 	regCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
 	defer cancel()
@@ -106,10 +107,10 @@ func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth
 	s.reportStoreDegraded(storeSessions, true)
 	s.logger.Warn("EPP session registry unavailable; applying the caps on this node only", "connection_id", sess.id, "error", err)
 	caps := s.tracker.Caps()
-	if n := s.sessions.count(func(o *session) bool { return o.registrar() == string(auth.ClID) }); n >= caps.PerRegistrar {
+	if n := s.sessions.count(func(o *session) bool { return o != sess && o.registrar() == string(auth.ClID) }); n >= caps.PerRegistrar {
 		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: caps.PerRegistrar}
 	}
-	if perLogin := caps.ForLogin(auth.SessionCap); s.sessions.count(func(o *session) bool { return o.loggedInAs() == string(auth.LoginID) }) >= perLogin {
+	if perLogin := caps.ForLogin(auth.SessionCap); s.sessions.count(func(o *session) bool { return o != sess && o.loggedInAs() == string(auth.LoginID) }) >= perLogin {
 		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: perLogin}
 	}
 	return nil

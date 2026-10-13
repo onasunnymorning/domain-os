@@ -127,7 +127,7 @@ func (ctrl *EPPSessionsController) Get(ctx *gin.Context) {
 
 // Kill godoc
 // @Summary End a live EPP session
-// @Description Asks the node holding the session to close it. The request is accepted, not confirmed: a node that cannot reach Redis at that moment misses it. Recorded as an epp.session.killed event.
+// @Description Asks the node holding the session to close it. The request is recorded as an epp.session.kill_requested event first, and is not sent if it cannot be recorded. It is accepted, not confirmed: a node that cannot reach Redis at that moment misses it.
 // @Tags EPP sessions
 // @Produce json
 // @Param id path string true "Session ID"

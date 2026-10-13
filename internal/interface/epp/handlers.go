@@ -104,10 +104,11 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	}
 
 	sess.loginTimer.Stop()
-	sess.authAt.Store(time.Now().UnixNano())
-	sess.auth.Store(auth)
+	// The registry admits the login before the session records it: until
+	// then the heartbeat must renew the session as not logged in, or it
+	// would add it to the registrar's and login's indexes without a cap
+	// check.
 	if err := s.authenticateInRegistry(ctx, sess, auth); err != nil {
-		sess.auth.Store(nil)
 		s.metrics.logins.WithLabelValues(loginSessionLimit).Inc()
 		s.logger.Warn("EPP login refused: session limit", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
 			"client_ip", sess.clientIP, "error", err)
@@ -115,6 +116,8 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		cmd.closeAfterResponse()
 		return
 	}
+	sess.authAt.Store(time.Now().UnixNano())
+	sess.auth.Store(auth)
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
 		// The login timeout fired, or the session was ended, while this
 		// command was being handled.

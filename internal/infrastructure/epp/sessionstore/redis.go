@@ -5,9 +5,15 @@
 // Sorted sets index the sessions by source address, registrar and login, and
 // one indexes them all; each member's score is its lease expiry in Unix
 // milliseconds. Counting a cap prunes the expired members first, so counts
-// come from live leases, not from counters that can drift. The scripts touch
-// several keys at once, so the registry needs a single Redis (or one hash
-// slot), not a cluster.
+// come from live leases, not from counters that can drift.
+//
+// Every lease time comes from Redis's own clock (TIME, inside the scripts),
+// never a node's, so clock skew between nodes cannot expire a live session
+// early or keep a dead one counted. A closed session leaves a tombstone, so a
+// heartbeat that read it just before it closed cannot bring it back.
+//
+// The scripts touch several keys at once, some named inside the script, so
+// the registry needs a single Redis, not a cluster.
 package sessionstore
 
 import (
@@ -32,6 +38,7 @@ const (
 )
 
 func sessionKey(id string) string     { return keyPrefix + id }
+func tombstoneKey(id string) string   { return "epp:session-closed:" + id }
 func sourceKey(ip string) string      { return "epp:sessions:ip:" + ip }
 func registrarKey(clid string) string { return "epp:sessions:clid:" + clid }
 func loginKey(login string) string    { return "epp:sessions:login:" + login }
@@ -39,13 +46,21 @@ func loginKey(login string) string    { return "epp:sessions:login:" + login }
 // Redis is a repositories.EPPSessionRegistry in Redis.
 type Redis struct {
 	client *redis.Client
-	now    func() time.Time
 }
 
 // NewRedis returns a registry in client's Redis.
 func NewRedis(client *redis.Client) *Redis {
-	return &Redis{client: client, now: time.Now}
+	return &Redis{client: client}
 }
+
+// clock is the preamble every script starts with: now and the lease expiry,
+// in milliseconds of Redis's clock. It expects the lease in ms in ARGV[2].
+const clock = `
+local t = redis.call('TIME')
+local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
+local lease = tonumber(ARGV[2])
+local exp = now + lease
+`
 
 func unavailable(err error) error {
 	return fmt.Errorf("%w: %w", entities.ErrEPPSessionsUnavailable, err)
@@ -55,16 +70,16 @@ func unavailable(err error) error {
 // the session. A session already in the index keeps its slot.
 //
 // KEYS: source index, all index, session key.
-// ARGV: id, now ms, expiry ms, cap, record, lease ms.
-var open = redis.NewScript(`
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[2])
-if not redis.call('ZSCORE', KEYS[1], ARGV[1]) and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[4]) then
+// ARGV: id, lease ms, cap, record.
+var open = redis.NewScript(clock + `
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+if not redis.call('ZSCORE', KEYS[1], ARGV[1]) and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
   return 0
 end
-redis.call('ZADD', KEYS[1], ARGV[3], ARGV[1])
-redis.call('PEXPIRE', KEYS[1], ARGV[6])
-redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
-redis.call('SET', KEYS[3], ARGV[5], 'PX', ARGV[6])
+redis.call('ZADD', KEYS[1], exp, ARGV[1])
+redis.call('PEXPIRE', KEYS[1], lease)
+redis.call('ZADD', KEYS[2], exp, ARGV[1])
+redis.call('SET', KEYS[3], ARGV[4], 'PX', lease)
 return 1
 `)
 
@@ -73,28 +88,62 @@ return 1
 // registrar cap, or -2 at the login cap.
 //
 // KEYS: registrar index, login index, session key.
-// ARGV: id, now ms, expiry ms, registrar cap, login cap, record, lease ms.
-var authenticate = redis.NewScript(`
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[2])
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', ARGV[2])
-if not redis.call('ZSCORE', KEYS[1], ARGV[1]) and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[4]) then
+// ARGV: id, lease ms, registrar cap, login cap, record.
+var authenticate = redis.NewScript(clock + `
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
+if not redis.call('ZSCORE', KEYS[1], ARGV[1]) and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
   return -1
 end
-if not redis.call('ZSCORE', KEYS[2], ARGV[1]) and redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[5]) then
+if not redis.call('ZSCORE', KEYS[2], ARGV[1]) and redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[4]) then
   return -2
 end
-redis.call('ZADD', KEYS[1], ARGV[3], ARGV[1])
-redis.call('PEXPIRE', KEYS[1], ARGV[7])
-redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
-redis.call('PEXPIRE', KEYS[2], ARGV[7])
-redis.call('SET', KEYS[3], ARGV[6], 'PX', ARGV[7])
+redis.call('ZADD', KEYS[1], exp, ARGV[1])
+redis.call('PEXPIRE', KEYS[1], lease)
+redis.call('ZADD', KEYS[2], exp, ARGV[1])
+redis.call('PEXPIRE', KEYS[2], lease)
+redis.call('SET', KEYS[3], ARGV[5], 'PX', lease)
 return 1
 `)
 
-func (r *Redis) times(lease time.Duration) (now, expiry int64) {
-	t := r.now()
-	return t.UnixMilli(), t.Add(lease).UnixMilli()
-}
+// renew extends one session's lease and rewrites its record, unless the
+// session has closed. A session the registry lost is put back.
+//
+// KEYS: session key, tombstone, all index, then the session's other indexes.
+// ARGV: id, lease ms, record.
+var renew = redis.NewScript(clock + `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+redis.call('SET', KEYS[1], ARGV[3], 'PX', lease)
+redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
+redis.call('ZADD', KEYS[3], exp, ARGV[1])
+for i = 4, #KEYS do
+  redis.call('ZADD', KEYS[i], exp, ARGV[1])
+  redis.call('PEXPIRE', KEYS[i], lease)
+end
+return 1
+`)
+
+// closeSession removes a session from every index its stored record names
+// and every index the caller names, deletes the record and leaves a
+// tombstone.
+//
+// KEYS: session key, tombstone, all index, then the caller's indexes.
+// ARGV: id, tombstone ms, source prefix, registrar prefix, login prefix.
+var closeSession = redis.NewScript(clock + `
+local rec = redis.call('GET', KEYS[1])
+if rec then
+  local ok, s = pcall(cjson.decode, rec)
+  if ok and type(s) == 'table' then
+    if type(s.client_ip) == 'string' then redis.call('ZREM', ARGV[3] .. s.client_ip, ARGV[1]) end
+    if type(s.clid) == 'string' then redis.call('ZREM', ARGV[4] .. s.clid, ARGV[1]) end
+    if type(s.login_id) == 'string' then redis.call('ZREM', ARGV[5] .. s.login_id, ARGV[1]) end
+  end
+end
+for i = 3, #KEYS do redis.call('ZREM', KEYS[i], ARGV[1]) end
+redis.call('DEL', KEYS[1])
+redis.call('SET', KEYS[2], '1', 'PX', lease)
+return 1
+`)
 
 // Open registers s under its source address's cap.
 func (r *Redis) Open(ctx context.Context, s *entities.EPPSession, lease time.Duration, perSource int) error {
@@ -102,10 +151,9 @@ func (r *Redis) Open(ctx context.Context, s *entities.EPPSession, lease time.Dur
 	if err != nil {
 		return fmt.Errorf("encode EPP session %s: %w", s.ID, err)
 	}
-	now, expiry := r.times(lease)
 	ok, err := open.Run(ctx, r.client,
 		[]string{sourceKey(s.ClientIP.String()), allKey, sessionKey(s.ID)},
-		s.ID, now, expiry, perSource, rec, lease.Milliseconds()).Int()
+		s.ID, lease.Milliseconds(), perSource, rec).Int()
 	if err != nil {
 		return unavailable(err)
 	}
@@ -121,10 +169,9 @@ func (r *Redis) Authenticate(ctx context.Context, s *entities.EPPSession, lease 
 	if err != nil {
 		return fmt.Errorf("encode EPP session %s: %w", s.ID, err)
 	}
-	now, expiry := r.times(lease)
 	res, err := authenticate.Run(ctx, r.client,
 		[]string{registrarKey(string(s.ClID)), loginKey(string(s.LoginID)), sessionKey(s.ID)},
-		s.ID, now, expiry, perRegistrar, perLogin, rec, lease.Milliseconds()).Int()
+		s.ID, lease.Milliseconds(), perRegistrar, perLogin, rec).Int()
 	if err != nil {
 		return unavailable(err)
 	}
@@ -137,34 +184,34 @@ func (r *Redis) Authenticate(ctx context.Context, s *entities.EPPSession, lease 
 	return nil
 }
 
-// indexes are the index keys a session belongs to.
+// indexes are the indexes a session belongs to, other than the all index.
 func indexes(s *entities.EPPSession) []string {
-	keys := []string{allKey, sourceKey(s.ClientIP.String())}
+	keys := []string{sourceKey(s.ClientIP.String())}
 	if s.Authenticated() {
 		keys = append(keys, registrarKey(string(s.ClID)), loginKey(string(s.LoginID)))
 	}
 	return keys
 }
 
-// Renew extends every session's lease and rewrites its record, in one
-// round trip. It also prunes expired sessions from the all index, which
-// nothing else counts.
+// Renew extends every session's lease and rewrites its record, in one round
+// trip, skipping sessions that have closed meanwhile.
 func (r *Redis) Renew(ctx context.Context, sessions []*entities.EPPSession, lease time.Duration) error {
-	now, expiry := r.times(lease)
+	if len(sessions) == 0 {
+		return nil
+	}
+	// EvalSha in a pipeline cannot fall back to EVAL, so make sure the
+	// script is loaded first. SCRIPT LOAD is idempotent and cheap.
+	if err := renew.Load(ctx, r.client).Err(); err != nil {
+		return unavailable(err)
+	}
 	pipe := r.client.Pipeline()
-	pipe.ZRemRangeByScore(ctx, allKey, "-inf", strconv.FormatInt(now, 10))
 	for _, s := range sessions {
 		rec, err := json.Marshal(s)
 		if err != nil {
 			return fmt.Errorf("encode EPP session %s: %w", s.ID, err)
 		}
-		pipe.Set(ctx, sessionKey(s.ID), rec, lease)
-		for _, k := range indexes(s) {
-			pipe.ZAdd(ctx, k, redis.Z{Score: float64(expiry), Member: s.ID})
-			if k != allKey {
-				pipe.PExpire(ctx, k, lease)
-			}
-		}
+		keys := append([]string{sessionKey(s.ID), tombstoneKey(s.ID), allKey}, indexes(s)...)
+		renew.EvalSha(ctx, pipe, keys, s.ID, lease.Milliseconds(), rec)
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return unavailable(err)
@@ -172,14 +219,17 @@ func (r *Redis) Renew(ctx context.Context, sessions []*entities.EPPSession, leas
 	return nil
 }
 
-// Close removes s.
+// tombstoneTTL is how long a closed session cannot be renewed. A heartbeat's
+// snapshot is never older than one lease, and leases are minutes.
+const tombstoneTTL = 10 * time.Minute
+
+// Close removes s from every index, whatever the caller's copy of it says,
+// and keeps it from being renewed.
 func (r *Redis) Close(ctx context.Context, s *entities.EPPSession) error {
-	pipe := r.client.Pipeline()
-	pipe.Del(ctx, sessionKey(s.ID))
-	for _, k := range indexes(s) {
-		pipe.ZRem(ctx, k, s.ID)
-	}
-	if _, err := pipe.Exec(ctx); err != nil {
+	keys := append([]string{sessionKey(s.ID), tombstoneKey(s.ID), allKey}, indexes(s)...)
+	err := closeSession.Run(ctx, r.client, keys, s.ID, tombstoneTTL.Milliseconds(),
+		sourceKey(""), registrarKey(""), loginKey("")).Err()
+	if err != nil {
 		return unavailable(err)
 	}
 	return nil
@@ -220,7 +270,12 @@ func (r *Redis) List(ctx context.Context, q queries.ListItemsQuery) ([]*entities
 	case filter.ClientIP != "":
 		index = sourceKey(filter.ClientIP)
 	}
-	now := strconv.FormatInt(r.now().UnixMilli(), 10)
+	// Redis's clock, as the scripts use, not this process's.
+	t, err := r.client.Time(ctx).Result()
+	if err != nil {
+		return nil, "", unavailable(err)
+	}
+	now := strconv.FormatInt(t.UnixMilli(), 10)
 	ids, err := r.client.ZRangeByScore(ctx, index, &redis.ZRangeBy{Min: "(" + now, Max: "+inf"}).Result()
 	if err != nil {
 		return nil, "", unavailable(err)

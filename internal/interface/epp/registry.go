@@ -20,26 +20,33 @@ func (s *Server) renewSessions(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		local := s.sessions.all()
-		if len(local) == 0 {
-			continue
-		}
-		snaps := make([]*entities.EPPSession, len(local))
-		for i, sess := range local {
-			snaps[i] = sess.snapshot(s.cfg.Sessions.NodeID)
-		}
-		renewCtx, cancel := context.WithTimeout(ctx, s.cfg.Sessions.Heartbeat/2)
-		err := s.tracker.Renew(renewCtx, snaps)
-		cancel()
+		err := s.renewOnce(ctx)
 		if err != nil {
 			s.metrics.registryRenewals.WithLabelValues("error").Inc()
 			s.reportStoreDegraded(storeSessions, true)
-			s.logger.Warn("EPP sessions not renewed in the registry; retrying next heartbeat", "sessions", len(snaps), "error", err)
+			s.logger.Warn("EPP sessions not renewed in the registry; retrying next heartbeat", "error", err)
 			continue
 		}
 		s.metrics.registryRenewals.WithLabelValues("ok").Inc()
 		s.reportStoreDegraded(storeSessions, false)
 	}
+}
+
+// renewOnce renews every session this node holds. A session that closes
+// after its snapshot is taken is not brought back: the registry refuses to
+// renew a closed session.
+func (s *Server) renewOnce(ctx context.Context) error {
+	local := s.sessions.all()
+	if len(local) == 0 {
+		return nil
+	}
+	snaps := make([]*entities.EPPSession, len(local))
+	for i, sess := range local {
+		snaps[i] = sess.snapshot(s.cfg.Sessions.NodeID)
+	}
+	renewCtx, cancel := context.WithTimeout(ctx, s.cfg.Sessions.Heartbeat/2)
+	defer cancel()
+	return s.tracker.Renew(renewCtx, snaps)
 }
 
 // killRetry is how long to wait before subscribing again after the kill

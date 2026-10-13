@@ -19,9 +19,15 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-type recordingPublisher struct{ events []entities.DomainEvent }
+type recordingPublisher struct {
+	events []entities.DomainEvent
+	err    error
+}
 
 func (p *recordingPublisher) Publish(_ context.Context, events ...entities.DomainEvent) error {
+	if p.err != nil {
+		return p.err
+	}
 	p.events = append(p.events, events...)
 	return nil
 }
@@ -97,7 +103,7 @@ func TestEPPSessionsKill(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
 	require.Equal(t, "S1", <-kills)
 	require.Len(t, pub.events, 1)
-	require.Equal(t, entities.EventEPPSessionKilled, pub.events[0].Type)
+	require.Equal(t, entities.EventEPPSessionKillRequested, pub.events[0].Type)
 	require.Equal(t, "ops@example.com", pub.events[0].Actor)
 	require.Equal(t, "rar-001", pub.events[0].Subject)
 
@@ -128,4 +134,24 @@ func TestEPPSessionsRegistryUnavailable(t *testing.T) {
 	w := serveEPPCredential(r, http.MethodGet, "/epp/sessions", "")
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.NotContains(t, w.Body.String(), "redis down", "internal detail stays in the logs")
+}
+
+func TestEPPSessionsKillIsNotSentUnrecorded(t *testing.T) {
+	r, reg, pub := eppSessionsRouter(t, ScopeEPPSessionsAdmin)
+	seedSession(t, reg, "S1", "rar-001", uuid.New())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	kills, err := reg.KillRequests(ctx)
+	require.NoError(t, err)
+
+	pub.err = errors.New("database down")
+	w := serveEPPCredential(r, http.MethodDelete, "/epp/sessions/S1", "")
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	w = serveEPPCredential(r, http.MethodDelete, "/epp/sessions?clid=rar-001", "")
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	select {
+	case id := <-kills:
+		t.Fatalf("kill request %s sent without its audit record", id)
+	case <-time.After(100 * time.Millisecond):
+	}
 }

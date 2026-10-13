@@ -70,21 +70,25 @@ func (s *EPPSessionService) Get(ctx context.Context, id string) (*entities.EPPSe
 	return s.registry.Get(ctx, id)
 }
 
-// Kill asks the node holding the session to end it.
+// Kill asks the node holding the session to end it. The request is
+// recorded in the outbox first, and is not sent if it cannot be recorded.
 func (s *EPPSessionService) Kill(ctx context.Context, id string) (*entities.EPPSession, error) {
 	sess, err := s.registry.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.record(ctx, []*entities.EPPSession{sess}, ""); err != nil {
+		return nil, err
+	}
 	if err := s.registry.RequestKill(ctx, id); err != nil {
 		return nil, err
 	}
-	s.announce(ctx, []*entities.EPPSession{sess}, "")
 	return sess, nil
 }
 
 // KillMatching ends every session f selects. An empty filter is refused: it
-// would end every session on the platform.
+// would end every session on the platform. Like Kill, the requests are
+// recorded before they are sent.
 func (s *EPPSessionService) KillMatching(ctx context.Context, f queries.ListEPPSessionsFilter) ([]*entities.EPPSession, error) {
 	if f.IsEmpty() {
 		return nil, entities.ErrInvalidEPPSessionFilter
@@ -105,6 +109,9 @@ func (s *EPPSessionService) KillMatching(ctx context.Context, f queries.ListEPPS
 	if len(all) == 0 {
 		return all, nil
 	}
+	if err := s.record(ctx, all, f.ToQueryParams()); err != nil {
+		return nil, err
+	}
 	ids := make([]string, len(all))
 	for i, sess := range all {
 		ids[i] = sess.ID
@@ -112,31 +119,34 @@ func (s *EPPSessionService) KillMatching(ctx context.Context, f queries.ListEPPS
 	if err := s.registry.RequestKill(ctx, ids...); err != nil {
 		return nil, err
 	}
-	s.announce(ctx, all, f.ToQueryParams())
 	return all, nil
 }
 
-// announce records each kill in the outbox, as an audit of operator action.
-// It is best effort: the kill has already been requested.
-func (s *EPPSessionService) announce(ctx context.Context, killed []*entities.EPPSession, filter string) {
+// record writes one epp.session.kill_requested event per session, as the
+// audit of operator action. Without an event publisher (the EPP server, which
+// never kills on request) there is nothing to record.
+func (s *EPPSessionService) record(ctx context.Context, sessions []*entities.EPPSession, filter string) error {
 	if s.events == nil {
-		return
+		return nil
 	}
 	actor, _ := appcontext.UserID(ctx)
-	events := make([]entities.DomainEvent, 0, len(killed))
-	for _, sess := range killed {
+	events := make([]entities.DomainEvent, 0, len(sessions))
+	for _, sess := range sessions {
 		subject := string(sess.ClID)
 		if subject == "" {
 			subject = sess.ClientIP.String()
 		}
-		e := entities.NewDomainEvent(eppEventSource, entities.EventEPPSessionKilled, subject,
-			fmt.Sprintf("EPP session %s ended by an operator", sess.ID),
-			entities.EPPSessionKilledData{SessionID: sess.ID, ClID: sess.ClID, LoginID: sess.LoginID, ClientIP: sess.ClientIP.String(), Node: sess.Node, Filter: filter})
+		e := entities.NewDomainEvent(eppEventSource, entities.EventEPPSessionKillRequested, subject,
+			fmt.Sprintf("an operator asked for EPP session %s to be ended", sess.ID),
+			entities.EPPSessionKillRequestedData{SessionID: sess.ID, ClID: sess.ClID, LoginID: sess.LoginID, ClientIP: sess.ClientIP.String(), Node: sess.Node, Filter: filter})
 		e.Actor = actor
 		if v, ok := appcontext.TraceID(ctx); ok {
 			e.TraceID = v
 		}
 		events = append(events, e)
 	}
-	_ = s.events.Publish(ctx, events...)
+	if err := s.events.Publish(ctx, events...); err != nil {
+		return fmt.Errorf("record EPP session kill request: %w", err)
+	}
+	return nil
 }

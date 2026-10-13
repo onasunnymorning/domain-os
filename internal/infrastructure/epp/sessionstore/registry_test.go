@@ -163,12 +163,44 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 		assert.EqualValues(t, 3, got.Commands)
 		require.Error(t, reg.Open(ctx, newSession("192.0.2.1"), short, 1), "still holds the slot")
 
-		// After an outage the registry may have lost the session; renewing
-		// puts it back.
-		require.NoError(t, reg.Close(ctx, s))
+		// During an outage the lease runs out and the registry loses the
+		// session; the first renewal afterwards puts it back.
+		time.Sleep(2 * short)
+		_, err = reg.Get(ctx, s.ID)
+		require.ErrorIs(t, err, entities.ErrEPPSessionNotFound)
 		require.NoError(t, reg.Renew(ctx, []*entities.EPPSession{s}, lease))
 		_, err = reg.Get(ctx, s.ID)
 		require.NoError(t, err)
+	})
+
+	t.Run("a closed session is not renewed back", func(t *testing.T) {
+		reg := newReg(t)
+		s := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
+		require.NoError(t, reg.Open(ctx, s, lease, 1))
+		require.NoError(t, reg.Authenticate(ctx, s, lease, 1, 1))
+		// A heartbeat took its snapshot just before the session closed.
+		stale := *s
+		require.NoError(t, reg.Close(ctx, s))
+		require.NoError(t, reg.Renew(ctx, []*entities.EPPSession{&stale}, lease))
+		_, err := reg.Get(ctx, s.ID)
+		require.ErrorIs(t, err, entities.ErrEPPSessionNotFound)
+
+		next := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
+		require.NoError(t, reg.Open(ctx, next, lease, 1), "the source slot is free")
+		require.NoError(t, reg.Authenticate(ctx, next, lease, 1, 1), "and the registrar and login slots")
+	})
+
+	t.Run("close frees every slot whatever the caller's copy says", func(t *testing.T) {
+		reg := newReg(t)
+		s := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
+		require.NoError(t, reg.Open(ctx, s, lease, 5))
+		require.NoError(t, reg.Authenticate(ctx, s, lease, 1, 1))
+		// The caller's copy predates the login.
+		require.NoError(t, reg.Close(ctx, &entities.EPPSession{ID: s.ID, ClientIP: s.ClientIP}))
+
+		next := newSession("192.0.2.2")
+		require.NoError(t, reg.Open(ctx, next, lease, 5))
+		require.NoError(t, reg.Authenticate(ctx, authed(next, "rar-a", "rar-a"), lease, 1, 1))
 	})
 
 	t.Run("list filters and pages", func(t *testing.T) {

@@ -247,3 +247,57 @@ func TestTwoNodesOverRedis(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond)
 	dial(t, b.addr).login()
 }
+
+func TestRegistryOutageAdmitsLoginsUpToTheCap(t *testing.T) {
+	cfg := testConfig()
+	cfg.Sessions.PerRegistrar, cfg.Sessions.PerLogin = 1, 1
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, cfg, listenLoopback(t), creds)
+	creds.registry.Fail(errors.New("redis down"))
+
+	dial(t, ts.addr).login() // a cap of 1 admits one login, not none
+	requireCode(t, dial(t, ts.addr).roundTrip(loginXML("CAP")), "2502")
+}
+
+// heartbeatDuringLogin runs a heartbeat while the registry is admitting a
+// login, and records what the heartbeat renewed.
+type heartbeatDuringLogin struct {
+	*services.EPPSessionService
+	srv     *Server
+	renewed []*entities.EPPSession
+}
+
+func (h *heartbeatDuringLogin) Authenticate(ctx context.Context, s *entities.EPPSession, l *entities.EPPAuthenticatedLogin) error {
+	_ = h.srv.renewOnce(ctx)
+	return h.EPPSessionService.Authenticate(ctx, s, l)
+}
+
+func (h *heartbeatDuringLogin) Renew(ctx context.Context, sessions []*entities.EPPSession) error {
+	h.renewed = append(h.renewed, sessions...)
+	return h.EPPSessionService.Renew(ctx, sessions)
+}
+
+func TestHeartbeatNeverRenewsAPendingLogin(t *testing.T) {
+	cfg := testConfig()
+	creds := newTestCredentials(t)
+	h := &heartbeatDuringLogin{EPPSessionService: creds.tracker(cfg)}
+	srv, err := NewServer(Options{Config: cfg, Authenticator: creds.authenticator(), Sessions: h, Logger: discardLogger(), NewID: func() string { return "PENDING-1" }})
+	require.NoError(t, err)
+	h.srv, creds.server = srv, srv
+	l := listenLoopback(t)
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(l) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		<-done
+	})
+	require.Eventually(t, srv.Ready, 2*time.Second, 5*time.Millisecond)
+
+	dial(t, l.Addr().String()).login()
+	require.NotEmpty(t, h.renewed, "a heartbeat ran during the login")
+	for _, s := range h.renewed {
+		assert.False(t, s.Authenticated(), "a login the registry has not admitted is renewed as not logged in")
+	}
+}
