@@ -50,6 +50,14 @@ func testConfig() config.EPP {
 			MaxConcurrentVerify: 4,
 			MaxLoginAttempts:    3,
 		},
+		Sessions: config.EPPSessions{
+			NodeID:       "node-a",
+			Lease:        10 * time.Second,
+			Heartbeat:    time.Second,
+			PerSource:    20,
+			PerRegistrar: 10,
+			PerLogin:     10,
+		},
 	}
 }
 
@@ -79,7 +87,8 @@ func listenLoopback(t *testing.T) net.Listener {
 // tests that build a server without running it.
 func testOptions(t *testing.T, cfg config.EPP) Options {
 	t.Helper()
-	return Options{Config: cfg, Authenticator: newTestCredentials(t).authenticator(), Logger: discardLogger(), NewID: func() string { return "x" }}
+	creds := newTestCredentials(t)
+	return Options{Config: cfg, Authenticator: creds.authenticator(), Sessions: creds.tracker(cfg), Logger: discardLogger(), NewID: func() string { return "x" }}
 }
 
 // startServerOn runs a server built from cfg on l until the test ends, with
@@ -96,8 +105,9 @@ func startServerWith(t *testing.T, cfg config.EPP, l net.Listener, creds *testCr
 	srv, err := NewServer(Options{
 		Config:        cfg,
 		Authenticator: creds.authenticator(),
+		Sessions:      creds.tracker(cfg),
 		Logger:        discardLogger(),
-		NewID:         func() string { return fmt.Sprintf("TEST-%d", n.Add(1)) },
+		NewID:         func() string { return fmt.Sprintf("%s-%d", cfg.Sessions.NodeID, n.Add(1)) },
 	})
 	require.NoError(t, err)
 	creds.server = srv

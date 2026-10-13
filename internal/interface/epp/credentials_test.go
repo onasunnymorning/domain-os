@@ -12,10 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/memstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 // The default test credentials, in RST's input shape (ADR 0015): a
@@ -51,11 +53,17 @@ func certificatePEM(c tls.Certificate) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate[0]})
 }
 
-// testCredentials is the credential store behind a test server, with the
-// real authentication service over it.
+// testCredentials is the credential store and session registry behind a
+// test server, with the real application services over them. Servers built
+// from the same testCredentials share both, as the nodes of a cluster share
+// the database and Redis.
 type testCredentials struct {
-	t       *testing.T
-	store   *memstore.EPPCredentials
+	t        *testing.T
+	store    *memstore.EPPCredentials
+	registry *memstore.EPPSessions
+	// shared, when set, replaces registry: the Redis one, in the test that
+	// runs against it.
+	shared  repositories.EPPSessionRegistry
 	lockout *lockout.Memory
 	server  *Server
 }
@@ -64,9 +72,10 @@ type testCredentials struct {
 func newTestCredentials(t *testing.T) *testCredentials {
 	t.Helper()
 	tc := &testCredentials{
-		t:       t,
-		store:   memstore.NewEPPCredentials(testRegistrar, "registrar2"),
-		lockout: lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
+		t:        t,
+		store:    memstore.NewEPPCredentials(testRegistrar, "registrar2"),
+		registry: memstore.NewEPPSessions(),
+		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
 	}
 	tc.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
 		if _, err := a.AddLogin(testLogin, entities.EPPLoginRoleTransform, "test", time.Now()); err != nil {
@@ -90,6 +99,16 @@ func newTestCredentials(t *testing.T) *testCredentials {
 
 func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 	return services.NewEPPAuthenticationService(tc.store, fastHash, tc.lockout, nil, 2)
+}
+
+// tracker is the session service a server built from cfg uses.
+func (tc *testCredentials) tracker(cfg config.EPP) *services.EPPSessionService {
+	caps := entities.EPPSessionCaps{PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin}
+	var reg repositories.EPPSessionRegistry = tc.registry
+	if tc.shared != nil {
+		reg = tc.shared
+	}
+	return services.NewEPPSessionService(reg, caps, cfg.Sessions.Lease, nil)
 }
 
 // update changes a registrar's credentials, as the admin API would.

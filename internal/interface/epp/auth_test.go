@@ -4,16 +4,12 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -123,7 +119,7 @@ func TestCredentialStoreOutage(t *testing.T) {
 func TestNotReadyUntilTheAllowlistLoads(t *testing.T) {
 	creds := newTestCredentials(t)
 	creds.store.Fail(errors.New("database starting"))
-	srv, err := NewServer(Options{Config: testConfig(), Authenticator: creds.authenticator(), Logger: discardLogger(), NewID: func() string { return "x" }})
+	srv, err := NewServer(Options{Config: testConfig(), Authenticator: creds.authenticator(), Sessions: creds.tracker(testConfig()), Logger: discardLogger(), NewID: func() string { return "x" }})
 	require.NoError(t, err)
 	creds.server = srv
 	l := listenLoopback(t)
@@ -177,51 +173,4 @@ func TestCompromisingAReplacedPasswordEndsItsSessions(t *testing.T) {
 	})
 	creds.refresh()
 	c.requireClosed()
-}
-
-func TestConnectionLimiterFailsOpen(t *testing.T) {
-	cfg := testConfig()
-	creds := newTestCredentials(t)
-	// Nothing listens on port 1: every Redis call fails.
-	unreachable := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", DialTimeout: 100 * time.Millisecond, MaxRetries: -1})
-	t.Cleanup(func() { _ = unreachable.Close() })
-	var n atomic.Int64
-	srv, err := NewServer(Options{
-		Config:        cfg,
-		Authenticator: creds.authenticator(),
-		Limiter:       middleware.NewRateLimiter(unreachable, nil, discardLogger()),
-		Logger:        discardLogger(),
-		NewID:         func() string { return fmt.Sprintf("FO-%d", n.Add(1)) },
-	})
-	require.NoError(t, err)
-	creds.server = srv
-	l := listenLoopback(t)
-	done := make(chan error, 1)
-	go func() { done <- srv.Serve(l) }()
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(ctx)
-		<-done
-	})
-	require.Eventually(t, srv.Ready, 2*time.Second, 5*time.Millisecond)
-
-	dial(t, l.Addr().String()).login() // admitted under the node caps
-	assert.Equal(t, 1.0, gauge(t, srv.metrics.storeDegraded.WithLabelValues(storeConnectionLimiter)))
-}
-
-func TestAllowlistOffForLocalDevelopment(t *testing.T) {
-	creds := newTestCredentials(t)
-	creds.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
-		for _, n := range a.AllowedNetworks {
-			if _, err := a.RetireCredential(entities.EPPCredentialRef{Kind: entities.EPPCredentialAllowedNetwork, ID: n.ID}, entities.EPPRetireNormal, ptr(time.Now()), "test", time.Now()); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	cfg := testConfig()
-	cfg.Auth.RequireAllowlist = false
-	ts := startServerWith(t, cfg, listenLoopback(t), creds)
-	dial(t, ts.addr).login()
 }

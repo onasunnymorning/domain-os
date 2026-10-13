@@ -4,22 +4,18 @@
 
 **Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md), with credential rotation amended by [ADR 0014](../adr/0014-epp-credential-rotation.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
 
-**Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The current Redis limiter is `internal/infrastructure/epp/middleware`, which is due to be replaced in Phases 3 and 5.
+**Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The session registry is `internal/infrastructure/epp/sessionstore` and the lockout `internal/infrastructure/epp/lockout`, both in Redis.
 
 ---
 
 ## Where it stands today
 
-The transport and session layer is in place (Phase 1). The command surface is still a **protocol stub**:
+Transport, sessions and identity are in place (Phases 1 to 3). The command surface is still a **protocol stub**:
 - It binds `<hello>`, login, logout and a placeholder `domain:check` that ignores the names it is asked about. Every other RFC 5730 command is answered 2101 (unimplemented).
 - Logins are authenticated (Phase 2): allowed network, pinned certificate and password, with a lockout per (login, source address).
+- Sessions are leases in a cluster-wide registry with caps per source address, registrar and login, and operators can list and end them (Phase 3).
 
-The Redis limiter has known structural flaws, all fixed by redesign rather than patching:
-- **Connection counts drift.** They use INCR/DECR with a 5-minute TTL, so a session open longer than that drops out of the count, and a crashed node leaks counts until the TTL expires.
-- **Check-then-increment is not atomic**, so concurrent connects can overshoot a cap.
-- **Per-registrar caps never fire**, because the registrar ID is never recorded on the session.
-- **`CheckRequestRate` is never called.**
-- Its lockout was keyed on clID alone, so anyone who knew a registrar's clID could lock it out. Phase 2 replaced it with a lockout per (login, source address); the limiter's own lockout is no longer called.
+The Redis limiter this server started with was removed in Phase 3. Its connection counts drifted, its check-then-increment could overshoot, its per-registrar cap never fired, its rate check was never called, and its lockout let anyone who knew a clID lock a registrar out. Lease-based sessions (§3) and the per-(login, source) lockout (§2) replace it; command rates are Phase 5.
 
 ---
 
@@ -98,7 +94,11 @@ A login must pass three checks:
 - **Caps** apply per registrar, per login, per family, per source IP and per node. Over the cap, the server answers 2502 and closes.
 - **Operators can list live sessions and kill one** through the admin API. They can also kill every session that authenticated with a given credential, which is the second half of a compromise retire (§2).
 
-*Today:* the state machine and every timeout are in place. Each node keeps its own registry of live sessions, which drain uses. The cluster-wide lease registry, the caps that use it and the admin actions are Phase 3. Until then, connection counting across nodes uses the drifting counters described above.
+*Today:* all of this section except the per-family cap, which needs registrar families (Phase 5), and the per-node cap on sessions, which is the per-node connection cap of §1.
+- Every session is a lease in Redis, written by one atomic script at connect (source cap) and at login (registrar and login caps; a login's own session cap overrides the default). Over the source cap the connection closes before the greeting; over a registrar or login cap `<login>` is answered 2502.
+- Each node renews its sessions every heartbeat, writing the command count and last command time, and puts back any the registry lost. So after a Redis outage the registry heals within one heartbeat, and a crashed node's sessions expire with their leases.
+- If Redis cannot answer, the node applies the same caps to its own sessions (fail-open, ADR 0013) and sets `epp_policy_store_degraded{store="sessions"}`.
+- The admin API lists sessions (`GET /epp/sessions`, filterable by registrar, login, source and credential) and ends them (`DELETE /epp/sessions/{id}`, or by filter, including by credential), over Redis pub/sub to whichever node holds the session. A kill is recorded as an `epp.session.killed` event. See [POLICY_REFERENCE.md § Sessions](POLICY_REFERENCE.md#sessions).
 
 ## 4. Frame & protocol hygiene
 
@@ -135,7 +135,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 
 - **Prometheus metrics:**
   - `epp_sessions_active{registrar,login,node}`
-  - `epp_connections_total{outcome}`: accepted, or why a connection was refused or closed early (node cap, handshake cap, failed handshake, login timeout, limiter, draining)
+  - `epp_connections_total{outcome}`: accepted, or why a connection was refused or closed early (node cap, handshake cap, source address, source session cap, failed handshake, login timeout, draining)
   - `epp_logins_total{result}`
   - `epp_commands_total{registrar,command,object,code}`
   - `epp_command_duration_seconds`
@@ -149,7 +149,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 - **Audit log** of every command and response, keyed by svTRID and clTRID, with `pw`, `newPW` and `authInfo` redacted. It is written durably (not telemetry, per INV-01) with configurable retention.
 - **Structured `slog` only.**
 
-*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, connection limiter), `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Session and command series by registrar arrive with the session registry (Phase 3). There is no audit log yet.
+*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, sessions), `epp_registrar_sessions{clid,login}`, `epp_session_registry_renewals_total{result}`, `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Who is connected, cluster-wide, is `GET /epp/sessions`; command series by registrar arrive with the command pipeline (Phase 4). There is no audit log yet.
 
 ---
 
@@ -166,8 +166,8 @@ Each phase is one or more PRs and can be shipped on its own.
 | 0 | This document, ADR 0013, policy reference skeleton. Server moved to `internal/interface/epp`. Typed config in `internal/config/epp.go`. `slog` throughout. One end-to-end TLS session test | **Done** |
 | 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | **Done** |
 | 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **Done**, except delivering change events to the technical contact |
-| 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | Planned |
+| 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | **Done**, except the per-family cap, which moves to Phase 5 with families |
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
-| 5 | Policy engine: versioned tiered policies, registrar families, token buckets, object caps, quotas, hot reload | Planned |
+| 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
 | 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

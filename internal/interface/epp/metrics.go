@@ -10,7 +10,7 @@ const (
 	outcomeAccepted        = "accepted"
 	outcomeNodeCap         = "rejected_node_cap"
 	outcomeHandshakeCap    = "rejected_handshake_cap"
-	outcomeLimiter         = "rejected_limiter"
+	outcomeSourceCap       = "rejected_source_cap"
 	outcomeDraining        = "rejected_draining"
 	outcomeHandshakeFailed = "handshake_failed"
 	outcomeLoginTimeout    = "login_timeout"
@@ -18,12 +18,15 @@ const (
 )
 
 // Why a session was ended by the server, for epp_sessions_ended_total.
-const endedCompromised = "credential_compromised"
+const (
+	endedCompromised = "credential_compromised"
+	endedAdminKill   = "admin_kill"
+)
 
 // Shared stores, for epp_policy_store_degraded.
 const (
-	storeLockout           = "lockout"
-	storeConnectionLimiter = "connection_limiter"
+	storeLockout  = "lockout"
+	storeSessions = "sessions"
 )
 
 // metrics are the EPP server's Prometheus series. They live on their own
@@ -51,6 +54,8 @@ type metrics struct {
 	credentialsRefreshed    prometheus.Gauge
 	credentialRefreshErrors prometheus.Counter
 	storeDegraded           *prometheus.GaugeVec
+	registrarSessions       *prometheus.GaugeVec
+	registryRenewals        *prometheus.CounterVec
 }
 
 func newMetrics() *metrics {
@@ -126,6 +131,14 @@ func newMetrics() *metrics {
 			Name: "epp_credential_refresh_errors_total",
 			Help: "Failed reloads of the allowed networks or the compromised credentials.",
 		}),
+		registrarSessions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "epp_registrar_sessions",
+			Help: "Logged-in sessions on this node, by registrar and login. Sum across nodes for the cluster.",
+		}, []string{"clid", "login"}),
+		registryRenewals: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_session_registry_renewals_total",
+			Help: "Heartbeat renewals of this node's sessions in the cluster-wide registry, by result.",
+		}, []string{"result"}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -136,7 +149,7 @@ func newMetrics() *metrics {
 		m.commandDuration, m.frameBytes, m.framesRejected, m.certNotAfter,
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
-		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded,
+		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

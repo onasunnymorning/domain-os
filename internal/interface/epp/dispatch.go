@@ -85,6 +85,7 @@ func (s *Server) handleCommand(ctx context.Context, rw *epplib.ResponseWriter, r
 		return
 	}
 	cmd.session.commands.Add(1)
+	cmd.session.lastCommandAt.Store(start.UnixNano())
 
 	defer func() {
 		label := cmd.frame.label()

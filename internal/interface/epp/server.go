@@ -25,7 +25,6 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/config"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
 
 // forceCloseGrace is how long Shutdown waits for sessions to unwind after it
@@ -48,10 +47,9 @@ type Options struct {
 	Config config.EPP
 	// Authenticator checks logins against registrars' credentials. Required.
 	Authenticator interfaces.EPPAuthenticator
-	// Limiter applies the Redis per-IP connection limit. Nil disables it.
-	// When Redis cannot answer, connections are admitted under the node caps.
-	Limiter *middleware.RateLimiter
-	Logger  *slog.Logger
+	// Sessions is the cluster-wide session registry, with its caps. Required.
+	Sessions interfaces.EPPSessionTracker
+	Logger   *slog.Logger
 	// NewID returns a unique identifier, used for session IDs and svTRIDs.
 	// It must be unique across every node, not just this one.
 	NewID func() string
@@ -65,7 +63,7 @@ type Server struct {
 	certs    *certSource
 	sessions *sessionRegistry
 	metrics  *metrics
-	limiter  *middleware.RateLimiter
+	tracker  interfaces.EPPSessionTracker
 	auth     interfaces.EPPAuthenticator
 	watch    credentialWatch
 	logger   *slog.Logger
@@ -89,11 +87,14 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Authenticator == nil {
 		return nil, errors.New("epp: Options.Authenticator is required")
 	}
+	if opts.Sessions == nil {
+		return nil, errors.New("epp: Options.Sessions is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
 		metrics:  newMetrics(),
-		limiter:  opts.Limiter,
+		tracker:  opts.Sessions,
 		auth:     opts.Authenticator,
 		logger:   opts.Logger,
 		newID:    opts.NewID,
@@ -161,6 +162,8 @@ func (s *Server) Serve(l net.Listener) error {
 	s.stopWatch = stop
 	go s.certs.watch(watchCtx)
 	go s.watchCredentials(watchCtx)
+	go s.renewSessions(watchCtx)
+	go s.followKillRequests(watchCtx)
 
 	s.logger.Info("EPP server listening",
 		"addr", l.Addr().String(),

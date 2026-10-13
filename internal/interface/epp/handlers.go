@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/beevik/etree"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
@@ -18,6 +19,9 @@ const (
 	loginFailure = "failure"
 	loginLocked  = "locked"
 	loginError   = "error"
+	// loginSessionLimit is a login with good credentials refused because its
+	// registrar or login is at its session cap.
+	loginSessionLimit = "session_limit"
 )
 
 // loginFailureReason names a refusal for epp_login_failures_total and the
@@ -100,7 +104,17 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	}
 
 	sess.loginTimer.Stop()
+	sess.authAt.Store(time.Now().UnixNano())
 	sess.auth.Store(auth)
+	if err := s.authenticateInRegistry(ctx, sess, auth); err != nil {
+		sess.auth.Store(nil)
+		s.metrics.logins.WithLabelValues(loginSessionLimit).Inc()
+		s.logger.Warn("EPP login refused: session limit", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
+			"client_ip", sess.clientIP, "error", err)
+		cmd.respond(epplib.StatusSessionLimitExceededClosingConnection, "", nil)
+		cmd.closeAfterResponse()
+		return
+	}
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
 		// The login timeout fired, or the session was ended, while this
 		// command was being handled.
@@ -109,6 +123,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		cmd.closeAfterResponse()
 		return
 	}
+	s.metrics.registrarSessions.WithLabelValues(string(auth.ClID), string(auth.LoginID)).Inc()
 	s.metrics.logins.WithLabelValues(loginSuccess).Inc()
 	s.metrics.clientCertNotAfter.WithLabelValues(string(auth.ClID), string(auth.LoginID)).Set(float64(auth.CertificateNotAfter.Unix()))
 	s.logger.Info("EPP login", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID, "role", auth.Role,

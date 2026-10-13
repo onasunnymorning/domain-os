@@ -33,6 +33,9 @@ const (
 	// logins, passwords, certificate pins and allowed networks (ADR 0014).
 	// Registrars are not owned by an operator, so it is a platform permission.
 	ScopeEPPCredentialsAdmin = "epp:credentials:admin" //nolint:gosec // G101: an OAuth scope name, not a credential
+	// ScopeEPPSessionsAdmin allows listing live EPP sessions and ending them.
+	// It is an operations duty, separate from managing credentials.
+	ScopeEPPSessionsAdmin = "epp:sessions:admin"
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,

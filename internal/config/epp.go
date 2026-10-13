@@ -32,7 +32,24 @@ type EPP struct {
 	Limits   EPPLimits
 	Timeouts EPPTimeouts
 	Auth     EPPAuth
+	Sessions EPPSessions
 	DB       EPPDatabase
+}
+
+// EPPSessions configures the cluster-wide session registry and its caps
+// (docs/epp/ARCHITECTURE.md §3). The caps move into tiered policy with the
+// policy engine (Phase 5).
+type EPPSessions struct {
+	// NodeID names this node in the registry. Defaults to the hostname.
+	NodeID string
+	// Lease is how long a session stays in the registry without a renewal;
+	// Heartbeat is how often the node renews its sessions.
+	Lease     time.Duration
+	Heartbeat time.Duration
+	// Caps on live sessions, across every node.
+	PerSource    int
+	PerRegistrar int
+	PerLogin     int
 }
 
 // EPPAuth governs how logins are authenticated against registrars'
@@ -148,6 +165,13 @@ var eppDefaults = EPP{
 		MaxConcurrentVerify: 8,
 		MaxLoginAttempts:    3,
 	},
+	Sessions: EPPSessions{
+		Lease:        90 * time.Second,
+		Heartbeat:    30 * time.Second,
+		PerSource:    20,
+		PerRegistrar: 10,
+		PerLogin:     10,
+	},
 	DB: EPPDatabase{User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
 }
 
@@ -206,6 +230,16 @@ func LoadEPP() (EPP, error) {
 	collect(setPositiveInt(&cfg.Auth.MaxConcurrentVerify, "EPP_MAX_CONCURRENT_LOGINS", os.Getenv("EPP_MAX_CONCURRENT_LOGINS")))
 	collect(setPositiveInt(&cfg.Auth.MaxLoginAttempts, "EPP_MAX_LOGIN_ATTEMPTS", os.Getenv("EPP_MAX_LOGIN_ATTEMPTS")))
 
+	cfg.Sessions.NodeID = strings.TrimSpace(os.Getenv("EPP_NODE_ID"))
+	if cfg.Sessions.NodeID == "" {
+		cfg.Sessions.NodeID, _ = os.Hostname()
+	}
+	collect(setDuration(&cfg.Sessions.Lease, "EPP_SESSION_LEASE", os.Getenv("EPP_SESSION_LEASE")))
+	collect(setDuration(&cfg.Sessions.Heartbeat, "EPP_SESSION_HEARTBEAT", os.Getenv("EPP_SESSION_HEARTBEAT")))
+	collect(setPositiveInt(&cfg.Sessions.PerSource, "EPP_MAX_SESSIONS_PER_SOURCE_IP", os.Getenv("EPP_MAX_SESSIONS_PER_SOURCE_IP")))
+	collect(setPositiveInt(&cfg.Sessions.PerRegistrar, "EPP_MAX_SESSIONS_PER_REGISTRAR", os.Getenv("EPP_MAX_SESSIONS_PER_REGISTRAR")))
+	collect(setPositiveInt(&cfg.Sessions.PerLogin, "EPP_MAX_SESSIONS_PER_LOGIN", os.Getenv("EPP_MAX_SESSIONS_PER_LOGIN")))
+
 	cfg.DB.User = valueOr(os.Getenv("DB_USER"), cfg.DB.User)
 	cfg.DB.Pass = valueOr(os.Getenv("DB_PASS"), cfg.DB.Pass)
 	cfg.DB.Host = valueOr(os.Getenv("DB_HOST"), cfg.DB.Host)
@@ -235,6 +269,12 @@ func (c EPP) validate() error {
 	}
 	if c.Port == c.OpsPort {
 		errs = append(errs, fmt.Errorf("EPP_PORT and EPP_OPS_PORT are both %d", c.Port))
+	}
+	if c.Sessions.Heartbeat*2 > c.Sessions.Lease {
+		errs = append(errs, fmt.Errorf("EPP_SESSION_HEARTBEAT (%s) must be at most half of EPP_SESSION_LEASE (%s), so one missed renewal does not drop a live session", c.Sessions.Heartbeat, c.Sessions.Lease))
+	}
+	if c.Sessions.NodeID == "" {
+		errs = append(errs, errors.New("EPP_NODE_ID is unset and the hostname is unknown; set EPP_NODE_ID"))
 	}
 	if c.Limits.MaxHandshakes > c.Limits.MaxConnections {
 		errs = append(errs, fmt.Errorf("EPP_MAX_HANDSHAKES (%d) exceeds EPP_MAX_CONNECTIONS (%d)", c.Limits.MaxHandshakes, c.Limits.MaxConnections))

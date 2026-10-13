@@ -116,19 +116,10 @@ func (s *Server) endCompromisedSessions(ids []uuid.UUID) {
 			continue
 		}
 		for _, id := range auth.CredentialIDs() {
-			if !compromised[id] {
-				continue
+			if compromised[id] {
+				s.endSession(sess.id, endedCompromised)
+				break
 			}
-			if sess.state.Swap(int32(stateClosing)) == int32(stateClosing) {
-				break // already on its way out
-			}
-			s.metrics.sessionsEnded.WithLabelValues(endedCompromised).Inc()
-			s.logger.Warn("EPP session ended: a credential it authenticated with was retired as compromised",
-				"connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID, "credential_id", id, "client_ip", sess.clientIP)
-			if err := s.lib.CloseConnection(sess.conn); err != nil {
-				_ = sess.conn.Close()
-			}
-			break
 		}
 	}
 }

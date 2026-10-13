@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-13T18:49:41Z",
+  "generated": "2026-10-13T19:51:13Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -230,6 +230,21 @@
             "description": "Log domain lifecycle events"
           },
           {
+            "name": "REDIS_HOST",
+            "default": "localhost",
+            "description": "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"
+          },
+          {
+            "name": "REDIS_PORT",
+            "default": "6379",
+            "description": "Redis port"
+          },
+          {
+            "name": "REDIS_PASSWORD",
+            "secret": true,
+            "description": "Redis password (empty = no auth)"
+          },
+          {
             "name": "ANTHROPIC_API_KEY",
             "secret": true,
             "description": "Anthropic API key for AI agent (Agent Alpaca)"
@@ -397,6 +412,35 @@
             "description": "Failed logins one session may make before it is answered 2501 and closed"
           },
           {
+            "name": "EPP_NODE_ID",
+            "description": "Name of this node in the session registry, shown when listing sessions. Defaults to the hostname"
+          },
+          {
+            "name": "EPP_SESSION_LEASE",
+            "default": "90s",
+            "description": "How long a session stays in the shared registry without a renewal; a crashed node's sessions disappear after this"
+          },
+          {
+            "name": "EPP_SESSION_HEARTBEAT",
+            "default": "30s",
+            "description": "How often a node renews its sessions in the registry. At most half of EPP_SESSION_LEASE"
+          },
+          {
+            "name": "EPP_MAX_SESSIONS_PER_SOURCE_IP",
+            "default": "20",
+            "description": "Live sessions from one source address, across every node. Over it, the connection is closed before the greeting"
+          },
+          {
+            "name": "EPP_MAX_SESSIONS_PER_REGISTRAR",
+            "default": "10",
+            "description": "Logged-in sessions per registrar, across every node and login. Over it, \u003clogin\u003e is answered 2502 and the session closes"
+          },
+          {
+            "name": "EPP_MAX_SESSIONS_PER_LOGIN",
+            "default": "10",
+            "description": "Logged-in sessions per EPP login, across every node, unless the login has its own session cap. Over it, \u003clogin\u003e is answered 2502"
+          },
+          {
             "name": "EPP_MAX_CONNECTIONS",
             "default": "2000",
             "description": "Open connections allowed on one node"
@@ -468,7 +512,7 @@
           {
             "name": "REDIS_HOST",
             "default": "localhost",
-            "description": "Redis host for EPP session store"
+            "description": "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"
           },
           {
             "name": "REDIS_PORT",
@@ -1015,6 +1059,7 @@
       "name": "redis",
       "port": 6379,
       "used_by": [
+        "admin-api",
         "epp-server"
       ]
     },

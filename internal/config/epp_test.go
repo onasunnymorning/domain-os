@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ var eppEnv = []string{
 	"EPP_MAX_SESSION_DURATION", "EPP_DRAIN_TIMEOUT",
 	"EPP_REQUIRE_ALLOWLIST", "EPP_CREDENTIAL_REFRESH_INTERVAL", "EPP_MAX_CONCURRENT_LOGINS", "EPP_MAX_LOGIN_ATTEMPTS",
 	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
+	"EPP_NODE_ID", "EPP_SESSION_LEASE", "EPP_SESSION_HEARTBEAT",
+	"EPP_MAX_SESSIONS_PER_SOURCE_IP", "EPP_MAX_SESSIONS_PER_REGISTRAR", "EPP_MAX_SESSIONS_PER_LOGIN",
 }
 
 func clearEPPEnv(t *testing.T) {
@@ -38,6 +41,7 @@ func TestLoadEPPDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	want := eppDefaults
+	want.Sessions.NodeID, _ = os.Hostname()
 	want.TLS.CertPath = "/certs/epp.crt"
 	want.TLS.KeyPath = "/certs/epp.key"
 	assert.Equal(t, want, cfg)
@@ -55,6 +59,7 @@ func TestLoadEPPDefaults(t *testing.T) {
 		Read: 30 * time.Second, Write: 60 * time.Second, MaxSession: 24 * time.Hour, Drain: 30 * time.Second,
 	}, cfg.Timeouts)
 	assert.Equal(t, "localhost:6379", cfg.Redis.Addr())
+	assert.Equal(t, EPPSessions{NodeID: want.Sessions.NodeID, Lease: 90 * time.Second, Heartbeat: 30 * time.Second, PerSource: 20, PerRegistrar: 10, PerLogin: 10}, cfg.Sessions)
 	assert.Equal(t, EPPAuth{RequireAllowlist: true, RefreshInterval: 30 * time.Second, MaxConcurrentVerify: 8, MaxLoginAttempts: 3}, cfg.Auth)
 }
 
@@ -70,6 +75,8 @@ func TestLoadEPPOverrides(t *testing.T) {
 		"EPP_HANDSHAKE_TIMEOUT": "5s", "EPP_LOGIN_TIMEOUT": "15s", "EPP_IDLE_TIMEOUT": "20m",
 		"EPP_READ_TIMEOUT": "10s", "EPP_WRITE_TIMEOUT": "15s", "EPP_MAX_SESSION_DURATION": "12h", "EPP_DRAIN_TIMEOUT": "1m",
 		"EPP_REQUIRE_ALLOWLIST": "false", "EPP_CREDENTIAL_REFRESH_INTERVAL": "10s", "EPP_MAX_CONCURRENT_LOGINS": "4", "EPP_MAX_LOGIN_ATTEMPTS": "5",
+		"EPP_NODE_ID": "epp-1", "EPP_SESSION_LEASE": "60s", "EPP_SESSION_HEARTBEAT": "20s",
+		"EPP_MAX_SESSIONS_PER_SOURCE_IP": "30", "EPP_MAX_SESSIONS_PER_REGISTRAR": "15", "EPP_MAX_SESSIONS_PER_LOGIN": "5",
 		"DB_USER": "epp", "DB_PASS": "pw", "DB_HOST": "db", "DB_PORT": "5433", "DB_NAME": "dos", "DB_SSLMODE": "require",
 	}
 	for k, v := range set {
@@ -90,8 +97,9 @@ func TestLoadEPPOverrides(t *testing.T) {
 			Handshake: 5 * time.Second, Login: 15 * time.Second, Idle: 20 * time.Minute,
 			Read: 10 * time.Second, Write: 15 * time.Second, MaxSession: 12 * time.Hour, Drain: time.Minute,
 		},
-		Auth: EPPAuth{RequireAllowlist: false, RefreshInterval: 10 * time.Second, MaxConcurrentVerify: 4, MaxLoginAttempts: 5},
-		DB:   EPPDatabase{User: "epp", Pass: "pw", Host: "db", Port: "5433", Name: "dos", SSLMode: "require"},
+		Auth:     EPPAuth{RequireAllowlist: false, RefreshInterval: 10 * time.Second, MaxConcurrentVerify: 4, MaxLoginAttempts: 5},
+		Sessions: EPPSessions{NodeID: "epp-1", Lease: time.Minute, Heartbeat: 20 * time.Second, PerSource: 30, PerRegistrar: 15, PerLogin: 5},
+		DB:       EPPDatabase{User: "epp", Pass: "pw", Host: "db", Port: "5433", Name: "dos", SSLMode: "require"},
 	}, cfg)
 }
 
@@ -117,6 +125,8 @@ func TestLoadEPPRejects(t *testing.T) {
 		{"same port twice", map[string]string{"EPP_PORT": "9700"}, "EPP_OPS_PORT"},
 		{"non-boolean flag", map[string]string{"EPP_PROXY_PROTOCOL": "yes please"}, "EPP_PROXY_PROTOCOL"},
 		{"non-boolean allowlist flag", map[string]string{"EPP_REQUIRE_ALLOWLIST": "sometimes"}, "EPP_REQUIRE_ALLOWLIST"},
+		{"heartbeat too close to the lease", map[string]string{"EPP_SESSION_HEARTBEAT": "60s"}, "EPP_SESSION_HEARTBEAT"},
+		{"zero sessions per login", map[string]string{"EPP_MAX_SESSIONS_PER_LOGIN": "0"}, "EPP_MAX_SESSIONS_PER_LOGIN"},
 		{"zero login attempts", map[string]string{"EPP_MAX_LOGIN_ATTEMPTS": "0"}, "EPP_MAX_LOGIN_ATTEMPTS"},
 	}
 	for _, tc := range cases {
