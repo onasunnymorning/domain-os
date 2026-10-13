@@ -89,6 +89,42 @@ These values come from `middleware.DefaultRateLimitConfig()` in `internal/infras
 
 ---
 
+## Credentials: admin API
+
+A registrar's EPP logins, passwords, certificate pins and allowed networks are managed through the admin API, under `/registrars/{clid}/epp`. Every endpoint needs the `epp:credentials:admin` permission. Registrars are not owned by an operator, so this is a platform permission; with Auth0 disabled, the static admin token holds it. The model is [ARCHITECTURE.md §2](ARCHITECTURE.md#2-identity--credentials) and the decisions are [ADR 0014](../adr/0014-epp-credential-rotation.md).
+
+| Action | Request |
+|---|---|
+| Show everything, with each credential's state now (never a password hash) | `GET /registrars/{clid}/epp` |
+| Add a login. `role` is `transform` (default) or `readonly` | `POST /registrars/{clid}/epp/logins` `{"login_id": "...", "role": "..."}` |
+| Change a login's `role`, `enabled` or `session_cap` | `PATCH /registrars/{clid}/epp/logins/{login}` |
+| Add a password. With no body the server generates a 16-character password and returns it **once**; it cannot be retrieved again | `POST /registrars/{clid}/epp/logins/{login}/passwords` `{"password": "..."}` |
+| Pin a client certificate's key. `logins` optionally restricts the pin | `POST /registrars/{clid}/epp/certificate-pins` `{"certificate_pem": "...", "logins": [...]}` |
+| Allow a source network | `POST /registrars/{clid}/epp/allowed-networks` `{"network": "192.0.2.0/24", "note": "..."}` |
+| Retire a password, pin or network | `POST .../passwords/{id}/retire`, `.../certificate-pins/{id}/retire`, `.../allowed-networks/{id}/retire` `{"kind": "normal" or "compromise", "at": "RFC 3339"}` |
+
+Every change is written in one transaction with an outbox event (`epp.login.created`, `epp.password.added`, `epp.certificate_pin.retired`, and so on; subject: the registrar's ClID). Events never carry a password or a hash. Delivering them to the registrar's technical contact needs an outbox consumer that does not exist yet.
+
+These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`) until the policy engine makes them per-tier (Phase 5):
+
+| Rule | Value |
+|---|---|
+| Logins per registrar | 10, enabled or not |
+| Login ID | 3 to 16 ASCII characters (`clIDType`), unique across registrars. It may be the registrar's own ClID, never another registrar's |
+| Session cap per login | 0 (the policy default) to 100 |
+| Usable passwords per login | 2. Retire one to add a third |
+| Password | 6 to 16 printable ASCII characters (RFC 5730 `pwType`), no leading, trailing or repeated spaces. Stored as Argon2id (19 MiB, 2 passes, 1 lane). Prefer the generated password: 16 characters, about 92 bits |
+| Usable certificate pins per registrar | 3 (current, next, and a spare for a staggered roll) |
+| Pinned certificate | Any CA or self-signed. RSA keys of at least 2048 bits, ECDSA or Ed25519. An expired certificate is refused; one not yet valid is accepted, so the pin is ready before the switch |
+| Usable allowed networks per registrar | 20 |
+| Allowed network | A single address, or a CIDR no broader than /24 (IPv4) or /48 (IPv6) |
+| Normal retire without `at` | Usable for 7 more days, shown as `retiring`. An `at` that is not in the future retires at once. New logins are refused from then on; open sessions run until they end |
+| Compromise retire | At once, and every session that used the credential is ended |
+
+A credential is never deleted. A retired one stays as the record of when, and from where, it was last used.
+
+---
+
 ## Policy limits *(planned)*
 
 The defaults below form the `default` tier and will be seeded from code constants. A tier can be overridden per registrar. "Family" means a group of affiliated registrars capped together.
@@ -107,14 +143,12 @@ Over a cap, the server answers 2502 and closes. If Redis is unavailable, enforce
 
 ### Authentication *(Phase 2)*
 
+The credential caps and lifecycle are in place; see [Credentials](#credentials-admin-api). What the EPP server enforces at login arrives with authentication:
+
 | Limit | Default |
 |---|---|
 | Failed logins per (login, IP) before lock | 5 within 15m |
 | Lock duration | 15m, doubling on each repeat, up to 24h |
-| Active passwords per login | 2 |
-| Active certificate pins per registrar | 3 |
-| Active IP allowlist entries per registrar | 20 |
-| Default `retiring` window when retiring a credential | 7 days (overridable per retire; 0 retires at once) |
 | Client certificate validity | Enforced: no grace before `notBefore` or after `notAfter` |
 | Certificate expiry alerts | 30 and 7 days before expiry |
 | `<newPW>` | Strict RFC 5730: replaces the password used to log in, effective immediately. Overlap is done with add-then-retire through the admin API |

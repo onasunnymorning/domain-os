@@ -29,6 +29,10 @@ const (
 	// within one operator's. Without it a request must name its operator in
 	// X-Tenant-ID and is confined to that operator's TLDs (#415, ADR-0006).
 	ScopeRegistryPlatformAdmin = "registry:platform:admin"
+	// ScopeEPPCredentialsAdmin allows reading and changing registrars' EPP
+	// logins, passwords, certificate pins and allowed networks (ADR 0014).
+	// Registrars are not owned by an operator, so it is a platform permission.
+	ScopeEPPCredentialsAdmin = "epp:credentials:admin" //nolint:gosec // G101: an OAuth scope name, not a credential
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,

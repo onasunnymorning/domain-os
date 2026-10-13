@@ -48,6 +48,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&EscrowKeyVersionRecord{},
 		&EscrowArrangementRecord{},
 		&EscrowKeyAuditEventRecord{},
+		&EPPLoginRecord{},
+		&EPPPasswordRecord{},
+		&EPPCertificatePinRecord{},
+		&EPPAllowedNetworkRecord{},
 	)
 	if err != nil {
 		return err

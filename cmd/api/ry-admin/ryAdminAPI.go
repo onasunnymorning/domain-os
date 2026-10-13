@@ -17,6 +17,7 @@ import (
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
@@ -379,6 +380,10 @@ func main() {
 	rest.NewSpec5Controller(r, spec5Service, authMiddleware)
 	rest.NewIANARegistrarController(r, ianaRegistrarService, authMiddleware)
 	rest.NewRegistrarController(r, registrarService, ianaRegistrarService, authMiddleware)
+	// EPP credentials (ADR 0014): the EPP server reads what this writes.
+	eppCredentialService := appservices.NewEPPCredentialService(
+		postgres.NewEPPCredentialRepository(gormDB), registrarRepo, passwordhash.New(passwordhash.DefaultParams))
+	rest.NewEPPCredentialsController(r, eppCredentialService, authMiddleware)
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)
