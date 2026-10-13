@@ -281,7 +281,9 @@ func TestHeartbeatNeverRenewsAPendingLogin(t *testing.T) {
 	cfg := testConfig()
 	creds := newTestCredentials(t)
 	h := &heartbeatDuringLogin{EPPSessionService: creds.tracker(cfg)}
-	srv, err := NewServer(Options{Config: cfg, Authenticator: creds.authenticator(), Sessions: h, Logger: discardLogger(), NewID: func() string { return "PENDING-1" }})
+	opts := creds.options(cfg, func() string { return "PENDING-1" })
+	opts.Sessions = h
+	srv, err := NewServer(opts)
 	require.NoError(t, err)
 	h.srv, creds.server = srv, srv
 	l := listenLoopback(t)

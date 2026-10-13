@@ -26,9 +26,10 @@ const (
 	rejectDepth    = "depth"
 	rejectElements = "elements"
 	rejectClTRID   = "cltrid"
+	rejectSchema   = "schema"
 )
 
-// frameError is a frame rejected before dispatch. Every one is answered with
+// frameError is a frame rejected while it is scanned. Every one is answered with
 // 2001 (command syntax error); reason says which check failed.
 type frameError struct {
 	reason string

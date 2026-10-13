@@ -33,7 +33,30 @@ type EPP struct {
 	Timeouts EPPTimeouts
 	Auth     EPPAuth
 	Sessions EPPSessions
+	Commands EPPCommands
+	Audit    EPPAudit
 	DB       EPPDatabase
+}
+
+// EPPCommands bounds what one command may ask of the registry.
+type EPPCommands struct {
+	// MaxCheckNames is the most names one <check> may carry; more is
+	// answered 2306. The policy engine (Phase 5) takes this over.
+	MaxCheckNames int
+	// CheckParallelism is how many lookups one <check> runs at once.
+	CheckParallelism int
+}
+
+// EPPAudit is the EPP audit log (docs/epp/ARCHITECTURE.md §6).
+type EPPAudit struct {
+	// Retention is how long a transaction is kept.
+	Retention time.Duration
+	// QueryResponses keeps the response frames of queries (<check>, <info>,
+	// <poll op="req">) as well as their requests. Transforms always keep
+	// both.
+	QueryResponses bool
+	// Buffer is how many query records may wait to be written in a batch.
+	Buffer int
 }
 
 // EPPSessions configures the cluster-wide session registry and its caps
@@ -74,12 +97,14 @@ type EPPAuth struct {
 // EPPDatabase locates the database holding registrars' credentials. It reads
 // the same DB_* variables as the other services.
 type EPPDatabase struct {
-	User    string
-	Pass    string
-	Host    string
-	Port    string
-	Name    string
-	SSLMode string
+	// MaxOpenConns bounds this node's database connections.
+	MaxOpenConns int
+	User         string
+	Pass         string
+	Host         string
+	Port         string
+	Name         string
+	SSLMode      string
 }
 
 // EPPRedis locates the Redis instance the EPP server keeps its shared
@@ -172,7 +197,15 @@ var eppDefaults = EPP{
 		PerRegistrar: 10,
 		PerLogin:     10,
 	},
-	DB: EPPDatabase{User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
+	Commands: EPPCommands{
+		MaxCheckNames:    50,
+		CheckParallelism: 8,
+	},
+	Audit: EPPAudit{
+		Retention: 365 * 24 * time.Hour,
+		Buffer:    10000,
+	},
+	DB: EPPDatabase{MaxOpenConns: 20, User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
 }
 
 // LoadEPP reads the EPP server's environment. A value that is set but
@@ -240,6 +273,15 @@ func LoadEPP() (EPP, error) {
 	collect(setPositiveInt(&cfg.Sessions.PerRegistrar, "EPP_MAX_SESSIONS_PER_REGISTRAR", os.Getenv("EPP_MAX_SESSIONS_PER_REGISTRAR")))
 	collect(setPositiveInt(&cfg.Sessions.PerLogin, "EPP_MAX_SESSIONS_PER_LOGIN", os.Getenv("EPP_MAX_SESSIONS_PER_LOGIN")))
 
+	collect(setPositiveInt(&cfg.Commands.MaxCheckNames, "EPP_MAX_CHECK_NAMES", os.Getenv("EPP_MAX_CHECK_NAMES")))
+	collect(setPositiveInt(&cfg.Commands.CheckParallelism, "EPP_CHECK_PARALLELISM", os.Getenv("EPP_CHECK_PARALLELISM")))
+
+	collect(setDuration(&cfg.Audit.Retention, "EPP_AUDIT_RETENTION", os.Getenv("EPP_AUDIT_RETENTION")))
+	cfg.Audit.QueryResponses, err = parseBoolDefaultFalse("EPP_AUDIT_QUERY_RESPONSES", os.Getenv("EPP_AUDIT_QUERY_RESPONSES"))
+	collect(err)
+	collect(setPositiveInt(&cfg.Audit.Buffer, "EPP_AUDIT_BUFFER", os.Getenv("EPP_AUDIT_BUFFER")))
+
+	collect(setPositiveInt(&cfg.DB.MaxOpenConns, "EPP_DB_MAX_OPEN_CONNS", os.Getenv("EPP_DB_MAX_OPEN_CONNS")))
 	cfg.DB.User = valueOr(os.Getenv("DB_USER"), cfg.DB.User)
 	cfg.DB.Pass = valueOr(os.Getenv("DB_PASS"), cfg.DB.Pass)
 	cfg.DB.Host = valueOr(os.Getenv("DB_HOST"), cfg.DB.Host)
@@ -275,6 +317,9 @@ func (c EPP) validate() error {
 	}
 	if c.Sessions.NodeID == "" {
 		errs = append(errs, errors.New("EPP_NODE_ID is unset and the hostname is unknown; set EPP_NODE_ID"))
+	}
+	if c.Commands.CheckParallelism >= c.DB.MaxOpenConns {
+		errs = append(errs, fmt.Errorf("EPP_CHECK_PARALLELISM (%d) must be below EPP_DB_MAX_OPEN_CONNS (%d), so one <check> cannot take every connection", c.Commands.CheckParallelism, c.DB.MaxOpenConns))
 	}
 	if c.Limits.MaxHandshakes > c.Limits.MaxConnections {
 		errs = append(errs, fmt.Errorf("EPP_MAX_HANDSHAKES (%d) exceeds EPP_MAX_CONNECTIONS (%d)", c.Limits.MaxHandshakes, c.Limits.MaxConnections))

@@ -66,6 +66,11 @@ type testCredentials struct {
 	shared  repositories.EPPSessionRegistry
 	lockout *lockout.Memory
 	server  *Server
+	// domains answers domain commands, and audit is the audit log's store,
+	// behind the real audit service auditLog.
+	domains  *fakeDomains
+	audit    *memstore.EPPTransactions
+	auditLog *services.EPPAuditService
 }
 
 // newTestCredentials seeds the default test registrar.
@@ -76,7 +81,14 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		store:    memstore.NewEPPCredentials(testRegistrar, "registrar2"),
 		registry: memstore.NewEPPSessions(),
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
+		domains:  newFakeDomains(),
+		audit:    memstore.NewEPPTransactions(),
 	}
+	tc.auditLog = services.NewEPPAuditService(tc.audit, 100)
+	ctx, stop := context.WithCancel(context.Background())
+	written := make(chan struct{})
+	go func() { defer close(written); tc.auditLog.Run(ctx, time.Second, nil) }()
+	t.Cleanup(func() { stop(); <-written })
 	tc.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
 		if _, err := a.AddLogin(testLogin, entities.EPPLoginRoleTransform, "test", time.Now()); err != nil {
 			return err
@@ -99,6 +111,15 @@ func newTestCredentials(t *testing.T) *testCredentials {
 
 func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 	return services.NewEPPAuthenticationService(tc.store, fastHash, tc.lockout, nil, 2)
+}
+
+// options are the options for a server built from cfg over these
+// credentials.
+func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
+	return Options{
+		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
+		Domains: tc.domains, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+	}
 }
 
 // tracker is the session service a server built from cfg uses.

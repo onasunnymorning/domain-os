@@ -58,6 +58,7 @@ func testConfig() config.EPP {
 			PerRegistrar: 10,
 			PerLogin:     10,
 		},
+		Commands: config.EPPCommands{MaxCheckNames: 50, CheckParallelism: 4},
 	}
 }
 
@@ -87,8 +88,7 @@ func listenLoopback(t *testing.T) net.Listener {
 // tests that build a server without running it.
 func testOptions(t *testing.T, cfg config.EPP) Options {
 	t.Helper()
-	creds := newTestCredentials(t)
-	return Options{Config: cfg, Authenticator: creds.authenticator(), Sessions: creds.tracker(cfg), Logger: discardLogger(), NewID: func() string { return "x" }}
+	return newTestCredentials(t).options(cfg, func() string { return "x" })
 }
 
 // startServerOn runs a server built from cfg on l until the test ends, with
@@ -102,13 +102,7 @@ func startServerOn(t *testing.T, cfg config.EPP, l net.Listener) *testServer {
 func startServerWith(t *testing.T, cfg config.EPP, l net.Listener, creds *testCredentials) *testServer {
 	t.Helper()
 	var n atomic.Int64
-	srv, err := NewServer(Options{
-		Config:        cfg,
-		Authenticator: creds.authenticator(),
-		Sessions:      creds.tracker(cfg),
-		Logger:        discardLogger(),
-		NewID:         func() string { return fmt.Sprintf("%s-%d", cfg.Sessions.NodeID, n.Add(1)) },
-	})
+	srv, err := NewServer(creds.options(cfg, func() string { return fmt.Sprintf("%s-%d", cfg.Sessions.NodeID, n.Add(1)) }))
 	require.NoError(t, err)
 	creds.server = srv
 
@@ -138,6 +132,14 @@ func (ts *testServer) counter(t *testing.T, name string, labels ...string) float
 	}
 	vec, ok := vecs[name]
 	require.True(t, ok, "unknown counter %q", name)
+	var m dto.Metric
+	require.NoError(t, vec.WithLabelValues(labels...).Write(&m))
+	return m.GetCounter().GetValue()
+}
+
+// counterOf reads one series of a counter vector.
+func counterOf(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
 	var m dto.Metric
 	require.NoError(t, vec.WithLabelValues(labels...).Write(&m))
 	return m.GetCounter().GetValue()

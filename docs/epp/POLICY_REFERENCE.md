@@ -1,6 +1,6 @@
 # EPP server: settings and policy reference
 
-This page lists every setting that governs the EPP server: its default, where it lives, how to change it, and when a change takes effect. When you add, remove or re-default a setting, update this page in the same PR. The design behind these settings is in [ARCHITECTURE.md](ARCHITECTURE.md), and the decisions are in [ADR 0013](../adr/0013-epp-server-architecture.md) and [ADR 0014](../adr/0014-epp-credential-rotation.md).
+This page lists every setting that governs the EPP server: its default, where it lives, how to change it, and when a change takes effect. When you add, remove or re-default a setting, update this page in the same PR. The design behind these settings is in [ARCHITECTURE.md](ARCHITECTURE.md), and the decisions are in [ADR 0013](../adr/0013-epp-server-architecture.md), [ADR 0014](../adr/0014-epp-credential-rotation.md) and [ADR 0016](../adr/0016-epp-schema-validation-in-go.md).
 
 Settings live in one of two places:
 
@@ -74,7 +74,23 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 | `EPP_CREDENTIAL_REFRESH_INTERVAL` | `30s` | How often a node reloads the union of allowed networks, and ends sessions that used a credential retired as compromised. A new allowed network can take this long to admit its first connection; a compromise retire can take this long to end sessions. Logins themselves always read the database |
 | `EPP_MAX_CONCURRENT_LOGINS` | `8` | Password verifications in progress on one node. Each Argon2id verification holds 19 MiB, so this bounds login memory at about 150 MiB. More logins wait their turn |
 | `EPP_MAX_LOGIN_ATTEMPTS` | `3` | Failed logins one session may make. The last is answered 2501 and the session closes |
-| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_SSLMODE` | as for the other services | The database holding registrars' credentials. A node uses at most 10 connections. `SCHEMA_GUARD` applies as for the API |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_SSLMODE` | as for the other services | The registry database: credentials, domains for `<check>`, and the audit log. `SCHEMA_GUARD` applies as for the API |
+| `EPP_DB_MAX_OPEN_CONNS` | `20` | Database connections one node may open, shared by logins, commands and the audit log |
+
+**Commands**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_MAX_CHECK_NAMES` | `50` | Names one `<check>` may carry; more is answered 2306 without a lookup. Moves into the policy engine in Phase 5 |
+| `EPP_CHECK_PARALLELISM` | `8` | Availability lookups one `<check>` runs at once. Must be below `EPP_DB_MAX_OPEN_CONNS`, so one check cannot take every connection |
+
+**Audit log**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_AUDIT_RETENTION` | `8760h` (365 days) | How long each command is kept. Every node deletes older rows hourly, in batches |
+| `EPP_AUDIT_QUERY_RESPONSES` | `false` | Also keep the response frames of queries (`<hello>`, `<check>`, `<info>`, `<poll op="req">`). Their requests are always kept, and transforms keep both frames. A 50-name check response with fee data is up to about 50 KB, so this is off by default |
+| `EPP_AUDIT_BUFFER` | `10000` | Query records one node may hold before writing them in a batch. When it is full, records are written one at a time instead; none is dropped |
 
 **Shared state and logging**
 
@@ -84,6 +100,44 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | *(empty: no auth)* | Redis password. Secret |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), or `error`, in any case. `debug` logs every command with its clTRID, svTRID, result code and duration |
+
+## Command handling
+
+Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
+
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+
+**Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
+
+**Services negotiated at login.**
+
+| Case | Answer |
+|---|---|
+| `<login>` asks for an object service the greeting does not offer | 2307; not a failed login |
+| `<login>` asks for an extension the greeting does not offer | 2103; not a failed login |
+| A command on an object service the session did not ask for | 2307 |
+| A command carrying an extension the session did not ask for | 2103 |
+
+The greeting offers the domain, contact and host object services; contact and host commands are not bound yet and are answered 2101. It offers no extensions yet: DNSSEC and RGP arrive with domain create and info.
+
+**`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
+
+| Reason | When |
+|---|---|
+| `Invalid domain name` | Not a valid host name with at least two labels |
+| `TLD not served by this registry` | No such TLD |
+| `Not open for registration` | The TLD has no general-availability phase in force |
+| `Not allowed by registry policy` | The current phase's label rules (length) exclude it |
+| `In use` | Registered |
+| `Reserved` | On the reserved and blocked names list (ADR 0011) |
+
+Availability is the same for every registrar. Names are looked up `EPP_CHECK_PARALLELISM` at a time, and each TLD's phases are read once per command. A registry that cannot answer is 2400 for the whole command; there are no partial answers. `epp_check_names` is the histogram of names per check.
+
+**Audit log.** Every command and its response is a row of `epp_transactions`: svTRID, clTRID, session, node, registrar, login (for a `<login>`, the login presented, accepted or not), source address, command, the object identifiers it names, result code, receipt time, duration, and the frames.
+- Frames are redacted: the text of every `<pw>` and `<newPW>`, and every text and attribute value inside every `<authInfo>`, is replaced with `[redacted]`. A frame that could not be parsed is recorded without its request, which could not be redacted. The login ID and object identifiers are read as soon as a command passes validation, so a command the policy refuses is recorded with them.
+- A transform's record (anything but a query, including `<login>` and `<logout>`) is written before its response is sent. If that write fails, the record is queued for a retry and the response is still sent: the registrar must learn the outcome of a change that has happened. `epp_audit_errors_total{stage="sync"}` counts these.
+- Queries are queued and written in batches of up to 200, at least every second, by `EPP_AUDIT_BUFFER`. A failed batch is retried every second (`stage="batch"`); a record that can be neither queued nor written is lost and counted (`stage="lost"`). On shutdown, what is queued is written before the process exits, retrying for up to 10 seconds; anything still unwritten then is counted as `lost`, by record.
+- It is a record, not telemetry (INV-01): it is never sampled.
 
 ## Credentials: admin API
 
@@ -195,7 +249,7 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 
 | Cap | Default | On breach |
 |---|---|---|
-| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306 |
+| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for `domain:check` as `EPP_MAX_CHECK_NAMES` |
 | Nameservers per domain | 13 | 2306 |
 | DS records per domain | 8 | 2306 |
 

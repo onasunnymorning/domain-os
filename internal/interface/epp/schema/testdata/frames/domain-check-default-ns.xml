@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <check>
+      <check xmlns="urn:ietf:params:xml:ns:domain-1.0">
+        <name>xn--bcher-kva.example</name>
+      </check>
+    </check>
+  </command>
+</epp>

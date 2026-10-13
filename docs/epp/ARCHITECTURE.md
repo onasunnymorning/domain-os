@@ -2,7 +2,7 @@
 
 **Status:** target architecture plus a roadmap. Most of what this page describes **does not exist yet**. Each section says what holds today, and the [roadmap](#roadmap) says which phase builds the rest. Update this page in the same PR as each phase lands, so it never describes the system as intended rather than as built.
 
-**Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md), with credential rotation amended by [ADR 0014](../adr/0014-epp-credential-rotation.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
+**Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md), with credential rotation amended by [ADR 0014](../adr/0014-epp-credential-rotation.md) and schema validation decided by [ADR 0016](../adr/0016-epp-schema-validation-in-go.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
 
 **Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The session registry is `internal/infrastructure/epp/sessionstore` and the lockout `internal/infrastructure/epp/lockout`, both in Redis.
 
@@ -10,8 +10,9 @@
 
 ## Where it stands today
 
-Transport, sessions and identity are in place (Phases 1 to 3). The command surface is still a **protocol stub**:
-- It binds `<hello>`, login, logout and a placeholder `domain:check` that ignores the names it is asked about. Every other RFC 5730 command is answered 2101 (unimplemented).
+Transport, sessions and identity are in place (Phases 1 to 3), and so is the command pipeline (Phase 4a). The command surface is still small:
+- It binds `<hello>`, login, logout and `domain:check`, which answers from the registry. Every other RFC 5730 command is answered 2101 (unimplemented); domain info and create are Phase 4b.
+- Every command is validated against the EPP schemas, checked against the services negotiated at login, passed through the policy hook, and recorded in the audit log (Phase 4a).
 - Logins are authenticated (Phase 2): allowed network, pinned certificate and password, with a lockout per (login, source address).
 - Sessions are leases in a cluster-wide registry with caps per source address, registrar and login, and operators can list and end them (Phase 3).
 
@@ -108,7 +109,7 @@ A login must pass three checks:
 - **Per-command object caps** (names per check, nameservers, DS records). A breach returns 2306.
 - `clTRID` is echoed. `svTRID` is globally unique and doubles as the correlation ID in logs and audit.
 
-*Today:* the frame size, DTD rejection, depth and element caps, the clTRID echo and the unique svTRID are in place. Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. XSD validation is Phase 4, and per-command object caps are Phase 5.
+*Today:* all of this section except the nameserver and DS caps, which arrive with domain create (Phase 4b) and move into the policy engine with the check cap (Phase 5). Schema validation uses Go models of the XSDs, kept in agreement with xmllint by a differential test (ADR 0016). Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. The pipeline and every answer are in [POLICY_REFERENCE.md § Command handling](POLICY_REFERENCE.md#command-handling).
 
 ## 5. Policy enforcement
 
@@ -129,7 +130,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 5. **Randomised release.** Names leaving pendingDelete are purged in random order, at an unpublished offset within a window.
 6. **Check→create correlation.** Detect bursts of checks followed by an immediate create on the same name. This ships behind a flag and is enabled once we have data.
 
-*Today:* none of this exists.
+*Today:* the hook between validation and dispatch is in place, with a pass-through policy; `epp_policy_decisions_total` counts its decisions. Nothing else in this section exists yet.
 
 ## 6. Observability
 
@@ -149,7 +150,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 - **Audit log** of every command and response, keyed by svTRID and clTRID, with `pw`, `newPW` and `authInfo` redacted. It is written durably (not telemetry, per INV-01) with configurable retention.
 - **Structured `slog` only.**
 
-*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, sessions), `epp_registrar_sessions{clid,login}`, `epp_session_registry_renewals_total{result}`, `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Who is connected, cluster-wide, is `GET /epp/sessions`; command series by registrar arrive with the command pipeline (Phase 4). There is no audit log yet.
+*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, sessions), `epp_registrar_sessions{clid,login}`, `epp_session_registry_renewals_total{result}`, `epp_commands_total{clid,command,code}`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total` (including `schema`), `epp_check_names`, `epp_policy_decisions_total{rule,action}`, `epp_audit_errors_total{stage}`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Who is connected, cluster-wide, is `GET /epp/sessions`. The audit log is the `epp_transactions` table, with redacted frames and configurable retention; there is no API to read it yet.
 
 ---
 
@@ -167,7 +168,8 @@ Each phase is one or more PRs and can be shipped on its own.
 | 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | **Done** |
 | 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **Done**, except delivering change events to the technical contact |
 | 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | **Done**, except the per-family cap, which moves to Phase 5 with families |
-| 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
+| 4a | Command pipeline: schema validation (ADR 0016), service negotiation at login, policy hook, in-process dispatch to application services, real domain check, audit log | **Done** |
+| 4b | Domain info and create with sponsorship and accreditation checks (ADR 0006), DNSSEC (RFC 5910) and RGP (RFC 3915) | Planned |
 | 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
 | 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

@@ -23,6 +23,18 @@ const (
 	endedAdminKill   = "admin_kill"
 )
 
+// Audit failures, for epp_audit_errors_total.
+const (
+	// auditStageSync is a transform's record that could not be written
+	// before its response, and was queued instead.
+	auditStageSync = "sync"
+	// auditStageBatch is a batch of queued records that failed and is
+	// being retried.
+	auditStageBatch = "batch"
+	// auditStageLost is a record that could not be written at all.
+	auditStageLost = "lost"
+)
+
 // Shared stores, for epp_policy_store_degraded.
 const (
 	storeLockout  = "lockout"
@@ -56,6 +68,9 @@ type metrics struct {
 	storeDegraded           *prometheus.GaugeVec
 	registrarSessions       *prometheus.GaugeVec
 	registryRenewals        *prometheus.CounterVec
+	policyDecisions         *prometheus.CounterVec
+	auditErrors             *prometheus.CounterVec
+	checkNames              prometheus.Histogram
 }
 
 func newMetrics() *metrics {
@@ -79,11 +94,11 @@ func newMetrics() *metrics {
 		}, []string{"result"}),
 		commands: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "epp_commands_total",
-			Help: "Commands by command name and EPP result code.",
-		}, []string{"command", "code"}),
+			Help: "Commands by registrar (empty before login), command name and EPP result code.",
+		}, []string{"clid", "command", "code"}),
 		commandDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "epp_command_duration_seconds",
-			Help:    "Time from a complete frame to a written response, by command.",
+			Help:    "Time from a complete frame to its response being ready, including the audit write of a transform, by command.",
 			Buckets: []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5},
 		}, []string{"command"}),
 		frameBytes: prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -139,6 +154,19 @@ func newMetrics() *metrics {
 			Name: "epp_session_registry_renewals_total",
 			Help: "Heartbeat renewals of this node's sessions in the cluster-wide registry, by result.",
 		}, []string{"result"}),
+		policyDecisions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_policy_decisions_total",
+			Help: "Policy decisions on validated commands, by the rule that decided and the action: allow, delay, reject or close.",
+		}, []string{"rule", "action"}),
+		auditErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_audit_errors_total",
+			Help: "Audit log write failures: sync (a transform's record queued instead of written before its response), batch (a queued batch being retried) and lost (a record not written at all).",
+		}, []string{"stage"}),
+		checkNames: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "epp_check_names",
+			Help:    "Names per <check> command.",
+			Buckets: []float64{1, 2, 5, 10, 20, 50, 100},
+		}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -150,6 +178,7 @@ func newMetrics() *metrics {
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
 		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
+		m.policyDecisions, m.auditErrors, m.checkNames,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

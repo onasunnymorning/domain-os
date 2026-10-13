@@ -19,6 +19,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -295,10 +296,10 @@ func TestRST_epp02_ProtocolConformance(t *testing.T) {
 	}
 
 	t.Run("epp-02/7 secDNS-1.1 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "Phase 4: DNSSEC (RFC 5910) on domain create/update/info; advertised only once implemented")
+		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "Phase 4b: DNSSEC (RFC 5910) on domain create/update/info; advertised only once implemented")
 	})
 	t.Run("epp-02/7 rgp-1.0 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "Phase 4: RGP (RFC 3915) statuses and restore; advertised only once implemented")
+		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "Phase 4b: RGP (RFC 3915) statuses and restore; advertised only once implemented")
 	})
 	t.Run("epp-02/8 launch-1.0 extURI", func(t *testing.T) {
 		requireExt(t, "urn:ietf:params:xml:ns:launch-1.0", "launch phases (RFC 8334) for sunrise and claims; not yet scheduled in docs/epp/ARCHITECTURE.md")
@@ -418,13 +419,53 @@ func TestRST_epp03_Authentication(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
-// --- epp-04 … epp-27: object commands -------------------------------------
+// --- epp-04: Domain <check> command test ----------------------------------
+
+// The registry behind these tests is fakeDomains: .test is served and
+// registered.test stands in for epp.registeredNames. The availability rules
+// themselves are tested in services.EPPDomainService's tests.
+func TestRST_epp04_DomainCheck(t *testing.T) {
+	ts := startServer(t, testConfig())
+	c := dial(t, ts.addr)
+	c.login()
+
+	// avail checks a name and returns its avail attribute, or the result
+	// code if the check was refused.
+	avail := func(t *testing.T, name string) string {
+		t.Helper()
+		resp := c.roundTrip(checkNamesXML(name))
+		code := resp.FindElement("//response/result").SelectAttrValue("code", "")
+		if code != "1000" {
+			return code
+		}
+		el := resp.FindElement("//resData/chkData/cd/name")
+		require.NotNil(t, el, "a <domain:name> for the name checked")
+		return el.SelectAttrValue("avail", "")
+	}
+
+	t.Run("epp-04 syntactically invalid names are unavailable or refused", func(t *testing.T) {
+		for _, name := range []string{
+			"-leading.test", "trailing-.test", "under_score.test", "dou..ble.test", "sp ace.test",
+			strings.Repeat("x", 64) + ".test", "nodot", "",
+		} {
+			got := avail(t, name)
+			assert.Contains(t, []string{"0", "false", "2001", "2004", "2005"}, got, "%q", name)
+		}
+	})
+	t.Run("epp-04 registered names are unavailable", func(t *testing.T) {
+		assert.Equal(t, "0", avail(t, "registered.test"))
+	})
+	t.Run("epp-04 unregistered names are available", func(t *testing.T) {
+		assert.Equal(t, "1", avail(t, "rst"+strings.ToLower(strconv.FormatInt(time.Now().UnixNano(), 36))+".test"))
+	})
+}
+
+// --- epp-05 … epp-27: object commands -------------------------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"epp-04": "Phase 4: domain <check> against the registry (the current handler is a placeholder)",
 	"epp-05": "object commands epic: host <check>",
 	"epp-06": "object commands epic: contact <check> (if the registry data model needs contacts)",
 	"epp-07": "object commands epic: contact <create>",
@@ -434,10 +475,10 @@ var rstPendingCases = map[string]string{
 	"epp-11": "object commands epic: host <create>",
 	"epp-12": "object commands epic: host <update> refused to non-sponsors with 2201 (ADR 0006)",
 	"epp-13": "object commands epic: host <update>",
-	"epp-14": "Phase 4: domain <create>, including DS validation, the 1-10 year period and roid/crID/clID on <info>",
+	"epp-14": "Phase 4b: domain <create>, including DS validation, the 1-10 year period and roid/crID/clID on <info>",
 	"epp-15": "object commands epic: deleting a linked host or contact is refused",
 	"epp-16": "object commands epic: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
-	"epp-17": "Phase 4: identical <info> from every service port; two servers sharing one backend",
+	"epp-17": "Phase 4b: identical <info> from every service port; two servers sharing one backend",
 	"epp-18": "object commands epic: domain <renew>",
 	"epp-19": "object commands epic: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
 	"epp-20": "object commands epic: domain <transfer> rejection",
@@ -461,7 +502,7 @@ func TestRST_EPPPendingCases(t *testing.T) {
 }
 
 // rstImplementedCases have their own TestRST_ function in this file.
-var rstImplementedCases = []string{"epp-01", "epp-02", "epp-03"}
+var rstImplementedCases = []string{"epp-01", "epp-02", "epp-03", "epp-04"}
 
 // TestRST_EPPCatalogueIsComplete fails when the pinned spec and this file
 // disagree: a case in the spec that is neither implemented nor pending, or a
