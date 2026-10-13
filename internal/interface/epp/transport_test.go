@@ -62,25 +62,25 @@ func TestProxyProtocolRefusesUntrustedPeers(t *testing.T) {
 
 func TestServerCertificateReload(t *testing.T) {
 	dir := t.TempDir()
-	certFile, keyFile := filepath.Join(dir, "epp.crt"), filepath.Join(dir, "epp.key")
-	first := writeKeyPair(t, certFile, keyFile, time.Now())
+	certPath, keyPath := filepath.Join(dir, "epp.crt"), filepath.Join(dir, "epp.key")
+	first := writeKeyPair(t, certPath, keyPath, time.Now())
 
 	cfg := testConfig()
-	cfg.TLS = config.EPPTLS{CertFile: certFile, KeyFile: keyFile, ReloadInterval: 20 * time.Millisecond}
+	cfg.TLS = config.EPPTLS{CertPath: certPath, KeyPath: keyPath, ReloadInterval: 20 * time.Millisecond}
 	ts := startServer(t, cfg)
 
 	c := dial(t, ts.addr)
 	assert.True(t, bytes.Equal(first, peerCert(c)), "the server presents the certificate on disk")
 
 	t.Run("a broken file keeps the current certificate", func(t *testing.T) {
-		require.NoError(t, os.WriteFile(certFile, []byte("not a certificate"), 0o600))
-		touch(t, certFile, time.Now().Add(time.Second))
+		require.NoError(t, os.WriteFile(certPath, []byte("not a certificate"), 0o600))
+		touch(t, certPath, time.Now().Add(time.Second))
 		require.Eventually(t, func() bool { return counterValue(t, ts.metrics.certReloadErrors) >= 1 }, 2*time.Second, 10*time.Millisecond)
 		assert.True(t, bytes.Equal(first, peerCert(dial(t, ts.addr))))
 	})
 
 	t.Run("a renewed certificate is picked up without dropping live sessions", func(t *testing.T) {
-		second := writeKeyPair(t, certFile, keyFile, time.Now().Add(2*time.Second))
+		second := writeKeyPair(t, certPath, keyPath, time.Now().Add(2*time.Second))
 		require.Eventually(t, func() bool {
 			return bytes.Equal(second, peerCert(dial(t, ts.addr)))
 		}, 2*time.Second, 20*time.Millisecond, "new handshakes get the new certificate")
@@ -114,7 +114,7 @@ func peerCert(c *client) []byte {
 
 // writeKeyPair writes a fresh self-signed certificate and key as PEM, sets
 // both files' modification time to mtime, and returns the certificate's DER.
-func writeKeyPair(t *testing.T, certFile, keyFile string, mtime time.Time) []byte {
+func writeKeyPair(t *testing.T, certPath, keyPath string, mtime time.Time) []byte {
 	t.Helper()
 	cert, err := SelfSignedCertificate()
 	require.NoError(t, err)
@@ -122,10 +122,10 @@ func writeKeyPair(t *testing.T, certFile, keyFile string, mtime time.Time) []byt
 	require.NoError(t, err)
 	// Key first: a reload that sees only the new certificate fails to pair
 	// and is retried on the next tick.
-	require.NoError(t, os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}), 0o600))
-	require.NoError(t, os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o600))
-	touch(t, keyFile, mtime)
-	touch(t, certFile, mtime)
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}), 0o600))
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o600))
+	touch(t, keyPath, mtime)
+	touch(t, certPath, mtime)
 	return cert.Certificate[0]
 }
 

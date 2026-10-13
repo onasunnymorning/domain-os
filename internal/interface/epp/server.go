@@ -87,7 +87,7 @@ func NewServer(opts Options) (*Server, error) {
 			s.certs, err = newStaticCertSource(cert, s.metrics)
 		}
 	} else {
-		s.certs, err = newFileCertSource(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile, s.cfg.TLS.ReloadInterval, s.metrics, s.logger)
+		s.certs, err = newFileCertSource(s.cfg.TLS.CertPath, s.cfg.TLS.KeyPath, s.cfg.TLS.ReloadInterval, s.metrics, s.logger)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("epp server certificate: %w", err)

@@ -146,9 +146,9 @@ var Registry = []EnvVar{
 	// docs/epp/POLICY_REFERENCE.md. Parsing and cross-checks: internal/config/epp.go.
 	{Name: "EPP_PORT", Services: []Service{ServiceEPP}, Default: "700", Description: "EPP server TCP listen port"},
 	{Name: "EPP_OPS_PORT", Services: []Service{ServiceEPP}, Default: "9700", Description: "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"},
-	{Name: "EPP_TLS_CERT_FILE", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. A path, not credential material: the file itself is mounted from the secret store"},
-	{Name: "EPP_TLS_KEY_FILE", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM private key for EPP_TLS_CERT_FILE. A path, not credential material: the key file itself is mounted from the secret store"},
-	{Name: "EPP_TLS_SELF_SIGNED", Services: []Service{ServiceEPP}, Default: "false", Description: "Present a generated self-signed certificate instead of EPP_TLS_CERT_FILE. Local development only"},
+	{Name: "EPP_TLS_CERT_PATH", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. The certificate itself is public; mount it with its key"},
+	{Name: "EPP_TLS_KEY_PATH", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM private key for EPP_TLS_CERT_PATH. The path is not secret; the key file it names is, so mount it from the secret store"},
+	{Name: "EPP_TLS_SELF_SIGNED", Services: []Service{ServiceEPP}, Default: "false", Description: "Present a generated self-signed certificate instead of EPP_TLS_CERT_PATH. Local development only"},
 	{Name: "EPP_TLS_RELOAD_INTERVAL", Services: []Service{ServiceEPP}, Default: "1m", Description: "How often the certificate files are checked for a renewal"},
 	{Name: "EPP_PROXY_PROTOCOL", Services: []Service{ServiceEPP}, Default: "false", Description: "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-IP limits see only the balancer"},
 	{Name: "EPP_PROXY_TRUSTED_CIDRS", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_PROXY_PROTOCOL=true", Description: "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"},

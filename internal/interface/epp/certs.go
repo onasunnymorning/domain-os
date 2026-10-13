@@ -17,7 +17,7 @@ import (
 type certSource struct {
 	current atomic.Pointer[tls.Certificate]
 
-	certFile, keyFile string
+	certPath, keyPath string
 	interval          time.Duration
 	lastModified      [2]time.Time
 	metrics           *metrics
@@ -26,8 +26,8 @@ type certSource struct {
 
 // newFileCertSource loads the certificate and key from disk. A failure here
 // stops the server: there is no previous certificate to fall back to.
-func newFileCertSource(certFile, keyFile string, interval time.Duration, m *metrics, logger *slog.Logger) (*certSource, error) {
-	cs := &certSource{certFile: certFile, keyFile: keyFile, interval: interval, metrics: m, logger: logger}
+func newFileCertSource(certPath, keyPath string, interval time.Duration, m *metrics, logger *slog.Logger) (*certSource, error) {
+	cs := &certSource{certPath: certPath, keyPath: keyPath, interval: interval, metrics: m, logger: logger}
 	if err := cs.load(); err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (cs *certSource) notAfter() time.Time {
 // done. A file that fails to load is reported and the previous certificate
 // stays in use, so a half-written renewal cannot take the server down.
 func (cs *certSource) watch(ctx context.Context) {
-	if cs.certFile == "" {
+	if cs.certPath == "" {
 		return
 	}
 	ticker := time.NewTicker(cs.interval)
@@ -87,7 +87,7 @@ func (cs *certSource) watch(ctx context.Context) {
 
 func (cs *certSource) changed() (bool, error) {
 	var mod [2]time.Time
-	for i, path := range []string{cs.certFile, cs.keyFile} {
+	for i, path := range []string{cs.certPath, cs.keyPath} {
 		info, err := os.Stat(path)
 		if err != nil {
 			return false, fmt.Errorf("stat %s: %w", path, err)
@@ -99,16 +99,16 @@ func (cs *certSource) changed() (bool, error) {
 
 func (cs *certSource) load() error {
 	var mod [2]time.Time
-	for i, path := range []string{cs.certFile, cs.keyFile} {
+	for i, path := range []string{cs.certPath, cs.keyPath} {
 		info, err := os.Stat(path)
 		if err != nil {
 			return fmt.Errorf("stat %s: %w", path, err)
 		}
 		mod[i] = info.ModTime()
 	}
-	cert, err := tls.LoadX509KeyPair(cs.certFile, cs.keyFile)
+	cert, err := tls.LoadX509KeyPair(cs.certPath, cs.keyPath)
 	if err != nil {
-		return fmt.Errorf("load server certificate %s: %w", cs.certFile, err)
+		return fmt.Errorf("load server certificate %s: %w", cs.certPath, err)
 	}
 	if err := cs.set(&cert); err != nil {
 		return err

@@ -13,7 +13,7 @@ import (
 // developer's own environment cannot leak in.
 var eppEnv = []string{
 	"EPP_PORT", "EPP_OPS_PORT", "LOG_LEVEL", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD",
-	"EPP_TLS_CERT_FILE", "EPP_TLS_KEY_FILE", "EPP_TLS_SELF_SIGNED", "EPP_TLS_RELOAD_INTERVAL",
+	"EPP_TLS_CERT_PATH", "EPP_TLS_KEY_PATH", "EPP_TLS_SELF_SIGNED", "EPP_TLS_RELOAD_INTERVAL",
 	"EPP_PROXY_PROTOCOL", "EPP_PROXY_TRUSTED_CIDRS",
 	"EPP_MAX_CONNECTIONS", "EPP_MAX_HANDSHAKES", "EPP_MAX_FRAME_BYTES", "EPP_XML_MAX_DEPTH", "EPP_XML_MAX_ELEMENTS",
 	"EPP_HANDSHAKE_TIMEOUT", "EPP_LOGIN_TIMEOUT", "EPP_IDLE_TIMEOUT", "EPP_READ_TIMEOUT", "EPP_WRITE_TIMEOUT",
@@ -29,15 +29,15 @@ func clearEPPEnv(t *testing.T) {
 
 func TestLoadEPPDefaults(t *testing.T) {
 	clearEPPEnv(t)
-	t.Setenv("EPP_TLS_CERT_FILE", "/certs/epp.crt")
-	t.Setenv("EPP_TLS_KEY_FILE", "/certs/epp.key")
+	t.Setenv("EPP_TLS_CERT_PATH", "/certs/epp.crt")
+	t.Setenv("EPP_TLS_KEY_PATH", "/certs/epp.key")
 
 	cfg, err := LoadEPP()
 	require.NoError(t, err)
 
 	want := eppDefaults
-	want.TLS.CertFile = "/certs/epp.crt"
-	want.TLS.KeyFile = "/certs/epp.key"
+	want.TLS.CertPath = "/certs/epp.crt"
+	want.TLS.KeyPath = "/certs/epp.key"
 	assert.Equal(t, want, cfg)
 
 	// The documented defaults (docs/epp/POLICY_REFERENCE.md).
@@ -97,9 +97,9 @@ func TestLoadEPPRejects(t *testing.T) {
 		{"unparseable port", map[string]string{"EPP_PORT": "seven hundred"}, "EPP_PORT"},
 		{"port out of range", map[string]string{"EPP_OPS_PORT": "65536"}, "EPP_OPS_PORT"},
 		{"unknown log level", map[string]string{"LOG_LEVEL": "verbose"}, "LOG_LEVEL"},
-		{"no certificate", map[string]string{"EPP_TLS_SELF_SIGNED": ""}, "EPP_TLS_CERT_FILE"},
-		{"half a certificate", map[string]string{"EPP_TLS_SELF_SIGNED": "", "EPP_TLS_CERT_FILE": "/c.crt"}, "EPP_TLS_KEY_FILE"},
-		{"certificate and self-signed", map[string]string{"EPP_TLS_CERT_FILE": "/c.crt", "EPP_TLS_KEY_FILE": "/c.key"}, "conflicts"},
+		{"no certificate", map[string]string{"EPP_TLS_SELF_SIGNED": ""}, "EPP_TLS_CERT_PATH"},
+		{"half a certificate", map[string]string{"EPP_TLS_SELF_SIGNED": "", "EPP_TLS_CERT_PATH": "/c.crt"}, "EPP_TLS_KEY_PATH"},
+		{"certificate and self-signed", map[string]string{"EPP_TLS_CERT_PATH": "/c.crt", "EPP_TLS_KEY_PATH": "/c.key"}, "conflicts"},
 		{"proxy without trusted CIDRs", map[string]string{"EPP_PROXY_PROTOCOL": "true"}, "EPP_PROXY_TRUSTED_CIDRS"},
 		{"bad CIDR", map[string]string{"EPP_PROXY_TRUSTED_CIDRS": "10.0.0.0/33"}, "EPP_PROXY_TRUSTED_CIDRS"},
 		{"zero connections", map[string]string{"EPP_MAX_CONNECTIONS": "0"}, "EPP_MAX_CONNECTIONS"},

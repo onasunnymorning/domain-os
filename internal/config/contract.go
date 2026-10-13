@@ -192,6 +192,13 @@ func nameLooksSecret(name string) bool {
 	if strings.HasPrefix(name, "NEXT_PUBLIC_") {
 		return false
 	}
+	// A *_PATH variable names a file; the file may hold a secret, the path
+	// does not. In this registry *_CERT and *_KEY hold PEM content
+	// (TEMPORAL_CLIENT_CERT/KEY), so a variable that holds a path to a
+	// certificate or key says so in its name rather than borrowing theirs.
+	if strings.HasSuffix(name, "_PATH") {
+		return false
+	}
 	upper := strings.ToUpper(name)
 	for _, pattern := range []string{"SECRET", "PASSWORD", "TOKEN", "CERT", "KEY", "LICENSE"} {
 		if strings.Contains(upper, pattern) {

@@ -49,8 +49,8 @@ func (r EPPRedis) Addr() string {
 // EPPTLS says where the server certificate comes from. Exactly one of a
 // certificate/key pair or SelfSigned is in effect.
 type EPPTLS struct {
-	CertFile       string
-	KeyFile        string
+	CertPath       string
+	KeyPath        string
 	SelfSigned     bool          // local development only
 	ReloadInterval time.Duration // how often the files are checked for a new certificate
 }
@@ -131,8 +131,8 @@ func LoadEPP() (EPP, error) {
 	cfg.Redis.Port = valueOr(os.Getenv("REDIS_PORT"), cfg.Redis.Port)
 	cfg.Redis.Password = os.Getenv("REDIS_PASSWORD")
 
-	cfg.TLS.CertFile = strings.TrimSpace(os.Getenv("EPP_TLS_CERT_FILE"))
-	cfg.TLS.KeyFile = strings.TrimSpace(os.Getenv("EPP_TLS_KEY_FILE"))
+	cfg.TLS.CertPath = strings.TrimSpace(os.Getenv("EPP_TLS_CERT_PATH"))
+	cfg.TLS.KeyPath = strings.TrimSpace(os.Getenv("EPP_TLS_KEY_PATH"))
 	cfg.TLS.SelfSigned, err = parseBoolDefaultFalse("EPP_TLS_SELF_SIGNED", os.Getenv("EPP_TLS_SELF_SIGNED"))
 	collect(err)
 	collect(setDuration(&cfg.TLS.ReloadInterval, "EPP_TLS_RELOAD_INTERVAL", os.Getenv("EPP_TLS_RELOAD_INTERVAL")))
@@ -167,12 +167,12 @@ func LoadEPP() (EPP, error) {
 // validate checks the rules that span more than one variable.
 func (c EPP) validate() error {
 	var errs []error
-	hasFiles := c.TLS.CertFile != "" || c.TLS.KeyFile != ""
+	hasFiles := c.TLS.CertPath != "" || c.TLS.KeyPath != ""
 	switch {
 	case c.TLS.SelfSigned && hasFiles:
-		errs = append(errs, errors.New("EPP_TLS_SELF_SIGNED=true conflicts with EPP_TLS_CERT_FILE/EPP_TLS_KEY_FILE; set one or the other"))
-	case !c.TLS.SelfSigned && (c.TLS.CertFile == "" || c.TLS.KeyFile == ""):
-		errs = append(errs, errors.New("EPP_TLS_CERT_FILE and EPP_TLS_KEY_FILE are both required, unless EPP_TLS_SELF_SIGNED=true (local development only)"))
+		errs = append(errs, errors.New("EPP_TLS_SELF_SIGNED=true conflicts with EPP_TLS_CERT_PATH/EPP_TLS_KEY_PATH; set one or the other"))
+	case !c.TLS.SelfSigned && (c.TLS.CertPath == "" || c.TLS.KeyPath == ""):
+		errs = append(errs, errors.New("EPP_TLS_CERT_PATH and EPP_TLS_KEY_PATH are both required, unless EPP_TLS_SELF_SIGNED=true (local development only)"))
 	}
 	if c.Proxy.Enabled && len(c.Proxy.TrustedCIDRs) == 0 {
 		errs = append(errs, errors.New("EPP_PROXY_PROTOCOL=true requires EPP_PROXY_TRUSTED_CIDRS: a PROXY header is only believed from the load balancer"))

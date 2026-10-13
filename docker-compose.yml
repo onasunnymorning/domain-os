@@ -70,7 +70,7 @@ services:
     networks:
       - dos
     environment:
-      # Local stack: no real certificate. Deployments set EPP_TLS_CERT_FILE/EPP_TLS_KEY_FILE.
+      # Local stack: no real certificate. Deployments set EPP_TLS_CERT_PATH/EPP_TLS_KEY_PATH.
       - EPP_TLS_SELF_SIGNED=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379

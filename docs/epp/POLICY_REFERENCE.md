@@ -23,8 +23,8 @@ Durations use Go syntax (`30s`, `10m`, `24h`). Every value is checked at start. 
 |---|---|---|
 | `EPP_PORT` | `700` | TCP port the EPP listener binds |
 | `EPP_OPS_PORT` | `9700` | Plain-HTTP port for `/healthz` (process up), `/readyz` (accepting sessions; 503 while starting or draining) and `/metrics`. Keep it on the internal network |
-| `EPP_TLS_CERT_FILE` | *(required)* | PEM server certificate, with its chain, presented to registrars |
-| `EPP_TLS_KEY_FILE` | *(required)* | PEM private key for that certificate |
+| `EPP_TLS_CERT_PATH` | *(required)* | PEM server certificate, with its chain, presented to registrars |
+| `EPP_TLS_KEY_PATH` | *(required)* | PEM private key for that certificate |
 | `EPP_TLS_SELF_SIGNED` | `false` | Present a generated one-day self-signed certificate instead. **Local development only.** Conflicts with the two file variables. Docker Compose and Tilt set it |
 | `EPP_TLS_RELOAD_INTERVAL` | `1m` | How often the certificate and key files are checked for a change |
 | `EPP_PROXY_PROTOCOL` | `false` | Require a PROXY protocol (v1 or v2) header on every connection. **Must be `true` behind a load balancer**, or every per-IP control sees only the balancer's address |

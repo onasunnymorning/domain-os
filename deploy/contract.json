@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-13T17:04:24Z",
+  "generated": "2026-10-13T17:13:30Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -307,19 +307,19 @@
             "description": "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"
           },
           {
-            "name": "EPP_TLS_CERT_FILE",
+            "name": "EPP_TLS_CERT_PATH",
             "required_when": "EPP_TLS_SELF_SIGNED=false",
-            "description": "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. A path, not credential material: the file itself is mounted from the secret store"
+            "description": "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. The certificate itself is public; mount it with its key"
           },
           {
-            "name": "EPP_TLS_KEY_FILE",
+            "name": "EPP_TLS_KEY_PATH",
             "required_when": "EPP_TLS_SELF_SIGNED=false",
-            "description": "Path to the PEM private key for EPP_TLS_CERT_FILE. A path, not credential material: the key file itself is mounted from the secret store"
+            "description": "Path to the PEM private key for EPP_TLS_CERT_PATH. The path is not secret; the key file it names is, so mount it from the secret store"
           },
           {
             "name": "EPP_TLS_SELF_SIGNED",
             "default": "false",
-            "description": "Present a generated self-signed certificate instead of EPP_TLS_CERT_FILE. Local development only"
+            "description": "Present a generated self-signed certificate instead of EPP_TLS_CERT_PATH. Local development only"
           },
           {
             "name": "EPP_TLS_RELOAD_INTERVAL",

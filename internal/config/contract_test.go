@@ -78,17 +78,8 @@ func mustMarshal(t *testing.T, v interface{}) string {
 // Secret. It cannot be the upper bound — DB_PASS and DATABASE_URL are both
 // credentials that the heuristic misses — so known misses are asserted directly.
 func TestSecretsAreExplicit(t *testing.T) {
-	// Names that match the heuristic but hold no credential. Each says why.
-	exempt := map[string]string{
-		"EPP_TLS_CERT_FILE": "a file path; the certificate it names is public, and is mounted from the secret store with its key",
-		"EPP_TLS_KEY_FILE":  "a file path; the key file it names is mounted from the secret store, the path is not",
-	}
-
 	// Lower bound: an obviously-credential name may never ship with Secret unset.
 	for _, v := range config.Registry {
-		if _, ok := exempt[v.Name]; ok {
-			continue
-		}
 		if config.NameLooksSecret(v.Name) && !v.Secret {
 			t.Errorf("%s: name matches the secret heuristic but Secret is false.\n"+
 				"Either mark it Secret: true, or if it is genuinely not credential "+
@@ -172,5 +163,19 @@ func TestEveryDeployableServiceHasAHealthCheck(t *testing.T) {
 		if svc.HealthCheck == nil {
 			t.Errorf("service %q has no health_check; infra cannot build a target group for it", name)
 		}
+	}
+}
+
+// TestPathVariablesAreNotSecretByName pins the one exception to the name
+// heuristic: a *_PATH variable holds a file path, whatever file it names.
+func TestPathVariablesAreNotSecretByName(t *testing.T) {
+	if config.NameLooksSecret("EPP_TLS_KEY_PATH") {
+		t.Error("EPP_TLS_KEY_PATH: a path to a key is not key material")
+	}
+	if !config.NameLooksSecret("TEMPORAL_CLIENT_KEY") {
+		t.Error("TEMPORAL_CLIENT_KEY: a *_KEY variable still holds the key itself")
+	}
+	if !config.NameLooksSecret("EPP_TLS_KEY_PATHS_AND_KEY") {
+		t.Error("only a trailing _PATH is exempt")
 	}
 }
