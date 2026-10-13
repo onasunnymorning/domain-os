@@ -198,6 +198,44 @@ func (r *EPPCredentialRepository) UpdateAccess(ctx context.Context, clid string,
 	return out, nil
 }
 
+// ListUsableAllowedNetworks returns the networks of every registrar that are
+// usable at now, deduplicated.
+func (r *EPPCredentialRepository) ListUsableAllowedNetworks(ctx context.Context, now time.Time) ([]netip.Prefix, error) {
+	var raw []string
+	err := r.db.WithContext(ctx).Model(&EPPAllowedNetworkRecord{}).
+		Where("retire_at IS NULL OR retire_at > ?", now).
+		Distinct().Order("prefix").Pluck("prefix", &raw).Error
+	if err != nil {
+		return nil, fmt.Errorf("list EPP allowed networks: %w", err)
+	}
+	out := make([]netip.Prefix, 0, len(raw))
+	for _, s := range raw {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, fmt.Errorf("decode EPP allowed network %q: %w", s, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// ListCompromisedSince returns the IDs of credentials of every kind retired
+// as compromised at or after since.
+func (r *EPPCredentialRepository) ListCompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error) {
+	var out []uuid.UUID
+	for _, model := range []any{&EPPPasswordRecord{}, &EPPCertificatePinRecord{}, &EPPAllowedNetworkRecord{}} {
+		var ids []uuid.UUID
+		err := r.db.WithContext(ctx).Model(model).
+			Where("retire_kind = ? AND retire_at >= ?", string(entities.EPPRetireCompromise), since).
+			Pluck("id", &ids).Error
+		if err != nil {
+			return nil, fmt.Errorf("list compromised EPP credentials: %w", err)
+		}
+		out = append(out, ids...)
+	}
+	return out, nil
+}
+
 // eppAccessIDs records which rows existed when the access was loaded, so that
 // saving inserts new rows rather than upserting them. An upsert of a new login
 // would silently take over another registrar's login with the same ID.

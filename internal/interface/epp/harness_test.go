@@ -44,6 +44,12 @@ func testConfig() config.EPP {
 			MaxSession: time.Minute,
 			Drain:      2 * time.Second,
 		},
+		Auth: config.EPPAuth{
+			RequireAllowlist:    true,
+			RefreshInterval:     time.Minute,
+			MaxConcurrentVerify: 4,
+			MaxLoginAttempts:    3,
+		},
 	}
 }
 
@@ -59,21 +65,42 @@ type testServer struct {
 // the test ends.
 func startServer(t *testing.T, cfg config.EPP) *testServer {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	return startServerOn(t, cfg, l)
+	return startServerOn(t, cfg, listenLoopback(t))
 }
 
-// startServerOn runs a server built from cfg on l until the test ends.
+func listenLoopback(t *testing.T) net.Listener {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return l
+}
+
+// testOptions are server options with the default test credentials, for
+// tests that build a server without running it.
+func testOptions(t *testing.T, cfg config.EPP) Options {
+	t.Helper()
+	return Options{Config: cfg, Authenticator: newTestCredentials(t).authenticator(), Logger: discardLogger(), NewID: func() string { return "x" }}
+}
+
+// startServerOn runs a server built from cfg on l until the test ends, with
+// the default test credentials (newTestCredentials).
 func startServerOn(t *testing.T, cfg config.EPP, l net.Listener) *testServer {
+	t.Helper()
+	return startServerWith(t, cfg, l, newTestCredentials(t))
+}
+
+// startServerWith runs a server that authenticates against creds.
+func startServerWith(t *testing.T, cfg config.EPP, l net.Listener, creds *testCredentials) *testServer {
 	t.Helper()
 	var n atomic.Int64
 	srv, err := NewServer(Options{
-		Config: cfg,
-		Logger: discardLogger(),
-		NewID:  func() string { return fmt.Sprintf("TEST-%d", n.Add(1)) },
+		Config:        cfg,
+		Authenticator: creds.authenticator(),
+		Logger:        discardLogger(),
+		NewID:         func() string { return fmt.Sprintf("TEST-%d", n.Add(1)) },
 	})
 	require.NoError(t, err)
+	creds.server = srv
 
 	ts := &testServer{Server: srv, addr: l.Addr().String(), ops: httptest.NewServer(srv.OpsHandler()), done: make(chan error, 1)}
 	go func() { ts.done <- srv.Serve(l) }()
@@ -97,6 +124,7 @@ func (ts *testServer) counter(t *testing.T, name string, labels ...string) float
 		"commands":       ts.metrics.commands,
 		"framesRejected": ts.metrics.framesRejected,
 		"logins":         ts.metrics.logins,
+		"loginFailures":  ts.metrics.loginFailures,
 	}
 	vec, ok := vecs[name]
 	require.True(t, ok, "unknown counter %q", name)
@@ -149,13 +177,7 @@ func dial(t *testing.T, addr string) *client {
 
 func dialNoGreeting(t *testing.T, addr string) *client {
 	t.Helper()
-	cert, err := SelfSignedCertificate()
-	require.NoError(t, err)
-	conn, err := tls.Dial("tcp", addr, &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true, // #nosec G402 -- test-only: the server presents a certificate generated in this test
-		MinVersion:         tls.VersionTLS12,
-	})
+	conn, err := tls.Dial("tcp", addr, clientTLSConfig(t))
 	require.NoError(t, err)
 	require.NoError(t, conn.SetDeadline(time.Now().Add(10*time.Second)))
 	t.Cleanup(func() { _ = conn.Close() })
@@ -230,7 +252,16 @@ func text(doc *etree.Document, path string) string {
 }
 
 func loginXML(clTRID string) string {
-	return cmdXML(`<login><clID>registrar1</clID><pw>secret-pw</pw>
+	return loginAsXML(testLogin, testPassword, "", clTRID)
+}
+
+// loginAsXML is a <login> for clID with pw and, unless empty, newPW.
+func loginAsXML(clID, pw, newPW, clTRID string) string {
+	var np string
+	if newPW != "" {
+		np = "<newPW>" + newPW + "</newPW>"
+	}
+	return cmdXML(`<login><clID>`+clID+`</clID><pw>`+pw+`</pw>`+np+`
 <options><version>1.0</version><lang>en</lang></options>
 <svcs><objURI>urn:ietf:params:xml:ns:domain-1.0</objURI></svcs></login>`, clTRID)
 }

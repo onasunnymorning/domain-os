@@ -315,3 +315,19 @@ func TestEPPRetireAndRecordUseFindEveryKind(t *testing.T) {
 		require.True(t, lc.Compromised())
 	}
 }
+
+func TestEPPRegistrarAccessCloneIsDeep(t *testing.T) {
+	f := newAuthFixture(t)
+	c := f.access.Clone()
+	require.Equal(t, f.access, c)
+
+	retire := eppNow
+	c.Logins[0].Passwords[0].RetireAt = &retire
+	c.Logins[0].Enabled = false
+	c.CertificatePins[0].Logins = append(c.CertificatePins[0].Logins, "x")
+	c.AllowedNetworks[0].Note = "changed"
+	require.Nil(t, f.access.Logins[0].Passwords[0].RetireAt)
+	require.True(t, f.access.Logins[0].Enabled)
+	require.Empty(t, f.access.CertificatePins[0].Logins)
+	require.Empty(t, f.access.AllowedNetworks[0].Note)
+}

@@ -2,6 +2,10 @@ package interfaces
 
 import (
 	"context"
+	"net/netip"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -19,4 +23,30 @@ type EPPCredentialService interface {
 	AddCertificatePin(ctx context.Context, clid string, cmd commands.AddEPPCertificatePinCommand) (*entities.EPPCertificatePin, error)
 	AddAllowedNetwork(ctx context.Context, clid string, cmd commands.AddEPPAllowedNetworkCommand) (*entities.EPPAllowedNetwork, error)
 	RetireCredential(ctx context.Context, clid string, ref entities.EPPCredentialRef, cmd commands.RetireEPPCredentialCommand) error
+}
+
+// EPPLoginLockout counts failed logins per key and locks a key out after too
+// many. The key is (login, source address), so failures from one place cannot
+// lock a registrar out everywhere.
+type EPPLoginLockout interface {
+	// LockedFor returns how much longer key is locked out, or zero.
+	LockedFor(ctx context.Context, key string) (time.Duration, error)
+	// RecordFailure counts a failure for key and returns the lockout it
+	// started, or zero.
+	RecordFailure(ctx context.Context, key string) (time.Duration, error)
+	// Clear forgets key's failures and lockouts, after a successful login.
+	Clear(ctx context.Context, key string) error
+}
+
+// EPPAuthenticator is what the EPP server asks about credentials.
+type EPPAuthenticator interface {
+	// Login authenticates a <login>. Every refusal wraps
+	// entities.ErrEPPAuthentication; an unreachable credential store is
+	// entities.ErrEPPCredentialsUnavailable; an unacceptable <newPW> is
+	// entities.ErrInvalidEPPPassword.
+	Login(ctx context.Context, cmd commands.EPPLoginCommand) (*entities.EPPAuthenticatedLogin, error)
+	// AllowedNetworks returns every registrar's usable allowed networks.
+	AllowedNetworks(ctx context.Context) ([]netip.Prefix, error)
+	// CompromisedSince returns credentials retired as compromised since.
+	CompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error)
 }

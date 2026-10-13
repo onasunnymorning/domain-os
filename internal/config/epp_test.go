@@ -18,6 +18,8 @@ var eppEnv = []string{
 	"EPP_MAX_CONNECTIONS", "EPP_MAX_HANDSHAKES", "EPP_MAX_FRAME_BYTES", "EPP_XML_MAX_DEPTH", "EPP_XML_MAX_ELEMENTS",
 	"EPP_HANDSHAKE_TIMEOUT", "EPP_LOGIN_TIMEOUT", "EPP_IDLE_TIMEOUT", "EPP_READ_TIMEOUT", "EPP_WRITE_TIMEOUT",
 	"EPP_MAX_SESSION_DURATION", "EPP_DRAIN_TIMEOUT",
+	"EPP_REQUIRE_ALLOWLIST", "EPP_CREDENTIAL_REFRESH_INTERVAL", "EPP_MAX_CONCURRENT_LOGINS", "EPP_MAX_LOGIN_ATTEMPTS",
+	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
 }
 
 func clearEPPEnv(t *testing.T) {
@@ -53,6 +55,7 @@ func TestLoadEPPDefaults(t *testing.T) {
 		Read: 30 * time.Second, Write: 60 * time.Second, MaxSession: 24 * time.Hour, Drain: 30 * time.Second,
 	}, cfg.Timeouts)
 	assert.Equal(t, "localhost:6379", cfg.Redis.Addr())
+	assert.Equal(t, EPPAuth{RequireAllowlist: true, RefreshInterval: 30 * time.Second, MaxConcurrentVerify: 8, MaxLoginAttempts: 3}, cfg.Auth)
 }
 
 func TestLoadEPPOverrides(t *testing.T) {
@@ -66,6 +69,8 @@ func TestLoadEPPOverrides(t *testing.T) {
 		"EPP_XML_MAX_DEPTH": "16", "EPP_XML_MAX_ELEMENTS": "500",
 		"EPP_HANDSHAKE_TIMEOUT": "5s", "EPP_LOGIN_TIMEOUT": "15s", "EPP_IDLE_TIMEOUT": "20m",
 		"EPP_READ_TIMEOUT": "10s", "EPP_WRITE_TIMEOUT": "15s", "EPP_MAX_SESSION_DURATION": "12h", "EPP_DRAIN_TIMEOUT": "1m",
+		"EPP_REQUIRE_ALLOWLIST": "false", "EPP_CREDENTIAL_REFRESH_INTERVAL": "10s", "EPP_MAX_CONCURRENT_LOGINS": "4", "EPP_MAX_LOGIN_ATTEMPTS": "5",
+		"DB_USER": "epp", "DB_PASS": "pw", "DB_HOST": "db", "DB_PORT": "5433", "DB_NAME": "dos", "DB_SSLMODE": "require",
 	}
 	for k, v := range set {
 		t.Setenv(k, v)
@@ -85,6 +90,8 @@ func TestLoadEPPOverrides(t *testing.T) {
 			Handshake: 5 * time.Second, Login: 15 * time.Second, Idle: 20 * time.Minute,
 			Read: 10 * time.Second, Write: 15 * time.Second, MaxSession: 12 * time.Hour, Drain: time.Minute,
 		},
+		Auth: EPPAuth{RequireAllowlist: false, RefreshInterval: 10 * time.Second, MaxConcurrentVerify: 4, MaxLoginAttempts: 5},
+		DB:   EPPDatabase{User: "epp", Pass: "pw", Host: "db", Port: "5433", Name: "dos", SSLMode: "require"},
 	}, cfg)
 }
 
@@ -109,6 +116,8 @@ func TestLoadEPPRejects(t *testing.T) {
 		{"negative duration", map[string]string{"EPP_DRAIN_TIMEOUT": "-1s"}, "EPP_DRAIN_TIMEOUT"},
 		{"same port twice", map[string]string{"EPP_PORT": "9700"}, "EPP_OPS_PORT"},
 		{"non-boolean flag", map[string]string{"EPP_PROXY_PROTOCOL": "yes please"}, "EPP_PROXY_PROTOCOL"},
+		{"non-boolean allowlist flag", map[string]string{"EPP_REQUIRE_ALLOWLIST": "sometimes"}, "EPP_REQUIRE_ALLOWLIST"},
+		{"zero login attempts", map[string]string{"EPP_MAX_LOGIN_ATTEMPTS": "0"}, "EPP_MAX_LOGIN_ATTEMPTS"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

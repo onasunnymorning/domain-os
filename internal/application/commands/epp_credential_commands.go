@@ -1,6 +1,10 @@
 package commands
 
-import "time"
+import (
+	"crypto/x509"
+	"net/netip"
+	"time"
+)
 
 // EPP credential write inputs (ADR 0014). Business rules live in
 // entities.EPPRegistrarAccess; these carry what the caller supplied.
@@ -46,4 +50,16 @@ type AddEPPAllowedNetworkCommand struct {
 type RetireEPPCredentialCommand struct {
 	Kind string     `json:"kind"`
 	At   *time.Time `json:"at"`
+}
+
+// EPPLoginCommand is an EPP <login> with what the transport knows about the
+// client. NewPassword is <newPW>, empty when absent.
+type EPPLoginCommand struct {
+	LoginID     string
+	Password    string //nolint:gosec // G117: the password presented at login, verified and discarded
+	NewPassword string
+	Source      netip.Addr
+	Certificate *x509.Certificate
+	// CheckSource enforces registrars' allowed networks.
+	CheckSource bool
 }

@@ -1,0 +1,126 @@
+package epp
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/memstore"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+)
+
+// The default test credentials, in RST's input shape (ADR 0015): a
+// registrar whose login is its own ClID, like epp.clid01, a password like
+// epp.pwd01, the test client certificate pinned, and both loopback addresses
+// allowed, standing in for epp.clientACL.
+const (
+	testRegistrar = "registrar1"
+	testLogin     = "registrar1"
+	testPassword  = "secret-pw-01"
+)
+
+// fastHash keeps tests quick; production parameters are tested in
+// passwordhash.
+var fastHash = passwordhash.New(passwordhash.Params{MemoryKiB: 64, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32})
+
+var (
+	clientCertOnce sync.Once
+	clientCert     tls.Certificate
+	clientCertErr  error
+)
+
+// testClientCertificate is one client certificate for the whole test
+// binary, so the default credentials can pin it.
+func testClientCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+	clientCertOnce.Do(func() { clientCert, clientCertErr = SelfSignedCertificate() })
+	require.NoError(t, clientCertErr)
+	return clientCert
+}
+
+func certificatePEM(c tls.Certificate) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate[0]})
+}
+
+// testCredentials is the credential store behind a test server, with the
+// real authentication service over it.
+type testCredentials struct {
+	t       *testing.T
+	store   *memstore.EPPCredentials
+	lockout *lockout.Memory
+	server  *Server
+}
+
+// newTestCredentials seeds the default test registrar.
+func newTestCredentials(t *testing.T) *testCredentials {
+	t.Helper()
+	tc := &testCredentials{
+		t:       t,
+		store:   memstore.NewEPPCredentials(testRegistrar, "registrar2"),
+		lockout: lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
+	}
+	tc.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
+		if _, err := a.AddLogin(testLogin, entities.EPPLoginRoleTransform, "test", time.Now()); err != nil {
+			return err
+		}
+		if _, err := a.AddPassword(testLogin, testPassword, fastHash, "test", time.Now()); err != nil {
+			return err
+		}
+		if _, err := a.AddCertificatePin(certificatePEM(testClientCertificate(t)), nil, "test", time.Now()); err != nil {
+			return err
+		}
+		for _, n := range []string{"127.0.0.1", "::1"} {
+			if _, err := a.AddAllowedNetwork(n, "loopback", "test", time.Now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return tc
+}
+
+func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
+	return services.NewEPPAuthenticationService(tc.store, fastHash, tc.lockout, nil, 2)
+}
+
+// update changes a registrar's credentials, as the admin API would.
+func (tc *testCredentials) update(clid string, fn func(*entities.EPPRegistrarAccess) error) {
+	tc.t.Helper()
+	_, err := tc.store.UpdateAccess(context.Background(), clid, func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		return nil, fn(a)
+	})
+	require.NoError(tc.t, err)
+}
+
+// access returns a registrar's credentials as stored now.
+func (tc *testCredentials) access(clid string) *entities.EPPRegistrarAccess {
+	tc.t.Helper()
+	a, err := tc.store.GetAccess(context.Background(), clid)
+	require.NoError(tc.t, err)
+	return a
+}
+
+// refresh runs the server's credential refresh now, instead of waiting for
+// the interval.
+func (tc *testCredentials) refresh() {
+	tc.t.Helper()
+	tc.server.refreshCredentials(context.Background())
+}
+
+// pin pins cert for clid.
+func (tc *testCredentials) pin(clid string, cert *x509.Certificate) {
+	tc.t.Helper()
+	tc.update(clid, func(a *entities.EPPRegistrarAccess) error {
+		_, err := a.AddCertificatePin(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), nil, "test", time.Now())
+		return err
+	})
+}

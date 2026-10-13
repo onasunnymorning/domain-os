@@ -1,6 +1,7 @@
 package epp
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -15,15 +16,19 @@ import (
 // not a goroutine waiting on a slot.
 type nodeListener struct {
 	net.Listener
+	// admit, when set, drops connections from sources it refuses before a
+	// TLS byte is read. See Accept for when it runs.
+	admit            func(net.Addr) bool
 	conns            chan struct{}
 	handshakes       chan struct{}
 	handshakeTimeout time.Duration
 	metrics          *metrics
 }
 
-func newNodeListener(l net.Listener, maxConns, maxHandshakes int, handshakeTimeout time.Duration, m *metrics) *nodeListener {
+func newNodeListener(l net.Listener, admit func(net.Addr) bool, maxConns, maxHandshakes int, handshakeTimeout time.Duration, m *metrics) *nodeListener {
 	return &nodeListener{
 		Listener:         l,
+		admit:            admit,
 		conns:            make(chan struct{}, maxConns),
 		handshakes:       make(chan struct{}, maxHandshakes),
 		handshakeTimeout: handshakeTimeout,
@@ -33,11 +38,24 @@ func newNodeListener(l net.Listener, maxConns, maxHandshakes int, handshakeTimeo
 
 // Accept returns the next connection that fits under both caps. Connections
 // over a cap are closed here and never reach the caller.
+//
+// The source check runs here for a direct connection. Behind PROXY protocol
+// the source is only known once the header has been read, and reading it here
+// would let one slow client stall every accept; the check runs instead on the
+// connection's first read, on its own goroutine and within the handshake
+// deadline, before any TLS byte is read.
 func (l *nodeListener) Accept() (net.Conn, error) {
 	for {
 		c, err := l.Listener.Accept()
 		if err != nil {
 			return nil, err
+		}
+
+		_, behindProxy := c.(*proxyproto.Conn)
+		if l.admit != nil && !behindProxy && !l.admit(c.RemoteAddr()) {
+			l.metrics.connections.WithLabelValues(outcomeSourceIP).Inc()
+			_ = c.Close()
+			continue
 		}
 
 		select {
@@ -60,6 +78,9 @@ func (l *nodeListener) Accept() (net.Conn, error) {
 		l.metrics.handshakesActive.Inc()
 		nc := &nodeConn{Conn: c, listener: l, handshakeDeadline: time.Now().Add(l.handshakeTimeout)}
 		nc.handshaking.Store(true)
+		if l.admit != nil && behindProxy {
+			nc.admit = l.admit
+		}
 		return nc, nil
 	}
 }
@@ -76,6 +97,32 @@ type nodeConn struct {
 	handshakeDeadline time.Time
 	handshaking       atomic.Bool
 	closeOnce         sync.Once
+
+	// admit, when set, is checked once, on the first read (PROXY protocol).
+	admit     func(net.Addr) bool
+	admitOnce sync.Once
+	admitErr  error
+	refused   atomic.Bool
+}
+
+// errSourceRefused closes a connection from outside every allowed network.
+var errSourceRefused = errors.New("source address not in any registrar's allowed networks")
+
+// Read checks the source on the first read, then reads.
+func (c *nodeConn) Read(b []byte) (int, error) {
+	if c.admit != nil {
+		c.admitOnce.Do(func() {
+			if !c.admit(c.Conn.RemoteAddr()) {
+				c.refused.Store(true)
+				c.listener.metrics.connections.WithLabelValues(outcomeSourceIP).Inc()
+				c.admitErr = errSourceRefused
+			}
+		})
+		if c.admitErr != nil {
+			return 0, c.admitErr
+		}
+	}
+	return c.Conn.Read(b)
 }
 
 // handshakeComplete releases the handshake slot. It is called once the TLS
@@ -95,7 +142,9 @@ func (c *nodeConn) Close() error {
 		if c.handshaking.CompareAndSwap(true, false) {
 			<-c.listener.handshakes
 			c.listener.metrics.handshakesActive.Dec()
-			c.listener.metrics.connections.WithLabelValues(outcomeHandshakeFailed).Inc()
+			if !c.refused.Load() { // already counted as rejected_source_ip
+				c.listener.metrics.connections.WithLabelValues(outcomeHandshakeFailed).Inc()
+			}
 		}
 		<-c.listener.conns
 	})

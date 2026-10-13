@@ -43,6 +43,7 @@ func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Conte
 	sess := &session{
 		id:          s.newID(),
 		clientIP:    clientIP,
+		source:      addrOf(conn.RemoteAddr()),
 		conn:        conn,
 		connectedAt: time.Now(),
 	}
@@ -106,7 +107,8 @@ func (s *Server) closeConn(ctx context.Context, _ *tls.Conn) {
 	s.logger.Info("EPP session closed",
 		"connection_id", sess.id,
 		"client_ip", sess.clientIP,
-		"clid", sess.loggedInAs(),
+		"clid", sess.registrar(),
+		"login", sess.loggedInAs(),
 		"commands", sess.commands.Load(),
 		"duration_s", int64(time.Since(sess.connectedAt).Seconds()))
 }

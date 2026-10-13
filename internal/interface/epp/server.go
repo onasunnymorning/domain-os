@@ -2,8 +2,8 @@
 // sessions over TLS (RFC 5734) and translates EPP frames into application
 // calls.
 //
-// Login is not authenticated yet, and only greeting, login, logout and a
-// placeholder domain:check are bound. The target architecture, and the phased
+// Logins are authenticated against registrars' EPP credentials (ADR 0014).
+// Only greeting, login, logout and a placeholder domain:check are bound. The target architecture, and the phased
 // plan for reaching it, is docs/epp/ARCHITECTURE.md; every setting is listed
 // in docs/epp/POLICY_REFERENCE.md.
 package epp
@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
@@ -45,7 +46,9 @@ var rfc9325CipherSuites = []uint16{
 // Options are what the server is built from.
 type Options struct {
 	Config config.EPP
-	// Limiter applies the Redis connection and login limits. Nil disables them.
+	// Authenticator checks logins against registrars' credentials. Required.
+	Authenticator interfaces.EPPAuthenticator
+	// Limiter applies the Redis per-IP connection limit. Nil disables it.
 	Limiter *middleware.RateLimiter
 	Logger  *slog.Logger
 	// NewID returns a unique identifier, used for session IDs and svTRIDs.
@@ -62,6 +65,8 @@ type Server struct {
 	sessions *sessionRegistry
 	metrics  *metrics
 	limiter  *middleware.RateLimiter
+	auth     interfaces.EPPAuthenticator
+	watch    credentialWatch
 	logger   *slog.Logger
 	newID    func() string
 	router   map[routeKey]route
@@ -80,11 +85,15 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.NewID == nil {
 		return nil, errors.New("epp: Options.NewID is required")
 	}
+	if opts.Authenticator == nil {
+		return nil, errors.New("epp: Options.Authenticator is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
 		metrics:  newMetrics(),
 		limiter:  opts.Limiter,
+		auth:     opts.Authenticator,
 		logger:   opts.Logger,
 		newID:    opts.NewID,
 		served:   make(chan struct{}),
@@ -111,8 +120,9 @@ func NewServer(opts Options) (*Server, error) {
 		CloseConnHook: s.closeConn,
 		TLSConfig: tls.Config{
 			GetCertificate: s.certs.getCertificate,
-			// Phase 2 replaces this with verification against registrar pins
-			// (ADR 0014). Until then a certificate is required but not checked.
+			// A certificate is required here and checked at <login> against
+			// the registrar's pins (ADR 0014): registrars may use any CA or a
+			// self-signed certificate, so there is no chain to verify.
 			ClientAuth:   tls.RequireAnyClientCert,
 			MinVersion:   tls.VersionTLS12,
 			CipherSuites: rfc9325CipherSuites,
@@ -144,11 +154,12 @@ func (s *Server) Serve(l net.Listener) error {
 		}
 		l = pl
 	}
-	nl := newNodeListener(l, s.cfg.Limits.MaxConnections, s.cfg.Limits.MaxHandshakes, s.cfg.Timeouts.Handshake, s.metrics)
+	nl := newNodeListener(l, s.admitSource, s.cfg.Limits.MaxConnections, s.cfg.Limits.MaxHandshakes, s.cfg.Timeouts.Handshake, s.metrics)
 
 	watchCtx, stop := context.WithCancel(context.Background())
 	s.stopWatch = stop
 	go s.certs.watch(watchCtx)
+	go s.watchCredentials(watchCtx)
 
 	s.logger.Info("EPP server listening",
 		"addr", l.Addr().String(),
@@ -195,9 +206,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// Ready reports whether the server is accepting sessions.
+// Ready reports whether the server is accepting sessions: it is serving, not
+// draining, and has loaded the allowed networks it filters sources by.
 func (s *Server) Ready() bool {
-	return s.serving.Load() && !s.draining.Load()
+	return s.serving.Load() && !s.draining.Load() && (!s.cfg.Auth.RequireAllowlist || s.watch.loaded())
+}
+
+// ReportLockoutDegraded records whether the shared lockout store is
+// unreachable, for epp_lockout_store_degraded.
+func (s *Server) ReportLockoutDegraded(degraded bool) {
+	if degraded {
+		s.metrics.lockoutDegraded.Set(1)
+	} else {
+		s.metrics.lockoutDegraded.Set(0)
+	}
 }
 
 // OpsHandler serves /healthz (the process is up), /readyz (accepting

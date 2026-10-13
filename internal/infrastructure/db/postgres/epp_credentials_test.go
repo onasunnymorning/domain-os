@@ -10,9 +10,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net/netip"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -157,6 +159,60 @@ func (s *EPPCredentialSuite) TestLoginIDsAreUniqueAcrossRegistrars() {
 	got, err := repo.GetAccessByLogin(ctx, "epp-shared")
 	s.Require().NoError(err)
 	s.Equal(entities.ClIDType("epp-a-rar"), got.ClID, "the first registrar keeps its login")
+}
+
+func (s *EPPCredentialSuite) TestNetworksAndCompromisesAcrossRegistrars() {
+	tx := s.begin()
+	ctx := context.Background()
+	repo := NewEPPCredentialRepository(tx)
+	s.registrar(tx, "epp-n1-rar", 9105)
+	s.registrar(tx, "epp-n2-rar", 9106)
+
+	var compromised, normal uuid.UUID
+	_, err := repo.UpdateAccess(ctx, "epp-n1-rar", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		if _, err := a.AddAllowedNetwork("192.0.2.0/24", "", "tester", s.now); err != nil {
+			return nil, err
+		}
+		gone, err := a.AddAllowedNetwork("198.51.100.0/24", "", "tester", s.now)
+		if err != nil {
+			return nil, err
+		}
+		compromised = gone.ID
+		_, err = a.RetireCredential(entities.EPPCredentialRef{Kind: entities.EPPCredentialAllowedNetwork, ID: gone.ID}, entities.EPPRetireCompromise, nil, "tester", s.now)
+		return nil, err
+	})
+	s.Require().NoError(err)
+	_, err = repo.UpdateAccess(ctx, "epp-n2-rar", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		if _, err := a.AddAllowedNetwork("192.0.2.0/24", "shared office", "tester", s.now); err != nil {
+			return nil, err
+		}
+		n, err := a.AddAllowedNetwork("203.0.113.9", "", "tester", s.now)
+		if err != nil {
+			return nil, err
+		}
+		normal = n.ID
+		at := s.now.Add(time.Hour)
+		_, err = a.RetireCredential(entities.EPPCredentialRef{Kind: entities.EPPCredentialAllowedNetwork, ID: n.ID}, entities.EPPRetireNormal, &at, "tester", s.now)
+		return nil, err
+	})
+	s.Require().NoError(err)
+
+	nets, err := repo.ListUsableAllowedNetworks(ctx, s.now)
+	s.Require().NoError(err)
+	s.Contains(nets, netip.MustParsePrefix("192.0.2.0/24"))
+	s.Contains(nets, netip.MustParsePrefix("203.0.113.9/32"), "retiring is still usable")
+	s.NotContains(nets, netip.MustParsePrefix("198.51.100.0/24"))
+	later, err := repo.ListUsableAllowedNetworks(ctx, s.now.Add(2*time.Hour))
+	s.Require().NoError(err)
+	s.NotContains(later, netip.MustParsePrefix("203.0.113.9/32"))
+
+	ids, err := repo.ListCompromisedSince(ctx, s.now.Add(-time.Minute))
+	s.Require().NoError(err)
+	s.Contains(ids, compromised)
+	s.NotContains(ids, normal)
+	ids, err = repo.ListCompromisedSince(ctx, s.now.Add(time.Minute))
+	s.Require().NoError(err)
+	s.NotContains(ids, compromised)
 }
 
 func (s *EPPCredentialSuite) TestUnknownRegistrar() {

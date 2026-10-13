@@ -166,3 +166,16 @@ func countUsable[T interface {
 	}
 	return n
 }
+
+func (l EPPCredentialLifecycle) clone() EPPCredentialLifecycle {
+	c := l
+	if l.RetireAt != nil {
+		t := *l.RetireAt
+		c.RetireAt = &t
+	}
+	if l.LastUsedAt != nil {
+		t := *l.LastUsedAt
+		c.LastUsedAt = &t
+	}
+	return c
+}

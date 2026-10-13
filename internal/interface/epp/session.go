@@ -2,9 +2,12 @@ package epp
 
 import (
 	"crypto/tls"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // sessionState is where a session is in RFC 5730's lifecycle. A session is
@@ -37,12 +40,15 @@ func (s sessionState) String() string {
 type session struct {
 	id          string
 	clientIP    string
+	source      netip.Addr
 	conn        *tls.Conn
 	connectedAt time.Time
 	loginTimer  *time.Timer
+	// failedLogins is only touched by the session's own goroutine.
+	failedLogins int
 
 	state    atomic.Int32
-	clID     atomic.Pointer[string] // the clID presented at login; not yet authenticated (Phase 2)
+	auth     atomic.Pointer[entities.EPPAuthenticatedLogin] // set by a successful <login>
 	commands atomic.Int64
 }
 
@@ -50,9 +56,18 @@ func (s *session) currentState() sessionState { return sessionState(s.state.Load
 
 func (s *session) setState(st sessionState) { s.state.Store(int32(st)) }
 
+// loggedInAs is the login ID the session authenticated as, or "".
 func (s *session) loggedInAs() string {
-	if p := s.clID.Load(); p != nil {
-		return *p
+	if a := s.auth.Load(); a != nil {
+		return string(a.LoginID)
+	}
+	return ""
+}
+
+// registrar is the ClID of the registrar the session acts for, or "".
+func (s *session) registrar() string {
+	if a := s.auth.Load(); a != nil {
+		return string(a.ClID)
 	}
 	return ""
 }
