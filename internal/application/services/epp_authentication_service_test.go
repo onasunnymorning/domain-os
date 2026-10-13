@@ -70,7 +70,7 @@ func TestEPPLoginSucceeds(t *testing.T) {
 	require.Equal(t, entities.EPPLoginRoleTransform, got.Role)
 	require.Equal(t, at.cert.NotAfter.UTC(), got.CertificateNotAfter)
 	require.Len(t, got.CredentialIDs(), 3)
-	require.False(t, got.PasswordReplaced)
+	require.False(t, got.PasswordReplaced())
 }
 
 func TestEPPLoginRefusals(t *testing.T) {
@@ -151,7 +151,18 @@ func TestEPPLoginNewPassword(t *testing.T) {
 	cmd.NewPassword = "second-pw-2"
 	got, err := at.svc.Login(ctx, cmd)
 	require.NoError(t, err)
-	require.True(t, got.PasswordReplaced)
+	require.True(t, got.PasswordReplaced())
+	before, err := at.repo.GetAccess(ctx, "rar-001")
+	require.NoError(t, err)
+	presented := before.Logins[0].Passwords[0]
+	require.Equal(t, presented.ID, got.PasswordID, "the session is tied to the password it presented")
+	require.Contains(t, got.CredentialIDs(), got.ReplacementPasswordID, "and to the one it set")
+
+	require.NoError(t, at.uses.Flush(ctx))
+	after, err := at.repo.GetAccess(ctx, "rar-001")
+	require.NoError(t, err)
+	require.NotNil(t, after.Logins[0].Passwords[0].LastUsedAt, "the presented password was used")
+	require.Nil(t, after.Logins[0].Passwords[1].LastUsedAt, "the new one has not been yet")
 
 	_, err = at.svc.Login(ctx, at.cmd())
 	require.ErrorIs(t, err, entities.ErrEPPPasswordMismatch, "the old password stops working at once")

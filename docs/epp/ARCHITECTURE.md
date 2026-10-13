@@ -143,13 +143,13 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
   - `epp_policy_decisions_total{rule,action}`
   - `epp_failed_creates_total{registrar}`
   - `epp_client_cert_expiry_seconds{clid,login}`
-  - `epp_policy_store_degraded`
+  - `epp_policy_store_degraded{store}`
 - **"Who is connected"** comes from the session registry through the admin API.
 - **Alerts** cover cap saturation, failed-create spikes, lockout storms, certificate expiry and a degraded policy store.
 - **Audit log** of every command and response, keyed by svTRID and clTRID, with `pw`, `newPW` and `authInfo` redacted. It is written durably (not telemetry, per INV-01) with configurable retention.
 - **Structured `slog` only.**
 
-*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_lockout_store_degraded`, `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Session and command series by registrar arrive with the session registry (Phase 3). There is no audit log yet.
+*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, connection limiter), `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Session and command series by registrar arrive with the session registry (Phase 3). There is no audit log yet.
 
 ---
 

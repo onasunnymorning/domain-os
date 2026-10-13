@@ -8,10 +8,16 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
 
 // errDraining refuses a session that completed its handshake after drain began.
 var errDraining = errors.New("EPP server is draining")
+
+// sharedStoreTimeout bounds each call to Redis on the connection path, so an
+// unresponsive Redis delays a new session by this much at most before the
+// node fails open.
+const sharedStoreTimeout = 500 * time.Millisecond
 
 // connContext is epp-lib's ConnContext hook. It runs once per connection,
 // after the TLS handshake and before the greeting: it releases the handshake
@@ -33,10 +39,22 @@ func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Conte
 	}
 
 	if s.limiter != nil {
-		if err := s.limiter.CheckConnectionLimit(ctx, clientIP, ""); err != nil {
+		limitCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
+		err := s.limiter.CheckConnectionLimit(limitCtx, clientIP, "")
+		cancel()
+		switch {
+		case errors.Is(err, middleware.ErrTooManyConnections), errors.Is(err, middleware.ErrTooManyRegistrarConnections):
 			s.metrics.connections.WithLabelValues(outcomeLimiter).Inc()
 			s.logger.Warn("EPP connection rejected", "client_ip", clientIP, "error", err)
 			return ctx, err
+		case err != nil:
+			// Redis cannot answer. Fail open (ADR 0013): the node's own caps
+			// still hold, and refusing everyone would turn a Redis outage
+			// into an EPP outage.
+			s.reportStoreDegraded(storeConnectionLimiter, true)
+			s.logger.Warn("EPP connection limit unavailable; admitting under the node caps", "client_ip", clientIP, "error", err)
+		default:
+			s.reportStoreDegraded(storeConnectionLimiter, false)
 		}
 	}
 
@@ -54,7 +72,10 @@ func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Conte
 	ctx = appcontext.WithClientIP(ctx, clientIP)
 
 	if s.limiter != nil {
-		if err := s.limiter.IncrementConnection(ctx, clientIP, ""); err != nil {
+		incCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
+		err := s.limiter.IncrementConnection(incCtx, clientIP, "")
+		cancel()
+		if err != nil {
 			s.logger.Error("EPP connection not tracked", "connection_id", sess.id, "client_ip", clientIP, "error", err)
 		}
 	}

@@ -20,6 +20,12 @@ const (
 // Why a session was ended by the server, for epp_sessions_ended_total.
 const endedCompromised = "credential_compromised"
 
+// Shared stores, for epp_policy_store_degraded.
+const (
+	storeLockout           = "lockout"
+	storeConnectionLimiter = "connection_limiter"
+)
+
 // metrics are the EPP server's Prometheus series. They live on their own
 // registry, served on the ops port, so nothing else in the process can add
 // to or collide with them. The names are listed in docs/epp/ARCHITECTURE.md.
@@ -44,7 +50,7 @@ type metrics struct {
 	allowedNetworks         prometheus.Gauge
 	credentialsRefreshed    prometheus.Gauge
 	credentialRefreshErrors prometheus.Counter
-	lockoutDegraded         prometheus.Gauge
+	storeDegraded           *prometheus.GaugeVec
 }
 
 func newMetrics() *metrics {
@@ -120,17 +126,17 @@ func newMetrics() *metrics {
 			Name: "epp_credential_refresh_errors_total",
 			Help: "Failed reloads of the allowed networks or the compromised credentials.",
 		}),
-		lockoutDegraded: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "epp_lockout_store_degraded",
-			Help: "1 while the shared lockout store is unreachable and lockouts are counted on this node only.",
-		}),
+		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "epp_policy_store_degraded",
+			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
+		}, []string{"store"}),
 	}
 	m.registry.MustRegister(
 		m.connections, m.sessionsActive, m.handshakesActive, m.logins, m.commands,
 		m.commandDuration, m.frameBytes, m.framesRejected, m.certNotAfter,
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
-		m.credentialsRefreshed, m.credentialRefreshErrors, m.lockoutDegraded,
+		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

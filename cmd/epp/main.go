@@ -81,10 +81,14 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		Password: cfg.Redis.Password,
 		DB:       0,
 	})
+	// Redis holds shared counts only, and the server fails open without it
+	// (ADR 0013), so an unreachable Redis is a warning, not a reason to stay
+	// down. epp_policy_store_degraded shows it.
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		return fmt.Errorf("connect to Redis at %s: %w", cfg.Redis.Addr(), err)
+		logger.Warn("Redis unreachable at start; connection limits and lockouts are counted on this node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+	} else {
+		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
-	logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {

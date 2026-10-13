@@ -90,7 +90,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		// RFC 5730 leaves the login undone and the old password in place.
 		s.metrics.logins.WithLabelValues(loginFailure).Inc()
 		s.metrics.loginFailures.WithLabelValues("new_password_invalid").Inc()
-		cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; newPW must be 6 to 16 printable ASCII characters", nil)
+		cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; newPW must be 6 to 16 printable ASCII characters with no leading, trailing or repeated spaces", nil)
 		return
 	default:
 		s.metrics.logins.WithLabelValues(loginError).Inc()
@@ -112,7 +112,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	s.metrics.logins.WithLabelValues(loginSuccess).Inc()
 	s.metrics.clientCertNotAfter.WithLabelValues(string(auth.ClID), string(auth.LoginID)).Set(float64(auth.CertificateNotAfter.Unix()))
 	s.logger.Info("EPP login", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID, "role", auth.Role,
-		"client_ip", sess.clientIP, "password_replaced", auth.PasswordReplaced)
+		"client_ip", sess.clientIP, "password_replaced", auth.PasswordReplaced())
 	cmd.respond(epplib.StatusSuccess, "", nil)
 }
 

@@ -49,6 +49,7 @@ type Options struct {
 	// Authenticator checks logins against registrars' credentials. Required.
 	Authenticator interfaces.EPPAuthenticator
 	// Limiter applies the Redis per-IP connection limit. Nil disables it.
+	// When Redis cannot answer, connections are admitted under the node caps.
 	Limiter *middleware.RateLimiter
 	Logger  *slog.Logger
 	// NewID returns a unique identifier, used for session IDs and svTRIDs.
@@ -213,13 +214,17 @@ func (s *Server) Ready() bool {
 }
 
 // ReportLockoutDegraded records whether the shared lockout store is
-// unreachable, for epp_lockout_store_degraded.
+// unreachable, for epp_policy_store_degraded{store="lockout"}.
 func (s *Server) ReportLockoutDegraded(degraded bool) {
+	s.reportStoreDegraded(storeLockout, degraded)
+}
+
+func (s *Server) reportStoreDegraded(store string, degraded bool) {
+	v := 0.0
 	if degraded {
-		s.metrics.lockoutDegraded.Set(1)
-	} else {
-		s.metrics.lockoutDegraded.Set(0)
+		v = 1
 	}
+	s.metrics.storeDegraded.WithLabelValues(store).Set(v)
 }
 
 // OpsHandler serves /healthz (the process is up), /readyz (accepting

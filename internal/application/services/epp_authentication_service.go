@@ -104,10 +104,12 @@ func (s *EPPAuthenticationService) Login(ctx context.Context, cmd commands.EPPLo
 		if err != nil {
 			return nil, err
 		}
-		result.PasswordID, result.PasswordReplaced = newID, true
+		result.ReplacementPasswordID = newID
 	}
 	if s.uses != nil {
-		s.uses.Record(string(adm.ClID), adm.Uses(result.PasswordID, cmd.Source.String(), now))
+		// The password presented is the one used, even if <newPW> has just
+		// retired it; the new one has not been used yet.
+		s.uses.Record(string(adm.ClID), adm.Uses(pw.ID, cmd.Source.String(), now))
 	}
 	return result, nil
 }

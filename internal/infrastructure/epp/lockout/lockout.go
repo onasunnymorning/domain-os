@@ -72,14 +72,25 @@ func (m *Memory) LockedFor(_ context.Context, key string) (time.Duration, error)
 	return max(e.lockedUntil.Sub(m.now()), 0), nil
 }
 
-// RecordFailure counts a failure and returns the lockout it started, if any.
+// RecordFailure counts a failure and returns the lockout now in force, if
+// any. A failure while the key is already locked is not counted: it was in
+// flight when the lock started, and counting it would start the next, doubled
+// lock from the same burst.
 func (m *Memory) RecordFailure(_ context.Context, key string) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	m.prune(now)
 	e := m.keys[key]
+	if e != nil && now.Before(e.lockedUntil) {
+		return e.lockedUntil.Sub(now), nil
+	}
 	if e == nil {
+		if !m.makeRoom(now) {
+			// Every tracked key is locked out and the table is full. Leave
+			// this one uncounted rather than grow without bound or release
+			// a lock early.
+			return 0, nil
+		}
 		e = &memEntry{}
 		m.keys[key] = e
 	}
@@ -109,19 +120,31 @@ func (m *Memory) Clear(_ context.Context, key string) error {
 	return nil
 }
 
-// maxMemoryKeys bounds the node-local table; past it, entries with nothing
-// left to remember are dropped.
-const maxMemoryKeys = 100_000
+// maxMemoryKeys is a hard bound on the node-local table: about 10 MB.
+var maxMemoryKeys = 100_000
 
-func (m *Memory) prune(now time.Time) {
+// makeRoom reports whether a new key fits, freeing space if the table is
+// full. It drops, in order of preference, entries with nothing left to
+// remember, then entries that are counting failures or strikes but are not
+// locked. A lock in force is never dropped.
+func (m *Memory) makeRoom(now time.Time) bool {
 	if len(m.keys) < maxMemoryKeys {
-		return
+		return true
 	}
 	for k, e := range m.keys {
 		if !now.Before(e.windowEnds) && !now.Before(e.lockedUntil) && !now.Before(e.strikesEnd) {
 			delete(m.keys, k)
 		}
 	}
+	for k, e := range m.keys {
+		if len(m.keys) < maxMemoryKeys {
+			break
+		}
+		if !now.Before(e.lockedUntil) {
+			delete(m.keys, k)
+		}
+	}
+	return len(m.keys) < maxMemoryKeys
 }
 
 // Redis keeps lockouts in Redis, shared by every node.
@@ -141,8 +164,12 @@ func keys(key string) (fail, lock, strikes string) {
 
 // recordFailure counts a failure atomically and, at the threshold, starts a
 // lockout whose length doubles with each strike. It returns the lockout in
-// milliseconds, or 0.
+// force in milliseconds, or 0. A failure while the key is locked is not
+// counted, so failures in flight when the lock started cannot start the next
+// one.
 var recordFailure = redis.NewScript(`
+local locked = redis.call('PTTL', KEYS[2])
+if locked > 0 then return locked end
 local n = redis.call('INCR', KEYS[1])
 if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
 if n < tonumber(ARGV[1]) then return 0 end
@@ -169,7 +196,7 @@ func (r *Redis) LockedFor(ctx context.Context, key string) (time.Duration, error
 	return max(d, 0), nil // -2 (no key) and -1 (no TTL) are not locked
 }
 
-// RecordFailure counts a failure and returns the lockout it started, if any.
+// RecordFailure counts a failure and returns the lockout in force, if any.
 func (r *Redis) RecordFailure(ctx context.Context, key string) (time.Duration, error) {
 	fail, lock, strikes := keys(key)
 	ms, err := recordFailure.Run(ctx, r.client, []string{fail, lock, strikes},
@@ -197,12 +224,20 @@ type store interface {
 	Clear(ctx context.Context, key string) error
 }
 
+// primaryTimeout bounds each call to the primary store, so an unresponsive
+// Redis delays a login by this much at most before falling back.
+const primaryTimeout = 500 * time.Millisecond
+
 // FailOpen uses primary and, when it fails, fallback. It never returns an
 // error. degraded is called with true when primary fails and false when it
 // answers again, for a metric and an alert.
 type FailOpen struct {
 	primary, fallback store
 	degraded          func(bool)
+}
+
+func bounded(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, primaryTimeout)
 }
 
 // NewFailOpen returns a lockout that degrades from primary to fallback.
@@ -217,14 +252,18 @@ func NewFailOpen(primary, fallback store, degraded func(bool)) *FailOpen {
 // on this node while Redis was down still holds after it recovers.
 func (f *FailOpen) LockedFor(ctx context.Context, key string) (time.Duration, error) {
 	local, _ := f.fallback.LockedFor(ctx, key)
-	d, err := f.primary.LockedFor(ctx, key)
+	pctx, cancel := bounded(ctx)
+	defer cancel()
+	d, err := f.primary.LockedFor(pctx, key)
 	f.degraded(err != nil)
 	return max(d, local), nil
 }
 
 // RecordFailure counts in primary, or in fallback when primary fails.
 func (f *FailOpen) RecordFailure(ctx context.Context, key string) (time.Duration, error) {
-	d, err := f.primary.RecordFailure(ctx, key)
+	pctx, cancel := bounded(ctx)
+	defer cancel()
+	d, err := f.primary.RecordFailure(pctx, key)
 	f.degraded(err != nil)
 	if err != nil {
 		return f.fallback.RecordFailure(ctx, key)
@@ -235,7 +274,9 @@ func (f *FailOpen) RecordFailure(ctx context.Context, key string) (time.Duration
 // Clear clears both stores.
 func (f *FailOpen) Clear(ctx context.Context, key string) error {
 	_ = f.fallback.Clear(ctx, key)
-	err := f.primary.Clear(ctx, key)
+	pctx, cancel := bounded(ctx)
+	defer cancel()
+	err := f.primary.Clear(pctx, key)
 	f.degraded(err != nil)
 	return nil
 }

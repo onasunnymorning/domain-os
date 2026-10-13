@@ -129,20 +129,31 @@ type EPPAuthenticatedLogin struct {
 	LoginID    ClIDType
 	Role       EPPLoginRole
 	SessionCap int
+	// PasswordID is the password presented, even when <newPW> replaced it.
 	PasswordID uuid.UUID
 	PinID      uuid.UUID
 	NetworkID  uuid.UUID // uuid.Nil when the source is not checked
+	// ReplacementPasswordID is the password <newPW> created, or uuid.Nil.
+	ReplacementPasswordID uuid.UUID
 	// CertificateNotAfter is the expiry of the certificate presented.
 	CertificateNotAfter time.Time
-	// PasswordReplaced is set when <newPW> replaced the password used.
-	PasswordReplaced bool
 }
 
-// CredentialIDs are the credentials the session authenticated with.
+// PasswordReplaced reports whether <newPW> replaced the password presented.
+func (l *EPPAuthenticatedLogin) PasswordReplaced() bool {
+	return l.ReplacementPasswordID != uuid.Nil
+}
+
+// CredentialIDs are the credentials the session is tied to: those it
+// authenticated with and, after <newPW>, the password it set. Retiring any of
+// them as compromised ends the session.
 func (l *EPPAuthenticatedLogin) CredentialIDs() []uuid.UUID {
 	ids := []uuid.UUID{l.PasswordID, l.PinID}
 	if l.NetworkID != uuid.Nil {
 		ids = append(ids, l.NetworkID)
+	}
+	if l.ReplacementPasswordID != uuid.Nil {
+		ids = append(ids, l.ReplacementPasswordID)
 	}
 	return ids
 }

@@ -85,6 +85,17 @@ func TestEPPNormalRetireDefaultsToTheWindow(t *testing.T) {
 	require.Equal(t, eppNow, *lc.RetireAt, "a past time retires now, not in the past")
 }
 
+func TestEPPRetiredCredentialCanBeMarkedCompromised(t *testing.T) {
+	lc := newEPPCredentialLifecycle("tester", eppNow)
+	require.NoError(t, lc.retire(EPPRetireReplaced, nil, "rar-001", eppNow))
+	later := eppNow.Add(time.Hour)
+	require.NoError(t, lc.retire(EPPRetireCompromise, nil, "admin", later))
+	require.True(t, lc.Compromised())
+	require.Equal(t, eppNow, *lc.RetireAt, "the retire time is kept")
+	require.ErrorIs(t, lc.retire(EPPRetireCompromise, nil, "admin", later), ErrEPPCredentialRetired, "only once")
+	require.ErrorIs(t, lc.retire(EPPRetireNormal, nil, "admin", later), ErrEPPCredentialRetired)
+}
+
 func TestEPPCompromiseRetireIsImmediate(t *testing.T) {
 	lc := newEPPCredentialLifecycle("tester", eppNow)
 	later := eppNow.Add(time.Hour)

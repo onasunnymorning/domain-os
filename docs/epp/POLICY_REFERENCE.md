@@ -91,7 +91,7 @@ These values come from `middleware.DefaultRateLimitConfig()` in `internal/infras
 
 | Setting | Value | Effect today |
 |---|---|---|
-| Connections per IP | 10 | Enforced, but counts drift (5-minute TTL on a live count) |
+| Connections per IP | 10 | Enforced, but counts drift (5-minute TTL on a live count). If Redis cannot answer within 500 ms, the connection is admitted under the node caps and `epp_policy_store_degraded{store="connection_limiter"}` is 1 |
 | Connections per registrar | 100 | **None:** the registrar is never recorded on the session |
 | Requests per second / burst | 100 / 200 | **None:** never called |
 
@@ -129,7 +129,7 @@ These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`) unti
 | Usable allowed networks per registrar | 20 |
 | Allowed network | A single address, or a CIDR no broader than /24 (IPv4) or /48 (IPv6) |
 | Normal retire without `at` | Usable for 7 more days, shown as `retiring`. An `at` that is not in the future retires at once. New logins are refused from then on; open sessions run until they end |
-| Compromise retire | At once, and every session that used the credential is ended |
+| Compromise retire | At once, and every session that used the credential is ended. Also allowed on an already retired credential, which keeps its retire time |
 
 A credential is never deleted. A retired one stays as the record of when, and from where, it was last used.
 
@@ -165,17 +165,17 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 
 | Rule | Value | Where to change it |
 |---|---|---|
-| Failed logins per (login, source address) before lock | 5 within 15m | `lockout.DefaultPolicy` (code) until Phase 5 |
+| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) until Phase 5 |
 | Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) until Phase 5 |
 | While locked | 2501, and the session closes, even with the right password | |
 | Failed logins per session | 3, then 2501 and the session closes | `EPP_MAX_LOGIN_ATTEMPTS` |
-| Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013) and `epp_lockout_store_degraded` is 1 | |
+| Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013), with each Redis call bounded to 500 ms, and `epp_policy_store_degraded{store="lockout"}` is 1. The node-local count holds at most 100,000 (login, address) pairs and never drops a lock in force to make room. Redis being down at start is a warning, not a failure | |
 | Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
 | Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
 | Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
 | `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
-| Compromise retire | Every session that authenticated with the credential is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL` | |
+| Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 
 ### Command rates *(Phase 5)*
 

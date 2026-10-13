@@ -2,13 +2,18 @@ package epp
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -151,12 +156,58 @@ func TestLoginRecordsWhoTheSessionIs(t *testing.T) {
 	assert.Equal(t, testRegistrar, sessions[0].registrar())
 	assert.Equal(t, testLogin, sessions[0].loggedInAs())
 
-	notAfter := testClientCertificate(t).Leaf
-	if notAfter == nil {
-		return
-	}
-	assert.Equal(t, float64(notAfter.NotAfter.Unix()),
+	leaf, err := x509.ParseCertificate(testClientCertificate(t).Certificate[0])
+	require.NoError(t, err)
+	assert.Equal(t, float64(leaf.NotAfter.Unix()),
 		gauge(t, ts.metrics.clientCertNotAfter.WithLabelValues(testRegistrar, testLogin)))
+}
+
+func TestCompromisingAReplacedPasswordEndsItsSessions(t *testing.T) {
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	old := creds.access(testRegistrar).Logins[0].Passwords[0]
+
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginAsXML(testLogin, testPassword, "rotated-pw-02", "NEW")), "1000")
+
+	// The old password was retired by <newPW>, then turns out to have leaked.
+	creds.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
+		_, err := a.RetireCredential(entities.EPPCredentialRef{Kind: entities.EPPCredentialPassword, LoginID: testLogin, ID: old.ID}, entities.EPPRetireCompromise, nil, "test", time.Now())
+		return err
+	})
+	creds.refresh()
+	c.requireClosed()
+}
+
+func TestConnectionLimiterFailsOpen(t *testing.T) {
+	cfg := testConfig()
+	creds := newTestCredentials(t)
+	// Nothing listens on port 1: every Redis call fails.
+	unreachable := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", DialTimeout: 100 * time.Millisecond, MaxRetries: -1})
+	t.Cleanup(func() { _ = unreachable.Close() })
+	var n atomic.Int64
+	srv, err := NewServer(Options{
+		Config:        cfg,
+		Authenticator: creds.authenticator(),
+		Limiter:       middleware.NewRateLimiter(unreachable, nil, discardLogger()),
+		Logger:        discardLogger(),
+		NewID:         func() string { return fmt.Sprintf("FO-%d", n.Add(1)) },
+	})
+	require.NoError(t, err)
+	creds.server = srv
+	l := listenLoopback(t)
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(l) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		<-done
+	})
+	require.Eventually(t, srv.Ready, 2*time.Second, 5*time.Millisecond)
+
+	dial(t, l.Addr().String()).login() // admitted under the node caps
+	assert.Equal(t, 1.0, gauge(t, srv.metrics.storeDegraded.WithLabelValues(storeConnectionLimiter)))
 }
 
 func TestAllowlistOffForLocalDevelopment(t *testing.T) {
