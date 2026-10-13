@@ -53,6 +53,9 @@ type EPPTLS struct {
 	KeyPath        string
 	SelfSigned     bool          // local development only
 	ReloadInterval time.Duration // how often the files are checked for a new certificate
+	// ServerName is the EPP hostname registrars connect to. When set, a
+	// certificate from file must cover it (RST epp-01 #9) or it is refused.
+	ServerName string
 }
 
 // EPPProxy configures PROXY protocol (v1 or v2) on the listener. When
@@ -136,6 +139,7 @@ func LoadEPP() (EPP, error) {
 	cfg.TLS.SelfSigned, err = parseBoolDefaultFalse("EPP_TLS_SELF_SIGNED", os.Getenv("EPP_TLS_SELF_SIGNED"))
 	collect(err)
 	collect(setDuration(&cfg.TLS.ReloadInterval, "EPP_TLS_RELOAD_INTERVAL", os.Getenv("EPP_TLS_RELOAD_INTERVAL")))
+	cfg.TLS.ServerName = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(os.Getenv("EPP_SERVER_NAME")), "."))
 
 	cfg.Proxy.Enabled, err = parseBoolDefaultFalse("EPP_PROXY_PROTOCOL", os.Getenv("EPP_PROXY_PROTOCOL"))
 	collect(err)

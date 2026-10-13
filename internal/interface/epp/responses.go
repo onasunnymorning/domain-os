@@ -23,7 +23,31 @@ func greetingDocument(now time.Time) *etree.Document {
 	for _, uri := range []string{nsDomain, nsContact, nsHost} {
 		menu.CreateElement("objURI").SetText(uri)
 	}
+	addDataCollectionPolicy(g)
 	return doc
+}
+
+// addDataCollectionPolicy appends the <dcp> RFC 5730 §2.4 requires in every
+// greeting. It states the registry's data collection policy, so it is a
+// policy statement, not a technical default; docs/epp/POLICY_REFERENCE.md
+// records it for review:
+//
+//   - access: all. A client may access all data it provided.
+//   - purpose: admin and prov. Data is used to administer and provision.
+//   - recipient: ours and public. The registry, and the public through
+//     registration data services.
+//   - retention: stated. Retention follows the registry's published policy.
+func addDataCollectionPolicy(greeting *etree.Element) {
+	dcp := greeting.CreateElement("dcp")
+	dcp.CreateElement("access").CreateElement("all")
+	stmt := dcp.CreateElement("statement")
+	purpose := stmt.CreateElement("purpose")
+	purpose.CreateElement("admin")
+	purpose.CreateElement("prov")
+	recipient := stmt.CreateElement("recipient")
+	recipient.CreateElement("ours")
+	recipient.CreateElement("public")
+	stmt.CreateElement("retention").CreateElement("stated")
 }
 
 // responseDocument builds an RFC 5730 §2.6 response. msg defaults to the

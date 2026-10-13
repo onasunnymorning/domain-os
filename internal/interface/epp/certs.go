@@ -18,6 +18,7 @@ type certSource struct {
 	current atomic.Pointer[tls.Certificate]
 
 	certPath, keyPath string
+	serverName        string // when set, a loaded certificate must cover it
 	interval          time.Duration
 	lastModified      [2]time.Time
 	metrics           *metrics
@@ -26,8 +27,14 @@ type certSource struct {
 
 // newFileCertSource loads the certificate and key from disk. A failure here
 // stops the server: there is no previous certificate to fall back to.
-func newFileCertSource(certPath, keyPath string, interval time.Duration, m *metrics, logger *slog.Logger) (*certSource, error) {
-	cs := &certSource{certPath: certPath, keyPath: keyPath, interval: interval, metrics: m, logger: logger}
+//
+// A certificate is refused, at start and on reload, if it is outside its
+// validity window or, when serverName is set, does not cover serverName.
+// Those are RST epp-01 #7 and #9: better a server that will not start, or
+// keeps its current certificate, than one that presents a certificate every
+// client will reject.
+func newFileCertSource(certPath, keyPath, serverName string, interval time.Duration, m *metrics, logger *slog.Logger) (*certSource, error) {
+	cs := &certSource{certPath: certPath, keyPath: keyPath, serverName: serverName, interval: interval, metrics: m, logger: logger}
 	if err := cs.load(); err != nil {
 		return nil, err
 	}
@@ -110,6 +117,9 @@ func (cs *certSource) load() error {
 	if err != nil {
 		return fmt.Errorf("load server certificate %s: %w", cs.certPath, err)
 	}
+	if err := cs.check(cert.Leaf, time.Now()); err != nil {
+		return fmt.Errorf("server certificate %s: %w", cs.certPath, err)
+	}
 	if err := cs.set(&cert); err != nil {
 		return err
 	}
@@ -127,5 +137,24 @@ func (cs *certSource) set(cert *tls.Certificate) error {
 	}
 	cs.current.Store(cert)
 	cs.metrics.certNotAfter.Set(float64(cert.Leaf.NotAfter.Unix()))
+	return nil
+}
+
+// check refuses a certificate no client should accept.
+func (cs *certSource) check(leaf *x509.Certificate, now time.Time) error {
+	if leaf == nil {
+		return fmt.Errorf("no leaf certificate")
+	}
+	if now.Before(leaf.NotBefore) {
+		return fmt.Errorf("not valid until %s", leaf.NotBefore.UTC().Format(time.RFC3339))
+	}
+	if now.After(leaf.NotAfter) {
+		return fmt.Errorf("expired %s", leaf.NotAfter.UTC().Format(time.RFC3339))
+	}
+	if cs.serverName != "" {
+		if err := leaf.VerifyHostname(cs.serverName); err != nil {
+			return fmt.Errorf("does not cover EPP_SERVER_NAME %q: %w", cs.serverName, err)
+		}
+	}
 	return nil
 }
