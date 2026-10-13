@@ -99,12 +99,13 @@ func (s *EPPAuthenticationService) Login(ctx context.Context, cmd commands.EPPLo
 	if adm.Network != nil {
 		result.NetworkID = adm.Network.ID
 	}
+	// <newPW> is checked here but applied by ReplacePassword, once the
+	// session has been admitted under its caps: a login refused for a
+	// session cap must not have changed the password.
 	if cmd.NewPassword != "" {
-		newID, err := s.replacePassword(ctx, adm, pw.ID, cmd.NewPassword)
-		if err != nil {
+		if err := entities.ValidateEPPPassword(cmd.NewPassword); err != nil {
 			return nil, err
 		}
-		result.ReplacementPasswordID = newID
 	}
 	if s.uses != nil {
 		// The password presented is the one used, even if <newPW> has just
@@ -130,23 +131,24 @@ func (s *EPPAuthenticationService) verifyPassword(ctx context.Context, adm *enti
 	return pw, err
 }
 
-// replacePassword is <newPW>: the new password replaces the one used, which
-// stops working at once (RFC 5730; ADR 0014 decision 2).
-func (s *EPPAuthenticationService) replacePassword(ctx context.Context, adm *entities.EPPAdmission, old uuid.UUID, newPW string) (uuid.UUID, error) {
+// ReplacePassword applies <newPW> for a login Login has authenticated: the
+// new password replaces the one presented, which stops working at once
+// (RFC 5730; ADR 0014 decision 2). It returns the new password's ID.
+func (s *EPPAuthenticationService) ReplacePassword(ctx context.Context, login *entities.EPPAuthenticatedLogin, newPW string) (uuid.UUID, error) {
 	if err := entities.ValidateEPPPassword(newPW); err != nil {
 		return uuid.Nil, err
 	}
-	loginID := string(adm.Login.LoginID)
+	loginID := string(login.LoginID)
 	var replaced uuid.UUID
-	_, err := s.repo.UpdateAccess(ctx, string(adm.ClID), func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
-		p, err := a.ReplacePassword(loginID, old, newPW, s.hasher, loginID, s.now())
+	_, err := s.repo.UpdateAccess(ctx, string(login.ClID), func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		p, err := a.ReplacePassword(loginID, login.PasswordID, newPW, s.hasher, loginID, s.now())
 		if err != nil {
 			return nil, err
 		}
 		replaced = p.ID
 		e := entities.NewDomainEvent(eppServerEventSource, entities.EventEPPPasswordReplaced, string(a.ClID),
 			fmt.Sprintf("EPP login %s replaced its password with <newPW>", loginID),
-			entities.EPPCredentialEventData{ClID: a.ClID, LoginID: adm.Login.LoginID, CredentialID: p.ID.String(), Kind: entities.EPPCredentialPassword})
+			entities.EPPCredentialEventData{ClID: a.ClID, LoginID: login.LoginID, CredentialID: p.ID.String(), Kind: entities.EPPCredentialPassword})
 		e.Actor = loginID
 		return []entities.DomainEvent{e}, nil
 	})
@@ -154,7 +156,7 @@ func (s *EPPAuthenticationService) replacePassword(ctx context.Context, adm *ent
 	case err == nil:
 		return replaced, nil
 	case errors.Is(err, entities.ErrEPPCredentialRetired), errors.Is(err, entities.ErrEPPCredentialNotFound):
-		// Retired between the check and the change.
+		// Retired between the login check and the change.
 		return uuid.Nil, entities.ErrEPPPasswordMismatch
 	case errors.Is(err, entities.ErrInvalidEPPPassword):
 		return uuid.Nil, err

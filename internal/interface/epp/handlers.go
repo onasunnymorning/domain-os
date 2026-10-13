@@ -116,6 +116,18 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		cmd.closeAfterResponse()
 		return
 	}
+	if loginCmd.NewPassword != "" {
+		// Only now, with the session admitted, is the password changed.
+		replaced, err := s.auth.ReplacePassword(ctx, auth, loginCmd.NewPassword)
+		if err != nil {
+			s.metrics.logins.WithLabelValues(loginError).Inc()
+			s.logger.Error("EPP login failed: <newPW> not applied", "connection_id", sess.id, "login", auth.LoginID, "error", err)
+			cmd.respond(epplib.StatusCommandFailed, "Command failed; the password was not changed and the login did not complete", nil)
+			cmd.closeAfterResponse()
+			return
+		}
+		auth.ReplacementPasswordID = replaced
+	}
 	sess.authAt.Store(time.Now().UnixNano())
 	sess.auth.Store(auth)
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {

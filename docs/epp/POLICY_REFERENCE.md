@@ -174,7 +174,7 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 | Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
 | Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
 | Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
-| `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
+| `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. It is applied only once the session has been admitted under its session caps, so a login refused with 2502 leaves the password unchanged. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 

@@ -301,3 +301,16 @@ func TestHeartbeatNeverRenewsAPendingLogin(t *testing.T) {
 		assert.False(t, s.Authenticated(), "a login the registry has not admitted is renewed as not logged in")
 	}
 }
+
+func TestNewPasswordIsNotAppliedToALoginOverItsCap(t *testing.T) {
+	a, b, _ := twoNodes(t, func(c *config.EPP) { c.Sessions.PerRegistrar = 1 })
+	dial(t, a.addr).login()
+
+	refused := dial(t, b.addr)
+	requireCode(t, refused.roundTrip(loginAsXML(testLogin, testPassword, "rotated-pw-02", "NEW")), "2502")
+	refused.requireClosed()
+
+	// The password did not change: the old one is still the one that works.
+	c := dial(t, b.addr)
+	requireCode(t, c.roundTrip(loginAsXML(testLogin, "rotated-pw-02", "", "NEWPW")), "2200")
+}
