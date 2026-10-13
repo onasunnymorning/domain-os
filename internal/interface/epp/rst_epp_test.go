@@ -29,6 +29,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // rstPending skips a requirement the server does not meet yet. reason names
@@ -62,7 +63,8 @@ func dialTLS(t *testing.T, addr string, cfg *tls.Config) (*client, error) {
 // --- epp-01: Service connectivity test ------------------------------------
 
 func TestRST_epp01_ServiceConnectivity(t *testing.T) {
-	ts := startServer(t, testConfig())
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
 
 	t.Run("epp-01/1 A record for the EPP hostname", func(t *testing.T) {
 		rstOperational(t, "at least one A record for EPP_SERVER_NAME")
@@ -79,7 +81,22 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 	})
 
 	t.Run("epp-01/3 port 700 open to the RST client ACL", func(t *testing.T) {
-		rstPending(t, "Phase 2: registrar IP allowlists, which must admit the addresses in RST's epp.clientACL for the test registrars")
+		// RST's epp.clientACL becomes the test registrars' allowed networks;
+		// loopback stands in for it here. The firewall in front is
+		// operational.
+		dial(t, ts.addr) // an allowed source is greeted
+
+		closed := newTestCredentials(t)
+		closed.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
+			for _, n := range a.AllowedNetworks {
+				if _, err := a.RetireCredential(entities.EPPCredentialRef{Kind: entities.EPPCredentialAllowedNetwork, ID: n.ID}, entities.EPPRetireNormal, ptr(time.Now()), "test", time.Now()); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		other := startServerWith(t, testConfig(), listenLoopback(t), closed)
+		assertClosedWithoutGreeting(t, dialRaw(t, other.addr))
 	})
 
 	t.Run("epp-01/4 TLSv1.2 and TLSv1.3 supported", func(t *testing.T) {
@@ -123,14 +140,14 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 		expiredDir := t.TempDir()
 		certPath, keyPath = ca.writeServerCert(t, expiredDir, []string{"epp.example.test"}, now.Add(-2*time.Hour), now.Add(-time.Hour))
 		cfg.TLS.CertPath, cfg.TLS.KeyPath = certPath, keyPath
-		_, err := NewServer(Options{Config: cfg, Logger: discardLogger(), NewID: func() string { return "x" }})
+		_, err := NewServer(testOptions(t, cfg))
 		require.Error(t, err, "an expired certificate stops the server at start")
 		assert.Contains(t, err.Error(), "expired")
 
 		notYetDir := t.TempDir()
 		certPath, keyPath = ca.writeServerCert(t, notYetDir, []string{"epp.example.test"}, now.Add(time.Hour), now.Add(2*time.Hour))
 		cfg.TLS.CertPath, cfg.TLS.KeyPath = certPath, keyPath
-		_, err = NewServer(Options{Config: cfg, Logger: discardLogger(), NewID: func() string { return "x" }})
+		_, err = NewServer(testOptions(t, cfg))
 		require.Error(t, err, "a certificate not yet valid stops the server at start")
 		assert.Contains(t, err.Error(), "not valid until")
 	})
@@ -139,6 +156,7 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 		ca := newTestCA(t)
 		leaf, key := ca.leaf(t, nil, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), x509.ExtKeyUsageClientAuth)
 		unrelated := newTestCA(t).root
+		creds.pin(testRegistrar, leaf)
 		for name, chain := range map[string]tls.Certificate{
 			"leaf, intermediate, root":      clientChain(leaf, key, ca.intermediate, ca.root),
 			"leaf, root, intermediate":      clientChain(leaf, key, ca.root, ca.intermediate),
@@ -152,7 +170,7 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 			require.NotNil(t, c.read().FindElement("//greeting"), name)
 			c.login()
 		}
-		// Phase 2 pins the leaf (ADR 0014); this keeps the rest of the chain
+		// Only the leaf is pinned (ADR 0014), so the rest of the chain is
 		// irrelevant to authentication.
 	})
 
@@ -173,7 +191,7 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 			certPath, keyPath := ca.writeServerCert(t, t.TempDir(), tc.sans, now.Add(-time.Hour), now.Add(time.Hour))
 			cfg := testConfig()
 			cfg.TLS = config.EPPTLS{CertPath: certPath, KeyPath: keyPath, ServerName: tc.serverName, ReloadInterval: time.Minute}
-			_, err := NewServer(Options{Config: cfg, Logger: discardLogger(), NewID: func() string { return "x" }})
+			_, err := NewServer(testOptions(t, cfg))
 			if tc.ok {
 				assert.NoError(t, err, "SANs %v cover %s", tc.sans, tc.serverName)
 			} else {
@@ -332,13 +350,54 @@ func loadExtensionRegistry(t *testing.T) extensionRegistry {
 // --- epp-03: Authentication test ------------------------------------------
 
 func TestRST_epp03_Authentication(t *testing.T) {
-	ts := startServer(t, testConfig())
-	const phase2 = "Phase 2: real authentication against EPP logins, passwords and registrar certificate pins (ADR 0014)"
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
 
-	t.Run("epp-03/1 unknown client ID rejected", func(t *testing.T) { rstPending(t, phase2) })
-	t.Run("epp-03/2 wrong password rejected", func(t *testing.T) { rstPending(t, phase2) })
-	t.Run("epp-03/3 wrong client certificate rejected", func(t *testing.T) { rstPending(t, phase2) })
-	t.Run("epp-03/4 another registrar's certificate rejected", func(t *testing.T) { rstPending(t, phase2) })
+	// registrar2 has its own login, password and certificate, like RST's
+	// epp.clid02 and epp.clid02DataModel.
+	ca := newTestCA(t)
+	otherLeaf, otherKey := ca.leaf(t, nil, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), x509.ExtKeyUsageClientAuth)
+	creds.update("registrar2", func(a *entities.EPPRegistrarAccess) error {
+		if _, err := a.AddLogin("registrar2", entities.EPPLoginRoleTransform, "test", time.Now()); err != nil {
+			return err
+		}
+		if _, err := a.AddPassword("registrar2", "secret-pw-02", fastHash, "test", time.Now()); err != nil {
+			return err
+		}
+		_, err := a.AddAllowedNetwork("127.0.0.1", "loopback", "test", time.Now())
+		return err
+	})
+	creds.pin("registrar2", otherLeaf)
+
+	// loginWith logs in on a fresh session presenting cert, and returns the
+	// result code.
+	loginWith := func(t *testing.T, cert tls.Certificate, clID, pw string) string {
+		cfg := clientTLSConfig(t)
+		cfg.Certificates = []tls.Certificate{cert}
+		c, err := dialTLS(t, ts.addr, cfg)
+		require.NoError(t, err)
+		c.read()
+		resp := c.roundTrip(loginAsXML(clID, pw, "", "RST-03"))
+		return resp.FindElement("//response/result").SelectAttrValue("code", "")
+	}
+	ours := testClientCertificate(t)
+
+	t.Run("epp-03/1 unknown client ID rejected", func(t *testing.T) {
+		assert.Equal(t, "2200", loginWith(t, ours, "zq7rnd0m9x", testPassword))
+	})
+	t.Run("epp-03/2 wrong password rejected", func(t *testing.T) {
+		assert.Equal(t, "2200", loginWith(t, ours, testLogin, "not-the-pw-1"))
+	})
+	t.Run("epp-03/3 wrong client certificate rejected", func(t *testing.T) {
+		unpinned, err := SelfSignedCertificate()
+		require.NoError(t, err)
+		assert.Equal(t, "2200", loginWith(t, unpinned, testLogin, testPassword))
+	})
+	t.Run("epp-03/4 another registrar's certificate rejected", func(t *testing.T) {
+		theirs := clientChain(otherLeaf, otherKey)
+		assert.Equal(t, "2200", loginWith(t, theirs, testLogin, testPassword))
+		assert.Equal(t, "1000", loginWith(t, theirs, "registrar2", "secret-pw-02"), "it is a valid certificate, for its own registrar")
+	})
 
 	t.Run("epp-03/5 no client certificate rejected", func(t *testing.T) {
 		cfg := clientTLSConfig(t)
@@ -353,9 +412,11 @@ func TestRST_epp03_Authentication(t *testing.T) {
 	})
 
 	t.Run("epp-03/6 valid client ID, password and certificate accepted", func(t *testing.T) {
-		rstPending(t, phase2+"; today any clID and pw is accepted, which epp-03/1 and /2 would fail")
+		assert.Equal(t, "1000", loginWith(t, ours, testLogin, testPassword))
 	})
 }
+
+func ptr[T any](v T) *T { return &v }
 
 // --- epp-04 … epp-27: object commands -------------------------------------
 

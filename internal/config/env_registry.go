@@ -63,14 +63,14 @@ var Registry = []EnvVar{
 	// its own. The DB_* set is the production credential path on AWS ECS — a
 	// secret-store password injected as DB_PASS never has to survive URL parsing.
 	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker, ServiceMigrate}, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."},
-	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
-	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
-	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
-	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate}, Default: "disable", Description: "PostgreSQL SSL mode"},
+	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
+	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
+	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
+	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "disable", Description: "PostgreSQL SSL mode"},
 	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Migrate the schema on startup (local development). Deployed environments leave this false and run the `migrate` job before rolling services - see docs/adr/0010-database-migrations.md"},
-	{Name: "SCHEMA_GUARD", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP}, Default: "enforce", Description: "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"},
+	{Name: "SCHEMA_GUARD", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceEPP}, Default: "enforce", Description: "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"},
 
 	// ═══════════════════════════════════════════
 	// AUTH0
@@ -153,6 +153,10 @@ var Registry = []EnvVar{
 	{Name: "EPP_TLS_RELOAD_INTERVAL", Services: []Service{ServiceEPP}, Default: "1m", Description: "How often the certificate files are checked for a renewal"},
 	{Name: "EPP_PROXY_PROTOCOL", Services: []Service{ServiceEPP}, Default: "false", Description: "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-IP limits see only the balancer"},
 	{Name: "EPP_PROXY_TRUSTED_CIDRS", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_PROXY_PROTOCOL=true", Description: "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"},
+	{Name: "EPP_REQUIRE_ALLOWLIST", Services: []Service{ServiceEPP}, Default: "true", Description: "Drop connections from outside every registrar's allowed networks before TLS, and refuse a login from outside its own registrar's. Set false only for local development"},
+	{Name: "EPP_CREDENTIAL_REFRESH_INTERVAL", Services: []Service{ServiceEPP}, Default: "30s", Description: "How often a node reloads the allowed networks and ends sessions whose credentials were retired as compromised"},
+	{Name: "EPP_MAX_CONCURRENT_LOGINS", Services: []Service{ServiceEPP}, Default: "8", Description: "Password verifications in progress on one node; each Argon2id verification holds 19 MiB. More wait their turn"},
+	{Name: "EPP_MAX_LOGIN_ATTEMPTS", Services: []Service{ServiceEPP}, Default: "3", Description: "Failed logins one session may make before it is answered 2501 and closed"},
 	{Name: "EPP_MAX_CONNECTIONS", Services: []Service{ServiceEPP}, Default: "2000", Description: "Open connections allowed on one node"},
 	{Name: "EPP_MAX_HANDSHAKES", Services: []Service{ServiceEPP}, Default: "200", Description: "TLS handshakes allowed in progress on one node"},
 	{Name: "EPP_MAX_FRAME_BYTES", Services: []Service{ServiceEPP}, Default: "65536", Description: "Largest EPP frame accepted, including its 4-byte header. A larger frame closes the session"},

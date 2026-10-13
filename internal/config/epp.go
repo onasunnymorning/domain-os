@@ -31,6 +31,38 @@ type EPP struct {
 	Proxy    EPPProxy
 	Limits   EPPLimits
 	Timeouts EPPTimeouts
+	Auth     EPPAuth
+	DB       EPPDatabase
+}
+
+// EPPAuth governs how logins are authenticated against registrars'
+// credentials (ADR 0014).
+type EPPAuth struct {
+	// RequireAllowlist drops connections from outside every registrar's
+	// allowed networks before the TLS handshake, and refuses a login from
+	// outside its own registrar's. Only local development turns it off.
+	RequireAllowlist bool
+	// RefreshInterval is how often the node reloads the union of allowed
+	// networks and ends sessions whose credentials were retired as
+	// compromised.
+	RefreshInterval time.Duration
+	// MaxConcurrentVerify bounds password verifications in progress on the
+	// node; each Argon2id verification holds 19 MiB.
+	MaxConcurrentVerify int
+	// MaxLoginAttempts is how many failed logins a session may make before it
+	// is closed.
+	MaxLoginAttempts int
+}
+
+// EPPDatabase locates the database holding registrars' credentials. It reads
+// the same DB_* variables as the other services.
+type EPPDatabase struct {
+	User    string
+	Pass    string
+	Host    string
+	Port    string
+	Name    string
+	SSLMode string
 }
 
 // EPPRedis locates the Redis instance the EPP server keeps its shared
@@ -110,6 +142,13 @@ var eppDefaults = EPP{
 		MaxSession: 24 * time.Hour,
 		Drain:      30 * time.Second,
 	},
+	Auth: EPPAuth{
+		RequireAllowlist:    true,
+		RefreshInterval:     30 * time.Second,
+		MaxConcurrentVerify: 8,
+		MaxLoginAttempts:    3,
+	},
+	DB: EPPDatabase{User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
 }
 
 // LoadEPP reads the EPP server's environment. A value that is set but
@@ -161,6 +200,19 @@ func LoadEPP() (EPP, error) {
 	collect(setDuration(&cfg.Timeouts.MaxSession, "EPP_MAX_SESSION_DURATION", os.Getenv("EPP_MAX_SESSION_DURATION")))
 	collect(setDuration(&cfg.Timeouts.Drain, "EPP_DRAIN_TIMEOUT", os.Getenv("EPP_DRAIN_TIMEOUT")))
 
+	cfg.Auth.RequireAllowlist, err = parseBoolDefault("EPP_REQUIRE_ALLOWLIST", os.Getenv("EPP_REQUIRE_ALLOWLIST"), cfg.Auth.RequireAllowlist)
+	collect(err)
+	collect(setDuration(&cfg.Auth.RefreshInterval, "EPP_CREDENTIAL_REFRESH_INTERVAL", os.Getenv("EPP_CREDENTIAL_REFRESH_INTERVAL")))
+	collect(setPositiveInt(&cfg.Auth.MaxConcurrentVerify, "EPP_MAX_CONCURRENT_LOGINS", os.Getenv("EPP_MAX_CONCURRENT_LOGINS")))
+	collect(setPositiveInt(&cfg.Auth.MaxLoginAttempts, "EPP_MAX_LOGIN_ATTEMPTS", os.Getenv("EPP_MAX_LOGIN_ATTEMPTS")))
+
+	cfg.DB.User = valueOr(os.Getenv("DB_USER"), cfg.DB.User)
+	cfg.DB.Pass = valueOr(os.Getenv("DB_PASS"), cfg.DB.Pass)
+	cfg.DB.Host = valueOr(os.Getenv("DB_HOST"), cfg.DB.Host)
+	cfg.DB.Port = valueOr(os.Getenv("DB_PORT"), cfg.DB.Port)
+	cfg.DB.Name = valueOr(os.Getenv("DB_NAME"), cfg.DB.Name)
+	cfg.DB.SSLMode = valueOr(os.Getenv("DB_SSLMODE"), cfg.DB.SSLMode)
+
 	collect(cfg.validate())
 	if len(errs) > 0 {
 		return EPP{}, errors.Join(errs...)
@@ -188,6 +240,14 @@ func (c EPP) validate() error {
 		errs = append(errs, fmt.Errorf("EPP_MAX_HANDSHAKES (%d) exceeds EPP_MAX_CONNECTIONS (%d)", c.Limits.MaxHandshakes, c.Limits.MaxConnections))
 	}
 	return errors.Join(errs...)
+}
+
+// parseBoolDefault reads a boolean, with def when unset.
+func parseBoolDefault(name, raw string, def bool) (bool, error) {
+	if strings.TrimSpace(raw) == "" {
+		return def, nil
+	}
+	return parseBoolDefaultFalse(name, raw)
 }
 
 func setPort(dst *int, name, raw string) error {

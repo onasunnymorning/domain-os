@@ -115,12 +115,21 @@ const DefaultEPPRetireWindow = 7 * 24 * time.Hour
 // future retires it now. A compromise or a replacement always takes effect
 // now. A scheduled retirement can be brought forward or pushed back until it
 // has taken effect; a retired credential stays retired.
+//
+// A retired credential can still be marked compromised, for instance a
+// password replaced through <newPW> that later turns out to have leaked: that
+// keeps its retire time and ends the sessions that used it.
 func (l *EPPCredentialLifecycle) retire(kind EPPRetireKind, at *time.Time, by string, now time.Time) error {
 	if !kind.IsValid() {
 		return fmt.Errorf("%w: unknown retire kind %q", ErrInvalidEPPCredential, kind)
 	}
 	if l.State(now) == EPPCredentialRetired {
-		return ErrEPPCredentialRetired
+		if kind != EPPRetireCompromise || l.Compromised() {
+			return ErrEPPCredentialRetired
+		}
+		l.RetireKind = EPPRetireCompromise
+		l.RetiredBy = by
+		return nil
 	}
 	effective := now.UTC()
 	if kind == EPPRetireNormal {
@@ -165,4 +174,17 @@ func countUsable[T interface {
 		}
 	}
 	return n
+}
+
+func (l EPPCredentialLifecycle) clone() EPPCredentialLifecycle {
+	c := l
+	if l.RetireAt != nil {
+		t := *l.RetireAt
+		c.RetireAt = &t
+	}
+	if l.LastUsedAt != nil {
+		t := *l.LastUsedAt
+		c.LastUsedAt = &t
+	}
+	return c
 }

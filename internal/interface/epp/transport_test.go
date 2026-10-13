@@ -16,13 +16,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func TestProxyProtocol(t *testing.T) {
 	cfg := testConfig()
 	cfg.Proxy.Enabled = true
 	cfg.Proxy.TrustedCIDRs = []string{"127.0.0.1/32"}
-	ts := startServer(t, cfg)
+	creds := newTestCredentials(t)
+	creds.update(testRegistrar, func(a *entities.EPPRegistrarAccess) error {
+		_, err := a.AddAllowedNetwork("203.0.113.7", "behind the load balancer", "test", time.Now())
+		return err
+	})
+	ts := startServerWith(t, cfg, listenLoopback(t), creds)
 
 	t.Run("the client address comes from the PROXY header", func(t *testing.T) {
 		conn := dialRaw(t, ts.addr)
@@ -39,6 +45,21 @@ func TestProxyProtocol(t *testing.T) {
 		sessions := ts.sessions.all()
 		require.Len(t, sessions, 1)
 		assert.Equal(t, "203.0.113.7", sessions[0].clientIP)
+	})
+
+	t.Run("a client outside every allowlist is dropped before TLS", func(t *testing.T) {
+		before := ts.counter(t, "connections", outcomeSourceIP)
+		conn := dialRaw(t, ts.addr)
+		header := proxyproto.HeaderProxyFromAddrs(2,
+			&net.TCPAddr{IP: net.ParseIP("198.51.100.99"), Port: 40000},
+			&net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 700})
+		_, err := header.WriteTo(conn)
+		require.NoError(t, err)
+		c := tls.Client(conn, clientTLSConfig(t))
+		require.NoError(t, c.SetDeadline(time.Now().Add(5*time.Second)))
+		require.Error(t, c.Handshake())
+		require.Eventually(t, func() bool { return ts.counter(t, "connections", outcomeSourceIP) == before+1 }, 2*time.Second, 10*time.Millisecond)
+		assert.Zero(t, ts.counter(t, "connections", outcomeHandshakeFailed), "a refused source is not a failed handshake")
 	})
 
 	t.Run("a connection without a PROXY header is refused", func(t *testing.T) {
@@ -97,12 +118,12 @@ func tlsOver(t *testing.T, conn net.Conn) *client {
 	return &client{t: t, conn: c}
 }
 
+// clientTLSConfig presents the test client certificate, which the default
+// test credentials pin.
 func clientTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
-	cert, err := SelfSignedCertificate()
-	require.NoError(t, err)
 	return &tls.Config{
-		Certificates:       []tls.Certificate{cert},
+		Certificates:       []tls.Certificate{testClientCertificate(t)},
 		InsecureSkipVerify: true, // #nosec G402 -- test-only: the server presents a certificate generated in this test
 		MinVersion:         tls.VersionTLS12,
 	}

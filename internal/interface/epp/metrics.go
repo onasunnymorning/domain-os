@@ -14,6 +14,16 @@ const (
 	outcomeDraining        = "rejected_draining"
 	outcomeHandshakeFailed = "handshake_failed"
 	outcomeLoginTimeout    = "login_timeout"
+	outcomeSourceIP        = "rejected_source_ip"
+)
+
+// Why a session was ended by the server, for epp_sessions_ended_total.
+const endedCompromised = "credential_compromised"
+
+// Shared stores, for epp_policy_store_degraded.
+const (
+	storeLockout           = "lockout"
+	storeConnectionLimiter = "connection_limiter"
 )
 
 // metrics are the EPP server's Prometheus series. They live on their own
@@ -33,6 +43,14 @@ type metrics struct {
 	certNotAfter     prometheus.Gauge
 	certReloadErrors prometheus.Counter
 	draining         prometheus.Gauge
+
+	loginFailures           *prometheus.CounterVec
+	clientCertNotAfter      *prometheus.GaugeVec
+	sessionsEnded           *prometheus.CounterVec
+	allowedNetworks         prometheus.Gauge
+	credentialsRefreshed    prometheus.Gauge
+	credentialRefreshErrors prometheus.Counter
+	storeDegraded           *prometheus.GaugeVec
 }
 
 func newMetrics() *metrics {
@@ -84,11 +102,41 @@ func newMetrics() *metrics {
 			Name: "epp_draining",
 			Help: "1 while the node is draining for shutdown.",
 		}),
+		loginFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_login_failures_total",
+			Help: "Refused logins by reason. Every reason gets the same answer on the wire.",
+		}, []string{"reason"}),
+		clientCertNotAfter: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "epp_client_cert_not_after_timestamp_seconds",
+			Help: "Expiry of the client certificate last used to log in, by registrar and login, as a Unix timestamp. Alert at 30 and 7 days.",
+		}, []string{"clid", "login"}),
+		sessionsEnded: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_sessions_ended_total",
+			Help: "Sessions the server ended, by reason.",
+		}, []string{"reason"}),
+		allowedNetworks: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "epp_allowed_networks",
+			Help: "Networks in the union of registrars' allowlists, as last loaded.",
+		}),
+		credentialsRefreshed: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "epp_credentials_refreshed_timestamp_seconds",
+			Help: "When the allowed networks were last loaded, as a Unix timestamp.",
+		}),
+		credentialRefreshErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "epp_credential_refresh_errors_total",
+			Help: "Failed reloads of the allowed networks or the compromised credentials.",
+		}),
+		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "epp_policy_store_degraded",
+			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
+		}, []string{"store"}),
 	}
 	m.registry.MustRegister(
 		m.connections, m.sessionsActive, m.handshakesActive, m.logins, m.commands,
 		m.commandDuration, m.frameBytes, m.framesRejected, m.certNotAfter,
 		m.certReloadErrors, m.draining,
+		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
+		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

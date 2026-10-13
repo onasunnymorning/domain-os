@@ -19,6 +19,7 @@ COPY vendor/ ./vendor/
 # Copy source code
 COPY cmd/epp/ ./cmd/epp/
 COPY internal/ ./internal/
+COPY pkg/ ./pkg/
 
 # Build the EPP server binary
 # CGO is disabled for a fully static binary

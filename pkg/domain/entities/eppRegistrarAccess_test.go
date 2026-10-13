@@ -85,6 +85,17 @@ func TestEPPNormalRetireDefaultsToTheWindow(t *testing.T) {
 	require.Equal(t, eppNow, *lc.RetireAt, "a past time retires now, not in the past")
 }
 
+func TestEPPRetiredCredentialCanBeMarkedCompromised(t *testing.T) {
+	lc := newEPPCredentialLifecycle("tester", eppNow)
+	require.NoError(t, lc.retire(EPPRetireReplaced, nil, "rar-001", eppNow))
+	later := eppNow.Add(time.Hour)
+	require.NoError(t, lc.retire(EPPRetireCompromise, nil, "admin", later))
+	require.True(t, lc.Compromised())
+	require.Equal(t, eppNow, *lc.RetireAt, "the retire time is kept")
+	require.ErrorIs(t, lc.retire(EPPRetireCompromise, nil, "admin", later), ErrEPPCredentialRetired, "only once")
+	require.ErrorIs(t, lc.retire(EPPRetireNormal, nil, "admin", later), ErrEPPCredentialRetired)
+}
+
 func TestEPPCompromiseRetireIsImmediate(t *testing.T) {
 	lc := newEPPCredentialLifecycle("tester", eppNow)
 	later := eppNow.Add(time.Hour)
@@ -314,4 +325,20 @@ func TestEPPRetireAndRecordUseFindEveryKind(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, lc.Compromised())
 	}
+}
+
+func TestEPPRegistrarAccessCloneIsDeep(t *testing.T) {
+	f := newAuthFixture(t)
+	c := f.access.Clone()
+	require.Equal(t, f.access, c)
+
+	retire := eppNow
+	c.Logins[0].Passwords[0].RetireAt = &retire
+	c.Logins[0].Enabled = false
+	c.CertificatePins[0].Logins = append(c.CertificatePins[0].Logins, "x")
+	c.AllowedNetworks[0].Note = "changed"
+	require.Nil(t, f.access.Logins[0].Passwords[0].RetireAt)
+	require.True(t, f.access.Logins[0].Enabled)
+	require.Empty(t, f.access.CertificatePins[0].Logins)
+	require.Empty(t, f.access.AllowedNetworks[0].Note)
 }

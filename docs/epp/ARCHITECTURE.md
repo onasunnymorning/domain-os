@@ -12,15 +12,14 @@
 
 The transport and session layer is in place (Phase 1). The command surface is still a **protocol stub**:
 - It binds `<hello>`, login, logout and a placeholder `domain:check` that ignores the names it is asked about. Every other RFC 5730 command is answered 2101 (unimplemented).
-- **Login is not authenticated.** Any request carrying a clID and a pw succeeds.
-- The client certificate is required but **not verified** (`tls.RequireAnyClientCert`).
+- Logins are authenticated (Phase 2): allowed network, pinned certificate and password, with a lockout per (login, source address).
 
 The Redis limiter has known structural flaws, all fixed by redesign rather than patching:
 - **Connection counts drift.** They use INCR/DECR with a 5-minute TTL, so a session open longer than that drops out of the count, and a crashed node leaks counts until the TTL expires.
 - **Check-then-increment is not atomic**, so concurrent connects can overshoot a cap.
 - **Per-registrar caps never fire**, because the registrar ID is never recorded on the session.
 - **`CheckRequestRate` is never called.**
-- **Lockout is keyed on clID alone**, so anyone who knows a registrar's clID can lock it out.
+- Its lockout was keyed on clID alone, so anyone who knew a registrar's clID could lock it out. Phase 2 replaced it with a lockout per (login, source address); the limiter's own lockout is no longer called.
 
 ---
 
@@ -42,7 +41,7 @@ The Redis limiter has known structural flaws, all fixed by redesign rather than 
 - On SIGTERM the node stops accepting, finishes in-flight commands and closes sessions within a drain timeout.
 - Health, readiness and `/metrics` are served on a separate ops port.
 
-*Today:* everything in this section except the source-IP allowlist, which is Phase 2. The server certificate comes from file and is hot-reloaded. PROXY protocol, the per-node connection and handshake caps, the handshake timeout, drain on SIGTERM and the ops port are all in place.
+*Today:* everything in this section. Connections from outside every registrar's allowed networks are dropped before the TLS handshake. The server certificate comes from file and is hot-reloaded. PROXY protocol, the per-node connection and handshake caps, the handshake timeout, drain on SIGTERM and the ops port are all in place.
 
 ## 2. Identity & credentials
 
@@ -86,7 +85,7 @@ A login must pass three checks:
 - It is loaded from file and hot-reloaded: new handshakes get the new certificate, and live sessions are untouched.
 - Registrars who pin *our* certificate are told the new fingerprint a set number of days ahead (optionally also published as a DANE/TLSA record).
 
-*Today:* the credential model, its storage and its admin API are in place: logins, passwords (Argon2id), registrar-level certificate pins and allowed networks, each with the retire lifecycle, the caps above, and an outbox event per change ([POLICY_REFERENCE.md § Credentials](POLICY_REFERENCE.md#credentials-admin-api)). The EPP server does not read them yet: login still accepts any clID and password. Authentication, the lockout, last-used tracking and the certificate-expiry metric are the second half of Phase 2.
+*Today:* all of this section is in place except the change notifications reaching the technical contact: changes are written to the outbox, but nothing yet delivers them. Logins, passwords (Argon2id), registrar-level pins and allowed networks have the retire lifecycle, the caps and an admin API ([POLICY_REFERENCE.md § Credentials](POLICY_REFERENCE.md#credentials-admin-api)). Each login is checked against the database, and a compromise retire ends the sessions that used the credential within the refresh interval ([§ Authentication](POLICY_REFERENCE.md#authentication)). The session cap per login is stored but enforced with the session registry (Phase 3), and the `readonly` role with the policy engine (Phase 5).
 
 ## 3. Session management
 
@@ -144,13 +143,13 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
   - `epp_policy_decisions_total{rule,action}`
   - `epp_failed_creates_total{registrar}`
   - `epp_client_cert_expiry_seconds{clid,login}`
-  - `epp_policy_store_degraded`
+  - `epp_policy_store_degraded{store}`
 - **"Who is connected"** comes from the session registry through the admin API.
 - **Alerts** cover cap saturation, failed-create spikes, lockout storms, certificate expiry and a degraded policy store.
 - **Audit log** of every command and response, keyed by svTRID and clTRID, with `pw`, `newPW` and `authInfo` redacted. It is written durably (not telemetry, per INV-01) with configurable retention.
 - **Structured `slog` only.**
 
-*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total`, `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. The series with registrar or login labels arrive with authentication (Phase 2) and the session registry (Phase 3). There is no audit log yet.
+*Today:* structured JSON `slog`, and `/metrics` on the ops port. The ops port serves `epp_connections_total` (including `rejected_source_ip`), `epp_sessions_active`, `epp_tls_handshakes_active`, `epp_logins_total`, `epp_login_failures_total{reason}`, `epp_client_cert_not_after_timestamp_seconds{clid,login}`, `epp_sessions_ended_total{reason}`, `epp_allowed_networks`, `epp_credentials_refreshed_timestamp_seconds`, `epp_credential_refresh_errors_total`, `epp_policy_store_degraded{store}` (lockout, connection limiter), `epp_commands_total`, `epp_command_duration_seconds`, `epp_frame_bytes`, `epp_frames_rejected_total`, `epp_server_cert_not_after_timestamp_seconds`, `epp_server_cert_reload_errors_total` and `epp_draining`. Session and command series by registrar arrive with the session registry (Phase 3). There is no audit log yet.
 
 ---
 
@@ -166,7 +165,7 @@ Each phase is one or more PRs and can be shipped on its own.
 |---|---|---|
 | 0 | This document, ADR 0013, policy reference skeleton. Server moved to `internal/interface/epp`. Typed config in `internal/config/epp.go`. `slog` throughout. One end-to-end TLS session test | **Done** |
 | 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | **Done** |
-| 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **In progress:** the credential model, storage, admin API and change events are done; authentication is next |
+| 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **Done**, except delivering change events to the technical contact |
 | 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | Planned |
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
 | 5 | Policy engine: versioned tiered policies, registrar families, token buckets, object caps, quotas, hot reload | Planned |

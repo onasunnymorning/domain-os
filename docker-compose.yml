@@ -57,6 +57,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      # admin-api migrates the schema the EPP server reads credentials from.
+      admin-api:
+        condition: service_healthy
     healthcheck:
       test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9700/readyz" ]
       interval: 30s
@@ -72,6 +75,15 @@ services:
     environment:
       # Local stack: no real certificate. Deployments set EPP_TLS_CERT_PATH/EPP_TLS_KEY_PATH.
       - EPP_TLS_SELF_SIGNED=true
+      # Local stack: connections come through Docker's NAT, so registrars'
+      # allowed networks would never match. Deployments leave this true.
+      - EPP_REQUIRE_ALLOWLIST=false
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
@@ -85,6 +97,10 @@ services:
           path: ./internal/infrastructure/epp
         - action: rebuild
           path: ./internal/interface/epp
+        - action: rebuild
+          path: ./internal/application/services
+        - action: rebuild
+          path: ./pkg/domain
 
   # Prometheus container
   prometheus:

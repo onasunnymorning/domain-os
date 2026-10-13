@@ -66,6 +66,16 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 | `EPP_MAX_SESSION_DURATION` | `24h` | Longest a session may stay open |
 | `EPP_DRAIN_TIMEOUT` | `30s` | On SIGTERM, time for in-flight commands to finish. Idle sessions close at once, and sessions still open at the deadline are closed |
 
+**Authentication**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_REQUIRE_ALLOWLIST` | `true` | Drop a connection from outside **every** registrar's allowed networks before the TLS handshake, and refuse a login from outside **its own** registrar's. `false` only for local development, where Docker's NAT hides the client address. Docker Compose and Tilt set it |
+| `EPP_CREDENTIAL_REFRESH_INTERVAL` | `30s` | How often a node reloads the union of allowed networks, and ends sessions that used a credential retired as compromised. A new allowed network can take this long to admit its first connection; a compromise retire can take this long to end sessions. Logins themselves always read the database |
+| `EPP_MAX_CONCURRENT_LOGINS` | `8` | Password verifications in progress on one node. Each Argon2id verification holds 19 MiB, so this bounds login memory at about 150 MiB. More logins wait their turn |
+| `EPP_MAX_LOGIN_ATTEMPTS` | `3` | Failed logins one session may make. The last is answered 2501 and the session closes |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_SSLMODE` | as for the other services | The database holding registrars' credentials. A node uses at most 10 connections. `SCHEMA_GUARD` applies as for the API |
+
 **Shared state and logging**
 
 | Variable | Default | Meaning |
@@ -81,11 +91,11 @@ These values come from `middleware.DefaultRateLimitConfig()` in `internal/infras
 
 | Setting | Value | Effect today |
 |---|---|---|
-| Connections per IP | 10 | Enforced, but counts drift (5-minute TTL on a live count) |
+| Connections per IP | 10 | Enforced, but counts drift (5-minute TTL on a live count). If Redis cannot answer within 500 ms, the connection is admitted under the node caps and `epp_policy_store_degraded{store="connection_limiter"}` is 1 |
 | Connections per registrar | 100 | **None:** the registrar is never recorded on the session |
 | Requests per second / burst | 100 / 200 | **None:** never called |
-| Failed logins before lock | 5 | Counted per (clID, IP), but the lock is applied to the clID alone |
-| Lockout duration | 15m | |
+
+Its failed-login lockout is no longer used. Logins are locked out by (login, source address), as described under [Authentication](#authentication).
 
 ---
 
@@ -119,7 +129,7 @@ These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`) unti
 | Usable allowed networks per registrar | 20 |
 | Allowed network | A single address, or a CIDR no broader than /24 (IPv4) or /48 (IPv6) |
 | Normal retire without `at` | Usable for 7 more days, shown as `retiring`. An `at` that is not in the future retires at once. New logins are refused from then on; open sessions run until they end |
-| Compromise retire | At once, and every session that used the credential is ended |
+| Compromise retire | At once, and every session that used the credential is ended. Also allowed on an already retired credential, which keeps its retire time |
 
 A credential is never deleted. A retired one stays as the record of when, and from where, it was last used.
 
@@ -141,17 +151,31 @@ The defaults below form the `default` tier and will be seeded from code constant
 
 Over a cap, the server answers 2502 and closes. If Redis is unavailable, enforcement falls back to node-local caps (fail-open) and `epp_policy_store_degraded` is set.
 
-### Authentication *(Phase 2)*
+### Authentication
 
-The credential caps and lifecycle are in place; see [Credentials](#credentials-admin-api). What the EPP server enforces at login arrives with authentication:
+In place. A `<login>` is checked in this order, against the database, so an admin API change applies to the next login on every node:
 
-| Limit | Default |
-|---|---|
-| Failed logins per (login, IP) before lock | 5 within 15m |
-| Lock duration | 15m, doubling on each repeat, up to 24h |
-| Client certificate validity | Enforced: no grace before `notBefore` or after `notAfter` |
-| Certificate expiry alerts | 30 and 7 days before expiry |
-| `<newPW>` | Strict RFC 5730: replaces the password used to log in, effective immediately. Overlap is done with add-then-retire through the admin API |
+1. The login exists and is enabled.
+2. The source address is in one of **its registrar's** usable allowed networks (unless `EPP_REQUIRE_ALLOWLIST=false`).
+3. The client certificate's key is pinned by the registrar, for this login, and the certificate is within its validity period.
+4. The (login, source address) pair is not locked out.
+5. The password matches one of the login's usable passwords.
+
+Every refusal is answered 2200 with the same text, so a client cannot tell which check failed; `epp_login_failures_total{reason}` and the log say which. Only a wrong password at step 5 counts towards a lockout: by then the client has shown an allowed address and a pinned certificate, so a stranger cannot lock a registrar out.
+
+| Rule | Value | Where to change it |
+|---|---|---|
+| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) until Phase 5 |
+| Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) until Phase 5 |
+| While locked | 2501, and the session closes, even with the right password | |
+| Failed logins per session | 3, then 2501 and the session closes | `EPP_MAX_LOGIN_ATTEMPTS` |
+| Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013), with each Redis call bounded to 500 ms, and `epp_policy_store_degraded{store="lockout"}` is 1. The node-local count holds at most 100,000 (login, address) pairs and never drops a lock in force to make room. Redis being down at start is a warning, not a failure | |
+| Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
+| Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
+| Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
+| `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
+| Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
+| Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 
 ### Command rates *(Phase 5)*
 

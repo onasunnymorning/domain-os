@@ -484,3 +484,31 @@ func (a *EPPRegistrarAccess) RecordUse(uses []EPPCredentialUse) {
 		}
 	}
 }
+
+// Clone returns a deep copy, so a change can be tried on the copy and
+// discarded if it fails.
+func (a *EPPRegistrarAccess) Clone() *EPPRegistrarAccess {
+	c := &EPPRegistrarAccess{ClID: a.ClID}
+	for _, l := range a.Logins {
+		lc := *l
+		lc.Passwords = nil
+		for _, p := range l.Passwords {
+			pc := *p
+			pc.EPPCredentialLifecycle = p.EPPCredentialLifecycle.clone()
+			lc.Passwords = append(lc.Passwords, &pc)
+		}
+		c.Logins = append(c.Logins, &lc)
+	}
+	for _, p := range a.CertificatePins {
+		pc := *p
+		pc.EPPCredentialLifecycle = p.EPPCredentialLifecycle.clone()
+		pc.Logins = slices.Clone(p.Logins)
+		c.CertificatePins = append(c.CertificatePins, &pc)
+	}
+	for _, n := range a.AllowedNetworks {
+		nc := *n
+		nc.EPPCredentialLifecycle = n.EPPCredentialLifecycle.clone()
+		c.AllowedNetworks = append(c.AllowedNetworks, &nc)
+	}
+	return c
+}

@@ -143,6 +143,11 @@ jobs:
       - name: Install xmllint (schema conformance tests)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
 
+      - name: Start Redis (EPP lockout script tests)
+        # internal/infrastructure/epp/lockout runs its Lua script against a
+        # real Redis, and fails in CI rather than skipping without one.
+        run: docker run --rm -d --name testredis -p 6379:6379 redis:7-alpine
+
       - name: Run All Tests
         run: |
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...

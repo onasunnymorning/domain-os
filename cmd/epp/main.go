@@ -18,9 +18,13 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/epp"
 )
@@ -41,35 +45,89 @@ func main() {
 	}
 }
 
+// useFlushInterval is how often last-used times are written: at most one
+// write per credential per interval, however many logins (ADR 0014).
+const useFlushInterval = time.Minute
+
 func run(cfg config.EPP, logger *slog.Logger) error {
 	if cfg.TLS.SelfSigned {
 		logger.Warn("EPP server is presenting a self-signed certificate (EPP_TLS_SELF_SIGNED=true); local development only")
 	}
+	if !cfg.Auth.RequireAllowlist {
+		logger.Warn("EPP source allowlists are not enforced (EPP_REQUIRE_ALLOWLIST=false); local development only")
+	}
+
+	db, err := postgres.NewConnection(postgres.Config{
+		User: cfg.DB.User, Pass: cfg.DB.Pass, Host: cfg.DB.Host, Port: cfg.DB.Port,
+		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode,
+	})
+	if err != nil {
+		return fmt.Errorf("connect to the database at %s:%s: %w", cfg.DB.Host, cfg.DB.Port, err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		// Logins and the credential refresh are the only queries; a small
+		// pool keeps a node from crowding out the API and workers.
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(2)
+	}
+	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
+	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
+		return err
+	}
+	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     cfg.Redis.Addr(),
 		Password: cfg.Redis.Password,
 		DB:       0,
 	})
+	// Redis holds shared counts only, and the server fails open without it
+	// (ADR 0013), so an unreachable Redis is a warning, not a reason to stay
+	// down. epp_policy_store_degraded shows it.
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		return fmt.Errorf("connect to Redis at %s: %w", cfg.Redis.Addr(), err)
+		logger.Warn("Redis unreachable at start; connection limits and lockouts are counted on this node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+	} else {
+		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
-	logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
 		return fmt.Errorf("id generator: %w", err)
 	}
 
-	srv, err := epp.NewServer(epp.Options{
-		Config:  cfg,
-		Limiter: middleware.NewRateLimiter(redisClient, middleware.DefaultRateLimitConfig(), logger),
-		Logger:  logger,
-		NewID:   func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
+	credentials := postgres.NewEPPCredentialRepository(db)
+	uses := services.NewEPPCredentialUseRecorder(credentials)
+	// srv reports the lockout store's health once it exists; until then
+	// there have been no logins to report on.
+	var srv *epp.Server
+	lockouts := lockout.NewFailOpen(
+		lockout.NewRedis(redisClient, lockout.DefaultPolicy),
+		lockout.NewMemory(lockout.DefaultPolicy),
+		func(degraded bool) {
+			if srv != nil {
+				srv.ReportLockoutDegraded(degraded)
+			}
+		})
+	auth := services.NewEPPAuthenticationService(credentials, passwordhash.New(passwordhash.DefaultParams), lockouts, uses, cfg.Auth.MaxConcurrentVerify)
+
+	srv, err = epp.NewServer(epp.Options{
+		Config:        cfg,
+		Authenticator: auth,
+		Limiter:       middleware.NewRateLimiter(redisClient, middleware.DefaultRateLimitConfig(), logger),
+		Logger:        logger,
+		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})
 	if err != nil {
 		return err
 	}
+
+	flushCtx, stopFlush := context.WithCancel(context.Background())
+	defer stopFlush()
+	flushed := make(chan struct{})
+	go func() {
+		defer close(flushed)
+		flushUses(flushCtx, uses, logger)
+	}()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
@@ -115,8 +173,34 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		}
 	}
 
+	stopFlush()
+	<-flushed
+
 	opsCtx, cancelOps := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelOps()
 	_ = ops.Shutdown(opsCtx)
 	return runErr
+}
+
+// flushUses writes last-used times every useFlushInterval, and once more
+// when ctx is done, so a drained node does not lose its last minute.
+func flushUses(ctx context.Context, uses *services.EPPCredentialUseRecorder, logger *slog.Logger) {
+	ticker := time.NewTicker(useFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			final, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := uses.Flush(final)
+			cancel()
+			if err != nil {
+				logger.Warn("EPP credential last-used times not written at shutdown", "error", err)
+			}
+			return
+		}
+		if err := uses.Flush(ctx); err != nil {
+			logger.Warn("EPP credential last-used times not written; retrying next interval", "error", err)
+		}
+	}
 }

@@ -2,7 +2,10 @@ package repositories
 
 import (
 	"context"
+	"net/netip"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -28,4 +31,12 @@ type EPPCredentialRepository interface {
 	// whose ID another registrar already uses fails with
 	// entities.ErrEPPLoginExists.
 	UpdateAccess(ctx context.Context, clid string, fn func(*entities.EPPRegistrarAccess) ([]entities.DomainEvent, error)) (*entities.EPPRegistrarAccess, error)
+	// ListUsableAllowedNetworks returns every allowed network, of every
+	// registrar, that is usable at now. The EPP server drops connections from
+	// anywhere else before the TLS handshake.
+	ListUsableAllowedNetworks(ctx context.Context, now time.Time) ([]netip.Prefix, error)
+	// ListCompromisedSince returns the IDs of the credentials retired as
+	// compromised at or after since. The EPP server ends sessions that used
+	// them.
+	ListCompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error)
 }
