@@ -27,14 +27,18 @@ Durations use Go syntax (`30s`, `10m`, `24h`). Every value is checked at start. 
 | `EPP_TLS_KEY_PATH` | *(required)* | PEM private key for that certificate |
 | `EPP_TLS_SELF_SIGNED` | `false` | Present a generated one-day self-signed certificate instead. **Local development only.** Conflicts with the two file variables. Docker Compose and Tilt set it |
 | `EPP_TLS_RELOAD_INTERVAL` | `1m` | How often the certificate and key files are checked for a change |
+| `EPP_SERVER_NAME` | *(unset)* | The hostname registrars connect to (RST's `epp.hostName`). When set, a certificate that does not cover it in a subjectAltName (exact or wildcard) is refused. **Set it in every deployment** |
 | `EPP_PROXY_PROTOCOL` | `false` | Require a PROXY protocol (v1 or v2) header on every connection. **Must be `true` behind a load balancer**, or every per-IP control sees only the balancer's address |
 | `EPP_PROXY_TRUSTED_CIDRS` | *(required when the above is true)* | Comma-separated CIDRs or IPs of the load balancers. A connection from anywhere else is dropped at accept |
 
-TLS 1.2 is the minimum version, and 1.3 is used when the client offers it. This is fixed in code.
+Fixed in code (RST epp-01):
+- **TLS versions:** 1.2 minimum; 1.3 is used when the client offers it.
+- **TLS 1.2 cipher suites:** only the four RFC 9325 §4.2 recommends, ECDHE with AES-GCM for RSA and ECDSA keys. TLS 1.3 suites are all AEAD and not configurable in Go.
+- **Certificate checks:** a certificate from file that is expired or not yet valid is refused, at start and on reload. So is one that misses `EPP_SERVER_NAME`. At start the server will not run; on reload it keeps the current certificate. The certificate file must contain the intermediates after the leaf, because clients are given exactly what is in the file.
 
 **Rolling the server certificate.** Replace the certificate and key files in place; the server picks them up within `EPP_TLS_RELOAD_INTERVAL`:
 - New handshakes get the new certificate. Sessions already open keep the one they negotiated, so nothing is dropped.
-- A file that is missing or does not parse is ignored and the current certificate stays in use. Each failure increments `epp_server_cert_reload_errors_total`, so a half-written renewal cannot take the server down.
+- A file that is missing, does not parse, or fails the checks above is ignored, and the current certificate stays in use. Each failure increments `epp_server_cert_reload_errors_total`, so a half-written renewal cannot take the server down.
 - Write the key before the certificate. A certificate that does not match its key is treated as a failure and retried on the next check.
 - `epp_server_cert_not_after_timestamp_seconds` exposes the expiry of the certificate in use.
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-13T17:13:30Z",
+  "generated": "2026-10-13T17:21:16Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -320,6 +320,10 @@
             "name": "EPP_TLS_SELF_SIGNED",
             "default": "false",
             "description": "Present a generated self-signed certificate instead of EPP_TLS_CERT_PATH. Local development only"
+          },
+          {
+            "name": "EPP_SERVER_NAME",
+            "description": "Hostname registrars connect to (RST's epp.hostName). When set, a server certificate that does not cover it is refused at start and on reload. Set it in every deployment"
           },
           {
             "name": "EPP_TLS_RELOAD_INTERVAL",

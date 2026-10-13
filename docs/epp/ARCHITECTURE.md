@@ -37,7 +37,7 @@ The Redis limiter has known structural flaws, all fixed by redesign rather than 
 - An L4 load balancer passes TCP through, so TLS terminates **on the EPP node** and the client certificate stays visible.
 - The load balancer sends **PROXY protocol v2** so the real client IP survives. Without it, every per-IP cap is a global cap. The header is trusted only from configured load-balancer CIDRs.
 - **Per-registrar source-IP allowlists.** A connection from an IP on no allowlist is dropped before the TLS handshake.
-- TLS 1.2 minimum (1.3 preferred) with modern cipher suites, and a handshake timeout.
+- TLS 1.2 minimum (1.3 preferred), offering only the RFC 9325 recommended TLS 1.2 cipher suites, and a handshake timeout. A server certificate that is out of date, or does not cover the EPP hostname, is refused.
 - Each node caps total connections and concurrent handshakes.
 - On SIGTERM the node stops accepting, finishes in-flight commands and closes sessions within a drain timeout.
 - Health, readiness and `/metrics` are served on a separate ops port.
@@ -154,6 +154,10 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 
 ---
 
+## Conformance
+
+ICANN's RST v2.0 StandardEPP catalogue is the acceptance test. The suite in `internal/interface/epp/rst_epp_test.go` mirrors it case by case ([ADR 0015](../adr/0015-rst-conformance-test-suites.md)). `make rst-epp` prints which requirements pass, which are pending and in which phase, and which are operational. Every phase below should move cases from pending to passing, and its PR should say which.
+
 ## Roadmap
 
 Each phase is one or more PRs and can be shipped on its own.
@@ -167,4 +171,4 @@ Each phase is one or more PRs and can be shipped on its own.
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
 | 5 | Policy engine: versioned tiered policies, registrar families, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
-| 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, RST v2.0 alignment, operator runbook | Planned |
+| 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

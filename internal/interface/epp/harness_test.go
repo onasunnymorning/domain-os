@@ -55,18 +55,24 @@ type testServer struct {
 	done chan error
 }
 
-// startServer runs a server built from cfg until the test ends.
+// startServer runs a server built from cfg on an IPv4 loopback port until
+// the test ends.
 func startServer(t *testing.T, cfg config.EPP) *testServer {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return startServerOn(t, cfg, l)
+}
+
+// startServerOn runs a server built from cfg on l until the test ends.
+func startServerOn(t *testing.T, cfg config.EPP, l net.Listener) *testServer {
 	t.Helper()
 	var n atomic.Int64
 	srv, err := NewServer(Options{
 		Config: cfg,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger: discardLogger(),
 		NewID:  func() string { return fmt.Sprintf("TEST-%d", n.Add(1)) },
 	})
-	require.NoError(t, err)
-
-	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	ts := &testServer{Server: srv, addr: l.Addr().String(), ops: httptest.NewServer(srv.OpsHandler()), done: make(chan error, 1)}
@@ -175,6 +181,7 @@ func (c *client) read() *etree.Document {
 	body := make([]byte, binary.BigEndian.Uint32(header)-4)
 	_, err = io.ReadFull(c.conn, body)
 	require.NoError(c.t, err)
+	requireSchemaValid(c.t, body) // every frame the server sends, in every test
 	doc := etree.NewDocument()
 	require.NoError(c.t, doc.ReadFromBytes(body))
 	return doc
@@ -258,3 +265,5 @@ func assertClosedWithoutGreeting(t *testing.T, conn net.Conn) {
 	require.Zero(t, n, "nothing was sent before closing")
 	require.NotContains(t, err.Error(), "timeout", "closed by the server, not by our read deadline")
 }
+
+func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

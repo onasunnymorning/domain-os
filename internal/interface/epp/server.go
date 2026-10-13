@@ -31,6 +31,17 @@ import (
 // has closed their connections at the end of the drain timeout.
 const forceCloseGrace = 5 * time.Second
 
+// rfc9325CipherSuites are the TLS 1.2 cipher suites RFC 9325 §4.2
+// recommends, and the only ones offered (RST epp-01 #10). Go's defaults also
+// include CBC-mode suites. TLS 1.3 suites are not configurable in Go and are
+// all AEAD.
+var rfc9325CipherSuites = []uint16{
+	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+}
+
 // Options are what the server is built from.
 type Options struct {
 	Config config.EPP
@@ -87,7 +98,7 @@ func NewServer(opts Options) (*Server, error) {
 			s.certs, err = newStaticCertSource(cert, s.metrics)
 		}
 	} else {
-		s.certs, err = newFileCertSource(s.cfg.TLS.CertPath, s.cfg.TLS.KeyPath, s.cfg.TLS.ReloadInterval, s.metrics, s.logger)
+		s.certs, err = newFileCertSource(s.cfg.TLS.CertPath, s.cfg.TLS.KeyPath, s.cfg.TLS.ServerName, s.cfg.TLS.ReloadInterval, s.metrics, s.logger)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("epp server certificate: %w", err)
@@ -102,8 +113,9 @@ func NewServer(opts Options) (*Server, error) {
 			GetCertificate: s.certs.getCertificate,
 			// Phase 2 replaces this with verification against registrar pins
 			// (ADR 0014). Until then a certificate is required but not checked.
-			ClientAuth: tls.RequireAnyClientCert,
-			MinVersion: tls.VersionTLS12,
+			ClientAuth:   tls.RequireAnyClientCert,
+			MinVersion:   tls.VersionTLS12,
+			CipherSuites: rfc9325CipherSuites,
 		},
 		Timeout:        s.cfg.Timeouts.MaxSession,
 		IdleTimeout:    s.cfg.Timeouts.Idle,

@@ -13,7 +13,7 @@ import (
 // developer's own environment cannot leak in.
 var eppEnv = []string{
 	"EPP_PORT", "EPP_OPS_PORT", "LOG_LEVEL", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD",
-	"EPP_TLS_CERT_PATH", "EPP_TLS_KEY_PATH", "EPP_TLS_SELF_SIGNED", "EPP_TLS_RELOAD_INTERVAL",
+	"EPP_TLS_CERT_PATH", "EPP_TLS_KEY_PATH", "EPP_TLS_SELF_SIGNED", "EPP_TLS_RELOAD_INTERVAL", "EPP_SERVER_NAME",
 	"EPP_PROXY_PROTOCOL", "EPP_PROXY_TRUSTED_CIDRS",
 	"EPP_MAX_CONNECTIONS", "EPP_MAX_HANDSHAKES", "EPP_MAX_FRAME_BYTES", "EPP_XML_MAX_DEPTH", "EPP_XML_MAX_ELEMENTS",
 	"EPP_HANDSHAKE_TIMEOUT", "EPP_LOGIN_TIMEOUT", "EPP_IDLE_TIMEOUT", "EPP_READ_TIMEOUT", "EPP_WRITE_TIMEOUT",
@@ -60,7 +60,7 @@ func TestLoadEPPOverrides(t *testing.T) {
 	set := map[string]string{
 		"EPP_PORT": "7700", "EPP_OPS_PORT": "9800", "LOG_LEVEL": "WARNING",
 		"REDIS_HOST": "redis", "REDIS_PORT": "6380", "REDIS_PASSWORD": "s3cret",
-		"EPP_TLS_SELF_SIGNED": "true", "EPP_TLS_RELOAD_INTERVAL": "5m",
+		"EPP_TLS_SELF_SIGNED": "true", "EPP_TLS_RELOAD_INTERVAL": "5m", "EPP_SERVER_NAME": " EPP.Example.Test. ",
 		"EPP_PROXY_PROTOCOL": "true", "EPP_PROXY_TRUSTED_CIDRS": "10.0.0.0/8, 192.0.2.10",
 		"EPP_MAX_CONNECTIONS": "50", "EPP_MAX_HANDSHAKES": "5", "EPP_MAX_FRAME_BYTES": "131072",
 		"EPP_XML_MAX_DEPTH": "16", "EPP_XML_MAX_ELEMENTS": "500",
@@ -78,7 +78,7 @@ func TestLoadEPPOverrides(t *testing.T) {
 		OpsPort:  9800,
 		LogLevel: slog.LevelWarn,
 		Redis:    EPPRedis{Host: "redis", Port: "6380", Password: "s3cret"},
-		TLS:      EPPTLS{SelfSigned: true, ReloadInterval: 5 * time.Minute},
+		TLS:      EPPTLS{SelfSigned: true, ReloadInterval: 5 * time.Minute, ServerName: "epp.example.test"},
 		Proxy:    EPPProxy{Enabled: true, TrustedCIDRs: []string{"10.0.0.0/8", "192.0.2.10"}},
 		Limits:   EPPLimits{MaxConnections: 50, MaxHandshakes: 5, MaxFrameBytes: 131072, XMLMaxDepth: 16, XMLMaxElements: 500},
 		Timeouts: EPPTimeouts{
