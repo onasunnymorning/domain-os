@@ -86,7 +86,7 @@ A login must pass three checks:
 - It is loaded from file and hot-reloaded: new handshakes get the new certificate, and live sessions are untouched.
 - Registrars who pin *our* certificate are told the new fingerprint a set number of days ahead (optionally also published as a DANE/TLSA record).
 
-*Today:* none of this exists. `Registrar` has no EPP logins, certificates or allowlist.
+*Today:* the credential model, its storage and its admin API are in place: logins, passwords (Argon2id), registrar-level certificate pins and allowed networks, each with the retire lifecycle, the caps above, and an outbox event per change ([POLICY_REFERENCE.md § Credentials](POLICY_REFERENCE.md#credentials-admin-api)). The EPP server does not read them yet: login still accepts any clID and password. Authentication, the lockout, last-used tracking and the certificate-expiry metric are the second half of Phase 2.
 
 ## 3. Session management
 
@@ -166,7 +166,7 @@ Each phase is one or more PRs and can be shipped on its own.
 |---|---|---|
 | 0 | This document, ADR 0013, policy reference skeleton. Server moved to `internal/interface/epp`. Typed config in `internal/config/epp.go`. `slog` throughout. One end-to-end TLS session test | **Done** |
 | 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | **Done** |
-| 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | Planned |
+| 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **In progress:** the credential model, storage, admin API and change events are done; authentication is next |
 | 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | Planned |
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
 | 5 | Policy engine: versioned tiered policies, registrar families, token buckets, object caps, quotas, hot reload | Planned |
