@@ -23,10 +23,11 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/epp"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA)
+	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "node", cfg.Sessions.NodeID)
 
 	if err := run(cfg, logger); err != nil {
 		logger.Error("EPP server stopped", "error", err)
@@ -81,11 +82,11 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		Password: cfg.Redis.Password,
 		DB:       0,
 	})
-	// Redis holds shared counts only, and the server fails open without it
-	// (ADR 0013), so an unreachable Redis is a warning, not a reason to stay
-	// down. epp_policy_store_degraded shows it.
+	// Redis holds the session registry and lockouts, and the server fails
+	// open without it (ADR 0013), so an unreachable Redis is a warning, not a
+	// reason to stay down. epp_policy_store_degraded shows it.
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		logger.Warn("Redis unreachable at start; connection limits and lockouts are counted on this node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+		logger.Warn("Redis unreachable at start; session caps and lockouts apply per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
 	} else {
 		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
@@ -110,10 +111,14 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		})
 	auth := services.NewEPPAuthenticationService(credentials, passwordhash.New(passwordhash.DefaultParams), lockouts, uses, cfg.Auth.MaxConcurrentVerify)
 
+	sessions := services.NewEPPSessionService(sessionstore.NewRedis(redisClient), entities.EPPSessionCaps{
+		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
+	}, cfg.Sessions.Lease, nil)
+
 	srv, err = epp.NewServer(epp.Options{
 		Config:        cfg,
 		Authenticator: auth,
-		Limiter:       middleware.NewRateLimiter(redisClient, middleware.DefaultRateLimitConfig(), logger),
+		Sessions:      sessions,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})

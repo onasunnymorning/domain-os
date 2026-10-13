@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -34,6 +36,7 @@ import (
 	"github.com/gin-contrib/cors"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 
 	docs "github.com/onasunnymorning/domain-os/docs" // Import docs pkg to be able to access docs.json https://github.com/swaggo/swag/issues/830#issuecomment-725587162
@@ -384,6 +387,11 @@ func main() {
 	eppCredentialService := appservices.NewEPPCredentialService(
 		postgres.NewEPPCredentialRepository(gormDB), registrarRepo, passwordhash.New(passwordhash.DefaultParams))
 	rest.NewEPPCredentialsController(r, eppCredentialService, authMiddleware)
+	// EPP sessions: the registry lives in the Redis the EPP servers share.
+	// Without it the session endpoints answer 503; nothing else depends on it.
+	eppRedis := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword})
+	eppSessionService := appservices.NewEPPSessionService(sessionstore.NewRedis(eppRedis), entities.EPPSessionCaps{}, 0, eventPublisher)
+	rest.NewEPPSessionsController(r, eppSessionService, authMiddleware)
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)

@@ -157,6 +157,12 @@ var Registry = []EnvVar{
 	{Name: "EPP_CREDENTIAL_REFRESH_INTERVAL", Services: []Service{ServiceEPP}, Default: "30s", Description: "How often a node reloads the allowed networks and ends sessions whose credentials were retired as compromised"},
 	{Name: "EPP_MAX_CONCURRENT_LOGINS", Services: []Service{ServiceEPP}, Default: "8", Description: "Password verifications in progress on one node; each Argon2id verification holds 19 MiB. More wait their turn"},
 	{Name: "EPP_MAX_LOGIN_ATTEMPTS", Services: []Service{ServiceEPP}, Default: "3", Description: "Failed logins one session may make before it is answered 2501 and closed"},
+	{Name: "EPP_NODE_ID", Services: []Service{ServiceEPP}, Description: "Name of this node in the session registry, shown when listing sessions. Defaults to the hostname"},
+	{Name: "EPP_SESSION_LEASE", Services: []Service{ServiceEPP}, Default: "90s", Description: "How long a session stays in the shared registry without a renewal; a crashed node's sessions disappear after this"},
+	{Name: "EPP_SESSION_HEARTBEAT", Services: []Service{ServiceEPP}, Default: "30s", Description: "How often a node renews its sessions in the registry. At most half of EPP_SESSION_LEASE"},
+	{Name: "EPP_MAX_SESSIONS_PER_SOURCE_IP", Services: []Service{ServiceEPP}, Default: "20", Description: "Live sessions from one source address, across every node. Over it, the connection is closed before the greeting"},
+	{Name: "EPP_MAX_SESSIONS_PER_REGISTRAR", Services: []Service{ServiceEPP}, Default: "10", Description: "Logged-in sessions per registrar, across every node and login. Over it, <login> is answered 2502 and the session closes"},
+	{Name: "EPP_MAX_SESSIONS_PER_LOGIN", Services: []Service{ServiceEPP}, Default: "10", Description: "Logged-in sessions per EPP login, across every node, unless the login has its own session cap. Over it, <login> is answered 2502"},
 	{Name: "EPP_MAX_CONNECTIONS", Services: []Service{ServiceEPP}, Default: "2000", Description: "Open connections allowed on one node"},
 	{Name: "EPP_MAX_HANDSHAKES", Services: []Service{ServiceEPP}, Default: "200", Description: "TLS handshakes allowed in progress on one node"},
 	{Name: "EPP_MAX_FRAME_BYTES", Services: []Service{ServiceEPP}, Default: "65536", Description: "Largest EPP frame accepted, including its 4-byte header. A larger frame closes the session"},
@@ -171,9 +177,9 @@ var Registry = []EnvVar{
 	{Name: "EPP_DRAIN_TIMEOUT", Services: []Service{ServiceEPP}, Default: "30s", Description: "On SIGTERM, time allowed for sessions to finish before their connections are closed"},
 	{Name: "EPP_USERNAME", Services: []Service{ServiceEPP, ServiceCLI}, Description: "EPP client login (clID) used by the epp-client API and the epp CLI. Was hardcoded to a CentralNic OTE account until #411"},
 	{Name: "EPP_PASSWORD", Services: []Service{ServiceEPP, ServiceCLI}, Secret: true, Description: "EPP client password. Was hardcoded alongside EPP_USERNAME until #411; that credential is in git history and should be rotated"},
-	{Name: "REDIS_HOST", Services: []Service{ServiceEPP}, Default: "localhost", Description: "Redis host for EPP session store"},
-	{Name: "REDIS_PORT", Services: []Service{ServiceEPP}, Default: "6379", Description: "Redis port"},
-	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP}, Secret: true, Description: "Redis password (empty = no auth)"},
+	{Name: "REDIS_HOST", Services: []Service{ServiceEPP, ServiceAPI}, Default: "localhost", Description: "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"},
+	{Name: "REDIS_PORT", Services: []Service{ServiceEPP, ServiceAPI}, Default: "6379", Description: "Redis port"},
+	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP, ServiceAPI}, Secret: true, Description: "Redis password (empty = no auth)"},
 
 	// ═══════════════════════════════════════════
 	// MCP SERVER

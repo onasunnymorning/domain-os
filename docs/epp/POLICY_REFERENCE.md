@@ -80,24 +80,10 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `REDIS_HOST` | `localhost` | Redis holding the shared connection and lockout counters |
+| `REDIS_HOST` | `localhost` | Redis holding the session registry and the lockouts. A single Redis (or one hash slot): the registry's scripts touch several keys at once. The admin API reads the same Redis to list and end sessions |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | *(empty: no auth)* | Redis password. Secret |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), or `error`, in any case. `debug` logs every command with its clTRID, svTRID, result code and duration |
-
-## Current limiter: fixed in code today
-
-These values come from `middleware.DefaultRateLimitConfig()` in `internal/infrastructure/epp/middleware/rate_limiter.go`. Phase 3 (sessions) and Phase 5 (rates) delete that limiter, and the policy limits below replace these values. Several have no effect today, as noted.
-
-| Setting | Value | Effect today |
-|---|---|---|
-| Connections per IP | 10 | Enforced, but counts drift (5-minute TTL on a live count). If Redis cannot answer within 500 ms, the connection is admitted under the node caps and `epp_policy_store_degraded{store="connection_limiter"}` is 1 |
-| Connections per registrar | 100 | **None:** the registrar is never recorded on the session |
-| Requests per second / burst | 100 / 200 | **None:** never called |
-
-Its failed-login lockout is no longer used. Logins are locked out by (login, source address), as described under [Authentication](#authentication).
-
----
 
 ## Credentials: admin API
 
@@ -139,17 +125,32 @@ A credential is never deleted. A retired one stays as the record of when, and fr
 
 The defaults below form the `default` tier and will be seeded from code constants. A tier can be overridden per registrar. "Family" means a group of affiliated registrars capped together.
 
-### Sessions *(Phase 3)*
+### Sessions
 
-| Limit | Default |
+In place (Phase 3), as server settings; the policy engine (Phase 5) makes the caps per tier and adds the per-family cap.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`) |
+| `EPP_MAX_SESSIONS_PER_REGISTRAR` | `10` | Logged-in sessions per registrar, across every node and login. Over it, `<login>` is answered 2502 and the session closes |
+| `EPP_MAX_SESSIONS_PER_LOGIN` | `10` | Logged-in sessions per login, across every node. A login's own `session_cap` ([Credentials](#credentials-admin-api)) overrides it. Over it, 2502 |
+| `EPP_SESSION_LEASE` | `90s` | How long a session stays in the registry without a renewal. A crashed node's sessions disappear after this. Lease times use Redis's clock, not the nodes', so clock skew between nodes does not matter. A closed session cannot be renewed back by a heartbeat that read it just before it closed |
+| `EPP_SESSION_HEARTBEAT` | `30s` | How often a node renews its sessions. At most half the lease, so one missed renewal never drops a live session. The registry's command count and last command time are this fresh |
+| `EPP_NODE_ID` | the hostname | The node's name in the registry |
+| Sessions per family | 40, *(Phase 5)* | Needs registrar families |
+
+**If Redis cannot answer** (each call is bounded to 500 ms), the node applies the same caps to its own sessions and sets `epp_policy_store_degraded{store="sessions"}`. A node's own count is a backstop, not the cluster's: with N nodes, up to N times a cap can be open until Redis returns. When it does, each node puts its sessions back within one heartbeat.
+
+**Admin API** (permission `epp:sessions:admin`; the static admin token holds it when Auth0 is off):
+
+| Action | Request |
 |---|---|
-| Sessions per registrar | 10 |
-| Sessions per EPP login | 10 |
-| Sessions per family | 40 |
-| Sessions per source IP | 20 |
-| Session lease TTL / heartbeat | 90s / 30s |
+| List live sessions, with node, source, registrar, login, credential IDs, connect and login times, command count and last command time | `GET /epp/sessions?clid=&login=&client_ip=&credential_id=`, cursor-paginated |
+| One session | `GET /epp/sessions/{id}` |
+| End a session | `DELETE /epp/sessions/{id}` → 202 |
+| End every session of a registrar, login or source, or that used a credential | `DELETE /epp/sessions?clid=` (or `login`, `client_ip`, `credential_id`) → 202. At least one filter is required |
 
-Over a cap, the server answers 2502 and closes. If Redis is unavailable, enforcement falls back to node-local caps (fail-open) and `epp_policy_store_degraded` is set.
+Ending a session first records an `epp.session.kill_requested` outbox event per session, with the operator as actor; if that cannot be written, nothing is sent and the request fails. Then it publishes a request every node receives, and the node holding the session closes it within moments (`epp_sessions_ended_total{reason="admin_kill"}`). The answer is 202: a node that cannot reach Redis at that instant misses the request. A compromise retire of a credential ends its sessions on its own, within `EPP_CREDENTIAL_REFRESH_INTERVAL`; ending them by `credential_id` is immediate.
 
 ### Authentication
 
@@ -173,7 +174,7 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 | Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
 | Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
 | Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
-| `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
+| `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. It is applied only once the session has been admitted under its session caps, so a login refused with 2502 leaves the password unchanged. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 

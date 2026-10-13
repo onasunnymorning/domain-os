@@ -151,6 +151,12 @@ func TestEPPLoginNewPassword(t *testing.T) {
 	cmd.NewPassword = "second-pw-2"
 	got, err := at.svc.Login(ctx, cmd)
 	require.NoError(t, err)
+	require.False(t, got.PasswordReplaced(), "Login checks <newPW> but does not apply it")
+	_, err = at.svc.Login(ctx, at.cmd())
+	require.NoError(t, err, "until ReplacePassword, the old password still works")
+
+	got.ReplacementPasswordID, err = at.svc.ReplacePassword(ctx, got, "second-pw-2")
+	require.NoError(t, err)
 	require.True(t, got.PasswordReplaced())
 	before, err := at.repo.GetAccess(ctx, "rar-001")
 	require.NoError(t, err)

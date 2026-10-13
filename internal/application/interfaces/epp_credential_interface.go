@@ -44,7 +44,11 @@ type EPPAuthenticator interface {
 	// entities.ErrEPPAuthentication; an unreachable credential store is
 	// entities.ErrEPPCredentialsUnavailable; an unacceptable <newPW> is
 	// entities.ErrInvalidEPPPassword.
+	// A <newPW> is checked but not applied: see ReplacePassword.
 	Login(ctx context.Context, cmd commands.EPPLoginCommand) (*entities.EPPAuthenticatedLogin, error)
+	// ReplacePassword applies <newPW> for a login that Login authenticated
+	// and the session registry admitted, and returns the new password's ID.
+	ReplacePassword(ctx context.Context, login *entities.EPPAuthenticatedLogin, newPW string) (uuid.UUID, error)
 	// AllowedNetworks returns every registrar's usable allowed networks.
 	AllowedNetworks(ctx context.Context) ([]netip.Prefix, error)
 	// CompromisedSince returns credentials retired as compromised since.

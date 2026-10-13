@@ -10,7 +10,7 @@ help:
 	@echo "  build              - Build EPP server binary locally"
 	@echo "  run                - Run EPP server locally"
 	@echo "  test               - Run unit tests"
-	@echo "  test-int           - Run integration tests (requires Redis)"
+	@echo "  test-int           - Run the Redis-backed tests (requires Redis)"
 	@echo "  clean              - Clean build artifacts"
 	@echo ""
 	@echo "Docker Operations:"
@@ -47,10 +47,10 @@ test:
 	@echo "Running unit tests..."
 	go test ./internal/infrastructure/epp/... -v
 
-# Run integration tests (requires Redis)
+# Run the Redis-backed tests (session registry, lockout) against a local Redis
 test-int:
-	@echo "Running integration tests (requires Redis)..."
-	go test -tags=integration ./internal/infrastructure/epp/... -v
+	@echo "Running Redis-backed tests (requires Redis on localhost:6379)..."
+	go test ./internal/infrastructure/epp/... -run 'Redis' -v
 
 # Run all EPP server tests with coverage
 coverage:
@@ -148,21 +148,20 @@ test-connect:
 	@echo "Testing EPP server connection on port 700..."
 	@nc -zv localhost 700 && echo "✓ EPP server is reachable" || echo "✗ EPP server is not reachable"
 
-# Monitor Redis keys (useful for debugging rate limiting)
+# Monitor Redis commands (useful for debugging the session registry and lockouts)
 redis-monitor:
 	@echo "Monitoring Redis keys (Ctrl+C to stop)..."
 	docker compose exec redis redis-cli MONITOR
 
-# Show Redis rate limiting keys
+# Show the EPP session registry and lockout keys
 redis-keys:
-	@echo "Redis Rate Limiting Keys:"
-	@docker compose exec redis redis-cli KEYS "conn:*"
-	@docker compose exec redis redis-cli KEYS "failed:*"
-	@docker compose exec redis redis-cli KEYS "locked:*"
+	@echo "EPP session registry and lockout keys:"
+	@docker compose exec redis redis-cli --scan --pattern "epp:session*"
+	@docker compose exec redis redis-cli --scan --pattern "epp:lockout:*"
 
-# Clear Redis rate limiting data
+# Clear Redis (sessions reappear within one heartbeat)
 redis-clear:
-	@echo "Clearing Redis rate limiting data..."
+	@echo "Clearing Redis..."
 	@docker compose exec redis redis-cli FLUSHDB
 	@echo "✓ Redis data cleared"
 

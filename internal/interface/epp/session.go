@@ -47,9 +47,28 @@ type session struct {
 	// failedLogins is only touched by the session's own goroutine.
 	failedLogins int
 
-	state    atomic.Int32
-	auth     atomic.Pointer[entities.EPPAuthenticatedLogin] // set by a successful <login>
-	commands atomic.Int64
+	state         atomic.Int32
+	auth          atomic.Pointer[entities.EPPAuthenticatedLogin] // set by a successful <login>
+	authAt        atomic.Int64                                   // Unix nanoseconds of the login
+	commands      atomic.Int64
+	lastCommandAt atomic.Int64 // Unix nanoseconds; 0 before the first command
+}
+
+// snapshot is the session as the cluster-wide registry records it. It reads
+// only atomics, so the heartbeat can take it while a command runs.
+func (s *session) snapshot(node string) *entities.EPPSession {
+	rec := &entities.EPPSession{
+		ID: s.id, Node: node, ClientIP: s.source,
+		ConnectedAt: s.connectedAt.UTC(), Commands: s.commands.Load(),
+	}
+	if a := s.auth.Load(); a != nil {
+		rec.Authenticate(a, time.Unix(0, s.authAt.Load()))
+	}
+	if ns := s.lastCommandAt.Load(); ns != 0 {
+		t := time.Unix(0, ns).UTC()
+		rec.LastCommandAt = &t
+	}
+	return rec
 }
 
 func (s *session) currentState() sessionState { return sessionState(s.state.Load()) }
@@ -72,9 +91,9 @@ func (s *session) registrar() string {
 	return ""
 }
 
-// sessionRegistry is this node's view of its live sessions. It is what drain
-// closes and what the login timer looks sessions up in. The cluster-wide
-// registry is Phase 3 of docs/epp/ARCHITECTURE.md.
+// sessionRegistry is this node's view of its live sessions: what drain
+// closes, what the heartbeat renews in the cluster-wide registry, and what
+// the caps fall back to when that registry cannot answer.
 type sessionRegistry struct {
 	mu sync.Mutex
 	m  map[string]*session
@@ -113,6 +132,19 @@ func (r *sessionRegistry) all() []*session {
 		out = append(out, s)
 	}
 	return out
+}
+
+// count counts the sessions match selects.
+func (r *sessionRegistry) count(match func(*session) bool) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, s := range r.m {
+		if match(s) {
+			n++
+		}
+	}
+	return n
 }
 
 func (r *sessionRegistry) len() int {

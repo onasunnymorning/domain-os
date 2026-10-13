@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // errDraining refuses a session that completed its handshake after drain began.
@@ -21,8 +21,9 @@ const sharedStoreTimeout = 500 * time.Millisecond
 
 // connContext is epp-lib's ConnContext hook. It runs once per connection,
 // after the TLS handshake and before the greeting: it releases the handshake
-// slot, applies the connection limit, registers the session and starts its
-// login timer. Returning an error closes the connection without a greeting.
+// slot, takes a slot in the session registry under the source address's cap,
+// registers the session locally and starts its login timer. Returning an
+// error closes the connection without a greeting.
 func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Context, error) {
 	if nc, ok := conn.NetConn().(*nodeConn); ok {
 		nc.handshakeComplete()
@@ -38,26 +39,6 @@ func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Conte
 		return ctx, errDraining
 	}
 
-	if s.limiter != nil {
-		limitCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
-		err := s.limiter.CheckConnectionLimit(limitCtx, clientIP, "")
-		cancel()
-		switch {
-		case errors.Is(err, middleware.ErrTooManyConnections), errors.Is(err, middleware.ErrTooManyRegistrarConnections):
-			s.metrics.connections.WithLabelValues(outcomeLimiter).Inc()
-			s.logger.Warn("EPP connection rejected", "client_ip", clientIP, "error", err)
-			return ctx, err
-		case err != nil:
-			// Redis cannot answer. Fail open (ADR 0013): the node's own caps
-			// still hold, and refusing everyone would turn a Redis outage
-			// into an EPP outage.
-			s.reportStoreDegraded(storeConnectionLimiter, true)
-			s.logger.Warn("EPP connection limit unavailable; admitting under the node caps", "client_ip", clientIP, "error", err)
-		default:
-			s.reportStoreDegraded(storeConnectionLimiter, false)
-		}
-	}
-
 	sess := &session{
 		id:          s.newID(),
 		clientIP:    clientIP,
@@ -65,26 +46,74 @@ func (s *Server) connContext(ctx context.Context, conn *tls.Conn) (context.Conte
 		conn:        conn,
 		connectedAt: time.Now(),
 	}
+	if err := s.openInRegistry(ctx, sess); err != nil {
+		s.metrics.connections.WithLabelValues(outcomeSourceCap).Inc()
+		s.logger.Warn("EPP connection rejected", "client_ip", clientIP, "error", err)
+		return ctx, err
+	}
+
 	sess.setState(stateAwaitingLogin)
 	sess.loginTimer = time.AfterFunc(s.cfg.Timeouts.Login, func() { s.loginTimedOut(sess) })
 
 	ctx = appcontext.WithConnectionID(ctx, sess.id)
 	ctx = appcontext.WithClientIP(ctx, clientIP)
 
-	if s.limiter != nil {
-		incCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
-		err := s.limiter.IncrementConnection(incCtx, clientIP, "")
-		cancel()
-		if err != nil {
-			s.logger.Error("EPP connection not tracked", "connection_id", sess.id, "client_ip", clientIP, "error", err)
-		}
-	}
-
 	s.sessions.add(sess)
 	s.metrics.sessionsActive.Inc()
 	s.metrics.connections.WithLabelValues(outcomeAccepted).Inc()
 	s.logger.Info("EPP session opened", "connection_id", sess.id, "client_ip", clientIP)
 	return ctx, nil
+}
+
+// openInRegistry takes the session's slot under its source address's cap.
+// If the registry cannot answer, the node fails open (ADR 0013): it applies
+// the same cap to its own sessions, so a Redis outage neither refuses every
+// registrar nor removes the cap altogether.
+func (s *Server) openInRegistry(ctx context.Context, sess *session) error {
+	regCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
+	defer cancel()
+	err := s.tracker.Open(regCtx, sess.snapshot(s.cfg.Sessions.NodeID))
+	switch {
+	case err == nil:
+		s.reportStoreDegraded(storeSessions, false)
+		return nil
+	case errors.Is(err, entities.ErrEPPSessionLimit):
+		return err
+	}
+	s.reportStoreDegraded(storeSessions, true)
+	s.logger.Warn("EPP session registry unavailable; applying the caps on this node only", "client_ip", sess.clientIP, "error", err)
+	caps := s.tracker.Caps()
+	if s.sessions.count(func(o *session) bool { return o != sess && o.source == sess.source }) >= caps.PerSource {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitSource, Cap: caps.PerSource}
+	}
+	return nil
+}
+
+// authenticateInRegistry records who the session logged in as, under the
+// registrar's and the login's caps, failing open to this node's own sessions
+// like openInRegistry. The fallback counts leave sess out: it is already
+// registered locally, and counting it would refuse a login under its cap.
+func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth *entities.EPPAuthenticatedLogin) error {
+	regCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
+	defer cancel()
+	err := s.tracker.Authenticate(regCtx, sess.snapshot(s.cfg.Sessions.NodeID), auth)
+	switch {
+	case err == nil:
+		s.reportStoreDegraded(storeSessions, false)
+		return nil
+	case errors.Is(err, entities.ErrEPPSessionLimit):
+		return err
+	}
+	s.reportStoreDegraded(storeSessions, true)
+	s.logger.Warn("EPP session registry unavailable; applying the caps on this node only", "connection_id", sess.id, "error", err)
+	caps := s.tracker.Caps()
+	if n := s.sessions.count(func(o *session) bool { return o != sess && o.registrar() == string(auth.ClID) }); n >= caps.PerRegistrar {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: caps.PerRegistrar}
+	}
+	if perLogin := caps.ForLogin(auth.SessionCap); s.sessions.count(func(o *session) bool { return o != sess && o.loggedInAs() == string(auth.LoginID) }) >= perLogin {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: perLogin}
+	}
+	return nil
 }
 
 // loginTimedOut closes a session that has not logged in within the login
@@ -114,15 +143,17 @@ func (s *Server) closeConn(ctx context.Context, _ *tls.Conn) {
 	}
 	sess.loginTimer.Stop()
 	s.metrics.sessionsActive.Dec()
+	if auth := sess.auth.Load(); auth != nil {
+		s.metrics.registrarSessions.WithLabelValues(string(auth.ClID), string(auth.LoginID)).Dec()
+	}
 
-	if s.limiter != nil {
-		// The session's context is already cancelled; release the count on a
-		// fresh one, bounded so a slow Redis cannot hold up connection teardown.
-		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := s.limiter.DecrementConnection(releaseCtx, sess.clientIP, ""); err != nil {
-			s.logger.Error("EPP connection not released", "connection_id", sess.id, "client_ip", sess.clientIP, "error", err)
-		}
+	// The session's context is already cancelled; release the slot on a
+	// fresh one, bounded so a slow Redis cannot hold up teardown. If this
+	// fails, the lease expires on its own.
+	releaseCtx, cancel := context.WithTimeout(context.Background(), sharedStoreTimeout)
+	defer cancel()
+	if err := s.tracker.Close(releaseCtx, sess.snapshot(s.cfg.Sessions.NodeID)); err != nil {
+		s.logger.Warn("EPP session not removed from the registry; its lease will expire", "connection_id", sess.id, "error", err)
 	}
 
 	s.logger.Info("EPP session closed",

@@ -134,7 +134,7 @@ func TestInfraUsedByIsDerived(t *testing.T) {
 	// epp-server reads registrars' credentials at every login (ADR 0014).
 	want := map[string][]string{
 		"postgresql": {"admin-api", "unified-worker", "epp-server", "whois", "mcp-server"},
-		"redis":      {"epp-server"},
+		"redis":      {"admin-api", "epp-server"},
 		"temporal":   {"admin-api", "unified-worker"},
 		"s3":         {"admin-api", "unified-worker"},
 	}
