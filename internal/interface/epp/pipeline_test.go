@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -285,11 +286,47 @@ func TestRedactedFrame(t *testing.T) {
 	doc := etree.NewDocument()
 	require.NoError(t, doc.ReadFromString(`<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"><command><create>
 <domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>a.test</domain:name>
-<domain:authInfo><domain:pw roid="X-1">s3cret-auth</domain:pw></domain:authInfo></domain:create></create>
+<domain:authInfo token="s3cret-attr"><domain:pw roid="X-1">s3cret-auth</domain:pw></domain:authInfo></domain:create></create>
 <extension><x:thing xmlns:x="urn:example"><x:newPW>s3cret-new</x:newPW></x:thing></extension></command></epp>`))
 	out := redactedFrame(doc)
 	assert.NotContains(t, out, "s3cret")
-	assert.Contains(t, out, `<domain:pw roid="X-1">[redacted]</domain:pw>`)
+	assert.Contains(t, out, `<domain:authInfo token="[redacted]"><domain:pw roid="[redacted]">[redacted]</domain:pw></domain:authInfo>`,
+		"inside authInfo, attribute values are redacted too")
 	assert.Contains(t, out, "<domain:name>a.test</domain:name>", "everything else is kept")
 	assert.Contains(t, doc.Root().FindElement("//pw").Text(), "s3cret-auth", "the frame itself is not changed")
+}
+
+func TestReportAuditErrorCountsLostRecords(t *testing.T) {
+	srv, err := NewServer(testOptions(t, testConfig()))
+	require.NoError(t, err)
+	srv.ReportAuditError(errors.New("batch failed"))
+	srv.ReportAuditError(&services.EPPAuditLostError{Records: 7, Err: errors.New("database down")})
+	assert.Equal(t, 1.0, counterOf(t, srv.metrics.auditErrors, auditStageBatch))
+	assert.Equal(t, 7.0, counterOf(t, srv.metrics.auditErrors, auditStageLost), "each lost record counts")
+}
+
+func TestPolicyRefusalsAreAuditedWithWhatTheyAskedFor(t *testing.T) {
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	policy := &scriptedPolicy{}
+	ts.policy = policy
+
+	c := dial(t, ts.addr)
+	policy.set("login", policyDecision{action: policyReject, rule: "test", code: 2306, msg: "Parameter value policy error; refused"})
+	requireCode(t, c.roundTrip(loginXML("POL-1")), "2306")
+	policy.set("", policyDecision{})
+	c.login()
+	policy.set("domain:check", policyDecision{action: policyReject, rule: "test", code: 2306, msg: "Parameter value policy error; refused"})
+	requireCode(t, c.roundTrip(checkNamesXML("asked.test", " spaced.test ")), "2306")
+
+	require.Eventually(t, func() bool { return len(creds.audit.All()) == 3 }, 3*time.Second, 20*time.Millisecond)
+	for _, tx := range creds.audit.All() {
+		switch {
+		case tx.Command == "login" && tx.ResultCode == 2306:
+			assert.Equal(t, entities.ClIDType(testLogin), tx.LoginID, "a refused login keeps the login it presented")
+		case tx.Command == "domain:check":
+			assert.Equal(t, 2306, tx.ResultCode)
+			assert.Equal(t, []string{"asked.test", "spaced.test"}, tx.Objects, "a refused check keeps the names it asked about")
+		}
+	}
 }

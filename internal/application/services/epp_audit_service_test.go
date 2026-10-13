@@ -88,3 +88,39 @@ func TestEPPAuditPrune(t *testing.T) {
 	require.Len(t, left, 1)
 	assert.Equal(t, "C", left[0].SvTRID)
 }
+
+func TestEPPAuditShutdownRetriesThenReportsLoss(t *testing.T) {
+	run := func(t *testing.T, store *memstore.EPPTransactions, flushTimeout time.Duration) []error {
+		t.Helper()
+		audit := NewEPPAuditService(store, 10)
+		for _, id := range []string{"Q1", "Q2", "Q3"} {
+			require.NoError(t, audit.Enqueue(context.Background(), auditTx(id, time.Now())))
+		}
+		var mu sync.Mutex
+		var errs []error
+		ctx, stop := context.WithCancel(context.Background())
+		stop() // shut down at once: everything goes through the final flush
+		audit.Run(ctx, flushTimeout, func(err error) { mu.Lock(); errs = append(errs, err); mu.Unlock() })
+		return errs
+	}
+
+	t.Run("a database that recovers within the timeout gets every record", func(t *testing.T) {
+		store := memstore.NewEPPTransactions()
+		store.Fail(errors.New("database restarting"))
+		time.AfterFunc(250*time.Millisecond, func() { store.Fail(nil) })
+		errs := run(t, store, 2*time.Second)
+		assert.Empty(t, errs)
+		assert.Len(t, store.All(), 3)
+	})
+
+	t.Run("records still unwritten at the timeout are reported lost, with their count", func(t *testing.T) {
+		store := memstore.NewEPPTransactions()
+		store.Fail(errors.New("database down"))
+		errs := run(t, store, 300*time.Millisecond)
+		require.Len(t, errs, 1)
+		var lost *EPPAuditLostError
+		require.ErrorAs(t, errs[0], &lost)
+		assert.Equal(t, 3, lost.Records)
+		assert.ErrorIs(t, errs[0], ErrEPPAuditUnavailable)
+	})
+}

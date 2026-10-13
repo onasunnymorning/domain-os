@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,14 +17,16 @@ import (
 // Why a <domain:check> reports a name unavailable. They are the
 // <domain:reason> text, which RFC 5730 bounds to 32 characters.
 const (
-	CheckReasonInvalid      = "Invalid domain name"
-	CheckReasonNotServed    = "TLD not served by this registry"
-	CheckReasonNotOpen      = "Not open for registration"
-	CheckReasonInUse        = "In use"
-	CheckReasonReserved     = "Reserved"
-	CheckReasonPhasePolicy  = "Not allowed by registry policy"
-	maxPhasesPerTLDForCheck = 100
+	CheckReasonInvalid     = "Invalid domain name"
+	CheckReasonNotServed   = "TLD not served by this registry"
+	CheckReasonNotOpen     = "Not open for registration"
+	CheckReasonInUse       = "In use"
+	CheckReasonReserved    = "Reserved"
+	CheckReasonPhasePolicy = "Not allowed by registry policy"
 )
+
+// phasePageSize is how many phases one repository call returns.
+const phasePageSize = 100
 
 // EPPDomainService answers registrars' domain commands over EPP
 // (docs/epp/ARCHITECTURE.md §4). It reads through the same repositories as
@@ -135,9 +138,19 @@ type tldForCheck struct {
 }
 
 func (s *EPPDomainService) tldForCheck(ctx context.Context, name string) (*tldForCheck, error) {
-	phases, err := s.phases.ListPhasesByTLD(ctx, name, maxPhasesPerTLDForCheck, "")
-	if err != nil {
-		return nil, fmt.Errorf("list phases of %s: %w", name, err)
+	// Phases are listed oldest first, a page at a time; a TLD that has
+	// accumulated many has its current GA phase on a later page.
+	var phases []*entities.Phase
+	for cursor := ""; ; {
+		page, err := s.phases.ListPhasesByTLD(ctx, name, phasePageSize, cursor)
+		if err != nil {
+			return nil, fmt.Errorf("list phases of %s: %w", name, err)
+		}
+		phases = append(phases, page...)
+		if len(page) < phasePageSize {
+			break
+		}
+		cursor = strconv.FormatInt(page[len(page)-1].ID, 10)
 	}
 	if len(phases) == 0 {
 		// No phases: either the TLD is not served, or it is but has never

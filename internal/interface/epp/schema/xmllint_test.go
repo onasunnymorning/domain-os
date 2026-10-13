@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/beevik/etree"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -165,6 +166,27 @@ func TestModelsAgreeWithXmllint(t *testing.T) {
 	}
 }
 
+// TestMutatorCoversEveryElementButTheRoot pins the mutator's reach: the
+// required child of <epp> is removed and duplicated like any other element,
+// and only <epp> itself is left in place.
+func TestMutatorCoversEveryElementButTheRoot(t *testing.T) {
+	names := map[string]bool{}
+	for name, frame := range loadCorpus(t) {
+		for _, m := range mutate(t, name, frame) {
+			names[m.name] = true
+		}
+	}
+	for _, want := range []string{
+		"login.xml: #1 <command> removed",
+		"login.xml: #1 <command> duplicated",
+		"hello.xml: #1 <hello> removed",
+		"hello.xml: #1 <hello> duplicated",
+	} {
+		assert.True(t, names[want], "mutants include %q", want)
+	}
+	assert.False(t, names["login.xml: #0 <epp> removed"], "the root is never removed: there would be no document")
+}
+
 // FuzzModelsAgreeWithXmllint extends the differential test to inputs the
 // mutator does not generate. `go test` runs only the seed corpus; run it for
 // longer with `go test -fuzz FuzzModelsAgreeWithXmllint ./internal/interface/epp/schema`.
@@ -230,25 +252,24 @@ func mutate(t testing.TB, name string, frame []byte) []mutant {
 			}
 		}
 		with(func(_ *etree.Document, el *etree.Element) string {
-			if el.Parent() == nil || el.Parent().Parent() == nil {
+			if isRoot(el) {
 				return ""
 			}
 			el.Parent().RemoveChild(el)
 			return "removed"
 		})
 		with(func(_ *etree.Document, el *etree.Element) string {
-			p := el.Parent()
-			if p == nil || p.Parent() == nil {
+			if isRoot(el) {
 				return ""
 			}
-			p.InsertChildAt(el.Index()+1, el.Copy())
+			el.Parent().InsertChildAt(el.Index()+1, el.Copy())
 			return "duplicated"
 		})
 		with(func(_ *etree.Document, el *etree.Element) string {
-			p := el.Parent()
-			if p == nil || p.Parent() == nil {
+			if isRoot(el) {
 				return ""
 			}
+			p := el.Parent()
 			sibs := p.ChildElements()
 			for j, s := range sibs {
 				if s == el && j+1 < len(sibs) {
@@ -317,6 +338,14 @@ func mutate(t testing.TB, name string, frame []byte) []mutant {
 		}
 	}
 	return out
+}
+
+// isRoot reports whether el is the document element. In etree the root's
+// parent is the Document's own element, not nil, so the root is the
+// element whose parent has no parent. Every other element, including
+// <command> and <hello> under <epp>, is removed, duplicated and swapped.
+func isRoot(el *etree.Element) bool {
+	return el.Parent() == nil || el.Parent().Parent() == nil
 }
 
 // walk lists el and its descendants depth first.

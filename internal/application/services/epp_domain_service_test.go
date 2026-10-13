@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,11 +79,27 @@ type checkPhases struct {
 	listed map[string]int
 }
 
-func (r *checkPhases) ListPhasesByTLD(_ context.Context, tld string, _ int, _ string) ([]*entities.Phase, error) {
+// ListPhasesByTLD pages by ID, oldest first, as the Postgres repository does.
+func (r *checkPhases) ListPhasesByTLD(_ context.Context, tld string, pageSize int, cursor string) ([]*entities.Phase, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.listed[tld]++
-	return r.byTLD[tld], nil
+	if cursor == "" {
+		r.listed[tld]++
+	}
+	var after int64
+	if cursor != "" {
+		var err error
+		if after, err = strconv.ParseInt(cursor, 10, 64); err != nil {
+			return nil, err
+		}
+	}
+	var page []*entities.Phase
+	for _, p := range r.byTLD[tld] {
+		if p.ID > after && len(page) < pageSize {
+			page = append(page, p)
+		}
+	}
+	return page, nil
 }
 
 func gaPhase(t *testing.T, tld string, starts time.Time, minLabel int) *entities.Phase {
@@ -89,6 +107,7 @@ func gaPhase(t *testing.T, tld string, starts time.Time, minLabel int) *entities
 	p, err := entities.NewPhase("GA-"+tld, string(entities.PhaseTypeGA), starts.UTC())
 	require.NoError(t, err)
 	p.TLDName = entities.DomainName(tld)
+	p.ID = 1
 	p.Policy.MinLabelLength = minLabel
 	return p
 }
@@ -157,4 +176,25 @@ func TestEPPDomainCheckFailsWhole(t *testing.T) {
 	res, err := svc.Check(context.Background(), []string{"one1.test", "two2.test", "three3.test"})
 	require.ErrorContains(t, err, "connection reset")
 	assert.Nil(t, res, "no partial answer")
+}
+
+func TestEPPDomainCheckFindsTheGAPhaseOnALaterPage(t *testing.T) {
+	svc, _, phases := newCheckService(t)
+	var many []*entities.Phase
+	for i := range 150 {
+		// 149 launch phases that ended long ago, then the GA phase in force.
+		p, err := entities.NewPhase(fmt.Sprintf("old-%d", i), string(entities.PhaseTypeLaunch), time.Now().Add(-1000*time.Hour).UTC())
+		require.NoError(t, err)
+		ended := time.Now().Add(-900 * time.Hour).UTC()
+		p.Ends = &ended
+		if i == 149 {
+			p = gaPhase(t, "paged", time.Now().Add(-time.Hour), 1)
+		}
+		p.ID = int64(i + 1)
+		many = append(many, p)
+	}
+	phases.byTLD["paged"] = many
+	res, err := svc.Check(context.Background(), []string{"open.paged"})
+	require.NoError(t, err)
+	assert.True(t, res[0].Available, "the current GA phase is phase 150, past the first page of 100")
 }

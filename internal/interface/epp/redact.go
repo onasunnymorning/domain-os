@@ -6,8 +6,9 @@ import "github.com/beevik/etree"
 const redacted = "[redacted]"
 
 // redactedFrame serialises doc for the audit log with every secret replaced:
-// the text of any <pw> or <newPW> element, and everything inside any
-// <authInfo>, whatever their namespace. doc itself is not changed.
+// the text of any <pw> or <newPW> element, and every text and attribute
+// value inside any <authInfo>, whatever their namespace. doc itself is not
+// changed.
 func redactedFrame(doc *etree.Document) string {
 	c := doc.Copy()
 	if root := c.Root(); root != nil {
@@ -22,8 +23,11 @@ func redactedFrame(doc *etree.Document) string {
 
 func redactSecrets(el *etree.Element) {
 	switch el.Tag {
-	case "pw", "newPW", "authInfo":
-		redactText(el)
+	case "pw", "newPW":
+		redactText(el, false)
+		return
+	case "authInfo":
+		redactText(el, true)
 		return
 	}
 	for _, kid := range el.ChildElements() {
@@ -31,9 +35,17 @@ func redactSecrets(el *etree.Element) {
 	}
 }
 
-// redactText replaces all character data under el, keeping its elements so
+// redactText replaces all character data under el, and with attrs every
+// attribute value too, except namespace declarations. Elements are kept, so
 // the record still shows the shape of what was sent.
-func redactText(el *etree.Element) {
+func redactText(el *etree.Element, attrs bool) {
+	if attrs {
+		for i := range el.Attr {
+			if a := &el.Attr[i]; a.Space != "xmlns" && a.Key != "xmlns" {
+				a.Value = redacted
+			}
+		}
+	}
 	for _, tok := range el.Child {
 		switch t := tok.(type) {
 		case *etree.CharData:
@@ -41,7 +53,7 @@ func redactText(el *etree.Element) {
 				t.SetData(redacted)
 			}
 		case *etree.Element:
-			redactText(t)
+			redactText(t, attrs)
 		}
 	}
 }

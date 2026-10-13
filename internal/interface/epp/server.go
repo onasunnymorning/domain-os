@@ -26,6 +26,7 @@ import (
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
 )
 
@@ -240,9 +241,15 @@ func (s *Server) ReportLockoutDegraded(degraded bool) {
 	s.reportStoreDegraded(storeLockout, degraded)
 }
 
-// ReportAuditBatchError records a failed write of a batch of queued audit
-// records, which the audit log retries.
-func (s *Server) ReportAuditBatchError(err error) {
+// ReportAuditError records a failure of the audit log's batch writer: a
+// batch it retries, or records it lost at shutdown.
+func (s *Server) ReportAuditError(err error) {
+	var lost *services.EPPAuditLostError
+	if errors.As(err, &lost) {
+		s.metrics.auditErrors.WithLabelValues(auditStageLost).Add(float64(lost.Records))
+		s.logger.Error("EPP audit records lost at shutdown", "records", lost.Records, "error", err)
+		return
+	}
 	s.metrics.auditErrors.WithLabelValues(auditStageBatch).Inc()
 	s.logger.Error("EPP audit batch not written; retrying", "error", err)
 }

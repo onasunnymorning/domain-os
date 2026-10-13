@@ -56,7 +56,6 @@ func loginFailureReason(err error) string {
 // locked out, the answer is 2501 and the session closes.
 func (s *Server) login(ctx context.Context, cmd *command) {
 	sess := cmd.session
-	cmd.attemptedLogin = elementText(cmd.doc, "//login/clID")
 	objects, extensions, ok := s.negotiate(cmd)
 	if !ok {
 		return
@@ -197,11 +196,7 @@ func (s *Server) logout(_ context.Context, cmd *command) {
 // the order asked. More names than EPP_MAX_CHECK_NAMES is 2306; a registry
 // that cannot answer is 2400.
 func (s *Server) domainCheck(ctx context.Context, cmd *command) {
-	var names []string
-	for _, el := range cmd.doc.FindElements("/epp/command/check/*/name") {
-		names = append(names, strings.Join(strings.Fields(el.Text()), " "))
-	}
-	cmd.objects = names
+	names := cmd.objects // the <domain:name>s, read by describe
 	s.metrics.checkNames.Observe(float64(len(names)))
 	if max := s.cfg.Commands.MaxCheckNames; len(names) > max {
 		cmd.respond(epplib.StatusParameterPolicyError, fmt.Sprintf("Parameter value policy error; at most %d names per check", max), nil)

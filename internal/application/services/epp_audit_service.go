@@ -15,6 +15,8 @@ import (
 const (
 	auditBatchSize     = 200
 	auditFlushInterval = time.Second
+	// auditFlushRetry is how often the final write at shutdown is retried.
+	auditFlushRetry = 100 * time.Millisecond
 	// auditPruneBatch is how many expired rows one delete removes, so
 	// pruning a large backlog never holds a long lock.
 	auditPruneBatch = 5000
@@ -22,6 +24,19 @@ const (
 
 // ErrEPPAuditUnavailable wraps a failure to write the EPP audit log.
 var ErrEPPAuditUnavailable = errors.New("EPP audit log unavailable")
+
+// EPPAuditLostError reports queued records that were never written: at
+// shutdown, the database did not take them before the flush timeout.
+type EPPAuditLostError struct {
+	Records int
+	Err     error
+}
+
+func (e *EPPAuditLostError) Error() string {
+	return fmt.Sprintf("%d EPP audit records lost at shutdown: %v", e.Records, e.Err)
+}
+
+func (e *EPPAuditLostError) Unwrap() error { return e.Err }
 
 // EPPAuditService writes the EPP audit log (docs/epp/ARCHITECTURE.md §6).
 // Transforms are written before their response is sent (Record); queries go
@@ -65,25 +80,29 @@ func (s *EPPAuditService) Enqueue(ctx context.Context, tx *entities.EPPTransacti
 // Queued is how many records are waiting to be written.
 func (s *EPPAuditService) Queued() int { return len(s.queue) }
 
-// Run writes queued records until ctx is done, then writes what is left
-// using flushTimeout. A batch that fails is retried every interval; while it
-// is, the queue fills and Enqueue falls back to writing records itself.
-// errs receives every failed batch write; it may be nil.
+// Run writes queued records until ctx is done, then writes what is left,
+// retrying until flushTimeout. A batch that fails is retried every
+// interval; while it is, the queue fills and Enqueue falls back to writing
+// records itself. errs receives every failed batch write, and at shutdown an
+// *EPPAuditLostError for any records still unwritten; it may be nil.
 func (s *EPPAuditService) Run(ctx context.Context, flushTimeout time.Duration, errs func(error)) {
 	ticker := time.NewTicker(auditFlushInterval)
 	defer ticker.Stop()
 	batch := make([]*entities.EPPTransaction, 0, auditBatchSize)
-	write := func(ctx context.Context) {
+	report := func(err error) {
+		if errs != nil {
+			errs(err)
+		}
+	}
+	write := func(ctx context.Context) error {
 		if len(batch) == 0 {
-			return
+			return nil
 		}
 		if err := s.repo.Save(ctx, batch...); err != nil {
-			if errs != nil {
-				errs(fmt.Errorf("%w: %w", ErrEPPAuditUnavailable, err))
-			}
-			return
+			return fmt.Errorf("%w: %w", ErrEPPAuditUnavailable, err)
 		}
 		batch = batch[:0]
+		return nil
 	}
 	for {
 		// A full batch is one being retried: leave further records in the
@@ -96,10 +115,14 @@ func (s *EPPAuditService) Run(ctx context.Context, flushTimeout time.Duration, e
 		case tx := <-in:
 			batch = append(batch, tx)
 			if len(batch) == auditBatchSize {
-				write(ctx)
+				if err := write(ctx); err != nil {
+					report(err)
+				}
 			}
 		case <-ticker.C:
-			write(ctx)
+			if err := write(ctx); err != nil {
+				report(err)
+			}
 		case <-ctx.Done():
 			for drained := false; !drained; {
 				select {
@@ -109,9 +132,28 @@ func (s *EPPAuditService) Run(ctx context.Context, flushTimeout time.Duration, e
 					drained = true
 				}
 			}
-			final, cancel := context.WithTimeout(context.Background(), flushTimeout)
-			write(final)
-			cancel()
+			s.flush(flushTimeout, write, report, func() int { return len(batch) })
+			return
+		}
+	}
+}
+
+// flush writes the final batch at shutdown, retrying until timeout, and
+// reports what is still unwritten then as lost.
+func (s *EPPAuditService) flush(timeout time.Duration, write func(context.Context) error, report func(error), pending func() int) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	retry := time.NewTicker(auditFlushRetry)
+	defer retry.Stop()
+	for {
+		err := write(ctx)
+		if err == nil {
+			return
+		}
+		select {
+		case <-retry.C:
+		case <-ctx.Done():
+			report(&EPPAuditLostError{Records: pending(), Err: err})
 			return
 		}
 	}

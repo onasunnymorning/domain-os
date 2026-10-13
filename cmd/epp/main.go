@@ -153,7 +153,7 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 	audited := make(chan struct{})
 	go func() {
 		defer close(audited)
-		audit.Run(auditCtx, 10*time.Second, srv.ReportAuditBatchError)
+		audit.Run(auditCtx, 10*time.Second, srv.ReportAuditError)
 	}()
 	go pruneAudit(flushCtx, audit, cfg.Audit.Retention, logger)
 

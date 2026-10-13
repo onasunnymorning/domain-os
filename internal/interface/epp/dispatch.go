@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/beevik/etree"
@@ -190,6 +191,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 		s.rejectSchema(cmd, err)
 		return
 	}
+	cmd.describe()
 	if !s.applyPolicy(ctx, cmd) {
 		return
 	}
@@ -312,6 +314,30 @@ func (s *Server) audit(ctx context.Context, cmd *command) {
 	if err := s.auditLog.Enqueue(auditCtx, tx); err != nil {
 		s.metrics.auditErrors.WithLabelValues(auditStageLost).Inc()
 		s.logger.Error("EPP audit record lost", "svtrid", cmd.svTRID, "command", label, "error", err)
+	}
+}
+
+// describe records what a validated command names, for the audit log and
+// for its handler: the login ID a <login> presents, and the identifiers
+// (<name> or <id>) an object command is about, whitespace-collapsed as the
+// schema's token type defines them. It runs before the policy, so a command
+// the policy refuses is still recorded with what it asked about.
+func (c *command) describe() {
+	if c.frame.command == "login" {
+		c.attemptedLogin = elementText(c.doc, "/epp/command/login/clID")
+		return
+	}
+	if c.frame.objectNS == "" {
+		return
+	}
+	obj := c.doc.FindElement("/epp/command/" + c.frame.command + "/*")
+	if obj == nil {
+		return
+	}
+	for _, el := range obj.ChildElements() {
+		if el.Tag == "name" || el.Tag == "id" {
+			c.objects = append(c.objects, strings.Join(strings.Fields(el.Text()), " "))
+		}
 	}
 }
 
