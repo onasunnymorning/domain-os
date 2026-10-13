@@ -1,6 +1,6 @@
 # ADR 0013 — EPP server: layered enforcement, policy as data, pinned registrar certificates
 
-- **Status:** Accepted
+- **Status:** Accepted. Decisions 2 and 3 amended by [ADR 0014](0014-epp-credential-rotation.md) (credential rotation)
 - **Date:** 2026-10-13
 - **Deciders:** Platform / Registry
 - **Supersedes:** none. It replaces the aspirational `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which was never an ADR.
