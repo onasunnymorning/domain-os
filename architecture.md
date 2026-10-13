@@ -59,6 +59,7 @@ Adapters providing technical capability.
 Inbound adapters translating external protocols into application calls.
 
 - **`rest/`** — HTTP controllers (Gin), request/response types, auth and context middleware.
+- **`epp/`** — EPP server (RFC 5730/5734): session handling and command handlers. Currently a protocol stub; see [`docs/epp/ARCHITECTURE.md`](docs/epp/ARCHITECTURE.md).
 - **`mcp/`** — Model Context Protocol server.
 - **`cli/`** — command-line operations (escrow, JISC).
 - **`api/`** — an admin HTTP *client* used by internal tooling, not an inbound handler.
@@ -70,7 +71,7 @@ Inbound adapters translating external protocols into application calls.
 | Binary | Role |
 |---|---|
 | `cmd/api` | Admin REST API (`ry-admin`) — the main service |
-| `cmd/epp` | EPP server (registrar-facing protocol) |
+| `cmd/epp` | EPP server (registrar-facing protocol). Composition root only; the server is `internal/interface/epp`. Target design and roadmap: [`docs/epp/ARCHITECTURE.md`](docs/epp/ARCHITECTURE.md) |
 | `cmd/whois` | WHOIS service |
 | `cmd/mcp` | MCP server |
 | `cmd/askg` | "Ask G" agent CLI |

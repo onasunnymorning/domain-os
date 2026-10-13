@@ -1,17 +1,25 @@
-package main
+package epp
 
 import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"github.com/onasunnymorning/domain-os/internal/appcontext"
+	"io"
+	"log/slog"
 	"net"
 	"testing"
 
 	"github.com/beevik/etree"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
 )
+
+// newTestHandlers returns handlers with no limiter and a discarded log.
+func newTestHandlers() *handlers {
+	return &handlers{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+}
 
 // MockWriter implements the epp.Writer interface for testing
 type MockWriter struct {
@@ -45,7 +53,7 @@ func TestSendGreeting(t *testing.T) {
 	ctx := context.Background()
 	mockWriter := &MockWriter{}
 
-	sendGreeting(ctx, mockWriter, nil)
+	newTestHandlers().greeting(ctx, mockWriter, nil)
 
 	// Parse the written XML
 	doc := etree.NewDocument()
@@ -135,7 +143,7 @@ func TestRespondToLoginCommand(t *testing.T) {
 			err := doc.ReadFromString(tt.inputXML)
 			require.NoError(t, err, "Input XML should be valid")
 
-			respondToLoginCommand(ctx, mockWriter, doc)
+			newTestHandlers().login(ctx, mockWriter, doc)
 
 			// Verify response XML
 			respDoc := etree.NewDocument()
@@ -176,7 +184,7 @@ func TestRespondToLogoutCommand(t *testing.T) {
 	err := doc.ReadFromString(logoutXML)
 	require.NoError(t, err)
 
-	respondToLogoutCommand(ctx, mockWriter, doc)
+	newTestHandlers().logout(ctx, mockWriter, doc)
 
 	// Verify response
 	respDoc := etree.NewDocument()
@@ -187,10 +195,7 @@ func TestRespondToLogoutCommand(t *testing.T) {
 	result := respDoc.FindElement("//result")
 	require.NotNil(t, result)
 	assert.Equal(t, "1500", result.SelectAttrValue("code", ""))
-
-	// Note: CloseAfterWrite behavior is tested in integration tests
-	// The mock writer receives CloseAfterWrite() call but the type assertion
-	// in the actual code only works with *epp.ResponseWriter
+	assert.True(t, mockWriter.ShouldCloseAfterWrite(), "logout ends the session")
 }
 
 // TestRespondToDomainCheckCommand verifies domain check response
@@ -215,7 +220,7 @@ func TestRespondToDomainCheckCommand(t *testing.T) {
 	err := doc.ReadFromString(checkXML)
 	require.NoError(t, err)
 
-	respondToDomainCheckCommand(ctx, mockWriter, doc)
+	newTestHandlers().domainCheck(ctx, mockWriter, doc)
 
 	// Verify response is valid XML
 	respDoc := etree.NewDocument()
@@ -233,7 +238,7 @@ func TestRespondToDomainCheckCommand(t *testing.T) {
 
 // TestGetGreetingXML verifies greeting XML format
 func TestGetGreetingXML(t *testing.T) {
-	xml := getGreetingXML()
+	xml := greetingXML()
 
 	doc := etree.NewDocument()
 	err := doc.ReadFromString(xml)
@@ -247,7 +252,7 @@ func TestGetGreetingXML(t *testing.T) {
 
 // TestGetLoginResponseXML verifies login response format
 func TestGetLoginResponseXML(t *testing.T) {
-	xml := getLoginResponseXML()
+	xml := loginResponseXML()
 
 	doc := etree.NewDocument()
 	err := doc.ReadFromString(xml)
@@ -261,7 +266,7 @@ func TestGetLoginResponseXML(t *testing.T) {
 
 // TestGetLogoutResponseXML verifies logout response format
 func TestGetLogoutResponseXML(t *testing.T) {
-	xml := getLogoutResponseXML()
+	xml := logoutResponseXML()
 
 	doc := etree.NewDocument()
 	err := doc.ReadFromString(xml)
@@ -273,17 +278,18 @@ func TestGetLogoutResponseXML(t *testing.T) {
 	assert.Equal(t, "1500", result.SelectAttrValue("code", ""), "Logout should use code 1500")
 }
 
-// TestGenerateCertificate verifies certificate generation
-func TestGenerateCertificate(t *testing.T) {
-	cert := generateCertificate()
+// TestSelfSignedCertificate verifies certificate generation
+func TestSelfSignedCertificate(t *testing.T) {
+	cert, err := SelfSignedCertificate()
+	require.NoError(t, err)
 
 	assert.NotNil(t, cert.Certificate, "Certificate should be generated")
 	assert.NotEmpty(t, cert.Certificate, "Certificate should not be empty")
 	assert.NotNil(t, cert.PrivateKey, "Private key should be generated")
 }
 
-// TestLogConnection verifies connection context management
-func TestLogConnection(t *testing.T) {
+// TestConnContext verifies connection context management
+func TestConnContext(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a mock TCP connection for testing
@@ -293,15 +299,17 @@ func TestLogConnection(t *testing.T) {
 	defer client.Close()
 
 	// We need a TLS connection, so let's create a minimal TLS config
+	cert, err := SelfSignedCertificate()
+	require.NoError(t, err)
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true, // #nosec G402 -- test-only: connects to a httptest server using a certificate generated in this test
-		Certificates:       []tls.Certificate{generateCertificate()},
+		Certificates:       []tls.Certificate{cert},
 	}
 
 	// Create TLS connection from the client side
 	tlsConn := tls.Client(client, tlsConfig)
 
-	newCtx, err := logConnection(ctx, tlsConn)
+	newCtx, err := newTestHandlers().connContext(ctx, tlsConn)
 
 	require.NoError(t, err, "Should not return error")
 	require.NotNil(t, newCtx, "Should return context")

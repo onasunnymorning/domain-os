@@ -326,7 +326,7 @@ if err := redisClient.Ping(ctx).Err(); err != nil {
 
 ## Next Steps
 
-See the [EPP Production Architecture](../../../docs/EPP_PRODUCTION_ARCHITECTURE.md) for:
+This limiter is due to be replaced: lease-based session caps in Phase 3, policy-driven rates in Phase 5. See the [EPP server architecture](../../../docs/epp/ARCHITECTURE.md) for its known flaws and the design that replaces it, including:
 - Certificate-based authentication
 - Session management
 - Audit logging
