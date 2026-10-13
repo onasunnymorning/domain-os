@@ -107,8 +107,10 @@ var serviceMetaRegistry = []serviceMeta{
 		Image:        "gprins/domain-os-epp",
 		Port:         700,
 		Protocol:     "tls",
-		HealthCheck:  &HealthCheck{Type: "tcp", Port: 700},
-		Services:     []Service{ServiceEPP},
+		// The ops port, not 700: a TCP probe on 700 is a failed TLS handshake
+		// every interval, which is noise in epp_connections_total.
+		HealthCheck: &HealthCheck{Type: "http", Path: "/readyz", Port: 9700},
+		Services:    []Service{ServiceEPP},
 	},
 	{
 		ContractName: "whois",
@@ -188,6 +190,13 @@ var infraSpecs = []infraComponentSpec{
 // embeds a password while matching nothing at all.
 func nameLooksSecret(name string) bool {
 	if strings.HasPrefix(name, "NEXT_PUBLIC_") {
+		return false
+	}
+	// A *_PATH variable names a file; the file may hold a secret, the path
+	// does not. In this registry *_CERT and *_KEY hold PEM content
+	// (TEMPORAL_CLIENT_CERT/KEY), so a variable that holds a path to a
+	// certificate or key says so in its name rather than borrowing theirs.
+	if strings.HasSuffix(name, "_PATH") {
 		return false
 	}
 	upper := strings.ToUpper(name)

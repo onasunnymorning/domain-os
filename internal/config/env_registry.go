@@ -142,7 +142,28 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// EPP / REDIS
 	// ═══════════════════════════════════════════
+	// Every EPP_* setting is documented, with how and when to change it, in
+	// docs/epp/POLICY_REFERENCE.md. Parsing and cross-checks: internal/config/epp.go.
 	{Name: "EPP_PORT", Services: []Service{ServiceEPP}, Default: "700", Description: "EPP server TCP listen port"},
+	{Name: "EPP_OPS_PORT", Services: []Service{ServiceEPP}, Default: "9700", Description: "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"},
+	{Name: "EPP_TLS_CERT_PATH", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM server certificate (with chain) presented to registrars. Hot-reloaded when the file changes. The certificate itself is public; mount it with its key"},
+	{Name: "EPP_TLS_KEY_PATH", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_TLS_SELF_SIGNED=false", Description: "Path to the PEM private key for EPP_TLS_CERT_PATH. The path is not secret; the key file it names is, so mount it from the secret store"},
+	{Name: "EPP_TLS_SELF_SIGNED", Services: []Service{ServiceEPP}, Default: "false", Description: "Present a generated self-signed certificate instead of EPP_TLS_CERT_PATH. Local development only"},
+	{Name: "EPP_TLS_RELOAD_INTERVAL", Services: []Service{ServiceEPP}, Default: "1m", Description: "How often the certificate files are checked for a renewal"},
+	{Name: "EPP_PROXY_PROTOCOL", Services: []Service{ServiceEPP}, Default: "false", Description: "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-IP limits see only the balancer"},
+	{Name: "EPP_PROXY_TRUSTED_CIDRS", Services: []Service{ServiceEPP}, RequiredWhen: "EPP_PROXY_PROTOCOL=true", Description: "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"},
+	{Name: "EPP_MAX_CONNECTIONS", Services: []Service{ServiceEPP}, Default: "2000", Description: "Open connections allowed on one node"},
+	{Name: "EPP_MAX_HANDSHAKES", Services: []Service{ServiceEPP}, Default: "200", Description: "TLS handshakes allowed in progress on one node"},
+	{Name: "EPP_MAX_FRAME_BYTES", Services: []Service{ServiceEPP}, Default: "65536", Description: "Largest EPP frame accepted, including its 4-byte header. A larger frame closes the session"},
+	{Name: "EPP_XML_MAX_DEPTH", Services: []Service{ServiceEPP}, Default: "32", Description: "Deepest element nesting accepted in a frame"},
+	{Name: "EPP_XML_MAX_ELEMENTS", Services: []Service{ServiceEPP}, Default: "2000", Description: "Most elements accepted in a frame"},
+	{Name: "EPP_HANDSHAKE_TIMEOUT", Services: []Service{ServiceEPP}, Default: "10s", Description: "Time from TCP accept (including any PROXY header) to a completed TLS handshake"},
+	{Name: "EPP_LOGIN_TIMEOUT", Services: []Service{ServiceEPP}, Default: "30s", Description: "Time from greeting to a successful <login>"},
+	{Name: "EPP_IDLE_TIMEOUT", Services: []Service{ServiceEPP}, Default: "10m", Description: "Time a session may wait between commands"},
+	{Name: "EPP_READ_TIMEOUT", Services: []Service{ServiceEPP}, Default: "30s", Description: "Time to read one frame once it has started"},
+	{Name: "EPP_WRITE_TIMEOUT", Services: []Service{ServiceEPP}, Default: "60s", Description: "Time to write one response"},
+	{Name: "EPP_MAX_SESSION_DURATION", Services: []Service{ServiceEPP}, Default: "24h", Description: "Longest a session may stay open"},
+	{Name: "EPP_DRAIN_TIMEOUT", Services: []Service{ServiceEPP}, Default: "30s", Description: "On SIGTERM, time allowed for sessions to finish before their connections are closed"},
 	{Name: "EPP_USERNAME", Services: []Service{ServiceEPP, ServiceCLI}, Description: "EPP client login (clID) used by the epp-client API and the epp CLI. Was hardcoded to a CentralNic OTE account until #411"},
 	{Name: "EPP_PASSWORD", Services: []Service{ServiceEPP, ServiceCLI}, Secret: true, Description: "EPP client password. Was hardcoded alongside EPP_USERNAME until #411; that credential is in git history and should be rotated"},
 	{Name: "REDIS_HOST", Services: []Service{ServiceEPP}, Default: "localhost", Description: "Redis host for EPP session store"},

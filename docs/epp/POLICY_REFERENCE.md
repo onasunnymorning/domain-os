@@ -15,35 +15,61 @@ A value marked *(planned)* does not exist yet. The phase that introduces it is n
 
 ## Server settings: environment
 
+Durations use Go syntax (`30s`, `10m`, `24h`). Every value is checked at start. A bad value, or an inconsistent combination, stops the server and lists every problem at once.
+
+**Listening and TLS**
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `EPP_PORT` | `700` | TCP port the EPP listener binds |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), or `error`, in any case |
+| `EPP_OPS_PORT` | `9700` | Plain-HTTP port for `/healthz` (process up), `/readyz` (accepting sessions; 503 while starting or draining) and `/metrics`. Keep it on the internal network |
+| `EPP_TLS_CERT_PATH` | *(required)* | PEM server certificate, with its chain, presented to registrars |
+| `EPP_TLS_KEY_PATH` | *(required)* | PEM private key for that certificate |
+| `EPP_TLS_SELF_SIGNED` | `false` | Present a generated one-day self-signed certificate instead. **Local development only.** Conflicts with the two file variables. Docker Compose and Tilt set it |
+| `EPP_TLS_RELOAD_INTERVAL` | `1m` | How often the certificate and key files are checked for a change |
+| `EPP_PROXY_PROTOCOL` | `false` | Require a PROXY protocol (v1 or v2) header on every connection. **Must be `true` behind a load balancer**, or every per-IP control sees only the balancer's address |
+| `EPP_PROXY_TRUSTED_CIDRS` | *(required when the above is true)* | Comma-separated CIDRs or IPs of the load balancers. A connection from anywhere else is dropped at accept |
+
+TLS 1.2 is the minimum version, and 1.3 is used when the client offers it. This is fixed in code.
+
+**Rolling the server certificate.** Replace the certificate and key files in place; the server picks them up within `EPP_TLS_RELOAD_INTERVAL`:
+- New handshakes get the new certificate. Sessions already open keep the one they negotiated, so nothing is dropped.
+- A file that is missing or does not parse is ignored and the current certificate stays in use. Each failure increments `epp_server_cert_reload_errors_total`, so a half-written renewal cannot take the server down.
+- Write the key before the certificate. A certificate that does not match its key is treated as a failure and retried on the next check.
+- `epp_server_cert_not_after_timestamp_seconds` exposes the expiry of the certificate in use.
+
+**Per-node limits.** These hold without Redis, and each node enforces its own.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_MAX_CONNECTIONS` | `2000` | Open connections on one node. Above this, new connections are closed at accept |
+| `EPP_MAX_HANDSHAKES` | `200` | TLS handshakes in progress on one node. Above this, new connections are closed at accept. Must not exceed `EPP_MAX_CONNECTIONS` |
+| `EPP_MAX_FRAME_BYTES` | `65536` | Largest frame accepted, including its 4-byte length header (minimum 4096). A create with 13 NS, 8 DS and extensions is about 8 KB, and a 50-name check is at most about 15 KB. A larger frame **closes the session**: the rest of it cannot be skipped safely |
+| `EPP_XML_MAX_DEPTH` | `32` | Deepest element nesting. A deeper frame is answered 2001 and the session continues |
+| `EPP_XML_MAX_ELEMENTS` | `2000` | Most elements in a frame. A larger one is answered 2001 and the session continues |
+
+A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always answered 2001. So is malformed XML, a root other than `<epp>`, a non-UTF-8 encoding, and a `clTRID` outside 3–64 characters. None of these close the session.
+
+**Timeouts**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EPP_HANDSHAKE_TIMEOUT` | `10s` | TCP accept to completed TLS handshake, including reading any PROXY header |
+| `EPP_LOGIN_TIMEOUT` | `30s` | Greeting to a successful `<login>`. A command already running finishes first |
+| `EPP_IDLE_TIMEOUT` | `10m` | Waiting between commands |
+| `EPP_READ_TIMEOUT` | `30s` | Reading one frame once its header has arrived |
+| `EPP_WRITE_TIMEOUT` | `60s` | Writing one response |
+| `EPP_MAX_SESSION_DURATION` | `24h` | Longest a session may stay open |
+| `EPP_DRAIN_TIMEOUT` | `30s` | On SIGTERM, time for in-flight commands to finish. Idle sessions close at once, and sessions still open at the deadline are closed |
+
+**Shared state and logging**
+
+| Variable | Default | Meaning |
+|---|---|---|
 | `REDIS_HOST` | `localhost` | Redis holding the shared connection and lockout counters |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | *(empty: no auth)* | Redis password. Secret |
-
-## Server settings: fixed in code today
-
-These are constants in `internal/interface/epp/server.go`, so changing one means a code change and a release. Phase 1 moves them to environment variables with the new defaults shown.
-
-| Setting | Today | Phase 1 default | Notes |
-|---|---|---|---|
-| Max frame size | 1000 B | 64 KiB | A create with 13 NS, 8 DS and extensions is about 8 KB. A 50-name check is at most about 15 KB |
-| Read timeout (per frame) | 10s | 30s | |
-| Write timeout | 2m | 60s | |
-| Idle timeout | 350s | 10m | |
-| Max session lifetime | 1h | 24h | |
-| Login timeout | *(none)* | 30s | Time allowed between greeting and a successful `<login>` |
-| Handshake timeout | *(epp-lib: the read timeout)* | 10s | |
-| Max connections per node | *(none)* | 2000 | |
-| Concurrent handshakes per node | *(none)* | 200 | |
-| TLS minimum version | 1.2 | 1.2 | 1.3 is preferred when the client offers it |
-| XML depth / elements | *(none)* | 32 / 2000 | |
-| Server certificate | Self-signed, 1 day, generated at boot | From file, hot-reloaded | Self-signed only for local development |
-| PROXY protocol, trusted CIDRs | *(off)* | Configurable | Required behind a load balancer, or per-IP caps become global |
-| Drain timeout | *(none)* | Configurable | Time allowed to finish in-flight commands on SIGTERM |
-| Ops port | *(none)* | Configurable | `/healthz`, `/readyz`, `/metrics` |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), or `error`, in any case. `debug` logs every command with its clTRID, svTRID, result code and duration |
 
 ## Current limiter: fixed in code today
 

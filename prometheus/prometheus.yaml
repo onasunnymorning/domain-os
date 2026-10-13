@@ -17,3 +17,10 @@ scrape_configs:
     metrics_path: '/metrics'  # Ensure your Gin application uses this route
     static_configs:
       - targets: ['admin-api:8080']
+
+  # EPP server ops port: sessions, commands, handshakes, certificate expiry
+  - job_name: 'epp-server'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['epp-server:9700']

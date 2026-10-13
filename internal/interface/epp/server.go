@@ -2,81 +2,207 @@
 // sessions over TLS (RFC 5734) and translates EPP frames into application
 // calls.
 //
-// It is a protocol stub today: login is not authenticated and only greeting,
-// login, logout and a placeholder domain:check are bound. The target
-// architecture, and the phased plan for reaching it, is
-// docs/epp/ARCHITECTURE.md.
+// Login is not authenticated yet, and only greeting, login, logout and a
+// placeholder domain:check are bound. The target architecture, and the phased
+// plan for reaching it, is docs/epp/ARCHITECTURE.md; every setting is listed
+// in docs/epp/POLICY_REFERENCE.md.
 package epp
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/middleware"
 )
 
-// Transport settings. They are fixed in code until Phase 1 of
-// docs/epp/ARCHITECTURE.md makes them configurable; until then
-// docs/epp/POLICY_REFERENCE.md lists them as fixed.
-const (
-	sessionTimeout = time.Hour
-	idleTimeout    = 350 * time.Second
-	writeTimeout   = 2 * time.Minute
-	readTimeout    = 10 * time.Second
-	maxMessageSize = 1000 // bytes
-)
+// forceCloseGrace is how long Shutdown waits for sessions to unwind after it
+// has closed their connections at the end of the drain timeout.
+const forceCloseGrace = 5 * time.Second
 
-// Server is an EPP server. Build it with NewServer and start it with Serve.
+// Options are what the server is built from.
+type Options struct {
+	Config config.EPP
+	// Limiter applies the Redis connection and login limits. Nil disables them.
+	Limiter *middleware.RateLimiter
+	Logger  *slog.Logger
+	// NewID returns a unique identifier, used for session IDs and svTRIDs.
+	// It must be unique across every node, not just this one.
+	NewID func() string
+}
+
+// Server is an EPP server. Build it with NewServer, run it with Serve, stop
+// it with Shutdown. OpsHandler serves health, readiness and metrics.
 type Server struct {
-	srv    *epplib.Server
-	logger *slog.Logger
+	cfg      config.EPP
+	lib      *epplib.Server
+	certs    *certSource
+	sessions *sessionRegistry
+	metrics  *metrics
+	limiter  *middleware.RateLimiter
+	logger   *slog.Logger
+	newID    func() string
+	router   map[routeKey]route
+
+	serving   atomic.Bool
+	draining  atomic.Bool
+	served    chan struct{}
+	stopWatch context.CancelFunc
+	startOnce sync.Once
 }
 
-// NewServer wires the command handlers into an EPP server presenting cert.
-// limiter may be nil, which disables connection and login limiting.
-func NewServer(cert tls.Certificate, limiter *middleware.RateLimiter, logger *slog.Logger) *Server {
-	h := &handlers{limiter: limiter, logger: logger}
-
-	mux := &epplib.CommandMux{}
-	mux.BindGreeting(h.greeting)
-	mux.Bind(epplib.NewXMLPathBuilder().AddOrphan("//hello", epplib.NamespaceIETFEPP10.String()).String(), h.greeting)
-	// Login and logout are direct children of <command>, not in an object namespace.
-	mux.Bind(epplib.NewXMLPathBuilder().
-		AddOrphan("//command", epplib.NamespaceIETFEPP10.String()).
-		Add("login", epplib.NamespaceIETFEPP10.String()).String(), h.login)
-	mux.Bind(epplib.NewXMLPathBuilder().
-		AddOrphan("//command", epplib.NamespaceIETFEPP10.String()).
-		Add("logout", epplib.NamespaceIETFEPP10.String()).String(), h.logout)
-	mux.BindCommand("check", epplib.NamespaceIETFDomain10.String(), h.domainCheck)
-	// TODO: contact info is not bound — there is no handler for it yet.
-
-	return &Server{
-		logger: logger,
-		srv: &epplib.Server{
-			HandleCommand: mux.Handle,
-			Greeting:      mux.GetGreeting,
-			TLSConfig: tls.Config{
-				Certificates: []tls.Certificate{cert},
-				ClientAuth:   tls.RequireAnyClientCert,
-				MinVersion:   tls.VersionTLS12,
-			},
-			ConnContext:    h.connContext,
-			Timeout:        sessionTimeout,
-			IdleTimeout:    idleTimeout,
-			WriteTimeout:   writeTimeout,
-			ReadTimeout:    readTimeout,
-			Logger:         logger,
-			MaxMessageSize: maxMessageSize,
-		},
+// NewServer builds a server from opts. It loads the server certificate, so
+// a missing or unreadable certificate is reported here, before anything
+// listens.
+func NewServer(opts Options) (*Server, error) {
+	if opts.NewID == nil {
+		return nil, errors.New("epp: Options.NewID is required")
 	}
+	s := &Server{
+		cfg:      opts.Config,
+		sessions: newSessionRegistry(),
+		metrics:  newMetrics(),
+		limiter:  opts.Limiter,
+		logger:   opts.Logger,
+		newID:    opts.NewID,
+		served:   make(chan struct{}),
+	}
+	s.router = s.routes()
+
+	var err error
+	if s.cfg.TLS.SelfSigned {
+		var cert tls.Certificate
+		if cert, err = SelfSignedCertificate(); err == nil {
+			s.certs, err = newStaticCertSource(cert, s.metrics)
+		}
+	} else {
+		s.certs, err = newFileCertSource(s.cfg.TLS.CertPath, s.cfg.TLS.KeyPath, s.cfg.TLS.ReloadInterval, s.metrics, s.logger)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("epp server certificate: %w", err)
+	}
+
+	s.lib = &epplib.Server{
+		HandleCommand: s.handleCommand,
+		Greeting:      s.greeting,
+		ConnContext:   s.connContext,
+		CloseConnHook: s.closeConn,
+		TLSConfig: tls.Config{
+			GetCertificate: s.certs.getCertificate,
+			// Phase 2 replaces this with verification against registrar pins
+			// (ADR 0014). Until then a certificate is required but not checked.
+			ClientAuth: tls.RequireAnyClientCert,
+			MinVersion: tls.VersionTLS12,
+		},
+		Timeout:        s.cfg.Timeouts.MaxSession,
+		IdleTimeout:    s.cfg.Timeouts.Idle,
+		WriteTimeout:   s.cfg.Timeouts.Write,
+		ReadTimeout:    s.cfg.Timeouts.Read,
+		MaxMessageSize: s.cfg.Limits.MaxFrameBytes,
+		Logger:         s.logger,
+	}
+	return s, nil
 }
 
-// Serve accepts EPP connections on l until l is closed.
+// Serve accepts EPP sessions on l until Shutdown. With PROXY protocol
+// enabled, l must be the listener the load balancer connects to.
 func (s *Server) Serve(l net.Listener) error {
-	s.logger.Info("EPP server listening", "addr", l.Addr().String())
-	return s.srv.Serve(l)
+	started := false
+	s.startOnce.Do(func() { started = true })
+	if !started {
+		return errors.New("epp: Serve called more than once")
+	}
+	defer close(s.served)
+
+	if s.cfg.Proxy.Enabled {
+		pl, err := proxyListener(l, s.cfg.Proxy.TrustedCIDRs, s.cfg.Timeouts.Handshake)
+		if err != nil {
+			return fmt.Errorf("epp PROXY protocol listener: %w", err)
+		}
+		l = pl
+	}
+	nl := newNodeListener(l, s.cfg.Limits.MaxConnections, s.cfg.Limits.MaxHandshakes, s.cfg.Timeouts.Handshake, s.metrics)
+
+	watchCtx, stop := context.WithCancel(context.Background())
+	s.stopWatch = stop
+	go s.certs.watch(watchCtx)
+
+	s.logger.Info("EPP server listening",
+		"addr", l.Addr().String(),
+		"proxy_protocol", s.cfg.Proxy.Enabled,
+		"cert_not_after", s.certs.notAfter().UTC().Format(time.RFC3339))
+	s.serving.Store(true)
+	err := s.lib.Serve(nl)
+	s.serving.Store(false)
+	stop()
+	return err
+}
+
+// Shutdown drains the server. It stops accepting connections and closes
+// every session that is waiting for a command; a session in the middle of a
+// command finishes it first. If sessions are still open when ctx is done,
+// their connections are closed outright.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.draining.Store(true)
+	s.metrics.draining.Set(1)
+	if !s.serving.Load() {
+		return nil
+	}
+	s.logger.Info("EPP server draining", "sessions", s.sessions.len())
+	if err := s.lib.Close(); err != nil {
+		return fmt.Errorf("epp: close listener: %w", err)
+	}
+
+	select {
+	case <-s.served:
+		s.logger.Info("EPP server drained")
+		return nil
+	case <-ctx.Done():
+	}
+
+	remaining := s.sessions.all()
+	s.logger.Warn("EPP drain timeout reached; closing remaining sessions", "sessions", len(remaining))
+	for _, sess := range remaining {
+		_ = sess.conn.Close()
+	}
+	select {
+	case <-s.served:
+	case <-time.After(forceCloseGrace):
+	}
+	return ctx.Err()
+}
+
+// Ready reports whether the server is accepting sessions.
+func (s *Server) Ready() bool {
+	return s.serving.Load() && !s.draining.Load()
+}
+
+// OpsHandler serves /healthz (the process is up), /readyz (accepting
+// sessions; 503 while starting or draining) and /metrics. It belongs on the
+// ops port, never on the EPP port.
+func (s *Server) OpsHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !s.Ready() {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ready\n"))
+	})
+	mux.Handle("/metrics", promhttp.HandlerFor(s.metrics.registry, promhttp.HandlerOpts{}))
+	return mux
 }

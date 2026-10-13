@@ -58,16 +58,20 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "700" ]
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9700/readyz" ]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
     ports:
       - 700:700
+      # Ops port: /healthz, /readyz, /metrics. Local only; never publish it in a deployment.
+      - 9700:9700
     networks:
       - dos
     environment:
+      # Local stack: no real certificate. Deployments set EPP_TLS_CERT_PATH/EPP_TLS_KEY_PATH.
+      - EPP_TLS_SELF_SIGNED=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
@@ -79,6 +83,8 @@ services:
           path: ./cmd/epp
         - action: rebuild
           path: ./internal/infrastructure/epp
+        - action: rebuild
+          path: ./internal/interface/epp
 
   # Prometheus container
   prometheus:

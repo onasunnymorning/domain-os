@@ -165,3 +165,17 @@ func TestEveryDeployableServiceHasAHealthCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestPathVariablesAreNotSecretByName pins the one exception to the name
+// heuristic: a *_PATH variable holds a file path, whatever file it names.
+func TestPathVariablesAreNotSecretByName(t *testing.T) {
+	if config.NameLooksSecret("EPP_TLS_KEY_PATH") {
+		t.Error("EPP_TLS_KEY_PATH: a path to a key is not key material")
+	}
+	if !config.NameLooksSecret("TEMPORAL_CLIENT_KEY") {
+		t.Error("TEMPORAL_CLIENT_KEY: a *_KEY variable still holds the key itself")
+	}
+	if !config.NameLooksSecret("EPP_TLS_KEY_PATHS_AND_KEY") {
+		t.Error("only a trailing _PATH is exempt")
+	}
+}
