@@ -34,13 +34,13 @@ help:
 # Build EPP server binary locally
 build:
 	@echo "Building EPP server..."
-	go build -o bin/epp-server cmd/epp/eppServer.go
+	go build -o bin/epp-server ./cmd/epp
 	@echo "✓ EPP server built: bin/epp-server"
 
 # Run EPP server locally
 run:
 	@echo "Starting EPP server..."
-	go run cmd/epp/eppServer.go
+	go run ./cmd/epp
 
 # Run unit tests
 test:
@@ -55,7 +55,7 @@ test-int:
 # Run all EPP server tests with coverage
 coverage:
 	@echo "Running tests with coverage..."
-	go test ./cmd/epp -cover -coverprofile=coverage.out -covermode=atomic
+	go test ./internal/interface/epp -cover -coverprofile=coverage.out -covermode=atomic
 	go tool cover -func=coverage.out
 	@echo "Generate HTML coverage report with: go tool cover -html=coverage.out"
 

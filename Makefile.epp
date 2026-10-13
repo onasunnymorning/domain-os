@@ -13,7 +13,7 @@ test: test-unit ## Run all tests
 
 test-unit: ## Run unit tests
 	@echo "Running unit tests..."
-	go test ./cmd/epp/... -v -race -short
+	go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
 	go test ./cmd/cli/epp/... -v -race -short
 
 test-integration: ## Run integration tests

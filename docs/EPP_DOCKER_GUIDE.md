@@ -457,5 +457,5 @@ watch -n 5 'docker compose ps epp-server'
 
 - [EPP Server Documentation](../docs/EPP_TESTING_README.md)
 - [Rate Limiting Guide](../docs/EPP_RATE_LIMITING_IMPLEMENTATION.md)
-- [Production Architecture](../docs/EPP_PRODUCTION_ARCHITECTURE.md)
+- [EPP Server Architecture](epp/ARCHITECTURE.md)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)

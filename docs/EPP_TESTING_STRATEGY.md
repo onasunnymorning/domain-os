@@ -8,7 +8,7 @@ A comprehensive testing strategy for the EPP server and client components, cover
 
 ### 1. Unit Tests
 
-#### EPP Server Unit Tests (`cmd/epp/eppServer_test.go`)
+#### EPP Server Unit Tests (`internal/interface/epp/server_test.go`)
 
 ```go
 // Test individual handlers in isolation
@@ -16,8 +16,8 @@ A comprehensive testing strategy for the EPP server and client components, cover
 - TestRespondToLoginCommand() - Verify login response
 - TestRespondToLogoutCommand() - Verify logout and connection closure
 - TestRespondToDomainCheckCommand() - Verify domain check logic
-- TestGenerateCertificate() - Verify TLS certificate generation
-- TestLogConnection() - Verify context management
+- TestSelfSignedCertificate() - Verify TLS certificate generation
+- TestConnContext() - Verify context management
 ```
 
 **Key aspects:**

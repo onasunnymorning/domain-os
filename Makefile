@@ -300,7 +300,7 @@ test-api-coverage: ## Generate API integration test coverage report (HTML)
 
 test-epp: ## Run EPP-specific tests
 	@echo "Running EPP tests..."
-	@go test ./cmd/epp/... -v -race -short
+	@go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
 	@go test ./cmd/cli/epp/... -v -race -short
 
 test-askg: ## Run Ask G orchestrator tests
