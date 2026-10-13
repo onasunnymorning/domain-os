@@ -2,7 +2,7 @@
 
 **Status:** target architecture plus a roadmap. Most of what this page describes **does not exist yet**. Each section says what holds today, and the [roadmap](#roadmap) says which phase builds the rest. Update this page in the same PR as each phase lands, so it never describes the system as intended rather than as built.
 
-**Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
+**Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md), with credential rotation amended by [ADR 0014](../adr/0014-epp-credential-rotation.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
 
 **Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The current Redis limiter is `internal/infrastructure/epp/middleware`, which is due to be replaced in Phases 3 and 5.
 
@@ -50,13 +50,43 @@ The Redis limiter has known structural flaws, all fixed by redesign rather than 
 
 A login must pass three checks:
 1. **Source IP** is in the registrar's allowlist.
-2. **Client certificate** is pinned by SPKI SHA-256 fingerprint to a specific *EPP login*. Registrars may upload certificates from a public CA or self-signed ones. Each login has up to two active certificates so rotation can overlap. Revocation takes effect immediately, and expiry is tracked and alerted.
-3. **Password** is hashed with Argon2id and can be changed with `<newPW>`. RFC 8807 (login security) is a follow-up item.
+2. **Client certificate** matches an active pin of the registrar.
+3. **Password** matches one of the login's active passwords.
 
-Other rules:
-- **A registrar can have several EPP logins.** Each has a role (`transform` or `readonly`), its own session cap and its own audit trail.
-- **Lockout is keyed on (login, source IP)** with exponential backoff, and is applied only after the IP and certificate checks pass. A stranger therefore cannot lock a registrar out.
-- The server certificate is loaded from file and hot-reloaded, so rotation does not drop sessions.
+**Logins and passwords are different things.**
+- A registrar can have **several EPP logins**. They separate *systems or purposes*, for example a production fleet and a read-only monitoring login. Each has a role (`transform` or `readonly`), its own session cap and its own audit trail. Every login maps to one registrar, and objects are always sponsored by the registrar's ClID, never by a login.
+- A login can hold **several passwords** (2 active by default). They exist for *rotation*. Passwords are hashed with Argon2id.
+
+**Every credential follows the same lifecycle:** a password, a certificate pin and an IP allowlist entry each move `active` → `retiring` (until a set time) → `retired`. Each records when it was created, when it was **last used** and from where, so it is visible when an old credential is safe to retire. Retiring comes in two kinds:
+- **Normal retire:** new logins are refused. Sessions already authenticated with the credential run until they end.
+- **Compromise retire:** additionally kills every live session that used the credential, immediately. This works because each session records the credential IDs it logged in with (§3).
+
+**Rolling a password without disruption:**
+1. Add a new password through the admin API (later, the registrar portal).
+2. Both passwords work while the registrar's systems switch over.
+3. Watch the old password's last-used time.
+4. Retire it once it is no longer used.
+
+`<newPW>` keeps its strict RFC 5730 meaning: the new password replaces the one used to log in, which stops working at once. That is what ICANN's RST tests exercise. Registrars who need an overlap use add-then-retire. RFC 8807 (login security) is a follow-up item.
+
+**Client certificate pins:**
+- A pin is the SPKI SHA-256 fingerprint of a certificate's public key.
+- **Pins belong to the registrar**, optionally restricted to named logins. A registrar that uses one certificate on every connection rolls it once, not once per login.
+- Up to 3 pins can be active per registrar (current, next and a spare for staggered multi-site rollouts).
+- **Renewing a certificate on the same key changes nothing**, because the SPKI is unchanged. Only a key change needs a new pin.
+- A pin can be uploaded before its certificate's `notBefore`, so it is ready the moment the registrar switches.
+- A certificate is **rejected outside its validity window**, with no grace period after `notAfter`. Expiry alerts fire at 30 and 7 days.
+- Each pin records when it was last used, and the session registry shows how many live sessions rely on it, so a registrar can watch the new pin take over before retiring the old one.
+- Registrars may use a public-CA or self-signed certificate. We do not run a CA (ADR 0013).
+
+**Credential changes are announced.** Adding, retiring or expiring a password, pin or allowlist entry notifies the registrar's technical contact and is recorded as a domain event through the outbox (INV-01). An unexpected credential change is how a compromise shows up.
+
+**Lockout is keyed on (login, source IP)** with exponential backoff. It applies only after the IP and certificate checks have passed, so a stranger cannot lock a registrar out.
+
+**Rolling our server certificate:**
+- The certificate comes from a public CA, so clients that validate by chain are unaffected by a roll.
+- It is loaded from file and hot-reloaded: new handshakes get the new certificate, and live sessions are untouched.
+- Registrars who pin *our* certificate are told the new fingerprint a set number of days ahead (optionally also published as a DANE/TLSA record).
 
 *Today:* none of this exists. `Registrar` has no EPP logins, certificates or allowlist.
 
@@ -64,12 +94,12 @@ Other rules:
 
 - **State machine:** CONNECTED → GREETED → AUTHENTICATED → CLOSED. A command before login, or a second login, is answered with 2002. A session runs one command at a time.
 - **Timeouts:** a login timeout, an idle timeout, a maximum session lifetime and a per-frame read timeout.
-- **Distributed session registry.** Each session is a lease in Redis, refreshed by heartbeat, carrying: session ID, clID, login, IP, certificate fingerprint, node, connected-at, last-command-at and command count.
+- **Distributed session registry.** Each session is a lease in Redis, refreshed by heartbeat, carrying: session ID, clID, login, the IDs of the password and certificate pin it authenticated with, IP, node, connected-at, last-command-at and command count.
   - Counts are derived from live leases, not from counters, so they cannot drift.
   - A crashed node's sessions expire with their leases.
   - Acquiring a session slot is a single atomic operation, so concurrent connects cannot overshoot a cap.
 - **Caps** apply per registrar, per login, per family, per source IP and per node. Over the cap, the server answers 2502 and closes.
-- **Operators can list live sessions and kill one** through the admin API.
+- **Operators can list live sessions and kill one** through the admin API. They can also kill every session that authenticated with a given credential, which is the second half of a compromise retire (§2).
 
 *Today:* epp-lib's idle, read, write and total timeouts apply. There is no state machine, and counting uses the drifting counters described above.
 
@@ -135,8 +165,8 @@ Each phase is one or more PRs and can be shipped on its own.
 |---|---|---|
 | 0 | This document, ADR 0013, policy reference skeleton. Server moved to `internal/interface/epp`. Typed config in `internal/config/epp.go`. `slog` throughout. One end-to-end TLS session test | **Done** |
 | 1 | Server certificate from file with hot reload, PROXY protocol v2, per-node caps, session state machine, clTRID/svTRID, configurable frame size and XML hardening, graceful drain, ops port with base metrics, TLS integration test harness | Planned |
-| 2 | EPP logins, pinned certificates and IP allowlists (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Certificate-expiry metric | Planned |
-| 3 | Lease-based distributed session registry (replaces the middleware limiter). Session caps, fail-open, admin list and kill | Planned |
+| 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | Planned |
+| 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | Planned |
 | 4 | Command pipeline: XSD validation, policy hook, in-process dispatch to application services, real domain check/info/create with sponsorship checks (ADR 0006), audit log | Planned |
 | 5 | Policy engine: versioned tiered policies, registrar families, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |

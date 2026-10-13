@@ -1,6 +1,6 @@
 # EPP server: settings and policy reference
 
-This page lists every setting that governs the EPP server: its default, where it lives, how to change it, and when a change takes effect. When you add, remove or re-default a setting, update this page in the same PR. The design behind these settings is in [ARCHITECTURE.md](ARCHITECTURE.md), and the decisions are in [ADR 0013](../adr/0013-epp-server-architecture.md).
+This page lists every setting that governs the EPP server: its default, where it lives, how to change it, and when a change takes effect. When you add, remove or re-default a setting, update this page in the same PR. The design behind these settings is in [ARCHITECTURE.md](ARCHITECTURE.md), and the decisions are in [ADR 0013](../adr/0013-epp-server-architecture.md) and [ADR 0014](../adr/0014-epp-credential-rotation.md).
 
 Settings live in one of two places:
 
@@ -81,8 +81,13 @@ Over a cap, the server answers 2502 and closes. If Redis is unavailable, enforce
 |---|---|
 | Failed logins per (login, IP) before lock | 5 within 15m |
 | Lock duration | 15m, doubling on each repeat, up to 24h |
-| Active certificates per login | 2 |
+| Active passwords per login | 2 |
+| Active certificate pins per registrar | 3 |
+| Active IP allowlist entries per registrar | 20 |
+| Default `retiring` window when retiring a credential | 7 days (overridable per retire; 0 retires at once) |
+| Client certificate validity | Enforced: no grace before `notBefore` or after `notAfter` |
 | Certificate expiry alerts | 30 and 7 days before expiry |
+| `<newPW>` | Strict RFC 5730: replaces the password used to log in, effective immediately. Overlap is done with add-then-retire through the admin API |
 
 ### Command rates *(Phase 5)*
 
