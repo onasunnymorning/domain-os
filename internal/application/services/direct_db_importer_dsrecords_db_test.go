@@ -173,3 +173,28 @@ func TestDirectDBImporter_ImportDomains_KeepsDSRecordsWhenNoneStaged(t *testing.
 
 	require.Equal(t, []dsRow{{7201, existing.KeyTag, existing.Algorithm, existing.DigestType, existing.Digest}}, dsRecordsOf(t, db, name))
 }
+
+// Items are reported once their batch commits. A batch that rolls back is
+// retried from the same cursor, so reporting it on the failed attempt too would
+// list every item twice in the saved report.
+func TestDirectDBImporter_ImportDomains_RolledBackBatchIsNotReported(t *testing.T) {
+	domainsImportDB(t)
+	importer := newImporter(t)
+
+	const name = "rolledback." + dsTLD
+	staged := stageDeposit(t, []string{name}, dnssecCSV(name+",1,13,2,zz"))
+	_, err := staged.Exec(`UPDATE domains SET exdate = ''`) // a fallback expiry: a ModifiedDomains item
+	require.NoError(t, err)
+
+	// Filed under another TLD, the batch is refused and rolls back.
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, "otherds", nil, "", func(string) {})
+	require.Error(t, err)
+	require.Empty(t, importer.Report.ModifiedDomains)
+	require.Empty(t, importer.Report.SkippedDSRecords)
+
+	// The same batch, committed, is reported.
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, dsTLD, nil, "", func(string) {})
+	require.NoError(t, err)
+	require.Len(t, importer.Report.ModifiedDomains, 1)
+	require.Len(t, importer.Report.SkippedDSRecords, 1)
+}

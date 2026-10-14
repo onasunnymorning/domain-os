@@ -42,6 +42,15 @@ type ModifiedItem struct {
 	Info          string `json:"info"`
 }
 
+// Merge appends other's items to r. The importers collect a batch's items
+// apart and merge them once the batch commits, so a batch that rolls back and
+// is retried is not reported twice.
+func (r *RunReport) Merge(other RunReport) {
+	r.SkippedHosts = append(r.SkippedHosts, other.SkippedHosts...)
+	r.ModifiedDomains = append(r.ModifiedDomains, other.ModifiedDomains...)
+	r.SkippedDSRecords = append(r.SkippedDSRecords, other.SkippedDSRecords...)
+}
+
 // DirectDBImporter handles high-speed imports directly into Postgres
 type DirectDBImporter struct {
 	PG     *pg.DB
@@ -366,6 +375,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		}
 
 		var entitiesBatch []*entities.Host
+		var batchReport RunReport
 
 		type rawHost struct {
 			Name, ClID, CrRr, UpRr string
@@ -445,7 +455,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			if err != nil || dn == nil {
 				msg := fmt.Sprintf("Invalid name (ClID: %s)", r.ClID)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
-				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
+				batchReport.SkippedHosts = append(batchReport.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
 				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
@@ -454,7 +464,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			if err != nil {
 				msg := fmt.Sprintf("Failed to generate RoID: %v", err)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
-				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
+				batchReport.SkippedHosts = append(batchReport.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
 				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
@@ -530,6 +540,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			inserted += batchLen
 			total += batchLen
 		}
+		s.Report.Merge(batchReport)
 
 		if (total)%10000 == 0 {
 			log.Printf("IngestHosts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
@@ -688,9 +699,10 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			sRows.Close()
 		}
 
+		var batchReport RunReport
 		var dsMap map[string][]entities.DSRecord
 		if dsStaged {
-			if dsMap, err = s.readStagedDSRecords(sqliteDB, first, last); err != nil {
+			if dsMap, batchReport.SkippedDSRecords, err = readStagedDSRecords(sqliteDB, first, last); err != nil {
 				return total, inserted, updated, err
 			}
 		}
@@ -764,7 +776,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				fallback := time.Now().AddDate(1, 0, 0).UTC()
 				msg := fmt.Sprintf("Setting fallback: %s. Parse Err: %v", fallback, err)
 				log.Printf("MODIFY DOMAIN: '%s' missing/invalid ExpiryDate ('%s'). %s", d.Name, r.ExDate, msg)
-				s.Report.ModifiedDomains = append(s.Report.ModifiedDomains, ModifiedItem{
+				batchReport.ModifiedDomains = append(batchReport.ModifiedDomains, ModifiedItem{
 					Name:          d.Name.String(),
 					Field:         "ExpiryDate",
 					OriginalValue: r.ExDate,
@@ -829,6 +841,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			inserted += batchLen
 			total += batchLen
 		}
+		s.Report.Merge(batchReport)
 
 		if (total)%10000 == 0 {
 			log.Printf("IngestDomains: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
@@ -859,21 +872,23 @@ func stagedTableExists(sqliteDB *sql.DB, table string) (bool, error) {
 // readStagedDSRecords returns the staged DS records of the domains named first
 // to last, in deposit order. Every algorithm is kept: which ones a registrar
 // may submit is policy for EPP, not for a deposit. A record that is not well
-// formed, or repeats one already read for its domain, is skipped and reported
-// rather than failing the batch, as RDEDomain.ToEntity does on the other path.
-func (s *DirectDBImporter) readStagedDSRecords(sqliteDB *sql.DB, first, last string) (map[string][]entities.DSRecord, error) {
+// formed, or repeats one already read for its domain, is skipped and returned
+// for the report rather than failing the batch, as RDEDomain.ToEntity does on
+// the other path.
+func readStagedDSRecords(sqliteDB *sql.DB, first, last string) (map[string][]entities.DSRecord, []SkippedItem, error) {
 	rows, err := sqliteDB.Query(`SELECT domain_name, key_tag, algorithm, digest_type, digest FROM `+stagedDSRecordsTable+` WHERE domain_name >= ? AND domain_name <= ? ORDER BY domain_name, id`, first, last)
 	if err != nil {
-		return nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
+		return nil, nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
 	}
 	defer rows.Close()
 
 	out := make(map[string][]entities.DSRecord)
 	seen := make(map[string]map[entities.DSRecord]bool)
+	var skipped []SkippedItem
 	for rows.Next() {
 		var name, keyTag, alg, digestType, digest sql.NullString
 		if err := rows.Scan(&name, &keyTag, &alg, &digestType, &digest); err != nil {
-			return nil, fmt.Errorf("IngestDomains: scan staged DS record: %w", err)
+			return nil, nil, fmt.Errorf("IngestDomains: scan staged DS record: %w", err)
 		}
 		rec, err := parseStagedDSRecord(keyTag.String, alg.String, digestType.String, digest.String)
 		if err == nil && seen[name.String][rec] {
@@ -882,7 +897,7 @@ func (s *DirectDBImporter) readStagedDSRecords(sqliteDB *sql.DB, first, last str
 		if err != nil {
 			msg := fmt.Sprintf("DS record %q %q %q %q: %v", keyTag.String, alg.String, digestType.String, digest.String, err)
 			log.Printf("SKIP DS RECORD: %s - %s", name.String, msg)
-			s.Report.SkippedDSRecords = append(s.Report.SkippedDSRecords, SkippedItem{Name: name.String, Reason: msg})
+			skipped = append(skipped, SkippedItem{Name: name.String, Reason: msg})
 			continue
 		}
 		if seen[name.String] == nil {
@@ -892,9 +907,9 @@ func (s *DirectDBImporter) readStagedDSRecords(sqliteDB *sql.DB, first, last str
 		out[name.String] = append(out[name.String], rec)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
+		return nil, nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
 // parseStagedDSRecord parses one staged row's fields and validates the record.

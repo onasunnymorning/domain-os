@@ -41,12 +41,23 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_Success() {
 	// Ingestion mocks
 	s.env.OnActivity(acts.IngestContacts, mock.Anything, mock.Anything).Return(activities.IngestContactsResult{Total: 10, Inserted: 8, Updated: 2}, nil)
 	s.env.OnActivity(acts.ValidateRegistrantRefs, mock.Anything, mock.Anything).Return(activities.ValidateRegistrantRefsResult{}, nil)
-	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.Anything).Return(activities.IngestHostsResult{Total: 5, Inserted: 5, Updated: 0}, nil)
-	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.Anything).Return(activities.IngestDomainsResult{Total: 100, Inserted: 90, Updated: 10}, nil)
+	// The ingest phases save their importer reports in the run folder, which the
+	// summary then names.
+	const runPrefix = "escrow/com/20260624/test-wf"
+	s.env.OnActivity(acts.IngestHosts, mock.Anything, mock.MatchedBy(func(a activities.IngestHostsArgs) bool {
+		return a.RunPrefix == runPrefix
+	})).Return(activities.IngestHostsResult{Total: 5, Inserted: 5, Updated: 0, SkippedHosts: 1, ReportKey: runPrefix + "/run-report-hosts.json"}, nil)
+	s.env.OnActivity(acts.IngestDomains, mock.Anything, mock.MatchedBy(func(a activities.IngestDomainsArgs) bool {
+		return a.RunPrefix == runPrefix
+	})).Return(activities.IngestDomainsResult{Total: 100, Inserted: 90, Updated: 10, ModifiedDomains: 2, SkippedDSRecords: 3, ReportKey: runPrefix + "/run-report-domains.json"}, nil)
 	s.env.OnActivity(acts.IngestNNDNs, mock.Anything, mock.Anything).Return(activities.IngestNNDNsResult{Total: 1, Inserted: 1, Updated: 0}, nil)
 	s.env.OnActivity(acts.LinkDomainHosts, mock.Anything, mock.Anything).Return(activities.LinkDomainHostsResult{Total: 50}, nil)
 	s.env.OnActivity(acts.AccreditRegistrars, mock.Anything, mock.Anything).Return(activities.AccreditRegistrarsResult{Total: 2}, nil)
-	s.env.OnActivity(acts.PersistImportSummary, mock.Anything, mock.Anything).Return(activities.PersistImportSummaryResult{SummaryKey: "escrow/com/20260624/test-wf/summary.json"}, nil)
+	var summary activities.PersistImportSummaryArgs
+	s.env.OnActivity(acts.PersistImportSummary, mock.Anything, mock.Anything).Return(func(_ context.Context, a activities.PersistImportSummaryArgs) (activities.PersistImportSummaryResult, error) {
+		summary = a
+		return activities.PersistImportSummaryResult{SummaryKey: "escrow/com/20260624/test-wf/summary.json"}, nil
+	})
 	s.env.OnActivity(acts.VerifyIngestion, mock.Anything, mock.Anything).Return(activities.VerifyIngestionResult{Passed: true, ReportKey: "escrow/com/20260624/test-wf/verification-report.json"}, nil)
 
 	// Send signal ConfirmEscrowImport (true) after staging/QA completes
@@ -70,6 +81,15 @@ func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_Success() {
 	s.Equal("escrow/com/20260624/test-wf/staged.db", result.StagedDBKey)
 	s.True(result.Confirmed)
 	s.Equal(int64(90), result.IngestedCounts["domains_inserted"])
+	s.Equal(int64(1), result.IngestedCounts["hosts_skipped"])
+	s.Equal(int64(2), result.IngestedCounts["domains_modified"])
+	s.Equal(int64(3), result.IngestedCounts["ds_records_skipped"])
+
+	s.Equal(map[string]string{
+		"hosts":   runPrefix + "/run-report-hosts.json",
+		"domains": runPrefix + "/run-report-domains.json",
+	}, summary.ImporterReportKeys)
+	s.Equal(int64(3), summary.IngestedCounts["ds_records_skipped"])
 }
 
 func (s *EscrowImportWorkflowTestSuite) Test_EscrowImport_QAFails_Blocked() {
