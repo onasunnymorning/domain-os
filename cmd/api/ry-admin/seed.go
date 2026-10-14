@@ -116,6 +116,9 @@ func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, log
 	if err != nil {
 		logger.Fatal("seed: failed to connect to the database", zap.Error(err))
 	}
+	if err := postgres.CheckRepositoryID(context.Background(), gormDB, repositoryID); err != nil {
+		logger.Fatal("seed: ROID repository ID", zap.Error(err))
+	}
 
 	faker := gofakeit.New(seedFakerSeed)
 
@@ -133,10 +136,10 @@ func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, log
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
-	contactRepo := postgres.NewContactRepository(gormDB)
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	contactRepo := postgres.NewContactRepository(gormDB, repositoryID)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
 	fxRepo := postgres.NewFXRepository(gormDB)

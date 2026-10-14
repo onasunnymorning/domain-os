@@ -23,7 +23,7 @@ func TestContactSuite(t *testing.T) {
 func (s *ContactSuite) TestBulkCreateContacts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -48,7 +48,7 @@ func (s *ContactSuite) TestBulkCreateContacts() {
 func (s *ContactSuite) TestBulkCreateContacts_Duplicate() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -87,7 +87,7 @@ func (s *ContactSuite) TearDownSuite() {
 func (s *ContactSuite) TestCreateContact() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -100,7 +100,7 @@ func (s *ContactSuite) TestCreateContact() {
 func (s *ContactSuite) TestCreateContact_MissingFK() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", "missingFK")
 	s.Require().NoError(err)
@@ -113,7 +113,7 @@ func (s *ContactSuite) TestCreateContact_MissingFK() {
 func (s *ContactSuite) TestCreateContact_Duplicate() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -131,7 +131,7 @@ func (s *ContactSuite) TestCreateContact_Duplicate() {
 func (s *ContactSuite) TestReadContact() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -153,7 +153,7 @@ func (s *ContactSuite) TestReadContact() {
 func (s *ContactSuite) TestUpdateContact() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -174,7 +174,7 @@ func (s *ContactSuite) TestUpdateContact() {
 func (s *ContactSuite) TestDeleteContact() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
 	s.Require().NoError(err)
@@ -201,7 +201,7 @@ func (s *ContactSuite) TestDeleteContact() {
 func (s *ContactSuite) TestListContacts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	a, err := entities.NewAddress("El Cuyo", "MX")
 	s.Require().NoError(err)
@@ -258,7 +258,7 @@ func (s *ContactSuite) TestListContacts() {
 func (s *ContactSuite) TestFilterContacts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	a, err := entities.NewAddress("El Cuyo", "MX")
 	s.Require().NoError(err)
@@ -386,7 +386,7 @@ func (s *ContactSuite) TestFilterContacts() {
 func (s *ContactSuite) TestFilterContactsRoidGTError() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	// invalid roid
 	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{
@@ -412,7 +412,7 @@ func (s *ContactSuite) TestFilterContactsRoidGTError() {
 func (s *ContactSuite) TestFilterContactsRoidLTError() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewContactRepository(tx)
+	repo := NewContactRepository(tx, "APEX")
 
 	// invalid roid
 	contacts, _, err := repo.ListContacts(context.Background(), queries.ListItemsQuery{

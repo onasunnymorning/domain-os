@@ -18,21 +18,20 @@ func getValidDBDomain() *Domain {
 	contactID := "123456"
 	rarClid := "domtestRar"
 	return &Domain{
-		RoID:           12345678,
-		RoIDRepository: "APEX",
-		Name:           "example.domaintesttld",
-		OriginalName:   "example.domaintesttld",
-		UName:          "example.domaintesttld",
-		RegistrantID:   &contactID,
-		AdminID:        &contactID,
-		TechID:         &contactID,
-		BillingID:      &contactID,
-		ClID:           rarClid,
-		CrRr:           &rarClid,
-		UpRr:           &rarClid,
-		TLDName:        "domaintesttld",
-		RenewedYears:   1,
-		AuthInfo:       "abc123",
+		RoID:         12345678,
+		Name:         "example.domaintesttld",
+		OriginalName: "example.domaintesttld",
+		UName:        "example.domaintesttld",
+		RegistrantID: &contactID,
+		AdminID:      &contactID,
+		TechID:       &contactID,
+		BillingID:    &contactID,
+		ClID:         rarClid,
+		CrRr:         &rarClid,
+		UpRr:         &rarClid,
+		TLDName:      "domaintesttld",
+		RenewedYears: 1,
+		AuthInfo:     "abc123",
 		Hosts: []Host{
 			{
 				Name: "ns1.example.com",
@@ -52,7 +51,7 @@ func getValidDBDomain() *Domain {
 
 func TestDomain_ToDomain(t *testing.T) {
 	dbDomain := getValidDBDomain()
-	d := ToDomain(dbDomain)
+	d := ToDomain(dbDomain, "APEX")
 	roid, _ := d.RoID.Int64()
 	require.Equal(t, dbDomain.RoID, roid)
 	require.Equal(t, dbDomain.Name, d.Name.String())
@@ -73,7 +72,7 @@ func TestDomain_ToDomain(t *testing.T) {
 
 func TestDomain_ToDBDomain(t *testing.T) {
 	dbDom := getValidDBDomain()
-	d := ToDomain(dbDom)
+	d := ToDomain(dbDom, "APEX")
 	dbDomain := ToDBDomain(d)
 
 	require.Equal(t, dbDom.RoID, dbDomain.RoID)

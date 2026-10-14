@@ -25,7 +25,7 @@ func TestHostSuite(t *testing.T) {
 func (s *HostSuite) TestBulkCreateHosts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host1 := getValidHost("hostSuiteRar", &t)
@@ -55,7 +55,7 @@ func (s *HostSuite) TestBulkCreateHosts() {
 func (s *HostSuite) TestBulkCreateHosts_Duplicate() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host1 := getValidHost("hostSuiteRar1", &t)
@@ -105,7 +105,7 @@ func (s *HostSuite) TearDownSuite() {
 func (s *HostSuite) TestCreateHost() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -122,7 +122,7 @@ func (s *HostSuite) TestCreateHost() {
 func (s *HostSuite) TestCreateHost_Duplicate() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -141,7 +141,7 @@ func (s *HostSuite) TestCreateHost_Duplicate() {
 func (s *HostSuite) TestReadHost() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -169,7 +169,7 @@ func (s *HostSuite) TestReadHost() {
 func (s *HostSuite) TestUpdateHost() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -189,7 +189,7 @@ func (s *HostSuite) TestUpdateHost() {
 func (s *HostSuite) TestDeleteHost() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -216,7 +216,7 @@ func (s *HostSuite) TestDeleteHost() {
 func (s *HostSuite) TestListHosts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)
@@ -265,7 +265,7 @@ func (s *HostSuite) TestListHosts() {
 func (s *HostSuite) TestGetHostByNameAndClID() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewGormHostRepository(tx)
+	repo := NewGormHostRepository(tx, "APEX")
 
 	t := time.Now().UTC()
 	host := getValidHost("hostSuiteRar", &t)

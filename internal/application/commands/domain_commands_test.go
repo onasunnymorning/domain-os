@@ -45,7 +45,6 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 				Contact:    contacts,
 			},
 			cmd: &CreateDomainCommand{
-				RoID:       "12345_DOM-APEX",
 				Name:       "example.com",
 				ClID:       "test",
 				CrRr:       "test",

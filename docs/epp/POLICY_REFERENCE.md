@@ -21,11 +21,13 @@ Durations use Go syntax (`30s`, `10m`, `24h`). Every value is checked at start. 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ROID_REPOSITORY_ID` | *(required)* | The registry's EPP repository ID from IANA's [EPP Repository Identifiers](https://www.iana.org/assignments/epp-repository-ids) registry: 1 to 8 ASCII letters or digits. Every new ROID ends in it (`123_DOM-XYZ`). Read by every process that mints ROIDs (admin API, EPP server, worker, JISC import), which will not start without it. Docker Compose and Tilt set `LOCAL`, CI sets `CITEST` ([ADR 0017](../adr/0017-roid-repository-id.md)) |
+| `ROID_REPOSITORY_ID` | *(required)* | The registry's EPP repository ID from IANA's [EPP Repository Identifiers](https://www.iana.org/assignments/epp-repository-ids) registry: 1 to 8 ASCII letters or digits. Every ROID ends in it (`123_DOM-XYZ`). Read by every process that mints or shows ROIDs (admin API, EPP server, worker, whois, MCP, askg, JISC import), which will not start without it. Docker Compose and Tilt set `LOCAL`, CI sets `CITEST` ([ADR 0017](../adr/0017-roid-repository-id.md)) |
 
 How it behaves:
 - **One ID for the installation.** Contacts and hosts belong to no TLD, so a per-TLD ID would have no answer for them.
-- **Changing it affects only new objects.** An object keeps the ROID it was minted with, because each one stores its repository ID. Objects from before Phase 4d keep `APEX`, the code constant they were minted with.
+- **Only the ROID's number is stored.** The ID is appended whenever a ROID is read, so it is the same everywhere a ROID is shown.
+- **Set it once, before the first start.** The first start records it in the database. A process configured with a different ID afterwards refuses to start, because running would silently rename every object.
+- **ROIDs are always generated.** The admin API does not accept one on create, and escrow imports give every imported object a new one.
 - **Before an RST or OT&E run,** register the ID with IANA (first come, first served) and set it here. RST epp-14 checks the registration with IANA.
 
 **Listening and TLS**

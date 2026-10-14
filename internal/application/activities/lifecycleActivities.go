@@ -47,8 +47,8 @@ func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActiv
 	}
 
 	// Wire up repositories
-	domainRepo := postgres.NewDomainRepository(gormDB)
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)

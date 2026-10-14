@@ -9,7 +9,6 @@ import (
 // Domain is the GORM model for the Domain entity
 type Domain struct {
 	RoID                          int64  `gorm:"primaryKey"`
-	RoIDRepository                string `gorm:"column:ro_id_repository;not null" pg:"ro_id_repository"` // the repository ID the ROID was minted with (ADR 0017)
 	Name                          string `gorm:"uniqueIndex;not null"`
 	OriginalName                  string
 	UName                         string
@@ -54,10 +53,11 @@ func (Domain) TableName() string {
 	return "domains"
 }
 
-// ToDomain converts a Domain to a domain model *entities.Domain
-func ToDomain(dbDom *Domain) *entities.Domain {
+// ToDomain converts a Domain to a domain model *entities.Domain. Its ROID,
+// and its hosts', end in repository: the table stores only the number.
+func ToDomain(dbDom *Domain, repository entities.RepositoryID) *entities.Domain {
 	d := &entities.Domain{}
-	roidString, _ := entities.NewRoidType(dbDom.RoID, entities.RoidTypeDomain, entities.RepositoryID(dbDom.RoIDRepository))
+	roidString, _ := entities.NewRoidType(dbDom.RoID, entities.RoidTypeDomain, repository)
 	d.RoID = roidString
 	d.Name = entities.DomainName(dbDom.Name)
 	d.OriginalName = entities.DomainName(dbDom.OriginalName)
@@ -93,7 +93,7 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	}
 
 	for _, h := range dbDom.Hosts {
-		d.Hosts = append(d.Hosts, ToHost(&h))
+		d.Hosts = append(d.Hosts, ToHost(&h, repository))
 	}
 	for _, ds := range dbDom.DSRecords {
 		d.DSRecords = append(d.DSRecords, entities.DSRecord{
@@ -108,7 +108,6 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain := &Domain{}
 	dbDomain.RoID, _ = d.RoID.Int64()
-	dbDomain.RoIDRepository = d.RoID.SystemIdentifier()
 	dbDomain.Name = d.Name.String()
 	dbDomain.OriginalName = d.OriginalName.String()
 	dbDomain.UName = d.UName.String()

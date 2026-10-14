@@ -468,6 +468,7 @@ services:
         - action: rebuild
           path: ./cmd/whois
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
@@ -496,6 +497,7 @@ services:
       retries: 3
       start_period: 5s
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}

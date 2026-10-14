@@ -151,14 +151,14 @@ func main() {
 		return
 	}
 
-	// Both the API and the seed mint ROIDs, so neither starts without the
-	// registry's repository ID (ADR 0017). init-registrars and migrate mint
-	// none and do not need it.
+	// Both the API and the seed mint and show ROIDs, so neither starts
+	// without the registry's repository ID (ADR 0017). init-registrars and
+	// migrate do neither and do not need it.
 	repositoryID, err := sharedconfig.LoadRepositoryID()
 	if err != nil {
 		logger.Fatal("Refusing to start", zap.Error(err))
 	}
-	logger.Info("Minting ROIDs with repository ID", zap.String("repository_id", repositoryID.String()))
+	logger.Info("ROID repository ID", zap.String("repository_id", repositoryID.String()))
 
 	// Check for seed command. Unlike init-registrars, this reaches no network:
 	// it is the local-development path and must work fully offline.
@@ -230,6 +230,9 @@ func main() {
 		// failures in this function.
 		logger.Fatal("Refusing to start: schema guard", zap.Error(err))
 	}
+	if err := postgres.CheckRepositoryID(context.Background(), gormDB, repositoryID); err != nil {
+		logger.Fatal("Refusing to start: ROID repository ID", zap.Error(err))
+	}
 
 	// Set up EventPublisher (PostgreSQL outbox)
 	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
@@ -292,14 +295,14 @@ func main() {
 		appservices.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
 	)
 	// Contacts
-	contactRepo := postgres.NewContactRepository(gormDB)
+	contactRepo := postgres.NewContactRepository(gormDB, repositoryID)
 	contactService := appservices.NewContactService(contactRepo, *roidService, eventPublisher)
 	// Hosts
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
 	hostService := appservices.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	// Domains
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	domainService := appservices.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 
 	// Domain Tombstones — archival records for purged domains

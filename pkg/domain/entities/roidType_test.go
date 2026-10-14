@@ -82,8 +82,8 @@ func TestNewRepositoryID(t *testing.T) {
 	}
 }
 
-// TestRoidType_IsIssuedHere_AnyRepositoryID pins that an object minted under
-// an earlier repository ID is still this registry's own.
+// TestRoidType_IsIssuedHere_AnyRepositoryID pins that IsIssuedHere goes by
+// shape and does not look at the repository ID.
 func TestRoidType_IsIssuedHere_AnyRepositoryID(t *testing.T) {
 	require.True(t, RoidType("1_DOM-APEX").IsIssuedHere())
 	require.True(t, RoidType("1_DOM-NEWID").IsIssuedHere())

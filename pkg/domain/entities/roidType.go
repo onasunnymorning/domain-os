@@ -38,6 +38,10 @@ var (
 	ErrInvalidRoid             = errors.New("invalid roid")
 	ErrInvalidObjectIdentifier = errors.New("invalid object identifier: accepts ('contact', 'host', 'domain') only")
 	ErrInvalidRepositoryID     = errors.New("invalid repository ID: 1 to 8 ASCII letters or digits")
+	// ErrRepositoryIDChanged is a configured repository ID that differs from
+	// the one the installation's ROIDs were issued with. Only the number of a
+	// ROID is stored, so running with it would rename every object.
+	ErrRepositoryIDChanged = errors.New("repository ID differs from the one this installation's ROIDs were issued with")
 )
 
 // RepositoryID is the EPP repository identifier this registry mints ROIDs
@@ -75,8 +79,8 @@ func (r RepositoryID) String() string {
 type RoidType string
 
 // NewRoidType creates a new instance of RoidType based on a snowflake ID +
-// object identifier + repository ID. The repository ID is the one the object
-// was minted with: an object keeps its ROID when the configured ID changes.
+// object identifier + repository ID. Storage keeps only the number, and the
+// installation's repository ID is appended again on every read (ADR 0017).
 func NewRoidType(uniqueID int64, objectIdentifier string, repository RepositoryID) (RoidType, error) {
 	var object string
 	switch objectIdentifier {
@@ -116,8 +120,7 @@ var roidPattern = regexp.MustCompile(ROID_REGEX)
 
 // IsIssuedHere reports whether the roid has the shape this registry mints:
 // {id}_{objectIdentifier}-{systemIdentifier}, with an object identifier this
-// registry uses. It does not look at the repository ID: objects minted before
-// the configured ID changed are this registry's too. It is false for any conformant roid from another registry,
+// registry uses. It does not look at the repository ID. It is false for any conformant roid from another registry,
 // so a caller can hold its own objects to the local convention without
 // holding a deposit's objects to it.
 func (r RoidType) IsIssuedHere() bool {

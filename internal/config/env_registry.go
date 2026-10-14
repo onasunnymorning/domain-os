@@ -87,9 +87,10 @@ var Registry = []EnvVar{
 	// ═══════════════════════════════════════════
 	// REGISTRY IDENTITY
 	// ═══════════════════════════════════════════
-	// Every process that mints ROIDs reads it, and refuses to start without it
-	// (ADR 0017). The read-only processes (mcp, whois) never mint one.
-	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceCLI}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits, the suffix of every new ROID (e.g. 123_DOM-XYZ). Objects keep the ROID they were minted with, so changing it affects only new objects. Any value will do for local development"},
+	// Every process that mints or shows ROIDs reads it, and refuses to start
+	// without it, or with one other than the installation recorded on its
+	// first start (ADR 0017).
+	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceMCP, ServiceWhois, ServiceCLI}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits. Every ROID ends in it (e.g. 123_DOM-XYZ): only the number is stored, and the ID is appended when a ROID is read. Set it once, before the first start: the database records it then, and a process configured with a different one refuses to start. Any value will do for local development"},
 
 	// ═══════════════════════════════════════════
 	// API SERVER

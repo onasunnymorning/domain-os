@@ -106,7 +106,7 @@ func (s *TLDCleanupWorkflowTestSuite) seedTestData() {
 	s.db.Create(&sharedContact)
 
 	// Create an orphaned contact with explicitly NULL name_int to test the scanning bugfix
-	s.db.Exec(`INSERT INTO contacts (id, ro_id, ro_id_repository, name_int, auth_info) VALUES ('C2', 101, 'APEX', NULL, 'test-auth')`)
+	s.db.Exec(`INSERT INTO contacts (id, ro_id, name_int, auth_info) VALUES ('C2', 101, NULL, 'test-auth')`)
 	orphanContactID := "C2"
 
 	// Seed hosts

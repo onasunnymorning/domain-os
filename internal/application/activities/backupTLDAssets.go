@@ -88,7 +88,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 			}
 			for _, d := range dbDomains {
 				count++
-				if err := encoder.Encode(BackupItem{Type: "Domain", Entity: postgres.ToDomain(&d)}); err != nil {
+				if err := encoder.Encode(BackupItem{Type: "Domain", Entity: postgres.ToDomain(&d, a.Repository)}); err != nil {
 					return err
 				}
 			}
@@ -107,7 +107,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 			}
 			for _, c := range dbContacts {
 				count++
-				if err := encoder.Encode(BackupItem{Type: "Contact", Entity: postgres.FromDBContact(&c)}); err != nil {
+				if err := encoder.Encode(BackupItem{Type: "Contact", Entity: postgres.FromDBContact(&c, a.Repository)}); err != nil {
 					return err
 				}
 			}
@@ -126,7 +126,7 @@ func (a *TLDCleanupActivities) BackupTLDAssets(ctx context.Context, args BackupT
 			}
 			for _, h := range dbHosts {
 				count++
-				if err := encoder.Encode(BackupItem{Type: "Host", Entity: postgres.ToHost(&h)}); err != nil {
+				if err := encoder.Encode(BackupItem{Type: "Host", Entity: postgres.ToHost(&h, a.Repository)}); err != nil {
 					return err
 				}
 			}

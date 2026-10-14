@@ -66,7 +66,7 @@ func TestToDBContact(t *testing.T) {
 
 	dbContact := ToDBContact(c)
 
-	c2 := FromDBContact(dbContact)
+	c2 := FromDBContact(dbContact, "APEX")
 
 	require.Equal(t, c, c2)
 

@@ -14,12 +14,15 @@ import (
 
 // ContactRepository implements the ContactRepository interface
 type ContactRepository struct {
-	db *gorm.DB
+	db         *gorm.DB
+	repository entities.RepositoryID
 }
 
-// NewContactRepository creates a new ContactRepository
-func NewContactRepository(db *gorm.DB) *ContactRepository {
-	return &ContactRepository{db}
+// NewContactRepository creates a new ContactRepository.
+// The repository stores a ROID's number only; it reads it back with
+// repository, the installation's repository ID (ADR 0017).
+func NewContactRepository(db *gorm.DB, repository entities.RepositoryID) *ContactRepository {
+	return &ContactRepository{db: db, repository: repository}
 }
 
 // CreateContact creates a new contact
@@ -35,7 +38,7 @@ func (r *ContactRepository) CreateContact(ctx context.Context, c *entities.Conta
 		return nil, err
 	}
 
-	return FromDBContact(dbContact), nil
+	return FromDBContact(dbContact, r.repository), nil
 }
 
 // BulkCreate creates multiple contacts at once
@@ -60,7 +63,7 @@ func (r *ContactRepository) GetContactByID(ctx context.Context, id string) (*ent
 		return nil, err
 	}
 
-	return FromDBContact(dbContact), nil
+	return FromDBContact(dbContact, r.repository), nil
 }
 
 // UpdateContact updates a contact in the database
@@ -72,7 +75,7 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Conta
 		return nil, err
 	}
 
-	return FromDBContact(dbContact), nil
+	return FromDBContact(dbContact, r.repository), nil
 }
 
 // DeleteContactByID deletes a contact from the database
@@ -135,7 +138,7 @@ func (r *ContactRepository) ListContacts(ctx context.Context, params queries.Lis
 	// Map the results to entities
 	contacts := make([]*entities.Contact, len(dbContacts))
 	for i, c := range dbContacts {
-		contacts[i] = FromDBContact(c)
+		contacts[i] = FromDBContact(c, r.repository)
 	}
 
 	// Set the next page cursor

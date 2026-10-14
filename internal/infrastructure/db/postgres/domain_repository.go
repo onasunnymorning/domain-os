@@ -16,12 +16,15 @@ import (
 
 // DomainRepository is the postgres implementation of the DomainRepository Interface
 type DomainRepository struct {
-	db *gorm.DB
+	db         *gorm.DB
+	repository entities.RepositoryID
 }
 
-// NewDomainRepository creates a new DomainRepository
-func NewDomainRepository(db *gorm.DB) *DomainRepository {
-	return &DomainRepository{db}
+// NewDomainRepository creates a new DomainRepository.
+// The repository stores a ROID's number only; it reads it back with
+// repository, the installation's repository ID (ADR 0017).
+func NewDomainRepository(db *gorm.DB, repository entities.RepositoryID) *DomainRepository {
+	return &DomainRepository{db: db, repository: repository}
 }
 
 // orderDS keeps a domain's DS records in the order they were written.
@@ -38,7 +41,7 @@ func (dr *DomainRepository) Create(ctx context.Context, d *entities.Domain) (*en
 		}
 		return nil, err
 	}
-	return ToDomain(dbDomain), nil
+	return ToDomain(dbDomain, dr.repository), nil
 }
 
 // Bulk Create Creates multiple domains in the repository, useful when importing data. Does not persist Hosts if present
@@ -65,7 +68,7 @@ func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64, preload
 		}
 		return nil, err
 	}
-	return ToDomain(d), err
+	return ToDomain(d, dr.repository), err
 }
 
 // GetDomainByName retrieves a domain from the database by its name it returns ErrDomainNotFound if the domain does not exist
@@ -83,7 +86,7 @@ func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, pr
 		}
 		return nil, err
 	}
-	return ToDomain(d), nil
+	return ToDomain(d, dr.repository), nil
 }
 
 // GetDomainsByNames retrieves multiple domains from the database by their names.
@@ -104,7 +107,7 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 
 	result := make([]*entities.Domain, len(dbDomains))
 	for i := range dbDomains {
-		result[i] = ToDomain(&dbDomains[i])
+		result[i] = ToDomain(&dbDomains[i], dr.repository)
 	}
 	return result, nil
 }
@@ -139,7 +142,7 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 	if res.RowsAffected == 0 {
 		return nil, entities.ErrDomainNotFound
 	}
-	return ToDomain(dbDomain), nil
+	return ToDomain(dbDomain, dr.repository), nil
 }
 
 // DeleteDomainByID deletes a domain by its roid, within scope. A domain that
@@ -216,7 +219,7 @@ func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.List
 	// Map the DBDomains to Domains
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
-		domains[i] = ToDomain(d)
+		domains[i] = ToDomain(d, dr.repository)
 	}
 
 	// Set the cursor to the last element if needed
@@ -403,14 +406,14 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
 
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
-		domains[i] = ToDomain(d)
+		domains[i] = ToDomain(d, dr.repository)
 	}
 
 	return domains, nil
@@ -437,14 +440,14 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
 
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
-		domains[i] = ToDomain(d)
+		domains[i] = ToDomain(d, dr.repository)
 	}
 
 	return domains, nil
@@ -473,14 +476,14 @@ func (dr *DomainRepository) ListRestoredDomains(ctx context.Context, pagesize in
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
 
 	domains := make([]*entities.Domain, len(dbDomains))
 	for i, d := range dbDomains {
-		domains[i] = ToDomain(d)
+		domains[i] = ToDomain(d, dr.repository)
 	}
 
 	return domains, nil

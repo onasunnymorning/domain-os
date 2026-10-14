@@ -43,7 +43,7 @@ print('local stack: %s (compose project "%s", temporal state in %s)' % (local_st
 DOPPLER_NATIVE = 'doppler run --config dev_personal --'
 DOPPLER_DOCKER = 'doppler run --'
 
-# Every process that mints ROIDs refuses to start without ROID_REPOSITORY_ID
+# Every process that mints or shows ROIDs refuses to start without ROID_REPOSITORY_ID
 # (ADR 0017). Locally any value will do: this keeps the one set in Doppler and
 # falls back to LOCAL, so a fresh dev_personal config still starts.
 WITH_LOCAL_ROID = "sh -c 'ROID_REPOSITORY_ID=\"${ROID_REPOSITORY_ID:-LOCAL}\" exec \"$@\"' sh"
@@ -130,7 +130,7 @@ else:
 
     local_resource(
         'whois',
-        serve_cmd=DOPPLER_NATIVE + ' go run ./cmd/whois',
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' go run ./cmd/whois',
         deps=['./internal', './pkg', './cmd/whois'],
         labels=['app'],
         auto_init=False,
@@ -146,7 +146,7 @@ else:
 
     local_resource(
         'mcp-server',
-        serve_cmd=DOPPLER_NATIVE + ' MCP_TRANSPORT=http MCP_PORT=3001 go run ./cmd/mcp',
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' env MCP_TRANSPORT=http MCP_PORT=3001 go run ./cmd/mcp',
         deps=['./internal', './pkg', './cmd/mcp'],
         labels=['app'],
         resource_deps=['db'],

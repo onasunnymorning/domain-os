@@ -79,7 +79,7 @@ func (s *RegistryScopeSuite) TearDownSuite() {
 func (s *RegistryScopeSuite) TestDomainDeleteIsConfinedToTheOperator() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 	ctx := context.Background()
 
 	d, err := entities.NewDomain("7101_DOM-APEX", "kept."+rsOwnerTLD, rsRar, "STr0mgP@ZZ")
@@ -151,6 +151,6 @@ func (s *RegistryScopeSuite) TestTLDDeleteIsConfinedToTheOperator() {
 // A zero scope is not "everything": the repository refuses it outright.
 func (s *RegistryScopeSuite) TestZeroScopeIsRefused() {
 	ctx := context.Background()
-	s.Require().ErrorIs(NewDomainRepository(s.db).DeleteDomainByName(ctx, entities.RegistryScope{}, "kept."+rsOwnerTLD), entities.ErrInvalidRegistryScope)
+	s.Require().ErrorIs(NewDomainRepository(s.db, "APEX").DeleteDomainByName(ctx, entities.RegistryScope{}, "kept."+rsOwnerTLD), entities.ErrInvalidRegistryScope)
 	s.Require().ErrorIs(NewGormTLDRepo(s.db).DeleteByName(ctx, entities.RegistryScope{}, rsOwnerTLD), entities.ErrInvalidRegistryScope)
 }

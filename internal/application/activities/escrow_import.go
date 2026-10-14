@@ -2155,17 +2155,9 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 
 			cmd := &commands.CreateContactCommand{
 				ID:       id.String,
-				RoID:     roid.String,
 				Email:    email.String,
 				AuthInfo: authInfo.String(),
 				ClID:     mappedClID,
-			}
-			// If RoID is present but invalid or not a CONTACT RoID, clear it to auto-generate a valid one.
-			if strings.TrimSpace(cmd.RoID) != "" {
-				r := entities.RoidType(cmd.RoID)
-				if err := r.Validate(); err != nil || r.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-					cmd.RoID = ""
-				}
 			}
 			if voice.Valid {
 				cmd.Voice = voice.String

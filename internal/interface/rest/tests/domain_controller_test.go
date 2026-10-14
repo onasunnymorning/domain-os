@@ -71,7 +71,6 @@ var _ = Describe("DomainController", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		contactCmd := &commands.CreateContactCommand{
 			ID:       contactID,
-			RoID:     "99999_CONT-APEX",
 			Email:    "domtest@example.com",
 			AuthInfo: "str0NGP@ZZw0rd",
 			ClID:     registrarClID,

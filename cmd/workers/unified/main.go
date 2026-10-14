@@ -15,6 +15,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
@@ -25,14 +26,15 @@ func main() {
 	// Refuse to run activities against a schema older than this build. The
 	// worker opens its real connections inside activities, so this check gets
 	// a short-lived connection of its own, before anything polls a queue.
-	checkSchema()
-	// The lifecycle and escrow-import activities mint ROIDs, so the worker
-	// does not start without the registry's repository ID (ADR 0017).
+	// The lifecycle, TLD-cleanup and escrow-import activities mint or show
+	// ROIDs, so the worker does not start without the installation's
+	// repository ID (ADR 0017).
 	repositoryID, err := config.LoadRepositoryID()
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
-	log.Printf("unified-worker minting ROIDs with repository ID %s", repositoryID)
+	checkSchema(repositoryID)
+	log.Printf("unified-worker ROID repository ID %s", repositoryID)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 
@@ -279,7 +281,7 @@ func main() {
 	}
 
 	// TLD Cleanup Activities (Heavy Batch + Drain Data)
-	tldActs, err := activities.NewTLDCleanupActivities()
+	tldActs, err := activities.NewTLDCleanupActivities(repositoryID)
 	if err != nil {
 		log.Printf("WARNING: TLD cleanup activities not available (DB/S3 not configured): %v", err)
 	} else {
@@ -377,12 +379,17 @@ func newEscrowIntakeActivities() (*activities.EscrowIntakeActivities, error) {
 	})
 }
 
-func checkSchema() {
+func checkSchema(repositoryID entities.RepositoryID) {
 	db, err := postgres.NewConnectionFromEnv()
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
 	}
 	guardErr := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf)
+	if guardErr == nil {
+		if guardErr = postgres.CheckRepositoryID(context.Background(), db, repositoryID); guardErr != nil {
+			log.Printf("Refusing to start: %v", guardErr)
+		}
+	}
 	// Close explicitly rather than with defer: the refusal path exits, and a
 	// deferred close would never run.
 	if sqlDB, err := db.DB(); err == nil {
