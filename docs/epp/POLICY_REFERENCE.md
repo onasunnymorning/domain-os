@@ -178,7 +178,7 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 | The same DS record twice | 2306 |
 | An authorization password that breaks the registry's rules | 2306 |
 
-Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID ends in the configured repository ID, `ROID_REPOSITORY_ID` (below).
+Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID ends in the configured repository ID, `ROID_REPOSITORY_ID` (above, under Registry identity).
 
 **DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`) until the policy engine (Phase 5):
 

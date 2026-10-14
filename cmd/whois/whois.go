@@ -44,8 +44,9 @@ func main() {
 		err = postgres.CheckRepositoryID(ctx, db, repositoryID)
 	}
 	if err != nil {
+		// Exit non-zero, so a supervisor sees a failed start, not a clean one.
 		log.Printf("Refusing to start: %v", err)
-		return
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: nothing deferred so far needs to run; the signal context is released by exit
 	}
 	domRepo := postgres.NewDomainRepository(db, repositoryID)
 	rarRepo := postgres.NewGormRegistrarRepository(db)

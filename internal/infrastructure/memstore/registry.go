@@ -2,7 +2,6 @@ package memstore
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -100,7 +99,11 @@ func (r *Registry) AddHost(name, clid string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
-	h, err := entities.NewHost(name, fmt.Sprintf("%d_HOST-TEST", r.nextID), clid)
+	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeHost, r.repository)
+	if err != nil {
+		panic(err) // a fixture's own mistake
+	}
+	h, err := entities.NewHost(name, roid.String(), clid)
 	if err != nil {
 		panic(err) // a fixture's own mistake
 	}
