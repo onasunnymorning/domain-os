@@ -22,6 +22,20 @@ type EPPCreateDomainCommand struct {
 	// attributes (<domain:hostAttr>).
 	HostAttributes bool
 	AuthInfo       string
+	// DNSSEC (RFC 5910), from a <secDNS:create> extension: the DS records
+	// given; MaxSigLife if one was given (0 if not); and whether the key
+	// data interface was used instead of DS data.
+	DSData     []EPPDSData
+	MaxSigLife int
+	KeyData    bool
+}
+
+// EPPDSData is one <secDNS:dsData>.
+type EPPDSData struct {
+	KeyTag     int
+	Algorithm  int
+	DigestType int
+	Digest     string
 }
 
 // EPPDomainContact is one <domain:contact>.

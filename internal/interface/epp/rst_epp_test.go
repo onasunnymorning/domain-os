@@ -15,6 +15,7 @@ package epp
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net"
 	"os"
 	"regexp"
@@ -296,7 +297,7 @@ func TestRST_epp02_ProtocolConformance(t *testing.T) {
 	}
 
 	t.Run("epp-02/7 secDNS-1.1 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "DNSSEC phase: DS records end to end (data model, zones, escrow, RDAP), then RFC 5910 on create/update/info")
+		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "DNSSEC (RFC 5910) is offered: this should not be pending")
 	})
 	t.Run("epp-02/7 rgp-1.0 extURI", func(t *testing.T) {
 		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "RGP (RFC 3915) is offered: this should not be pending")
@@ -492,7 +493,7 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 	creds.domains.registry.Accredit(testRegistrar, "thin")
 	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
 	c := dial(t, ts.addr)
-	c.login()
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{nsSecDNS})), "1000")
 
 	refused := func(t *testing.T, frame string) {
 		t.Helper()
@@ -519,7 +520,15 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 		requireCode(t, c.roundTrip(createXML("withns.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj></domain:ns>`})), "1000")
 	})
 	t.Run("epp-14 invalid DNSSEC data refused", func(t *testing.T) {
-		rstPending(t, "DNSSEC phase: secDNS is not offered yet, so a create carrying it is refused with 2103 rather than validated")
+		for _, ds := range []string{
+			fmt.Sprintf(`<secDNS:dsData><secDNS:keyTag>70000</secDNS:keyTag><secDNS:alg>13</secDNS:alg><secDNS:digestType>2</secDNS:digestType><secDNS:digest>%s</secDNS:digest></secDNS:dsData>`, testDigest), // key tag
+			dsDataXML(2371, 100, 2, testDigest),           // algorithm
+			dsDataXML(2371, 13, 99, testDigest),           // digest type
+			dsDataXML(2371, 13, 2, testDigest[:62]),       // malformed digest
+			dsDataXML(2371, 13, 2, testDigest[:61]+"XYZ"), // not hex
+		} {
+			refused(t, createXML("dnssec-bad.test", createOpts{ext: secDNSCreate(ds)}))
+		}
 	})
 	t.Run("epp-14 non-existent registrant refused", func(t *testing.T) {
 		refused(t, createXML("noreg1.test", createOpts{contacts: `<domain:registrant>rst-nobody</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact>`}))
@@ -536,7 +545,7 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 	})
 
 	t.Run("epp-14 both registrars create domains", func(t *testing.T) {
-		requireCode(t, c.roundTrip(createXML("rst-one.test", createOpts{})), "1000")
+		requireCode(t, c.roundTrip(createXML("rst-one.test", createOpts{ext: secDNSCreate(dsDataXML(2371, 13, 2, testDigest))})), "1000")
 		c2 := dial(t, ts.addr)
 		requireCode(t, c2.roundTrip(loginAsXML("registrar2", "secret-pw-02", "", "RST-14")), "1000")
 		requireCode(t, c2.roundTrip(createXML("rst-two.test", createOpts{contacts: `<domain:registrant>registrar2-c1</domain:registrant><domain:contact type="tech">registrar2-c2</domain:contact>`})), "1000")
@@ -566,7 +575,12 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 		assert.Equal(t, testRegistrar, text(info, "//infData/clID"))
 	})
 	t.Run("epp-14 info: DNSSEC data present and correct", func(t *testing.T) {
-		rstPending(t, "DNSSEC phase: DS records end to end, then RFC 5910 on create and info")
+		ds := info.FindElement("//extension/infData/dsData")
+		require.NotNil(t, ds)
+		assert.Equal(t, "2371", ds.SelectElement("keyTag").Text())
+		assert.Equal(t, "13", ds.SelectElement("alg").Text())
+		assert.Equal(t, "2", ds.SelectElement("digestType").Text())
+		assert.Equal(t, testDigest, ds.SelectElement("digest").Text())
 	})
 }
 

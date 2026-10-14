@@ -123,6 +123,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		Name: "epp." + tld, Period: 3, PeriodUnit: "y", RegistrantID: "c" + rar1,
 		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
 		HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: "Domain-Auth-1!",
+		DSData: []commands.EPPDSData{{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"}},
 	}
 
 	t.Run("a registrar not accredited for the TLD is refused", func(t *testing.T) {
@@ -149,6 +150,14 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		assert.Equal(t, "ns1."+rar1+".net", d.Hosts[0].Name.String())
 		assert.WithinDuration(t, d.CreatedAt.AddDate(3, 0, 0), d.ExpiryDate, time.Second)
 		assert.True(t, time.Now().Before(d.RGPStatus.AddPeriodEnd), "in its add grace period")
+		require.Len(t, d.DSRecords, 1, "with its DS record")
+		assert.Equal(t, uint16(2371), d.DSRecords[0].KeyTag)
+	})
+	t.Run("its DS record is published with the TLD's delegations", func(t *testing.T) {
+		rrs, err := registry.GetDSRecordsPerTLD(ctx, tld)
+		require.NoError(t, err)
+		require.Len(t, rrs, 1)
+		assert.Contains(t, rrs[0].String(), "epp."+tld+".\t3600\tIN\tDS\t2371 13 2 49FD46E6")
 	})
 	t.Run("a second create of the name is refused as existing", func(t *testing.T) {
 		_, err := svc.Create(ctx, scope1, create)
@@ -156,7 +165,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	})
 	t.Run("another registrar cannot read it", func(t *testing.T) {
 		_, err := svc.Info(ctx, scope2, create.Name)
-		require.ErrorIs(t, err, ErrEPPNotSponsor)
+		require.ErrorIs(t, err, entities.ErrEPPNotSponsor)
 	})
 	t.Run("its registration event does not carry the authInfo (#484)", func(t *testing.T) {
 		var rows []struct{ Command, BeforeState, AfterState, Data string }

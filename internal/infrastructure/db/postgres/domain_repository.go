@@ -24,7 +24,10 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 	return &DomainRepository{db}
 }
 
-// Create creates a new domain in the database
+// orderDS keeps a domain's DS records in the order they were written.
+func orderDS(db *gorm.DB) *gorm.DB { return db.Order("domain_ds_records.id") }
+
+// Create creates a new domain in the database, with its DS records
 func (dr *DomainRepository) Create(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
 	err := dr.db.WithContext(ctx).Create(dbDomain).Error
@@ -44,7 +47,7 @@ func (r *DomainRepository) BulkCreate(ctx context.Context, doms []*entities.Doma
 	for i, dom := range doms {
 		dbdoms[i] = ToDBDomain(dom)
 	}
-	return r.db.WithContext(ctx).Omit("Hosts").Create(dbdoms).Error // We omit Hosts as we manage these through the Host linking functions
+	return r.db.WithContext(ctx).Omit("Hosts").Create(dbdoms).Error // We omit Hosts as we manage these through the Host linking functions; DS records are written with their domain
 }
 
 // GetDomainByID retrieves a domain from the database by its ID
@@ -52,9 +55,9 @@ func (dr *DomainRepository) GetDomainByID(ctx context.Context, id int64, preload
 	var err error
 	d := &Domain{}
 	if preloadHosts {
-		err = dr.db.WithContext(ctx).Preload("Hosts").First(d, id).Error
+		err = dr.db.WithContext(ctx).Preload("Hosts").Preload("DSRecords", orderDS).First(d, id).Error
 	} else {
-		err = dr.db.WithContext(ctx).First(d, id).Error
+		err = dr.db.WithContext(ctx).Preload("DSRecords", orderDS).First(d, id).Error
 	}
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -70,9 +73,9 @@ func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, pr
 	var err error
 	d := &Domain{}
 	if preloadHosts {
-		err = dr.db.WithContext(ctx).Preload("Hosts").Where("name = ?", name).First(d).Error
+		err = dr.db.WithContext(ctx).Preload("Hosts").Preload("DSRecords", orderDS).Where("name = ?", name).First(d).Error
 	} else {
-		err = dr.db.WithContext(ctx).Where("name = ?", name).First(d).Error
+		err = dr.db.WithContext(ctx).Preload("DSRecords", orderDS).Where("name = ?", name).First(d).Error
 	}
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -91,7 +94,7 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 	}
 
 	var dbDomains []Domain
-	q := dr.db.WithContext(ctx)
+	q := dr.db.WithContext(ctx).Preload("DSRecords", orderDS)
 	if preloadHosts {
 		q = q.Preload("Hosts")
 	}
@@ -112,7 +115,8 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 // it when no row matches, so a stale or hand-built entity could create a domain
 // through an update path, and it writes the Hosts association too — links have
 // their own methods (AddHostToDomain, RemoveHostFromDomain) and do not belong
-// in a column update.
+// in a column update. DS records are left alone for the same reason: a column
+// update never adds or drops one.
 //
 // The tld_name in the WHERE is the #415 guard: an entity whose TLDName has been
 // changed away from the row's own TLD matches nothing and is reported as
@@ -127,7 +131,7 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 		Model(&Domain{}).
 		Where("ro_id = ? AND tld_name = ?", dbDomain.RoID, dbDomain.TLDName).
 		Select("*").
-		Omit("Hosts").
+		Omit("Hosts", "DSRecords").
 		Updates(dbDomain)
 	if res.Error != nil {
 		return nil, res.Error
@@ -168,7 +172,7 @@ func (dr *DomainRepository) DeleteDomainByName(ctx context.Context, scope entiti
 // a new cursor is set to the ro_id of the last returned domain, enabling further pagination.
 func (dr *DomainRepository) ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error) {
 	// Create a query and order by our pk
-	dbQuery := dr.db.WithContext(ctx).Order("ro_id ASC")
+	dbQuery := dr.db.WithContext(ctx).Preload("DSRecords", orderDS).Order("ro_id ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
@@ -268,6 +272,42 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, param
 	}
 
 	return response, nil
+}
+
+// GetActiveDomainDS returns the DS records of the TLD's delegated domains:
+// active, not pending delete, and linked to at least one nameserver. The
+// link is checked itself, not inferred from the inactive flag, which is
+// written separately from it: a DS record is only meaningful beside an NS.
+func (dr *DomainRepository) GetActiveDomainDS(ctx context.Context, tld string) ([]dns.RR, error) {
+	var rows []struct {
+		Domain     string
+		KeyTag     int
+		Algorithm  int
+		DigestType int
+		Digest     string
+	}
+	err := dr.db.WithContext(ctx).Raw(`
+		SELECT dom.name AS domain, ds.key_tag, ds.algorithm, ds.digest_type, ds.digest
+		FROM public.domains dom
+		JOIN domain_ds_records ds ON ds.domain_ro_id = dom.ro_id
+		WHERE dom.tld_name = ?
+		AND COALESCE(dom.inactive, false) = false
+		AND COALESCE(dom.pending_delete, false) = false
+		AND EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.domain_ro_id = dom.ro_id)
+		ORDER BY dom.name, ds.id
+	`, tld).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dns.RR, 0, len(rows))
+	for _, r := range rows {
+		rr, err := dns.NewRR(fmt.Sprintf("%s. 3600 IN DS %d %d %d %s", r.Domain, r.KeyTag, r.Algorithm, r.DigestType, r.Digest))
+		if err != nil {
+			return nil, fmt.Errorf("DS record of %s: %w", r.Domain, err)
+		}
+		out = append(out, rr)
+	}
+	return out, nil
 }
 
 // GlueQueryResult is a struct to hold the results of a query for glue records

@@ -226,6 +226,8 @@ var mutationValues = []string{
 	"v4", "v6", "v5", "192.0.2.1", "2001:db8::1", "12", "120", "y m",
 	"http://h:ab/", "a%zz", "a%2f", "urn:x y", ":x", "a:b", "1a:b", "x/y:z", "http://[::1]/", "?a:b", "#frag",
 	"http://u:p@h:80/x", "http://h:/", "http://[::1]:x/", "//h:9", "//h:z", "a://h:1:2/", "//[::1]:", "//[::1]:8", "//u@h:7?q", "a:/h:x",
+	"255", "256", "-0", "+5", "2147483647", "2147483648", "-2147483648",
+	"AB", "ABC", "abcd", "0g", "QUJD", "QUJDRA==", "QUJD RA==", "QUJDRA=", "Q===", "====", "QQ==\n", "QR==", "QUI=", "QUJ=", "Q=Q=", "QQ=a", "Q Q = =", "!!!!QUJD",
 	"1_DOM-APEX", "1-ABCDEFGHI", "-APEX", "a b-APEX", "x\u00e9_1-R\u00e9P",
 }
 

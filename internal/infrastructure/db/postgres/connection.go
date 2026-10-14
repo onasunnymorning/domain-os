@@ -32,6 +32,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Host{},
 		&HostAddress{},
 		&Domain{},
+		&DomainDSRecord{},
 		&PremiumList{},
 		&PremiumLabel{},
 		&FX{},

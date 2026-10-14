@@ -161,6 +161,9 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 	}
 	d.GrandFathering = cmd.GrandFathering
 	d.RenewedYears = cmd.RenewedYears
+	if err := d.SetDSRecords(cmd.DSRecords); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
 
 	// Check if the domain is valid
 	if err := d.Validate(); err != nil {
@@ -1188,6 +1191,10 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
+	if err := dom.SetDSRecords(cmd.DSRecords); err != nil {
+		return nil, err
+	}
+
 	// Add the hosts if there are any
 	for _, h := range cmd.HostNames {
 		// Lookup the host
@@ -1690,6 +1697,11 @@ func (s *DomainService) GetNSRecordsPerTLD(ctx context.Context, params queries.A
 		return nil, err
 	}
 	return response, nil
+}
+
+// GetDSRecordsPerTLD gets the DS records of a TLD's delegated domains
+func (s *DomainService) GetDSRecordsPerTLD(ctx context.Context, tld string) ([]dns.RR, error) {
+	return s.domainRepository.GetActiveDomainDS(ctx, tld)
 }
 
 // GetGlueRecordsPerTLD gets Glue records for a TLD

@@ -151,6 +151,41 @@ var DomainCreate = &Element{NS: NSDomain, Name: "create", Content: Seq{
 	authInfoType(0),
 }}
 
+// Models of secDNS-1.1.xsd (RFC 5910) for <secDNS:create>.
+var (
+	unsignedShort = &Simple{Base: UnsignedShort}
+	unsignedByte  = &Simple{Base: UnsignedByte}
+	// secDNS:maxSigLifeType
+	maxSigLifeType = &Simple{Base: Int, MinInclusive: 1, MaxInclusive: 2147483647, HasRange: true}
+	// secDNS:keyType
+	keyType = &Simple{Base: Base64Binary, MinLen: 1}
+)
+
+// secDNSKeyData is secDNS:keyDataType.
+func secDNSKeyData(min, max int) *Element {
+	return &Element{NS: NSSecDNS, Name: "keyData", Min: min, Max: max, Content: Seq{
+		&Element{NS: NSSecDNS, Name: "flags", Simple: unsignedShort},
+		&Element{NS: NSSecDNS, Name: "protocol", Simple: unsignedByte},
+		&Element{NS: NSSecDNS, Name: "alg", Simple: unsignedByte},
+		&Element{NS: NSSecDNS, Name: "pubKey", Simple: keyType},
+	}}
+}
+
+// SecDNSCreate is <secDNS:create>, secDNS:dsOrKeyType.
+var SecDNSCreate = &Element{NS: NSSecDNS, Name: "create", Content: Seq{
+	&Element{NS: NSSecDNS, Name: "maxSigLife", Min: Optional, Simple: maxSigLifeType},
+	Choice{Alts: []Particle{
+		&Element{NS: NSSecDNS, Name: "dsData", Max: Unbounded, Content: Seq{ // secDNS:dsDataType
+			&Element{NS: NSSecDNS, Name: "keyTag", Simple: unsignedShort},
+			&Element{NS: NSSecDNS, Name: "alg", Simple: unsignedByte},
+			&Element{NS: NSSecDNS, Name: "digestType", Simple: unsignedByte},
+			&Element{NS: NSSecDNS, Name: "digest", Simple: &Simple{Base: HexBinary}},
+			secDNSKeyData(Optional, 0),
+		}},
+		secDNSKeyData(0, Unbounded),
+	}},
+}}
+
 // Globals are the declarations wildcards may resolve to: the object
-// commands the server validates.
-var Globals = []*Element{DomainCheck, DomainInfo, DomainCreate}
+// commands and extensions the server validates.
+var Globals = []*Element{DomainCheck, DomainInfo, DomainCreate, SecDNSCreate}

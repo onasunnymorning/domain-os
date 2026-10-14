@@ -22,6 +22,9 @@ type DomainRepository interface {
 	RemoveHostFromDomain(ctx context.Context, domRoid int64, hostRoid int64) error
 	GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
+	// GetActiveDomainDS returns the DS records of the TLD's delegated
+	// domains: active, not pending delete, with at least one nameserver.
+	GetActiveDomainDS(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountExpiringDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
@@ -105,6 +108,12 @@ func (m *MockDomainRepository) GetActiveDomainsWithHosts(ctx context.Context, pa
 
 // GetActiveDomainGlue retrieves active domain glue
 func (m *MockDomainRepository) GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error) {
+	args := m.Called(ctx, tld)
+	return args.Get(0).([]dns.RR), args.Error(1)
+}
+
+// GetActiveDomainDS retrieves the DS records of active domains
+func (m *MockDomainRepository) GetActiveDomainDS(ctx context.Context, tld string) ([]dns.RR, error) {
 	args := m.Called(ctx, tld)
 	return args.Get(0).([]dns.RR), args.Error(1)
 }

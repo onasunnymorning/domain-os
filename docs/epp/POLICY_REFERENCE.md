@@ -118,7 +118,7 @@ Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--prot
 | A command on an object service the session did not ask for | 2307 |
 | A command carrying an extension the session did not ask for | 2103 |
 
-The greeting offers the domain, contact and host object services; contact and host commands are not bound yet and are answered 2101. It offers one extension, RGP (RFC 3915), for the grace period statuses on `<domain:info>`; its restore operation arrives with `<domain:update>`. DNSSEC (`secDNS-1.1`) is not offered until DS records exist in the registry end to end (its own phase), so a command carrying it is 2103.
+The greeting offers the domain, contact and host object services; contact and host commands are not bound yet and are answered 2101. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -157,9 +157,25 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 | A host object named more than once | 2306 |
 | More than 10 nameservers (`entities.MaxHostsPerDomain`) | 2306 |
 | A nameserver that is not one of the registrar's host objects | 2303 |
+| `<secDNS:maxSigLife>`: not supported | 2102 (RFC 5910 §3.2) |
+| The key data interface (`<secDNS:keyData>`): this registry takes DS data | 2306 (RFC 5910 §4) |
+| More than 8 DS records | 2306 |
+| A DS record that is malformed: key tag out of range, digest not matching its type's length | 2005 |
+| A DNSSEC algorithm or digest type the registry does not accept (below) | 2306 |
+| The same DS record twice | 2306 |
 | An authorization password that breaks the registry's rules | 2306 |
 
 Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID's repository ID is the code constant `entities.EPP_REPOSITORY_ID` (`APEX`); it must be the registry's IANA-registered ID before an RST run.
+
+**DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`) until the policy engine (Phase 5):
+
+| | Accepted | Refused |
+|---|---|---|
+| Algorithm | 8 RSASHA256, 10 RSASHA512, 13 ECDSAP256SHA256, 14 ECDSAP384SHA384, 15 ED25519, 16 ED448 | 1 RSAMD5, 3 DSA, 5 RSASHA1, 6 DSA-NSEC3-SHA1, 7 RSASHA1-NSEC3-SHA1, 12 ECC-GOST, and every unassigned number. RFC 8624 rules out MD5, DSA and GOST, and the SHA-1 algorithms are deprecated for signing |
+| Digest type | 2 SHA-256, 4 SHA-384 | 1 SHA-1 and 3 GOST: RFC 8624 rules both out for delegations |
+| Records per domain | up to 8 | |
+
+The policy is for what registrars submit. A DS record imported from an escrow deposit is kept whatever its algorithm, as long as it is well formed: the domain model checks structure (a hex digest whose length matches its digest type), not policy. *Gap:* the bulk import (deposit → SQLite → `DirectDBImporter`) does not carry DS records yet; the per-domain import through `CreateDomainCommand.FromRdeDomain` does. A domain's DS records are published with the TLD's delegations, for domains that are active, not pending delete and linked to at least one nameserver: `GET /tlds/{tld}/dns/ds-records` (`?format=text` for zone file lines), beside `dns/domain-delegations` and `dns/glue-records`.
 
 **Audit log.** Every command and its response is a row of `epp_transactions`: svTRID, clTRID, session, node, registrar, login (for a `<login>`, the login presented, accepted or not), source address, command, the object identifiers it names, result code, receipt time, duration, and the frames.
 - Frames are redacted: the text of every `<pw>` and `<newPW>`, and every text and attribute value inside every `<authInfo>`, is replaced with `[redacted]`. A frame that could not be parsed is recorded without its request, which could not be redacted. The login ID and object identifiers are read as soon as a command passes validation, so a command the policy refuses is recorded with them.
@@ -279,7 +295,7 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 |---|---|---|
 | Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for `domain:check` as `EPP_MAX_CHECK_NAMES` |
 | Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306. In place for `domain:create` |
-| DS records per domain | 8 | 2306 |
+| DS records per domain | 8 | 2306. In place for `domain:create` (`services.MaxDSRecords`) |
 
 ### Quotas *(Phase 5)*
 

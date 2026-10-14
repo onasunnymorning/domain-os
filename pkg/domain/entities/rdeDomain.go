@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -184,6 +185,29 @@ func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
 		}
 	}
 
+	// DNSSEC: keep every well-formed DS record the deposit holds, whatever
+	// its algorithm; which ones registrars may submit is policy, applied
+	// elsewhere. One that is not well formed is skipped with a warning
+	// rather than costing the domain.
+	var dsRecords []DSRecord
+	for _, ds := range d.SecDNS.DSData {
+		if ds.KeyTag < 0 || ds.KeyTag > 65535 || ds.Alg < 0 || ds.Alg > 255 || ds.DigestType < 0 || ds.DigestType > 255 {
+			result.Warnings = append(result.Warnings, fmt.Errorf("%w: domain %s: a field is out of range", ErrInvalidDSRecord, domain.Name))
+			continue
+		}
+		rec, err := NewDSRecord(uint16(ds.KeyTag), uint8(ds.Alg), uint8(ds.DigestType), ds.Digest) // #nosec G115 -- range-checked above
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Errorf("domain %s: %w", domain.Name, err))
+			continue
+		}
+		dsRecords = append(dsRecords, rec)
+	}
+	if err := domain.SetDSRecords(dsRecords); err != nil {
+		// Only duplicates are left to refuse; keep the first of each.
+		result.Warnings = append(result.Warnings, fmt.Errorf("domain %s: %w", domain.Name, err))
+		_ = domain.SetDSRecords(uniqueDS(dsRecords))
+	}
+
 	// Validate the final domain
 	err = domain.Validate()
 	if err != nil {
@@ -313,4 +337,18 @@ func GetDomainStatusFromRDEDomainStatus(statuses []RDEDomainStatus) (DomainStatu
 	}
 
 	return ds, nil
+}
+
+// uniqueDS keeps the first of each DS record, comparing digests without case.
+func uniqueDS(records []DSRecord) []DSRecord {
+	seen := map[DSRecord]bool{}
+	var out []DSRecord
+	for _, r := range records {
+		r.Digest = strings.ToUpper(r.Digest)
+		if !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	return out
 }

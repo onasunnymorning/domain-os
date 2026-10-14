@@ -75,6 +75,9 @@ type Domain struct {
 	RGPStatus      DomainRGPStatus      `json:"RGPStatus"`
 	GrandFathering DomainGrandFathering `json:"GrandFathering"`
 	Hosts          []*Host              `json:"Hosts"`
+	// DSRecords are the domain's DNSSEC delegation signer records, in the
+	// order they were given.
+	DSRecords []DSRecord `json:"DSRecords,omitempty"`
 }
 
 // SetOKStatusIfNeeded sets Domain.Status.OK = true if no other prohibition or pendings are present on the DomainStatus
@@ -202,6 +205,17 @@ func (d *Domain) Validate() error {
 	}
 	if err := d.Status.Validate(); err != nil {
 		return err
+	}
+	seen := map[DSRecord]bool{}
+	for _, ds := range d.DSRecords {
+		if err := ds.Validate(); err != nil {
+			return err
+		}
+		key := ds.canonical()
+		if seen[key] {
+			return fmt.Errorf("%w: %s", ErrDuplicateDSRecord, key)
+		}
+		seen[key] = true
 	}
 	if isIDN, _ := d.Name.IsIDN(); !isIDN {
 		// The OriginalName field marks an IDN variant, so it means nothing here.
@@ -634,6 +648,10 @@ func (d *Domain) DeepCopy() *Domain {
 		RGPStatus:      d.RGPStatus,      // Struct copied by value
 		GrandFathering: d.GrandFathering, // Struct copied by value
 		// Hosts handled below
+	}
+
+	if d.DSRecords != nil {
+		newDomain.DSRecords = append([]DSRecord(nil), d.DSRecords...)
 	}
 
 	// Deep-copy the Hosts slice, calling Host.DeepCopy() on each.

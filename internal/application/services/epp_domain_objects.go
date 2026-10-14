@@ -11,43 +11,31 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
-// Refusals of EPP domain commands. The EPP adapter maps each to a result
-// code; the codes are listed in docs/epp/POLICY_REFERENCE.md.
-var (
-	// ErrEPPNotSponsor: the object is sponsored by another registrar
-	// (ADR 0006: 2201).
-	ErrEPPNotSponsor = errors.New("the object is sponsored by another registrar")
-	// ErrEPPTLDNotServed: the name is under no TLD this registry serves.
-	ErrEPPTLDNotServed = errors.New("the TLD is not served by this registry")
-	// ErrEPPTLDNotOpen: the TLD has no general-availability phase in force.
-	ErrEPPTLDNotOpen = errors.New("the TLD is not open for registration")
-	// ErrEPPInvalidPeriod: the registration period is outside 1 year to the
-	// phase's maximum horizon.
-	ErrEPPInvalidPeriod = errors.New("the registration period is out of range")
-	// ErrEPPContactRequired: the phase's contact policy requires a contact
-	// that was not given.
-	ErrEPPContactRequired = errors.New("a contact the registry requires is missing")
-	// ErrEPPContactProhibited: a contact was given that the phase's contact
-	// policy does not accept.
-	ErrEPPContactProhibited = errors.New("a contact the registry does not accept was given")
-	// ErrEPPPeriodNotWholeYears: a period in months that is not a whole
-	// number of years.
-	ErrEPPPeriodNotWholeYears = errors.New("the period must be whole years")
-	// ErrEPPContactTypeMissing: a <domain:contact> without a type.
-	ErrEPPContactTypeMissing = errors.New("every contact needs a type")
-	// ErrEPPDuplicateContactType: two contacts of one type; a domain has at
-	// most one of each.
-	ErrEPPDuplicateContactType = errors.New("at most one contact of each type")
-	// ErrEPPHostAttributes: nameservers given as host attributes; this
-	// registry uses host objects.
-	ErrEPPHostAttributes = errors.New("this registry uses host objects: give nameservers as <domain:hostObj>")
-)
-
 // eppCreate is a create command with its period and contacts resolved.
 type eppCreate struct {
 	years                            int
 	registrant, admin, tech, billing string
 }
+
+// The registry's DNSSEC policy for DS records registrars submit. A deposit
+// imported from another registry keeps whatever it holds.
+var (
+	// AcceptedDSAlgorithms are the DNSSEC algorithms (IANA DNS Security
+	// Algorithm Numbers) whose DS records are accepted: those RFC 8624 still
+	// recommends or allows for signing, less the SHA-1 based RSASHA1 (5, 7),
+	// whose use the IETF has since deprecated. RSAMD5 (1), DSA (3, 6) and
+	// ECC-GOST (12) are refused as well.
+	AcceptedDSAlgorithms = map[uint8]string{
+		8: "RSASHA256", 10: "RSASHA512", 13: "ECDSAP256SHA256",
+		14: "ECDSAP384SHA384", 15: "ED25519", 16: "ED448",
+	}
+	// AcceptedDSDigestTypes are the DS digest types accepted: RFC 8624
+	// forbids SHA-1 (1) and GOST (3) for delegations.
+	AcceptedDSDigestTypes = map[uint8]string{2: "SHA-256", 4: "SHA-384"}
+)
+
+// MaxDSRecords is the most DS records one domain may have.
+const MaxDSRecords = 8
 
 // subordinateHostPage is how many hosts one listing of a domain's
 // subordinate hosts reads.
@@ -55,7 +43,7 @@ const subordinateHostPage = 100
 
 // Info returns a domain the session's registrar sponsors, with its
 // nameservers and the host objects subordinate to it (RFC 5731 §3.1.2). A
-// domain sponsored by another registrar is ErrEPPNotSponsor, and a missing
+// domain sponsored by another registrar is entities.ErrEPPNotSponsor, and a missing
 // one entities.ErrDomainNotFound.
 func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error) {
 	if err := scope.Validate(); err != nil {
@@ -70,7 +58,7 @@ func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClI
 		return nil, err
 	}
 	if dom.ClID != entities.ClIDType(scope) {
-		return nil, ErrEPPNotSponsor
+		return nil, entities.ErrEPPNotSponsor
 	}
 	sub, err := s.subordinateHosts(ctx, dom.ClID.String(), dn.String())
 	if err != nil {
@@ -114,7 +102,9 @@ func (s *EPPDomainService) subordinateHosts(ctx context.Context, clid, domain st
 // phase's contact policy, each existing and the registrar's own); the
 // nameservers (host objects, not attributes; no repeats; at most
 // entities.MaxHostsPerDomain; each one of the registrar's host objects);
-// and the authorization password.
+// the DNSSEC data (DS data only, no maxSigLife, at most MaxDSRecords, each
+// well formed with an accepted algorithm and digest type, none twice); and
+// the authorization password.
 func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
@@ -129,9 +119,9 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	}
 	switch t.reason {
 	case CheckReasonNotServed:
-		return nil, ErrEPPTLDNotServed
+		return nil, entities.ErrEPPTLDNotServed
 	case CheckReasonNotOpen:
-		return nil, ErrEPPTLDNotOpen
+		return nil, entities.ErrEPPTLDNotOpen
 	}
 	accredited, err := s.registrars.IsRegistrarAccreditedForTLD(ctx, dn.ParentDomain(), scope.String())
 	if err != nil {
@@ -167,6 +157,10 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err := s.checkNameservers(ctx, scope, cmd); err != nil {
 		return nil, err
 	}
+	ds, err := dsRecords(cmd)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := entities.NewAuthInfoType(cmd.AuthInfo); err != nil {
 		return nil, err
 	}
@@ -174,7 +168,7 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	dom, err := s.register.RegisterDomain(ctx, &commands.RegisterDomainCommand{
 		Name: dn.String(), ClID: scope.String(), AuthInfo: cmd.AuthInfo,
 		RegistrantID: c.registrant, AdminID: c.admin, TechID: c.tech, BillingID: c.billing,
-		Years: c.years, HostNames: cmd.HostNames,
+		Years: c.years, HostNames: cmd.HostNames, DSRecords: ds,
 	})
 	if err != nil {
 		// Another registrar may have registered the name since it was
@@ -187,6 +181,48 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	return dom, nil
 }
 
+// dsRecords applies the registry's DNSSEC policy to the DS data given, in
+// this order: no maxSigLife, DS data rather than key data, at most
+// MaxDSRecords, every record well formed, every algorithm and digest type
+// accepted, and none twice.
+func dsRecords(cmd commands.EPPCreateDomainCommand) ([]entities.DSRecord, error) {
+	switch {
+	case cmd.MaxSigLife != 0:
+		return nil, entities.ErrEPPMaxSigLife
+	case cmd.KeyData:
+		return nil, entities.ErrEPPKeyData
+	case len(cmd.DSData) > MaxDSRecords:
+		return nil, fmt.Errorf("%w: at most %d", entities.ErrEPPTooManyDS, MaxDSRecords)
+	}
+	// Every record's structure first, then the policy on what is accepted:
+	// a malformed record is reported as malformed whatever else is wrong.
+	var out []entities.DSRecord
+	for _, d := range cmd.DSData {
+		if d.KeyTag < 0 || d.KeyTag > 65535 || d.Algorithm < 0 || d.Algorithm > 255 || d.DigestType < 0 || d.DigestType > 255 {
+			return nil, fmt.Errorf("%w: a field is out of range", entities.ErrInvalidDSRecord)
+		}
+		rec, err := entities.NewDSRecord(uint16(d.KeyTag), uint8(d.Algorithm), uint8(d.DigestType), d.Digest) // #nosec G115 -- range-checked above
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	for _, rec := range out {
+		if _, ok := AcceptedDSAlgorithms[rec.Algorithm]; !ok {
+			return nil, fmt.Errorf("%w: %d", entities.ErrEPPDSAlgorithm, rec.Algorithm)
+		}
+		if _, ok := AcceptedDSDigestTypes[rec.DigestType]; !ok {
+			return nil, fmt.Errorf("%w: %d", entities.ErrEPPDSDigestType, rec.DigestType)
+		}
+	}
+	// SetDSRecords refuses duplicates; check here so the refusal comes in
+	// this command's order, before anything is registered.
+	if err := (&entities.Domain{}).SetDSRecords(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // createYears is the registration period in years: one if none was given,
 // months only in whole years, and within 1 to maxYears.
 func createYears(cmd commands.EPPCreateDomainCommand, maxYears int) (int, error) {
@@ -195,13 +231,13 @@ func createYears(cmd commands.EPPCreateDomainCommand, maxYears int) (int, error)
 		years = cmd.Period
 		if cmd.PeriodUnit == "m" {
 			if cmd.Period%12 != 0 {
-				return 0, ErrEPPPeriodNotWholeYears
+				return 0, entities.ErrEPPPeriodNotWholeYears
 			}
 			years = cmd.Period / 12
 		}
 	}
 	if years < 1 || years > maxYears {
-		return 0, fmt.Errorf("%w: 1 to %d years", ErrEPPInvalidPeriod, maxYears)
+		return 0, fmt.Errorf("%w: 1 to %d years", entities.ErrEPPInvalidPeriod, maxYears)
 	}
 	return years, nil
 }
@@ -218,10 +254,10 @@ func (c *eppCreate) assignContacts(contacts []commands.EPPDomainContact) error {
 		case "billing":
 			slot = &c.billing
 		default:
-			return ErrEPPContactTypeMissing
+			return entities.ErrEPPContactTypeMissing
 		}
 		if *slot != "" {
-			return fmt.Errorf("%w: %s", ErrEPPDuplicateContactType, ct.Type)
+			return fmt.Errorf("%w: %s", entities.ErrEPPDuplicateContactType, ct.Type)
 		}
 		*slot = ct.ID
 	}
@@ -232,7 +268,7 @@ func (c *eppCreate) assignContacts(contacts []commands.EPPDomainContact) error {
 // entities.MaxHostsPerDomain of them, each one of the registrar's.
 func (s *EPPDomainService) checkNameservers(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) error {
 	if cmd.HostAttributes {
-		return ErrEPPHostAttributes
+		return entities.ErrEPPHostAttributes
 	}
 	seen := map[string]bool{}
 	for _, h := range cmd.HostNames {
@@ -273,9 +309,9 @@ func checkContactPolicy(p entities.ContactDataPolicy, c eppCreate) error {
 	} {
 		switch {
 		case c.policy == entities.ContactDataPolicyTypeMandatory && c.id == "":
-			return fmt.Errorf("%w: %s", ErrEPPContactRequired, c.kind)
+			return fmt.Errorf("%w: %s", entities.ErrEPPContactRequired, c.kind)
 		case c.policy == entities.ContactDataPolicyTypeProhibited && c.id != "":
-			return fmt.Errorf("%w: %s", ErrEPPContactProhibited, c.kind)
+			return fmt.Errorf("%w: %s", entities.ErrEPPContactProhibited, c.kind)
 		}
 	}
 	return nil
@@ -298,7 +334,7 @@ func (s *EPPDomainService) checkContacts(ctx context.Context, scope entities.Reg
 			return fmt.Errorf("look up contact %s: %w", id, err)
 		}
 		if c.ClID != entities.ClIDType(scope) {
-			return fmt.Errorf("%w: contact %s", ErrEPPNotSponsor, id)
+			return fmt.Errorf("%w: contact %s", entities.ErrEPPNotSponsor, id)
 		}
 	}
 	return nil

@@ -123,6 +123,9 @@ func (m *mockDomainService) GetNSRecordsPerTLD(context.Context, queries.ActiveDo
 func (m *mockDomainService) GetGlueRecordsPerTLD(context.Context, string) ([]dns.RR, error) {
 	panic("not implemented")
 }
+func (m *mockDomainService) GetDSRecordsPerTLD(context.Context, string) ([]dns.RR, error) {
+	panic("not implemented")
+}
 func (m *mockDomainService) SetStatus(context.Context, string, string) (*entities.Domain, error) {
 	panic("not implemented")
 }

@@ -183,6 +183,9 @@ func (r *Registry) RegisterDomain(_ context.Context, cmd *commands.RegisterDomai
 	if err != nil {
 		return nil, err
 	}
+	if err := dom.SetDSRecords(cmd.DSRecords); err != nil {
+		return nil, err
+	}
 	for _, h := range cmd.HostNames {
 		host, ok := r.hosts[strings.ToLower(h)]
 		if !ok || host.ClID != entities.ClIDType(cmd.ClID) {

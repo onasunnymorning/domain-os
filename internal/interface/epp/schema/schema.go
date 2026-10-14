@@ -30,6 +30,7 @@ const (
 	NSDomain = "urn:ietf:params:xml:ns:domain-1.0"
 	NSHost   = "urn:ietf:params:xml:ns:host-1.0"
 	NSEPPCom = "urn:ietf:params:xml:ns:eppcom-1.0"
+	NSSecDNS = "urn:ietf:params:xml:ns:secDNS-1.1"
 	NSXSI    = "http://www.w3.org/2001/XMLSchema-instance"
 )
 
@@ -38,6 +39,7 @@ var prefixes = map[string]string{
 	NSEPP:    "",
 	NSDomain: "domain:",
 	NSHost:   "host:",
+	NSSecDNS: "secDNS:",
 }
 
 // Error is a frame that does not match the schema. Path locates the element

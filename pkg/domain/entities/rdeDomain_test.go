@@ -2,9 +2,11 @@ package entities
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -689,4 +691,26 @@ func TestRDEDomain_ToEntity_GeneratesAuthInfo(t *testing.T) {
 		seen[result.Domain.AuthInfo] = struct{}{}
 	}
 	require.Len(t, seen, 200)
+}
+
+func TestRDEDomain_ToEntityKeepsDSRecords(t *testing.T) {
+	digest := "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
+	rde := &RDEDomain{
+		Name: "signed.example", RoID: "Dztys40879-RADIO", ClID: "GoMamma",
+		CrDate: "2021-01-01T00:00:00Z", ExDate: "2031-01-01T00:00:00Z",
+		Status: []RDEDomainStatus{{S: "ok"}},
+		SecDNS: RDESecDNS{DSData: []DSData{
+			{KeyTag: 2371, Alg: 13, DigestType: 2, Digest: strings.ToLower(digest)},
+			{KeyTag: 1, Alg: 5, DigestType: 1, Digest: strings.Repeat("AB", 20)}, // SHA-1: well formed, kept
+			{KeyTag: 2, Alg: 13, DigestType: 2, Digest: "not-hex"},
+			{KeyTag: 70000, Alg: 13, DigestType: 2, Digest: digest},
+			{KeyTag: 2371, Alg: 13, DigestType: 2, Digest: digest}, // the first again
+		}},
+	}
+	res, err := rde.ToEntity()
+	require.NoError(t, err, "bad DS records cost warnings, not the domain")
+	require.Len(t, res.Domain.DSRecords, 2)
+	assert.Equal(t, DSRecord{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: digest}, res.Domain.DSRecords[0])
+	assert.Equal(t, uint8(1), res.Domain.DSRecords[1].DigestType, "a deposit's SHA-1 DS is kept: acceptance is policy, not validity")
+	assert.Len(t, res.Warnings, 3, "not hex, out of range, duplicate")
 }

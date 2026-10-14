@@ -30,22 +30,29 @@ var domainRefusals = []struct {
 	{entities.ErrDomainNotFound, epplib.StatusObjectDoesNotExist},
 	{entities.ErrContactNotFound, epplib.StatusObjectDoesNotExist},
 	{entities.ErrHostNotFound, epplib.StatusObjectDoesNotExist},
-	{services.ErrEPPNotSponsor, epplib.StatusAuthorizationError},
+	{entities.ErrEPPNotSponsor, epplib.StatusAuthorizationError},
 	{services.ErrRegistrarNotAccredited, epplib.StatusAuthorizationError},
 	{services.ErrDomainExists, epplib.StatusObjectExists},
 	{services.ErrDomainBlocked, epplib.StatusDataManagementPolicyViolation},
-	{services.ErrEPPInvalidPeriod, epplib.StatusValueRangeError},
-	{services.ErrEPPContactRequired, epplib.StatusMissingParameter},
-	{services.ErrEPPContactProhibited, epplib.StatusParameterPolicyError},
-	{services.ErrEPPTLDNotServed, epplib.StatusParameterPolicyError},
-	{services.ErrEPPTLDNotOpen, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPInvalidPeriod, epplib.StatusValueRangeError},
+	{entities.ErrEPPContactRequired, epplib.StatusMissingParameter},
+	{entities.ErrEPPContactProhibited, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPTLDNotServed, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPTLDNotOpen, epplib.StatusParameterPolicyError},
 	{entities.ErrLabelNotValidInPhase, epplib.StatusParameterPolicyError},
 	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
 	{entities.ErrDuplicateHost, epplib.StatusParameterPolicyError},
-	{services.ErrEPPHostAttributes, epplib.StatusParameterPolicyError},
-	{services.ErrEPPPeriodNotWholeYears, epplib.StatusParameterPolicyError},
-	{services.ErrEPPContactTypeMissing, epplib.StatusMissingParameter},
-	{services.ErrEPPDuplicateContactType, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPMaxSigLife, epplib.StatusUnimplementedOption},
+	{entities.ErrEPPKeyData, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPDSAlgorithm, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPDSDigestType, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPTooManyDS, epplib.StatusParameterPolicyError},
+	{entities.ErrDuplicateDSRecord, epplib.StatusParameterPolicyError},
+	{entities.ErrInvalidDSRecord, epplib.StatusValueSyntaxError},
+	{entities.ErrEPPHostAttributes, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPPeriodNotWholeYears, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPContactTypeMissing, epplib.StatusMissingParameter},
+	{entities.ErrEPPDuplicateContactType, epplib.StatusParameterPolicyError},
 	{entities.ErrInvalidAuthInfo, epplib.StatusParameterPolicyError},
 }
 
@@ -102,11 +109,16 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 		s.refuseDomain(cmd, err)
 		return
 	}
-	var rgp *etree.Element
+	// Each extension's data is added only for a session that asked for it
+	// at login.
+	var secDNS, rgp *etree.Element
+	if slices.Contains(cmd.session.extensions, nsSecDNS) {
+		secDNS = secDNSInfoData(info.Domain)
+	}
 	if slices.Contains(cmd.session.extensions, nsRGP) {
 		rgp = rgpInfoData(info.Domain, time.Now())
 	}
-	cmd.respond(epplib.StatusSuccess, "", infoData(info, hosts), rgp)
+	cmd.respond(epplib.StatusSuccess, "", infoData(info, hosts), secDNS, rgp)
 }
 
 // domainCreate answers <domain:create> (RFC 5731 §3.2.1). It reads the
@@ -145,6 +157,7 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 		// text with tabs and line breaks as spaces, as it was validated.
 		c.AuthInfo = schema.NormalizedStringValue(pw.Text())
 	}
+	readSecDNSCreate(cmd.doc, &c)
 
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
@@ -158,4 +171,35 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 		code = epplib.StatusActionPending
 	}
 	cmd.respond(code, "", createData(dom))
+}
+
+// readSecDNSCreate reads a <secDNS:create> extension (RFC 5910 §5.2.1) into
+// c: its DS data, its maxSigLife and whether it used the key data
+// interface. A <secDNS:keyData> inside a <secDNS:dsData> is optional
+// supporting information and is not kept. The registry decides what to
+// accept.
+func readSecDNSCreate(doc *etree.Document, c *commands.EPPCreateDomainCommand) {
+	ext := doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return
+	}
+	for _, el := range ext.ChildElements() {
+		if el.NamespaceURI() != nsSecDNS || el.Tag != "create" {
+			continue
+		}
+		if m := el.SelectElement("maxSigLife"); m != nil {
+			c.MaxSigLife, _ = strconv.Atoi(schema.TokenValue(m.Text())) // the schema has checked it is a positive int
+		}
+		c.KeyData = len(el.SelectElements("keyData")) > 0
+		for _, ds := range el.SelectElements("dsData") {
+			num := func(name string) int {
+				n, _ := strconv.Atoi(schema.TokenValue(ds.SelectElement(name).Text())) // the schema has checked it
+				return n
+			}
+			c.DSData = append(c.DSData, commands.EPPDSData{
+				KeyTag: num("keyTag"), Algorithm: num("alg"), DigestType: num("digestType"),
+				Digest: schema.TokenValue(ds.SelectElement("digest").Text()),
+			})
+		}
+	}
 }

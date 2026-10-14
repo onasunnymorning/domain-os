@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -21,9 +20,6 @@ const (
 	// pruning a large backlog never holds a long lock.
 	auditPruneBatch = 5000
 )
-
-// ErrEPPAuditUnavailable wraps a failure to write the EPP audit log.
-var ErrEPPAuditUnavailable = errors.New("EPP audit log unavailable")
 
 // EPPAuditLostError reports queued records that were never written: at
 // shutdown, the database did not take them before the flush timeout.
@@ -61,7 +57,7 @@ func NewEPPAuditService(repo repositories.EPPTransactionRepository, buffer int) 
 // Record writes tx now.
 func (s *EPPAuditService) Record(ctx context.Context, tx *entities.EPPTransaction) error {
 	if err := s.repo.Save(ctx, tx); err != nil {
-		return fmt.Errorf("%w: %w", ErrEPPAuditUnavailable, err)
+		return fmt.Errorf("%w: %w", entities.ErrEPPAuditUnavailable, err)
 	}
 	return nil
 }
@@ -99,7 +95,7 @@ func (s *EPPAuditService) Run(ctx context.Context, flushTimeout time.Duration, e
 			return nil
 		}
 		if err := s.repo.Save(ctx, batch...); err != nil {
-			return fmt.Errorf("%w: %w", ErrEPPAuditUnavailable, err)
+			return fmt.Errorf("%w: %w", entities.ErrEPPAuditUnavailable, err)
 		}
 		batch = batch[:0]
 		return nil
@@ -168,7 +164,7 @@ func (s *EPPAuditService) Prune(ctx context.Context, retention time.Duration) (i
 		n, err := s.repo.DeleteReceivedBefore(ctx, cutoff, auditPruneBatch)
 		total += n
 		if err != nil {
-			return total, fmt.Errorf("%w: %w", ErrEPPAuditUnavailable, err)
+			return total, fmt.Errorf("%w: %w", entities.ErrEPPAuditUnavailable, err)
 		}
 		if n < auditPruneBatch {
 			return total, nil
