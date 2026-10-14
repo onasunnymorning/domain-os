@@ -92,6 +92,65 @@ var DomainCheck = &Element{NS: NSDomain, Name: "check", Content: Seq{
 	&Element{NS: NSDomain, Name: "name", Max: Unbounded, Simple: labelType},
 }}
 
+// pwAuthInfo is eppcom:pwAuthInfoType.
+var pwAuthInfo = &Element{NS: NSDomain, Name: "pw", Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{
+	{Name: "roid", Type: roidType},
+}}
+
+// authInfoType is domain:authInfoType: a password, or an extension
+// (eppcom:extAuthInfoType, one element outside eppcom).
+func authInfoType(min int) *Element {
+	return &Element{NS: NSDomain, Name: "authInfo", Min: min, Content: Choice{Alts: []Particle{
+		pwAuthInfo,
+		&Element{NS: NSDomain, Name: "ext", Content: Seq{Any{OtherThan: NSEPPCom}}},
+	}}}
+}
+
+var (
+	// eppcom:roidType. XSD's \w is every character but punctuation,
+	// separators and others.
+	roidType = &Simple{Base: Token, Pattern: regexp.MustCompile(`^([^\p{P}\p{Z}\p{C}]|_){1,80}-[^\p{P}\p{Z}\p{C}]{1,8}$`)}
+	// domain:hostsType
+	hostsType = &Simple{Base: Token, Enum: []string{"all", "del", "none", "sub"}}
+	// domain:pLimitType
+	pLimitType = &Simple{Base: UnsignedShort, MinInclusive: 1, MaxInclusive: 99, HasRange: true}
+	// domain:pUnitType
+	pUnitType = &Simple{Base: Token, Enum: []string{"y", "m"}}
+	// domain:contactAttrType
+	contactAttrType = &Simple{Base: Token, Enum: []string{"admin", "billing", "tech"}}
+	// host:addrStringType and host:ipType
+	addrStringType = token(3, 45)
+	ipType         = &Simple{Base: Token, Enum: []string{"v4", "v6"}}
+)
+
+// DomainInfo is <domain:info>, domain:infoType.
+var DomainInfo = &Element{NS: NSDomain, Name: "info", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType, Attrs: []Attribute{{Name: "hosts", Type: hostsType}}},
+	authInfoType(Optional),
+}}
+
+// DomainCreate is <domain:create>, domain:createType.
+var DomainCreate = &Element{NS: NSDomain, Name: "create", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType},
+	&Element{NS: NSDomain, Name: "period", Min: Optional, Simple: pLimitType, Attrs: []Attribute{
+		{Name: "unit", Type: pUnitType, Required: true},
+	}},
+	&Element{NS: NSDomain, Name: "ns", Min: Optional, Content: Choice{Alts: []Particle{ // domain:nsType
+		&Element{NS: NSDomain, Name: "hostObj", Max: Unbounded, Simple: labelType},
+		&Element{NS: NSDomain, Name: "hostAttr", Max: Unbounded, Content: Seq{ // domain:hostAttrType
+			&Element{NS: NSDomain, Name: "hostName", Simple: labelType},
+			&Element{NS: NSDomain, Name: "hostAddr", Min: Optional, Max: Unbounded, Simple: addrStringType, Attrs: []Attribute{
+				{Name: "ip", Type: ipType},
+			}},
+		}},
+	}}},
+	&Element{NS: NSDomain, Name: "registrant", Min: Optional, Simple: clIDType},
+	&Element{NS: NSDomain, Name: "contact", Min: Optional, Max: Unbounded, Simple: clIDType, Attrs: []Attribute{
+		{Name: "type", Type: contactAttrType},
+	}},
+	authInfoType(0),
+}}
+
 // Globals are the declarations wildcards may resolve to: the object
 // commands the server validates.
-var Globals = []*Element{DomainCheck}
+var Globals = []*Element{DomainCheck, DomainInfo, DomainCreate}

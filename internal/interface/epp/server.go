@@ -4,8 +4,8 @@
 //
 // Logins are authenticated against registrars' EPP credentials (ADR 0014).
 // Every command is validated against Go models of the EPP schemas (ADR 0016)
-// and recorded in the audit log. Greeting, login, logout and domain:check are
-// bound. The target architecture, and the phased plan for reaching it, is
+// and recorded in the audit log. Greeting, login, logout and domain check,
+// info and create are bound. The target architecture, and the phased plan for reaching it, is
 // docs/epp/ARCHITECTURE.md; every setting is listed in
 // docs/epp/POLICY_REFERENCE.md.
 package epp

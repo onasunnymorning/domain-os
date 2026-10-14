@@ -22,3 +22,46 @@ type DomainRGPStatus struct {
 func (d *DomainRGPStatus) IsNil() bool {
 	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferLockPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PurgeDate.IsZero()
 }
+
+// RFC 3915 grace period statuses.
+const (
+	RGPStatusAddPeriod        = "addPeriod"
+	RGPStatusAutoRenewPeriod  = "autoRenewPeriod"
+	RGPStatusRenewPeriod      = "renewPeriod"
+	RGPStatusRedemptionPeriod = "redemptionPeriod"
+	RGPStatusPendingRestore   = "pendingRestore"
+	RGPStatusPendingDelete    = "pendingDelete"
+)
+
+// RGPStatuses returns the RFC 3915 grace period statuses of d at now. A
+// domain pending delete is in exactly one of redemptionPeriod (still
+// restorable), pendingRestore (a restore has been requested) or
+// pendingDelete (past redemption, waiting to be purged). Otherwise it is in
+// each of the add, renew and auto-renew grace periods that has not ended.
+func (d *Domain) RGPStatuses(now time.Time) []string {
+	r := d.RGPStatus
+	if d.Status.PendingDelete {
+		switch {
+		case d.Status.PendingRestore:
+			return []string{RGPStatusPendingRestore}
+		case now.Before(r.RedemptionPeriodEnd):
+			return []string{RGPStatusRedemptionPeriod}
+		default:
+			return []string{RGPStatusPendingDelete}
+		}
+	}
+	var out []string
+	for _, p := range []struct {
+		end    time.Time
+		status string
+	}{
+		{r.AddPeriodEnd, RGPStatusAddPeriod},
+		{r.RenewPeriodEnd, RGPStatusRenewPeriod},
+		{r.AutoRenewPeriodEnd, RGPStatusAutoRenewPeriod},
+	} {
+		if now.Before(p.end) {
+			out = append(out, p.status)
+		}
+	}
+	return out
+}

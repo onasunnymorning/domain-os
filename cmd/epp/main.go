@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
@@ -119,10 +120,22 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
 	}, cfg.Sessions.Lease, nil)
 
-	domains := services.NewEPPDomainService(
-		postgres.NewDomainRepository(db), postgres.NewGormNNDNRepository(db),
-		postgres.NewGormTLDRepo(db), postgres.NewGormPhaseRepository(db),
-		cfg.Commands.CheckParallelism)
+	domainRepo := postgres.NewDomainRepository(db)
+	hostRepo := postgres.NewGormHostRepository(db)
+	nndnRepo := postgres.NewGormNNDNRepository(db)
+	tldRepo := postgres.NewGormTLDRepo(db)
+	phaseRepo := postgres.NewGormPhaseRepository(db)
+	registrarRepo := postgres.NewGormRegistrarRepository(db)
+	// Registration goes through DomainService, as from the admin API: it
+	// prices the domain, assigns its ROID, stores it and writes its event.
+	registry := services.NewDomainService(domainRepo, hostRepo, *services.NewRoidService(ids), nndnRepo, tldRepo, phaseRepo,
+		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo,
+		postgres.NewPostgresEventPublisher(db, zap.NewNop(), false)) // events are not logged here; the EPP audit log records the command
+	domains := services.NewEPPDomainService(services.EPPDomainServiceDeps{
+		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
+		Contacts: postgres.NewContactRepository(db), Hosts: hostRepo, Registrars: registrarRepo,
+		Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
+	})
 	audit := services.NewEPPAuditService(postgres.NewEPPTransactionRepository(db), cfg.Audit.Buffer)
 
 	srv, err = epp.NewServer(epp.Options{

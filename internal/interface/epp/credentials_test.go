@@ -68,7 +68,7 @@ type testCredentials struct {
 	server  *Server
 	// domains answers domain commands, and audit is the audit log's store,
 	// behind the real audit service auditLog.
-	domains  *fakeDomains
+	domains  *testDomains
 	audit    *memstore.EPPTransactions
 	auditLog *services.EPPAuditService
 }
@@ -81,7 +81,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		store:    memstore.NewEPPCredentials(testRegistrar, "registrar2"),
 		registry: memstore.NewEPPSessions(),
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
-		domains:  newFakeDomains(),
+		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
 	}
 	tc.auditLog = services.NewEPPAuditService(tc.audit, 100)

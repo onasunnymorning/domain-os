@@ -41,13 +41,20 @@ type Simple struct {
 
 var (
 	languagePattern = regexp.MustCompile(`^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$`)
-	unsignedPattern = regexp.MustCompile(`^\+?[0-9]+$`)
+	// libxml2 refuses a leading "+" on unsigned types, though XSD allows
+	// it; the models follow libxml2 (ADR 0016).
+	unsignedPattern = regexp.MustCompile(`^[0-9]+$`)
+	schemePattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
 )
 
 // validate checks a lexical value against the type.
 func (t *Simple) validate(raw string) error {
 	v := t.whitespace(raw)
 	switch t.Base {
+	case AnyURI:
+		if err := checkURIReference(v); err != nil {
+			return err
+		}
 	case Language:
 		if !languagePattern.MatchString(v) {
 			return errors.New("not a language tag")
@@ -60,7 +67,7 @@ func (t *Simple) validate(raw string) error {
 		if !unsignedPattern.MatchString(v) {
 			return errors.New("not an unsigned integer")
 		}
-		n, err := strconv.ParseUint(strings.TrimPrefix(v, "+"), 10, 16)
+		n, err := strconv.ParseUint(v, 10, 16)
 		if err != nil {
 			return errors.New("out of range for an unsignedShort")
 		}
@@ -104,4 +111,51 @@ func (t *Simple) whitespace(v string) string {
 			return r == ' ' || r == '\t' || r == '\n' || r == '\r'
 		}), " ")
 	}
+}
+
+// checkURIReference is the part of RFC 3986 URI-reference syntax that
+// libxml2 enforces on xs:anyURI, after it has escaped characters that are
+// not allowed in a URI: a colon before any "/", "?" or "#" must end a valid
+// scheme, an authority's port must be one or more digits, and every "%"
+// must start an escape of two hex digits. The differential test pins each
+// of these against xmllint.
+func checkURIReference(v string) error {
+	rest := v
+	if i := strings.IndexAny(v, ":/?#"); i >= 0 && v[i] == ':' {
+		if !schemePattern.MatchString(v[:i]) {
+			return errors.New("not a URI")
+		}
+		rest = v[i+1:]
+	}
+	if auth, ok := strings.CutPrefix(rest, "//"); ok {
+		if end := strings.IndexAny(auth, "/?#"); end >= 0 {
+			auth = auth[:end]
+		}
+		if at := strings.LastIndex(auth, "@"); at >= 0 {
+			auth = auth[at+1:]
+		}
+		host := auth
+		if strings.HasPrefix(auth, "[") {
+			if end := strings.Index(auth, "]"); end >= 0 {
+				host = auth[end+1:]
+			}
+		}
+		// After an unbracketed host, at most one colon, then a port of at
+		// least one digit (libxml2 refuses an empty port).
+		if c := strings.Index(host, ":"); c >= 0 {
+			if port := host[c+1:]; port == "" || strings.Trim(port, "0123456789") != "" {
+				return errors.New("not a URI")
+			}
+		}
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] == '%' && (i+2 >= len(v) || !isHex(v[i+1]) || !isHex(v[i+2])) {
+			return errors.New("not a URI")
+		}
+	}
+	return nil
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }

@@ -10,8 +10,8 @@
 
 ## Where it stands today
 
-Transport, sessions and identity are in place (Phases 1 to 3), and so is the command pipeline (Phase 4a). The command surface is still small:
-- It binds `<hello>`, login, logout and `domain:check`, which answers from the registry. Every other RFC 5730 command is answered 2101 (unimplemented); domain info and create are Phase 4b.
+Transport, sessions and identity are in place (Phases 1 to 3), and so are the command pipeline and the first domain commands (Phase 4). The command surface is still small:
+- It binds `<hello>`, login, logout and domain check, info and create, all against the registry; info and create enforce sponsorship and accreditation (ADR 0006). RGP statuses are reported on info. Every other RFC 5730 command is answered 2101 (unimplemented).
 - Every command is validated against the EPP schemas, checked against the services negotiated at login, passed through the policy hook, and recorded in the audit log (Phase 4a).
 - Logins are authenticated (Phase 2): allowed network, pinned certificate and password, with a lockout per (login, source address).
 - Sessions are leases in a cluster-wide registry with caps per source address, registrar and login, and operators can list and end them (Phase 3).
@@ -109,7 +109,7 @@ A login must pass three checks:
 - **Per-command object caps** (names per check, nameservers, DS records). A breach returns 2306.
 - `clTRID` is echoed. `svTRID` is globally unique and doubles as the correlation ID in logs and audit.
 
-*Today:* all of this section except the nameserver and DS caps, which arrive with domain create (Phase 4b) and move into the policy engine with the check cap (Phase 5). Schema validation uses Go models of the XSDs, kept in agreement with xmllint by a differential test (ADR 0016). Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. The pipeline and every answer are in [POLICY_REFERENCE.md § Command handling](POLICY_REFERENCE.md#command-handling).
+*Today:* all of this section except the DS cap, which arrives with DNSSEC; the check and nameserver caps move into the policy engine in Phase 5. Schema validation uses Go models of the XSDs, kept in agreement with xmllint by a differential test (ADR 0016). Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. The pipeline and every answer are in [POLICY_REFERENCE.md § Command handling](POLICY_REFERENCE.md#command-handling).
 
 ## 5. Policy enforcement
 
@@ -169,7 +169,8 @@ Each phase is one or more PRs and can be shipped on its own.
 | 2 | EPP logins with multiple passwords, registrar-level certificate pins and IP allowlists, all with the retire lifecycle and last-used tracking (domain, persistence, admin API). Real authentication. Lockout keyed on (login, IP). Credential-change notifications. Certificate-expiry metric | **Done**, except delivering change events to the technical contact |
 | 3 | Lease-based distributed session registry (replaces the middleware limiter), recording the credential IDs each session used. Session caps, fail-open, admin list and kill, including kill-by-credential | **Done**, except the per-family cap, which moves to Phase 5 with families |
 | 4a | Command pipeline: schema validation (ADR 0016), service negotiation at login, policy hook, in-process dispatch to application services, real domain check, audit log | **Done** |
-| 4b | Domain info and create with sponsorship and accreditation checks (ADR 0006), DNSSEC (RFC 5910) and RGP (RFC 3915) | Planned |
+| 4b | Domain info and create with sponsorship and accreditation checks (ADR 0006), host and contact existence, the nameserver cap, RGP (RFC 3915) statuses on info | **Done** |
+| 4c | DNSSEC: DS records end to end (entity and validation, storage, TLD zone publication, escrow export, RDAP), then RFC 5910 on create, update and info, and the DS cap | Planned |
 | 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
 | 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

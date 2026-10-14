@@ -296,10 +296,10 @@ func TestRST_epp02_ProtocolConformance(t *testing.T) {
 	}
 
 	t.Run("epp-02/7 secDNS-1.1 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "Phase 4b: DNSSEC (RFC 5910) on domain create/update/info; advertised only once implemented")
+		requireExt(t, "urn:ietf:params:xml:ns:secDNS-1.1", "DNSSEC phase: DS records end to end (data model, zones, escrow, RDAP), then RFC 5910 on create/update/info")
 	})
 	t.Run("epp-02/7 rgp-1.0 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "Phase 4b: RGP (RFC 3915) statuses and restore; advertised only once implemented")
+		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "RGP (RFC 3915) is offered: this should not be pending")
 	})
 	t.Run("epp-02/8 launch-1.0 extURI", func(t *testing.T) {
 		requireExt(t, "urn:ietf:params:xml:ns:launch-1.0", "launch phases (RFC 8334) for sunrise and claims; not yet scheduled in docs/epp/ARCHITECTURE.md")
@@ -460,6 +460,146 @@ func TestRST_epp04_DomainCheck(t *testing.T) {
 	})
 }
 
+// --- epp-14: Domain <create> command test ---------------------------------
+
+// rstRegistrar2 gives registrar2 (RST's epp.clid02) a login, password,
+// allowed network and the test client certificate, so it can log in.
+func rstRegistrar2(t *testing.T, creds *testCredentials) {
+	t.Helper()
+	creds.update("registrar2", func(a *entities.EPPRegistrarAccess) error {
+		if _, err := a.AddLogin("registrar2", entities.EPPLoginRoleTransform, "test", time.Now()); err != nil {
+			return err
+		}
+		if _, err := a.AddPassword("registrar2", "secret-pw-02", fastHash, "test", time.Now()); err != nil {
+			return err
+		}
+		if _, err := a.AddCertificatePin(certificatePEM(testClientCertificate(t)), nil, "test", time.Now()); err != nil {
+			return err
+		}
+		_, err := a.AddAllowedNetwork("127.0.0.1", "loopback", "test", time.Now())
+		return err
+	})
+}
+
+func TestRST_epp14_DomainCreate(t *testing.T) {
+	creds := newTestCredentials(t)
+	rstRegistrar2(t, creds)
+	// .thin is a TLD whose phase prohibits a registrant, as
+	// general.registryDataModel=minimum would; .test requires one.
+	thin := creds.domains.registry.AddTLD("thin", true)
+	thin.Policy.ContactDataPolicy.RegistrantContactDataPolicy = entities.ContactDataPolicyTypeProhibited
+	thin.Policy.ContactDataPolicy.TechContactDataPolicy = entities.ContactDataPolicyTypeOptional
+	creds.domains.registry.Accredit(testRegistrar, "thin")
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	c.login()
+
+	refused := func(t *testing.T, frame string) {
+		t.Helper()
+		code := c.roundTrip(frame).FindElement("//response/result").SelectAttrValue("code", "")
+		assert.True(t, strings.HasPrefix(code, "2"), "refused, got %s", code)
+	}
+	t.Run("epp-14 invalid domain name refused", func(t *testing.T) {
+		refused(t, createXML("-invalid-.test", createOpts{}))
+		refused(t, createXML("in valid.test", createOpts{}))
+	})
+	t.Run("epp-14 invalid period refused (1-10 years)", func(t *testing.T) {
+		refused(t, createXML("p0.test", createOpts{period: `<domain:period unit="y">0</domain:period>`}))
+		refused(t, createXML("p11.test", createOpts{period: `<domain:period unit="y">11</domain:period>`}))
+		refused(t, createXML("p121.test", createOpts{period: `<domain:period unit="m">121</domain:period>`}))
+	})
+	t.Run("epp-14 non-existent host object refused", func(t *testing.T) {
+		refused(t, createXML("nohost.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.nonexistent-rst.net</domain:hostObj></domain:ns>`}))
+	})
+	t.Run("epp-14 host attributes refused (epp.hostModel = objects)", func(t *testing.T) {
+		refused(t, createXML("glue.test", createOpts{ns: `<domain:ns><domain:hostAttr><domain:hostName>ns1.glue.test</domain:hostName></domain:hostAttr></domain:ns>`}))
+		refused(t, createXML("glue2.test", createOpts{ns: `<domain:ns><domain:hostAttr><domain:hostName>ns1.glue2.test</domain:hostName><domain:hostAddr ip="v4">192.0.2.1</domain:hostAddr></domain:hostAttr></domain:ns>`}))
+	})
+	t.Run("epp-14 host objects accepted (epp.hostModel = objects)", func(t *testing.T) {
+		requireCode(t, c.roundTrip(createXML("withns.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj></domain:ns>`})), "1000")
+	})
+	t.Run("epp-14 invalid DNSSEC data refused", func(t *testing.T) {
+		rstPending(t, "DNSSEC phase: secDNS is not offered yet, so a create carrying it is refused with 2103 rather than validated")
+	})
+	t.Run("epp-14 non-existent registrant refused", func(t *testing.T) {
+		refused(t, createXML("noreg1.test", createOpts{contacts: `<domain:registrant>rst-nobody</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact>`}))
+	})
+	t.Run("epp-14 missing registrant refused where the data model needs one", func(t *testing.T) {
+		refused(t, createXML("noreg2.test", createOpts{contacts: `<domain:contact type="tech">registrar1-c2</domain:contact>`}))
+	})
+	t.Run("epp-14 registrant refused where the data model has none", func(t *testing.T) {
+		refused(t, createXML("thick.thin", createOpts{}))
+		requireCode(t, c.roundTrip(createXML("ok.thin", createOpts{contacts: " "})), "1000")
+	})
+	t.Run("epp-14 empty <pw> accepted (RFC 9154)", func(t *testing.T) {
+		rstPending(t, "RFC 9154 is recommended by RST (warning only); not yet scheduled")
+	})
+
+	t.Run("epp-14 both registrars create domains", func(t *testing.T) {
+		requireCode(t, c.roundTrip(createXML("rst-one.test", createOpts{})), "1000")
+		c2 := dial(t, ts.addr)
+		requireCode(t, c2.roundTrip(loginAsXML("registrar2", "secret-pw-02", "", "RST-14")), "1000")
+		requireCode(t, c2.roundTrip(createXML("rst-two.test", createOpts{contacts: `<domain:registrant>registrar2-c1</domain:registrant><domain:contact type="tech">registrar2-c2</domain:contact>`})), "1000")
+		info := c2.roundTrip(infoXML("rst-two.test", ""))
+		assert.Equal(t, "registrar2", text(info, "//infData/clID"))
+		assert.Equal(t, "registrar2", text(info, "//infData/crID"))
+	})
+
+	info := c.roundTrip(infoXML("rst-one.test", ""))
+	requireCode(t, info, "1000")
+	t.Run("epp-14 info: roid is valid", func(t *testing.T) {
+		assert.Regexp(t, `^(\w|_){1,80}-\w{1,8}$`, text(info, "//infData/roid"))
+	})
+	t.Run("epp-14 info: roid's repository ID is registered with IANA", func(t *testing.T) {
+		rstPending(t, "the ROID repository ID is the code constant entities.EPP_REPOSITORY_ID (\"APEX\"); it must become the registry's IANA-registered ID")
+	})
+	t.Run("epp-14 info: crDate and exDate present and valid", func(t *testing.T) {
+		cr, err := time.Parse(time.RFC3339, text(info, "//infData/crDate"))
+		require.NoError(t, err)
+		ex, err := time.Parse(time.RFC3339, text(info, "//infData/exDate"))
+		require.NoError(t, err)
+		assert.WithinDuration(t, time.Now(), cr, time.Minute)
+		assert.Equal(t, cr.AddDate(1, 0, 0), ex)
+	})
+	t.Run("epp-14 info: crID and clID are the creating registrar", func(t *testing.T) {
+		assert.Equal(t, testRegistrar, text(info, "//infData/crID"))
+		assert.Equal(t, testRegistrar, text(info, "//infData/clID"))
+	})
+	t.Run("epp-14 info: DNSSEC data present and correct", func(t *testing.T) {
+		rstPending(t, "DNSSEC phase: DS records end to end, then RFC 5910 on create and info")
+	})
+}
+
+// --- epp-17: Service Port consistency test --------------------------------
+
+// Two servers over one registry stand in for two service ports behind one
+// name: a domain created through one is answered identically by the other.
+func TestRST_epp17_ServicePortConsistency(t *testing.T) {
+	creds := newTestCredentials(t)
+	a := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	cfgB := testConfig()
+	cfgB.Sessions.NodeID = "node-b"
+	b := startServerWith(t, cfgB, listenLoopback(t), creds)
+
+	ca, cb := dial(t, a.addr), dial(t, b.addr)
+	ca.login()
+	cb.login()
+	requireCode(t, ca.roundTrip(createXML("ports.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj></domain:ns>`})), "1000")
+
+	infData := func(c *client) string {
+		resp := c.roundTrip(infoXML("ports.test", ""))
+		requireCode(t, resp, "1000")
+		doc := etree.NewDocument()
+		doc.SetRoot(resp.FindElement("//resData/infData").Copy())
+		s, err := doc.WriteToString()
+		require.NoError(t, err)
+		return s
+	}
+	t.Run("epp-17 <info> is 1000 and its <infData> identical on every port", func(t *testing.T) {
+		assert.Equal(t, infData(ca), infData(cb))
+	})
+}
+
 // --- epp-05 … epp-27: object commands -------------------------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
@@ -475,10 +615,8 @@ var rstPendingCases = map[string]string{
 	"epp-11": "object commands epic: host <create>",
 	"epp-12": "object commands epic: host <update> refused to non-sponsors with 2201 (ADR 0006)",
 	"epp-13": "object commands epic: host <update>",
-	"epp-14": "Phase 4b: domain <create>, including DS validation, the 1-10 year period and roid/crID/clID on <info>",
 	"epp-15": "object commands epic: deleting a linked host or contact is refused",
 	"epp-16": "object commands epic: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
-	"epp-17": "Phase 4b: identical <info> from every service port; two servers sharing one backend",
 	"epp-18": "object commands epic: domain <renew>",
 	"epp-19": "object commands epic: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
 	"epp-20": "object commands epic: domain <transfer> rejection",
@@ -502,7 +640,7 @@ func TestRST_EPPPendingCases(t *testing.T) {
 }
 
 // rstImplementedCases have their own TestRST_ function in this file.
-var rstImplementedCases = []string{"epp-01", "epp-02", "epp-03", "epp-04"}
+var rstImplementedCases = []string{"epp-01", "epp-02", "epp-03", "epp-04", "epp-14", "epp-17"}
 
 // TestRST_EPPCatalogueIsComplete fails when the pinned spec and this file
 // disagree: a case in the spec that is neither implemented nor pending, or a

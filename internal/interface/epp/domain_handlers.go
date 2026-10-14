@@ -1,0 +1,177 @@
+package epp
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/beevik/etree"
+	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
+
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+)
+
+// domainRefusals map the registry's refusals of domain commands to EPP
+// result codes. A refusal's own text, which names the object or rule
+// involved and never a secret, follows the standard message. Anything not
+// listed is 2400, with the detail kept in the log.
+var domainRefusals = []struct {
+	err  error
+	code int
+}{
+	{entities.ErrInvalidDomain, epplib.StatusValueSyntaxError},
+	{entities.ErrDomainNotFound, epplib.StatusObjectDoesNotExist},
+	{entities.ErrContactNotFound, epplib.StatusObjectDoesNotExist},
+	{entities.ErrHostNotFound, epplib.StatusObjectDoesNotExist},
+	{services.ErrEPPNotSponsor, epplib.StatusAuthorizationError},
+	{services.ErrRegistrarNotAccredited, epplib.StatusAuthorizationError},
+	{services.ErrDomainExists, epplib.StatusObjectExists},
+	{services.ErrDomainBlocked, epplib.StatusDataManagementPolicyViolation},
+	{services.ErrEPPInvalidPeriod, epplib.StatusValueRangeError},
+	{services.ErrEPPContactRequired, epplib.StatusMissingParameter},
+	{services.ErrEPPContactProhibited, epplib.StatusParameterPolicyError},
+	{services.ErrEPPTLDNotServed, epplib.StatusParameterPolicyError},
+	{services.ErrEPPTLDNotOpen, epplib.StatusParameterPolicyError},
+	{entities.ErrLabelNotValidInPhase, epplib.StatusParameterPolicyError},
+	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
+	{entities.ErrInvalidAuthInfo, epplib.StatusParameterPolicyError},
+}
+
+// refuseDomain answers cmd with the result code for err. An error that is
+// not a known refusal is answered 2400, and logged.
+func (s *Server) refuseDomain(cmd *command, err error) {
+	for _, r := range domainRefusals {
+		if errors.Is(err, r.err) {
+			cmd.respond(r.code, epplib.StatusText(r.code)+"; "+firstLine(err.Error()), nil)
+			return
+		}
+	}
+	s.logger.Error("EPP domain command failed", "connection_id", cmd.session.id, "svtrid", cmd.svTRID,
+		"command", cmd.frame.label(), "error", err)
+	cmd.respond(epplib.StatusCommandFailed, "", nil)
+}
+
+// firstLine keeps a joined error's message on one line, as <msg> is.
+func firstLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// registrarScope is the session's registrar as the scope ADR 0006 requires
+// of commands on sponsored objects: from the authenticated login, never
+// from the command.
+func registrarScope(cmd *command) (entities.RegistrarClID, error) {
+	return entities.NewRegistrarClID(cmd.session.registrar())
+}
+
+// withActor marks ctx as acting for the session's login, so the events a
+// command writes name it, and correlates them with the command's svTRID.
+func withActor(ctx context.Context, cmd *command) context.Context {
+	ctx = appcontext.WithUserID(ctx, "epp:"+cmd.session.loggedInAs())
+	ctx = appcontext.WithRegistrarID(ctx, cmd.session.registrar())
+	return appcontext.WithCorrelationID(ctx, cmd.svTRID)
+}
+
+// domainInfo answers <domain:info> (RFC 5731 §3.1.2). Only the sponsor is
+// answered; anyone else gets 2201 (ADR 0006), whether or not they present
+// the domain's authorization information. The RGP statuses are added when
+// the session logged in with RGP.
+func (s *Server) domainInfo(ctx context.Context, cmd *command) {
+	scope, err := registrarScope(cmd)
+	if err != nil {
+		s.refuseDomain(cmd, err)
+		return
+	}
+	name := cmd.doc.FindElement("/epp/command/info/*/name")
+	hosts := name.SelectAttrValue("hosts", "all")
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	info, err := s.domains.Info(ctx, scope, cmd.objects[0])
+	if err != nil {
+		s.refuseDomain(cmd, err)
+		return
+	}
+	var rgp *etree.Element
+	if slices.Contains(cmd.session.extensions, nsRGP) {
+		rgp = rgpInfoData(info.Domain, time.Now())
+	}
+	cmd.respond(epplib.StatusSuccess, "", infoData(info, hosts), rgp)
+}
+
+// domainCreate answers <domain:create> (RFC 5731 §3.2.1). The protocol
+// rules are checked here: the period in whole years (default 1), host
+// objects rather than host attributes, and one contact of each type. The
+// registry checks the rest (services.EPPDomainService.Create).
+func (s *Server) domainCreate(ctx context.Context, cmd *command) {
+	scope, err := registrarScope(cmd)
+	if err != nil {
+		s.refuseDomain(cmd, err)
+		return
+	}
+	create := cmd.doc.FindElement("/epp/command/create/*")
+	c := commands.EPPCreateDomainCommand{Name: cmd.objects[0], Years: 1}
+
+	if p := create.SelectElement("period"); p != nil {
+		n, _ := strconv.Atoi(strings.TrimSpace(p.Text())) // the schema has checked it is 1 to 99
+		if p.SelectAttrValue("unit", "y") == "m" {
+			if n%12 != 0 {
+				cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; the period must be whole years", nil)
+				return
+			}
+			n /= 12
+		}
+		c.Years = n
+	}
+	if ns := create.SelectElement("ns"); ns != nil {
+		if len(ns.SelectElements("hostAttr")) > 0 {
+			cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; this registry uses host objects: give nameservers as <domain:hostObj>", nil)
+			return
+		}
+		for _, h := range ns.SelectElements("hostObj") {
+			c.HostNames = append(c.HostNames, strings.TrimSpace(h.Text()))
+		}
+	}
+	if r := create.SelectElement("registrant"); r != nil {
+		c.RegistrantID = strings.TrimSpace(r.Text())
+	}
+	for _, el := range create.SelectElements("contact") {
+		var slot *string
+		switch el.SelectAttrValue("type", "") {
+		case "admin":
+			slot = &c.AdminID
+		case "tech":
+			slot = &c.TechID
+		case "billing":
+			slot = &c.BillingID
+		default:
+			cmd.respond(epplib.StatusMissingParameter, "Required parameter missing; every <domain:contact> needs a type", nil)
+			return
+		}
+		if *slot != "" {
+			cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; at most one contact of each type", nil)
+			return
+		}
+		*slot = strings.TrimSpace(el.Text())
+	}
+	if pw := create.FindElement("authInfo/pw"); pw != nil {
+		c.AuthInfo = pw.Text()
+	}
+
+	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
+	defer cancel()
+	dom, err := s.domains.Create(ctx, scope, c)
+	if err != nil {
+		s.refuseDomain(cmd, err)
+		return
+	}
+	code := epplib.StatusSuccess
+	if dom.Status.PendingCreate {
+		code = epplib.StatusActionPending
+	}
+	cmd.respond(code, "", createData(dom))
+}
