@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,10 +52,22 @@ func validCreate(name string) commands.EPPCreateDomainCommand {
 	}
 }
 
+const digest256 = "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
+
+func ds(alg, digestType int, digest string) commands.EPPDSData {
+	return commands.EPPDSData{KeyTag: 2371, Algorithm: alg, DigestType: digestType, Digest: digest}
+}
+
 func TestEPPDomainCreate(t *testing.T) {
 	svc, reg, _ := objectRegistry(t)
-	dom, err := svc.Create(context.Background(), rar1, validCreate("new.test"))
+	cmd := validCreate("new.test")
+	cmd.DSData = []commands.EPPDSData{ds(13, 2, strings.ToLower(digest256)), ds(15, 4, strings.Repeat("ab", 48))}
+	dom, err := svc.Create(context.Background(), rar1, cmd)
 	require.NoError(t, err)
+	assert.Equal(t, []entities.DSRecord{
+		{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: digest256},
+		{KeyTag: 2371, Algorithm: 15, DigestType: 4, Digest: strings.Repeat("AB", 48)},
+	}, dom.DSRecords, "registered with its DS records, digests in upper case")
 	assert.Equal(t, entities.ClIDType(rar1), dom.ClID, "the sponsor is the session's registrar")
 	assert.Equal(t, entities.ClIDType(rar1), dom.CrRr)
 	assert.Equal(t, dom.CreatedAt.AddDate(2, 0, 0), dom.ExpiryDate)
@@ -95,6 +108,24 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 			}
 		}, entities.ErrMaxHostsPerDomainExceeded},
 		{"weak authInfo", rar1, func(c *commands.EPPCreateDomainCommand) { c.AuthInfo = "" }, entities.ErrInvalidAuthInfo},
+		{"maxSigLife", rar1, func(c *commands.EPPCreateDomainCommand) { c.MaxSigLife = 604800 }, ErrEPPMaxSigLife},
+		{"key data", rar1, func(c *commands.EPPCreateDomainCommand) { c.KeyData = true }, ErrEPPKeyData},
+		{"RSASHA1 DS", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(5, 2, digest256)} }, ErrEPPDSAlgorithm},
+		{"SHA-1 digest", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(13, 1, digest256[:40])} }, ErrEPPDSDigestType},
+		{"short digest", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(13, 2, digest256[:40])} }, entities.ErrInvalidDSRecord},
+		{"key tag out of range", rar1, func(c *commands.EPPCreateDomainCommand) {
+			d := ds(13, 2, digest256)
+			d.KeyTag = 70000
+			c.DSData = []commands.EPPDSData{d}
+		}, entities.ErrInvalidDSRecord},
+		{"nine DS", rar1, func(c *commands.EPPCreateDomainCommand) {
+			for range MaxDSRecords + 1 {
+				c.DSData = append(c.DSData, ds(13, 2, digest256))
+			}
+		}, ErrEPPTooManyDS},
+		{"duplicate DS", rar1, func(c *commands.EPPCreateDomainCommand) {
+			c.DSData = []commands.EPPDSData{ds(13, 2, digest256), ds(13, 2, strings.ToLower(digest256))}
+		}, entities.ErrDuplicateDSRecord},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,6 +159,7 @@ func TestEPPDomainCreateRefusalOrder(t *testing.T) {
 		c := validCreate("order.test")
 		c.Period, c.PeriodUnit = 13, "m"                                                  // not whole years
 		c.HostAttributes = true                                                           // host attributes
+		c.MaxSigLife = 1                                                                  // an unsupported DNSSEC option
 		c.Contacts = append(c.Contacts, commands.EPPDomainContact{Type: "tech", ID: "x"}) // a second tech
 		edit(&c)
 		return c
@@ -144,6 +176,9 @@ func TestEPPDomainCreateRefusalOrder(t *testing.T) {
 		{"then the period", rar1, func(*commands.EPPCreateDomainCommand) {}, ErrEPPPeriodNotWholeYears},
 		{"then the contacts", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 12 }, ErrEPPDuplicateContactType},
 		{"then the nameservers", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.Contacts = 12, c.Contacts[:2] }, ErrEPPHostAttributes},
+		{"then the DNSSEC data", rar1, func(c *commands.EPPCreateDomainCommand) {
+			c.Period, c.Contacts, c.HostAttributes, c.AuthInfo = 12, c.Contacts[:2], false, "weak"
+		}, ErrEPPMaxSigLife},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := svc.Create(context.Background(), tc.scope, bad(tc.edit))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -1196,4 +1197,77 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
 
 	_, err = repo.GetDomainByName(context.Background(), "never-created.domaintesttld", false)
 	s.Require().Error(err, "the update must not have created the domain")
+}
+
+func (s *DomainSuite) TestDomainRepository_DSRecords() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+	ctx := context.Background()
+
+	domain, err := entities.NewDomain("98765_DOM-APEX", "signed.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	a, err := entities.NewDSRecord(2371, 13, 2, "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4")
+	s.Require().NoError(err)
+	b, err := entities.NewDSRecord(15288, 8, 4, strings.Repeat("AB", 48))
+	s.Require().NoError(err)
+	s.Require().NoError(domain.SetDSRecords([]entities.DSRecord{a, b}))
+
+	_, err = repo.Create(ctx, domain)
+	s.Require().NoError(err)
+
+	got, err := repo.GetDomainByName(ctx, "signed.domaintesttld", false)
+	s.Require().NoError(err)
+	s.Require().Equal([]entities.DSRecord{a, b}, got.DSRecords, "written with the domain, read back in order")
+	got, err = repo.GetDomainByName(ctx, "signed.domaintesttld", true)
+	s.Require().NoError(err)
+	s.Require().Len(got.DSRecords, 2, "also with hosts preloaded")
+
+	// A column update neither adds nor drops DS records.
+	got.DSRecords = nil
+	got.DropCatch = true
+	_, err = repo.UpdateDomain(ctx, got)
+	s.Require().NoError(err)
+	got, err = repo.GetDomainByName(ctx, "signed.domaintesttld", false)
+	s.Require().NoError(err)
+	s.Require().True(got.DropCatch)
+	s.Require().Len(got.DSRecords, 2)
+
+	// They go with the domain.
+	s.Require().NoError(repo.DeleteDomainByName(ctx, testPlatformScope, "signed.domaintesttld"))
+	var left int64
+	s.Require().NoError(tx.Table("domain_ds_records").Where("domain_ro_id = ?", 98765).Count(&left).Error)
+	s.Require().Zero(left)
+}
+
+func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewDomainRepository(tx)
+	ctx := context.Background()
+	digest := "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
+
+	// A delegated domain: active, with hosts, so in the zone.
+	delegated, err := entities.NewDomain("5551_DOM-APEX", "delegated.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	delegated.Hosts = s.hosts
+	delegated.Status.Inactive = false
+	ds, err := entities.NewDSRecord(2371, 13, 2, digest)
+	s.Require().NoError(err)
+	s.Require().NoError(delegated.SetDSRecords([]entities.DSRecord{ds}))
+	_, err = repo.Create(ctx, delegated)
+	s.Require().NoError(err)
+
+	// An inactive one with DS records: not in the zone, so neither are they.
+	idle, err := entities.NewDomain("5552_DOM-APEX", "idle.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	idle.Status.Inactive = true
+	s.Require().NoError(idle.SetDSRecords([]entities.DSRecord{ds}))
+	_, err = repo.Create(ctx, idle)
+	s.Require().NoError(err)
+
+	rrs, err := repo.GetActiveDomainDS(ctx, s.tld)
+	s.Require().NoError(err)
+	s.Require().Len(rrs, 1)
+	s.Require().Equal("delegated.domaintesttld.\t3600\tIN\tDS\t2371 13 2 "+digest, rrs[0].String())
 }

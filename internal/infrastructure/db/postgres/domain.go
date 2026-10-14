@@ -31,7 +31,22 @@ type Domain struct {
 	entities.DomainRGPStatus      `gorm:"embedded"`
 	entities.DomainGrandFathering `gorm:"embedded"`
 	Hosts                         []Host `gorm:"many2many:domain_hosts;"`
+	// DSRecords go with the domain: written by Create, deleted with it.
+	DSRecords []DomainDSRecord `gorm:"foreignKey:DomainRoID;constraint:OnDelete:CASCADE"`
 }
+
+// DomainDSRecord is one of a domain's DNSSEC delegation signer records.
+type DomainDSRecord struct {
+	ID         int64  `gorm:"primaryKey"`
+	DomainRoID int64  `gorm:"not null;uniqueIndex:idx_domain_ds_records_unique,priority:1"`
+	KeyTag     int    `gorm:"not null;uniqueIndex:idx_domain_ds_records_unique,priority:2"`
+	Algorithm  int    `gorm:"not null;uniqueIndex:idx_domain_ds_records_unique,priority:3"`
+	DigestType int    `gorm:"not null;uniqueIndex:idx_domain_ds_records_unique,priority:4"`
+	Digest     string `gorm:"not null;uniqueIndex:idx_domain_ds_records_unique,priority:5"`
+}
+
+// TableName pins the table name.
+func (DomainDSRecord) TableName() string { return "domain_ds_records" }
 
 // TableName returns the table name for the Domain model
 func (Domain) TableName() string {
@@ -78,6 +93,11 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 
 	for _, h := range dbDom.Hosts {
 		d.Hosts = append(d.Hosts, ToHost(&h))
+	}
+	for _, ds := range dbDom.DSRecords {
+		d.DSRecords = append(d.DSRecords, entities.DSRecord{
+			KeyTag: uint16(ds.KeyTag), Algorithm: uint8(ds.Algorithm), DigestType: uint8(ds.DigestType), Digest: ds.Digest, // #nosec G115 -- stored from these widths
+		})
 	}
 
 	return d
@@ -136,6 +156,11 @@ func ToDBDomain(d *entities.Domain) *Domain {
 		dbDomain.UpRr = &rar
 	}
 
+	for _, ds := range d.DSRecords {
+		dbDomain.DSRecords = append(dbDomain.DSRecords, DomainDSRecord{
+			DomainRoID: dbDomain.RoID, KeyTag: int(ds.KeyTag), Algorithm: int(ds.Algorithm), DigestType: int(ds.DigestType), Digest: ds.Digest,
+		})
+	}
 	for _, h := range d.Hosts {
 		dbDomain.Hosts = append(dbDomain.Hosts, *ToDBHost(h))
 	}

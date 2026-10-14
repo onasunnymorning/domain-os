@@ -1,6 +1,7 @@
 package epp
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ type createOpts struct {
 	ns       string // the <domain:ns> element, whole
 	contacts string // registrant and contact elements
 	pw       string
+	ext      string // the <extension> element's content
 }
 
 func createXML(name string, o createOpts) string {
@@ -27,9 +29,13 @@ func createXML(name string, o createOpts) string {
 	if o.pw == "" {
 		o.pw = "Secret-Auth-1!"
 	}
+	ext := ""
+	if o.ext != "" {
+		ext = "<extension>" + o.ext + "</extension>"
+	}
 	return cmdXML(`<create><domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
 <domain:name>`+name+`</domain:name>`+o.period+o.ns+o.contacts+`
-<domain:authInfo><domain:pw>`+o.pw+`</domain:pw></domain:authInfo></domain:create></create>`, "CRE-1")
+<domain:authInfo><domain:pw>`+o.pw+`</domain:pw></domain:authInfo></domain:create></create>`+ext, "CRE-1")
 }
 
 func infoXML(name, hosts string) string {
@@ -217,3 +223,72 @@ func TestDomainCreateRefusals(t *testing.T) {
 type errorString string
 
 func (e errorString) Error() string { return string(e) }
+
+const testDigest = "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
+
+// secDNSCreate is a <secDNS:create> holding dsData elements.
+func secDNSCreate(inner string) string {
+	return `<secDNS:create xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1">` + inner + `</secDNS:create>`
+}
+
+func dsDataXML(keyTag, alg, digestType int, digest string) string {
+	return fmt.Sprintf(`<secDNS:dsData><secDNS:keyTag>%d</secDNS:keyTag><secDNS:alg>%d</secDNS:alg>`+
+		`<secDNS:digestType>%d</secDNS:digestType><secDNS:digest>%s</secDNS:digest></secDNS:dsData>`, keyTag, alg, digestType, digest)
+}
+
+func TestDomainCreateWithDNSSEC(t *testing.T) {
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{nsSecDNS})), "1000")
+
+	resp := c.roundTrip(createXML("signed.test", createOpts{ext: secDNSCreate(
+		dsDataXML(2371, 13, 2, strings.ToLower(testDigest)) + dsDataXML(15288, 8, 4, strings.Repeat("AB", 48)),
+	)}))
+	requireCode(t, resp, "1000")
+	d := creds.domains.registry.Domain("signed.test")
+	require.NotNil(t, d)
+	assert.Equal(t, []entities.DSRecord{
+		{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: testDigest},
+		{KeyTag: 15288, Algorithm: 8, DigestType: 4, Digest: strings.Repeat("AB", 48)},
+	}, d.DSRecords)
+
+	info := c.roundTrip(infoXML("signed.test", ""))
+	requireCode(t, info, "1000")
+	ds := info.FindElements("//extension/infData/dsData")
+	require.Len(t, ds, 2, "a session that logged in with secDNS sees the DS data")
+	assert.Equal(t, "2371", text(info, "//extension/infData/dsData/keyTag"))
+	assert.Equal(t, testDigest, ds[0].SelectElement("digest").Text())
+
+	t.Run("a session without secDNS sees none, and cannot send it", func(t *testing.T) {
+		plain := dial(t, ts.addr)
+		plain.login()
+		assert.Nil(t, plain.roundTrip(infoXML("signed.test", "")).FindElement("//extension"))
+		requireCode(t, plain.roundTrip(createXML("nosec.test", createOpts{ext: secDNSCreate(dsDataXML(1, 13, 2, testDigest))})), "2103")
+	})
+
+	t.Run("refusals", func(t *testing.T) {
+		nine := ""
+		for i := range 9 {
+			nine += dsDataXML(i+1, 13, 2, testDigest)
+		}
+		for _, tc := range []struct{ name, ext, code, part string }{
+			{"an algorithm the registry does not accept (RSASHA1)", secDNSCreate(dsDataXML(1, 5, 2, testDigest)), "2306", "algorithm"},
+			{"an unassigned algorithm", secDNSCreate(dsDataXML(1, 99, 2, testDigest)), "2306", "algorithm"},
+			{"a SHA-1 digest", secDNSCreate(dsDataXML(1, 13, 1, strings.Repeat("AB", 20))), "2306", "digest type"},
+			{"a digest of the wrong length", secDNSCreate(dsDataXML(1, 13, 2, testDigest[:40])), "2005", "32 octets"},
+			{"a digest that is not hex, which the schema refuses", secDNSCreate(dsDataXML(1, 13, 2, "XYZ")), "2001", "digest"},
+			{"maxSigLife", secDNSCreate(`<secDNS:maxSigLife>604800</secDNS:maxSigLife>` + dsDataXML(1, 13, 2, testDigest)), "2102", "maxSigLife"},
+			{"the key data interface", secDNSCreate(`<secDNS:keyData><secDNS:flags>257</secDNS:flags><secDNS:protocol>3</secDNS:protocol><secDNS:alg>13</secDNS:alg><secDNS:pubKey>AQPJ////4Q==</secDNS:pubKey></secDNS:keyData>`), "2306", "DS data"},
+			{"more than eight DS records", secDNSCreate(nine), "2306", "at most 8"},
+			{"the same DS record twice", secDNSCreate(dsDataXML(1, 13, 2, testDigest) + dsDataXML(1, 13, 2, strings.ToLower(testDigest))), "2306", "duplicate"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resp := c.roundTrip(createXML("refused.test", createOpts{ext: tc.ext}))
+				requireCode(t, resp, tc.code)
+				assert.Contains(t, msg(resp), tc.part)
+			})
+		}
+		assert.Nil(t, creds.domains.registry.Domain("refused.test"))
+	})
+}

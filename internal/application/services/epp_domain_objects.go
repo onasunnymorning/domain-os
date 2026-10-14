@@ -38,6 +38,20 @@ var (
 	// ErrEPPDuplicateContactType: two contacts of one type; a domain has at
 	// most one of each.
 	ErrEPPDuplicateContactType = errors.New("at most one contact of each type")
+	// ErrEPPMaxSigLife: a DNSSEC maximum signature lifetime, which this
+	// registry does not support (RFC 5910 §3.2: 2102).
+	ErrEPPMaxSigLife = errors.New("maxSigLife is not supported")
+	// ErrEPPKeyData: the DNSSEC key data interface; this registry takes DS
+	// data only (RFC 5910 §4: 2306).
+	ErrEPPKeyData = errors.New("this registry takes DS data, not key data: give <secDNS:dsData>")
+	// ErrEPPDSAlgorithm: a DS record whose algorithm the registry does not
+	// accept.
+	ErrEPPDSAlgorithm = errors.New("DNSSEC algorithm not accepted")
+	// ErrEPPDSDigestType: a DS record whose digest type the registry does
+	// not accept.
+	ErrEPPDSDigestType = errors.New("DS digest type not accepted")
+	// ErrEPPTooManyDS: more DS records than MaxDSRecords.
+	ErrEPPTooManyDS = fmt.Errorf("at most %d DS records", MaxDSRecords)
 	// ErrEPPHostAttributes: nameservers given as host attributes; this
 	// registry uses host objects.
 	ErrEPPHostAttributes = errors.New("this registry uses host objects: give nameservers as <domain:hostObj>")
@@ -48,6 +62,26 @@ type eppCreate struct {
 	years                            int
 	registrant, admin, tech, billing string
 }
+
+// The registry's DNSSEC policy for DS records registrars submit. A deposit
+// imported from another registry keeps whatever it holds.
+var (
+	// AcceptedDSAlgorithms are the DNSSEC algorithms (IANA DNS Security
+	// Algorithm Numbers) whose DS records are accepted: those RFC 8624 still
+	// recommends or allows for signing, less the SHA-1 based RSASHA1 (5, 7),
+	// whose use the IETF has since deprecated. RSAMD5 (1), DSA (3, 6) and
+	// ECC-GOST (12) are refused as well.
+	AcceptedDSAlgorithms = map[uint8]string{
+		8: "RSASHA256", 10: "RSASHA512", 13: "ECDSAP256SHA256",
+		14: "ECDSAP384SHA384", 15: "ED25519", 16: "ED448",
+	}
+	// AcceptedDSDigestTypes are the DS digest types accepted: RFC 8624
+	// forbids SHA-1 (1) and GOST (3) for delegations.
+	AcceptedDSDigestTypes = map[uint8]string{2: "SHA-256", 4: "SHA-384"}
+)
+
+// MaxDSRecords is the most DS records one domain may have.
+const MaxDSRecords = 8
 
 // subordinateHostPage is how many hosts one listing of a domain's
 // subordinate hosts reads.
@@ -114,7 +148,9 @@ func (s *EPPDomainService) subordinateHosts(ctx context.Context, clid, domain st
 // phase's contact policy, each existing and the registrar's own); the
 // nameservers (host objects, not attributes; no repeats; at most
 // entities.MaxHostsPerDomain; each one of the registrar's host objects);
-// and the authorization password.
+// the DNSSEC data (DS data only, no maxSigLife, at most MaxDSRecords, each
+// well formed with an accepted algorithm and digest type, none twice); and
+// the authorization password.
 func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
@@ -167,6 +203,10 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err := s.checkNameservers(ctx, scope, cmd); err != nil {
 		return nil, err
 	}
+	ds, err := dsRecords(cmd)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := entities.NewAuthInfoType(cmd.AuthInfo); err != nil {
 		return nil, err
 	}
@@ -174,7 +214,7 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	dom, err := s.register.RegisterDomain(ctx, &commands.RegisterDomainCommand{
 		Name: dn.String(), ClID: scope.String(), AuthInfo: cmd.AuthInfo,
 		RegistrantID: c.registrant, AdminID: c.admin, TechID: c.tech, BillingID: c.billing,
-		Years: c.years, HostNames: cmd.HostNames,
+		Years: c.years, HostNames: cmd.HostNames, DSRecords: ds,
 	})
 	if err != nil {
 		// Another registrar may have registered the name since it was
@@ -185,6 +225,43 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 		return nil, err
 	}
 	return dom, nil
+}
+
+// dsRecords applies the registry's DNSSEC policy to the DS data given:
+// no maxSigLife, DS data rather than key data, at most MaxDSRecords, each
+// well formed, with an accepted algorithm and digest type, and none twice.
+func dsRecords(cmd commands.EPPCreateDomainCommand) ([]entities.DSRecord, error) {
+	switch {
+	case cmd.MaxSigLife != 0:
+		return nil, ErrEPPMaxSigLife
+	case cmd.KeyData:
+		return nil, ErrEPPKeyData
+	case len(cmd.DSData) > MaxDSRecords:
+		return nil, ErrEPPTooManyDS
+	}
+	var out []entities.DSRecord
+	for _, d := range cmd.DSData {
+		if d.KeyTag < 0 || d.KeyTag > 65535 || d.Algorithm < 0 || d.Algorithm > 255 || d.DigestType < 0 || d.DigestType > 255 {
+			return nil, fmt.Errorf("%w: a field is out of range", entities.ErrInvalidDSRecord)
+		}
+		if _, ok := AcceptedDSAlgorithms[uint8(d.Algorithm)]; !ok { // #nosec G115 -- range-checked above
+			return nil, fmt.Errorf("%w: %d", ErrEPPDSAlgorithm, d.Algorithm)
+		}
+		if _, ok := AcceptedDSDigestTypes[uint8(d.DigestType)]; !ok { // #nosec G115 -- range-checked above
+			return nil, fmt.Errorf("%w: %d", ErrEPPDSDigestType, d.DigestType)
+		}
+		rec, err := entities.NewDSRecord(uint16(d.KeyTag), uint8(d.Algorithm), uint8(d.DigestType), d.Digest) // #nosec G115 -- range-checked above
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	// SetDSRecords refuses duplicates; check here so the refusal comes in
+	// this command's order, before anything is registered.
+	if err := (&entities.Domain{}).SetDSRecords(out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // createYears is the registration period in years: one if none was given,

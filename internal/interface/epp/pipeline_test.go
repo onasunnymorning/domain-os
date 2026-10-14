@@ -77,7 +77,7 @@ func TestLoginNegotiatesServices(t *testing.T) {
 
 	t.Run("an extension the server does not offer is 2103", func(t *testing.T) {
 		c := dial(t, ts.addr)
-		requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{"urn:ietf:params:xml:ns:secDNS-1.1"})), "2103")
+		requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{"urn:ietf:params:xml:ns:epp:fee-1.0"})), "2103")
 		c.login()
 	})
 

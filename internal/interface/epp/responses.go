@@ -20,9 +20,10 @@ const serverID = "domain-os EPP"
 var supportedObjects = []string{nsDomain, nsContact, nsHost}
 
 // supportedExtensions are the extensions the greeting offers and a <login>
-// may ask for. RGP (RFC 3915) is offered for the grace period statuses on
-// <domain:info>; its restore arrives with <domain:update>.
-var supportedExtensions = []string{nsRGP}
+// may ask for. DNSSEC (RFC 5910) is offered for DS data on <domain:create>
+// and <domain:info>; RGP (RFC 3915) for the grace period statuses on
+// <domain:info>. Their update operations arrive with <domain:update>.
+var supportedExtensions = []string{nsSecDNS, nsRGP}
 
 // greetingDocument builds the RFC 5730 §2.4 greeting.
 func greetingDocument(now time.Time) *etree.Document {
@@ -207,4 +208,22 @@ func createData(d *entities.Domain) *etree.Element {
 	cre.CreateElement("domain:crDate").SetText(eppTime(d.CreatedAt))
 	cre.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
 	return cre
+}
+
+// secDNSInfoData builds <secDNS:infData> (RFC 5910 §5.1.2) with the
+// domain's DS records, or nil when it has none.
+func secDNSInfoData(d *entities.Domain) *etree.Element {
+	if len(d.DSRecords) == 0 {
+		return nil
+	}
+	inf := etree.NewElement("secDNS:infData")
+	inf.CreateAttr("xmlns:secDNS", nsSecDNS)
+	for _, ds := range d.DSRecords {
+		el := inf.CreateElement("secDNS:dsData")
+		el.CreateElement("secDNS:keyTag").SetText(strconv.Itoa(int(ds.KeyTag)))
+		el.CreateElement("secDNS:alg").SetText(strconv.Itoa(int(ds.Algorithm)))
+		el.CreateElement("secDNS:digestType").SetText(strconv.Itoa(int(ds.DigestType)))
+		el.CreateElement("secDNS:digest").SetText(ds.Digest)
+	}
+	return inf
 }

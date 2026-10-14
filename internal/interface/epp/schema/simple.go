@@ -22,6 +22,11 @@ const (
 	Language
 	Boolean
 	UnsignedShort
+	UnsignedByte
+	Int
+	// HexBinary and Base64Binary count length facets in octets.
+	HexBinary
+	Base64Binary
 )
 
 // Simple is an XSD simple type: a built-in base and the facets restricting
@@ -45,7 +50,96 @@ var (
 	// it; the models follow libxml2 (ADR 0016).
 	unsignedPattern = regexp.MustCompile(`^[0-9]+$`)
 	schemePattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+	intPattern      = regexp.MustCompile(`^[+-]?[0-9]+$`)
+	hexPattern      = regexp.MustCompile(`^[0-9A-Fa-f]*$`)
 )
+
+// inRange applies MinInclusive and MaxInclusive, when set.
+func (t *Simple) inRange(n int64) error {
+	if t.HasRange && (n < t.MinInclusive || n > t.MaxInclusive) {
+		return fmt.Errorf("must be from %d to %d", t.MinInclusive, t.MaxInclusive)
+	}
+	return nil
+}
+
+// length is the value's length as XSD's length facets count it: octets
+// for binary types, characters for everything else.
+func (t *Simple) length(v string) int {
+	switch t.Base {
+	case HexBinary:
+		return len(v) / 2
+	case Base64Binary:
+		n, _ := base64Octets(v)
+		return n
+	default:
+		return utf8.RuneCountInString(v)
+	}
+}
+
+// base64Octets is the decoded length of an xs:base64Binary value, by
+// libxml2's rule rather than XSD's stricter lexical grammar (ADR 0016): as
+// RFC 2045 asks of decoders, every character outside the base64 alphabet is
+// ignored; after the first "=" only "=" may follow; and the padding must
+// fit the count of data characters, with the unused bits of the last one
+// zero.
+func base64Octets(v string) (int, error) {
+	var data, pad int
+	last := -1 // the value of the last data character
+	for i := 0; i < len(v); i++ {
+		d := base64Value(v[i])
+		switch {
+		case d < 0:
+			continue // ignored
+		case d == 64:
+			pad++
+		case pad > 0:
+			return 0, errors.New("data after padding")
+		default:
+			data++
+			last = d
+		}
+	}
+	total := 3 * (data / 4)
+	switch pad {
+	case 0:
+		if data%4 != 0 {
+			return 0, errors.New("incomplete quantum")
+		}
+	case 1:
+		if data%4 != 3 || last&^0x3c != 0 {
+			return 0, errors.New("bad padding")
+		}
+		total += 2
+	case 2:
+		if data%4 != 2 || last&^0x30 != 0 {
+			return 0, errors.New("bad padding")
+		}
+		total++
+	default:
+		return 0, errors.New("bad padding")
+	}
+	return total, nil
+}
+
+// base64Value is a base64 character's value, 64 for "=", or -1 for any
+// other character.
+func base64Value(c byte) int {
+	switch {
+	case c >= 'A' && c <= 'Z':
+		return int(c - 'A')
+	case c >= 'a' && c <= 'z':
+		return int(c-'a') + 26
+	case c >= '0' && c <= '9':
+		return int(c-'0') + 52
+	case c == '+':
+		return 62
+	case c == '/':
+		return 63
+	case c == '=':
+		return 64
+	}
+	return -1
+}
 
 // validate checks a lexical value against the type.
 func (t *Simple) validate(raw string) error {
@@ -63,19 +157,42 @@ func (t *Simple) validate(raw string) error {
 		if v != "true" && v != "false" && v != "1" && v != "0" {
 			return errors.New("not a boolean")
 		}
-	case UnsignedShort:
+	case UnsignedShort, UnsignedByte:
 		if !unsignedPattern.MatchString(v) {
 			return errors.New("not an unsigned integer")
 		}
-		n, err := strconv.ParseUint(v, 10, 16)
-		if err != nil {
-			return errors.New("out of range for an unsignedShort")
+		bits := 16
+		if t.Base == UnsignedByte {
+			bits = 8
 		}
-		if t.HasRange && (int64(n) < t.MinInclusive || int64(n) > t.MaxInclusive) {
-			return fmt.Errorf("must be from %d to %d", t.MinInclusive, t.MaxInclusive)
+		n, err := strconv.ParseUint(v, 10, bits)
+		if err != nil {
+			return fmt.Errorf("out of range for %d bits", bits)
+		}
+		if err := t.inRange(int64(n)); err != nil { // #nosec G115 -- n fits 16 bits, parsed with that bit size
+			return err
+		}
+	case Int:
+		if !intPattern.MatchString(v) {
+			return errors.New("not an integer")
+		}
+		n, err := strconv.ParseInt(strings.TrimPrefix(v, "+"), 10, 32)
+		if err != nil {
+			return errors.New("out of range for an int")
+		}
+		if err := t.inRange(n); err != nil {
+			return err
+		}
+	case HexBinary:
+		if len(v)%2 != 0 || !hexPattern.MatchString(v) {
+			return errors.New("not hex")
+		}
+	case Base64Binary:
+		if _, err := base64Octets(v); err != nil {
+			return errors.New("not base64")
 		}
 	}
-	if n := utf8.RuneCountInString(v); (t.MinLen > 0 && n < t.MinLen) || (t.MaxLen > 0 && n > t.MaxLen) {
+	if n := t.length(v); (t.MinLen > 0 && n < t.MinLen) || (t.MaxLen > 0 && n > t.MaxLen) {
 		switch {
 		case t.MaxLen == 0:
 			return fmt.Errorf("must be at least %d characters", t.MinLen)

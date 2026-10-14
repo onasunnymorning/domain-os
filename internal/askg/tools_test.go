@@ -301,6 +301,9 @@ func (m *mockDomainSvc) GetNSRecordsPerTLD(context.Context, queries.ActiveDomain
 func (m *mockDomainSvc) GetGlueRecordsPerTLD(context.Context, string) ([]dns.RR, error) {
 	panic("not used")
 }
+func (m *mockDomainSvc) GetDSRecordsPerTLD(context.Context, string) ([]dns.RR, error) {
+	panic("not used")
+}
 func (m *mockDomainSvc) SetStatus(context.Context, string, string) (*entities.Domain, error) {
 	panic("not used")
 }

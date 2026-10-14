@@ -24,6 +24,8 @@ type RegisterDomainCommand struct {
 	HostNames    []string     `json:"HostNames"`    // HostNames must exist before registering a domain
 	PhaseName    string       `json:"PhaseName"`    // Optional, if provided the domain will be registered (and validated) in this phase, if omitted the active GA phase will be used
 	Fee          FeeExtension `json:"Fee"`          // Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class
+	// DSRecords are the domain's DNSSEC delegation signer records.
+	DSRecords []entities.DSRecord `json:"DSRecords,omitempty"`
 }
 
 // ApplyContactDataPolicy modifies the command’s registrant, admin, tech, and billing
@@ -82,6 +84,8 @@ type CreateDomainCommand struct {
 	RGPStatus          entities.DomainRGPStatus      `json:"RGPStatus"`
 	GrandFathering     entities.DomainGrandFathering `json:"GrandFathering"`
 	EnforcePhasePolicy bool                          `json:"EnforcePhasePolicy"`
+	// DSRecords are the domain's DNSSEC delegation signer records.
+	DSRecords []entities.DSRecord `json:"DSRecords,omitempty"`
 }
 
 // ApplyContactDataPolicy modifies the command’s registrant, admin, tech, and billing
@@ -135,6 +139,7 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) (*F
 		cmd.RoID = dom.RoID.String()
 	}
 	cmd.Name = dom.Name.String()
+	cmd.DSRecords = dom.DSRecords
 	cmd.OriginalName = dom.OriginalName.String()
 	cmd.UName = dom.UName.String()
 	if dom.RegistrantID == "" {
