@@ -119,10 +119,13 @@ func newCheckService(t *testing.T) (*EPPDomainService, *checkDomains, *checkPhas
 		"test":   {gaPhase(t, "test", time.Now().Add(-time.Hour), 3)},
 		"future": {gaPhase(t, "future", time.Now().Add(24*time.Hour), 1)},
 	}}
-	svc := NewEPPDomainService(domains,
-		&checkNNDNs{reserved: map[string]bool{"held.test": true}},
-		&checkTLDs{known: map[string]bool{"test": true, "future": true, "closed": true}},
-		phases, 4)
+	svc := NewEPPDomainService(EPPDomainServiceDeps{
+		Domains:          domains,
+		NNDNs:            &checkNNDNs{reserved: map[string]bool{"held.test": true}},
+		TLDs:             &checkTLDs{known: map[string]bool{"test": true, "future": true, "closed": true}},
+		Phases:           phases,
+		CheckParallelism: 4,
+	})
 	return svc, domains, phases
 }
 

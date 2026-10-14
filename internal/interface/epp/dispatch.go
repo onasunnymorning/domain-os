@@ -6,7 +6,6 @@ import (
 	"io"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/beevik/etree"
@@ -51,10 +50,16 @@ type command struct {
 }
 
 // respond sets the response to this command. msg may be empty for the
-// standard text; resData may be nil.
-func (c *command) respond(code int, msg string, resData *etree.Element) {
+// standard text; resData may be nil. Extensions that are nil are left out.
+func (c *command) respond(code int, msg string, resData *etree.Element, extensions ...*etree.Element) {
 	c.code = code
-	c.response = responseDocument(code, msg, c.frame.clTRID, c.svTRID, resData)
+	var exts []*etree.Element
+	for _, e := range extensions {
+		if e != nil {
+			exts = append(exts, e)
+		}
+	}
+	c.response = responseDocument(code, msg, c.frame.clTRID, c.svTRID, resData, exts...)
 }
 
 // closeAfterResponse ends the session once the response is written.
@@ -88,9 +93,11 @@ var rfc5730Commands = map[string]bool{
 
 func (s *Server) routes() map[routeKey]route {
 	return map[routeKey]route{
-		{command: "login"}:                     {handler: s.login},
-		{command: "logout"}:                    {handler: s.logout, requiresLogin: true},
-		{command: "check", objectNS: nsDomain}: {handler: s.domainCheck, requiresLogin: true},
+		{command: "login"}:                      {handler: s.login},
+		{command: "logout"}:                     {handler: s.logout, requiresLogin: true},
+		{command: "check", objectNS: nsDomain}:  {handler: s.domainCheck, requiresLogin: true},
+		{command: "info", objectNS: nsDomain}:   {handler: s.domainInfo, requiresLogin: true},
+		{command: "create", objectNS: nsDomain}: {handler: s.domainCreate, requiresLogin: true},
 	}
 }
 
@@ -336,7 +343,7 @@ func (c *command) describe() {
 	}
 	for _, el := range obj.ChildElements() {
 		if el.Tag == "name" || el.Tag == "id" {
-			c.objects = append(c.objects, strings.Join(strings.Fields(el.Text()), " "))
+			c.objects = append(c.objects, schema.TokenValue(el.Text()))
 		}
 	}
 }

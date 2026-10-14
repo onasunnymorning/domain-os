@@ -14,6 +14,7 @@ const (
 	nsDomain  = "urn:ietf:params:xml:ns:domain-1.0"
 	nsContact = "urn:ietf:params:xml:ns:contact-1.0"
 	nsHost    = "urn:ietf:params:xml:ns:host-1.0"
+	nsRGP     = "urn:ietf:params:xml:ns:rgp-1.0"
 
 	// RFC 5730 bounds a clTRID to 3..64 characters.
 	maxClTRIDLen = 64

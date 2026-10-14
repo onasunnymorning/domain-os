@@ -3,6 +3,7 @@ package interfaces
 import (
 	"context"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
@@ -14,6 +15,10 @@ type EPPDomainService interface {
 	// unavailable name is a result with a reason; an error means the
 	// registry could not answer.
 	Check(ctx context.Context, names []string) ([]*queries.DomainCheckResult, error)
+	// Info returns a domain the registrar sponsors.
+	Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error)
+	// Create registers a domain for the registrar.
+	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error)
 }
 
 // EPPAuditLog records EPP commands and responses

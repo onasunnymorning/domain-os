@@ -223,6 +223,10 @@ var mutationValues = []string{
 	"0", "1", "+1", "99", "100", "65535", "65536", "-1", "y", "m", "Y",
 	"true", "false", "TRUE", "all", "none", "del", "sub", "req", "ack", "request", "query",
 	"admin", "tech", "billing", "owner",
+	"v4", "v6", "v5", "192.0.2.1", "2001:db8::1", "12", "120", "y m",
+	"http://h:ab/", "a%zz", "a%2f", "urn:x y", ":x", "a:b", "1a:b", "x/y:z", "http://[::1]/", "?a:b", "#frag",
+	"http://u:p@h:80/x", "http://h:/", "http://[::1]:x/", "//h:9", "//h:z", "a://h:1:2/", "//[::1]:", "//[::1]:8", "//u@h:7?q", "a:/h:x",
+	"1_DOM-APEX", "1-ABCDEFGHI", "-APEX", "a b-APEX", "x\u00e9_1-R\u00e9P",
 }
 
 // mutate returns systematic mutations of frame: each element removed,

@@ -29,6 +29,7 @@ const (
 	NSEPP    = "urn:ietf:params:xml:ns:epp-1.0"
 	NSDomain = "urn:ietf:params:xml:ns:domain-1.0"
 	NSHost   = "urn:ietf:params:xml:ns:host-1.0"
+	NSEPPCom = "urn:ietf:params:xml:ns:eppcom-1.0"
 	NSXSI    = "http://www.w3.org/2001/XMLSchema-instance"
 )
 

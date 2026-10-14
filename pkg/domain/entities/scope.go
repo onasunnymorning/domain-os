@@ -73,10 +73,9 @@ func (o OperatorID) IsZero() bool {
 // Domain, Contact and Host is the enforcement key — and may only transact in
 // TLDs it is accredited for.
 //
-// Declared and documented here but not yet threaded through any call path: the
-// EPP transactional verbs it governs do not exist yet. It exists so that the
-// EPP buildout and any registrar-facing slice start typed rather than being
-// retrofitted. See ADR-0006 and INV-02.
+// The EPP server derives it from the session's login and passes it to the
+// domain commands that touch sponsored objects (services.EPPDomainService:
+// Info and Create). See ADR-0006 and INV-02.
 type RegistrarClID ClIDType
 
 // NewRegistrarClID creates a validated RegistrarClID. It reuses ClIDType

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
@@ -30,25 +31,57 @@ const phasePageSize = 100
 
 // EPPDomainService answers registrars' domain commands over EPP
 // (docs/epp/ARCHITECTURE.md §4). It reads through the same repositories as
-// DomainService, but answers in EPP's terms: an unavailable name is a result
-// with a reason, not an error.
+// DomainService and registers through it, but answers in EPP's terms: an
+// unavailable name is a result with a reason, and every refusal is a
+// sentinel error the EPP adapter maps to a result code.
+//
+// The commands that touch sponsored objects take the session's registrar as
+// a typed scope, and check sponsorship or accreditation before anything
+// else (ADR 0006, rule 5).
 type EPPDomainService struct {
-	domains repositories.DomainRepository
-	nndns   repositories.NNDNRepository
-	tlds    repositories.TLDRepository
-	phases  repositories.PhaseRepository
+	domains    repositories.DomainRepository
+	nndns      repositories.NNDNRepository
+	tlds       repositories.TLDRepository
+	phases     repositories.PhaseRepository
+	contacts   repositories.ContactRepository
+	hosts      repositories.HostRepository
+	registrars repositories.RegistrarRepository
+	register   EPPDomainRegistrar
 	// parallelism bounds the lookups one <check> runs at once.
 	parallelism int
 	now         func() time.Time
 }
 
-// NewEPPDomainService returns the service. parallelism bounds the
-// concurrent lookups of one <check>.
-func NewEPPDomainService(domains repositories.DomainRepository, nndns repositories.NNDNRepository, tlds repositories.TLDRepository, phases repositories.PhaseRepository, parallelism int) *EPPDomainService {
-	if parallelism < 1 {
-		parallelism = 1
+// EPPDomainRegistrar registers a domain: DomainService, which prices it,
+// assigns its ROID, stores it and publishes its event.
+type EPPDomainRegistrar interface {
+	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
+}
+
+// EPPDomainServiceDeps are what EPPDomainService reads and writes through.
+type EPPDomainServiceDeps struct {
+	Domains    repositories.DomainRepository
+	NNDNs      repositories.NNDNRepository
+	TLDs       repositories.TLDRepository
+	Phases     repositories.PhaseRepository
+	Contacts   repositories.ContactRepository
+	Hosts      repositories.HostRepository
+	Registrars repositories.RegistrarRepository
+	Register   EPPDomainRegistrar
+	// CheckParallelism bounds the concurrent lookups of one <check>.
+	CheckParallelism int
+}
+
+// NewEPPDomainService returns the service.
+func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
+	if d.CheckParallelism < 1 {
+		d.CheckParallelism = 1
 	}
-	return &EPPDomainService{domains: domains, nndns: nndns, tlds: tlds, phases: phases, parallelism: parallelism, now: time.Now}
+	return &EPPDomainService{
+		domains: d.Domains, nndns: d.NNDNs, tlds: d.TLDs, phases: d.Phases,
+		contacts: d.Contacts, hosts: d.Hosts, registrars: d.Registrars, register: d.Register,
+		parallelism: d.CheckParallelism, now: time.Now,
+	}
 }
 
 // Check reports, for each name in order, whether it is available for
