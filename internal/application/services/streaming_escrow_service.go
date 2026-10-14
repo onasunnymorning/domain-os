@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -406,7 +407,7 @@ func (svc *StreamingXMLEscrowService) initializeCSVWriters() error {
 		return err
 	}
 	writers.domainDnssecWriter = csv.NewWriter(writers.domainDnssecFile)
-	_ = writers.domainDnssecWriter.Write([]string{"DomainName", "DnssecData"}) // Write header
+	_ = writers.domainDnssecWriter.Write([]string{"DomainName", "KeyTag", "Algorithm", "DigestType", "Digest"}) // Write header
 
 	if writers.domainRgpStatusFile, err = os.Create(baseFilename + "-domainRgpStatus.csv"); err != nil {
 		return err
@@ -716,11 +717,10 @@ func (svc *StreamingXMLEscrowService) processDomainTag(decoder *xml.Decoder, sta
 			}
 		}
 
-		// Write DNSSEC data if present (simplified check)
-		if len(domain.SecDNS.DSData) > 0 {
-			// Create a simple DNSSEC record - adjust fields as needed
-			dnssecRecord := []string{domain.Name.String(), "dnssec_data_present"}
-			_ = svc.csvWriters.domainDnssecWriter.Write(dnssecRecord)
+		// Write DS records, one row each. The staging database loads these and
+		// the direct importer validates them, so they are written as deposited.
+		for _, ds := range domain.SecDNS.DSData {
+			_ = svc.csvWriters.domainDnssecWriter.Write([]string{domain.Name.String(), strconv.Itoa(ds.KeyTag), strconv.Itoa(ds.Alg), strconv.Itoa(ds.DigestType), ds.Digest})
 			svc.csvWriters.domainDnssecCounter++
 		}
 

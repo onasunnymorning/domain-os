@@ -3901,12 +3901,15 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 // IngestHostsArgs parameters
 type IngestHostsArgs struct {
 	StagedDBKey string
+	RunPrefix   string // where the importer report is saved; see importerReportKey
 }
 
 type IngestHostsResult struct {
-	Total    int64
-	Inserted int64
-	Updated  int64
+	Total        int64
+	Inserted     int64
+	Updated      int64
+	SkippedHosts int64
+	ReportKey    string // the importer report, "" if it could not be saved
 }
 
 // IngestHosts imports hosts
@@ -3948,24 +3951,31 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
-	total, inserted, updated, err := destImporter.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
-	if err != nil {
-		return IngestHostsResult{Total: total, Inserted: inserted, Updated: updated}, err
-	}
-
-	return IngestHostsResult{Total: total, Inserted: inserted, Updated: updated}, nil
+	var res IngestHostsResult
+	reportKey := importerReportKey(args.RunPrefix, args.StagedDBKey, "hosts")
+	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, lastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
+		var err error
+		res.Total, res.Inserted, res.Updated, err = destImporter.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
+		return err
+	})
+	res.SkippedHosts = int64(len(destImporter.Report.SkippedHosts))
+	return res, err
 }
 
 // IngestDomainsArgs parameters
 type IngestDomainsArgs struct {
 	StagedDBKey string
 	TLD         string
+	RunPrefix   string // where the importer report is saved; see importerReportKey
 }
 
 type IngestDomainsResult struct {
-	Total    int64
-	Inserted int64
-	Updated  int64
+	Total            int64
+	Inserted         int64
+	Updated          int64
+	ModifiedDomains  int64
+	SkippedDSRecords int64
+	ReportKey        string // the importer report, "" if it could not be saved
 }
 
 // IngestDomains imports domains
@@ -4009,12 +4019,16 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
-	total, inserted, updated, err := destImporter.ImportDomains(ctx, db, args.TLD, clidMap, lastKey, heartbeat)
-	if err != nil {
-		return IngestDomainsResult{Total: total, Inserted: inserted, Updated: updated}, err
-	}
-
-	return IngestDomainsResult{Total: total, Inserted: inserted, Updated: updated}, nil
+	var res IngestDomainsResult
+	reportKey := importerReportKey(args.RunPrefix, args.StagedDBKey, "domains")
+	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, lastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
+		var err error
+		res.Total, res.Inserted, res.Updated, err = destImporter.ImportDomains(ctx, db, args.TLD, clidMap, lastKey, heartbeat)
+		return err
+	})
+	res.ModifiedDomains = int64(len(destImporter.Report.ModifiedDomains))
+	res.SkippedDSRecords = int64(len(destImporter.Report.SkippedDSRecords))
+	return res, err
 }
 
 // IngestNNDNsArgs parameters
@@ -4939,6 +4953,9 @@ type PersistImportSummaryArgs struct {
 	QAPassed       bool             `json:"qaPassed"`
 	QAReportKey    string           `json:"qaReportKey"`
 	IngestedCounts map[string]int64 `json:"ingestedCounts"`
+	// ImporterReportKeys names each ingest phase's importer report (what it
+	// skipped or changed), by phase.
+	ImporterReportKeys map[string]string `json:"importerReportKeys,omitempty"`
 }
 
 type PersistImportSummaryResult struct {
@@ -4958,6 +4975,9 @@ func (a *EscrowImportActivities) PersistImportSummary(ctx context.Context, args 
 		"qaPassed":       args.QAPassed,
 		"qaReportKey":    args.QAReportKey,
 		"ingestedCounts": args.IngestedCounts,
+	}
+	if len(args.ImporterReportKeys) > 0 {
+		payload["importerReportKeys"] = args.ImporterReportKeys
 	}
 
 	tmp, err := os.CreateTemp("", "escrow-summary-*.json")

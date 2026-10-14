@@ -405,6 +405,9 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	}
 	ctxIngest := workflow.WithActivityOptions(ctx, aoIngest)
 	counts := make(map[string]int64)
+	// What the importer skipped or changed, saved per phase beside the run's
+	// other artifacts and named in the import summary.
+	importerReports := make(map[string]string)
 
 	// Ingest Contacts
 	var cRes activities.IngestContactsResult
@@ -451,6 +454,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	var hRes activities.IngestHostsResult
 	if err := workflow.ExecuteActivity(ctxIngest, acts.IngestHosts, activities.IngestHostsArgs{
 		StagedDBKey: stageOut.StagedDBKey,
+		RunPrefix:   assetsOut.RunPrefix,
 	}).Get(ctxIngest, &hRes); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
@@ -459,6 +463,10 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	counts["hosts_total"] = hRes.Total
 	counts["hosts_inserted"] = hRes.Inserted
 	counts["hosts_updated"] = hRes.Updated
+	counts["hosts_skipped"] = hRes.SkippedHosts
+	if hRes.ReportKey != "" {
+		importerReports["hosts"] = hRes.ReportKey
+	}
 	state.Ingested = counts
 
 	// Ingest Domains
@@ -466,6 +474,7 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	if err := workflow.ExecuteActivity(ctxIngest, acts.IngestDomains, activities.IngestDomainsArgs{
 		StagedDBKey: stageOut.StagedDBKey,
 		TLD:         params.TLD,
+		RunPrefix:   assetsOut.RunPrefix,
 	}).Get(ctxIngest, &dRes); err != nil {
 		state.Phase = "failed"
 		state.Error = err.Error()
@@ -474,6 +483,11 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	counts["domains_total"] = dRes.Total
 	counts["domains_inserted"] = dRes.Inserted
 	counts["domains_updated"] = dRes.Updated
+	counts["domains_modified"] = dRes.ModifiedDomains
+	counts["ds_records_skipped"] = dRes.SkippedDSRecords
+	if dRes.ReportKey != "" {
+		importerReports["domains"] = dRes.ReportKey
+	}
 	state.Ingested = counts
 
 	// Ingest NNDNs
@@ -521,12 +535,13 @@ func EscrowImportWorkflow(ctx workflow.Context, params EscrowImportParams) (Escr
 	// 8. Persist Import Summary to S3
 	var persistOut activities.PersistImportSummaryResult
 	if err := workflow.ExecuteActivity(ctxIngest, acts.PersistImportSummary, activities.PersistImportSummaryArgs{
-		TLD:            params.TLD,
-		RunPrefix:      assetsOut.RunPrefix,
-		WorkflowID:     wID,
-		QAPassed:       true,
-		QAReportKey:    qaOut.QAReportKey,
-		IngestedCounts: counts,
+		TLD:                params.TLD,
+		RunPrefix:          assetsOut.RunPrefix,
+		WorkflowID:         wID,
+		QAPassed:           true,
+		QAReportKey:        qaOut.QAReportKey,
+		IngestedCounts:     counts,
+		ImporterReportKeys: importerReports,
 	}).Get(ctxIngest, &persistOut); err != nil {
 		workflow.GetLogger(ctx).Warn("Failed to persist import summary to S3", "error", err)
 	}

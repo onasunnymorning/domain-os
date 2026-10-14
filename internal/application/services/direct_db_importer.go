@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,9 +24,10 @@ import (
 
 // RunReport collects details about the import execution
 type RunReport struct {
-	Timestamp       time.Time      `json:"timestamp"`
-	SkippedHosts    []SkippedItem  `json:"skipped_hosts"`
-	ModifiedDomains []ModifiedItem `json:"modified_domains"`
+	Timestamp        time.Time      `json:"timestamp"`
+	SkippedHosts     []SkippedItem  `json:"skipped_hosts"`
+	ModifiedDomains  []ModifiedItem `json:"modified_domains"`
+	SkippedDSRecords []SkippedItem  `json:"skipped_ds_records"`
 }
 
 type SkippedItem struct {
@@ -38,6 +40,15 @@ type ModifiedItem struct {
 	Field         string `json:"field"`
 	OriginalValue string `json:"original_value"`
 	Info          string `json:"info"`
+}
+
+// Merge appends other's items to r. The importers collect a batch's items
+// apart and merge them once the batch commits, so a batch that rolls back and
+// is retried is not reported twice.
+func (r *RunReport) Merge(other RunReport) {
+	r.SkippedHosts = append(r.SkippedHosts, other.SkippedHosts...)
+	r.ModifiedDomains = append(r.ModifiedDomains, other.ModifiedDomains...)
+	r.SkippedDSRecords = append(r.SkippedDSRecords, other.SkippedDSRecords...)
 }
 
 // DirectDBImporter handles high-speed imports directly into Postgres
@@ -108,9 +119,10 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 		S3:    s3c,
 		IDGen: idGen,
 		Report: &RunReport{
-			Timestamp:       time.Now(),
-			SkippedHosts:    []SkippedItem{},
-			ModifiedDomains: []ModifiedItem{},
+			Timestamp:        time.Now(),
+			SkippedHosts:     []SkippedItem{},
+			ModifiedDomains:  []ModifiedItem{},
+			SkippedDSRecords: []SkippedItem{},
 		},
 	}, nil
 }
@@ -363,6 +375,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		}
 
 		var entitiesBatch []*entities.Host
+		var batchReport RunReport
 
 		type rawHost struct {
 			Name, ClID, CrRr, UpRr string
@@ -442,7 +455,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			if err != nil || dn == nil {
 				msg := fmt.Sprintf("Invalid name (ClID: %s)", r.ClID)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
-				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
+				batchReport.SkippedHosts = append(batchReport.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
 				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
@@ -451,7 +464,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			if err != nil {
 				msg := fmt.Sprintf("Failed to generate RoID: %v", err)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
-				s.Report.SkippedHosts = append(s.Report.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
+				batchReport.SkippedHosts = append(batchReport.SkippedHosts, SkippedItem{Name: r.Name, Reason: msg})
 				// Record skipped (unmapped CLID or invalid data)
 				continue
 			}
@@ -527,6 +540,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 			inserted += batchLen
 			total += batchLen
 		}
+		s.Report.Merge(batchReport)
 
 		if (total)%10000 == 0 {
 			log.Printf("IngestHosts: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
@@ -584,6 +598,15 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 	}
 
 	total = processedSoFar
+
+	dsStaged, err := stagedTableExists(sqliteDB, stagedDSRecordsTable)
+	if err != nil {
+		return total, inserted, updated, fmt.Errorf("IngestDomains: check for staged DS records: %w", err)
+	}
+	if !dsStaged {
+		log.Printf("IngestDomains: the staging database holds no DNSSEC data; existing DS records are left as they are")
+	}
+	var dsWritten int64
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT name, registrant, clid, crrr, crdate, exdate, uprr, uname, originalname FROM domains WHERE name > ? ORDER BY name LIMIT ?`, lastKey, batchSize)
@@ -676,6 +699,14 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			sRows.Close()
 		}
 
+		var batchReport RunReport
+		var dsMap map[string][]entities.DSRecord
+		if dsStaged {
+			if dsMap, batchReport.SkippedDSRecords, err = readStagedDSRecords(sqliteDB, first, last); err != nil {
+				return total, inserted, updated, err
+			}
+		}
+
 		var entitiesBatch []*entities.Domain
 
 		for _, r := range rawDomains {
@@ -731,6 +762,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			if st, ok := statusMap[r.Name]; ok {
 				d.Status = st
 			}
+			d.DSRecords = dsMap[r.Name]
 
 			if t, err := parseJiscTime(r.CrDate); err == nil {
 				d.CreatedAt = t
@@ -744,7 +776,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				fallback := time.Now().AddDate(1, 0, 0).UTC()
 				msg := fmt.Sprintf("Setting fallback: %s. Parse Err: %v", fallback, err)
 				log.Printf("MODIFY DOMAIN: '%s' missing/invalid ExpiryDate ('%s'). %s", d.Name, r.ExDate, msg)
-				s.Report.ModifiedDomains = append(s.Report.ModifiedDomains, ModifiedItem{
+				batchReport.ModifiedDomains = append(batchReport.ModifiedDomains, ModifiedItem{
 					Name:          d.Name.String(),
 					Field:         "ExpiryDate",
 					OriginalValue: r.ExDate,
@@ -792,7 +824,12 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				if affected := int64(res.RowsAffected()); affected < batchLen {
 					return fmt.Errorf("%d of %d domains already exist under a different TLD than %q and were not imported; the deposit's names do not belong to this TLD", batchLen-affected, batchLen, tld)
 				}
-				return nil
+				if !dsStaged {
+					return nil
+				}
+				n, err := replaceDSRecords(tx, entitiesBatch)
+				dsWritten += n
+				return err
 			})
 			if txErr != nil {
 				return total, inserted, updated, fmt.Errorf("bulk upsert domains failed: %w", explainNameUnderTLDViolation(txErr, tld))
@@ -804,6 +841,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			inserted += batchLen
 			total += batchLen
 		}
+		s.Report.Merge(batchReport)
 
 		if (total)%10000 == 0 {
 			log.Printf("IngestDomains: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
@@ -818,8 +856,118 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
 		heartbeat(payload)
 	}
-	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
+	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d, DS records written: %d", total, inserted, updated, dsWritten)
 	return total, inserted, updated, nil
+}
+
+// stagedTableExists reports whether the staging database has the named table.
+func stagedTableExists(sqliteDB *sql.DB, table string) (bool, error) {
+	var n int
+	if err := sqliteDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// readStagedDSRecords returns the staged DS records of the domains named first
+// to last, in deposit order. Every algorithm is kept: which ones a registrar
+// may submit is policy for EPP, not for a deposit. A record that is not well
+// formed, or repeats one already read for its domain, is skipped and returned
+// for the report rather than failing the batch, as RDEDomain.ToEntity does on
+// the other path.
+func readStagedDSRecords(sqliteDB *sql.DB, first, last string) (map[string][]entities.DSRecord, []SkippedItem, error) {
+	rows, err := sqliteDB.Query(`SELECT domain_name, key_tag, algorithm, digest_type, digest FROM `+stagedDSRecordsTable+` WHERE domain_name >= ? AND domain_name <= ? ORDER BY domain_name, id`, first, last)
+	if err != nil {
+		return nil, nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string][]entities.DSRecord)
+	seen := make(map[string]map[entities.DSRecord]bool)
+	var skipped []SkippedItem
+	for rows.Next() {
+		var name, keyTag, alg, digestType, digest sql.NullString
+		if err := rows.Scan(&name, &keyTag, &alg, &digestType, &digest); err != nil {
+			return nil, nil, fmt.Errorf("IngestDomains: scan staged DS record: %w", err)
+		}
+		rec, err := parseStagedDSRecord(keyTag.String, alg.String, digestType.String, digest.String)
+		if err == nil && seen[name.String][rec] {
+			err = fmt.Errorf("%w: %s", entities.ErrDuplicateDSRecord, rec)
+		}
+		if err != nil {
+			msg := fmt.Sprintf("DS record %q %q %q %q: %v", keyTag.String, alg.String, digestType.String, digest.String, err)
+			log.Printf("SKIP DS RECORD: %s - %s", name.String, msg)
+			skipped = append(skipped, SkippedItem{Name: name.String, Reason: msg})
+			continue
+		}
+		if seen[name.String] == nil {
+			seen[name.String] = make(map[entities.DSRecord]bool)
+		}
+		seen[name.String][rec] = true
+		out[name.String] = append(out[name.String], rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("IngestDomains: read staged DS records: %w", err)
+	}
+	return out, skipped, nil
+}
+
+// parseStagedDSRecord parses one staged row's fields and validates the record.
+func parseStagedDSRecord(keyTag, alg, digestType, digest string) (entities.DSRecord, error) {
+	kt, err := strconv.ParseUint(strings.TrimSpace(keyTag), 10, 16)
+	if err != nil {
+		return entities.DSRecord{}, fmt.Errorf("%w: key tag: %w", entities.ErrInvalidDSRecord, err)
+	}
+	a, err := strconv.ParseUint(strings.TrimSpace(alg), 10, 8)
+	if err != nil {
+		return entities.DSRecord{}, fmt.Errorf("%w: algorithm: %w", entities.ErrInvalidDSRecord, err)
+	}
+	dt, err := strconv.ParseUint(strings.TrimSpace(digestType), 10, 8)
+	if err != nil {
+		return entities.DSRecord{}, fmt.Errorf("%w: digest type: %w", entities.ErrInvalidDSRecord, err)
+	}
+	return entities.NewDSRecord(uint16(kt), uint8(a), uint8(dt), digest)
+}
+
+// replaceDSRecords makes each domain's DS records in the database the ones the
+// deposit holds for it: a re-import replaces them, and clears them from a domain
+// the deposit now has unsigned. Domains are matched by name, as LinkDomainHosts
+// does, because an upsert that hit an existing row kept that row's ro_id rather
+// than the one generated for the batch. It runs in the batch's transaction, so
+// a resumed import never sees a domain without its DS records.
+func replaceDSRecords(tx *pg.Tx, batch []*entities.Domain) (int64, error) {
+	names := make([]string, 0, len(batch))
+	var valueStrings []string
+	var args []interface{}
+	for _, d := range batch {
+		names = append(names, d.Name.String())
+		for _, ds := range d.DSRecords {
+			valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?)")
+			args = append(args, len(valueStrings), d.Name.String(), int(ds.KeyTag), int(ds.Algorithm), int(ds.DigestType), ds.Digest)
+		}
+	}
+
+	if _, err := tx.Exec(`DELETE FROM domain_ds_records WHERE domain_ro_id IN (SELECT ro_id FROM domains WHERE name IN (?))`, pg.In(names)); err != nil {
+		return 0, fmt.Errorf("clear DS records: %w", err)
+	}
+	if len(valueStrings) == 0 {
+		return 0, nil
+	}
+
+	// Ordered so ids follow deposit order, which is the order the repository
+	// reads a domain's records back in.
+	q := fmt.Sprintf(`
+		INSERT INTO domain_ds_records (domain_ro_id, key_tag, algorithm, digest_type, digest)
+		SELECT d.ro_id, v.key_tag, v.algorithm, v.digest_type, v.digest
+		FROM (VALUES %s) AS v(ord, dn, key_tag, algorithm, digest_type, digest)
+		JOIN domains d ON d.name = v.dn
+		ORDER BY v.ord
+	`, strings.Join(valueStrings, ","))
+	res, err := tx.Exec(q, args...)
+	if err != nil {
+		return 0, fmt.Errorf("insert DS records: %w", err)
+	}
+	return int64(res.RowsAffected()), nil
 }
 
 // --- Link Domain Hosts ---
