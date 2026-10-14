@@ -125,7 +125,19 @@ type csvImportSpec struct {
 	insertSQL string
 	minFields int
 	bind      func(record []string) []any
+
+	// createSQL, when set, creates the phase's table, and only once the file
+	// is found with a header of at least minFields columns. The table is then
+	// absent when the data was not staged, which a consumer can tell apart
+	// from a deposit that holds none.
+	createSQL string
 }
+
+// stagedDSRecordsTable holds the deposit's DS records. It exists only when the
+// DNSSEC CSV was staged: the streaming analyzer once wrote a placeholder row
+// per signed domain rather than the records, and an empty table built from that
+// would read as "no DS records" and clear them on import.
+const stagedDSRecordsTable = "domain_ds_records"
 
 // escrowImports lists the CSV phases in load order. Contacts come first so the
 // downstream domain rows reference contacts that are already present.
@@ -192,6 +204,28 @@ func escrowImports() []csvImportSpec {
 			minFields: 3,
 			bind: func(r []string) []any {
 				return []any{strings.ToLower(r[0]), r[1], r[2]}
+			},
+		},
+		{
+			suffix:    "-DomainDnssec.csv",
+			label:     "domain DS records",
+			insertSQL: `INSERT INTO ` + stagedDSRecordsTable + ` (domain_name, key_tag, algorithm, digest_type, digest) VALUES (?, ?, ?, ?, ?)`,
+			minFields: 5,
+			// The numbers stay text: the importer validates each record and
+			// reports the bad ones, which it cannot do for a row lost here.
+			createSQL: `
+				CREATE TABLE IF NOT EXISTS ` + stagedDSRecordsTable + ` (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					domain_name TEXT NOT NULL,
+					key_tag TEXT,
+					algorithm TEXT,
+					digest_type TEXT,
+					digest TEXT,
+					FOREIGN KEY (domain_name) REFERENCES domains(name)
+				);
+				CREATE INDEX IF NOT EXISTS idx_domain_ds_records_domain ON ` + stagedDSRecordsTable + `(domain_name);`,
+			bind: func(r []string) []any {
+				return []any{strings.ToLower(r[0]), r[1], r[2], r[3], r[4]}
 			},
 		},
 		{
@@ -364,11 +398,22 @@ func (svc *CSVToSQLiteService) importCSV(spec csvImportSpec, hb *heartbeater) er
 	reader.FieldsPerRecord = -1
 
 	// Skip header
-	if _, err := reader.Read(); err != nil {
-		if err == io.EOF {
+	header, err := reader.Read()
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	if spec.createSQL != "" {
+		if len(header) < spec.minFields {
+			log.Printf("⚠️  Not staging %s: %s has %d column(s), want %d", spec.label, csvFile, len(header), spec.minFields)
 			return nil
 		}
-		return err
+		if _, err := svc.db.Exec(spec.createSQL); err != nil {
+			return fmt.Errorf("create table: %w", err)
+		}
+	}
+	if err == io.EOF {
+		return nil
 	}
 
 	batch, err := newInsertBatch(svc.db, spec.insertSQL)
