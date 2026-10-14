@@ -798,18 +798,9 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 	// Direct import resume
-	cursorKey := path.Dir(dbKey) + "/cursor_contacts_direct.txt"
-	var lastKey string
-	if content, err := s3c.DownloadToString(ctx, cursorKey); err == nil {
-		lastKey = strings.TrimSpace(content)
-	}
+	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_contacts_direct.txt")
 
-	heartbeat := func(k string) {
-		activity.RecordHeartbeat(ctx, k)
-		_ = s3c.UploadString(ctx, cursorKey, k)
-	}
-
-	total, inserted, updated, skipped, err := importer.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, skipped, err := importer.ImportContacts(ctx, db, clidMap, cursor, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -944,18 +935,9 @@ func (a *EscrowImportActivities) ImportHostsDirect(ctx context.Context, args Imp
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 
-	cursorKey := path.Dir(dbKey) + "/cursor_hosts_direct.txt"
-	var lastKey string
-	if content, err := s3c.DownloadToString(ctx, cursorKey); err == nil {
-		lastKey = strings.TrimSpace(content)
-	}
+	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_hosts_direct.txt")
 
-	heartbeat := func(k string) {
-		activity.RecordHeartbeat(ctx, k)
-		_ = s3c.UploadString(ctx, cursorKey, k)
-	}
-
-	total, inserted, updated, err := importer.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := importer.ImportHosts(ctx, db, clidMap, cursor, heartbeat)
 	if err != nil {
 		activity.GetLogger(ctx).Error("Direct host import failed", "error", err)
 		return ImportFromSQLiteResult{}, err
@@ -1003,18 +985,9 @@ func (a *EscrowImportActivities) ImportDomainsDirect(ctx context.Context, args I
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 
-	cursorKey := path.Dir(dbKey) + "/cursor_domains_direct.txt"
-	var lastKey string
-	if content, err := s3c.DownloadToString(ctx, cursorKey); err == nil {
-		lastKey = strings.TrimSpace(content)
-	}
+	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_domains_direct.txt")
 
-	heartbeat := func(k string) {
-		activity.RecordHeartbeat(ctx, k)
-		_ = s3c.UploadString(ctx, cursorKey, k)
-	}
-
-	total, inserted, updated, err := importer.ImportDomains(ctx, db, tld, clidMap, lastKey, heartbeat)
+	total, inserted, updated, err := importer.ImportDomains(ctx, db, tld, clidMap, cursor, heartbeat)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -3644,14 +3617,8 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 		return IngestContactsResult{}, err
 	}
 
-	// Resumability: Check if we have a heartbeat detail to resume from
-	var lastKey string
-	if activity.HasHeartbeatDetails(ctx) {
-		var d string
-		if err := activity.GetHeartbeatDetails(ctx, &d); err == nil {
-			lastKey = d
-		}
-	}
+	// Resumability: carry on after the batch the previous attempt last committed
+	cursor := ingestCursor(ctx, "contacts")
 
 	// Download Staged DB
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
@@ -3676,11 +3643,11 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	// We pass nil to indicate trust/passthrough mode
 	var clidMap map[string]string = nil
 
-	heartbeat := func(processed string) {
-		activity.RecordHeartbeat(ctx, processed)
+	heartbeat := func(c services.ImportCursor) {
+		activity.RecordHeartbeat(ctx, c)
 	}
 
-	total, inserted, updated, skipped, err := destImporter.ImportContacts(ctx, db, clidMap, lastKey, heartbeat)
+	total, inserted, updated, skipped, err := destImporter.ImportContacts(ctx, db, clidMap, cursor, heartbeat)
 	if err != nil {
 		return IngestContactsResult{Total: total, Inserted: inserted, Updated: updated, Skipped: skipped}, err
 	}
@@ -3919,13 +3886,7 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 		return IngestHostsResult{}, err
 	}
 
-	var lastKey string
-	if activity.HasHeartbeatDetails(ctx) {
-		var d string
-		if err := activity.GetHeartbeatDetails(ctx, &d); err == nil {
-			lastKey = d
-		}
-	}
+	cursor := ingestCursor(ctx, "hosts")
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {
@@ -3945,17 +3906,17 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 	}
 	defer destImporter.PG.Close()
 
-	heartbeat := func(processed string) {
-		activity.RecordHeartbeat(ctx, processed)
+	heartbeat := func(c services.ImportCursor) {
+		activity.RecordHeartbeat(ctx, c)
 	}
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
 	var res IngestHostsResult
 	reportKey := importerReportKey(args.RunPrefix, args.StagedDBKey, "hosts")
-	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, lastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
+	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, cursor.LastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
 		var err error
-		res.Total, res.Inserted, res.Updated, err = destImporter.ImportHosts(ctx, db, clidMap, lastKey, heartbeat)
+		res.Total, res.Inserted, res.Updated, err = destImporter.ImportHosts(ctx, db, clidMap, cursor, heartbeat)
 		return err
 	})
 	res.SkippedHosts = int64(len(destImporter.Report.SkippedHosts))
@@ -3985,13 +3946,7 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 		return IngestDomainsResult{}, err
 	}
 
-	var lastKey string
-	if activity.HasHeartbeatDetails(ctx) {
-		var d string
-		if err := activity.GetHeartbeatDetails(ctx, &d); err == nil {
-			lastKey = d
-		}
-	}
+	cursor := ingestCursor(ctx, "domains")
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {
@@ -4013,17 +3968,17 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 	defer destImporter.PG.Close()
 
-	heartbeat := func(processed string) {
-		activity.RecordHeartbeat(ctx, processed)
+	heartbeat := func(c services.ImportCursor) {
+		activity.RecordHeartbeat(ctx, c)
 	}
 
 	// Identity mapping (staged DB has correct IDs)
 	var clidMap map[string]string = nil
 	var res IngestDomainsResult
 	reportKey := importerReportKey(args.RunPrefix, args.StagedDBKey, "domains")
-	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, lastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
+	res.ReportKey, err = runWithImporterReport(ctx, s3c, reportKey, cursor.LastKey != "", destImporter.Report, activity.GetLogger(ctx).Warn, func() error {
 		var err error
-		res.Total, res.Inserted, res.Updated, err = destImporter.ImportDomains(ctx, db, args.TLD, clidMap, lastKey, heartbeat)
+		res.Total, res.Inserted, res.Updated, err = destImporter.ImportDomains(ctx, db, args.TLD, clidMap, cursor, heartbeat)
 		return err
 	})
 	res.ModifiedDomains = int64(len(destImporter.Report.ModifiedDomains))
@@ -4051,13 +4006,7 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 		return IngestNNDNsResult{}, err
 	}
 
-	var lastKey string
-	if activity.HasHeartbeatDetails(ctx) {
-		var d string
-		if err := activity.GetHeartbeatDetails(ctx, &d); err == nil {
-			lastKey = d
-		}
-	}
+	cursor := ingestCursor(ctx, "nndns")
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {
@@ -4079,11 +4028,11 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 	}
 	defer destImporter.PG.Close()
 
-	heartbeat := func(processed string) {
-		activity.RecordHeartbeat(ctx, processed)
+	heartbeat := func(c services.ImportCursor) {
+		activity.RecordHeartbeat(ctx, c)
 	}
 
-	total, inserted, updated, err := destImporter.ImportNNDNs(ctx, db, args.TLD, lastKey, heartbeat)
+	total, inserted, updated, err := destImporter.ImportNNDNs(ctx, db, args.TLD, cursor, heartbeat)
 	if err != nil {
 		return IngestNNDNsResult{Total: total, Inserted: inserted, Updated: updated}, err
 	}

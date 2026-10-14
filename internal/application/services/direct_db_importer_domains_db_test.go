@@ -67,7 +67,7 @@ func TestDirectDBImporter_ImportDomains_DoesNotReassignAnotherTLDsDomain(t *test
 	require.NoError(t, err)
 
 	staged := stagedDomains(t, [3]string{name, "other-registrant", "other-registrar"})
-	_, _, _, err = importer.ImportDomains(context.Background(), staged, "gza", nil, "", func(string) {})
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, "gza", nil, services.ImportCursor{}, func(services.ImportCursor) {})
 
 	require.Error(t, err, "a name that exists under another TLD must fail the import")
 	// Two layers can refuse this and they word it the same way: the upsert's
@@ -101,7 +101,7 @@ func TestDirectDBImporter_ImportDomains_ReimportSameTLDUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	staged := stagedDomains(t, [3]string{existing, "new-registrant", "new-registrar"}, [3]string{added, "new-registrant", "new-registrar"})
-	total, _, _, err := importer.ImportDomains(context.Background(), staged, "paco", nil, "", func(string) {})
+	total, _, _, err := importer.ImportDomains(context.Background(), staged, "paco", nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)
 

@@ -170,9 +170,9 @@ func TestDirectDBImporter_ImportContacts_StoresAGeneratedAuthInfoPerContact(t *t
 	importer, err := services.NewDirectDBImporter()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = importer.PG.Close() })
-	noop := func(string) {}
+	noop := func(services.ImportCursor) {}
 
-	total, _, _, skipped, err := importer.ImportContacts(context.Background(), staged, nil, "", noop)
+	total, _, _, skipped, err := importer.ImportContacts(context.Background(), staged, nil, services.ImportCursor{}, noop)
 	require.NoError(t, err)
 	require.Equal(t, int64(directImportRows), total)
 	require.Zero(t, skipped)
@@ -183,7 +183,7 @@ func TestDirectDBImporter_ImportContacts_StoresAGeneratedAuthInfoPerContact(t *t
 
 	// Importing the same escrow again is an upsert. It must not mint a new authInfo for a contact that
 	// already has one, or a retried batch would silently rotate credentials a registrar may already hold.
-	_, _, _, _, err = importer.ImportContacts(context.Background(), staged, nil, "", noop)
+	_, _, _, _, err = importer.ImportContacts(context.Background(), staged, nil, services.ImportCursor{}, noop)
 	require.NoError(t, err)
 	require.Equal(t, first, storedAuthInfos(t, db, q, clID), "re-import replaced stored authInfos")
 }
@@ -205,9 +205,9 @@ func TestDirectDBImporter_ImportDomains_StoresAGeneratedAuthInfoPerDomain(t *tes
 	importer, err := services.NewDirectDBImporter()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = importer.PG.Close() })
-	noop := func(string) {}
+	noop := func(services.ImportCursor) {}
 
-	total, _, _, err := importer.ImportDomains(context.Background(), staged, tld, nil, "", noop)
+	total, _, _, err := importer.ImportDomains(context.Background(), staged, tld, nil, services.ImportCursor{}, noop)
 	require.NoError(t, err)
 	require.Equal(t, int64(directImportRows), total)
 
@@ -216,7 +216,7 @@ func TestDirectDBImporter_ImportDomains_StoresAGeneratedAuthInfoPerDomain(t *tes
 	requireGeneratedAuthInfos(t, directImportRows, first)
 
 	// As with contacts, a re-import must leave stored authInfos alone.
-	_, _, _, err = importer.ImportDomains(context.Background(), staged, tld, nil, "", noop)
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, tld, nil, services.ImportCursor{}, noop)
 	require.NoError(t, err)
 	require.Equal(t, first, storedAuthInfos(t, db, q, tld), "re-import replaced stored authInfos")
 }

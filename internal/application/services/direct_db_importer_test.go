@@ -30,7 +30,7 @@ func TestDirectDBImporter_ImportNNDNs_NoTable(t *testing.T) {
 
 	// Test graceful handle or error
 	// Since we removed graceful handle, it should ERROR!
-	_, _, _, err = importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
+	_, _, _, err = importer.ImportNNDNs(context.Background(), db, "radio", services.ImportCursor{}, func(services.ImportCursor) {})
 	require.Error(t, err, "Expected error when nndns table does not exist")
 	require.Contains(t, err.Error(), "no such table: nndns")
 }
@@ -56,7 +56,7 @@ func TestDirectDBImporter_ImportNNDNs_EmptyTable(t *testing.T) {
 	}
 
 	// This should run without errors since it has 0 items and no conflicts
-	total, inserted, updated, err := importer.ImportNNDNs(context.Background(), db, "radio", "", func(processed string) {})
+	total, inserted, updated, err := importer.ImportNNDNs(context.Background(), db, "radio", services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err, "Should not error on empty correctly-structured table")
 	require.Equal(t, int64(0), total)
 	require.Equal(t, int64(0), inserted)
@@ -77,7 +77,7 @@ func TestDirectDBImporter_ImportHosts_NoTable(t *testing.T) {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
 	}
 
-	_, _, _, err = importer.ImportHosts(context.Background(), db, nil, "", func(processed string) {})
+	_, _, _, err = importer.ImportHosts(context.Background(), db, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no such table: hosts")
 }
@@ -101,7 +101,7 @@ func TestDirectDBImporter_ImportHosts_EmptyTable(t *testing.T) {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
 	}
 
-	total, inserted, updated, err := importer.ImportHosts(context.Background(), db, nil, "", func(processed string) {})
+	total, inserted, updated, err := importer.ImportHosts(context.Background(), db, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
 	require.Equal(t, int64(0), inserted)

@@ -449,17 +449,19 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	}
 
 	// 5. Run Import Phases
-	noopHeartbeat := func(s string) {} // CLI doesn't need heartbeat callbacks
+	// CLI doesn't need heartbeat callbacks
+	noopCursor := func(ImportCursor) {}
+	noopHeartbeat := func(s string) {}
 
 	log.Println("Importing Contacts...")
-	cTotal, cInserted, cUpdated, cSkipped, err := importer.ImportContacts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	cTotal, cInserted, cUpdated, cSkipped, err := importer.ImportContacts(ctx, sqliteDB, clidMap, ImportCursor{}, noopCursor)
 	if err != nil {
 		return fmt.Errorf("ImportContacts failed: %w", err)
 	}
 	log.Printf("Contacts: %d total, %d inserted, %d updated, %d skipped", cTotal, cInserted, cUpdated, cSkipped)
 
 	log.Println("Importing Hosts...")
-	hTotal, hInserted, hUpdated, err := importer.ImportHosts(ctx, sqliteDB, clidMap, "", noopHeartbeat)
+	hTotal, hInserted, hUpdated, err := importer.ImportHosts(ctx, sqliteDB, clidMap, ImportCursor{}, noopCursor)
 	if err != nil {
 		return fmt.Errorf("ImportHosts failed: %w", err)
 	}
@@ -468,7 +470,7 @@ func (s *JiscService) ImportToDirectDB(jsonPath string) error {
 	log.Println("Importing Domains...")
 	// TLD is assumed ac.uk from context, but maybe verify/pass?
 	// The importer needs tld arg.
-	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, jiscTLD, clidMap, "", noopHeartbeat)
+	dTotal, dInserted, dUpdated, err := importer.ImportDomains(ctx, sqliteDB, jiscTLD, clidMap, ImportCursor{}, noopCursor)
 	if err != nil {
 		return fmt.Errorf("ImportDomains failed: %w", err)
 	}
