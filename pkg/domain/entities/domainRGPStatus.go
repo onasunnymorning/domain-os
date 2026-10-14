@@ -34,16 +34,18 @@ const (
 )
 
 // RGPStatuses returns the RFC 3915 grace period statuses of d at now. A
-// domain pending delete is in exactly one of redemptionPeriod (still
-// restorable), pendingRestore (a restore has been requested) or
-// pendingDelete (past redemption, waiting to be purged). Otherwise it is in
-// each of the add, renew and auto-renew grace periods that has not ended.
+// domain whose restore has been requested is pendingRestore: Restore clears
+// pendingDelete as it sets pendingRestore, and the two never hold together.
+// A domain pending delete is in redemptionPeriod while still restorable,
+// then pendingDelete until it is purged. Otherwise it is in each of the
+// add, renew and auto-renew grace periods that has not ended.
 func (d *Domain) RGPStatuses(now time.Time) []string {
 	r := d.RGPStatus
+	if d.Status.PendingRestore {
+		return []string{RGPStatusPendingRestore}
+	}
 	if d.Status.PendingDelete {
 		switch {
-		case d.Status.PendingRestore:
-			return []string{RGPStatusPendingRestore}
 		case now.Before(r.RedemptionPeriodEnd):
 			return []string{RGPStatusRedemptionPeriod}
 		default:

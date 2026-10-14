@@ -120,13 +120,14 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	})
 	scope1, scope2 := entities.RegistrarClID(rar1), entities.RegistrarClID(rar2)
 	create := commands.EPPCreateDomainCommand{
-		Name: "epp." + tld, Years: 3, RegistrantID: "c" + rar1, TechID: "c" + rar1,
+		Name: "epp." + tld, Period: 3, PeriodUnit: "y", RegistrantID: "c" + rar1,
+		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
 		HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: "Domain-Auth-1!",
 	}
 
 	t.Run("a registrar not accredited for the TLD is refused", func(t *testing.T) {
 		c := create
-		c.RegistrantID, c.TechID, c.HostNames = "c"+rar2, "c"+rar2, nil
+		c.RegistrantID, c.Contacts, c.HostNames = "c"+rar2, []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar2}}, nil
 		_, err := svc.Create(ctx, scope2, c)
 		require.ErrorIs(t, err, ErrRegistrarNotAccredited)
 	})
@@ -156,6 +157,16 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	t.Run("another registrar cannot read it", func(t *testing.T) {
 		_, err := svc.Info(ctx, scope2, create.Name)
 		require.ErrorIs(t, err, ErrEPPNotSponsor)
+	})
+	t.Run("its registration event does not carry the authInfo (#484)", func(t *testing.T) {
+		var rows []struct{ Command, BeforeState, AfterState, Data string }
+		require.NoError(t, db.Table("domain_events").Select("command::text AS command, coalesce(before_state::text, '') AS before_state, after_state::text AS after_state, data::text AS data").
+			Where("subject = ? AND type = ?", create.Name, "domain.registered").Scan(&rows).Error)
+		require.Len(t, rows, 1)
+		for _, col := range []string{rows[0].Command, rows[0].BeforeState, rows[0].AfterState, rows[0].Data} {
+			assert.NotContains(t, col, "Domain-Auth-1!")
+		}
+		assert.Contains(t, rows[0].Command, "[redacted]")
 	})
 	t.Run("its registration event names the session's login as actor", func(t *testing.T) {
 		var actors []string

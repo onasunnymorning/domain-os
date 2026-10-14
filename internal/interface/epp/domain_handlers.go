@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/interface/epp/schema"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -40,6 +41,11 @@ var domainRefusals = []struct {
 	{services.ErrEPPTLDNotOpen, epplib.StatusParameterPolicyError},
 	{entities.ErrLabelNotValidInPhase, epplib.StatusParameterPolicyError},
 	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
+	{entities.ErrDuplicateHost, epplib.StatusParameterPolicyError},
+	{services.ErrEPPHostAttributes, epplib.StatusParameterPolicyError},
+	{services.ErrEPPPeriodNotWholeYears, epplib.StatusParameterPolicyError},
+	{services.ErrEPPContactTypeMissing, epplib.StatusMissingParameter},
+	{services.ErrEPPDuplicateContactType, epplib.StatusParameterPolicyError},
 	{entities.ErrInvalidAuthInfo, epplib.StatusParameterPolicyError},
 }
 
@@ -103,10 +109,10 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	cmd.respond(epplib.StatusSuccess, "", infoData(info, hosts), rgp)
 }
 
-// domainCreate answers <domain:create> (RFC 5731 §3.2.1). The protocol
-// rules are checked here: the period in whole years (default 1), host
-// objects rather than host attributes, and one contact of each type. The
-// registry checks the rest (services.EPPDomainService.Create).
+// domainCreate answers <domain:create> (RFC 5731 §3.2.1). It reads the
+// frame as the schema defines its values, and leaves every rule to the
+// registry (services.EPPDomainService.Create), which applies them in one
+// order.
 func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
@@ -114,52 +120,30 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 		return
 	}
 	create := cmd.doc.FindElement("/epp/command/create/*")
-	c := commands.EPPCreateDomainCommand{Name: cmd.objects[0], Years: 1}
-
+	c := commands.EPPCreateDomainCommand{Name: cmd.objects[0]}
 	if p := create.SelectElement("period"); p != nil {
-		n, _ := strconv.Atoi(strings.TrimSpace(p.Text())) // the schema has checked it is 1 to 99
-		if p.SelectAttrValue("unit", "y") == "m" {
-			if n%12 != 0 {
-				cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; the period must be whole years", nil)
-				return
-			}
-			n /= 12
-		}
-		c.Years = n
+		c.Period, _ = strconv.Atoi(schema.TokenValue(p.Text())) // the schema has checked it is 1 to 99
+		c.PeriodUnit = schema.TokenValue(p.SelectAttrValue("unit", ""))
 	}
 	if ns := create.SelectElement("ns"); ns != nil {
-		if len(ns.SelectElements("hostAttr")) > 0 {
-			cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; this registry uses host objects: give nameservers as <domain:hostObj>", nil)
-			return
-		}
+		c.HostAttributes = len(ns.SelectElements("hostAttr")) > 0
 		for _, h := range ns.SelectElements("hostObj") {
-			c.HostNames = append(c.HostNames, strings.TrimSpace(h.Text()))
+			c.HostNames = append(c.HostNames, schema.TokenValue(h.Text()))
 		}
 	}
 	if r := create.SelectElement("registrant"); r != nil {
-		c.RegistrantID = strings.TrimSpace(r.Text())
+		c.RegistrantID = schema.TokenValue(r.Text())
 	}
 	for _, el := range create.SelectElements("contact") {
-		var slot *string
-		switch el.SelectAttrValue("type", "") {
-		case "admin":
-			slot = &c.AdminID
-		case "tech":
-			slot = &c.TechID
-		case "billing":
-			slot = &c.BillingID
-		default:
-			cmd.respond(epplib.StatusMissingParameter, "Required parameter missing; every <domain:contact> needs a type", nil)
-			return
-		}
-		if *slot != "" {
-			cmd.respond(epplib.StatusParameterPolicyError, "Parameter value policy error; at most one contact of each type", nil)
-			return
-		}
-		*slot = strings.TrimSpace(el.Text())
+		c.Contacts = append(c.Contacts, commands.EPPDomainContact{
+			Type: schema.TokenValue(el.SelectAttrValue("type", "")),
+			ID:   schema.TokenValue(el.Text()),
+		})
 	}
 	if pw := create.FindElement("authInfo/pw"); pw != nil {
-		c.AuthInfo = pw.Text()
+		// eppcom:pwAuthInfoType is a normalizedString: the password is the
+		// text with tabs and line breaks as spaces, as it was validated.
+		c.AuthInfo = schema.NormalizedStringValue(pw.Text())
 	}
 
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)

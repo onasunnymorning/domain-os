@@ -159,3 +159,14 @@ func checkURIReference(v string) error {
 func isHex(c byte) bool {
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
+
+// TokenValue is the value of an xs:token (and every type derived from it)
+// as the schema defines it: whitespace collapsed. Validation checks this
+// value, so a handler must read this value too.
+func TokenValue(raw string) string { return (&Simple{Base: Token}).whitespace(raw) }
+
+// NormalizedStringValue is the value of an xs:normalizedString: tabs, line
+// feeds and carriage returns replaced by spaces, nothing else changed.
+func NormalizedStringValue(raw string) string {
+	return (&Simple{Base: NormalizedString}).whitespace(raw)
+}

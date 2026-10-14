@@ -33,6 +33,7 @@ func newTestDomains() *testDomains {
 	reg := memstore.NewRegistry()
 	reg.AddTLD("test", true)
 	reg.AddTLD("closed", false)
+	reg.AddTLD("unaccredited", true) // open, but nobody is accredited for it
 	for _, clid := range []string{testRegistrar, "registrar2"} {
 		reg.Accredit(clid, "test")
 		reg.Accredit(clid, "closed")

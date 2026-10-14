@@ -6,7 +6,6 @@ import (
 	"io"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/beevik/etree"
@@ -344,7 +343,7 @@ func (c *command) describe() {
 	}
 	for _, el := range obj.ChildElements() {
 		if el.Tag == "name" || el.Tag == "id" {
-			c.objects = append(c.objects, strings.Join(strings.Fields(el.Text()), " "))
+			c.objects = append(c.objects, schema.TokenValue(el.Text()))
 		}
 	}
 }

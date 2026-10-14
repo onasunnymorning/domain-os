@@ -30,7 +30,7 @@ func TestDomainRGPStatuses(t *testing.T) {
 		{"add period over", Domain{RGPStatus: DomainRGPStatus{AddPeriodEnd: earlier}}, nil},
 		{"renewed and auto-renewed", Domain{RGPStatus: DomainRGPStatus{RenewPeriodEnd: later, AutoRenewPeriodEnd: later}}, []string{RGPStatusRenewPeriod, RGPStatusAutoRenewPeriod}},
 		{"deleted, restorable", Domain{Status: DomainStatus{PendingDelete: true}, RGPStatus: DomainRGPStatus{RedemptionPeriodEnd: later, AddPeriodEnd: later}}, []string{RGPStatusRedemptionPeriod}},
-		{"restore requested", Domain{Status: DomainStatus{PendingDelete: true, PendingRestore: true}, RGPStatus: DomainRGPStatus{RedemptionPeriodEnd: later}}, []string{RGPStatusPendingRestore}},
+		{"restore requested", restored(t, later), []string{RGPStatusPendingRestore}},
 		{"past redemption", Domain{Status: DomainStatus{PendingDelete: true}, RGPStatus: DomainRGPStatus{RedemptionPeriodEnd: earlier}}, []string{RGPStatusPendingDelete}},
 	}
 	for _, tc := range cases {
@@ -38,4 +38,16 @@ func TestDomainRGPStatuses(t *testing.T) {
 			assert.Equal(t, tc.want, tc.dom.RGPStatuses(now))
 		})
 	}
+}
+
+// restored is a domain as Restore leaves it: pendingRestore set and
+// pendingDelete cleared, still inside its redemption period.
+func restored(t *testing.T, redemptionEnd time.Time) Domain {
+	t.Helper()
+	d := Domain{Status: DomainStatus{PendingDelete: true}, RGPStatus: DomainRGPStatus{RedemptionPeriodEnd: redemptionEnd}}
+	require.NoError(t, d.UnSetStatus(DomainStatusPendingDelete))
+	require.NoError(t, d.SetStatus(DomainStatusPendingRestore))
+	require.True(t, d.Status.PendingRestore)
+	require.False(t, d.Status.PendingDelete)
+	return d
 }

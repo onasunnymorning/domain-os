@@ -135,28 +135,31 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 
 **`<domain:info>`.** Answered only to the sponsoring registrar (ADR 0006): another registrar gets 2201, with or without the domain's authorization information, and is not told who the sponsor is. The `<infData>` carries the name, ROID, statuses, registrant and contacts, nameservers and subordinate hosts as the `hosts` attribute selects (`all`, the default; `del`; `sub`; `none`), the sponsor and creator, the dates, and the authorization information. A session that logged in with RGP also gets `<rgp:infData>` with the domain's grace period statuses (`addPeriod`, `renewPeriod`, `autoRenewPeriod`; or, once deleted, `redemptionPeriod`, `pendingRestore` or `pendingDelete`), when it is in one.
 
-**`<domain:create>`.** The registrar must be accredited for the TLD (ADR 0006). The domain is registered in the TLD's current general-availability phase, through the same registration path as the admin API, which prices it, assigns its ROID and writes its `domain.registered` event with the session's login (`epp:<login>`) as actor and the svTRID as correlation ID. Refusals, checked in this order:
+**`<domain:create>`.** The registrar must be accredited for the TLD (ADR 0006). The domain is registered in the TLD's current general-availability phase, through the same registration path as the admin API, which prices it, assigns its ROID and writes its `domain.registered` event with the session's login (`epp:<login>`) as actor and the svTRID as correlation ID. Every rule is applied in one order, by the registry, so that of several problems with a command the first in this order is the one reported:
 
 | Refusal | Code |
 |---|---|
 | Not a valid domain name | 2005 |
 | TLD not served, or not open (no GA phase in force) | 2306 |
 | Registrar not accredited for the TLD | 2201 |
-| Period outside 1 year to the phase's maximum horizon (10 by default) | 2004. A period in months must be whole years, or it is 2306. No period is 1 year |
+| A period in months that is not whole years | 2306 |
+| Period outside 1 year to the phase's maximum horizon (10 by default); no period is 1 year | 2004 |
 | The phase's label rules exclude the name | 2306 |
 | Registered | 2302, also when another registrar registers it while the create runs |
 | Reserved (ADR 0011) | 2308 |
+| A `<domain:contact>` without a type | 2003 |
+| Two contacts of one type | 2306 |
 | A contact the phase requires is missing (by default: registrant and tech) | 2003 |
 | A contact the phase prohibits is given | 2306. The admin path drops it silently; EPP tells the registrar |
-| A `<domain:contact>` without a type, or two of one type | 2003, 2306 |
 | A contact that does not exist | 2303 |
 | Another registrar's contact | 2201 |
 | Host attributes (`<domain:hostAttr>`): this registry uses host objects | 2306 |
+| A host object named more than once | 2306 |
 | More than 10 nameservers (`entities.MaxHostsPerDomain`) | 2306 |
 | A nameserver that is not one of the registrar's host objects | 2303 |
 | An authorization password that breaks the registry's rules | 2306 |
 
-Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID's repository ID is the code constant `entities.EPP_REPOSITORY_ID` (`APEX`); it must be the registry's IANA-registered ID before an RST run.
+Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID's repository ID is the code constant `entities.EPP_REPOSITORY_ID` (`APEX`); it must be the registry's IANA-registered ID before an RST run.
 
 **Audit log.** Every command and its response is a row of `epp_transactions`: svTRID, clTRID, session, node, registrar, login (for a `<login>`, the login presented, accepted or not), source address, command, the object identifiers it names, result code, receipt time, duration, and the frames.
 - Frames are redacted: the text of every `<pw>` and `<newPW>`, and every text and attribute value inside every `<authInfo>`, is replaced with `[redacted]`. A frame that could not be parsed is recorded without its request, which could not be redacted. The login ID and object identifiers are read as soon as a command passes validation, so a command the policy refuses is recorded with them.

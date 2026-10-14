@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,7 +45,8 @@ func objectRegistry(t *testing.T) (*EPPDomainService, *memstore.Registry, *entit
 
 func validCreate(name string) commands.EPPCreateDomainCommand {
 	return commands.EPPCreateDomainCommand{
-		Name: name, Years: 2, RegistrantID: "rar-one-c", AdminID: "rar-one-c", TechID: "rar-one-c",
+		Name: name, Period: 2, PeriodUnit: "y", RegistrantID: "rar-one-c",
+		Contacts:  []commands.EPPDomainContact{{Type: "admin", ID: "rar-one-c"}, {Type: "tech", ID: "rar-one-c"}},
 		HostNames: []string{"ns1.rar-one.net"}, AuthInfo: "Ab3!Ab3!Ab3!xy",
 	}
 }
@@ -71,16 +73,26 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 		{"single label", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "test" }, entities.ErrInvalidDomain},
 		{"TLD not served", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.nowhere" }, ErrEPPTLDNotServed},
 		{"TLD not open", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, ErrEPPTLDNotOpen},
-		{"zero years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Years = 0 }, ErrEPPInvalidPeriod},
-		{"eleven years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Years = 11 }, ErrEPPInvalidPeriod},
+		{"eleven years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 11 }, ErrEPPInvalidPeriod},
+		{"121 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 120+1, "m" }, ErrEPPPeriodNotWholeYears},
+		{"132 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 132, "m" }, ErrEPPInvalidPeriod},
 		{"registered", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "taken.test" }, ErrDomainExists},
 		{"reserved", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "held.test" }, ErrDomainBlocked},
-		{"unknown contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.AdminID = "nobody" }, entities.ErrContactNotFound},
-		{"another registrar's contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.TechID = "rar-two-c" }, ErrEPPNotSponsor},
+		{"a contact without a type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "" }, ErrEPPContactTypeMissing},
+		{"two contacts of one type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "tech" }, ErrEPPDuplicateContactType},
+		{"unknown contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].ID = "nobody" }, entities.ErrContactNotFound},
+		{"another registrar's contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[1].ID = "rar-two-c" }, ErrEPPNotSponsor},
+		{"host attributes", rar1, func(c *commands.EPPCreateDomainCommand) { c.HostNames, c.HostAttributes = nil, true }, ErrEPPHostAttributes},
+		{"a host named twice", rar1, func(c *commands.EPPCreateDomainCommand) {
+			c.HostNames = []string{"ns1.rar-one.net", "NS1.rar-one.net"}
+		}, entities.ErrDuplicateHost},
 		{"unknown host", rar1, func(c *commands.EPPCreateDomainCommand) { c.HostNames = []string{"ns9.nowhere.net"} }, entities.ErrHostNotFound},
 		{"another registrar's host", rar1, func(c *commands.EPPCreateDomainCommand) { c.HostNames = []string{"ns1.rar-two.net"} }, entities.ErrHostNotFound},
 		{"too many hosts", rar1, func(c *commands.EPPCreateDomainCommand) {
-			c.HostNames = make([]string, entities.MaxHostsPerDomain+1)
+			c.HostNames = nil
+			for i := range entities.MaxHostsPerDomain + 1 {
+				c.HostNames = append(c.HostNames, fmt.Sprintf("ns%d.rar-one.net", i))
+			}
 		}, entities.ErrMaxHostsPerDomainExceeded},
 		{"weak authInfo", rar1, func(c *commands.EPPCreateDomainCommand) { c.AuthInfo = "" }, entities.ErrInvalidAuthInfo},
 	}
@@ -99,12 +111,45 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 	t.Run("a registrar not accredited for the TLD", func(t *testing.T) {
 		svc, reg, _ := objectRegistry(t)
 		cmd := validCreate("x.test")
-		cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.HostNames = "", "", "", nil
+		cmd.RegistrantID, cmd.Contacts, cmd.HostNames = "", nil, nil
 		reg.AddTLD("other", true)
 		cmd.Name = "x.other"
 		_, err := svc.Create(context.Background(), rar1, cmd)
 		require.ErrorIs(t, err, ErrRegistrarNotAccredited)
 	})
+}
+
+// TestEPPDomainCreateRefusalOrder pins that of several problems the first
+// in Create's documented order is reported.
+func TestEPPDomainCreateRefusalOrder(t *testing.T) {
+	svc, reg, _ := objectRegistry(t)
+	reg.AddTLD("open", true) // nobody is accredited for it
+	bad := func(edit func(*commands.EPPCreateDomainCommand)) commands.EPPCreateDomainCommand {
+		c := validCreate("order.test")
+		c.Period, c.PeriodUnit = 13, "m"                                                  // not whole years
+		c.HostAttributes = true                                                           // host attributes
+		c.Contacts = append(c.Contacts, commands.EPPDomainContact{Type: "tech", ID: "x"}) // a second tech
+		edit(&c)
+		return c
+	}
+	for _, tc := range []struct {
+		name  string
+		scope entities.RegistrarClID
+		edit  func(*commands.EPPCreateDomainCommand)
+		want  error
+	}{
+		{"an invalid name comes first", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "-bad-.test" }, entities.ErrInvalidDomain},
+		{"then the TLD", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, ErrEPPTLDNotOpen},
+		{"then accreditation", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.open" }, ErrRegistrarNotAccredited},
+		{"then the period", rar1, func(*commands.EPPCreateDomainCommand) {}, ErrEPPPeriodNotWholeYears},
+		{"then the contacts", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 12 }, ErrEPPDuplicateContactType},
+		{"then the nameservers", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.Contacts = 12, c.Contacts[:2] }, ErrEPPHostAttributes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.Create(context.Background(), tc.scope, bad(tc.edit))
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
 }
 
 func TestEPPDomainCreateContactPolicy(t *testing.T) {
@@ -121,7 +166,7 @@ func TestEPPDomainCreateContactPolicy(t *testing.T) {
 	assert.ErrorContains(t, err, "registrant")
 
 	cmd = validCreate("policy.test")
-	cmd.BillingID = "rar-one-c"
+	cmd.Contacts = append(cmd.Contacts, commands.EPPDomainContact{Type: "billing", ID: "rar-one-c"})
 	_, err = svc.Create(context.Background(), rar1, cmd)
 	require.ErrorIs(t, err, ErrEPPContactProhibited, "a prohibited contact is refused, not silently dropped")
 	assert.ErrorContains(t, err, "billing")

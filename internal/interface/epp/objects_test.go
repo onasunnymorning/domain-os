@@ -168,6 +168,14 @@ func TestDomainCreateRefusals(t *testing.T) {
 		{"an unknown host", createXML("nohost.test", createOpts{ns: `<domain:ns><domain:hostObj>ns9.nowhere.net</domain:hostObj></domain:ns>`}), "2303", "ns9.nowhere.net"},
 		{"another registrar's host", createXML("theirhost.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar2.net</domain:hostObj></domain:ns>`}), "2303", "ns1.registrar2.net"},
 		{"an authInfo that breaks the password rules", createXML("weak.test", createOpts{pw: "weak"}), "2306", ""},
+		{"a host object named twice", createXML("twice.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj><domain:hostObj>NS1.registrar1.net</domain:hostObj></domain:ns>`}), "2306", "ns1.registrar1.net is named more than once"},
+		{"an invalid name wins over a bad period, host attributes and repeated contacts", createXML("-bad-.test", createOpts{
+			period: `<domain:period unit="m">13</domain:period>`,
+			ns:     `<domain:ns><domain:hostAttr><domain:hostName>ns1.x.test</domain:hostName></domain:hostAttr></domain:ns>`,
+			contacts: `<domain:registrant>registrar1-c1</domain:registrant><domain:contact type="tech">registrar1-c1</domain:contact>
+<domain:contact type="tech">registrar1-c2</domain:contact>`,
+		}), "2005", ""},
+		{"accreditation wins over a bad period", createXML("x.unaccredited", createOpts{period: `<domain:period unit="m">13</domain:period>`}), "2201", "accredited"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,6 +186,13 @@ func TestDomainCreateRefusals(t *testing.T) {
 	}
 	assert.Empty(t, creds.domains.registry.Registered, "none of them registered anything")
 
+	t.Run("the authInfo is stored as the schema reads it", func(t *testing.T) {
+		// A tab in a normalizedString is a space: the password validated
+		// is the one stored and returned.
+		requireCode(t, c.roundTrip(createXML("tab.test", createOpts{pw: "Secret\tAuth-1!"})), "1000") // #nosec G101 -- a test fixture's authInfo, not a credential
+		assert.Equal(t, entities.AuthInfoType("Secret Auth-1!"), creds.domains.registry.Domain("tab.test").AuthInfo)
+		assert.Equal(t, "Secret Auth-1!", text(c.roundTrip(infoXML("tab.test", "")), "//infData/authInfo/pw"))
+	})
 	t.Run("months in whole years are accepted", func(t *testing.T) {
 		resp := c.roundTrip(createXML("m24.test", createOpts{period: `<domain:period unit="m">24</domain:period>`}))
 		requireCode(t, resp, "1000")
