@@ -66,6 +66,13 @@ func (d DSRecord) Validate() error {
 	return nil
 }
 
+// canonical is the record with its digest in upper case: two records that
+// differ only in the case of their digest are the same record.
+func (d DSRecord) canonical() DSRecord {
+	d.Digest = strings.ToUpper(d.Digest)
+	return d
+}
+
 // String is the record's DNS presentation (RDATA) form.
 func (d DSRecord) String() string {
 	return fmt.Sprintf("%d %d %d %s", d.KeyTag, d.Algorithm, d.DigestType, d.Digest)
@@ -77,7 +84,7 @@ func (d *Domain) SetDSRecords(records []DSRecord) error {
 	seen := map[DSRecord]bool{}
 	out := make([]DSRecord, 0, len(records))
 	for _, r := range records {
-		r.Digest = strings.ToUpper(r.Digest)
+		r = r.canonical()
 		if err := r.Validate(); err != nil {
 			return err
 		}

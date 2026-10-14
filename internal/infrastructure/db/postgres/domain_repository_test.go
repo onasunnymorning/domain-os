@@ -1266,8 +1266,17 @@ func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
 	_, err = repo.Create(ctx, idle)
 	s.Require().NoError(err)
 
+	// One flagged active but with no nameserver link, as a half-applied
+	// host change can leave it: no delegation, so no DS either.
+	unlinked, err := entities.NewDomain("5553_DOM-APEX", "unlinked.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	s.Require().NoError(err)
+	unlinked.Status.Inactive = false
+	s.Require().NoError(unlinked.SetDSRecords([]entities.DSRecord{ds}))
+	_, err = repo.Create(ctx, unlinked)
+	s.Require().NoError(err)
+
 	rrs, err := repo.GetActiveDomainDS(ctx, s.tld)
 	s.Require().NoError(err)
-	s.Require().Len(rrs, 1)
+	s.Require().Len(rrs, 1, "only the delegated domain's DS record")
 	s.Require().Equal("delegated.domaintesttld.\t3600\tIN\tDS\t2371 13 2 "+digest, rrs[0].String())
 }

@@ -293,7 +293,7 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 
 // GetDSRecordsPerTLD godoc
 // @Summary Get DS records for a TLD
-// @Description The DNSSEC delegation signer records of the TLD's delegated domains: the same domains domain-delegations returns NS records for.
+// @Description The DNSSEC delegation signer records of the TLD's delegated domains: those that are active, not pending delete, and linked to at least one nameserver.
 // @Tags TLDs
 // @Produce json
 // @Param tld path string true "TLD"
@@ -303,14 +303,15 @@ func (c *TLDController) GetNSRecordsPerTLD(ctx *gin.Context) {
 // @Failure 500
 // @Router /tlds/{tldName}/dns/ds-records [get]
 func (c *TLDController) GetDSRecordsPerTLD(ctx *gin.Context) {
-	tldName := ctx.Param("tldName")
+	tldName := strings.ToLower(ctx.Param("tldName"))
 	if _, err := c.tldService.GetTLDByName(ctx.Request.Context(), tldName, false); err != nil {
 		ctx.JSON(404, gin.H{"error": "TLD not found"})
 		return
 	}
 	rrs, err := c.domService.GetDSRecordsPerTLD(ctx.Request.Context(), tldName)
 	if err != nil {
-		ctx.JSON(500, gin.H{"error": fmt.Sprintf("Error getting DS records: %s", err.Error())})
+		_ = ctx.Error(err) // logged by the request logger; not sent to the client
+		ctx.JSON(500, gin.H{"error": "Error getting DS records"})
 		return
 	}
 	if ctx.Query("format") == "text" {

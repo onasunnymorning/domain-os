@@ -165,7 +165,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	})
 	t.Run("another registrar cannot read it", func(t *testing.T) {
 		_, err := svc.Info(ctx, scope2, create.Name)
-		require.ErrorIs(t, err, ErrEPPNotSponsor)
+		require.ErrorIs(t, err, entities.ErrEPPNotSponsor)
 	})
 	t.Run("its registration event does not carry the authInfo (#484)", func(t *testing.T) {
 		var rows []struct{ Command, BeforeState, AfterState, Data string }

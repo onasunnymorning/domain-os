@@ -274,9 +274,10 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, param
 	return response, nil
 }
 
-// GetActiveDomainDS returns the DS records of the TLD's delegated domains,
-// selected exactly as GetActiveDomainsWithHosts selects the domains it
-// returns NS records for: a DS record is only meaningful beside its NS.
+// GetActiveDomainDS returns the DS records of the TLD's delegated domains:
+// active, not pending delete, and linked to at least one nameserver. The
+// link is checked itself, not inferred from the inactive flag, which is
+// written separately from it: a DS record is only meaningful beside an NS.
 func (dr *DomainRepository) GetActiveDomainDS(ctx context.Context, tld string) ([]dns.RR, error) {
 	var rows []struct {
 		Domain     string
@@ -292,6 +293,7 @@ func (dr *DomainRepository) GetActiveDomainDS(ctx context.Context, tld string) (
 		WHERE dom.tld_name = ?
 		AND COALESCE(dom.inactive, false) = false
 		AND COALESCE(dom.pending_delete, false) = false
+		AND EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.domain_ro_id = dom.ro_id)
 		ORDER BY dom.name, ds.id
 	`, tld).Scan(&rows).Error
 	if err != nil {

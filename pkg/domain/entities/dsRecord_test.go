@@ -60,4 +60,6 @@ func TestDomainSetDSRecords(t *testing.T) {
 	require.NoError(t, err)
 	dom.DSRecords = []DSRecord{a, a}
 	require.ErrorIs(t, dom.Validate(), ErrDuplicateDSRecord, "a domain holding duplicates is invalid however they got there")
+	dom.DSRecords = []DSRecord{a, lower}
+	require.ErrorIs(t, dom.Validate(), ErrDuplicateDSRecord, "digests that differ only in case are the same record")
 }

@@ -49,7 +49,7 @@ func TestEPPAuditFullQueueWritesInline(t *testing.T) {
 
 	store.Fail(errors.New("database down"))
 	err := audit.Enqueue(context.Background(), auditTx("Q3", time.Now()))
-	require.ErrorIs(t, err, ErrEPPAuditUnavailable, "a record that can be neither queued nor written is reported")
+	require.ErrorIs(t, err, entities.ErrEPPAuditUnavailable, "a record that can be neither queued nor written is reported")
 }
 
 func TestEPPAuditRetriesAFailedBatch(t *testing.T) {
@@ -121,6 +121,6 @@ func TestEPPAuditShutdownRetriesThenReportsLoss(t *testing.T) {
 		var lost *EPPAuditLostError
 		require.ErrorAs(t, errs[0], &lost)
 		assert.Equal(t, 3, lost.Records)
-		assert.ErrorIs(t, errs[0], ErrEPPAuditUnavailable)
+		assert.ErrorIs(t, errs[0], entities.ErrEPPAuditUnavailable)
 	})
 }

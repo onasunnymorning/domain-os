@@ -84,18 +84,18 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 	}{
 		{"invalid name", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "-bad-.test" }, entities.ErrInvalidDomain},
 		{"single label", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "test" }, entities.ErrInvalidDomain},
-		{"TLD not served", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.nowhere" }, ErrEPPTLDNotServed},
-		{"TLD not open", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, ErrEPPTLDNotOpen},
-		{"eleven years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 11 }, ErrEPPInvalidPeriod},
-		{"121 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 120+1, "m" }, ErrEPPPeriodNotWholeYears},
-		{"132 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 132, "m" }, ErrEPPInvalidPeriod},
+		{"TLD not served", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.nowhere" }, entities.ErrEPPTLDNotServed},
+		{"TLD not open", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, entities.ErrEPPTLDNotOpen},
+		{"eleven years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 11 }, entities.ErrEPPInvalidPeriod},
+		{"121 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 120+1, "m" }, entities.ErrEPPPeriodNotWholeYears},
+		{"132 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 132, "m" }, entities.ErrEPPInvalidPeriod},
 		{"registered", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "taken.test" }, ErrDomainExists},
 		{"reserved", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "held.test" }, ErrDomainBlocked},
-		{"a contact without a type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "" }, ErrEPPContactTypeMissing},
-		{"two contacts of one type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "tech" }, ErrEPPDuplicateContactType},
+		{"a contact without a type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "" }, entities.ErrEPPContactTypeMissing},
+		{"two contacts of one type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "tech" }, entities.ErrEPPDuplicateContactType},
 		{"unknown contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].ID = "nobody" }, entities.ErrContactNotFound},
-		{"another registrar's contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[1].ID = "rar-two-c" }, ErrEPPNotSponsor},
-		{"host attributes", rar1, func(c *commands.EPPCreateDomainCommand) { c.HostNames, c.HostAttributes = nil, true }, ErrEPPHostAttributes},
+		{"another registrar's contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[1].ID = "rar-two-c" }, entities.ErrEPPNotSponsor},
+		{"host attributes", rar1, func(c *commands.EPPCreateDomainCommand) { c.HostNames, c.HostAttributes = nil, true }, entities.ErrEPPHostAttributes},
 		{"a host named twice", rar1, func(c *commands.EPPCreateDomainCommand) {
 			c.HostNames = []string{"ns1.rar-one.net", "NS1.rar-one.net"}
 		}, entities.ErrDuplicateHost},
@@ -108,10 +108,10 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 			}
 		}, entities.ErrMaxHostsPerDomainExceeded},
 		{"weak authInfo", rar1, func(c *commands.EPPCreateDomainCommand) { c.AuthInfo = "" }, entities.ErrInvalidAuthInfo},
-		{"maxSigLife", rar1, func(c *commands.EPPCreateDomainCommand) { c.MaxSigLife = 604800 }, ErrEPPMaxSigLife},
-		{"key data", rar1, func(c *commands.EPPCreateDomainCommand) { c.KeyData = true }, ErrEPPKeyData},
-		{"RSASHA1 DS", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(5, 2, digest256)} }, ErrEPPDSAlgorithm},
-		{"SHA-1 digest", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(13, 1, digest256[:40])} }, ErrEPPDSDigestType},
+		{"maxSigLife", rar1, func(c *commands.EPPCreateDomainCommand) { c.MaxSigLife = 604800 }, entities.ErrEPPMaxSigLife},
+		{"key data", rar1, func(c *commands.EPPCreateDomainCommand) { c.KeyData = true }, entities.ErrEPPKeyData},
+		{"RSASHA1 DS", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(5, 2, digest256)} }, entities.ErrEPPDSAlgorithm},
+		{"SHA-1 digest", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(13, 1, digest256[:40])} }, entities.ErrEPPDSDigestType},
 		{"short digest", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(13, 2, digest256[:40])} }, entities.ErrInvalidDSRecord},
 		{"key tag out of range", rar1, func(c *commands.EPPCreateDomainCommand) {
 			d := ds(13, 2, digest256)
@@ -122,7 +122,10 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 			for range MaxDSRecords + 1 {
 				c.DSData = append(c.DSData, ds(13, 2, digest256))
 			}
-		}, ErrEPPTooManyDS},
+		}, entities.ErrEPPTooManyDS},
+		{"a malformed DS record is reported before an unaccepted algorithm in another", rar1, func(c *commands.EPPCreateDomainCommand) {
+			c.DSData = []commands.EPPDSData{ds(5, 2, digest256), ds(13, 2, digest256[:40])}
+		}, entities.ErrInvalidDSRecord},
 		{"duplicate DS", rar1, func(c *commands.EPPCreateDomainCommand) {
 			c.DSData = []commands.EPPDSData{ds(13, 2, digest256), ds(13, 2, strings.ToLower(digest256))}
 		}, entities.ErrDuplicateDSRecord},
@@ -171,14 +174,14 @@ func TestEPPDomainCreateRefusalOrder(t *testing.T) {
 		want  error
 	}{
 		{"an invalid name comes first", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "-bad-.test" }, entities.ErrInvalidDomain},
-		{"then the TLD", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, ErrEPPTLDNotOpen},
+		{"then the TLD", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, entities.ErrEPPTLDNotOpen},
 		{"then accreditation", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.open" }, ErrRegistrarNotAccredited},
-		{"then the period", rar1, func(*commands.EPPCreateDomainCommand) {}, ErrEPPPeriodNotWholeYears},
-		{"then the contacts", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 12 }, ErrEPPDuplicateContactType},
-		{"then the nameservers", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.Contacts = 12, c.Contacts[:2] }, ErrEPPHostAttributes},
+		{"then the period", rar1, func(*commands.EPPCreateDomainCommand) {}, entities.ErrEPPPeriodNotWholeYears},
+		{"then the contacts", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 12 }, entities.ErrEPPDuplicateContactType},
+		{"then the nameservers", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.Contacts = 12, c.Contacts[:2] }, entities.ErrEPPHostAttributes},
 		{"then the DNSSEC data", rar1, func(c *commands.EPPCreateDomainCommand) {
 			c.Period, c.Contacts, c.HostAttributes, c.AuthInfo = 12, c.Contacts[:2], false, "weak"
-		}, ErrEPPMaxSigLife},
+		}, entities.ErrEPPMaxSigLife},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := svc.Create(context.Background(), tc.scope, bad(tc.edit))
@@ -197,13 +200,13 @@ func TestEPPDomainCreateContactPolicy(t *testing.T) {
 	cmd := validCreate("policy.test")
 	cmd.RegistrantID = ""
 	_, err := svc.Create(context.Background(), rar1, cmd)
-	require.ErrorIs(t, err, ErrEPPContactRequired)
+	require.ErrorIs(t, err, entities.ErrEPPContactRequired)
 	assert.ErrorContains(t, err, "registrant")
 
 	cmd = validCreate("policy.test")
 	cmd.Contacts = append(cmd.Contacts, commands.EPPDomainContact{Type: "billing", ID: "rar-one-c"})
 	_, err = svc.Create(context.Background(), rar1, cmd)
-	require.ErrorIs(t, err, ErrEPPContactProhibited, "a prohibited contact is refused, not silently dropped")
+	require.ErrorIs(t, err, entities.ErrEPPContactProhibited, "a prohibited contact is refused, not silently dropped")
 	assert.ErrorContains(t, err, "billing")
 }
 
@@ -233,7 +236,7 @@ func TestEPPDomainInfo(t *testing.T) {
 	assert.Equal(t, []string{"ns1.mine.test", "ns2.mine.test"}, info.SubordinateHosts)
 
 	_, err = svc.Info(context.Background(), rar2, "mine.test")
-	require.ErrorIs(t, err, ErrEPPNotSponsor, "ADR 0006: another registrar gets 2201")
+	require.ErrorIs(t, err, entities.ErrEPPNotSponsor, "ADR 0006: another registrar gets 2201")
 	_, err = svc.Info(context.Background(), rar1, "absent.test")
 	require.ErrorIs(t, err, entities.ErrDomainNotFound)
 	_, err = svc.Info(context.Background(), rar1, "-bad-.test")

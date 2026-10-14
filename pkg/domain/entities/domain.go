@@ -211,10 +211,11 @@ func (d *Domain) Validate() error {
 		if err := ds.Validate(); err != nil {
 			return err
 		}
-		if seen[ds] {
-			return fmt.Errorf("%w: %s", ErrDuplicateDSRecord, ds)
+		key := ds.canonical()
+		if seen[key] {
+			return fmt.Errorf("%w: %s", ErrDuplicateDSRecord, key)
 		}
-		seen[ds] = true
+		seen[key] = true
 	}
 	if isIDN, _ := d.Name.IsIDN(); !isIDN {
 		// The OriginalName field marks an IDN variant, so it means nothing here.

@@ -23,7 +23,7 @@ type DomainRepository interface {
 	GetActiveDomainsWithHosts(ctx context.Context, params queries.ActiveDomainsWithHostsQuery) ([]dns.RR, error)
 	GetActiveDomainGlue(ctx context.Context, tld string) ([]dns.RR, error)
 	// GetActiveDomainDS returns the DS records of the TLD's delegated
-	// domains: the same domains GetActiveDomainsWithHosts returns NS for.
+	// domains: active, not pending delete, with at least one nameserver.
 	GetActiveDomainDS(ctx context.Context, tld string) ([]dns.RR, error)
 	Count(ctx context.Context, filter queries.ListDomainsFilter) (int64, error)
 	ListExpiringDomains(ctx context.Context, before time.Time, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
