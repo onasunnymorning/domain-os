@@ -79,7 +79,8 @@ func fromTombstone(t *entities.DomainTombstone) *DomainTombstoneRecord {
 	}
 
 	if t.LastSnapshot != nil {
-		data, err := json.Marshal(t.LastSnapshot)
+		// The snapshot is the full domain entity, authInfo included.
+		data, err := redactSecrets(t.LastSnapshot)
 		if err == nil {
 			rec.LastSnapshot = data
 		}

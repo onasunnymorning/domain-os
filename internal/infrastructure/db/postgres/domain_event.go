@@ -30,26 +30,30 @@ func (DomainEventRecord) TableName() string {
 	return "domain_events"
 }
 
+// ToDBDomainEvent encodes an event as an outbox row. Every payload — Data,
+// Command, BeforeState and AfterState — goes through redactSecrets, so no
+// authInfo reaches domain_events or, via the relay, the S3 archive. This is the
+// only path into domain_events; keep it that way.
 func ToDBDomainEvent(e entities.DomainEvent) (DomainEventRecord, error) {
-	dataBytes, err := json.Marshal(e.Data)
+	dataBytes, err := redactSecrets(e.Data)
 	if err != nil {
 		return DomainEventRecord{}, err
 	}
 	var commandBytes, beforeBytes, afterBytes []byte
 	if e.Command != nil {
-		commandBytes, err = json.Marshal(e.Command)
+		commandBytes, err = redactSecrets(e.Command)
 		if err != nil {
 			return DomainEventRecord{}, err
 		}
 	}
 	if e.BeforeState != nil {
-		beforeBytes, err = json.Marshal(e.BeforeState)
+		beforeBytes, err = redactSecrets(e.BeforeState)
 		if err != nil {
 			return DomainEventRecord{}, err
 		}
 	}
 	if e.AfterState != nil {
-		afterBytes, err = json.Marshal(e.AfterState)
+		afterBytes, err = redactSecrets(e.AfterState)
 		if err != nil {
 			return DomainEventRecord{}, err
 		}
