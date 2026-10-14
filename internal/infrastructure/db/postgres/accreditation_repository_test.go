@@ -143,7 +143,7 @@ func (s *AccreditationSuite) TestListRegistrarTLDs() {
 	// Insert a mock domain for this registrar and TLD. The name has to sit
 	// under s.tld: ck_domains_name_under_tld refuses a row whose name and
 	// tld_name disagree (#415).
-	err = tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	err = tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		2001, "domain-accred-test."+s.tld.Name.String(), s.rar.ClID.String(), s.tld.Name.String(), time.Now(), "auth").Error
 	s.Require().NoError(err)
 

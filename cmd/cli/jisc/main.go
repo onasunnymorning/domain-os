@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/interface/cli/jisc"
 	"github.com/urfave/cli/v2"
 )
@@ -15,7 +16,7 @@ func main() {
 		Commands: []*cli.Command{
 			jisc.GetAnalyzeCommand(),
 			jisc.GetGenerateDBCommand(),
-			jisc.GetImportCommand(),
+			jisc.GetImportCommand(config.LoadRepositoryID),
 		},
 	}
 

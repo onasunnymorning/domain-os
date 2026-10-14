@@ -26,6 +26,13 @@ func main() {
 	// worker opens its real connections inside activities, so this check gets
 	// a short-lived connection of its own, before anything polls a queue.
 	checkSchema()
+	// The lifecycle and escrow-import activities mint ROIDs, so the worker
+	// does not start without the registry's repository ID (ADR 0017).
+	repositoryID, err := config.LoadRepositoryID()
+	if err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
+	log.Printf("unified-worker minting ROIDs with repository ID %s", repositoryID)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 
@@ -170,8 +177,9 @@ func main() {
 	drainDataWorker.RegisterActivity(activities.SyncSpec5)
 
 	// Escrow Import (Heavy Batch + Drain Data)
-	heavyBatchWorker.RegisterActivity(&activities.EscrowImportActivities{})
-	drainDataWorker.RegisterActivity(&activities.EscrowImportActivities{})
+	escrowImportActs := &activities.EscrowImportActivities{RepositoryID: repositoryID}
+	heavyBatchWorker.RegisterActivity(escrowImportActs)
+	drainDataWorker.RegisterActivity(escrowImportActs)
 
 	// Escrow Validation / EVE (Heavy Batch). Declines to register when its
 	// database or object stores are not configured; keys come from the key
@@ -262,7 +270,7 @@ func main() {
 	// 2. Resource-Dependent Activities (requiring DB and/or S3)
 
 	// Lifecycle Batch Activities (Lifecycle + Drain Lifecycle)
-	lifecycleActs, err := activities.NewLifecycleActivities()
+	lifecycleActs, err := activities.NewLifecycleActivities(repositoryID)
 	if err != nil {
 		log.Printf("WARNING: Lifecycle batch activities not available (DB not configured): %v", err)
 	} else {

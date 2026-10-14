@@ -403,7 +403,7 @@ func (dr *DomainRepository) ListExpiringDomains(ctx context.Context, before time
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "expiry_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("expiry_date <= ? AND COALESCE(pending_delete, false) = false AND COALESCE(pending_renew, false) = false AND COALESCE(pending_restore, false) = false", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +437,7 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func (dr *DomainRepository) ListRestoredDomains(ctx context.Context, pagesize in
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "ro_id_repository", "name", "cl_id").Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}

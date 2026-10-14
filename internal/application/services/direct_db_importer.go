@@ -42,13 +42,21 @@ type ModifiedItem struct {
 
 // DirectDBImporter handles high-speed imports directly into Postgres
 type DirectDBImporter struct {
-	PG     *pg.DB
-	S3     *storage.S3Client
-	IDGen  *snowflakeidgenerator.IDGenerator
-	Report *RunReport
+	PG    *pg.DB
+	S3    *storage.S3Client
+	IDGen *snowflakeidgenerator.IDGenerator
+	// Repository is the repository ID the importer mints ROIDs with: every
+	// imported object gets a new ROID of this registry's (ADR 0017).
+	Repository entities.RepositoryID
+	Report     *RunReport
 }
 
-func NewDirectDBImporter() (*DirectDBImporter, error) {
+// NewDirectDBImporter connects an importer that mints ROIDs with repository,
+// the process's configured repository ID (config.LoadRepositoryID).
+func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
+	if err := repository.Validate(); err != nil {
+		return nil, fmt.Errorf("direct importer: %w", err)
+	}
 	// Initialize Postgres connection
 	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars
 	// (the production credential path on AWS ECS, also used locally)
@@ -104,9 +112,10 @@ func NewDirectDBImporter() (*DirectDBImporter, error) {
 	}
 
 	return &DirectDBImporter{
-		PG:    db,
-		S3:    s3c,
-		IDGen: idGen,
+		PG:         db,
+		S3:         s3c,
+		IDGen:      idGen,
+		Repository: repository,
 		Report: &RunReport{
 			Timestamp:       time.Now(),
 			SkippedHosts:    []SkippedItem{},
@@ -270,7 +279,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 
 			// Generate valid RoID for persistence
 			newID := s.IDGen.GenerateID()
-			if r, err := entities.NewRoidType(newID, entities.RoidTypeContact); err == nil {
+			if r, err := entities.NewRoidType(newID, entities.RoidTypeContact, s.Repository); err == nil {
 				c.RoID = r
 			} else {
 				// Should not happen, but safeguard — still counts as a skip
@@ -447,7 +456,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 				continue
 			}
 			newID := s.IDGen.GenerateID()
-			roid, err := entities.NewRoidType(newID, entities.RoidTypeHost)
+			roid, err := entities.NewRoidType(newID, entities.RoidTypeHost, s.Repository)
 			if err != nil {
 				msg := fmt.Sprintf("Failed to generate RoID: %v", err)
 				log.Printf("SKIP HOST: %s - %s", r.Name, msg)
@@ -702,7 +711,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			tldn, _ := entities.NewDomainName(tld)
 
 			newID := s.IDGen.GenerateID()
-			roid, err := entities.NewRoidType(newID, entities.RoidTypeDomain)
+			roid, err := entities.NewRoidType(newID, entities.RoidTypeDomain, s.Repository)
 			if err != nil {
 				// Record skipped (unmapped CLID or invalid data)
 				continue

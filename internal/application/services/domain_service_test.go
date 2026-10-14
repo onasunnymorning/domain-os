@@ -17,7 +17,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roidService := NewRoidService(idgen)
+	roidService := NewRoidService(idgen, "TEST")
 
 	domainService := &DomainService{
 		roidService: *roidService,
@@ -97,7 +97,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 				assert.Equal(t, tt.cmd.ClID, domain.ClID.String())
 				assert.Equal(t, tt.cmd.AuthInfo, domain.AuthInfo.String())
 				if tt.cmd.RoID == "" {
-					assert.Contains(t, domain.RoID.String(), "DOM-APEX")
+					assert.Contains(t, domain.RoID.String(), "DOM-TEST")
 				} else {
 					assert.Equal(t, tt.cmd.RoID, domain.RoID.String())
 				}
@@ -110,7 +110,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roidService := NewRoidService(idgen)
+	roidService := NewRoidService(idgen, "TEST")
 
 	domainService := &DomainService{
 		roidService: *roidService,
@@ -192,7 +192,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 					assert.Equal(t, cmd.ClID, domains[i].ClID.String())
 					assert.Equal(t, cmd.AuthInfo, domains[i].AuthInfo.String())
 					if cmd.RoID == "" {
-						assert.Contains(t, domains[i].RoID.String(), "DOM-APEX")
+						assert.Contains(t, domains[i].RoID.String(), "DOM-TEST")
 					} else {
 						assert.Equal(t, cmd.RoID, domains[i].RoID.String())
 					}

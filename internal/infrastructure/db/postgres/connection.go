@@ -18,6 +18,9 @@ import (
 )
 
 func AutoMigrate(db *gorm.DB) error {
+	if err := addROIDRepositoryColumns(db); err != nil {
+		return err
+	}
 	err := db.AutoMigrate(
 		&IANARegistrar{},
 		&Spec5Label{},

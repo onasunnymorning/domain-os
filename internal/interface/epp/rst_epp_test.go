@@ -559,8 +559,12 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 	t.Run("epp-14 info: roid is valid", func(t *testing.T) {
 		assert.Regexp(t, `^(\w|_){1,80}-\w{1,8}$`, text(info, "//infData/roid"))
 	})
+	t.Run("epp-14 info: roid ends in the registry's configured repository ID", func(t *testing.T) {
+		assert.True(t, strings.HasSuffix(text(info, "//infData/roid"), "-"+testRepositoryID.String()),
+			"roid %q, configured repository ID %q", text(info, "//infData/roid"), testRepositoryID)
+	})
 	t.Run("epp-14 info: roid's repository ID is registered with IANA", func(t *testing.T) {
-		rstPending(t, "the ROID repository ID is the code constant entities.EPP_REPOSITORY_ID (\"APEX\"); it must become the registry's IANA-registered ID")
+		rstOperational(t, "ROID_REPOSITORY_ID is the operator's ID in the IANA EPP Repository Identifiers registry (ADR 0017)")
 	})
 	t.Run("epp-14 info: crDate and exDate present and valid", func(t *testing.T) {
 		cr, err := time.Parse(time.RFC3339, text(info, "//infData/crDate"))

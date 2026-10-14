@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-13T21:01:06Z",
+  "generated": "2026-10-14T13:06:43Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -14,6 +14,10 @@
       },
       "env_vars": {
         "required": [
+          {
+            "name": "ROID_REPOSITORY_ID",
+            "description": "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits, the suffix of every new ROID (e.g. 123_DOM-XYZ). Objects keep the ROID they were minted with, so changing it affects only new objects. Any value will do for local development"
+          },
           {
             "name": "STORAGE_ENDPOINT",
             "description": "S3-compatible endpoint, hostname only, no scheme. AWS S3: s3.\u003cregion\u003e.amazonaws.com. Required even when STORAGE_AUTH_MODE=iam — the client is minio-go and does not resolve an endpoint from the region. Falls back to deprecated MINIO_ENDPOINT"
@@ -304,7 +308,12 @@
         "port": 9700
       },
       "env_vars": {
-        "required": [],
+        "required": [
+          {
+            "name": "ROID_REPOSITORY_ID",
+            "description": "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits, the suffix of every new ROID (e.g. 123_DOM-XYZ). Objects keep the ROID they were minted with, so changing it affects only new objects. Any value will do for local development"
+          }
+        ],
         "optional": [
           {
             "name": "DB_USER",
@@ -695,6 +704,10 @@
             "name": "AUTH0_WORKER_CLIENT_SECRET",
             "secret": true,
             "description": "Auth0 M2M client secret for worker"
+          },
+          {
+            "name": "ROID_REPOSITORY_ID",
+            "description": "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits, the suffix of every new ROID (e.g. 123_DOM-XYZ). Objects keep the ROID they were minted with, so changing it affects only new objects. Any value will do for local development"
           },
           {
             "name": "STORAGE_ENDPOINT",

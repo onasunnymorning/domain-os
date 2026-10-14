@@ -58,6 +58,7 @@ services:
       - API_HOST=${API_HOST}
       - API_NAME=${API_NAME}
       - ADMIN_TOKEN=cicdtoken  # Must match Postman CI environment 'token' variable
+      - ROID_REPOSITORY_ID=CITEST # any 1-8 letters/digits in CI; deployments set the IANA-registered ID (ADR 0017)
       - API_VERSION=${API_VERSION}
       # Temporal Client (CI: temporalite, no TLS)
       - TEMPORAL_HOST_PORT=temporal:7233
@@ -133,6 +134,7 @@ services:
       - API_HOST=admin-api
       - API_PORT=${API_PORT}
       - ADMIN_TOKEN=cicdtoken  # Must match admin-api token above
+      - ROID_REPOSITORY_ID=CITEST # any 1-8 letters/digits in CI; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}

@@ -9,12 +9,13 @@ import (
 
 func TestNewRoidType(t *testing.T) {
 	snowflakeID := int64(12345)
+	const repository = RepositoryID("TEST1")
 
 	t.Run("RoidTypeContact", func(t *testing.T) {
 		objectIdentifier := RoidTypeContact
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, CONTACT_ROID_ID, EPP_REPOSITORY_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, CONTACT_ROID_ID, repository)
 
-		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
+		roidType, err := NewRoidType(snowflakeID, objectIdentifier, repository)
 
 		require.NoError(t, err)
 		require.Equal(t, expectedRoidType, string(roidType))
@@ -22,9 +23,9 @@ func TestNewRoidType(t *testing.T) {
 
 	t.Run("RoidTypeHost", func(t *testing.T) {
 		objectIdentifier := RoidTypeHost
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, HOST_ROID_ID, EPP_REPOSITORY_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, HOST_ROID_ID, repository)
 
-		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
+		roidType, err := NewRoidType(snowflakeID, objectIdentifier, repository)
 
 		require.NoError(t, err)
 		require.Equal(t, expectedRoidType, string(roidType))
@@ -32,9 +33,9 @@ func TestNewRoidType(t *testing.T) {
 
 	t.Run("RoidTypeDomain", func(t *testing.T) {
 		objectIdentifier := RoidTypeDomain
-		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, DOMAIN_ROID_ID, EPP_REPOSITORY_ID)
+		expectedRoidType := fmt.Sprintf("%d_%s-%s", snowflakeID, DOMAIN_ROID_ID, repository)
 
-		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
+		roidType, err := NewRoidType(snowflakeID, objectIdentifier, repository)
 
 		require.NoError(t, err)
 		require.Equal(t, expectedRoidType, string(roidType))
@@ -44,11 +45,48 @@ func TestNewRoidType(t *testing.T) {
 		objectIdentifier := "invalid"
 		expectedRoidType := ""
 
-		roidType, err := NewRoidType(snowflakeID, objectIdentifier)
+		roidType, err := NewRoidType(snowflakeID, objectIdentifier, repository)
 
 		require.EqualError(t, err, ErrInvalidObjectIdentifier.Error())
 		require.Equal(t, expectedRoidType, string(roidType))
 	})
+}
+
+func TestNewRoidType_RepositoryID(t *testing.T) {
+	t.Run("the configured ID is the suffix", func(t *testing.T) {
+		r, err := NewRoidType(7, RoidTypeDomain, "XYZ9")
+		require.NoError(t, err)
+		require.Equal(t, RoidType("7_DOM-XYZ9"), r)
+		require.NoError(t, r.Validate())
+		require.True(t, r.IsIssuedHere())
+	})
+	// An unset ID — a RoidService nobody configured — mints nothing, rather
+	// than "7_DOM-", which is not a ROID at all.
+	for _, bad := range []RepositoryID{"", "TOOLONG99", "AB-C", "AB_C", "ÄBC", "A B"} {
+		t.Run(fmt.Sprintf("%q is refused", bad), func(t *testing.T) {
+			_, err := NewRoidType(7, RoidTypeDomain, bad)
+			require.ErrorIs(t, err, ErrInvalidRepositoryID)
+		})
+	}
+}
+
+func TestNewRepositoryID(t *testing.T) {
+	for _, ok := range []string{"A", "VRSN", "fir", "ABCDEFGH", "Z9"} {
+		r, err := NewRepositoryID(ok)
+		require.NoError(t, err, ok)
+		require.Equal(t, ok, r.String())
+	}
+	for _, bad := range []string{"", "ABCDEFGHI", "A-B", "A_B", " AB", "AB\n", "Ω"} {
+		_, err := NewRepositoryID(bad)
+		require.ErrorIs(t, err, ErrInvalidRepositoryID, bad)
+	}
+}
+
+// TestRoidType_IsIssuedHere_AnyRepositoryID pins that an object minted under
+// an earlier repository ID is still this registry's own.
+func TestRoidType_IsIssuedHere_AnyRepositoryID(t *testing.T) {
+	require.True(t, RoidType("1_DOM-APEX").IsIssuedHere())
+	require.True(t, RoidType("1_DOM-NEWID").IsIssuedHere())
 }
 
 func TestRoidType_String(t *testing.T) {

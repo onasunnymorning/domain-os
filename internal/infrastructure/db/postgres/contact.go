@@ -10,7 +10,8 @@ import (
 type Contact struct {
 	// ID is the ID of the contact as provided by the registrar.
 	ID                       string `gorm:"primaryKey"`
-	RoID                     int64  `gorm:"uniqueIndex;not null"` // we use the int64 representation of our roid to allow time based sorting using roid
+	RoID                     int64  `gorm:"uniqueIndex;not null"`                                   // we use the int64 representation of our roid to allow time based sorting using roid
+	RoIDRepository           string `gorm:"column:ro_id_repository;not null" pg:"ro_id_repository"` // the repository ID the ROID was minted with (ADR 0017)
 	Voice                    string
 	Fax                      string
 	Email                    string
@@ -60,6 +61,7 @@ func ToDBContact(c *entities.Contact) *Contact {
 
 	dbContact.ID = c.ID.String()
 	dbContact.RoID = roidInt
+	dbContact.RoIDRepository = c.RoID.SystemIdentifier()
 	dbContact.Voice = c.Voice.String()
 	dbContact.Fax = c.Fax.String()
 	dbContact.Email = c.Email
@@ -112,7 +114,7 @@ func ToDBContact(c *entities.Contact) *Contact {
 // FromDBContact converts a database Contact to a domain entities.Contact
 func FromDBContact(c *Contact) *entities.Contact {
 	domainContact := &entities.Contact{}
-	roidString, _ := entities.NewRoidType(c.RoID, entities.RoidTypeContact) // We don't handle errors here we just transform the database entity to the domain entity
+	roidString, _ := entities.NewRoidType(c.RoID, entities.RoidTypeContact, entities.RepositoryID(c.RoIDRepository)) // We don't handle errors here we just transform the database entity to the domain entity
 
 	domainContact.ID = entities.ClIDType(c.ID)
 	domainContact.RoID = roidString

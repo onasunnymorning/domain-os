@@ -85,6 +85,13 @@ var Registry = []EnvVar{
 	{Name: "ADMIN_TOKEN", Services: []Service{ServiceAPI, ServiceWorker, ServiceCLI}, Secret: true, Description: "Legacy bearer token (fallback when Auth0 disabled)"},
 
 	// ═══════════════════════════════════════════
+	// REGISTRY IDENTITY
+	// ═══════════════════════════════════════════
+	// Every process that mints ROIDs reads it, and refuses to start without it
+	// (ADR 0017). The read-only processes (mcp, whois) never mint one.
+	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceCLI}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits, the suffix of every new ROID (e.g. 123_DOM-XYZ). Objects keep the ROID they were minted with, so changing it affects only new objects. Any value will do for local development"},
+
+	// ═══════════════════════════════════════════
 	// API SERVER
 	// ═══════════════════════════════════════════
 	{Name: "API_URL", Services: []Service{ServiceWorker}, Description: "Full API URL (e.g. https://api.example.com). Preferred over API_HOST+API_PORT."},

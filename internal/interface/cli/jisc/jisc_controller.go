@@ -4,12 +4,16 @@ import (
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/urfave/cli/v2"
 )
 
 // JiscController handles JISC CLI commands
 type JiscController struct {
 	svc *services.JiscService
+	// repositoryID loads the repository ID the import mints ROIDs with. It
+	// is called only by the import, so analysis does not need it set.
+	repositoryID func() (entities.RepositoryID, error)
 }
 
 // NewJiscController creates a new JiscController
@@ -94,17 +98,24 @@ func (c *JiscController) Import(ctx *cli.Context) error {
 	// DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT
 	// Ensure these are set or user is aware.
 
+	repositoryID, err := c.repositoryID()
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
+
 	log.Printf("Starting Direct DB Import from %s...", jsonFile)
-	if err := c.svc.ImportToDirectDB(jsonFile); err != nil {
+	if err := c.svc.ImportToDirectDB(jsonFile, repositoryID); err != nil {
 		return cli.Exit(err.Error(), 1)
 	}
 
 	return nil
 }
 
-// GetImportCommand returns the CLI command definition
-func GetImportCommand() *cli.Command {
+// GetImportCommand returns the CLI command definition. repositoryID is
+// config.LoadRepositoryID, injected from the composition root (INV-17).
+func GetImportCommand(repositoryID func() (entities.RepositoryID, error)) *cli.Command {
 	ctrl := NewJiscController()
+	ctrl.repositoryID = repositoryID
 
 	return &cli.Command{
 		Name:      "import",

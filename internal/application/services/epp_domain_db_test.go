@@ -60,7 +60,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	ctx := context.Background()
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	require.NoError(t, err)
-	roids := NewRoidService(ids)
+	roids := NewRoidService(ids, "EPPTEST")
 	events := postgres.NewPostgresEventPublisher(db, zap.NewNop(), false)
 
 	// Names unique to this run, so reruns on a used database do not collide.
@@ -137,12 +137,13 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	dom, err := svc.Create(appcontext.WithUserID(ctx, "epp:"+rar1), scope1, create)
 	require.NoError(t, err)
 	assert.Equal(t, entities.ClIDType(rar1), dom.ClID)
-	assert.Regexp(t, `^\d+_DOM-\w+$`, dom.RoID.String())
+	assert.Regexp(t, `^\d+_DOM-EPPTEST$`, dom.RoID.String(), "minted with the configured repository ID")
 
 	t.Run("the domain is stored as registered", func(t *testing.T) {
 		info, err := svc.Info(ctx, scope1, create.Name)
 		require.NoError(t, err)
 		d := info.Domain
+		assert.Equal(t, dom.RoID, d.RoID, "read back with the repository ID it was minted with")
 		assert.Equal(t, entities.ClIDType(rar1), d.CrRr)
 		assert.Equal(t, entities.ClIDType("c"+rar1), d.RegistrantID)
 		assert.Equal(t, entities.AuthInfoType("Domain-Auth-1!"), d.AuthInfo)

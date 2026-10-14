@@ -17,11 +17,13 @@ import (
 //
 // </simpleType>
 
-// We define a roid as such: {SnowFlakeID int64}_{objectIdentifier string}-{systemIdentifier string}
+// We define a roid as such: {SnowFlakeID int64}_{objectIdentifier string}-{repositoryID string}
+//
+// The repository ID is the registry's EPP repository identifier, registered
+// with IANA (https://www.iana.org/assignments/epp-repository-ids). It is
+// configuration, not code: see RepositoryID and ADR 0017.
 const (
 	ROID_REGEX = `^(\w|_){1,80}-\w{1,8}$`
-
-	EPP_REPOSITORY_ID = "APEX" // aka EPP REPOSITORY ID (IANA) TODO: make this an ENVAR and/or make available at tld level - ref: https://www.iana.org/assignments/epp-repository-ids/epp-repository-ids.xhtml
 
 	CONTACT_ROID_ID = "CONT"
 	HOST_ROID_ID    = "HOST"
@@ -35,23 +37,62 @@ const (
 var (
 	ErrInvalidRoid             = errors.New("invalid roid")
 	ErrInvalidObjectIdentifier = errors.New("invalid object identifier: accepts ('contact', 'host', 'domain') only")
+	ErrInvalidRepositoryID     = errors.New("invalid repository ID: 1 to 8 ASCII letters or digits")
 )
+
+// RepositoryID is the EPP repository identifier this registry mints ROIDs
+// with: the part after the "-". One installation has one, registered with
+// IANA (ADR 0017). The IANA registry allows 1 to 8 letters or digits; this
+// accepts the ASCII ones, which every registered ID uses, and so also fits
+// RFC 5730's roidType pattern.
+type RepositoryID string
+
+var repositoryIDPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,8}$`)
+
+// NewRepositoryID returns s as a RepositoryID, or ErrInvalidRepositoryID.
+func NewRepositoryID(s string) (RepositoryID, error) {
+	r := RepositoryID(s)
+	if err := r.Validate(); err != nil {
+		return "", err
+	}
+	return r, nil
+}
+
+// Validate checks r is 1 to 8 ASCII letters or digits.
+func (r RepositoryID) Validate() error {
+	if !repositoryIDPattern.MatchString(string(r)) {
+		return fmt.Errorf("%w: %q", ErrInvalidRepositoryID, string(r))
+	}
+	return nil
+}
+
+// String implements the Stringer interface
+func (r RepositoryID) String() string {
+	return string(r)
+}
 
 // RoidTypeInt is a type for the Roid
 type RoidType string
 
-// NewRoidType creates a new instance of RoidType based on a snowflake ID + object identifier + system identifier
-func NewRoidType(uniqueID int64, objectIdentifier string) (RoidType, error) {
+// NewRoidType creates a new instance of RoidType based on a snowflake ID +
+// object identifier + repository ID. The repository ID is the one the object
+// was minted with: an object keeps its ROID when the configured ID changes.
+func NewRoidType(uniqueID int64, objectIdentifier string, repository RepositoryID) (RoidType, error) {
+	var object string
 	switch objectIdentifier {
 	case RoidTypeContact:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, CONTACT_ROID_ID, EPP_REPOSITORY_ID)), nil
+		object = CONTACT_ROID_ID
 	case RoidTypeHost:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, HOST_ROID_ID, EPP_REPOSITORY_ID)), nil
+		object = HOST_ROID_ID
 	case RoidTypeDomain:
-		return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, DOMAIN_ROID_ID, EPP_REPOSITORY_ID)), nil
+		object = DOMAIN_ROID_ID
 	default:
 		return RoidType(""), ErrInvalidObjectIdentifier
 	}
+	if err := repository.Validate(); err != nil {
+		return RoidType(""), err
+	}
+	return RoidType(fmt.Sprintf("%d_%s-%s", uniqueID, object, repository)), nil
 }
 
 // Validate checks the roid against the EPP roidType pattern from RFC 5730,
@@ -75,7 +116,8 @@ var roidPattern = regexp.MustCompile(ROID_REGEX)
 
 // IsIssuedHere reports whether the roid has the shape this registry mints:
 // {id}_{objectIdentifier}-{systemIdentifier}, with an object identifier this
-// registry uses. It is false for any conformant roid from another registry,
+// registry uses. It does not look at the repository ID: objects minted before
+// the configured ID changed are this registry's too. It is false for any conformant roid from another registry,
 // so a caller can hold its own objects to the local convention without
 // holding a deposit's objects to it.
 func (r RoidType) IsIssuedHere() bool {

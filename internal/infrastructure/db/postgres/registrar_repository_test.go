@@ -362,19 +362,19 @@ func (s *RegistrarSuite) TestListRegistrarsFilteringAndSorting() {
 
 	// Add domains
 	// reg1: 1 domain
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1001, "domain1.com", "reg-id-1", "com", time.Now(), "auth")
 	// reg2: 3 domains
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1002, "domain2.net", "reg-id-2", "net", time.Now(), "auth")
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1003, "domain3.net", "reg-id-2", "net", time.Now(), "auth")
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1004, "domain4.net", "reg-id-2", "net", time.Now(), "auth")
 	// reg3: 2 domains
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1005, "domain5.com", "reg-id-3", "com", time.Now(), "auth")
-	tx.Exec("INSERT INTO domains (ro_id, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, ?, ?, ?, ?, ?)",
+	tx.Exec("INSERT INTO domains (ro_id, ro_id_repository, name, cl_id, tld_name, expiry_date, auth_info) VALUES (?, 'APEX', ?, ?, ?, ?, ?)",
 		1006, "domain6.net", "reg-id-3", "net", time.Now(), "auth")
 
 	// Test 1: List all and verify counts

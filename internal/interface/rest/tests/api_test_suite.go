@@ -108,7 +108,7 @@ func NewTestAPI() (*TestAPI, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ID generator: %w", err)
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := services.NewRoidService(idGenerator, "TEST")
 
 	// --- Repositories ---
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(db)

@@ -25,7 +25,7 @@ const (
 // hosts for each.
 func objectRegistry(t *testing.T) (*EPPDomainService, *memstore.Registry, *entities.Phase) {
 	t.Helper()
-	reg := memstore.NewRegistry()
+	reg := memstore.NewRegistry("TEST")
 	phase := reg.AddTLD("test", true)
 	reg.AddTLD("closed", false)
 	reg.Accredit(rar1.String(), "test")

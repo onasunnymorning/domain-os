@@ -43,6 +43,11 @@ print('local stack: %s (compose project "%s", temporal state in %s)' % (local_st
 DOPPLER_NATIVE = 'doppler run --config dev_personal --'
 DOPPLER_DOCKER = 'doppler run --'
 
+# Every process that mints ROIDs refuses to start without ROID_REPOSITORY_ID
+# (ADR 0017). Locally any value will do: this keeps the one set in Doppler and
+# falls back to LOCAL, so a fresh dev_personal config still starts.
+WITH_LOCAL_ROID = "sh -c 'ROID_REPOSITORY_ID=\"${ROID_REPOSITORY_ID:-LOCAL}\" exec \"$@\"' sh"
+
 if tilt_mode == 'docker':
     # ─── Docker Mode: everything runs as containers ───────────────────────────
     docker_compose('./docker-compose.yml', profiles=['full'], env_file='.env.tilt', project_name=compose_project)
@@ -99,7 +104,7 @@ else:
 
     local_resource(
         'admin-api',
-        serve_cmd=DOPPLER_NATIVE + ' go run ./cmd/api/ry-admin',
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' go run ./cmd/api/ry-admin',
         deps=['./internal', './pkg', './cmd/api/ry-admin'],
         labels=['app'],
         resource_deps=['db'],
@@ -107,7 +112,7 @@ else:
 
     local_resource(
         'unified-worker',
-        serve_cmd=DOPPLER_NATIVE + ' go run ./cmd/workers/unified',
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' go run ./cmd/workers/unified',
         deps=['./internal', './pkg', './cmd/workers/unified'],
         labels=['app'],
         resource_deps=['db', 'temporal'],
@@ -117,7 +122,7 @@ else:
         'epp-server',
         # Self-signed: there is no real certificate locally. The ops endpoint
         # (/healthz, /readyz, /metrics) is on EPP_OPS_PORT, 9700 by default.
-        serve_cmd=DOPPLER_NATIVE + ' env EPP_TLS_SELF_SIGNED=true EPP_REQUIRE_ALLOWLIST=false go run ./cmd/epp',
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' env EPP_TLS_SELF_SIGNED=true EPP_REQUIRE_ALLOWLIST=false go run ./cmd/epp',
         deps=['./internal', './pkg', './cmd/epp'],
         labels=['app'],
         auto_init=False,

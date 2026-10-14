@@ -81,8 +81,8 @@ func (s *ConstraintSuite) TearDownTest() {
 
 func (s *ConstraintSuite) insertDomain(name, tld string) error {
 	return s.db.Exec(`
-		INSERT INTO domains (ro_id, name, tld_name, cl_id, auth_info, expiry_date, created_at, updated_at)
-		VALUES (nextval(pg_get_serial_sequence('domains','ro_id')), ?, ?, ?, 'x', now(), now(), now())`,
+		INSERT INTO domains (ro_id, ro_id_repository, name, tld_name, cl_id, auth_info, expiry_date, created_at, updated_at)
+		VALUES (nextval(pg_get_serial_sequence('domains','ro_id')), 'APEX', ?, ?, ?, 'x', now(), now(), now())`,
 		name, tld, ckRar).Error
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
+	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
@@ -150,10 +151,19 @@ func main() {
 		return
 	}
 
+	// Both the API and the seed mint ROIDs, so neither starts without the
+	// registry's repository ID (ADR 0017). init-registrars and migrate mint
+	// none and do not need it.
+	repositoryID, err := sharedconfig.LoadRepositoryID()
+	if err != nil {
+		logger.Fatal("Refusing to start", zap.Error(err))
+	}
+	logger.Info("Minting ROIDs with repository ID", zap.String("repository_id", repositoryID.String()))
+
 	// Check for seed command. Unlike init-registrars, this reaches no network:
 	// it is the local-development path and must work fully offline.
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		runSeed(cfg, logger)
+		runSeed(cfg, repositoryID, logger)
 		return
 	}
 
@@ -230,7 +240,7 @@ func main() {
 	if err != nil {
 		logger.Panic("Failed to create ID Generator", zap.Error(err))
 	}
-	roidService := appservices.NewRoidService(idGenerator)
+	roidService := appservices.NewRoidService(idGenerator, repositoryID)
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 	// Registry Operators

@@ -60,10 +60,10 @@ func TestDirectDBImporter_ImportDomains_DoesNotReassignAnotherTLDsDomain(t *test
 	t.Cleanup(func() { db.Exec(`DELETE FROM domains WHERE name = ?`, name) })
 	require.NoError(t, db.Exec(`DELETE FROM domains WHERE name = ?`, name).Error)
 	require.NoError(t, db.Exec(`
-		INSERT INTO domains (ro_id, name, tld_name, cl_id, registrant_id, auth_info, expiry_date, created_at, updated_at)
-		VALUES (7001, ?, 'paco', 'original-registrar', 'original-registrant', 'x', now(), now(), now())`, name).Error)
+		INSERT INTO domains (ro_id, ro_id_repository, name, tld_name, cl_id, registrant_id, auth_info, expiry_date, created_at, updated_at)
+		VALUES (7001, 'APEX', ?, 'paco', 'original-registrar', 'original-registrant', 'x', now(), now(), now())`, name).Error)
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	require.NoError(t, err)
 
 	staged := stagedDomains(t, [3]string{name, "other-registrant", "other-registrar"})
@@ -94,10 +94,10 @@ func TestDirectDBImporter_ImportDomains_ReimportSameTLDUpdates(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	require.NoError(t, db.Exec(`
-		INSERT INTO domains (ro_id, name, tld_name, cl_id, registrant_id, auth_info, expiry_date, created_at, updated_at)
-		VALUES (7002, ?, 'paco', 'old-registrar', 'old-registrant', 'x', now(), now(), now())`, existing).Error)
+		INSERT INTO domains (ro_id, ro_id_repository, name, tld_name, cl_id, registrant_id, auth_info, expiry_date, created_at, updated_at)
+		VALUES (7002, 'APEX', ?, 'paco', 'old-registrar', 'old-registrant', 'x', now(), now(), now())`, existing).Error)
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	require.NoError(t, err)
 
 	staged := stagedDomains(t, [3]string{existing, "new-registrant", "new-registrar"}, [3]string{added, "new-registrant", "new-registrar"})

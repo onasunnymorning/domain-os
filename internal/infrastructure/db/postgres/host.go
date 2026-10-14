@@ -10,6 +10,7 @@ import (
 // Host is the GORM model for the host table
 type Host struct {
 	RoID                int64  `gorm:"primaryKey"`
+	RoIDRepository      string `gorm:"column:ro_id_repository;not null" pg:"ro_id_repository"` // the repository ID the ROID was minted with (ADR 0017)
 	Name                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null"`
 	ClID                string `gorm:"uniqueIndex:idx_uniq_name_clid;not null;index"`
 	CrRr                *string
@@ -28,7 +29,7 @@ func (Host) TableName() string {
 
 // ToHost converts a postgres.Host to an entities.Host
 func ToHost(dbHost *Host) *entities.Host {
-	roid, _ := entities.NewRoidType(dbHost.RoID, entities.RoidTypeHost)
+	roid, _ := entities.NewRoidType(dbHost.RoID, entities.RoidTypeHost, entities.RepositoryID(dbHost.RoIDRepository))
 
 	// When retrieving and preloading the addresses we want to convert them to our entity
 	addresses := make([]netip.Addr, len(dbHost.Addresses))
@@ -68,14 +69,15 @@ func ToDBHost(host *entities.Host) *Host {
 	}
 
 	h := &Host{
-		RoID:        roid,
-		Name:        string(host.Name),
-		ClID:        string(host.ClID),
-		InBailiwick: host.InBailiwick,
-		CreatedAt:   host.CreatedAt,
-		UpdatedAt:   host.UpdatedAt,
-		HostStatus:  host.Status,
-		Addresses:   addr,
+		RoID:           roid,
+		RoIDRepository: host.RoID.SystemIdentifier(),
+		Name:           string(host.Name),
+		ClID:           string(host.ClID),
+		InBailiwick:    host.InBailiwick,
+		CreatedAt:      host.CreatedAt,
+		UpdatedAt:      host.UpdatedAt,
+		HostStatus:     host.Status,
+		Addresses:      addr,
 	}
 
 	if host.CrRr != entities.ClIDType("") {

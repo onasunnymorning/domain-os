@@ -101,7 +101,7 @@ var seedDomains = []seedDomain{
 // It is idempotent: every step checks for its own output first and skips if it
 // is already there, so running it twice is a no-op rather than an error. That
 // matters because `make dev` runs it on every start, not just the first.
-func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
+func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, logger *zap.Logger) {
 	ctx := context.Background()
 
 	gormDB, err := postgres.NewConnection(postgres.Config{
@@ -123,7 +123,7 @@ func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	if err != nil {
 		logger.Fatal("seed: failed to create ID generator", zap.Error(err))
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := services.NewRoidService(idGenerator, repositoryID)
 
 	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
 
