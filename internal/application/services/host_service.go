@@ -256,27 +256,13 @@ func (s *HostService) GetHostByNameAndClID(ctx context.Context, name string, cli
 	return s.hostRepository.GetHostByNameAndClID(ctx, name, clid)
 }
 
-// createHostFromCreateHostCommand creates a new host from a CreateHostCommand.
-// if a RoID is not provided, it will generate a new one, otherwise it will use the provided RoID
-// if the RoID or any of the attributes are invalid, it will return an error
+// createHostFromCreateHostCommand creates a new host from a CreateHostCommand,
+// with a new ROID of this registry's (ADR 0017). If any of the attributes are
+// invalid, it returns an error.
 func (s *HostService) createHostFromCreateHostCommand(cmd *commands.CreateHostCommand) (*entities.Host, error) {
-	var roid entities.RoidType
-	var err error
-	if cmd.RoID == "" {
-		// Generate a Roid if none is provided
-		roid, err = s.roidService.GenerateRoid("host")
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// Validate the provided Roid
-		roid = entities.RoidType(cmd.RoID)
-		if err := roid.Validate(); err != nil {
-			return nil, err
-		}
-		if roid.ObjectIdentifier() != entities.HOST_ROID_ID {
-			return nil, entities.ErrInvalidObjectIdentifier
-		}
+	roid, err := s.roidService.GenerateRoid("host")
+	if err != nil {
+		return nil, err
 	}
 
 	host, err := entities.NewHost(cmd.Name, roid.String(), cmd.ClID.String())

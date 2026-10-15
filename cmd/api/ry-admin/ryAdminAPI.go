@@ -17,6 +17,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
+	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
@@ -150,10 +151,19 @@ func main() {
 		return
 	}
 
+	// Both the API and the seed mint and show ROIDs, so neither starts
+	// without the registry's repository ID (ADR 0017). init-registrars and
+	// migrate do neither and do not need it.
+	repositoryID, err := sharedconfig.LoadRepositoryID()
+	if err != nil {
+		logger.Fatal("Refusing to start", zap.Error(err))
+	}
+	logger.Info("ROID repository ID", zap.String("repository_id", repositoryID.String()))
+
 	// Check for seed command. Unlike init-registrars, this reaches no network:
 	// it is the local-development path and must work fully offline.
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		runSeed(cfg, logger)
+		runSeed(cfg, repositoryID, logger)
 		return
 	}
 
@@ -220,6 +230,9 @@ func main() {
 		// failures in this function.
 		logger.Fatal("Refusing to start: schema guard", zap.Error(err))
 	}
+	if err := postgres.CheckRepositoryID(context.Background(), gormDB, repositoryID); err != nil {
+		logger.Fatal("Refusing to start: ROID repository ID", zap.Error(err))
+	}
 
 	// Set up EventPublisher (PostgreSQL outbox)
 	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
@@ -230,7 +243,7 @@ func main() {
 	if err != nil {
 		logger.Panic("Failed to create ID Generator", zap.Error(err))
 	}
-	roidService := appservices.NewRoidService(idGenerator)
+	roidService := appservices.NewRoidService(idGenerator, repositoryID)
 	// TODO: Register the Node ID in Redis or something. Then we can add a check to avoid the unlikely scenario of a duplicate Node ID.
 	log.Printf("Snowflake Node ID: %d", roidService.ListNode())
 	// Registry Operators
@@ -282,14 +295,14 @@ func main() {
 		appservices.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
 	)
 	// Contacts
-	contactRepo := postgres.NewContactRepository(gormDB)
+	contactRepo := postgres.NewContactRepository(gormDB, repositoryID)
 	contactService := appservices.NewContactService(contactRepo, *roidService, eventPublisher)
 	// Hosts
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
 	hostService := appservices.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	// Domains
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	domainService := appservices.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
 
 	// Domain Tombstones — archival records for purged domains

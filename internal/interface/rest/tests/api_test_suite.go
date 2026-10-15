@@ -108,17 +108,17 @@ func NewTestAPI() (*TestAPI, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ID generator: %w", err)
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := services.NewRoidService(idGenerator, "APEX")
 
 	// --- Repositories ---
 	registryOperatorRepo := postgres.NewGORMRegistryOperatorRepository(db)
 	tldRepo := postgres.NewGormTLDRepo(db)
 	dnsRecordRepo := postgres.NewGormDNSRecordRepository(db)
-	domainRepo := postgres.NewDomainRepository(db)
-	hostRepo := postgres.NewGormHostRepository(db)
+	domainRepo := postgres.NewDomainRepository(db, "APEX")
+	hostRepo := postgres.NewGormHostRepository(db, "APEX")
 	hostAddressRepo := postgres.NewGormHostAddressRepository(db)
 	registrarRepo := postgres.NewGormRegistrarRepository(db)
-	contactRepo := postgres.NewContactRepository(db)
+	contactRepo := postgres.NewContactRepository(db, "APEX")
 	phaseRepo := postgres.NewGormPhaseRepository(db)
 	ianaRegistrarRepo := postgres.NewIANARegistrarRepository(db)
 	accreditationRepo := postgres.NewAccreditationRepository(db)

@@ -165,24 +165,10 @@ func (s *ContactService) Count(ctx context.Context, filter queries.ListContactsF
 
 // contactFromCreateContactCommand creates a new contact from a CreateContactCommand and validates if it results in a valid contact
 func (s *ContactService) contactFromCreateContactCommand(cmd *commands.CreateContactCommand) (*entities.Contact, error) {
-	var roid entities.RoidType
-	var err error
-	if cmd.RoID == "" {
-		roid, err = s.roidService.GenerateRoid("contact")
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidContact, err)
-		}
-	} else {
-		roid = entities.RoidType(cmd.RoID)
-		// check if it is a valid Roid
-		err := roid.Validate()
-		if err != nil {
-			return nil, errors.Join(entities.ErrInvalidContact, err)
-		}
-		// Check if it is a Contact Roid
-		if roid.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-			return nil, errors.Join(entities.ErrInvalidContact, entities.ErrInvalidRoid)
-		}
+	// Every contact gets a new ROID of this registry's (ADR 0017).
+	roid, err := s.roidService.GenerateRoid("contact")
+	if err != nil {
+		return nil, errors.Join(entities.ErrInvalidContact, err)
 	}
 	c, err := entities.NewContact(cmd.ID, roid.String(), cmd.Email, cmd.AuthInfo, cmd.ClID)
 	if err != nil {

@@ -14,7 +14,6 @@ var (
 // CreateContactCommand is the command to create a Contact
 type CreateContactCommand struct {
 	ID         string                         `json:"ID" binding:"required"`
-	RoID       string                         `json:"RoID"` // If not provided, one will be generated. Allowing it to be specified allows import of escrow contacts without changing the ID
 	Email      string                         `json:"Email" binding:"required"`
 	AuthInfo   string                         `json:"AuthInfo" binding:"required"`
 	ClID       string                         `json:"ClID" binding:"required"`
@@ -44,25 +43,18 @@ func NewCreateContactCommand(id, email, authinfo, clid string) (*CreateContactCo
 
 // FromRdeContact creates a new CreateContactCommand from an RDEContact
 func (cmd *CreateContactCommand) FromRdeContact(rdeContact *entities.RDEContact) error {
-	// Check if we have a valid RoID (this will only be the case if we are importing our own escrows).
-	// If the Roid is invalid, use a valid one to pass through contact validation and unset it in the final command to have one generated.
-	roid := entities.RoidType(rdeContact.RoID)
-	if roid.Validate() != nil || roid.ObjectIdentifier() != "CONT" {
-		// set a dummy valid RoID to pass through domain validation
-		rdeContact.RoID = "1_CONT-APEX"
-	}
+	// The deposit's ROID is never kept: every object gets a new ROID of this
+	// registry's when it is created (ADR 0017). A placeholder lets ToEntity
+	// validate the rest, without touching the caller's RDEContact.
+	r := *rdeContact
+	r.RoID = "1_CONT-RDE"
 
 	// Create the contact entity from our RDEContact, this will validate the contact
-	contact, err := rdeContact.ToEntity()
+	contact, err := r.ToEntity()
 	if err != nil {
 		return err
 	}
 
-	// Now that we have a a valid contact, convert it to a command
-	// Only set the RoID if it is not the dummy RoID
-	if contact.RoID.String() != "1_CONT-APEX" {
-		cmd.RoID = contact.RoID.String()
-	}
 	cmd.ID = contact.ID.String()
 	cmd.Email = contact.Email
 	cmd.AuthInfo = contact.AuthInfo.String()
@@ -85,7 +77,6 @@ func (cmd *CreateContactCommand) FromRdeContact(rdeContact *entities.RDEContact)
 func (cmd *CreateContactCommand) ToContact() (*entities.Contact, error) {
 	contact := &entities.Contact{
 		ID:         entities.ClIDType(cmd.ID),
-		RoID:       entities.RoidType(cmd.RoID),
 		Email:      cmd.Email,
 		AuthInfo:   entities.AuthInfoType(cmd.AuthInfo),
 		ClID:       entities.ClIDType(cmd.ClID),
@@ -100,14 +91,13 @@ func (cmd *CreateContactCommand) ToContact() (*entities.Contact, error) {
 		PostalInfo: cmd.PostalInfo,
 	}
 
+	// The contact has no ROID yet: one is generated when it is created
+	// (ADR 0017). A placeholder lets the rest be validated now.
+	contact.RoID = "1_CONT-NEW"
 	if _, err := contact.IsValid(); err != nil {
-		// If the command doesn't have the optional RoID set, exclude it from the validation as a RoID will be generated on object creation
-		if errors.Is(err, entities.ErrInvalidRoid) || cmd.RoID == "" {
-			return contact, nil
-		}
 		return nil, err
 	}
-
+	contact.RoID = ""
 	return contact, nil
 
 }

@@ -66,7 +66,7 @@ var _ = Describe("EventAuthInfoRedaction", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		resp := api.POST("/contacts", &commands.CreateContactCommand{
-			ID: contactID, RoID: "10021_CONT-APEX", Email: "ertest@example.com",
+			ID: contactID, Email: "ertest@example.com",
 			AuthInfo: contactSecret, ClID: registrarClID,
 			PostalInfo: [2]*entities.ContactPostalInfo{postal},
 		})

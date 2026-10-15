@@ -167,7 +167,7 @@ func TestDirectDBImporter_ImportContacts_StoresAGeneratedAuthInfoPerContact(t *t
 	}
 	require.NoError(t, tx.Commit())
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = importer.PG.Close() })
 	noop := func(services.ImportCursor) {}
@@ -202,7 +202,7 @@ func TestDirectDBImporter_ImportDomains_StoresAGeneratedAuthInfoPerDomain(t *tes
 	}
 	require.NoError(t, tx.Commit())
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = importer.PG.Close() })
 	noop := func(services.ImportCursor) {}

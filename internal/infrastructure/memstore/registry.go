@@ -2,7 +2,6 @@ package memstore
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +29,7 @@ type Registry struct {
 	err          error
 	now          func() time.Time
 	nextID       int64
+	repository   entities.RepositoryID
 	phases       map[string][]*entities.Phase // by TLD
 	accredited   map[string]map[string]bool   // registrar → TLD
 	domains      map[string]*entities.Domain
@@ -41,10 +41,11 @@ type Registry struct {
 	registerHook func(*commands.RegisterDomainCommand) error
 }
 
-// NewRegistry returns an empty registry.
-func NewRegistry() *Registry {
+// NewRegistry returns an empty registry that mints ROIDs with repository,
+// as DomainService does with the configured one.
+func NewRegistry(repository entities.RepositoryID) *Registry {
 	return &Registry{
-		now: time.Now, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
+		now: time.Now, repository: repository, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
 		domains: map[string]*entities.Domain{}, contacts: map[string]*entities.Contact{},
 		hosts: map[string]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
 	}
@@ -98,7 +99,11 @@ func (r *Registry) AddHost(name, clid string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
-	h, err := entities.NewHost(name, fmt.Sprintf("%d_HOST-TEST", r.nextID), clid)
+	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeHost, r.repository)
+	if err != nil {
+		panic(err) // a fixture's own mistake
+	}
+	h, err := entities.NewHost(name, roid.String(), clid)
 	if err != nil {
 		panic(err) // a fixture's own mistake
 	}
@@ -178,7 +183,11 @@ func (r *Registry) RegisterDomain(_ context.Context, cmd *commands.RegisterDomai
 		return nil, err
 	}
 	r.nextID++
-	dom, err := entities.RegisterDomain(fmt.Sprintf("%d_DOM-TEST", r.nextID), cmd.Name, cmd.ClID, cmd.AuthInfo,
+	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeDomain, r.repository)
+	if err != nil {
+		return nil, err
+	}
+	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo,
 		cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err

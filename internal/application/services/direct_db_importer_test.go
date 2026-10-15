@@ -22,7 +22,7 @@ func TestDirectDBImporter_ImportNNDNs_NoTable(t *testing.T) {
 	defer db.Close()
 
 	// Initialize importer (doesn't hit PG until an insert occurs)
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	// If PG connect fails because it's not a real environment, skip the test
 	if err != nil || importer == nil {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
@@ -50,7 +50,7 @@ func TestDirectDBImporter_ImportNNDNs_EmptyTable(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize importer
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	if err != nil || importer == nil {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
 	}
@@ -72,7 +72,7 @@ func TestDirectDBImporter_ImportHosts_NoTable(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	if err != nil || importer == nil {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
 	}
@@ -96,7 +96,7 @@ func TestDirectDBImporter_ImportHosts_EmptyTable(t *testing.T) {
 	_, err = db.Exec("CREATE TABLE host_addresses (host_name TEXT, ip_address TEXT);")
 	require.NoError(t, err)
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	if err != nil || importer == nil {
 		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
 	}

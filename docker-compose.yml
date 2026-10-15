@@ -78,6 +78,7 @@ services:
       # Local stack: connections come through Docker's NAT, so registrars'
       # allowed networks would never match. Deployments leave this true.
       - EPP_REQUIRE_ALLOWLIST=false
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
@@ -156,6 +157,7 @@ services:
           path: ./cmd/api
     environment:
       - GIN_MODE=${GIN_MODE}
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - AUTO_MIGRATE=${AUTO_MIGRATE}
       - NEW_RELIC_ENABLED=${NEW_RELIC_ENABLED}
       # The code reads NEW_RELIC_LICENSE_KEY (see ryAdminAPI.go and the env
@@ -235,6 +237,7 @@ services:
         condition: service_healthy # Wait for migrations / full startup 
     command: [ "/ryAdminAPI", "init-registrars" ]
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
@@ -321,6 +324,7 @@ services:
       temporal:
         condition: service_started
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       # Temporal client
       - TEMPORAL_HOST_PORT=temporal:7233
       - TEMPORAL_NAMESPACE=default
@@ -464,6 +468,7 @@ services:
         - action: rebuild
           path: ./cmd/whois
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}
@@ -492,6 +497,7 @@ services:
       retries: 3
       start_period: 5s
     environment:
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL} # any 1-8 letters/digits locally; deployments set the IANA-registered ID (ADR 0017)
       - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}

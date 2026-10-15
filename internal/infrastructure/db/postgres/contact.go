@@ -109,10 +109,11 @@ func ToDBContact(c *entities.Contact) *Contact {
 	return dbContact
 }
 
-// FromDBContact converts a database Contact to a domain entities.Contact
-func FromDBContact(c *Contact) *entities.Contact {
+// FromDBContact converts a database Contact to a domain entities.Contact. Its
+// ROID ends in repository: the table stores only the number.
+func FromDBContact(c *Contact, repository entities.RepositoryID) *entities.Contact {
 	domainContact := &entities.Contact{}
-	roidString, _ := entities.NewRoidType(c.RoID, entities.RoidTypeContact) // We don't handle errors here we just transform the database entity to the domain entity
+	roidString, _ := entities.NewRoidType(c.RoID, entities.RoidTypeContact, repository) // We don't handle errors here we just transform the database entity to the domain entity
 
 	domainContact.ID = entities.ClIDType(c.ID)
 	domainContact.RoID = roidString

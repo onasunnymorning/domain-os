@@ -101,7 +101,7 @@ var seedDomains = []seedDomain{
 // It is idempotent: every step checks for its own output first and skips if it
 // is already there, so running it twice is a no-op rather than an error. That
 // matters because `make dev` runs it on every start, not just the first.
-func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
+func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, logger *zap.Logger) {
 	ctx := context.Background()
 
 	gormDB, err := postgres.NewConnection(postgres.Config{
@@ -116,6 +116,9 @@ func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	if err != nil {
 		logger.Fatal("seed: failed to connect to the database", zap.Error(err))
 	}
+	if err := postgres.CheckRepositoryID(context.Background(), gormDB, repositoryID); err != nil {
+		logger.Fatal("seed: ROID repository ID", zap.Error(err))
+	}
 
 	faker := gofakeit.New(seedFakerSeed)
 
@@ -123,7 +126,7 @@ func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	if err != nil {
 		logger.Fatal("seed: failed to create ID generator", zap.Error(err))
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := services.NewRoidService(idGenerator, repositoryID)
 
 	eventPublisher := postgres.NewPostgresEventPublisher(gormDB, logger, cfg.LogEvents)
 
@@ -133,10 +136,10 @@ func runSeed(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	registrarRepo := postgres.NewGormRegistrarRepository(gormDB)
 	accreditationRepo := postgres.NewAccreditationRepository(gormDB)
-	contactRepo := postgres.NewContactRepository(gormDB)
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	contactRepo := postgres.NewContactRepository(gormDB, repositoryID)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	hostAddressRepo := postgres.NewGormHostAddressRepository(gormDB)
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	premiumLabelRepo := postgres.NewGORMPremiumLabelRepository(gormDB)
 	fxRepo := postgres.NewFXRepository(gormDB)

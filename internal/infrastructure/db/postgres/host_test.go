@@ -73,7 +73,7 @@ func TestHost_ToHost(t *testing.T) {
 	host.Addresses = append(host.Addresses, a)
 
 	dbHost := ToDBHost(host)
-	convertedHost := ToHost(dbHost)
+	convertedHost := ToHost(dbHost, "APEX")
 
 	require.Equal(t, host.RoID, convertedHost.RoID)
 	require.Equal(t, host.Name, convertedHost.Name)

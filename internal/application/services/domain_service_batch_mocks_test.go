@@ -231,7 +231,7 @@ func newTestBatchDomainService(
 	fxRepo *mockFXRepository,
 ) *DomainService {
 	idgen, _ := snowflakeidgenerator.NewIDGenerator()
-	roidSvc := NewRoidService(idgen)
+	roidSvc := NewRoidService(idgen, "TEST")
 	return NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premiumRepo, fxRepo, rarRepo, eventPub)
 }
 

@@ -18,7 +18,6 @@ var _ = Describe("ContactController", Ordered, func() {
 
 	testContact := &commands.CreateContactCommand{
 		ID:       "contactID101",
-		RoID:     "12345_CONT-APEX",
 		Email:    "jon@doe.com",
 		AuthInfo: "str0NGP@ZZw0rd",
 		ClID:     registrarClid,
@@ -43,7 +42,7 @@ var _ = Describe("ContactController", Ordered, func() {
 		err := DecodeJSON(resp, &createdContact)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(createdContact.ID.String()).To(Equal(testContact.ID))
-		Expect(createdContact.RoID.String()).To(Equal(testContact.RoID))
+		Expect(createdContact.RoID.String()).To(MatchRegexp(`^\d+_CONT-APEX$`), "always generated, with the installation's repository ID")
 		Expect(createdContact.Email).To(Equal(testContact.Email))
 		Expect(createdContact.AuthInfo.String()).To(Equal(testContact.AuthInfo))
 	})
@@ -56,7 +55,6 @@ var _ = Describe("ContactController", Ordered, func() {
 	It("should not create a contact with an invalid email", func() {
 		invalidContact := &commands.CreateContactCommand{
 			ID:       "contactID102",
-			RoID:     "12345_CONT-APEX",
 			Email:    "invalid-email",
 			AuthInfo: "str0NGP@ZZw0rd",
 		}

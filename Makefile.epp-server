@@ -40,7 +40,7 @@ build:
 # Run EPP server locally
 run:
 	@echo "Starting EPP server..."
-	go run ./cmd/epp
+	ROID_REPOSITORY_ID=$${ROID_REPOSITORY_ID:-LOCAL} go run ./cmd/epp
 
 # Run unit tests
 test:

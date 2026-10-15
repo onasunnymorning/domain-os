@@ -60,7 +60,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	ctx := context.Background()
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	require.NoError(t, err)
-	roids := NewRoidService(ids)
+	roids := NewRoidService(ids, "EPPTEST")
 	events := postgres.NewPostgresEventPublisher(db, zap.NewNop(), false)
 
 	// Names unique to this run, so reruns on a used database do not collide.
@@ -70,9 +70,9 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	tldRepo := postgres.NewGormTLDRepo(db)
 	rarRepo := postgres.NewGormRegistrarRepository(db)
 	phaseRepo := postgres.NewGormPhaseRepository(db)
-	contactRepo := postgres.NewContactRepository(db)
-	hostRepo := postgres.NewGormHostRepository(db)
-	domainRepo := postgres.NewDomainRepository(db)
+	contactRepo := postgres.NewContactRepository(db, "EPPTEST")
+	hostRepo := postgres.NewGormHostRepository(db, "EPPTEST")
+	domainRepo := postgres.NewDomainRepository(db, "EPPTEST")
 
 	_, err = NewRegistryOperatorService(postgres.NewGORMRegistryOperatorRepository(db)).Create(ctx, &commands.CreateRegistryOperatorCommand{
 		RyID: ry, Name: ry, Email: "ry@example.com", URL: "https://ry.example.com"})
@@ -137,12 +137,13 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	dom, err := svc.Create(appcontext.WithUserID(ctx, "epp:"+rar1), scope1, create)
 	require.NoError(t, err)
 	assert.Equal(t, entities.ClIDType(rar1), dom.ClID)
-	assert.Regexp(t, `^\d+_DOM-\w+$`, dom.RoID.String())
+	assert.Regexp(t, `^\d+_DOM-EPPTEST$`, dom.RoID.String(), "minted with the configured repository ID")
 
 	t.Run("the domain is stored as registered", func(t *testing.T) {
 		info, err := svc.Info(ctx, scope1, create.Name)
 		require.NoError(t, err)
 		d := info.Domain
+		assert.Equal(t, dom.RoID, d.RoID, "read back as it was minted")
 		assert.Equal(t, entities.ClIDType(rar1), d.CrRr)
 		assert.Equal(t, entities.ClIDType("c"+rar1), d.RegistrantID)
 		assert.Equal(t, entities.AuthInfoType("Domain-Auth-1!"), d.AuthInfo)
@@ -152,6 +153,15 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		assert.True(t, time.Now().Before(d.RGPStatus.AddPeriodEnd), "in its add grace period")
 		require.Len(t, d.DSRecords, 1, "with its DS record")
 		assert.Equal(t, uint16(2371), d.DSRecords[0].KeyTag)
+	})
+	t.Run("only the ROID's number is stored", func(t *testing.T) {
+		// The repository ID is the installation's, appended on every read
+		// (ADR 0017): a repository configured with another shows it.
+		other, err := postgres.NewDomainRepository(db, "OTHER").GetDomainByName(ctx, create.Name, false)
+		require.NoError(t, err)
+		n, err := dom.RoID.Int64()
+		require.NoError(t, err)
+		assert.Equal(t, entities.RoidType(strconv.FormatInt(n, 10)+"_DOM-OTHER"), other.RoID)
 	})
 	t.Run("its DS record is published with the TLD's delegations", func(t *testing.T) {
 		rrs, err := registry.GetDSRecordsPerTLD(ctx, tld)

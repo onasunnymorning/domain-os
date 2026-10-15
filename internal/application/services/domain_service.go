@@ -99,21 +99,15 @@ func NewDomainService(
 }
 
 // Create creates a new domain using the provided CreateDomainCommand.
-// It generates a RoID if none is provided, sets optional fields from the command,
+// It generates its RoID, sets optional fields from the command,
 // validates the resulting domain entity, and persists it in the domain repository.
 // Returns the created Domain or an error if validation fails or persistence is unsuccessful.
 // It optionally validates the domain against the current GA phase polify if so stated in the command.
 func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
-	var roid entities.RoidType
-	var err error
-	if cmd.RoID == "" {
-		// Generate a RoID if none is supplied
-		roid, err = s.roidService.GenerateRoid("domain")
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		roid = entities.RoidType(cmd.RoID) // Validity will be checked in NewDomain
+	// Every domain gets a new ROID of this registry's (ADR 0017).
+	roid, err := s.roidService.GenerateRoid("domain")
+	if err != nil {
+		return nil, err
 	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {
@@ -1969,16 +1963,10 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 
 // domainFromCreateDomainCommand creates a domain entity from a CreateDomainCommand
 func (s *DomainService) domainFromCreateDomainCommand(cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
-	var roid entities.RoidType
-	var err error
-	if cmd.RoID == "" {
-		// Generate a RoID if none is supplied
-		roid, err = s.roidService.GenerateRoid("domain")
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		roid = entities.RoidType(cmd.RoID) // Validity will be checked in NewDomain
+	// Every domain gets a new ROID of this registry's (ADR 0017).
+	roid, err := s.roidService.GenerateRoid("domain")
+	if err != nil {
+		return nil, err
 	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {

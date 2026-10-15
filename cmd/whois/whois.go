@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 
@@ -36,7 +37,18 @@ func main() {
 		log.Printf("Error setting up database: %v", err)
 		return
 	}
-	domRepo := postgres.NewDomainRepository(db)
+	// Responses show the domain's ROID ("Registry Domain ID"), which ends in
+	// the installation's repository ID (ADR 0017).
+	repositoryID, err := config.LoadRepositoryID()
+	if err == nil {
+		err = postgres.CheckRepositoryID(ctx, db, repositoryID)
+	}
+	if err != nil {
+		// Exit non-zero, so a supervisor sees a failed start, not a clean one.
+		log.Printf("Refusing to start: %v", err)
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: nothing deferred so far needs to run; the signal context is released by exit
+	}
+	domRepo := postgres.NewDomainRepository(db, repositoryID)
 	rarRepo := postgres.NewGormRegistrarRepository(db)
 
 	// Set up the Whois Service

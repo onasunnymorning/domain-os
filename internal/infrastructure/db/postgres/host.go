@@ -26,9 +26,10 @@ func (Host) TableName() string {
 	return "hosts"
 }
 
-// ToHost converts a postgres.Host to an entities.Host
-func ToHost(dbHost *Host) *entities.Host {
-	roid, _ := entities.NewRoidType(dbHost.RoID, entities.RoidTypeHost)
+// ToHost converts a postgres.Host to an entities.Host. Its ROID ends in
+// repository: the table stores only the number.
+func ToHost(dbHost *Host, repository entities.RepositoryID) *entities.Host {
+	roid, _ := entities.NewRoidType(dbHost.RoID, entities.RoidTypeHost, repository)
 
 	// When retrieving and preloading the addresses we want to convert them to our entity
 	addresses := make([]netip.Addr, len(dbHost.Addresses))
