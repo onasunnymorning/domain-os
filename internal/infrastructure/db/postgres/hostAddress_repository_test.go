@@ -39,14 +39,14 @@ func (s *HostAddressSuite) SetupSuite() {
 	// Create a host
 	t := time.Now().UTC()
 	host := getValidHost(s.rarClid, &t)
-	hostRepo := NewGormHostRepository(s.db)
+	hostRepo := NewGormHostRepository(s.db, "APEX")
 	createdHost, _ := hostRepo.CreateHost(context.Background(), host)
 	s.hostRoid, _ = createdHost.RoID.Int64()
 }
 
 func (s *HostAddressSuite) TearDownSuite() {
 	if s.hostRoid != 0 {
-		hostRepo := NewGormHostRepository(s.db)
+		hostRepo := NewGormHostRepository(s.db, "APEX")
 		_ = hostRepo.DeleteHostByRoid(context.Background(), s.hostRoid)
 	}
 	if s.rarClid != "" {

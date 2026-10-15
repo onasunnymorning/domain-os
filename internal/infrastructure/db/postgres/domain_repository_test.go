@@ -90,14 +90,14 @@ func (s *DomainSuite) SetupSuite() {
 	// Create a contact
 	contact, err := entities.NewContact("myTestContact007", "1234567899_CONT-APEX", "my@email.me", "st0NGp@ZZ", string(rar.ClID))
 	s.Require().NoError(err)
-	contactRepo := NewContactRepository(s.db)
+	contactRepo := NewContactRepository(s.db, "APEX")
 	createdContact, err := contactRepo.CreateContact(context.Background(), contact)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact)
 	s.contactID = createdContact.ClID.String()
 
 	// Create some hosts
-	hostRepo := NewGormHostRepository(s.db)
+	hostRepo := NewGormHostRepository(s.db, "APEX")
 	for i := 0; i < 3; i++ {
 		host, err := entities.NewHost("ns"+fmt.Sprint(i)+".apex.domains", fmt.Sprint(i)+"1234_HOST-APEX", "domaintestRar")
 		s.Require().NoError(err)
@@ -139,7 +139,7 @@ func (s *DomainSuite) TearDownSuite() {
 		_ = repo.Delete(context.Background(), s.rarClid)
 	}
 	if s.hosts != nil {
-		repo := NewGormHostRepository(s.db)
+		repo := NewGormHostRepository(s.db, "APEX")
 		for _, host := range s.hosts {
 			hoRoID, _ := host.RoID.Int64()
 			_ = repo.DeleteHostByRoid(context.Background(), hoRoID)
@@ -155,7 +155,7 @@ func (s *DomainSuite) TearDownSuite() {
 func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -182,7 +182,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -231,7 +231,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// add IPs to the hosts
 	for i, host := range s.hosts {
@@ -290,7 +290,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -345,14 +345,14 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	// Check if the hosts still exist
 	for _, host := range s.hosts {
 		hoRoID, _ := host.RoID.Int64()
-		_, err = NewGormHostRepository(tx).GetHostByRoid(context.Background(), hoRoID)
+		_, err = NewGormHostRepository(tx, "APEX").GetHostByRoid(context.Background(), hoRoID)
 		s.Require().NoError(err)
 	}
 }
 func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -384,7 +384,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -412,7 +412,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -442,7 +442,7 @@ func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -470,7 +470,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -504,7 +504,7 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	NOW := time.Now().UTC()
 
@@ -702,7 +702,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
 	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
@@ -747,7 +747,7 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
 
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create 3 domains
 	expecteddomains := make([]*entities.Domain, 3)
@@ -834,7 +834,7 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
 
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// --- Setup: create 3 domains with explicit false values (GORM default) ---
 	for i := 0; i < 3; i++ {
@@ -930,7 +930,7 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
 
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create 3 domains
 	expecteddomains := make([]*entities.Domain, 3)
@@ -1035,7 +1035,7 @@ func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
 
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create 3 domains
 	expecteddomains := make([]*entities.Domain, 3)
@@ -1115,7 +1115,7 @@ func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
 func (s *DomainSuite) TestDomainRepository_BulkCreate() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a slice of domains to bulk-create.
 	var domains []*entities.Domain
@@ -1164,7 +1164,7 @@ func (s *DomainSuite) TestDomainRepository_BulkCreate() {
 func (s *DomainSuite) TestDomainRepository_UpdateDomainCannotChangeTLD() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	domain, err := entities.NewDomain("1234_DOM-APEX", "tldguard.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
@@ -1186,7 +1186,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainCannotChangeTLD() {
 func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 
 	domain, err := entities.NewDomain("9999_DOM-APEX", "never-created.domaintesttld", "GoMamma", "STr0mgP@ZZ")
 	s.Require().NoError(err)
@@ -1202,7 +1202,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
 func (s *DomainSuite) TestDomainRepository_DSRecords() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 	ctx := context.Background()
 
 	domain, err := entities.NewDomain("98765_DOM-APEX", "signed.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
@@ -1243,7 +1243,7 @@ func (s *DomainSuite) TestDomainRepository_DSRecords() {
 func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
 	tx := s.db.Begin()
 	defer tx.Rollback()
-	repo := NewDomainRepository(tx)
+	repo := NewDomainRepository(tx, "APEX")
 	ctx := context.Background()
 	digest := "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
 

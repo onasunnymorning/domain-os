@@ -51,7 +51,7 @@ func getValidDBDomain() *Domain {
 
 func TestDomain_ToDomain(t *testing.T) {
 	dbDomain := getValidDBDomain()
-	d := ToDomain(dbDomain)
+	d := ToDomain(dbDomain, "APEX")
 	roid, _ := d.RoID.Int64()
 	require.Equal(t, dbDomain.RoID, roid)
 	require.Equal(t, dbDomain.Name, d.Name.String())
@@ -72,7 +72,7 @@ func TestDomain_ToDomain(t *testing.T) {
 
 func TestDomain_ToDBDomain(t *testing.T) {
 	dbDom := getValidDBDomain()
-	d := ToDomain(dbDom)
+	d := ToDomain(dbDom, "APEX")
 	dbDomain := ToDBDomain(d)
 
 	require.Equal(t, dbDom.RoID, dbDomain.RoID)

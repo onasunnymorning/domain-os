@@ -37,11 +37,19 @@ func main() {
 		slog.Error("EPP server configuration is invalid", "error", err)
 		os.Exit(1)
 	}
+	// The server mints ROIDs on <domain:create> and shows them on
+	// <domain:info>, so it does not start without the registry's repository
+	// ID (ADR 0017).
+	repositoryID, err := config.LoadRepositoryID()
+	if err != nil {
+		slog.Error("EPP server configuration is invalid", "error", err)
+		os.Exit(1)
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "node", cfg.Sessions.NodeID)
+	logger.Info("EPP server starting", "version", buildinfo.Version, "git_sha", buildinfo.GitSHA, "node", cfg.Sessions.NodeID, "repository_id", repositoryID.String())
 
-	if err := run(cfg, logger); err != nil {
+	if err := run(cfg, repositoryID, logger); err != nil {
 		logger.Error("EPP server stopped", "error", err)
 		os.Exit(1)
 	}
@@ -55,7 +63,7 @@ const useFlushInterval = time.Minute
 // Every node prunes; the deletes are idempotent.
 const auditPruneInterval = time.Hour
 
-func run(cfg config.EPP, logger *slog.Logger) error {
+func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger) error {
 	if cfg.TLS.SelfSigned {
 		logger.Warn("EPP server is presenting a self-signed certificate (EPP_TLS_SELF_SIGNED=true); local development only")
 	}
@@ -78,6 +86,9 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 	}
 	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
+		return err
+	}
+	if err := postgres.CheckRepositoryID(context.Background(), db, repositoryID); err != nil {
 		return err
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
@@ -120,20 +131,20 @@ func run(cfg config.EPP, logger *slog.Logger) error {
 		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
 	}, cfg.Sessions.Lease, nil)
 
-	domainRepo := postgres.NewDomainRepository(db)
-	hostRepo := postgres.NewGormHostRepository(db)
+	domainRepo := postgres.NewDomainRepository(db, repositoryID)
+	hostRepo := postgres.NewGormHostRepository(db, repositoryID)
 	nndnRepo := postgres.NewGormNNDNRepository(db)
 	tldRepo := postgres.NewGormTLDRepo(db)
 	phaseRepo := postgres.NewGormPhaseRepository(db)
 	registrarRepo := postgres.NewGormRegistrarRepository(db)
 	// Registration goes through DomainService, as from the admin API: it
 	// prices the domain, assigns its ROID, stores it and writes its event.
-	registry := services.NewDomainService(domainRepo, hostRepo, *services.NewRoidService(ids), nndnRepo, tldRepo, phaseRepo,
+	registry := services.NewDomainService(domainRepo, hostRepo, *services.NewRoidService(ids, repositoryID), nndnRepo, tldRepo, phaseRepo,
 		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo,
 		postgres.NewPostgresEventPublisher(db, zap.NewNop(), false)) // events are not logged here; the EPP audit log records the command
 	domains := services.NewEPPDomainService(services.EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
-		Contacts: postgres.NewContactRepository(db), Hosts: hostRepo, Registrars: registrarRepo,
+		Contacts: postgres.NewContactRepository(db, repositoryID), Hosts: hostRepo, Registrars: registrarRepo,
 		Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
 	})
 	audit := services.NewEPPAuditService(postgres.NewEPPTransactionRepository(db), cfg.Audit.Buffer)

@@ -29,8 +29,12 @@ type testDomains struct {
 	err   error
 }
 
+// testRepositoryID is the repository ID the test registry mints ROIDs with,
+// as a deployment's ROID_REPOSITORY_ID.
+const testRepositoryID = entities.RepositoryID("EPPTEST")
+
 func newTestDomains() *testDomains {
-	reg := memstore.NewRegistry()
+	reg := memstore.NewRegistry(testRepositoryID)
 	reg.AddTLD("test", true)
 	reg.AddTLD("closed", false)
 	reg.AddTLD("unaccredited", true) // open, but nobody is accredited for it
@@ -42,7 +46,7 @@ func newTestDomains() *testDomains {
 		reg.AddHost("ns1."+clid+".net", clid)
 		reg.AddHost("ns2."+clid+".net", clid)
 	}
-	reg.AddDomain(&entities.Domain{Name: "registered.test", ClID: "registrar2", RoID: "1_DOM-TEST"})
+	reg.AddDomain(&entities.Domain{Name: "registered.test", ClID: "registrar2", RoID: entities.RoidType("1_DOM-" + testRepositoryID)})
 	reg.Reserve("reserved.test")
 	return &testDomains{
 		registry: reg,

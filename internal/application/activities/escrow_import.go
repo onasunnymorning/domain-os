@@ -46,7 +46,11 @@ type ValidateEscrowSourceResult struct {
 }
 
 // EscrowImportActivities groups escrow-related activity methods
-type EscrowImportActivities struct{}
+type EscrowImportActivities struct {
+	// RepositoryID is the repository ID imported objects' new ROIDs are
+	// minted with (ADR 0017).
+	RepositoryID entities.RepositoryID
+}
 
 // ValidateEscrowSource checks that required inputs are present, the TLD allows
 // escrow imports, and the source object exists in S3/MinIO.
@@ -770,7 +774,7 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 		return ImportFromSQLiteResult{}, fmt.Errorf("dbKey required")
 	}
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -917,7 +921,7 @@ func (a *EscrowImportActivities) ImportHostsDirect(ctx context.Context, args Imp
 		return ImportFromSQLiteResult{}, fmt.Errorf("tld and dbKey required")
 	}
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -976,7 +980,7 @@ func (a *EscrowImportActivities) ImportDomainsDirect(ctx context.Context, args I
 		return ImportFromSQLiteResult{}, fmt.Errorf("tld and dbKey required")
 	}
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -1091,7 +1095,7 @@ func (a *EscrowImportActivities) LinkDomainHostsDirect(ctx context.Context, args
 		return ImportFromSQLiteResult{}, fmt.Errorf("tld and dbKey required")
 	}
 
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return ImportFromSQLiteResult{}, err
 	}
@@ -2151,17 +2155,9 @@ func (a *EscrowImportActivities) importContactsChunked(ctx context.Context, sqld
 
 			cmd := &commands.CreateContactCommand{
 				ID:       id.String,
-				RoID:     roid.String,
 				Email:    email.String,
 				AuthInfo: authInfo.String(),
 				ClID:     mappedClID,
-			}
-			// If RoID is present but invalid or not a CONTACT RoID, clear it to auto-generate a valid one.
-			if strings.TrimSpace(cmd.RoID) != "" {
-				r := entities.RoidType(cmd.RoID)
-				if err := r.Validate(); err != nil || r.ObjectIdentifier() != entities.CONTACT_ROID_ID {
-					cmd.RoID = ""
-				}
 			}
 			if voice.Valid {
 				cmd.Voice = voice.String
@@ -3666,7 +3662,7 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return IngestContactsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}
@@ -3749,7 +3745,7 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 	defer sqliteDB.Close()
 
 	// Open Postgres connection for live contact lookup.
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init PG importer: %w", err)
 	}
@@ -3939,7 +3935,7 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return IngestHostsResult{}, err
 	}
@@ -4007,7 +4003,7 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return IngestDomainsResult{}, err
 	}
@@ -4073,7 +4069,7 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return IngestNNDNsResult{}, err
 	}
@@ -4133,7 +4129,7 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return LinkDomainHostsResult{}, err
 	}
@@ -4203,7 +4199,7 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter()
+	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
 	if err != nil {
 		return AccreditRegistrarsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}

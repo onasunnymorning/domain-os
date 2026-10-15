@@ -9,6 +9,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
 )
@@ -35,10 +36,13 @@ type StorageAPI interface {
 type TLDCleanupActivities struct {
 	DB       *gorm.DB
 	S3Client StorageAPI
+	// Repository is the installation's ROID repository ID, which the backed
+	// up objects' ROIDs end in (ADR 0017).
+	Repository entities.RepositoryID
 }
 
 // NewTLDCleanupActivities creates a new activities struct with initialized dependencies
-func NewTLDCleanupActivities() (*TLDCleanupActivities, error) {
+func NewTLDCleanupActivities(repository entities.RepositoryID) (*TLDCleanupActivities, error) {
 	s3c, err := storage.NewTempS3Client()
 	if err != nil {
 		return nil, err
@@ -61,8 +65,9 @@ func NewTLDCleanupActivities() (*TLDCleanupActivities, error) {
 		return nil, err
 	}
 	return &TLDCleanupActivities{
-		DB:       db,
-		S3Client: s3c,
+		DB:         db,
+		S3Client:   s3c,
+		Repository: repository,
 	}, nil
 }
 

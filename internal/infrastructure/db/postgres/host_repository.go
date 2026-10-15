@@ -12,12 +12,15 @@ import (
 
 // HostRepository is the postgres implementation of the HostRepository
 type HostRepository struct {
-	db *gorm.DB
+	db         *gorm.DB
+	repository entities.RepositoryID
 }
 
-// NewGormHostRepository creates a new instance of HostRepository
-func NewGormHostRepository(db *gorm.DB) *HostRepository {
-	return &HostRepository{db: db}
+// NewGormHostRepository creates a new instance of HostRepository.
+// The repository stores a ROID's number only; it reads it back with
+// repository, the installation's repository ID (ADR 0017).
+func NewGormHostRepository(db *gorm.DB, repository entities.RepositoryID) *HostRepository {
+	return &HostRepository{db: db, repository: repository}
 }
 
 // CreateHost creates a new host and does NOT create the addresses
@@ -33,7 +36,7 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 		}
 		return nil, err
 	}
-	return ToHost(gormHost), nil
+	return ToHost(gormHost, r.repository), nil
 }
 
 // BulkCreate creates multiple hosts in a single transaction. If addresses are provided, they will be created as well
@@ -58,7 +61,7 @@ func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entiti
 		}
 		return nil, err
 	}
-	return ToHost(&gormHost), nil
+	return ToHost(&gormHost, r.repository), nil
 }
 
 // GetHostByNameAndClID gets a host by its name and clid
@@ -71,7 +74,7 @@ func (r *HostRepository) GetHostByNameAndClID(ctx context.Context, name string, 
 		}
 		return nil, err
 	}
-	return ToHost(&gormHost), nil
+	return ToHost(&gormHost, r.repository), nil
 }
 
 // UpdateHost updates a host
@@ -83,7 +86,7 @@ func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*
 	if err != nil {
 		return nil, err
 	}
-	return ToHost(gormHost), nil
+	return ToHost(gormHost, r.repository), nil
 }
 
 // DeleteHostByRoid deletes a host by its roid
@@ -138,7 +141,7 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 	// Map the DBHosts to Hosts
 	hosts := make([]*entities.Host, len(dbHosts))
 	for i, h := range dbHosts {
-		hosts[i] = ToHost(h)
+		hosts[i] = ToHost(h, r.repository)
 	}
 
 	// Set the cursor to the last roid in the list

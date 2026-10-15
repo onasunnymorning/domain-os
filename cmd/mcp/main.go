@@ -16,6 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	mcpserver "github.com/onasunnymorning/domain-os/internal/interface/mcp"
 )
@@ -62,11 +63,21 @@ func run() int {
 	if err := postgres.EnforceSchemaGuard(gormDB, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
 		return 1
 	}
+	// The tools show ROIDs, which end in the installation's repository ID
+	// (ADR 0017).
+	repositoryID, err := config.LoadRepositoryID()
+	if err == nil {
+		err = postgres.CheckRepositoryID(ctx, gormDB, repositoryID)
+	}
+	if err != nil {
+		slog.Error("Refusing to start: ROID repository ID", "error", err)
+		return 1
+	}
 
 	// Set up repositories and services.
 	// Each service is wired with only the repositories it needs for read-only
 	// tools. Unused dependencies are passed as nil with comments explaining why.
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	domainService := services.NewDomainService(
 		domainRepo,
 		nil,                    // hostRepo — not used by GetDomainByName (hosts are preloaded via domainRepo)

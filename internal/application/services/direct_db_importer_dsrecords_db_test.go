@@ -83,7 +83,7 @@ func seedSignedDomain(t *testing.T, db *gorm.DB, roID int64, name string, ds ...
 
 func newImporter(t *testing.T) *services.DirectDBImporter {
 	t.Helper()
-	importer, err := services.NewDirectDBImporter()
+	importer, err := services.NewDirectDBImporter("TEST")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = importer.PG.Close() })
 	return importer

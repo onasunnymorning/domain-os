@@ -63,7 +63,6 @@ func (f FeeExtension) IsZero() bool {
 
 // CreateDomainCommand is a command to create a domain. This is intended for admin or import purposes. Normal Registrar transactions should use the RegisterDomainCommand and RenewDomainCommand ...
 type CreateDomainCommand struct {
-	RoID               string                        `json:"RoID"` // if not provided, it will be generated
 	Name               string                        `json:"Name" binding:"required"`
 	OriginalName       string                        `json:"OriginalName"`
 	UName              string                        `json:"UName"`
@@ -107,16 +106,14 @@ type FromRdeDomainResult struct {
 
 // FromRdeDomain creates a CreateDomainCommand from an RdeDomain
 func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) (*FromRdeDomainResult, error) {
-	// Check if we have a valid RoID (this will only be the case if we are importing our own escrows).
-	// If the Roid is invalid, use a valid one to pass through domain validation and unset it in the final command to have one generated.
-	roid := entities.RoidType(rdeDomain.RoID)
-	if roid.Validate() != nil || roid.ObjectIdentifier() != "DOM" {
-		// set a dummy valid RoID to pass through domain validation
-		rdeDomain.RoID = "1_DOM-APEX"
-	}
+	// The deposit's ROID is never kept: every object gets a new ROID of this
+	// registry's when it is created (ADR 0017). A placeholder lets ToEntity
+	// validate the rest, without touching the caller's RDEDomain.
+	r := *rdeDomain
+	r.RoID = "1_DOM-RDE"
 
 	// Create the domain entity from our RDEDomain, this will validate the domain
-	result, err := rdeDomain.ToEntity()
+	result, err := r.ToEntity()
 	if err != nil {
 		return nil, err
 	}
@@ -134,10 +131,6 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) (*F
 	dom := result.Domain
 
 	// Now that we have a a valid domain, convert it to a command
-	// Only set the RoID if it is not the dummy RoID
-	if dom.RoID.String() != "1_DOM-APEX" {
-		cmd.RoID = dom.RoID.String()
-	}
 	cmd.Name = dom.Name.String()
 	cmd.DSRecords = dom.DSRecords
 	cmd.OriginalName = dom.OriginalName.String()

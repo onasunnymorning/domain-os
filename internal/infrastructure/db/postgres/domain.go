@@ -53,10 +53,11 @@ func (Domain) TableName() string {
 	return "domains"
 }
 
-// ToDomain converts a Domain to a domain model *entities.Domain
-func ToDomain(dbDom *Domain) *entities.Domain {
+// ToDomain converts a Domain to a domain model *entities.Domain. Its ROID,
+// and its hosts', end in repository: the table stores only the number.
+func ToDomain(dbDom *Domain, repository entities.RepositoryID) *entities.Domain {
 	d := &entities.Domain{}
-	roidString, _ := entities.NewRoidType(dbDom.RoID, entities.RoidTypeDomain)
+	roidString, _ := entities.NewRoidType(dbDom.RoID, entities.RoidTypeDomain, repository)
 	d.RoID = roidString
 	d.Name = entities.DomainName(dbDom.Name)
 	d.OriginalName = entities.DomainName(dbDom.OriginalName)
@@ -92,7 +93,7 @@ func ToDomain(dbDom *Domain) *entities.Domain {
 	}
 
 	for _, h := range dbDom.Hosts {
-		d.Hosts = append(d.Hosts, ToHost(&h))
+		d.Hosts = append(d.Hosts, ToHost(&h, repository))
 	}
 	for _, ds := range dbDom.DSRecords {
 		d.DSRecords = append(d.DSRecords, entities.DSRecord{

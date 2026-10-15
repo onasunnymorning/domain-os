@@ -24,6 +24,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/askg"
 	anthropicprovider "github.com/onasunnymorning/domain-os/internal/askg/provider/anthropic"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 )
 
@@ -82,9 +83,19 @@ func run() int {
 		slog.Error("Failed to connect to database", "error", err)
 		return 1
 	}
+	// Answers can show ROIDs, which end in the installation's repository ID
+	// (ADR 0017).
+	repositoryID, err := config.LoadRepositoryID()
+	if err == nil {
+		err = postgres.CheckRepositoryID(ctx, gormDB, repositoryID)
+	}
+	if err != nil {
+		slog.Error("Refusing to start: ROID repository ID", "error", err)
+		return 1
+	}
 
 	// Wire services — same pattern as cmd/mcp/main.go
-	domainRepo := postgres.NewDomainRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	domainService := services.NewDomainService(
 		domainRepo,
 		nil,                    // hostRepo — not used by GetDomainByName

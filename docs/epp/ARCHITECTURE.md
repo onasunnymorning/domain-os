@@ -171,7 +171,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | 4a | Command pipeline: schema validation (ADR 0016), service negotiation at login, policy hook, in-process dispatch to application services, real domain check, audit log | **Done** |
 | 4b | Domain info and create with sponsorship and accreditation checks (ADR 0006), host and contact existence, the nameserver cap, RGP (RFC 3915) statuses on info | **Done** |
 | 4c | DNSSEC: DS records on the domain (validated, stored, published with the TLD's delegations, kept from escrow imports), RFC 5910 DS data on create and info, the accepted algorithms and digest types, and the DS cap | **Done**. RDAP and escrow export do not exist yet; they carry DS records when they are built |
-| 4d | ROID repository ID from configuration instead of the code constant `APEX`, so ROIDs carry the registry's IANA-registered ID (RST epp-14) | Planned |
+| 4d | ROID repository ID from configuration (`ROID_REPOSITORY_ID`) instead of the code constant `APEX`: one per installation, appended to the stored number on read, recorded on first start and guarded against change; ROIDs always generated on create and import ([ADR 0017](../adr/0017-roid-repository-id.md)) | **Done**. Registering the ID with IANA is on the operator's RST checklist |
 | 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
 | 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

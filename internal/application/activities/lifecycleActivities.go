@@ -25,7 +25,7 @@ type LifecycleActivities struct {
 // NewLifecycleActivities creates a new LifecycleActivities with a fully wired
 // DomainService. Follows the same DB initialization pattern as TLDCleanupActivities
 // but wires up the full service layer to preserve DDD boundaries.
-func NewLifecycleActivities() (*LifecycleActivities, error) {
+func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActivities, error) {
 	// Initialize gorm DB
 	var gormDB *gorm.DB
 	var err error
@@ -47,8 +47,8 @@ func NewLifecycleActivities() (*LifecycleActivities, error) {
 	}
 
 	// Wire up repositories
-	domainRepo := postgres.NewDomainRepository(gormDB)
-	hostRepo := postgres.NewGormHostRepository(gormDB)
+	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
+	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
 	nndnRepo := postgres.NewGormNNDNRepository(gormDB)
 	tldRepo := postgres.NewGormTLDRepo(gormDB)
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
@@ -61,7 +61,7 @@ func NewLifecycleActivities() (*LifecycleActivities, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ID generator for lifecycle activities: %w", err)
 	}
-	roidService := services.NewRoidService(idGenerator)
+	roidService := services.NewRoidService(idGenerator, repositoryID)
 
 	// Event publisher — use a simple logger for worker-side events
 	logger, _ := zap.NewProduction()

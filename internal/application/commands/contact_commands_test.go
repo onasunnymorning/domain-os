@@ -146,7 +146,6 @@ func TestFromRdeContact(t *testing.T) {
 			},
 			cmd: &CreateContactCommand{
 				ID:    "validClID",
-				RoID:  "12345_CONT-APEX",
 				Email: "email@me.com",
 				ClID:  "myRegstrarID",
 				Status: entities.ContactStatus{
@@ -442,7 +441,6 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			name: "valid with RoID",
 			command: &CreateContactCommand{
 				ID:        "validClID",
-				RoID:      "12345_CONT-APEX",
 				Email:     "email@me.com",
 				AuthInfo:  "escr0W1mP*rt",
 				ClID:      "myRegstrarID",
@@ -458,7 +456,6 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			},
 			expectedResult: &entities.Contact{
 				ID:        "validClID",
-				RoID:      "12345_CONT-APEX",
 				Email:     "email@me.com",
 				AuthInfo:  "escr0W1mP*rt",
 				ClID:      "myRegstrarID",
@@ -476,7 +473,6 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			name: "invalid clID",
 			command: &CreateContactCommand{
 				ID:        "i",
-				RoID:      "12345_CONT-APEX",
 				Email:     "email@me.com",
 				AuthInfo:  "escr0W1mP*rt",
 				ClID:      "myRegstrarID",
@@ -497,7 +493,6 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			name: "invalid postalinfo type",
 			command: &CreateContactCommand{
 				ID:        "validClID",
-				RoID:      "12345_CONT-APEX",
 				Email:     "email@me.com",
 				AuthInfo:  "escr0W1mP*rt",
 				ClID:      "myRegstrarID",
@@ -531,7 +526,6 @@ func TestCreateContactCommand_ToContact(t *testing.T) {
 			name: "invalid postalinfo",
 			command: &CreateContactCommand{
 				ID:        "validClID",
-				RoID:      "12345_CONT-APEX",
 				Email:     "email@me.com",
 				AuthInfo:  "escr0W1mP*rt",
 				ClID:      "myRegstrarID",
