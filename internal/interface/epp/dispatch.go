@@ -98,6 +98,11 @@ func (s *Server) routes() map[routeKey]route {
 		{command: "check", objectNS: nsDomain}:  {handler: s.domainCheck, requiresLogin: true},
 		{command: "info", objectNS: nsDomain}:   {handler: s.domainInfo, requiresLogin: true},
 		{command: "create", objectNS: nsDomain}: {handler: s.domainCreate, requiresLogin: true},
+		{command: "check", objectNS: nsHost}:    {handler: s.hostCheck, requiresLogin: true},
+		{command: "info", objectNS: nsHost}:     {handler: s.hostInfo, requiresLogin: true},
+		{command: "create", objectNS: nsHost}:   {handler: s.hostCreate, requiresLogin: true},
+		{command: "update", objectNS: nsHost}:   {handler: s.hostUpdate, requiresLogin: true},
+		{command: "delete", objectNS: nsHost}:   {handler: s.hostDelete, requiresLogin: true},
 	}
 }
 
@@ -198,6 +203,9 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 		s.rejectSchema(cmd, err)
 		return
 	}
+	if !objectMatchesCommand(cmd) {
+		return
+	}
 	cmd.describe()
 	if !s.applyPolicy(ctx, cmd) {
 		return
@@ -229,6 +237,27 @@ func (s *Server) servicesAllowed(cmd *command, rt route) bool {
 		}
 	}
 	return true
+}
+
+// objectMatchesCommand answers 2001 to an object command whose object
+// element is another command's, such as <delete><host:info>, and reports
+// whether it may go on. The schema cannot refuse it: epp:readWriteType
+// accepts any element from another namespace, and routing reads only the
+// outer command and the object's namespace.
+func objectMatchesCommand(cmd *command) bool {
+	if cmd.frame.objectNS == "" {
+		return true
+	}
+	obj := cmd.doc.FindElement("/epp/command/" + cmd.frame.command + "/*")
+	if obj != nil && obj.Tag == cmd.frame.command {
+		return true
+	}
+	got := "nothing"
+	if obj != nil {
+		got = "<" + obj.FullTag() + ">"
+	}
+	cmd.respond(epplib.StatusCommandSyntaxError, "Command syntax error; <"+cmd.frame.command+"> carries "+got+", not an object's <"+cmd.frame.command+">", nil)
+	return false
 }
 
 // rejectSchema answers a frame that fails schema validation: 2001, with the

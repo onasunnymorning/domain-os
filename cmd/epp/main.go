@@ -137,15 +137,19 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	tldRepo := postgres.NewGormTLDRepo(db)
 	phaseRepo := postgres.NewGormPhaseRepository(db)
 	registrarRepo := postgres.NewGormRegistrarRepository(db)
+	roids := services.NewRoidService(ids, repositoryID)
+	events := postgres.NewPostgresEventPublisher(db, zap.NewNop(), false) // events are not logged here; the EPP audit log records the command
 	// Registration goes through DomainService, as from the admin API: it
 	// prices the domain, assigns its ROID, stores it and writes its event.
-	registry := services.NewDomainService(domainRepo, hostRepo, *services.NewRoidService(ids, repositoryID), nndnRepo, tldRepo, phaseRepo,
-		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo,
-		postgres.NewPostgresEventPublisher(db, zap.NewNop(), false)) // events are not logged here; the EPP audit log records the command
+	registry := services.NewDomainService(domainRepo, hostRepo, *roids, nndnRepo, tldRepo, phaseRepo,
+		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events)
 	domains := services.NewEPPDomainService(services.EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: postgres.NewContactRepository(db, repositoryID), Hosts: hostRepo, Registrars: registrarRepo,
 		Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
+	})
+	hosts := services.NewEPPHostService(services.EPPHostServiceDeps{
+		Hosts: hostRepo, Domains: domainRepo, TLDs: tldRepo, Roids: roids, Events: events,
 	})
 	audit := services.NewEPPAuditService(postgres.NewEPPTransactionRepository(db), cfg.Audit.Buffer)
 
@@ -154,6 +158,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Authenticator: auth,
 		Sessions:      sessions,
 		Domains:       domains,
+		Hosts:         hosts,
 		Audit:         audit,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },

@@ -16,7 +16,8 @@ import (
 
 // Registry is an in-memory registry of TLDs and their phases, registrars'
 // accreditations, domains, contacts, hosts and reserved names: enough to
-// run services.EPPDomainService without a database. Its views implement
+// run services.EPPDomainService and services.EPPHostService without a
+// database. Its views implement
 // only the repository methods that service calls; any other method panics,
 // through the nil interface each view embeds.
 //
@@ -34,12 +35,16 @@ type Registry struct {
 	accredited   map[string]map[string]bool   // registrar → TLD
 	domains      map[string]*entities.Domain
 	contacts     map[string]*entities.Contact
-	hosts        map[string]*entities.Host // by name
+	hosts        map[hostKey]*entities.Host
 	reserved     map[string]bool
 	knownTLDs    map[string]bool
 	Registered   []string // names Register stored, in order
 	registerHook func(*commands.RegisterDomainCommand) error
 }
+
+// hostKey identifies a host object: each registrar has its own host object
+// for a name.
+type hostKey struct{ name, clid string }
 
 // NewRegistry returns an empty registry that mints ROIDs with repository,
 // as DomainService does with the configured one.
@@ -47,9 +52,22 @@ func NewRegistry(repository entities.RepositoryID) *Registry {
 	return &Registry{
 		now: time.Now, repository: repository, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
 		domains: map[string]*entities.Domain{}, contacts: map[string]*entities.Contact{},
-		hosts: map[string]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
+		hosts: map[hostKey]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
 	}
 }
+
+// GenerateID returns the next of the registry's IDs, so that a
+// services.RoidService over the registry mints ROIDs that follow its own:
+// the registry is a repositories.IDGenerator.
+func (r *Registry) GenerateID() int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.nextID++
+	return r.nextID
+}
+
+// ListNode is the generator's node: the registry is the only one.
+func (r *Registry) ListNode() int64 { return 0 }
 
 // Fail makes every read and write return err; nil ends it.
 func (r *Registry) Fail(err error) {
@@ -94,8 +112,8 @@ func (r *Registry) AddContact(id, clid string) {
 	r.contacts[id] = &entities.Contact{ID: entities.ClIDType(id), ClID: entities.ClIDType(clid)}
 }
 
-// AddHost adds a host object sponsored by clid.
-func (r *Registry) AddHost(name, clid string) {
+// AddHost adds a host object sponsored by clid, with addrs.
+func (r *Registry) AddHost(name, clid string, addrs ...string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
@@ -107,7 +125,31 @@ func (r *Registry) AddHost(name, clid string) {
 	if err != nil {
 		panic(err) // a fixture's own mistake
 	}
-	r.hosts[name] = h
+	for _, a := range addrs {
+		if _, err := h.AddAddress(a); err != nil {
+			panic(err) // a fixture's own mistake
+		}
+	}
+	h.CreatedAt = r.now().UTC()
+	r.hosts[hostKey{name, clid}] = h
+}
+
+// Host returns a copy of clid's host object named name, or nil.
+func (r *Registry) Host(name, clid string) *entities.Host {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if h, ok := r.hosts[hostKey{name, clid}]; ok {
+		return h.DeepCopy()
+	}
+	return nil
+}
+
+// SetHostStatus changes the statuses of clid's host object named name, as
+// the registry's operator would.
+func (r *Registry) SetHostStatus(name, clid string, fn func(*entities.HostStatus)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fn(&r.hosts[hostKey{name, clid}].Status)
 }
 
 // Reserve puts a name on the reserved list.
@@ -196,8 +238,8 @@ func (r *Registry) RegisterDomain(_ context.Context, cmd *commands.RegisterDomai
 		return nil, err
 	}
 	for _, h := range cmd.HostNames {
-		host, ok := r.hosts[strings.ToLower(h)]
-		if !ok || host.ClID != entities.ClIDType(cmd.ClID) {
+		host, ok := r.hosts[hostKey{strings.ToLower(h), cmd.ClID}]
+		if !ok {
 			return nil, entities.ErrHostNotFound
 		}
 		if _, err := dom.AddHost(host, false); err != nil {
@@ -330,11 +372,141 @@ func (v registryHosts) GetHostByNameAndClID(_ context.Context, name, clid string
 	if v.r.err != nil {
 		return nil, v.r.err
 	}
-	if h, ok := v.r.hosts[name]; ok && h.ClID == entities.ClIDType(clid) {
-		c := *h
-		return &c, nil
+	if h, ok := v.r.hosts[hostKey{name, clid}]; ok {
+		return h.DeepCopy(), nil
 	}
 	return nil, entities.ErrHostNotFound
+}
+
+// hostByRoid returns the stored host with roid, or nil. The caller holds
+// the lock.
+func (r *Registry) hostByRoid(roid int64) *entities.Host {
+	for _, h := range r.hosts {
+		if id, _ := h.RoID.Int64(); id == roid {
+			return h
+		}
+	}
+	return nil
+}
+
+func (v registryHosts) GetHostByRoid(_ context.Context, roid int64) (*entities.Host, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	if h := v.r.hostByRoid(roid); h != nil {
+		return h.DeepCopy(), nil
+	}
+	return nil, entities.ErrHostNotFound
+}
+
+// BulkCreate stores the hosts, failing on the first a registrar already
+// has by that name.
+func (v registryHosts) BulkCreate(_ context.Context, hosts []*entities.Host) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	for _, h := range hosts {
+		if _, ok := v.r.hosts[hostKey{h.Name.String(), h.ClID.String()}]; ok {
+			return entities.ErrHostAlreadyExists
+		}
+	}
+	for _, h := range hosts {
+		c := h.DeepCopy()
+		c.CreatedAt = v.r.now().UTC()
+		v.r.hosts[hostKey{h.Name.String(), h.ClID.String()}] = c
+	}
+	return nil
+}
+
+// UpdateHostAndAddresses replaces the stored host in place, so the domains
+// that have it as a nameserver see the change, as they do through the
+// database's link table. Like the Postgres repository, it refuses a host
+// changed since h was read (ErrHostChanged).
+func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Host) (*entities.Host, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	id, _ := h.RoID.Int64()
+	stored := v.r.hostByRoid(id)
+	if stored == nil {
+		return nil, entities.ErrHostNotFound
+	}
+	if !stored.UpdatedAt.Equal(h.UpdatedAt) {
+		return nil, entities.ErrHostChanged
+	}
+	key := hostKey{h.Name.String(), h.ClID.String()}
+	if other, ok := v.r.hosts[key]; ok && other != stored {
+		return nil, entities.ErrHostAlreadyExists
+	}
+	delete(v.r.hosts, hostKey{stored.Name.String(), stored.ClID.String()})
+	*stored = *h.DeepCopy()
+	stored.UpdatedAt = v.r.now().UTC()
+	v.r.hosts[key] = stored
+	return stored.DeepCopy(), nil
+}
+
+func (v registryHosts) DeleteHostByRoid(_ context.Context, roid int64) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	if h := v.r.hostByRoid(roid); h != nil {
+		delete(v.r.hosts, hostKey{h.Name.String(), h.ClID.String()})
+	}
+	return nil
+}
+
+func (v registryHosts) CountHostsByName(_ context.Context, name string) (int64, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return 0, v.r.err
+	}
+	var n int64
+	for k := range v.r.hosts {
+		if k.name == name {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (v registryHosts) GetHostAssociationCount(_ context.Context, roid int64) (int64, error) {
+	return v.links(roid, func(*entities.Domain) bool { return true })
+}
+
+func (v registryHosts) CountHostLinksFromOtherSponsors(_ context.Context, roid int64, clid string) (int64, error) {
+	return v.links(roid, func(d *entities.Domain) bool { return d.ClID.String() != clid })
+}
+
+// links counts the domains that match and have the host with roid as a
+// nameserver.
+func (v registryHosts) links(roid int64, match func(*entities.Domain) bool) (int64, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return 0, v.r.err
+	}
+	var n int64
+	for _, d := range v.r.domains {
+		if !match(d) {
+			continue
+		}
+		for _, h := range d.Hosts {
+			if id, _ := h.RoID.Int64(); id == roid {
+				n++
+				break
+			}
+		}
+	}
+	return n, nil
 }
 
 // ListHosts filters by ClidEquals and NameLike (a substring, as ILIKE
@@ -351,8 +523,7 @@ func (v registryHosts) ListHosts(_ context.Context, q queries.ListItemsQuery) ([
 		if (f.ClidEquals == "" || h.ClID.String() == f.ClidEquals) &&
 			strings.Contains(strings.ToLower(h.Name.String()), strings.ToLower(f.NameLike)) &&
 			h.Name.String() > q.PageCursor {
-			c := *h
-			all = append(all, &c)
+			all = append(all, h.DeepCopy())
 		}
 	}
 	slices.SortFunc(all, func(a, b *entities.Host) int { return strings.Compare(a.Name.String(), b.Name.String()) })

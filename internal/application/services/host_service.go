@@ -303,7 +303,22 @@ func (s *HostService) publishHostEvent(
 	newState interface{},
 	previousState interface{},
 ) {
-	if s.eventPublisher == nil {
+	publishHostEvent(ctx, s.eventPublisher, eventType, subject, msg, command, newState, previousState)
+}
+
+// publishHostEvent publishes a host's domain event, correlated with the
+// request in ctx and naming its actor. A nil publisher publishes nothing.
+func publishHostEvent(
+	ctx context.Context,
+	publisher repositories.EventPublisher,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if publisher == nil {
 		return
 	}
 	data := map[string]interface{}{
@@ -331,7 +346,7 @@ func (s *HostService) publishHostEvent(
 		domainEvent.Actor = actor
 	}
 
-	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+	if err := publisher.Publish(ctx, domainEvent); err != nil {
 		fmt.Printf("failed to publish host event %s: %v\n", eventType, err)
 	}
 }

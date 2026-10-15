@@ -3,7 +3,6 @@ package epp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -196,12 +195,10 @@ func (s *Server) logout(_ context.Context, cmd *command) {
 // the order asked. More names than EPP_MAX_CHECK_NAMES is 2306; a registry
 // that cannot answer is 2400.
 func (s *Server) domainCheck(ctx context.Context, cmd *command) {
-	names := cmd.objects // the <domain:name>s, read by describe
-	s.metrics.checkNames.Observe(float64(len(names)))
-	if max := s.cfg.Commands.MaxCheckNames; len(names) > max {
-		cmd.respond(epplib.StatusParameterPolicyError, fmt.Sprintf("Parameter value policy error; at most %d names per check", max), nil)
+	if !s.checkSizeAllowed(cmd) {
 		return
 	}
+	names := cmd.objects // the <domain:name>s, read by describe
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	results, err := s.domains.Check(ctx, names)

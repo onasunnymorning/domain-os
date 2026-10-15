@@ -4,8 +4,9 @@
 //
 // Logins are authenticated against registrars' EPP credentials (ADR 0014).
 // Every command is validated against Go models of the EPP schemas (ADR 0016)
-// and recorded in the audit log. Greeting, login, logout and domain check,
-// info and create are bound. The target architecture, and the phased plan for reaching it, is
+// and recorded in the audit log. Greeting, login, logout, domain check,
+// info and create, and every host command are bound. The target
+// architecture, and the phased plan for reaching it, is
 // docs/epp/ARCHITECTURE.md; every setting is listed in
 // docs/epp/POLICY_REFERENCE.md.
 package epp
@@ -54,6 +55,8 @@ type Options struct {
 	Sessions interfaces.EPPSessionTracker
 	// Domains answers domain commands. Required.
 	Domains interfaces.EPPDomainService
+	// Hosts answers host commands. Required.
+	Hosts interfaces.EPPHostService
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -73,6 +76,7 @@ type Server struct {
 	tracker  interfaces.EPPSessionTracker
 	auth     interfaces.EPPAuthenticator
 	domains  interfaces.EPPDomainService
+	hosts    interfaces.EPPHostService
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
 	watch    credentialWatch
@@ -103,6 +107,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Domains == nil {
 		return nil, errors.New("epp: Options.Domains is required")
 	}
+	if opts.Hosts == nil {
+		return nil, errors.New("epp: Options.Hosts is required")
+	}
 	if opts.Audit == nil {
 		return nil, errors.New("epp: Options.Audit is required")
 	}
@@ -113,6 +120,7 @@ func NewServer(opts Options) (*Server, error) {
 		tracker:  opts.Sessions,
 		auth:     opts.Authenticator,
 		domains:  opts.Domains,
+		hosts:    opts.Hosts,
 		auditLog: opts.Audit,
 		policy:   allowAll{},
 		logger:   opts.Logger,
