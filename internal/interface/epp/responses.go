@@ -15,8 +15,8 @@ import (
 const serverID = "domain-os EPP"
 
 // supportedObjects are the object services the greeting offers and a
-// <login> may ask for. Contact and host commands are not bound yet and are
-// answered 2101.
+// <login> may ask for. Contact commands are not bound yet and are answered
+// 2101.
 var supportedObjects = []string{nsDomain, nsContact, nsHost}
 
 // supportedExtensions are the extensions the greeting offers and a <login>

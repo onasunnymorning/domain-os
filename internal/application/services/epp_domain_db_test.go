@@ -51,11 +51,24 @@ func eppTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// TestEPPDomainCreateOverPostgres runs create and info through the real
-// registration path — DomainService.RegisterDomain on the Postgres
-// repositories, as cmd/epp wires it — over a TLD, phase, registrars,
-// contacts and hosts set up through the admin services.
-func TestEPPDomainCreateOverPostgres(t *testing.T) {
+// eppFixture is a registry on the test Postgres, set up through the admin
+// services: a TLD with a GA phase, two registrars each with a contact
+// (c<clid>) and a host (ns1.<clid>.net), the first accredited for the
+// TLD; and the EPP domain service over it, wired as cmd/epp wires it.
+type eppFixture struct {
+	db              *gorm.DB
+	tld, rar1, rar2 string
+	roids           *RoidService
+	events          *postgres.PostgresEventPublisher
+	tldRepo         *postgres.GormTLDRepository
+	hostRepo        *postgres.HostRepository
+	domainRepo      *postgres.DomainRepository
+	registry        *DomainService
+	domains         *EPPDomainService
+}
+
+func newEPPFixture(t *testing.T) *eppFixture {
+	t.Helper()
 	db := eppTestDB(t)
 	ctx := context.Background()
 	ids, err := snowflakeidgenerator.NewIDGenerator()
@@ -118,6 +131,20 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		Domains: domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: contactRepo, Hosts: hostRepo, Registrars: rarRepo, Register: registry, CheckParallelism: 2,
 	})
+	return &eppFixture{
+		db: db, tld: tld, rar1: rar1, rar2: rar2, roids: roids, events: events,
+		tldRepo: tldRepo, hostRepo: hostRepo, domainRepo: domainRepo, registry: registry, domains: svc,
+	}
+}
+
+// TestEPPDomainCreateOverPostgres runs create and info through the real
+// registration path — DomainService.RegisterDomain on the Postgres
+// repositories, as cmd/epp wires it — over a TLD, phase, registrars,
+// contacts and hosts set up through the admin services.
+func TestEPPDomainCreateOverPostgres(t *testing.T) {
+	f := newEPPFixture(t)
+	db, ctx, svc, registry := f.db, context.Background(), f.domains, f.registry
+	tld, rar1, rar2 := f.tld, f.rar1, f.rar2
 	scope1, scope2 := entities.RegistrarClID(rar1), entities.RegistrarClID(rar2)
 	create := commands.EPPCreateDomainCommand{
 		Name: "epp." + tld, Period: 3, PeriodUnit: "y", RegistrantID: "c" + rar1,

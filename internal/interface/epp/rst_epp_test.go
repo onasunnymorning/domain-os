@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -618,32 +619,364 @@ func TestRST_epp17_ServicePortConsistency(t *testing.T) {
 	})
 }
 
-// --- epp-05 … epp-27: object commands -------------------------------------
+// --- epp-05, epp-11 … epp-13, epp-15, epp-23 … epp-27: host objects -------
+
+// This registry uses host objects (epp.hostModel = objects), so the host
+// cases apply. The tests follow the cases' data providers (epp-11-data,
+// epp-13-status-data, epp-13-addr-data, epp-23-data in the pinned release),
+// with RST's address prefixes. .test stands in for each TLD in the TLD set,
+// .icann for a name outside it, and registered.test, sponsored by
+// registrar2, for epp.registeredNames.
+
+// rstRandChars stands in for RANDCHARS(18): a fresh label for each call.
+func rstRandChars() string {
+	return "r" + strconv.FormatInt(time.Now().UnixNano()+rstRandSeq.Add(1), 36)
+}
+
+var rstRandSeq atomic.Int64
+
+// isRefusal reports whether a result code refuses the command (2xxx).
+func isRefusal(code string) bool { return strings.HasPrefix(code, "2") }
+
+func TestRST_epp05_HostCheck(t *testing.T) {
+	creds, _, c := hostServer(t)
+	// epp.registeredNameservers: one host subordinate to each TLD in the
+	// set, sponsored by another registrar.
+	creds.domains.registry.AddHost("ns1.registered.test", "registrar2", testV4)
+	avail := func(t *testing.T, name string) string {
+		t.Helper()
+		resp := c.roundTrip(hostCheckXML(name))
+		if code := code(resp); code != "1000" {
+			return code
+		}
+		el := resp.FindElement("//resData/chkData/cd/name")
+		require.NotNil(t, el, "a <host:name> for the name checked")
+		return el.SelectAttrValue("avail", "")
+	}
+	t.Run("epp-05 syntactically invalid hostnames are unavailable or refused", func(t *testing.T) {
+		for _, name := range []string{"!.epp-05.test", "-leading.example.net", "dou..ble.example.net", "under_score.example.net", "nodot"} {
+			assert.Contains(t, []string{"0", "false", "2001", "2004", "2005"}, avail(t, name), "%q", name)
+		}
+	})
+	t.Run("epp-05 registered hostnames are unavailable", func(t *testing.T) {
+		assert.Equal(t, "0", avail(t, "ns1.registered.test"))
+	})
+	t.Run("epp-05 unregistered hostnames are available", func(t *testing.T) {
+		assert.Equal(t, "1", avail(t, "ns1."+rstRandChars()+".test"))
+		assert.Equal(t, "1", avail(t, "ns1."+rstRandChars()+".icann"))
+	})
+}
+
+func TestRST_epp11_HostCreate(t *testing.T) {
+	_, _, c := hostServer(t)
+	create := func(name string, addrs ...string) string { return code(c.roundTrip(hostCreateXML(name, addrs...))) }
+
+	external := "ns1.epp-11.rst." + rstRandChars() + ".icann"
+	t.Run("epp-11 external host without addresses accepted", func(t *testing.T) {
+		assert.Equal(t, "1000", create(external))
+	})
+	t.Run("epp-11 invalid hostname refused", func(t *testing.T) {
+		assert.True(t, isRefusal(create("!.epp-11.rst."+rstRandChars()+".icann")))
+	})
+	parent := rstRandChars() + ".test"
+	ns1 := "ns1.epp-11.rst." + parent
+	t.Run("epp-11 internal host whose superordinate domain does not exist refused", func(t *testing.T) {
+		assert.True(t, isRefusal(create(ns1)))
+	})
+	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
+	t.Run("epp-11 internal host with an IPv4 address accepted", func(t *testing.T) {
+		assert.Equal(t, "1000", create(ns1, addrXML("v4", "208.77.190.196")))
+	})
+	ns2 := "ns2.epp-11.rst." + parent
+	t.Run("epp-11 invalid IPv4 addresses refused", func(t *testing.T) {
+		for _, a := range []string{"", "2602:800:900e:1257::4", "208.77.190", "a.b.c.d", "256.1.1.1", "1.2.3.4.5", "127.0.0.1"} {
+			assert.True(t, isRefusal(create(ns2, addrXML("v4", a))), "%q", a)
+		}
+		assert.True(t, isRefusal(create(ns2, addrXML("v5", "208.77.190.197"))), "ip=v5")
+	})
+	ns3 := "ns3.epp-11.rst." + parent
+	t.Run("epp-11 invalid IPv6 addresses refused", func(t *testing.T) {
+		for _, a := range []string{"", "208.77.190.198", "::", "::1", "::X", "NOT::HEX::"} {
+			assert.True(t, isRefusal(create(ns3, addrXML("v6", a))), "%q", a)
+		}
+	})
+	t.Run("epp-11 internal host with an IPv6 address accepted", func(t *testing.T) {
+		assert.Equal(t, "1000", create(ns3, addrXML("v6", "2602:800:900e:1257::5")))
+	})
+	t.Run("epp-11 info confirms the stored values", func(t *testing.T) {
+		for name, want := range map[string]map[string]string{
+			external: {},
+			ns1:      {"208.77.190.196": "v4"},
+			ns3:      {"2602:800:900e:1257::5": "v6"},
+		} {
+			info := c.roundTrip(hostInfoXML(name))
+			requireCode(t, info, "1000")
+			assert.Equal(t, name, text(info, "//infData/name"))
+			assert.Equal(t, want, addresses(info), name)
+			assert.Equal(t, testRegistrar, text(info, "//infData/clID"))
+		}
+	})
+}
+
+func TestRST_epp12_HostAccessControl(t *testing.T) {
+	_, ts, c := hostServer(t)
+	parent := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
+	internal, external := "ns1."+parent, "ns1.epp-12.rst."+rstRandChars()+".icann"
+	requireCode(t, c.roundTrip(hostCreateXML(internal, addrXML("v4", testV4))), "1000")
+	requireCode(t, c.roundTrip(hostCreateXML(external)), "1000")
+
+	other := registrar2(t, ts)
+	t.Run("epp-12 <update> by a non-sponsor is 2201", func(t *testing.T) {
+		for _, name := range []string{internal, external} {
+			for _, changes := range []string{
+				addXML(statusXML("clientUpdateProhibited")),
+				addXML(addrXML("v4", testV4b)),
+				chgXML("ns9.epp-12.rst." + rstRandChars() + ".icann"),
+			} {
+				requireCode(t, other.roundTrip(hostUpdateXML(name, changes)), "2201")
+			}
+		}
+	})
+}
+
+func TestRST_epp13_HostUpdate(t *testing.T) {
+	_, _, c := hostServer(t)
+	parent := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
+	host := "ns1.epp-13.rst." + parent
+	requireCode(t, c.roundTrip(hostCreateXML(host, addrXML("v4", testV4))), "1000")
+	update := func(changes string) string { return code(c.roundTrip(hostUpdateXML(host, changes))) }
+
+	t.Run("epp-13 status changes (epp-13-status-data)", func(t *testing.T) {
+		for _, row := range []struct {
+			add    bool
+			status string
+			pass   bool
+		}{
+			{true, "clientUpdateProhibited", true},
+			{false, "clientUpdateProhibited", true},
+			{true, "clientDeleteProhibited", true},
+			{true, "clientHold", false},
+			{true, "linked", false},
+			{true, "ok", false},
+			{true, "pendingCreate", false},
+			{true, "pendingDelete", false},
+			{true, "pendingTransfer", false},
+			{true, "pendingUpdate", false},
+			{true, "serverDeleteProhibited", false},
+			{true, "serverUpdateProhibited", false},
+			{true, "invalidStatusCode", false},
+			{false, "clientDeleteProhibited", true},
+			{false, "clientHold", false},
+			{false, "linked", false},
+			{false, "ok", false},
+			{false, "pendingCreate", false},
+			{false, "pendingDelete", false},
+			{false, "pendingTransfer", false},
+			{false, "pendingUpdate", false},
+			{false, "serverDeleteProhibited", false},
+			{false, "serverUpdateProhibited", false},
+			{false, "invalidStatusCode", false},
+		} {
+			changes := remXML(statusXML(row.status))
+			if row.add {
+				changes = addXML(statusXML(row.status))
+			}
+			got := update(changes)
+			if row.pass {
+				assert.Equal(t, "1000", got, "add=%v %s", row.add, row.status)
+				if row.add {
+					assert.Contains(t, statuses(c.roundTrip(hostInfoXML(host))), row.status)
+				}
+			} else {
+				assert.True(t, isRefusal(got), "add=%v %s: got %s", row.add, row.status, got)
+			}
+		}
+	})
+	t.Run("epp-13 address changes (epp-13-addr-data)", func(t *testing.T) {
+		for _, row := range []struct {
+			add      bool
+			ip, addr string
+			pass     bool
+		}{
+			{true, "v4", "208.77.190.192", true},
+			{true, "v4", "", false},
+			{true, "v4", "2602:800:900e:1257::1", false},
+			{true, "v4", "208.77.190", false},
+			{true, "v4", "a.b.c.d", false},
+			{true, "v4", "256.1.1.1", false},
+			{true, "v4", "1.2.3.4.5", false},
+			{true, "v5", "208.77.190.193", false},
+			{true, "v6", "2602:800:900e:1257::2", true},
+			{true, "v6", "208.77.190.194", false},
+			{true, "v6", "::", false},
+			{true, "v6", "::1", false},
+			{true, "v6", "::X", false},
+			{true, "v6", "NOT::HEX::", false},
+			{false, "v4", "208.77.190.195", false},
+			{false, "v6", "2602:800:900e:1257::3", false},
+		} {
+			changes := remXML(addrXML(row.ip, row.addr))
+			if row.add {
+				changes = addXML(addrXML(row.ip, row.addr))
+			}
+			got := update(changes)
+			if row.pass {
+				assert.Equal(t, "1000", got, "add=%v %s %q", row.add, row.ip, row.addr)
+			} else {
+				assert.True(t, isRefusal(got), "add=%v %s %q: got %s", row.add, row.ip, row.addr, got)
+			}
+		}
+	})
+	t.Run("epp-13 info confirms the stored values", func(t *testing.T) {
+		info := c.roundTrip(hostInfoXML(host))
+		requireCode(t, info, "1000")
+		assert.Equal(t, map[string]string{testV4: "v4", "208.77.190.192": "v4", "2602:800:900e:1257::2": "v6"}, addresses(info))
+		assert.Equal(t, []string{"ok"}, statuses(info))
+	})
+}
+
+func TestRST_epp15_ObjectIntegrity(t *testing.T) {
+	_, _, c := hostServer(t)
+	host := "ns1.epp-15.rst." + rstRandChars() + ".icann"
+	requireCode(t, c.roundTrip(hostCreateXML(host)), "1000")
+	requireCode(t, c.roundTrip(createXML(rstRandChars()+".test", createOpts{ns: `<domain:ns><domain:hostObj>` + host + `</domain:hostObj></domain:ns>`})), "1000")
+	t.Run("epp-15 <delete> of a linked host object refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(c.roundTrip(hostDeleteXML(host)))))
+		requireCode(t, c.roundTrip(hostInfoXML(host)), "1000")
+	})
+	t.Run("epp-15 <delete> of a linked contact object refused", func(t *testing.T) {
+		rstPending(t, "Phase 4f: contact commands")
+	})
+}
+
+func TestRST_epp23_HostRename(t *testing.T) {
+	creds, _, c := hostServer(t)
+	parent := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
+	host := "ns1.epp-23.rst." + parent
+	requireCode(t, c.roundTrip(hostCreateXML(host, addrXML("v4", testV4))), "1000")
+	rename := func(to string) string {
+		got := code(c.roundTrip(hostUpdateXML(host, chgXML(to))))
+		if got == "1000" {
+			host = to
+		}
+		return got
+	}
+
+	t.Run("epp-23 rename to an invalid hostname refused", func(t *testing.T) {
+		assert.True(t, isRefusal(rename("!.invalid")))
+	})
+	t.Run("epp-23 rename to an external name accepted", func(t *testing.T) {
+		assert.Equal(t, "1000", rename("ns1.epp-23.rst."+rstRandChars()+".icann"))
+	})
+	t.Run("epp-23 rename into another registrar's domain refused", func(t *testing.T) {
+		check := c.roundTrip(checkNamesXML("registered.test"))
+		require.Equal(t, "0", check.FindElement("//resData/chkData/cd/name").SelectAttrValue("avail", ""), "registered.test exists")
+		assert.True(t, isRefusal(rename("ns1.epp-23.rst."+rstRandChars()+".registered.test")))
+	})
+	newParent := rstRandChars() + ".test"
+	t.Run("epp-23 rename into a non-existent domain refused", func(t *testing.T) {
+		assert.True(t, isRefusal(rename("ns1.epp-23.rst."+newParent)))
+	})
+	t.Run("epp-23 rename into the client's own domain accepted", func(t *testing.T) {
+		requireCode(t, c.roundTrip(createXML(newParent, createOpts{})), "1000")
+		assert.Equal(t, "1000", rename("ns1.epp-23.rst."+newParent))
+	})
+	t.Run("epp-23 info confirms the new name", func(t *testing.T) {
+		info := c.roundTrip(hostInfoXML(host))
+		requireCode(t, info, "1000")
+		assert.Equal(t, host, text(info, "//infData/name"))
+	})
+	t.Run("epp-23 rename of an external host linked to another client's objects is 2305", func(t *testing.T) {
+		// Through EPP a registrar's domains use only its own hosts; a
+		// deposit imported from a registry with shared hosts can link one
+		// registrar's host to another's domain.
+		external := "ns2.epp-23.rst." + rstRandChars() + ".icann"
+		requireCode(t, c.roundTrip(hostCreateXML(external)), "1000")
+		reg := creds.domains.registry
+		reg.AddDomain(&entities.Domain{Name: entities.DomainName(rstRandChars() + ".test"), ClID: "registrar2",
+			RoID: entities.RoidType("23_DOM-" + testRepositoryID), Hosts: []*entities.Host{reg.Host(external, testRegistrar)}})
+		requireCode(t, c.roundTrip(hostUpdateXML(external, chgXML("ns3.epp-23.rst."+rstRandChars()+".icann"))), "2305")
+	})
+}
+
+func TestRST_epp24_HostDelete(t *testing.T) {
+	_, _, c := hostServer(t)
+	host := "ns1.epp-24.rst." + rstRandChars() + ".icann"
+	requireCode(t, c.roundTrip(hostCreateXML(host)), "1000")
+	t.Run("epp-24 <delete> is 1000 or 1001", func(t *testing.T) {
+		assert.Contains(t, []string{"1000", "1001"}, code(c.roundTrip(hostDeleteXML(host))))
+	})
+	t.Run("epp-24 info confirms the host is gone", func(t *testing.T) {
+		requireCode(t, c.roundTrip(hostInfoXML(host)), "2303")
+	})
+}
+
+// rstVictimDomain is a domain registrar1 creates and delegates to external
+// hosts, under which registrar2 then tries to create hosts (epp-25 to
+// epp-27).
+func rstVictimDomain(t *testing.T, c *client) string {
+	t.Helper()
+	ns := "ns1.epp-26.rst." + rstRandChars() + ".icann"
+	requireCode(t, c.roundTrip(hostCreateXML(ns)), "1000")
+	parent := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(parent, createOpts{ns: `<domain:ns><domain:hostObj>` + ns + `</domain:hostObj></domain:ns>`})), "1000")
+	return parent
+}
+
+func TestRST_epp25_SubordinateHostCreate(t *testing.T) {
+	_, ts, c := hostServer(t)
+	parent := rstVictimDomain(t, c)
+	other := registrar2(t, ts)
+	t.Run("epp-25 a non-sponsor's subordinate host with addresses refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(other.roundTrip(hostCreateXML("ns1.epp-25."+parent, addrXML("v4", testV4), addrXML("v6", testV6))))))
+	})
+	t.Run("epp-25 a non-sponsor's subordinate host without addresses: refused, or sponsored by the domain's sponsor", func(t *testing.T) {
+		name := "ns2.epp-25." + parent
+		got := code(other.roundTrip(hostCreateXML(name)))
+		if got == "1000" {
+			assert.Equal(t, testRegistrar, text(c.roundTrip(hostInfoXML(name)), "//infData/clID"))
+			return
+		}
+		assert.True(t, isRefusal(got))
+	})
+}
+
+func TestRST_epp26_WideGlue(t *testing.T) {
+	_, ts, c := hostServer(t)
+	parent := rstVictimDomain(t, c)
+	t.Run("epp-26 a non-sponsor's internal host with glue refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(registrar2(t, ts).roundTrip(hostCreateXML("ns1.epp-26."+parent, addrXML("v4", testV4))))))
+	})
+}
+
+func TestRST_epp27_GluelessInternalHost(t *testing.T) {
+	_, ts, c := hostServer(t)
+	parent := rstVictimDomain(t, c)
+	t.Run("epp-27 a non-sponsor's glueless internal host refused", func(t *testing.T) {
+		// Refused at <create>, so the sponsor never gets to delegate to it.
+		assert.True(t, isRefusal(code(registrar2(t, ts).roundTrip(hostCreateXML("ns1.epp-27."+parent)))))
+	})
+}
+
+// --- Pending: contact and domain transform commands ----------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"epp-05": "object commands epic: host <check>",
-	"epp-06": "object commands epic: contact <check> (if the registry data model needs contacts)",
-	"epp-07": "object commands epic: contact <create>",
-	"epp-08": "object commands epic: contact <info>/<update> refused to non-sponsors with 2201 (ADR 0006)",
-	"epp-09": "object commands epic: contact <update>",
-	"epp-10": "object commands epic: contact <delete>",
-	"epp-11": "object commands epic: host <create>",
-	"epp-12": "object commands epic: host <update> refused to non-sponsors with 2201 (ADR 0006)",
-	"epp-13": "object commands epic: host <update>",
-	"epp-15": "object commands epic: deleting a linked host or contact is refused",
-	"epp-16": "object commands epic: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
-	"epp-18": "object commands epic: domain <renew>",
-	"epp-19": "object commands epic: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
-	"epp-20": "object commands epic: domain <transfer> rejection",
-	"epp-21": "object commands epic: domain <delete> and pendingDelete/purge",
-	"epp-23": "object commands epic: host rename rules, including 2305 for external hosts linked to other sponsors",
-	"epp-24": "object commands epic: host <delete>",
-	"epp-25": "object commands epic: subordinate host <create>",
-	"epp-26": "object commands epic: wide-glue host <create> refused to non-sponsors of the parent domain",
-	"epp-27": "object commands epic: glueless internal host access control",
+	"epp-06": "Phase 4f: contact <check> (if the registry data model needs contacts)",
+	"epp-07": "Phase 4f: contact <create>",
+	"epp-08": "Phase 4f: contact <info>/<update> refused to non-sponsors with 2201 (ADR 0006)",
+	"epp-09": "Phase 4f: contact <update>",
+	"epp-10": "Phase 4f: contact <delete>",
+	"epp-16": "Phase 4g: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
+	"epp-18": "Phase 4g: domain <renew>",
+	"epp-19": "Phase 4h: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
+	"epp-20": "Phase 4h: domain <transfer> rejection",
+	"epp-21": "Phase 4g: domain <delete> and pendingDelete/purge",
 }
 
 func TestRST_EPPPendingCases(t *testing.T) {
@@ -658,7 +991,10 @@ func TestRST_EPPPendingCases(t *testing.T) {
 }
 
 // rstImplementedCases have their own TestRST_ function in this file.
-var rstImplementedCases = []string{"epp-01", "epp-02", "epp-03", "epp-04", "epp-14", "epp-17"}
+var rstImplementedCases = []string{
+	"epp-01", "epp-02", "epp-03", "epp-04", "epp-05", "epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-17",
+	"epp-23", "epp-24", "epp-25", "epp-26", "epp-27",
+}
 
 // TestRST_EPPCatalogueIsComplete fails when the pinned spec and this file
 // disagree: a case in the spec that is neither implemented nor pending, or a

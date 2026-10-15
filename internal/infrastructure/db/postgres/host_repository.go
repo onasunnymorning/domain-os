@@ -3,11 +3,12 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // HostRepository is the postgres implementation of the HostRepository
@@ -30,8 +31,7 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 	gormHost := ToDBHost(host)
 	err := r.db.WithContext(ctx).Omit("Addresses").Create(gormHost).Error // We Omit addresses we want to manage these through the address repository
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if isUniqueViolation(err) {
 			return nil, entities.ErrHostAlreadyExists
 		}
 		return nil, err
@@ -48,7 +48,11 @@ func (r *HostRepository) BulkCreate(ctx context.Context, hosts []*entities.Host)
 		dbHosts[i] = ToDBHost(h)
 	}
 
-	return r.db.WithContext(ctx).Create(dbHosts).Error
+	err := r.db.WithContext(ctx).Create(dbHosts).Error
+	if isUniqueViolation(err) {
+		return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
+	}
+	return err
 }
 
 // GetHostByRoid gets a host by its roid
@@ -87,6 +91,58 @@ func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*
 		return nil, err
 	}
 	return ToHost(gormHost, r.repository), nil
+}
+
+// UpdateHostAndAddresses saves the host and replaces its addresses with
+// host.Addresses, in one transaction, and returns the host as stored. A
+// rename onto a name the registrar already has is ErrHostAlreadyExists.
+func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entities.Host) (*entities.Host, error) {
+	gormHost := ToDBHost(host)
+	keep := make([]string, len(gormHost.Addresses))
+	for i, a := range gormHost.Addresses {
+		keep[i] = a.Address
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Omit("Addresses").Save(gormHost).Error; err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
+			}
+			return err
+		}
+		stale := tx.Where("host_ro_id = ?", gormHost.RoID)
+		if len(keep) > 0 {
+			stale = stale.Where("address NOT IN ?", keep)
+		}
+		if err := stale.Delete(&HostAddress{}).Error; err != nil {
+			return err
+		}
+		if len(gormHost.Addresses) == 0 {
+			return nil
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&gormHost.Addresses).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.GetHostByRoid(ctx, gormHost.RoID)
+}
+
+// CountHostsByName counts the host objects named name, whichever registrar
+// sponsors them.
+func (r *HostRepository) CountHostsByName(ctx context.Context, name string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&Host{}).Where("name = ?", name).Count(&count).Error
+	return count, err
+}
+
+// CountHostLinksFromOtherSponsors counts the domains that have the host as a
+// nameserver and that clid does not sponsor.
+func (r *HostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM domain_hosts dh
+		JOIN domains d ON d.ro_id = dh.domain_ro_id
+		WHERE dh.host_ro_id = ? AND d.cl_id <> ?`, roid, clid).Scan(&count).Error
+	return count, err
 }
 
 // DeleteHostByRoid deletes a host by its roid
@@ -194,7 +250,7 @@ func setHostFilters(dbQuery *gorm.DB, f queries.ListHostsFilter) (*gorm.DB, erro
 // GetHostAssociationCount returns the number of domains a host is associated with. This can be used to determine if a host needs the linked flag to be unset
 func (r *HostRepository) GetHostAssociationCount(ctx context.Context, roid int64) (int64, error) {
 	var count int64
-	err := r.db.Raw("SELECT COUNT(*) FROM domain_hosts WHERE host_ro_id = ?", roid).Scan(&count).Error
+	err := r.db.WithContext(ctx).Raw("SELECT COUNT(*) FROM domain_hosts WHERE host_ro_id = ?", roid).Scan(&count).Error
 	if err != nil {
 		return 0, err
 	}

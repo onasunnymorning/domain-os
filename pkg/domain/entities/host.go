@@ -69,6 +69,36 @@ func (hs *HostStatus) IsNil() bool {
 	return !hs.OK && !hs.Linked && !hs.PendingCreate && !hs.PendingDelete && !hs.PendingUpdate && !hs.PendingTransfer && !hs.ClientDeleteProhibited && !hs.ClientUpdateProhibited && !hs.ServerDeleteProhibited && !hs.ServerUpdateProhibited
 }
 
+// StringSlice returns the statuses that are set, as RFC 5732 names them.
+func (hs HostStatus) StringSlice() []string {
+	var out []string
+	for _, s := range []struct {
+		set  bool
+		name string
+	}{
+		{hs.OK, HostStatusOK},
+		{hs.Linked, HostStatusLinked},
+		{hs.PendingCreate, HostStatusPendingCreate},
+		{hs.PendingDelete, HostStatusPendingDelete},
+		{hs.PendingUpdate, HostStatusPendingUpdate},
+		{hs.PendingTransfer, HostStatusPendingTransfer},
+		{hs.ClientDeleteProhibited, HostStatusClientDeleteProhibited},
+		{hs.ClientUpdateProhibited, HostStatusClientUpdateProhibited},
+		{hs.ServerDeleteProhibited, HostStatusServerDeleteProhibited},
+		{hs.ServerUpdateProhibited, HostStatusServerUpdateProhibited},
+	} {
+		if s.set {
+			out = append(out, s.name)
+		}
+	}
+	return out
+}
+
+// IsPending reports whether the host has a pending action.
+func (hs HostStatus) IsPending() bool {
+	return hs.PendingCreate || hs.PendingDelete || hs.PendingUpdate || hs.PendingTransfer
+}
+
 // NewHost creates a new Host with required fields. It will normalize strings
 func NewHost(name, roid, clid string) (*Host, error) {
 	domainName, err := NewDomainName(name)

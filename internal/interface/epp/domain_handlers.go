@@ -18,11 +18,11 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-// domainRefusals map the registry's refusals of domain commands to EPP
-// result codes. A refusal's own text, which names the object or rule
-// involved and never a secret, follows the standard message. Anything not
-// listed is 2400, with the detail kept in the log.
-var domainRefusals = []struct {
+// refusals map the registry's refusals of object commands to EPP result
+// codes. A refusal's own text, which names the object or rule involved and
+// never a secret, follows the standard message. Anything not listed is
+// 2400, with the detail kept in the log.
+var refusals = []struct {
 	err  error
 	code int
 }{
@@ -54,18 +54,38 @@ var domainRefusals = []struct {
 	{entities.ErrEPPContactTypeMissing, epplib.StatusMissingParameter},
 	{entities.ErrEPPDuplicateContactType, epplib.StatusParameterPolicyError},
 	{entities.ErrInvalidAuthInfo, epplib.StatusParameterPolicyError},
+	// Host commands (RFC 5732).
+	{entities.ErrEPPInvalidHostName, epplib.StatusValueSyntaxError},
+	{entities.ErrInvalidIP, epplib.StatusValueSyntaxError},
+	{entities.ErrEPPHostAddressVersion, epplib.StatusValueSyntaxError},
+	{entities.ErrHostAlreadyExists, epplib.StatusObjectExists},
+	{entities.ErrEPPSuperordinateDomainNotFound, epplib.StatusObjectDoesNotExist},
+	{entities.ErrEPPHostAddressNotPublic, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPExternalHostAddress, epplib.StatusParameterPolicyError},
+	{entities.ErrDuplicateHostAddress, epplib.StatusParameterPolicyError},
+	{entities.ErrMaxAddressesPerHostExceeded, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPHostAddressNotSet, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPHostStatusNotClient, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPHostStatusAlreadySet, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPHostStatusNotSet, epplib.StatusParameterPolicyError},
+	{entities.ErrHostUpdateProhibited, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrEPPHostDeleteProhibited, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrEPPHostPending, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrEPPHostLinked, epplib.StatusObjectAssociationProhibitsOperation},
+	{entities.ErrEPPHostLinkedByOthers, epplib.StatusObjectAssociationProhibitsOperation},
+	{entities.ErrEPPHostNeedsAddress, epplib.StatusObjectAssociationProhibitsOperation},
 }
 
-// refuseDomain answers cmd with the result code for err. An error that is
-// not a known refusal is answered 2400, and logged.
-func (s *Server) refuseDomain(cmd *command, err error) {
-	for _, r := range domainRefusals {
+// refuse answers cmd with the result code for err. An error that is not a
+// known refusal is answered 2400, and logged.
+func (s *Server) refuse(cmd *command, err error) {
+	for _, r := range refusals {
 		if errors.Is(err, r.err) {
 			cmd.respond(r.code, epplib.StatusText(r.code)+"; "+firstLine(err.Error()), nil)
 			return
 		}
 	}
-	s.logger.Error("EPP domain command failed", "connection_id", cmd.session.id, "svtrid", cmd.svTRID,
+	s.logger.Error("EPP command failed", "connection_id", cmd.session.id, "svtrid", cmd.svTRID,
 		"command", cmd.frame.label(), "error", err)
 	cmd.respond(epplib.StatusCommandFailed, "", nil)
 }
@@ -97,7 +117,7 @@ func withActor(ctx context.Context, cmd *command) context.Context {
 func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
-		s.refuseDomain(cmd, err)
+		s.refuse(cmd, err)
 		return
 	}
 	name := cmd.doc.FindElement("/epp/command/info/*/name")
@@ -106,7 +126,7 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	defer cancel()
 	info, err := s.domains.Info(ctx, scope, cmd.objects[0])
 	if err != nil {
-		s.refuseDomain(cmd, err)
+		s.refuse(cmd, err)
 		return
 	}
 	// Each extension's data is added only for a session that asked for it
@@ -128,7 +148,7 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
-		s.refuseDomain(cmd, err)
+		s.refuse(cmd, err)
 		return
 	}
 	create := cmd.doc.FindElement("/epp/command/create/*")
@@ -163,7 +183,7 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 	defer cancel()
 	dom, err := s.domains.Create(ctx, scope, c)
 	if err != nil {
-		s.refuseDomain(cmd, err)
+		s.refuse(cmd, err)
 		return
 	}
 	code := epplib.StatusSuccess

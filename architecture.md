@@ -59,7 +59,7 @@ Adapters providing technical capability.
 Inbound adapters translating external protocols into application calls.
 
 - **`rest/`** — HTTP controllers (Gin), request/response types, auth and context middleware.
-- **`epp/`** — EPP server (RFC 5730/5734): session handling and command handlers. Currently a protocol stub; see [`docs/epp/ARCHITECTURE.md`](docs/epp/ARCHITECTURE.md).
+- **`epp/`** — EPP server (RFC 5730/5734): session handling and command handlers. Domain and host commands are bound in part; what is bound, and the roadmap for the rest, is in [`docs/epp/ARCHITECTURE.md`](docs/epp/ARCHITECTURE.md).
 - **`mcp/`** — Model Context Protocol server.
 - **`cli/`** — command-line operations (escrow, JISC).
 - **`api/`** — an admin HTTP *client* used by internal tooling, not an inbound handler.

@@ -66,9 +66,11 @@ type testCredentials struct {
 	shared  repositories.EPPSessionRegistry
 	lockout *lockout.Memory
 	server  *Server
-	// domains answers domain commands, and audit is the audit log's store,
-	// behind the real audit service auditLog.
+	// domains answers domain commands, and hosts host commands, over one
+	// registry; audit is the audit log's store, behind the real audit
+	// service auditLog.
 	domains  *testDomains
+	hosts    *services.EPPHostService
 	audit    *memstore.EPPTransactions
 	auditLog *services.EPPAuditService
 }
@@ -84,6 +86,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
 	}
+	tc.hosts = newTestHosts(tc.domains.registry)
 	tc.auditLog = services.NewEPPAuditService(tc.audit, 100)
 	ctx, stop := context.WithCancel(context.Background())
 	written := make(chan struct{})
@@ -118,7 +121,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

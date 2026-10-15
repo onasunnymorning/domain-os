@@ -131,7 +131,7 @@ Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--prot
 | A command on an object service the session did not ask for | 2307 |
 | A command carrying an extension the session did not ask for | 2103 |
 
-The greeting offers the domain, contact and host object services; contact and host commands are not bound yet and are answered 2101. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
+The greeting offers the domain, contact and host object services; contact commands are not bound yet and are answered 2101. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -189,6 +189,52 @@ Values are read as their schema types define them: identifiers whitespace-collap
 | Records per domain | up to 8 | |
 
 The policy is for what registrars submit. A DS record imported from an escrow deposit is kept whatever its algorithm, as long as it is well formed: the domain model checks structure (a hex digest whose length matches its digest type), not policy. Both import paths carry them: the per-domain import through `CreateDomainCommand.FromRdeDomain`, and the bulk import (deposit → SQLite → `DirectDBImporter`), which skips a malformed record the way it skips a malformed host: a `SKIP DS RECORD` log line and an entry under `skipped_ds_records` in the importer's run report. The escrow import workflow saves that report as `run-report-domains.json` in the run folder, names it in `summary.json` (`importerReportKeys`), and counts the skipped records there as `ds_records_skipped`. A bulk re-import replaces each deposited domain's DS records with the deposit's, clearing them where the deposit has none; a staging database built without DS records (before they were staged) leaves them alone. A domain's DS records are published with the TLD's delegations, for domains that are active, not pending delete and linked to at least one nameserver: `GET /tlds/{tld}/dns/ds-records` (`?format=text` for zone file lines), beside `dns/domain-delegations` and `dns/glue-records`.
+
+**Host objects** (RFC 5732). This registry uses host objects (RST's `epp.hostModel` is `objects`), and they belong to a registrar:
+- Each registrar has its own host object for a name, unique per registrar, and a domain's nameservers are host objects of its sponsor. Two registrars can each have a host named `ns1.example.net`.
+- Every host command, check included, is scoped to the session's registrar (ADR 0006). A command on a host that only another registrar has is 2201, without naming the sponsor; on a host nobody has, 2303.
+- A host is *internal* if it is under a TLD this registry serves, and *external* otherwise. When the registry serves both `uk` and `co.uk`, the longest TLD counts. An internal host's *superordinate domain* is its TLD plus one label.
+- Only the sponsor of the superordinate domain can create an internal host or rename a host into it, with or without addresses. So no registrar can put glue, or a glueless host, under another's domain (RST epp-25 to epp-27, the "wide glue" risk).
+- Only an internal host has addresses. An external host is created without them, and a host renamed out of this registry's TLDs loses its addresses in the same update.
+- An address must be of the IP version its `ip` attribute names (`v4` when absent), and public unicast: loopback, unspecified, private, link-local, multicast and IPv4-mapped IPv6 addresses are refused. Addresses are stored, and shown, in canonical form. At most 10 per host (`entities.MAX_ADDRESSES_PER_HOST`).
+- A client sets only `clientDeleteProhibited` and `clientUpdateProhibited`. `linked` is reported by `<host:info>` from the domains that use the host now.
+
+**`<host:check>`.** Up to `EPP_MAX_CHECK_NAMES` names, each answered in order with whether the session's registrar can create it:
+
+| Reason | When |
+|---|---|
+| `Invalid host name` | Not a valid host name with at least two labels |
+| `In use` | The registrar already has a host by that name |
+| `Superordinate domain not yours` | Under a domain another registrar sponsors |
+
+A name under a domain that is not registered is available, as RST epp-05 requires of an unregistered name; creating it is refused until the domain is registered. A name only another registrar has is available: the registrar can have its own.
+
+**`<host:info>`.** The name, ROID (ending in `ROID_REPOSITORY_ID`), statuses, addresses with their IP version, sponsor and creator, creation date, and the last updater and update date once updated.
+
+**`<host:create>`, `<host:update>` and `<host:delete>`.** Each writes a `host.created`, `host.updated` or `host.deleted` event with the session's login as actor. A create writes the host and its addresses in one insert, and an update writes all its changes in one transaction or none. Each command applies its rules in the order below, and reports the first that fails:
+
+`<host:create>`:
+1. A name that is not a valid host name, an address that does not parse, or one that is not of the IP version its `ip` attribute names: 2005.
+2. An address that is not public unicast, the same address twice, or more than 10: 2306.
+3. The registrar has a host by that name: 2302.
+4. An internal host whose superordinate domain is not registered: 2303. Under a domain another registrar sponsors: 2201.
+5. An address on an external host: 2306.
+
+`<host:update>`, which removes statuses and addresses, then adds them, then renames:
+1. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.
+2. An address that does not parse or is not of its IP version, or a new name that is not a valid host name: 2005. An address added that is not public unicast: 2306.
+3. A status the client does not control (anything but `clientDeleteProhibited` and `clientUpdateProhibited`): 2306.
+4. A host with a pending action, with `serverUpdateProhibited`, or with `clientUpdateProhibited` unless the update removes it: 2304.
+5. Removing a status or address the host does not have, adding one it has, or more than 10 addresses: 2306.
+6. A rename onto a name the registrar already has: 2302. A rename of a host that is a nameserver of another registrar's domain: 2305 (RST epp-23; only an escrow import can link one).
+7. A rename to an internal name whose superordinate domain is not registered: 2303. Under a domain another registrar sponsors: 2201.
+8. An address on an external host: 2306.
+9. An internal host that is a nameserver left without an address: 2305.
+
+`<host:delete>`:
+1. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.
+2. A host with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304.
+3. A host that is a nameserver of a domain: 2305.
 
 **Audit log.** Every command and its response is a row of `epp_transactions`: svTRID, clTRID, session, node, registrar, login (for a `<login>`, the login presented, accepted or not), source address, command, the object identifiers it names, result code, receipt time, duration, and the frames.
 - Frames are redacted: the text of every `<pw>` and `<newPW>`, and every text and attribute value inside every `<authInfo>`, is replaced with `[redacted]`. A frame that could not be parsed is recorded without its request, which could not be redacted. The login ID and object identifiers are read as soon as a command passes validation, so a command the policy refuses is recorded with them.
@@ -306,7 +352,7 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 
 | Cap | Default | On breach |
 |---|---|---|
-| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for `domain:check` as `EPP_MAX_CHECK_NAMES` |
+| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for `domain:check` and `host:check` as `EPP_MAX_CHECK_NAMES` |
 | Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306. In place for `domain:create` |
 | DS records per domain | 8 | 2306. In place for `domain:create` (`services.MaxDSRecords`) |
 

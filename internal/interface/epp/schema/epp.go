@@ -2,9 +2,10 @@ package schema
 
 import "regexp"
 
-// Models of epp-1.0.xsd (RFC 5730), eppcom-1.0.xsd and domain-1.0.xsd
-// (RFC 5731), for the frames a client sends: <hello> and <command>. Names in
-// comments are the XSD type each model mirrors.
+// Models of epp-1.0.xsd (RFC 5730), eppcom-1.0.xsd, domain-1.0.xsd
+// (RFC 5731) and host-1.0.xsd (RFC 5732), for the frames a client sends:
+// <hello> and <command>. Names in comments are the XSD type each model
+// mirrors.
 
 func token(minLen, maxLen int) *Simple {
 	return &Simple{Base: Token, MinLen: minLen, MaxLen: maxLen}
@@ -186,6 +187,61 @@ var SecDNSCreate = &Element{NS: NSSecDNS, Name: "create", Content: Seq{
 	}},
 }}
 
+// Models of host-1.0.xsd (RFC 5732) for the host commands.
+var (
+	// host:statusValueType
+	hostStatusValueType = &Simple{Base: Token, Enum: []string{
+		"clientDeleteProhibited", "clientUpdateProhibited", "linked", "ok", "pendingCreate",
+		"pendingDelete", "pendingTransfer", "pendingUpdate", "serverDeleteProhibited", "serverUpdateProhibited",
+	}}
+)
+
+func hostName() *Element { return &Element{NS: NSHost, Name: "name", Simple: labelType} }
+
+// hostAddrs is host:addrType, minOccurs 0 and maxOccurs unbounded.
+func hostAddrs() *Element {
+	return &Element{NS: NSHost, Name: "addr", Min: Optional, Max: Unbounded, Simple: addrStringType, Attrs: []Attribute{
+		{Name: "ip", Type: ipType},
+	}}
+}
+
+// hostAddRem is host:addRemType.
+func hostAddRem(name string) *Element {
+	return &Element{NS: NSHost, Name: name, Min: Optional, Content: Seq{
+		hostAddrs(),
+		&Element{NS: NSHost, Name: "status", Min: Optional, Max: 7, Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{ // host:statusType
+			{Name: "s", Type: hostStatusValueType, Required: true},
+			{Name: "lang", Type: language},
+		}},
+	}}
+}
+
+// HostCheck is <host:check>, host:mNameType.
+var HostCheck = &Element{NS: NSHost, Name: "check", Content: Seq{
+	&Element{NS: NSHost, Name: "name", Max: Unbounded, Simple: labelType},
+}}
+
+// HostInfo is <host:info>, host:sNameType.
+var HostInfo = &Element{NS: NSHost, Name: "info", Content: Seq{hostName()}}
+
+// HostDelete is <host:delete>, host:sNameType.
+var HostDelete = &Element{NS: NSHost, Name: "delete", Content: Seq{hostName()}}
+
+// HostCreate is <host:create>, host:createType.
+var HostCreate = &Element{NS: NSHost, Name: "create", Content: Seq{hostName(), hostAddrs()}}
+
+// HostUpdate is <host:update>, host:updateType.
+var HostUpdate = &Element{NS: NSHost, Name: "update", Content: Seq{
+	hostName(),
+	hostAddRem("add"),
+	hostAddRem("rem"),
+	&Element{NS: NSHost, Name: "chg", Min: Optional, Content: Seq{hostName()}}, // host:chgType
+}}
+
 // Globals are the declarations wildcards may resolve to: the object
 // commands and extensions the server validates.
-var Globals = []*Element{DomainCheck, DomainInfo, DomainCreate, SecDNSCreate}
+var Globals = []*Element{
+	DomainCheck, DomainInfo, DomainCreate,
+	HostCheck, HostInfo, HostCreate, HostUpdate, HostDelete,
+	SecDNSCreate,
+}

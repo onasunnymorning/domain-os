@@ -22,19 +22,31 @@ type HostRepository interface {
 	// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
 	BulkCreate(ctx context.Context, hosts []*entities.Host) error
 	Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
+	// UpdateHostAndAddresses saves the host and replaces its addresses with
+	// h.Addresses, in one transaction.
+	UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	// CountHostsByName counts the host objects named name, whichever
+	// registrar sponsors them.
+	CountHostsByName(ctx context.Context, name string) (int64, error)
+	// CountHostLinksFromOtherSponsors counts the domains that have the host
+	// as a nameserver and that clid does not sponsor.
+	CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error)
 }
 
 // MochHostRepository is the mock implementation of the HostRepository
 type MockHostRepository struct {
-	CreateHostFunc              func(ctx context.Context, h *entities.Host) (*entities.Host, error)
-	GetHostByRoidFunc           func(ctx context.Context, roid int64) (*entities.Host, error)
-	GetHostByNameAndClIDFunc    func(ctx context.Context, name string, clid string) (*entities.Host, error)
-	GetHostAssociationCountFunc func(ctx context.Context, roid int64) (int64, error)
-	UpdateHostFunc              func(ctx context.Context, h *entities.Host) (*entities.Host, error)
-	DeleteHostByRoidFunc        func(ctx context.Context, roid int64) error
-	ListHostsFunc               func(ctx context.Context, paramas queries.ListItemsQuery) ([]*entities.Host, string, error)
-	BulkCreateFunc              func(ctx context.Context, hosts []*entities.Host) error
-	CountFunc                   func(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
+	CreateHostFunc               func(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	GetHostByRoidFunc            func(ctx context.Context, roid int64) (*entities.Host, error)
+	GetHostByNameAndClIDFunc     func(ctx context.Context, name string, clid string) (*entities.Host, error)
+	GetHostAssociationCountFunc  func(ctx context.Context, roid int64) (int64, error)
+	UpdateHostFunc               func(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	DeleteHostByRoidFunc         func(ctx context.Context, roid int64) error
+	ListHostsFunc                func(ctx context.Context, paramas queries.ListItemsQuery) ([]*entities.Host, string, error)
+	BulkCreateFunc               func(ctx context.Context, hosts []*entities.Host) error
+	CountFunc                    func(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
+	UpdateHostAndAddressesFunc   func(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	CountHostsByNameFunc         func(ctx context.Context, name string) (int64, error)
+	CountHostLinksFromOthersFunc func(ctx context.Context, roid int64, clid string) (int64, error)
 }
 
 // CreateHost creates a host
@@ -82,6 +94,21 @@ func (m *MockHostRepository) Count(ctx context.Context, filter queries.ListHosts
 	return m.CountFunc(ctx, filter)
 }
 
+// UpdateHostAndAddresses saves a host and its addresses
+func (m *MockHostRepository) UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error) {
+	return m.UpdateHostAndAddressesFunc(ctx, h)
+}
+
+// CountHostsByName counts hosts by name
+func (m *MockHostRepository) CountHostsByName(ctx context.Context, name string) (int64, error) {
+	return m.CountHostsByNameFunc(ctx, name)
+}
+
+// CountHostLinksFromOtherSponsors counts other sponsors' domains using a host
+func (m *MockHostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
+	return m.CountHostLinksFromOthersFunc(ctx, roid, clid)
+}
+
 // NewMockHostRepository creates a new MockHostRepository
 func NewMockHostRepository() *MockHostRepository {
 	return &MockHostRepository{
@@ -94,7 +121,12 @@ func NewMockHostRepository() *MockHostRepository {
 		ListHostsFunc: func(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error) {
 			return nil, "", nil
 		},
-		BulkCreateFunc: func(ctx context.Context, hosts []*entities.Host) error { return nil },
-		CountFunc:      func(ctx context.Context, filter queries.ListHostsFilter) (int64, error) { return 0, nil },
+		BulkCreateFunc:             func(ctx context.Context, hosts []*entities.Host) error { return nil },
+		CountFunc:                  func(ctx context.Context, filter queries.ListHostsFilter) (int64, error) { return 0, nil },
+		UpdateHostAndAddressesFunc: func(ctx context.Context, h *entities.Host) (*entities.Host, error) { return nil, nil },
+		CountHostsByNameFunc:       func(ctx context.Context, name string) (int64, error) { return 0, nil },
+		CountHostLinksFromOthersFunc: func(ctx context.Context, roid int64, clid string) (int64, error) {
+			return 0, nil
+		},
 	}
 }
