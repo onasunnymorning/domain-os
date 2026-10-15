@@ -190,6 +190,10 @@ func parseJiscTime(s string) (time.Time, error) {
 // It starts after from (the zero cursor for a fresh run) with from's counts,
 // and reports a cursor to heartbeat after every committed batch.
 func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseContacts, from)
+	if restarted {
+		log.Printf("IngestContacts: cannot resume exactly from a legacy cursor; starting over")
+	}
 	batchSize := s.rowsPerBatch()
 	lastKey := from.LastKey
 	total := from.Processed
@@ -350,7 +354,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 			lastKey = batch[len(batch)-1].ID
 		}
 
-		heartbeat(ImportCursor{LastKey: lastKey, Processed: total, Total: totalRows, Skipped: skipped})
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows, Skipped: skipped})
 	}
 	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d, Skipped: %d", total, inserted, updated, skipped)
 	return total, inserted, updated, skipped, nil
@@ -363,6 +367,10 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 // from (the zero cursor for a fresh run) with from's counts, and reports a
 // cursor to heartbeat after every committed batch.
 func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseHosts, from)
+	if restarted {
+		log.Printf("IngestHosts: cannot resume exactly from a legacy cursor; starting over")
+	}
 	batchSize := s.rowsPerBatch()
 	lastKey := from.LastKey
 	lastClID := from.LastClID // Secondary cursor for stable pagination across same-name hosts
@@ -558,7 +566,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		lastKey = rawHosts[len(rawHosts)-1].Name
 		lastClID = rawHosts[len(rawHosts)-1].ClID
 
-		heartbeat(ImportCursor{LastKey: lastKey, LastClID: lastClID, Processed: total, Total: totalRows})
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, LastClID: lastClID, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestHosts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
 	return total, inserted, updated, nil
@@ -591,6 +599,10 @@ func explainNameUnderTLDViolation(err error, tld string) error {
 // error). It starts after from (the zero cursor for a fresh run) with from's
 // counts, and reports a cursor to heartbeat after every committed batch.
 func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseDomains, from)
+	if restarted {
+		log.Printf("IngestDomains: cannot resume exactly from a legacy cursor; starting over")
+	}
 	batchSize := s.rowsPerBatch()
 	lastKey := from.LastKey
 	total := from.Processed
@@ -856,7 +868,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 		// on either side of it, skipping or repeating rows.
 		lastKey = currentBatchMaxKey
 
-		heartbeat(ImportCursor{LastKey: lastKey, Processed: total, Total: totalRows})
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d, DS records written: %d", total, inserted, updated, dsWritten)
 	return total, inserted, updated, nil
@@ -1091,6 +1103,10 @@ func newImportedNNDN(aName, uName, tld, nameState string, createdAt time.Time) *
 // cursor for a fresh run) with from's counts, and reports a cursor to
 // heartbeat after every committed batch.
 func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseNNDNs, from)
+	if restarted {
+		log.Printf("IngestNNDNs: cannot resume exactly from a legacy cursor; starting over")
+	}
 	batchSize := s.rowsPerBatch()
 	lastKey := from.LastKey
 	total := from.Processed
@@ -1172,7 +1188,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 
 		lastKey = currentBatchMaxKey
 
-		heartbeat(ImportCursor{LastKey: lastKey, Processed: total, Total: totalRows})
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestNNDNs: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
 	return total, inserted, updated, nil

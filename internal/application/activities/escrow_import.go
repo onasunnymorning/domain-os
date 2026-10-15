@@ -802,7 +802,7 @@ func (a *EscrowImportActivities) ImportContactsDirect(ctx context.Context, args 
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 	// Direct import resume
-	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_contacts_direct.txt")
+	cursor, heartbeat := directImportCursor(ctx, s3c, services.PhaseContacts, path.Dir(dbKey)+"/cursor_contacts_direct.txt")
 
 	total, inserted, updated, skipped, err := importer.ImportContacts(ctx, db, clidMap, cursor, heartbeat)
 	if err != nil {
@@ -939,7 +939,7 @@ func (a *EscrowImportActivities) ImportHostsDirect(ctx context.Context, args Imp
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 
-	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_hosts_direct.txt")
+	cursor, heartbeat := directImportCursor(ctx, s3c, services.PhaseHosts, path.Dir(dbKey)+"/cursor_hosts_direct.txt")
 
 	total, inserted, updated, err := importer.ImportHosts(ctx, db, clidMap, cursor, heartbeat)
 	if err != nil {
@@ -989,7 +989,7 @@ func (a *EscrowImportActivities) ImportDomainsDirect(ctx context.Context, args I
 	counts := map[string]int64{}
 	tallies := map[string]int64{}
 
-	cursor, heartbeat := directImportCursor(ctx, s3c, path.Dir(dbKey)+"/cursor_domains_direct.txt")
+	cursor, heartbeat := directImportCursor(ctx, s3c, services.PhaseDomains, path.Dir(dbKey)+"/cursor_domains_direct.txt")
 
 	total, inserted, updated, err := importer.ImportDomains(ctx, db, tld, clidMap, cursor, heartbeat)
 	if err != nil {
@@ -3614,7 +3614,7 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	}
 
 	// Resumability: carry on after the batch the previous attempt last committed
-	cursor := ingestCursor(ctx, "contacts")
+	cursor := ingestCursor(ctx, services.PhaseContacts)
 
 	// Download Staged DB
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
@@ -3882,7 +3882,7 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 		return IngestHostsResult{}, err
 	}
 
-	cursor := ingestCursor(ctx, "hosts")
+	cursor := ingestCursor(ctx, services.PhaseHosts)
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {
@@ -3942,7 +3942,7 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 		return IngestDomainsResult{}, err
 	}
 
-	cursor := ingestCursor(ctx, "domains")
+	cursor := ingestCursor(ctx, services.PhaseDomains)
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {
@@ -4002,7 +4002,7 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 		return IngestNNDNsResult{}, err
 	}
 
-	cursor := ingestCursor(ctx, "nndns")
+	cursor := ingestCursor(ctx, services.PhaseNNDNs)
 
 	dbPath, err := s3c.DownloadToFile(ctx, args.StagedDBKey)
 	if err != nil {

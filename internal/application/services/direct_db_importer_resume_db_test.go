@@ -110,21 +110,32 @@ func TestDirectDBImporter_ImportContacts_ResumesFromCursor(t *testing.T) {
 	}
 	clidMap := map[string]string{"escrow-rar": "rar1"}
 
+	run := func(t *testing.T, from services.ImportCursor, hb func(services.ImportCursor)) (int64, int64) {
+		total, _, _, skipped, err := resumeImporter(t).ImportContacts(context.Background(), staged, clidMap, from, hb)
+		require.NoError(t, err)
+		return total, skipped
+	}
+	stored := func(t *testing.T) []string { return storedKeys(t, db, `SELECT id FROM contacts WHERE cl_id = 'rar1'`) }
+	clear := func(t *testing.T) { require.NoError(t, db.Exec(`DELETE FROM contacts WHERE cl_id = 'rar1'`).Error) }
+
 	cursors := requireResumesExactlyTheRest(t, resumeCase{
-		run: func(t *testing.T, from services.ImportCursor, hb func(services.ImportCursor)) (int64, int64) {
-			total, _, _, skipped, err := resumeImporter(t).ImportContacts(context.Background(), staged, clidMap, from, hb)
-			require.NoError(t, err)
-			return total, skipped
-		},
-		stored: func(t *testing.T) []string { return storedKeys(t, db, `SELECT id FROM contacts WHERE cl_id = 'rar1'`) },
-		clear:  func(t *testing.T) { require.NoError(t, db.Exec(`DELETE FROM contacts WHERE cl_id = 'rar1'`).Error) },
+		run: run, stored: stored, clear: clear,
 		batches: [][]string{
 			{"resume-c1"}, // resume-c2 skipped
 			{"resume-c3"}, // resume-c4 skipped
 			{"resume-c5"},
 		},
 	})
-	require.Equal(t, services.ImportCursor{LastKey: "resume-c2", Processed: 1, Total: 5, Skipped: 1}, cursors[0])
+	require.Equal(t, services.ImportCursor{Version: services.ImportCursorVersion, LastKey: "resume-c2", Processed: 1, Total: 5, Skipped: 1}, cursors[0])
+
+	// A legacy contacts cursor was already the staged id, so it resumes.
+	t.Run("legacy cursor", func(t *testing.T) {
+		clear(t)
+		total, skipped := run(t, services.ImportCursor{LastKey: "resume-c2", Processed: 1, Total: 5, Skipped: 1}, func(services.ImportCursor) {})
+		require.Equal(t, []string{"resume-c3", "resume-c5"}, stored(t))
+		require.Equal(t, int64(3), total)
+		require.Equal(t, int64(2), skipped)
+	})
 }
 
 // Hosts page on (name, clid), so a name can straddle two batches. The cursor
@@ -164,14 +175,17 @@ func TestDirectDBImporter_ImportHosts_ResumesFromCursor(t *testing.T) {
 			{"ns.d.example|rar1"},
 		},
 	})
-	require.Equal(t, services.ImportCursor{LastKey: "ns.b.example", LastClID: "rar1", Processed: 2, Total: 5}, cursors[0])
+	require.Equal(t, services.ImportCursor{Version: services.ImportCursorVersion, LastKey: "ns.b.example", LastClID: "rar1", Processed: 2, Total: 5}, cursors[0])
 
-	// A cursor heartbeated before it carried the clid resumes at the start of
-	// its name: it writes that name's hosts again rather than skip any.
+	// A cursor heartbeated before it carried the clid does not say how much of
+	// its name was committed, and its count already includes some of it.
+	// Resuming at the start of the name would write and count those hosts
+	// again; the import starts over with its counts reset instead.
 	t.Run("legacy cursor without clid", func(t *testing.T) {
 		clear(t)
-		run(t, services.ImportCursor{LastKey: "ns.b.example", Processed: 2, Total: 5}, func(services.ImportCursor) {})
-		require.Equal(t, []string{"ns.b.example|rar1", "ns.b.example|rar2", "ns.c.example|rar1", "ns.d.example|rar1"}, stored(t))
+		total, _ := run(t, services.ImportCursor{LastKey: "ns.b.example", Processed: 2, Total: 5}, func(services.ImportCursor) {})
+		require.Equal(t, keysOf([][]string{{"ns.a.example|rar1", "ns.b.example|rar1", "ns.b.example|rar2", "ns.c.example|rar1", "ns.d.example|rar1"}}), stored(t))
+		require.Equal(t, int64(5), total)
 	})
 }
 
@@ -189,23 +203,35 @@ func TestDirectDBImporter_ImportDomains_ResumesFromCursor(t *testing.T) {
 		[3]string{"a3.resume", "c1", "rar1"},
 	)
 
+	run := func(t *testing.T, from services.ImportCursor, hb func(services.ImportCursor)) (int64, int64) {
+		total, _, _, err := resumeImporter(t).ImportDomains(context.Background(), staged, "resume", nil, from, hb)
+		require.NoError(t, err)
+		return total, 0
+	}
+	stored := func(t *testing.T) []string {
+		return storedKeys(t, db, `SELECT name FROM domains WHERE tld_name = 'resume'`)
+	}
+	clear := func(t *testing.T) { require.NoError(t, db.Exec(`DELETE FROM domains WHERE tld_name = 'resume'`).Error) }
+
 	cursors := requireResumesExactlyTheRest(t, resumeCase{
-		run: func(t *testing.T, from services.ImportCursor, hb func(services.ImportCursor)) (int64, int64) {
-			total, _, _, err := resumeImporter(t).ImportDomains(context.Background(), staged, "resume", nil, from, hb)
-			require.NoError(t, err)
-			return total, 0
-		},
-		stored: func(t *testing.T) []string {
-			return storedKeys(t, db, `SELECT name FROM domains WHERE tld_name = 'resume'`)
-		},
-		clear: func(t *testing.T) { require.NoError(t, db.Exec(`DELETE FROM domains WHERE tld_name = 'resume'`).Error) },
+		run: run, stored: stored, clear: clear,
 		batches: [][]string{
 			{"a1.resume", "a2.resume"},
 			{"z1.resume", "z2.resume"},
 			{"a3.resume"},
 		},
 	})
-	require.Equal(t, services.ImportCursor{LastKey: "A2.resume", Processed: 2, Total: 5}, cursors[0])
+	require.Equal(t, services.ImportCursor{Version: services.ImportCursorVersion, LastKey: "A2.resume", Processed: 2, Total: 5}, cursors[0])
+
+	// What the old importer heartbeated after the first batch: the normalised
+	// name. Resuming from it would pass over Z1 and Z2, and the staged boundary
+	// cannot be recovered from it, so the import starts over.
+	t.Run("legacy cursor", func(t *testing.T) {
+		clear(t)
+		total, _ := run(t, services.ImportCursor{LastKey: "a2.resume", Processed: 2, Total: 5}, func(services.ImportCursor) {})
+		require.Equal(t, []string{"a1.resume", "a2.resume", "a3.resume", "z1.resume", "z2.resume"}, stored(t))
+		require.Equal(t, int64(5), total)
+	})
 }
 
 func TestDirectDBImporter_ImportNNDNs_ResumesFromCursor(t *testing.T) {
@@ -239,5 +265,5 @@ func TestDirectDBImporter_ImportNNDNs_ResumesFromCursor(t *testing.T) {
 			{"n5.resume"},
 		},
 	})
-	require.Equal(t, services.ImportCursor{LastKey: "n2.resume", Processed: 2, Total: 5}, cursors[0])
+	require.Equal(t, services.ImportCursor{Version: services.ImportCursorVersion, LastKey: "n2.resume", Processed: 2, Total: 5}, cursors[0])
 }
