@@ -110,7 +110,7 @@ func TestDirectDBImporter_ImportDomains_WritesDSRecords(t *testing.T) {
 		signed+",12345,13,2,"+strings.ToUpper(sha256Digest), // repeats the first
 	))
 
-	total, _, _, err := importer.ImportDomains(context.Background(), staged, dsTLD, nil, "", func(string) {})
+	total, _, _, err := importer.ImportDomains(context.Background(), staged, dsTLD, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)
 
@@ -148,7 +148,7 @@ func TestDirectDBImporter_ImportDomains_ReimportReplacesDSRecords(t *testing.T) 
 	staged := stageDeposit(t, []string{rekeyed, unsignedNow}, dnssecCSV(rekeyed+",222,13,2,"+sha256Digest))
 
 	for run := 1; run <= 2; run++ {
-		_, _, _, err := newImporter(t).ImportDomains(context.Background(), staged, dsTLD, nil, "", func(string) {})
+		_, _, _, err := newImporter(t).ImportDomains(context.Background(), staged, dsTLD, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 		require.NoError(t, err, "run %d", run)
 
 		require.Equal(t, []dsRow{{7101, 222, 13, 2, strings.ToUpper(sha256Digest)}}, dsRecordsOf(t, db, rekeyed), "run %d: replaced, on the existing row", run)
@@ -168,7 +168,7 @@ func TestDirectDBImporter_ImportDomains_KeepsDSRecordsWhenNoneStaged(t *testing.
 	seedSignedDomain(t, db, 7201, name, existing)
 
 	staged := stageDeposit(t, []string{name}, "DomainName,DnssecData\n"+name+",dnssec_data_present\n")
-	_, _, _, err := newImporter(t).ImportDomains(context.Background(), staged, dsTLD, nil, "", func(string) {})
+	_, _, _, err := newImporter(t).ImportDomains(context.Background(), staged, dsTLD, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 
 	require.Equal(t, []dsRow{{7201, existing.KeyTag, existing.Algorithm, existing.DigestType, existing.Digest}}, dsRecordsOf(t, db, name))
@@ -187,13 +187,13 @@ func TestDirectDBImporter_ImportDomains_RolledBackBatchIsNotReported(t *testing.
 	require.NoError(t, err)
 
 	// Filed under another TLD, the batch is refused and rolls back.
-	_, _, _, err = importer.ImportDomains(context.Background(), staged, "otherds", nil, "", func(string) {})
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, "otherds", nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.Error(t, err)
 	require.Empty(t, importer.Report.ModifiedDomains)
 	require.Empty(t, importer.Report.SkippedDSRecords)
 
 	// The same batch, committed, is reported.
-	_, _, _, err = importer.ImportDomains(context.Background(), staged, dsTLD, nil, "", func(string) {})
+	_, _, _, err = importer.ImportDomains(context.Background(), staged, dsTLD, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 	require.Len(t, importer.Report.ModifiedDomains, 1)
 	require.Len(t, importer.Report.SkippedDSRecords, 1)

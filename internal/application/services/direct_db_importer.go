@@ -60,6 +60,17 @@ type DirectDBImporter struct {
 	// imported object gets a new ROID of this registry's (ADR 0017).
 	Repository entities.RepositoryID
 	Report     *RunReport
+
+	batchSize int // rows per committed batch in the cursor-paged phases; 0 is defaultImportBatchSize
+}
+
+const defaultImportBatchSize = 5000
+
+func (s *DirectDBImporter) rowsPerBatch() int {
+	if s.batchSize > 0 {
+		return s.batchSize
+	}
+	return defaultImportBatchSize
 }
 
 // NewDirectDBImporter connects an importer that mints ROIDs with repository,
@@ -175,27 +186,26 @@ func parseJiscTime(s string) (time.Time, error) {
 // skipped counts contacts that were present in the staged DB but excluded due to
 // unmapped CLIDs or RoID generation failures — these will NOT be in Postgres, so
 // any domain referencing them as registrant/admin/tech/billing will fail the FK gate.
-func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, int64, error) {
-	const batchSize = 5000
-	var total int64
+//
+// It starts after from (the zero cursor for a fresh run) with from's counts,
+// and reports a cursor to heartbeat after every committed batch.
+func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseContacts, from)
+	if restarted {
+		log.Printf("IngestContacts: cannot resume exactly from a legacy cursor; starting over")
+	}
+	batchSize := s.rowsPerBatch()
+	lastKey := from.LastKey
+	total := from.Processed
+	skipped := from.Skipped
 	var inserted int64
 	var updated int64
-	var skipped int64
 
 	// Count total
 	var totalRows int64
 	if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&totalRows); err != nil {
 		log.Printf("IngestContacts: Failed to count total rows: %v", err)
 	}
-	// Count already processed if resuming
-	var processedSoFar int64
-	if lastKey != "" {
-		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM contacts WHERE id <= ?", lastKey).Scan(&processedSoFar); err != nil {
-			log.Printf("IngestContacts: Failed to count processed rows: %v", err)
-		}
-	}
-
-	total = processedSoFar
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT id, roid, voice, fax, email, clid, crrr, crdate, uprr, "update" FROM contacts WHERE id > ? ORDER BY id LIMIT ?`, lastKey, batchSize)
@@ -344,9 +354,7 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 			lastKey = batch[len(batch)-1].ID
 		}
 
-		// Create JSON payload for heartbeat
-		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d,"skipped":%d}`, lastKey, total, totalRows, skipped)
-		heartbeat(payload)
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows, Skipped: skipped})
 	}
 	log.Printf("IngestContacts: Finished. Total: %d, Inserted: %d, Updated: %d, Skipped: %d", total, inserted, updated, skipped)
 	return total, inserted, updated, skipped, nil
@@ -354,27 +362,27 @@ func (s *DirectDBImporter) ImportContacts(ctx context.Context, sqliteDB *sql.DB,
 
 // --- Import Hosts ---
 
-func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 5000
-	var total int64
+// ImportHosts bulk-upserts hosts from a staged SQLite DB into Postgres, paging
+// on (name, clid). Returns (total, inserted, updated, error). It starts after
+// from (the zero cursor for a fresh run) with from's counts, and reports a
+// cursor to heartbeat after every committed batch.
+func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseHosts, from)
+	if restarted {
+		log.Printf("IngestHosts: cannot resume exactly from a legacy cursor; starting over")
+	}
+	batchSize := s.rowsPerBatch()
+	lastKey := from.LastKey
+	lastClID := from.LastClID // Secondary cursor for stable pagination across same-name hosts
+	total := from.Processed
 	var inserted int64
 	var updated int64
-	var lastClID string // Secondary cursor for stable pagination across same-name hosts
 
 	// Count total
 	var totalRows int64
 	if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM hosts").Scan(&totalRows); err != nil {
 		log.Printf("IngestHosts: Failed to count total rows: %v", err)
 	}
-	// Count already processed if resuming
-	var processedSoFar int64
-	if lastKey != "" {
-		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM hosts WHERE (name, clid) <= (?, ?)", lastKey, lastClID).Scan(&processedSoFar); err != nil {
-			log.Printf("IngestHosts: Failed to count processed rows: %v", err)
-		}
-	}
-
-	total = processedSoFar
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT name, clid, crrr, uprr FROM hosts WHERE (name, clid) > (?, ?) ORDER BY name, clid LIMIT ?`, lastKey, lastClID, batchSize)
@@ -558,8 +566,7 @@ func (s *DirectDBImporter) ImportHosts(ctx context.Context, sqliteDB *sql.DB, cl
 		lastKey = rawHosts[len(rawHosts)-1].Name
 		lastClID = rawHosts[len(rawHosts)-1].ClID
 
-		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
-		heartbeat(payload)
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, LastClID: lastClID, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestHosts: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
 	return total, inserted, updated, nil
@@ -587,9 +594,18 @@ func explainNameUnderTLDViolation(err error, tld string) error {
 	return err
 }
 
-func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 5000
-	var total int64
+// ImportDomains bulk-upserts domains (and, when staged, their DS records) from
+// a staged SQLite DB into Postgres as tld. Returns (total, inserted, updated,
+// error). It starts after from (the zero cursor for a fresh run) with from's
+// counts, and reports a cursor to heartbeat after every committed batch.
+func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, tld string, clidMap map[string]string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseDomains, from)
+	if restarted {
+		log.Printf("IngestDomains: cannot resume exactly from a legacy cursor; starting over")
+	}
+	batchSize := s.rowsPerBatch()
+	lastKey := from.LastKey
+	total := from.Processed
 	var inserted int64
 	var updated int64
 
@@ -598,15 +614,6 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 	if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM domains").Scan(&totalRows); err != nil {
 		log.Printf("IngestDomains: Failed to count total rows: %v", err)
 	}
-	// Count already processed if resuming
-	var processedSoFar int64
-	if lastKey != "" {
-		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM domains WHERE name <= ?", lastKey).Scan(&processedSoFar); err != nil {
-			log.Printf("IngestDomains: Failed to count processed rows: %v", err)
-		}
-	}
-
-	total = processedSoFar
 
 	dsStaged, err := stagedTableExists(sqliteDB, stagedDSRecordsTable)
 	if err != nil {
@@ -856,14 +863,12 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			log.Printf("IngestDomains: Processed %d / %d records (Inserted: %d, Updated: %d)", total, totalRows, inserted, updated)
 		}
 
+		// The cursor is the staged name, which is what the query compares. The
+		// entity's name is normalised (lower-cased, dots trimmed) and can sort
+		// on either side of it, skipping or repeating rows.
 		lastKey = currentBatchMaxKey
-		if len(entitiesBatch) > 0 {
-			// lastKey should be string representation of name for cursor
-			lastKey = entitiesBatch[len(entitiesBatch)-1].Name.String()
-		}
 
-		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
-		heartbeat(payload)
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestDomains: Finished. Total: %d, Inserted: %d, Updated: %d, DS records written: %d", total, inserted, updated, dsWritten)
 	return total, inserted, updated, nil
@@ -1093,9 +1098,18 @@ func newImportedNNDN(aName, uName, tld, nameState string, createdAt time.Time) *
 	}
 }
 
-func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, lastKey string, heartbeat func(processed string)) (int64, int64, int64, error) {
-	const batchSize = 5000
-	var total int64
+// ImportNNDNs bulk-upserts NNDNs from a staged SQLite DB into Postgres as tld.
+// Returns (total, inserted, updated, error). It starts after from (the zero
+// cursor for a fresh run) with from's counts, and reports a cursor to
+// heartbeat after every committed batch.
+func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tld string, from ImportCursor, heartbeat func(ImportCursor)) (int64, int64, int64, error) {
+	from, restarted := ResumeCursor(PhaseNNDNs, from)
+	if restarted {
+		log.Printf("IngestNNDNs: cannot resume exactly from a legacy cursor; starting over")
+	}
+	batchSize := s.rowsPerBatch()
+	lastKey := from.LastKey
+	total := from.Processed
 	var inserted int64
 	var updated int64
 
@@ -1104,15 +1118,6 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 	if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM nndns").Scan(&totalRows); err != nil {
 		log.Printf("IngestNNDNs: Failed to count total rows: %v", err)
 	}
-	// Count already processed if resuming
-	var processedSoFar int64
-	if lastKey != "" {
-		if err := sqliteDB.QueryRow("SELECT COUNT(*) FROM nndns WHERE aname <= ?", lastKey).Scan(&processedSoFar); err != nil {
-			log.Printf("IngestNNDNs: Failed to count processed rows: %v", err)
-		}
-	}
-
-	total = processedSoFar
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT aname, uname, idntableid, originalname, namestate, crdate FROM nndns WHERE aname > ? ORDER BY aname LIMIT ?`, lastKey, batchSize)
@@ -1183,8 +1188,7 @@ func (s *DirectDBImporter) ImportNNDNs(ctx context.Context, sqliteDB *sql.DB, tl
 
 		lastKey = currentBatchMaxKey
 
-		payload := fmt.Sprintf(`{"lastKey":%q,"processed":%d,"total":%d}`, lastKey, total, totalRows)
-		heartbeat(payload)
+		heartbeat(ImportCursor{Version: ImportCursorVersion, LastKey: lastKey, Processed: total, Total: totalRows})
 	}
 	log.Printf("IngestNNDNs: Finished. Total: %d, Inserted: %d, Updated: %d", total, inserted, updated)
 	return total, inserted, updated, nil

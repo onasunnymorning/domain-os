@@ -52,7 +52,7 @@ func TestDirectDBImporter_ImportNNDNs_ReasonBackfill(t *testing.T) {
 		('brand-new.nndnreason',    '', 'blocked', '2024-01-19 15:04:05');`)
 	require.NoError(t, err)
 
-	total, _, _, err := importer.ImportNNDNs(context.Background(), sqliteDB, tld, "", func(string) {})
+	total, _, _, err := importer.ImportNNDNs(context.Background(), sqliteDB, tld, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)
 	require.Equal(t, int64(4), total)
 
