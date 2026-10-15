@@ -140,3 +140,83 @@ func TestEPPHostCommandsOverPostgres(t *testing.T) {
 		assert.Contains(t, types, "host.updated")
 	})
 }
+
+// TestEPPHostUpdateOverPostgres_StaleAndDeleted: the repository writes an
+// update only over the host as it was read, and never writes back a host
+// deleted since.
+func TestEPPHostUpdateOverPostgres_StaleAndDeleted(t *testing.T) {
+	f := newEPPFixture(t)
+	ctx := context.Background()
+	svc := NewEPPHostService(EPPHostServiceDeps{Hosts: f.hostRepo, Domains: f.domainRepo, TLDs: f.tldRepo, Roids: f.roids})
+	scope := entities.RegistrarClID(f.rar1)
+	created, err := svc.Create(ctx, scope, commands.EPPCreateHostCommand{Name: "ns1.stale-" + f.tld + ".net"})
+	require.NoError(t, err)
+	id, err := created.RoID.Int64()
+	require.NoError(t, err)
+
+	read, err := f.hostRepo.GetHostByRoid(ctx, id)
+	require.NoError(t, err)
+	_, err = svc.Update(ctx, scope, commands.EPPUpdateHostCommand{Name: created.Name.String(), AddStatuses: []string{entities.HostStatusClientUpdateProhibited}})
+	require.NoError(t, err)
+	t.Run("a write over a host changed since it was read is refused", func(t *testing.T) {
+		read.Status.ClientDeleteProhibited, read.Status.OK = true, false
+		_, err := f.hostRepo.UpdateHostAndAddresses(ctx, read)
+		require.ErrorIs(t, err, entities.ErrHostChanged)
+		stored, err := f.hostRepo.GetHostByRoid(ctx, id)
+		require.NoError(t, err)
+		assert.True(t, stored.Status.ClientUpdateProhibited, "the other change is kept")
+		assert.False(t, stored.Status.ClientDeleteProhibited)
+	})
+	t.Run("a write over a deleted host is refused, not inserted", func(t *testing.T) {
+		current, err := f.hostRepo.GetHostByRoid(ctx, id)
+		require.NoError(t, err)
+		require.NoError(t, f.hostRepo.DeleteHostByRoid(ctx, id))
+		_, err = f.hostRepo.UpdateHostAndAddresses(ctx, current)
+		require.ErrorIs(t, err, entities.ErrHostNotFound)
+		_, err = f.hostRepo.GetHostByRoid(ctx, id)
+		require.ErrorIs(t, err, entities.ErrHostNotFound)
+	})
+}
+
+// TestEPPHostRenameOverPostgres_Glue: a rename moves the host in or out of
+// its domain's bailiwick, and the TLD's glue follows, in both directions.
+func TestEPPHostRenameOverPostgres_Glue(t *testing.T) {
+	f := newEPPFixture(t)
+	ctx := context.Background()
+	svc := NewEPPHostService(EPPHostServiceDeps{Hosts: f.hostRepo, Domains: f.domainRepo, TLDs: f.tldRepo, Roids: f.roids})
+	scope := entities.RegistrarClID(f.rar1)
+	external, internal, domain := "ns1.glue-"+f.tld+".net", "ns1.glue."+f.tld, "glue."+f.tld
+	_, err := svc.Create(ctx, scope, commands.EPPCreateHostCommand{Name: external})
+	require.NoError(t, err)
+	_, err = f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
+		Name: domain, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
+		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
+		HostNames: []string{external},
+	})
+	require.NoError(t, err)
+	glue := func() []string {
+		rrs, err := f.domainRepo.GetActiveDomainGlue(ctx, f.tld)
+		require.NoError(t, err)
+		out := make([]string, len(rrs))
+		for i, rr := range rrs {
+			out[i] = rr.String()
+		}
+		return out
+	}
+	require.Empty(t, glue())
+
+	t.Run("renamed into its domain, with an address: its glue is published", func(t *testing.T) {
+		_, err := svc.Update(ctx, scope, commands.EPPUpdateHostCommand{
+			Name: external, NewName: internal, AddAddresses: []commands.EPPHostAddress{{Version: "v4", Address: "208.77.190.196"}},
+		})
+		require.NoError(t, err)
+		got := glue()
+		require.Len(t, got, 1)
+		assert.Contains(t, got[0], internal+".\t3600\tIN\tA\t208.77.190.196")
+	})
+	t.Run("renamed out of it: no glue", func(t *testing.T) {
+		_, err := svc.Update(ctx, scope, commands.EPPUpdateHostCommand{Name: internal, NewName: external})
+		require.NoError(t, err)
+		assert.Empty(t, glue())
+	})
+}

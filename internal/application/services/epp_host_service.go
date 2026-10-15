@@ -202,7 +202,25 @@ func (s *EPPHostService) Create(ctx context.Context, scope entities.RegistrarClI
 // is no other registrar's nameserver, and an internal new name is under a
 // registered domain the registrar sponsors; an external host gets no
 // addresses; and an internal host that is a nameserver keeps one.
+//
+// The checks and the write are made on one reading of the host. If another
+// command changes the host in between, the write is refused and the update
+// is read and checked again, up to updateAttempts times: no command's
+// change is overwritten by one that never saw it.
 func (s *EPPHostService) Update(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateHostCommand) (*entities.Host, error) {
+	for attempt := 1; ; attempt++ {
+		host, err := s.update(ctx, scope, cmd)
+		if !errors.Is(err, entities.ErrHostChanged) || attempt == updateAttempts {
+			return host, err
+		}
+	}
+}
+
+// updateAttempts bounds how often Update reads a host again after another
+// command changed it.
+const updateAttempts = 3
+
+func (s *EPPHostService) update(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateHostCommand) (*entities.Host, error) {
 	host, err := s.sponsored(ctx, scope, cmd.Name)
 	if err != nil {
 		return nil, err
@@ -252,6 +270,12 @@ func (s *EPPHostService) Update(ctx context.Context, scope entities.RegistrarClI
 			return nil, err
 		}
 		host.Name = entities.DomainName(newName)
+		// Whether the host's glue is published (the glue query reads
+		// InBailiwick) follows its name: Domain.AddHost set it for the old
+		// one.
+		if host.InBailiwick, err = s.inBailiwick(ctx, host); err != nil {
+			return nil, err
+		}
 	}
 	p, err := s.place(ctx, host.Name.String(), tldCache{})
 	if err != nil {
@@ -362,6 +386,25 @@ func (s *EPPHostService) sponsored(ctx context.Context, scope entities.Registrar
 		return nil, fmt.Errorf("%w: host %s", entities.ErrEPPNotSponsor, name)
 	}
 	return nil, fmt.Errorf("%w: %s", entities.ErrHostNotFound, name)
+}
+
+// inBailiwick reports whether host is a nameserver of its parent domain,
+// as entities.Domain.AddHost decides it when a domain takes the host.
+func (s *EPPHostService) inBailiwick(ctx context.Context, host *entities.Host) (bool, error) {
+	parent := host.Name.ParentDomain()
+	dom, err := s.domains.GetDomainByName(ctx, parent, true)
+	switch {
+	case errors.Is(err, entities.ErrDomainNotFound):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("look up domain %s: %w", parent, err)
+	}
+	for _, h := range dom.Hosts {
+		if h.RoID == host.RoID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // links counts the domains that have host as a nameserver.

@@ -84,6 +84,12 @@ func (s *Server) hostUpdate(ctx context.Context, cmd *command) {
 		return
 	}
 	update := cmd.doc.FindElement("/epp/command/update/*")
+	if update.SelectElement("add") == nil && update.SelectElement("rem") == nil && update.SelectElement("chg") == nil {
+		// RFC 5732 §3.2.5: one of them is required, as no host update
+		// extension is offered.
+		cmd.respond(epplib.StatusMissingParameter, "Required parameter missing; give <host:add>, <host:rem> or <host:chg>", nil)
+		return
+	}
 	c := commands.EPPUpdateHostCommand{Name: cmd.objects[0]}
 	if add := update.SelectElement("add"); add != nil {
 		c.AddAddresses, c.AddStatuses = hostAddrs(add), hostStatuses(add)

@@ -118,7 +118,7 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
 
-**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
 
 **Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
 
@@ -211,7 +211,7 @@ A name under a domain that is not registered is available, as RST epp-05 require
 
 **`<host:info>`.** The name, ROID (ending in `ROID_REPOSITORY_ID`), statuses, addresses with their IP version, sponsor and creator, creation date, and the last updater and update date once updated.
 
-**`<host:create>`, `<host:update>` and `<host:delete>`.** Each writes a `host.created`, `host.updated` or `host.deleted` event with the session's login as actor. A create writes the host and its addresses in one insert, and an update writes all its changes in one transaction or none. Each command applies its rules in the order below, and reports the first that fails:
+**`<host:create>`, `<host:update>` and `<host:delete>`.** Each writes a `host.created`, `host.updated` or `host.deleted` event with the session's login as actor. A create writes the host and its addresses in one insert, and an update writes all its changes in one transaction or none. An update is checked and written on one reading of the host: if another command changes the host in between, the write is refused and the update is read and checked again, up to three times, so no change is overwritten by a command that never saw it. A rename recomputes whether the host is a nameserver of its parent domain, which decides whether its addresses are published as glue. Each command applies its rules in the order below, and reports the first that fails:
 
 `<host:create>`:
 1. A name that is not a valid host name, an address that does not parse, or one that is not of the IP version its `ip` attribute names: 2005.
@@ -221,15 +221,16 @@ A name under a domain that is not registered is available, as RST epp-05 require
 5. An address on an external host: 2306.
 
 `<host:update>`, which removes statuses and addresses, then adds them, then renames:
-1. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.
-2. An address that does not parse or is not of its IP version, or a new name that is not a valid host name: 2005. An address added that is not public unicast: 2306.
-3. A status the client does not control (anything but `clientDeleteProhibited` and `clientUpdateProhibited`): 2306.
-4. A host with a pending action, with `serverUpdateProhibited`, or with `clientUpdateProhibited` unless the update removes it: 2304.
-5. Removing a status or address the host does not have, adding one it has, or more than 10 addresses: 2306.
-6. A rename onto a name the registrar already has: 2302. A rename of a host that is a nameserver of another registrar's domain: 2305 (RST epp-23; only an escrow import can link one).
-7. A rename to an internal name whose superordinate domain is not registered: 2303. Under a domain another registrar sponsors: 2201.
-8. An address on an external host: 2306.
-9. An internal host that is a nameserver left without an address: 2305.
+1. No `<host:add>`, `<host:rem>` or `<host:chg>` (RFC 5732 §3.2.5): 2003.
+2. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.
+3. An address that does not parse or is not of its IP version, or a new name that is not a valid host name: 2005. An address added that is not public unicast: 2306.
+4. A status the client does not control (anything but `clientDeleteProhibited` and `clientUpdateProhibited`): 2306.
+5. A host with a pending action, with `serverUpdateProhibited`, or with `clientUpdateProhibited` unless the update removes it: 2304.
+6. Removing a status or address the host does not have, adding one it has, or more than 10 addresses: 2306.
+7. A rename onto a name the registrar already has: 2302. A rename of a host that is a nameserver of another registrar's domain: 2305 (RST epp-23; only an escrow import can link one).
+8. A rename to an internal name whose superordinate domain is not registered: 2303. Under a domain another registrar sponsors: 2201.
+9. An address on an external host: 2306.
+10. An internal host that is a nameserver left without an address: 2305.
 
 `<host:delete>`:
 1. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.

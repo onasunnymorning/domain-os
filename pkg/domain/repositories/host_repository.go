@@ -23,7 +23,9 @@ type HostRepository interface {
 	BulkCreate(ctx context.Context, hosts []*entities.Host) error
 	Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
 	// UpdateHostAndAddresses saves the host and replaces its addresses with
-	// h.Addresses, in one transaction.
+	// h.Addresses, in one transaction, if the stored host is still as it was
+	// read (h.UpdatedAt): otherwise it is entities.ErrHostChanged, and if
+	// the host is gone, entities.ErrHostNotFound.
 	UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error)
 	// CountHostsByName counts the host objects named name, whichever
 	// registrar sponsors them.

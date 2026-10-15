@@ -32,6 +32,9 @@ var (
 	ErrInvalidHostStatus           = fmt.Errorf("invalid host status")
 	ErrHostUpdateProhibited        = fmt.Errorf("host update is prohibited")
 	ErrInvalidHostRoID             = fmt.Errorf("invalid Host.RoID.ObjectIdentifier(), expecting '%s'", HOST_ROID_ID)
+	// ErrHostChanged: an update written over a host that another command
+	// changed since it was read.
+	ErrHostChanged = fmt.Errorf("the host was changed by another command")
 )
 
 // Host struct represents a host object based on https://datatracker.ietf.org/doc/html/rfc5732

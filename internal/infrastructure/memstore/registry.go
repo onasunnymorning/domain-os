@@ -424,7 +424,8 @@ func (v registryHosts) BulkCreate(_ context.Context, hosts []*entities.Host) err
 
 // UpdateHostAndAddresses replaces the stored host in place, so the domains
 // that have it as a nameserver see the change, as they do through the
-// database's link table.
+// database's link table. Like the Postgres repository, it refuses a host
+// changed since h was read (ErrHostChanged).
 func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Host) (*entities.Host, error) {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()
@@ -435,6 +436,9 @@ func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Hos
 	stored := v.r.hostByRoid(id)
 	if stored == nil {
 		return nil, entities.ErrHostNotFound
+	}
+	if !stored.UpdatedAt.Equal(h.UpdatedAt) {
+		return nil, entities.ErrHostChanged
 	}
 	key := hostKey{h.Name.String(), h.ClID.String()}
 	if other, ok := v.r.hosts[key]; ok && other != stored {

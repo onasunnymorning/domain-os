@@ -403,3 +403,30 @@ func mustWrite(t *testing.T, doc *etree.Document) string {
 	require.NoError(t, err)
 	return s
 }
+
+func TestObjectElementMustMatchCommand(t *testing.T) {
+	_, _, c := hostServer(t)
+	requireCode(t, c.roundTrip(hostCreateXML("ns1.example.net")), "1000")
+	for _, tc := range []struct{ name, frame string }{
+		{"<delete> carrying <host:info>", cmdXML(`<delete><host:info xmlns:host="urn:ietf:params:xml:ns:host-1.0"><host:name>ns1.example.net</host:name></host:info></delete>`, "MIX-1")},
+		{"<update> carrying <host:delete>", cmdXML(`<update><host:delete xmlns:host="urn:ietf:params:xml:ns:host-1.0"><host:name>ns1.example.net</host:name></host:delete></update>`, "MIX-2")},
+		{"<create> carrying <domain:info>", cmdXML(`<create><domain:info xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>mix.test</domain:name></domain:info></create>`, "MIX-3")},
+		{"<info> carrying <domain:check>", cmdXML(`<info><domain:check xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>mine.test</domain:name></domain:check></info>`, "MIX-4")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := c.roundTrip(tc.frame)
+			requireCode(t, resp, "2001")
+			assert.Contains(t, msg(resp), "not an object's")
+		})
+	}
+	requireCode(t, c.roundTrip(hostInfoXML("ns1.example.net")), "1000")
+	requireCode(t, c.roundTrip(infoXML("mix.test", "")), "2303")
+}
+
+func TestHostUpdateNeedsAChange(t *testing.T) {
+	_, _, c := hostServer(t)
+	requireCode(t, c.roundTrip(hostCreateXML("ns1.example.net")), "1000")
+	resp := c.roundTrip(hostUpdateXML("ns1.example.net", ""))
+	requireCode(t, resp, "2003")
+	assert.Empty(t, text(c.roundTrip(hostInfoXML("ns1.example.net")), "//infData/upID"), "nothing was written")
+}

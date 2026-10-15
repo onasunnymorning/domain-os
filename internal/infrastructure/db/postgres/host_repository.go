@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -94,20 +95,46 @@ func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*
 }
 
 // UpdateHostAndAddresses saves the host and replaces its addresses with
-// host.Addresses, in one transaction, and returns the host as stored. A
-// rename onto a name the registrar already has is ErrHostAlreadyExists.
+// host.Addresses, in one transaction, and returns the host as stored.
+//
+// host.UpdatedAt is the version the caller read: the update is made only if
+// the stored host still has it, so two commands that read the same host
+// cannot each overwrite the other's change; the second is ErrHostChanged,
+// to be read and checked again. A host deleted since it was read is
+// ErrHostNotFound, never written back. A rename onto a name the registrar
+// already has is ErrHostAlreadyExists.
 func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entities.Host) (*entities.Host, error) {
+	read := host.UpdatedAt
 	gormHost := ToDBHost(host)
+	gormHost.UpdatedAt = time.Now().UTC()
 	keep := make([]string, len(gormHost.Addresses))
 	for i, a := range gormHost.Addresses {
 		keep[i] = a.Address
 	}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Omit("Addresses").Save(gormHost).Error; err != nil {
-			if isUniqueViolation(err) {
-				return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
+		update := tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID)
+		if read.IsZero() {
+			update = update.Where("updated_at IS NULL OR updated_at = ?", read)
+		} else {
+			update = update.Where("updated_at = ?", read)
+		}
+		// Updates, not Save: Save inserts when no row matches.
+		res := update.Select("*").Omit("ro_id", "created_at", "Addresses").Updates(gormHost)
+		if res.Error != nil {
+			if isUniqueViolation(res.Error) {
+				return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, res.Error)
 			}
-			return err
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			var n int64
+			if err := tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return entities.ErrHostNotFound
+			}
+			return entities.ErrHostChanged
 		}
 		stale := tx.Where("host_ro_id = ?", gormHost.RoID)
 		if len(keep) > 0 {
