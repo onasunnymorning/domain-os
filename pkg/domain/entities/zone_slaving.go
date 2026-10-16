@@ -57,7 +57,7 @@ func NewZoneSlaving(tenantID, zone string, masterNS, slaveNS []string) (*ZoneSla
 	return &ZoneSlaving{
 		ID:              uuid.New(),
 		TenantID:        tenantID,
-		Zone:            NormalizeString(zone),
+		Zone:            RemoveTrailingDot(NormalizeString(zone)), // a zone may be given in absolute form
 		MasterNS:        masterNS,
 		SlaveNS:         slaveNS,
 		Status:          ZoneSlavingStatusActive,

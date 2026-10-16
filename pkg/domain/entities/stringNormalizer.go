@@ -4,20 +4,32 @@ import (
 	"strings"
 )
 
-// Removes newlines(\n), tabs(\t), and carriage returns(\r) from a string and replaces them with spaces
-// Removes multiple spaces and replaces them with one space
-// Trims leading and trailing spaces
-// Removes trailing dots
+// NormalizeString replaces newlines (\n), tabs (\t) and carriage returns
+// (\r) with spaces, collapses runs of spaces into one, and trims leading and
+// trailing spaces.
+//
+// It keeps a trailing dot: in a name ("Example Inc."), an address or an
+// authorization password the dot is part of the value. Callers whose value is
+// a DNS name in absolute form ("example.com.") remove it themselves, as
+// NewDomainName does.
 func NormalizeString(s string) string {
 	s = RemoveNewlines(s)
 	s = RemoveTabs(s)
 	s = RemoveCarriageReturns(s)
 	s = ReplaceMultipleSpaces(s)
-	s = RemoveTrailingDot(s)
 	return strings.TrimSpace(s)
 }
 
-// RemoveTrailingDot removes a trailing dot from a string
+// NormalizeEmail normalizes an email address as NormalizeString does, in
+// lower case, and drops a trailing dot: after an address it is the end of a
+// sentence ("write to ops@example.com."), as in some IANA registrar records,
+// never part of the address, which would not parse with it.
+func NormalizeEmail(s string) string {
+	return strings.ToLower(RemoveTrailingDot(NormalizeString(s)))
+}
+
+// RemoveTrailingDot removes a trailing dot from a string, such as the root of
+// a DNS name in absolute form
 func RemoveTrailingDot(s string) string {
 	return strings.TrimSuffix(s, ".")
 }

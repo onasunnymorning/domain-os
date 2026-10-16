@@ -203,12 +203,12 @@ func TestStandardizeString(t *testing.T) {
 			expected: "No spaces here",
 		},
 		{
-			input:    "Hello World.",
-			expected: "Hello World",
+			input:    "Example Inc.",
+			expected: "Example Inc.", // the dot is part of the name
 		},
 		{
-			input:    "Arthurwychan@gmail.com.",
-			expected: "Arthurwychan@gmail.com",
+			input:    "Hello World. ",
+			expected: "Hello World.",
 		},
 	}
 
@@ -221,6 +221,19 @@ func TestStandardizeString(t *testing.T) {
 		})
 	}
 }
+func TestNormalizeEmail(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"Arthurwychan@gmail.com.", "arthurwychan@gmail.com"}, // as in IANA's registrar list
+		{" ops@Example.com ", "ops@example.com"},
+		{"ops@example.com", "ops@example.com"},
+		{"first.last@example.com", "first.last@example.com"}, // only a trailing dot goes
+	} {
+		if got := NormalizeEmail(tc.input); got != tc.want {
+			t.Errorf("NormalizeEmail(%q) = %q; want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestStandardizeStringSlice(t *testing.T) {
 	testCases := []struct {
 		input    []string
