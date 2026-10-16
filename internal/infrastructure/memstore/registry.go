@@ -454,6 +454,25 @@ func (v registryContacts) UpdateContactIfUnchanged(_ context.Context, c *entitie
 	return copyContact(updated), nil
 }
 
+// DeleteContactIfUnchanged refuses a contact changed or replaced since c
+// was read, as the Postgres repository does.
+func (v registryContacts) DeleteContactIfUnchanged(_ context.Context, c *entities.Contact) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	stored, ok := v.r.contacts[c.ID.String()]
+	switch {
+	case !ok:
+		return entities.ErrContactNotFound
+	case stored.RoID != c.RoID || stored.ClID != c.ClID || !stored.UpdatedAt.Equal(c.UpdatedAt):
+		return entities.ErrContactChanged
+	}
+	delete(v.r.contacts, c.ID.String())
+	return nil
+}
+
 func (v registryContacts) DeleteContactByID(_ context.Context, id string) error {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()
@@ -570,6 +589,26 @@ func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Hos
 	stored.UpdatedAt = v.r.now().UTC()
 	v.r.hosts[key] = stored
 	return stored.DeepCopy(), nil
+}
+
+// DeleteHostIfUnchanged refuses a host changed since h was read, as the
+// Postgres repository does.
+func (v registryHosts) DeleteHostIfUnchanged(_ context.Context, h *entities.Host) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	id, _ := h.RoID.Int64()
+	stored := v.r.hostByRoid(id)
+	switch {
+	case stored == nil:
+		return entities.ErrHostNotFound
+	case stored.ClID != h.ClID || !stored.UpdatedAt.Equal(h.UpdatedAt):
+		return entities.ErrHostChanged
+	}
+	delete(v.r.hosts, hostKey{stored.Name.String(), stored.ClID.String()})
+	return nil
 }
 
 func (v registryHosts) DeleteHostByRoid(_ context.Context, roid int64) error {

@@ -21,6 +21,11 @@ type ContactRepository interface {
 	// entities.ErrContactChanged, and if the contact is gone,
 	// entities.ErrContactNotFound.
 	UpdateContactIfUnchanged(ctx context.Context, c *entities.Contact) (*entities.Contact, error)
+	// DeleteContactIfUnchanged deletes the contact if the stored contact is
+	// still the one read: the same ROID, sponsor and version (c.UpdatedAt).
+	// Otherwise it is entities.ErrContactChanged, and if no contact has the
+	// ID, entities.ErrContactNotFound.
+	DeleteContactIfUnchanged(ctx context.Context, c *entities.Contact) error
 	// CountContactLinks counts the domains that use the contact, as
 	// registrant or as admin, tech or billing contact.
 	CountContactLinks(ctx context.Context, id string) (int64, error)

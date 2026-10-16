@@ -3,9 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
-	"time"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -90,28 +90,55 @@ func (r *ContactRepository) UpdateContactIfUnchanged(ctx context.Context, c *ent
 	read := c.UpdatedAt
 	dbContact := ToDBContact(c)
 	dbContact.UpdatedAt = time.Now().UTC()
-	update := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", dbContact.ID)
-	if read.IsZero() {
-		update = update.Where("updated_at IS NULL OR updated_at = ?", read)
-	} else {
-		update = update.Where("updated_at = ?", read)
-	}
-	// Updates, not Save: Save inserts when no row matches.
-	res := update.Select("*").Omit("id", "ro_id", "created_at", "DomsWhereRegistrant", "DomsWhereAdmin", "DomsWhereTech", "DomsWhereBilling").Updates(dbContact)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		var n int64
-		if err := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", dbContact.ID).Count(&n).Error; err != nil {
-			return nil, err
+	stored := &Contact{}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := written(updateIfAt(tx.Model(&Contact{}).Where("id = ?", dbContact.ID), read).
+			Select("*").Omit("id", "ro_id", "created_at", "DomsWhereRegistrant", "DomsWhereAdmin", "DomsWhereTech", "DomsWhereBilling").
+			Updates(dbContact)); err != nil {
+			return err
 		}
-		if n == 0 {
-			return nil, entities.ErrContactNotFound
-		}
-		return nil, entities.ErrContactChanged
+		// Read back in the transaction, which holds the row: the result is
+		// this update, not a later one.
+		return tx.Where("id = ?", dbContact.ID).First(stored).Error
+	})
+	switch {
+	case errors.Is(err, errNotWritten):
+		return nil, r.notWritten(ctx, dbContact.ID, entities.ErrContactChanged)
+	case err != nil:
+		return nil, err
 	}
-	return r.GetContactByID(ctx, dbContact.ID)
+	return FromDBContact(stored, r.repository), nil
+}
+
+// DeleteContactIfUnchanged deletes the contact if it is still the one read:
+// the same ROID, sponsor and version. The ID alone could name a contact
+// deleted and created again by another registrar since it was read.
+func (r *ContactRepository) DeleteContactIfUnchanged(ctx context.Context, c *entities.Contact) error {
+	roid, err := c.RoID.Int64()
+	if err != nil {
+		return err
+	}
+	q := r.db.WithContext(ctx).Where("id = ? AND ro_id = ? AND cl_id = ?", c.ID.String(), roid, c.ClID.String())
+	if err := written(updateIfAt(q, c.UpdatedAt).Delete(&Contact{})); err != nil {
+		if errors.Is(err, errNotWritten) {
+			return r.notWritten(ctx, c.ID.String(), entities.ErrContactChanged)
+		}
+		return err
+	}
+	return nil
+}
+
+// notWritten says why a conditional write matched no row: the contact is
+// gone (ErrContactNotFound), or else changed (changed).
+func (r *ContactRepository) notWritten(ctx context.Context, id string, changed error) error {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", id).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return entities.ErrContactNotFound
+	}
+	return changed
 }
 
 // CountContactLinks counts the domains that use the contact, in any role.

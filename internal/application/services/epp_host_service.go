@@ -334,7 +334,20 @@ func (s *EPPHostService) checkRename(ctx context.Context, scope entities.Registr
 
 // Delete deletes the registrar's host object, unless it has a pending
 // action or a delete prohibition, or is a nameserver of a domain.
+//
+// The host is deleted only if it is still the one checked: the same sponsor
+// and version. If another command changed it in between, the delete is read
+// and checked again, up to updateAttempts times.
 func (s *EPPHostService) Delete(ctx context.Context, scope entities.RegistrarClID, name string) error {
+	for attempt := 1; ; attempt++ {
+		err := s.delete(ctx, scope, name)
+		if !errors.Is(err, entities.ErrHostChanged) || attempt == updateAttempts {
+			return err
+		}
+	}
+}
+
+func (s *EPPHostService) delete(ctx context.Context, scope entities.RegistrarClID, name string) error {
 	host, err := s.sponsored(ctx, scope, name)
 	if err != nil {
 		return err
@@ -352,11 +365,7 @@ func (s *EPPHostService) Delete(ctx context.Context, scope entities.RegistrarClI
 	if links > 0 {
 		return fmt.Errorf("%w: %s", entities.ErrEPPHostLinked, host.Name)
 	}
-	id, err := host.RoID.Int64()
-	if err != nil {
-		return err
-	}
-	if err := s.hosts.DeleteHostByRoid(ctx, id); err != nil {
+	if err := s.hosts.DeleteHostIfUnchanged(ctx, host); err != nil {
 		return fmt.Errorf("delete host %s: %w", host.Name, err)
 	}
 	publishHostEvent(ctx, s.events, "host.deleted", host.RoID.String(), fmt.Sprintf("Host %s deleted", host.Name), nil, nil, host)

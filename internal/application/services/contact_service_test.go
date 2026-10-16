@@ -49,6 +49,10 @@ func (m *MockContactRepository) UpdateContactIfUnchanged(ctx context.Context, c 
 	return m.UpdateContact(ctx, c)
 }
 
+func (m *MockContactRepository) DeleteContactIfUnchanged(ctx context.Context, c *entities.Contact) error {
+	return m.DeleteContactByID(ctx, c.ID.String())
+}
+
 func (m *MockContactRepository) CountContactLinks(context.Context, string) (int64, error) {
 	return 0, nil
 }

@@ -72,7 +72,7 @@ func (s *EPPContactService) Check(ctx context.Context, ids []string) ([]*queries
 	for i, raw := range ids {
 		r := &queries.ContactCheckResult{ID: raw}
 		results[i] = r
-		id, err := entities.NewClIDType(raw)
+		id, err := contactID(raw)
 		if err != nil {
 			r.Reason = ContactCheckReasonInvalid
 			continue
@@ -109,9 +109,9 @@ func (s *EPPContactService) Info(ctx context.Context, scope entities.RegistrarCl
 // email address and the authorization information are valid; and no
 // contact has the ID.
 func (s *EPPContactService) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateContactCommand) (*entities.Contact, error) {
-	id, err := entities.NewClIDType(cmd.ID)
+	id, err := contactID(cmd.ID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", err, cmd.ID)
+		return nil, err
 	}
 	c := &entities.Contact{ID: id}
 	for _, pi := range cmd.PostalInfo {
@@ -263,7 +263,21 @@ func (s *EPPContactService) update(ctx context.Context, scope entities.Registrar
 
 // Delete deletes the registrar's contact, unless it has a pending action or
 // a delete prohibition, or a domain uses it.
+//
+// The contact is deleted only if it is still the one checked: the same
+// ROID, sponsor and version. If another command changed it, or deleted it
+// and another registrar created the ID again, in between, the delete is
+// read and checked again, up to updateAttempts times.
 func (s *EPPContactService) Delete(ctx context.Context, scope entities.RegistrarClID, id string) error {
+	for attempt := 1; ; attempt++ {
+		err := s.delete(ctx, scope, id)
+		if !errors.Is(err, entities.ErrContactChanged) || attempt == updateAttempts {
+			return err
+		}
+	}
+}
+
+func (s *EPPContactService) delete(ctx context.Context, scope entities.RegistrarClID, id string) error {
 	c, err := s.sponsored(ctx, scope, id)
 	if err != nil {
 		return err
@@ -281,7 +295,7 @@ func (s *EPPContactService) Delete(ctx context.Context, scope entities.Registrar
 	if links > 0 {
 		return fmt.Errorf("%w: %s", entities.ErrEPPContactLinked, c.ID)
 	}
-	if err := s.contacts.DeleteContactByID(ctx, c.ID.String()); err != nil {
+	if err := s.contacts.DeleteContactIfUnchanged(ctx, c); err != nil {
 		return fmt.Errorf("delete contact %s: %w", c.ID, err)
 	}
 	publishContactEvent(ctx, s.events, "contact.deleted", c.ID.String(), fmt.Sprintf("Contact %s deleted", c.ID), nil, nil, c)
@@ -292,9 +306,9 @@ func (s *EPPContactService) Delete(ctx context.Context, scope entities.Registrar
 // another registrar's is ErrEPPNotSponsor (ADR 0006), and none
 // ErrContactNotFound.
 func (s *EPPContactService) sponsored(ctx context.Context, scope entities.RegistrarClID, raw string) (*entities.Contact, error) {
-	id, err := entities.NewClIDType(raw)
+	id, err := contactID(raw)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", err, raw)
+		return nil, err
 	}
 	c, err := s.contacts.GetContactByID(ctx, id.String())
 	switch {
@@ -306,6 +320,17 @@ func (s *EPPContactService) sponsored(ctx context.Context, scope entities.Regist
 		return nil, fmt.Errorf("%w: contact %s", entities.ErrEPPNotSponsor, id)
 	}
 	return c, nil
+}
+
+// contactID validates a contact ID as the schema delivered it: a token,
+// already whitespace-collapsed. It is not normalised further, so that abc
+// and abc. stay two IDs.
+func contactID(raw string) (entities.ClIDType, error) {
+	id := entities.ClIDType(raw)
+	if err := id.Validate(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, raw)
+	}
+	return id, nil
 }
 
 // links counts the domains that use c.

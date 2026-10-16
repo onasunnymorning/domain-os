@@ -18,6 +18,9 @@ import (
 )
 
 func AutoMigrate(db *gorm.DB) error {
+	if err := migrateContactDisclose(db); err != nil {
+		return err
+	}
 	err := db.AutoMigrate(
 		&IANARegistrar{},
 		&Spec5Label{},
@@ -57,6 +60,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&InstallationSetting{},
 	)
 	if err != nil {
+		return err
+	}
+
+	if err := fillContactDisclose(db); err != nil {
 		return err
 	}
 

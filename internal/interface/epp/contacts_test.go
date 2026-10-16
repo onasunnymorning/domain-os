@@ -324,3 +324,42 @@ func TestContactLinked(t *testing.T) {
 		requireCode(t, c.roundTrip(contactDeleteXML("del-1")), "2304")
 	})
 }
+
+func TestContactIDsAreTakenAsGiven(t *testing.T) {
+	_, _, c := objectServer(t)
+	requireCode(t, c.roundTrip(contactCreateXML("abc", contactOpts{email: "plain@example.com"})), "1000")
+	t.Run("check: abc. is free while abc is not", func(t *testing.T) {
+		resp := c.roundTrip(contactCheckXML("abc", "abc."))
+		requireCode(t, resp, "1000")
+		avail := map[string]string{}
+		for _, id := range resp.FindElements("//resData/chkData/cd/id") {
+			avail[id.Text()] = id.SelectAttrValue("avail", "")
+		}
+		assert.Equal(t, map[string]string{"abc": "0", "abc.": "1"}, avail)
+	})
+	t.Run("info and update of abc. do not reach abc", func(t *testing.T) {
+		requireCode(t, c.roundTrip(contactInfoXML("abc.")), "2303")
+		requireCode(t, c.roundTrip(contactUpdateXML("abc.", "<contact:chg><contact:email>dot@example.com</contact:email></contact:chg>")), "2303")
+	})
+	t.Run("create makes abc. a contact of its own", func(t *testing.T) {
+		requireCode(t, c.roundTrip(contactCreateXML("abc.", contactOpts{email: "dot@example.com"})), "1000")
+		assert.Equal(t, "abc.", text(c.roundTrip(contactInfoXML("abc.")), "//infData/id"))
+		assert.Equal(t, "plain@example.com", text(c.roundTrip(contactInfoXML("abc")), "//infData/email"))
+	})
+	t.Run("delete of abc. leaves abc", func(t *testing.T) {
+		requireCode(t, c.roundTrip(contactDeleteXML("abc.")), "1000")
+		requireCode(t, c.roundTrip(contactInfoXML("abc")), "1000")
+	})
+}
+
+func TestContactPostalLinesCountCharacters(t *testing.T) {
+	_, _, c := objectServer(t)
+	name := strings.Repeat("é", 255) // 510 bytes
+	requireCode(t, c.roundTrip(contactCreateXML("long-1", contactOpts{
+		postalInfo: postalInfoXML("int", "Ada", "", "London", "GB") + postalInfoXML("loc", name, name, "Zürich", "CH", name),
+	})), "1000")
+	info := c.roundTrip(contactInfoXML("long-1"))
+	assert.Equal(t, name, text(info, `//infData/postalInfo[@type='loc']/name`))
+	requireCode(t, c.roundTrip(contactUpdateXML("long-1", `<contact:chg><contact:postalInfo type="loc"><contact:org>`+strings.Repeat("ü", 255)+`</contact:org></contact:postalInfo></contact:chg>`)), "1000")
+	requireCode(t, c.roundTrip(contactCreateXML("long-2", contactOpts{postalInfo: postalInfoXML("loc", strings.Repeat("é", 256), "", "Zürich", "CH")})), "2001")
+}

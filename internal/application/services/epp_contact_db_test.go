@@ -110,3 +110,54 @@ func TestEPPContactCommandsOverPostgres(t *testing.T) {
 		assert.Contains(t, types, "contact.updated")
 	})
 }
+
+// TestEPPContactOverPostgres_DiscloseAndReplacement: every disclosure flag
+// survives a round trip through the contacts table, and a delete checked
+// against one contact cannot delete another created with its ID since.
+func TestEPPContactOverPostgres_DiscloseAndReplacement(t *testing.T) {
+	f := newEPPFixture(t)
+	ctx := context.Background()
+	repo := postgres.NewContactRepository(f.db, "EPPTEST")
+	svc := NewEPPContactService(EPPContactServiceDeps{Contacts: repo, Roids: f.roids})
+	str := func(s string) *string { return &s }
+	id := "d" + f.rar1
+	create := func(scope entities.RegistrarClID, d *commands.EPPDisclose) {
+		t.Helper()
+		_, err := svc.Create(ctx, scope, commands.EPPCreateContactCommand{
+			ID:         id,
+			PostalInfo: []commands.EPPPostalInfo{{Type: "int", Name: str("Ada"), Org: str("Org"), Addr: &commands.EPPContactAddress{City: "London", CC: "GB"}}},
+			Voice:      &commands.EPPPhone{Number: "+44.2071234567"}, Email: "ada@example.com", AuthInfo: "Contact-Auth-1!", Disclose: d,
+		})
+		require.NoError(t, err)
+	}
+	create(entities.RegistrarClID(f.rar1), &commands.EPPDisclose{Flag: true, Names: []string{"int"}, Orgs: []string{"loc"}, Addrs: []string{"int"}, Voice: true, Email: true})
+
+	t.Run("every disclosure flag is stored", func(t *testing.T) {
+		stored, err := repo.GetContactByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ContactDisclose{NameInt: true, OrgLoc: true, AddrInt: true, Voice: true, Email: true}, stored.Disclose)
+		assert.Equal(t, "Ada", stored.PostalInfo[0].Name.String(), "the contact's own name is unaffected")
+		assert.Equal(t, entities.E164Type("+44.2071234567"), stored.Voice)
+	})
+	t.Run("and changed by an update", func(t *testing.T) {
+		updated, err := svc.Update(ctx, entities.RegistrarClID(f.rar1), commands.EPPUpdateContactCommand{
+			ID: id, Disclose: &commands.EPPDisclose{Flag: false, Names: []string{"int"}, Voice: true}, Email: str("ada@example.net"),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, entities.ContactDisclose{OrgLoc: true, AddrInt: true, Email: true}, updated.Disclose, "the update returns what it wrote")
+		assert.Equal(t, "ada@example.net", updated.Email)
+		stored, err := repo.GetContactByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, updated.Disclose, stored.Disclose)
+	})
+	t.Run("a delete checked against one contact does not delete its replacement", func(t *testing.T) {
+		read, err := repo.GetContactByID(ctx, id)
+		require.NoError(t, err)
+		require.NoError(t, svc.Delete(ctx, entities.RegistrarClID(f.rar1), id))
+		create(entities.RegistrarClID(f.rar2), nil)
+		require.ErrorIs(t, repo.DeleteContactIfUnchanged(ctx, read), entities.ErrContactChanged)
+		replacement, err := repo.GetContactByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ClIDType(f.rar2), replacement.ClID)
+	})
+}

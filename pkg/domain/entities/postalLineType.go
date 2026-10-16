@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"unicode/utf8"
 )
 
 const (
@@ -30,9 +31,11 @@ var (
 // PostalLineType is a string value that represents a postal info line as defined in RFC5733 https://datatracker.ietf.org/doc/html/rfc5733#:~:text=simpleType%3E%0A%0A%20%20%20%20%3CsimpleType%20name%3D%22-,postalLineType,-%22%3E%0A%20%20%20%20%20%20%20%3Crestriction%20base%3D%22normalizedString
 type PostalLineType string
 
-// Validate checks if the PostalInfoLineType is within the minimum and maximum length
+// Validate checks if the PostalInfoLineType is within the minimum and
+// maximum length, in characters, as the schema counts them: a localized
+// line is not held to a length in bytes.
 func (p *PostalLineType) Validate() error {
-	if len(*p) < POSTAL_LINE_TYPE_MIN_LENGTH || len(*p) > POSTAL_LINE_TYPE_MAX_LENGTH {
+	if n := utf8.RuneCountInString(string(*p)); n < POSTAL_LINE_TYPE_MIN_LENGTH || n > POSTAL_LINE_TYPE_MAX_LENGTH {
 		return ErrInvalidPostalLineType
 	}
 	return nil
@@ -55,9 +58,10 @@ func (p *PostalLineType) String() string {
 // OptPostalLineType is a string value that represents an optional postal info line as defined in RFC5733 https://datatracker.ietf.org/doc/html/rfc5733#:~:text=simpleType%3E%0A%0A%20%20%20%20%3CsimpleType%20name%3D%22-,optPostalLineType,-%22%3E%0A%20%20%20%20%20%20%20%3Crestriction%20base%3D%22normalizedString
 type OptPostalLineType string
 
-// IsValid checks if the OptionalPostalInfoLineType does not exceed the maximum length
+// IsValid checks if the OptionalPostalInfoLineType does not exceed the
+// maximum length, in characters.
 func (p *OptPostalLineType) IsValid() error {
-	if len(*p) <= POSTAL_LINE_TYPE_MAX_LENGTH {
+	if utf8.RuneCountInString(string(*p)) <= POSTAL_LINE_TYPE_MAX_LENGTH {
 		return nil
 	}
 	return ErrInvalidOptPostalLineType

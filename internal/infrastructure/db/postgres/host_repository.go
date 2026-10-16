@@ -111,30 +111,16 @@ func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entit
 	for i, a := range gormHost.Addresses {
 		keep[i] = a.Address
 	}
+	stored := &Host{}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		update := tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID)
-		if read.IsZero() {
-			update = update.Where("updated_at IS NULL OR updated_at = ?", read)
-		} else {
-			update = update.Where("updated_at = ?", read)
-		}
 		// Updates, not Save: Save inserts when no row matches.
-		res := update.Select("*").Omit("ro_id", "created_at", "Addresses").Updates(gormHost)
-		if res.Error != nil {
-			if isUniqueViolation(res.Error) {
-				return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, res.Error)
-			}
-			return res.Error
+		err := written(updateIfAt(tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID), read).
+			Select("*").Omit("ro_id", "created_at", "Addresses").Updates(gormHost))
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
 		}
-		if res.RowsAffected == 0 {
-			var n int64
-			if err := tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID).Count(&n).Error; err != nil {
-				return err
-			}
-			if n == 0 {
-				return entities.ErrHostNotFound
-			}
-			return entities.ErrHostChanged
+		if err != nil {
+			return err
 		}
 		stale := tx.Where("host_ro_id = ?", gormHost.RoID)
 		if len(keep) > 0 {
@@ -143,15 +129,52 @@ func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entit
 		if err := stale.Delete(&HostAddress{}).Error; err != nil {
 			return err
 		}
-		if len(gormHost.Addresses) == 0 {
-			return nil
+		if len(gormHost.Addresses) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&gormHost.Addresses).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&gormHost.Addresses).Error
+		// Read back in the transaction, which holds the row: the result is
+		// this update, not a later one.
+		return tx.Preload("Addresses").First(stored, gormHost.RoID).Error
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, errNotWritten):
+		return nil, r.notWritten(ctx, gormHost.RoID, entities.ErrHostChanged)
+	case err != nil:
 		return nil, err
 	}
-	return r.GetHostByRoid(ctx, gormHost.RoID)
+	return ToHost(stored, r.repository), nil
+}
+
+// DeleteHostIfUnchanged deletes the host if it is still the one read: the
+// same sponsor and version.
+func (r *HostRepository) DeleteHostIfUnchanged(ctx context.Context, h *entities.Host) error {
+	roid, err := h.RoID.Int64()
+	if err != nil {
+		return err
+	}
+	q := r.db.WithContext(ctx).Where("ro_id = ? AND cl_id = ?", roid, h.ClID.String())
+	if err := written(updateIfAt(q, h.UpdatedAt).Delete(&Host{})); err != nil {
+		if errors.Is(err, errNotWritten) {
+			return r.notWritten(ctx, roid, entities.ErrHostChanged)
+		}
+		return err
+	}
+	return nil
+}
+
+// notWritten says why a conditional write matched no row: the host is gone
+// (ErrHostNotFound), or else changed (changed).
+func (r *HostRepository) notWritten(ctx context.Context, roid int64, changed error) error {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&Host{}).Where("ro_id = ?", roid).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return entities.ErrHostNotFound
+	}
+	return changed
 }
 
 // CountHostsByName counts the host objects named name, whichever registrar
