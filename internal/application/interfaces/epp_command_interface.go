@@ -19,6 +19,13 @@ type EPPDomainService interface {
 	Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error)
 	// Create registers a domain for the registrar.
 	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error)
+	// Update changes a domain the registrar sponsors.
+	Update(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateDomainCommand) (*entities.Domain, error)
+	// Renew renews a domain the registrar sponsors.
+	Renew(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPRenewDomainCommand) (*entities.Domain, error)
+	// Delete starts the end of life of a domain the registrar sponsors,
+	// and returns it as it is then.
+	Delete(ctx context.Context, scope entities.RegistrarClID, name string) (*entities.Domain, error)
 }
 
 // EPPHostService is what the EPP server asks of the registry for host

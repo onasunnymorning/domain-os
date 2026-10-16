@@ -226,3 +226,12 @@ func secDNSInfoData(d *entities.Domain) *etree.Element {
 	}
 	return inf
 }
+
+// renewData builds <domain:renData> (RFC 5731 §3.2.3).
+func renewData(d *entities.Domain) *etree.Element {
+	ren := etree.NewElement("domain:renData")
+	ren.CreateAttr("xmlns:domain", nsDomain)
+	ren.CreateElement("domain:name").SetText(d.Name.String())
+	ren.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
+	return ren
+}

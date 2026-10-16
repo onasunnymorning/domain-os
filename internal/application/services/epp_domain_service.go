@@ -52,10 +52,16 @@ type EPPDomainService struct {
 	now         func() time.Time
 }
 
-// EPPDomainRegistrar registers a domain: DomainService, which prices it,
-// assigns its ROID, stores it and publishes its event.
+// EPPDomainRegistrar writes the domain transforms: DomainService, which
+// prices them, assigns ROIDs, stores them and publishes their events. Each
+// write but registration takes the domain as the EPP service read and
+// checked it, and is refused with entities.ErrDomainChanged if another
+// command changed it since.
 type EPPDomainRegistrar interface {
 	RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error)
+	SaveDomainUpdate(ctx context.Context, before, after *entities.Domain, command interface{}) (*entities.Domain, error)
+	RenewDomainAsRead(ctx context.Context, dom *entities.Domain, years int) (*entities.Domain, error)
+	MarkDomainForDeletionAsRead(ctx context.Context, dom *entities.Domain) (*entities.Domain, error)
 }
 
 // EPPDomainServiceDeps are what EPPDomainService reads and writes through.

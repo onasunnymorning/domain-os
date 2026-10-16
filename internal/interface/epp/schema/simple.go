@@ -27,6 +27,9 @@ const (
 	// HexBinary and Base64Binary count length facets in octets.
 	HexBinary
 	Base64Binary
+	// Date is xs:date: a Gregorian calendar date, with an optional time
+	// zone.
+	Date
 )
 
 // Simple is an XSD simple type: a built-in base and the facets restricting
@@ -52,6 +55,7 @@ var (
 	schemePattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
 	intPattern      = regexp.MustCompile(`^[+-]?[0-9]+$`)
 	hexPattern      = regexp.MustCompile(`^[0-9A-Fa-f]*$`)
+	datePattern     = regexp.MustCompile(`^(-?)([0-9]{4,})-([0-9]{2})-([0-9]{2})(Z|[+-][0-9]{2}:[0-9]{2})?$`)
 )
 
 // inRange applies MinInclusive and MaxInclusive, when set.
@@ -191,6 +195,12 @@ func (t *Simple) validate(raw string) error {
 		if _, err := base64Octets(v); err != nil {
 			return errors.New("not base64")
 		}
+	case Date:
+		// libxml2 refuses whitespace around a date, though xs:date
+		// collapses it; the models follow libxml2 (ADR 0016).
+		if !isDate(raw) {
+			return errors.New("not a date")
+		}
 	}
 	if n := t.length(v); (t.MinLen > 0 && n < t.MinLen) || (t.MaxLen > 0 && n > t.MaxLen) {
 		switch {
@@ -271,6 +281,57 @@ func checkURIReference(v string) error {
 		}
 	}
 	return nil
+}
+
+// isDate reports whether v is an xs:date as libxml2 reads one: a year of
+// four or more digits (no leading zero beyond four, and not 0000), a month
+// and a day that exist in it, and an optional time zone of at most 14
+// hours.
+func isDate(v string) bool {
+	m := datePattern.FindStringSubmatch(v)
+	if m == nil {
+		return false
+	}
+	year, month, day, tz := m[2], m[3], m[4], m[5]
+	if (len(year) > 4 && year[0] == '0') || strings.Trim(year, "0") == "" {
+		return false
+	}
+	y, err := strconv.Atoi(year)
+	if err != nil {
+		return false
+	}
+	if m[1] == "-" {
+		// libxml2 applies the leap year rule to a negative year as it is:
+		// -0004 is a leap year.
+		y = -y
+	}
+	mo, _ := strconv.Atoi(month)
+	d, _ := strconv.Atoi(day)
+	if mo < 1 || mo > 12 || d < 1 || d > daysIn(y, mo) {
+		return false
+	}
+	if tz != "" && tz != "Z" {
+		hh, _ := strconv.Atoi(tz[1:3])
+		mm, _ := strconv.Atoi(tz[4:6])
+		if hh > 14 || mm > 59 || (hh == 14 && mm != 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// daysIn is the number of days in month of the proleptic Gregorian year y.
+func daysIn(y, month int) int {
+	switch month {
+	case 2:
+		if (y%4 == 0 && y%100 != 0) || y%400 == 0 {
+			return 29
+		}
+		return 28
+	case 4, 6, 9, 11:
+		return 30
+	}
+	return 31
 }
 
 func isHex(c byte) bool {

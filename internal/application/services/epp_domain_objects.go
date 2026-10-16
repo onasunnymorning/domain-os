@@ -157,7 +157,7 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err := s.checkNameservers(ctx, scope, cmd); err != nil {
 		return nil, err
 	}
-	ds, err := dsRecords(cmd)
+	ds, err := dsRecords(cmd.DSData, cmd.MaxSigLife, cmd.KeyData)
 	if err != nil {
 		return nil, err
 	}
@@ -185,19 +185,36 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 // this order: no maxSigLife, DS data rather than key data, at most
 // MaxDSRecords, every record well formed, every algorithm and digest type
 // accepted, and none twice.
-func dsRecords(cmd commands.EPPCreateDomainCommand) ([]entities.DSRecord, error) {
+func dsRecords(given []commands.EPPDSData, maxSigLife int, keyData bool) ([]entities.DSRecord, error) {
 	switch {
-	case cmd.MaxSigLife != 0:
+	case maxSigLife != 0:
 		return nil, entities.ErrEPPMaxSigLife
-	case cmd.KeyData:
+	case keyData:
 		return nil, entities.ErrEPPKeyData
-	case len(cmd.DSData) > MaxDSRecords:
+	case len(given) > MaxDSRecords:
 		return nil, fmt.Errorf("%w: at most %d", entities.ErrEPPTooManyDS, MaxDSRecords)
 	}
 	// Every record's structure first, then the policy on what is accepted:
 	// a malformed record is reported as malformed whatever else is wrong.
-	var out []entities.DSRecord
-	for _, d := range cmd.DSData {
+	out, err := wellFormedDS(given)
+	if err != nil {
+		return nil, err
+	}
+	if err := acceptedDS(out); err != nil {
+		return nil, err
+	}
+	// SetDSRecords refuses duplicates; check here so the refusal comes in
+	// this command's order, before anything is registered.
+	if err := (&entities.Domain{}).SetDSRecords(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// wellFormedDS builds the DS records given, each well formed.
+func wellFormedDS(given []commands.EPPDSData) ([]entities.DSRecord, error) {
+	out := make([]entities.DSRecord, 0, len(given))
+	for _, d := range given {
 		if d.KeyTag < 0 || d.KeyTag > 65535 || d.Algorithm < 0 || d.Algorithm > 255 || d.DigestType < 0 || d.DigestType > 255 {
 			return nil, fmt.Errorf("%w: a field is out of range", entities.ErrInvalidDSRecord)
 		}
@@ -207,20 +224,20 @@ func dsRecords(cmd commands.EPPCreateDomainCommand) ([]entities.DSRecord, error)
 		}
 		out = append(out, rec)
 	}
-	for _, rec := range out {
+	return out, nil
+}
+
+// acceptedDS applies the registry's policy on algorithms and digest types.
+func acceptedDS(records []entities.DSRecord) error {
+	for _, rec := range records {
 		if _, ok := AcceptedDSAlgorithms[rec.Algorithm]; !ok {
-			return nil, fmt.Errorf("%w: %d", entities.ErrEPPDSAlgorithm, rec.Algorithm)
+			return fmt.Errorf("%w: %d", entities.ErrEPPDSAlgorithm, rec.Algorithm)
 		}
 		if _, ok := AcceptedDSDigestTypes[rec.DigestType]; !ok {
-			return nil, fmt.Errorf("%w: %d", entities.ErrEPPDSDigestType, rec.DigestType)
+			return fmt.Errorf("%w: %d", entities.ErrEPPDSDigestType, rec.DigestType)
 		}
 	}
-	// SetDSRecords refuses duplicates; check here so the refusal comes in
-	// this command's order, before anything is registered.
-	if err := (&entities.Domain{}).SetDSRecords(out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return nil
 }
 
 // createYears is the registration period in years: one if none was given,

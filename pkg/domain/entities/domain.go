@@ -14,9 +14,12 @@ const (
 var (
 	ErrDomainNotFound      = errors.New("domain not found")
 	ErrDomainAlreadyExists = errors.New("domain already exists")
-	ErrInvalidDomain       = errors.New("invalid domain")
-	ErrTLDAsDomain         = errors.New("can't create a TLD as a domain")
-	ErrInvalidDomainRoID   = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	// ErrDomainChanged: a write over a domain that another command changed
+	// since it was read.
+	ErrDomainChanged     = errors.New("the domain was changed by another command")
+	ErrInvalidDomain     = errors.New("invalid domain")
+	ErrTLDAsDomain       = errors.New("can't create a TLD as a domain")
+	ErrInvalidDomainRoID = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	// ErrTLDNameDoesNotMatchDomain is returned when TLDName is not the domain's
 	// own parent. The two are redundant state and a drifted pair puts the
 	// domain in one TLD for policy and another for listing, zone building and

@@ -134,15 +134,7 @@ var DomainCreate = &Element{NS: NSDomain, Name: "create", Content: Seq{
 	&Element{NS: NSDomain, Name: "period", Min: Optional, Simple: pLimitType, Attrs: []Attribute{
 		{Name: "unit", Type: pUnitType, Required: true},
 	}},
-	&Element{NS: NSDomain, Name: "ns", Min: Optional, Content: Choice{Alts: []Particle{ // domain:nsType
-		&Element{NS: NSDomain, Name: "hostObj", Max: Unbounded, Simple: labelType},
-		&Element{NS: NSDomain, Name: "hostAttr", Max: Unbounded, Content: Seq{ // domain:hostAttrType
-			&Element{NS: NSDomain, Name: "hostName", Simple: labelType},
-			&Element{NS: NSDomain, Name: "hostAddr", Min: Optional, Max: Unbounded, Simple: addrStringType, Attrs: []Attribute{
-				{Name: "ip", Type: ipType},
-			}},
-		}},
-	}}},
+	domainNS(),
 	&Element{NS: NSDomain, Name: "registrant", Min: Optional, Simple: clIDType},
 	&Element{NS: NSDomain, Name: "contact", Min: Optional, Max: Unbounded, Simple: clIDType, Attrs: []Attribute{
 		{Name: "type", Type: contactAttrType},
@@ -150,7 +142,77 @@ var DomainCreate = &Element{NS: NSDomain, Name: "create", Content: Seq{
 	authInfoType(NSDomain, 0),
 }}
 
-// Models of secDNS-1.1.xsd (RFC 5910) for <secDNS:create>.
+// domainNS is domain:nsType, minOccurs 0.
+func domainNS() *Element {
+	return &Element{NS: NSDomain, Name: "ns", Min: Optional, Content: Choice{Alts: []Particle{
+		&Element{NS: NSDomain, Name: "hostObj", Max: Unbounded, Simple: labelType},
+		&Element{NS: NSDomain, Name: "hostAttr", Max: Unbounded, Content: Seq{ // domain:hostAttrType
+			&Element{NS: NSDomain, Name: "hostName", Simple: labelType},
+			&Element{NS: NSDomain, Name: "hostAddr", Min: Optional, Max: Unbounded, Simple: addrStringType, Attrs: []Attribute{
+				{Name: "ip", Type: ipType},
+			}},
+		}},
+	}}}
+}
+
+var (
+	// domain:statusValueType
+	domainStatusValueType = &Simple{Base: Token, Enum: []string{
+		"clientDeleteProhibited", "clientHold", "clientRenewProhibited", "clientTransferProhibited", "clientUpdateProhibited",
+		"inactive", "ok", "pendingCreate", "pendingDelete", "pendingRenew", "pendingTransfer", "pendingUpdate",
+		"serverDeleteProhibited", "serverHold", "serverRenewProhibited", "serverTransferProhibited", "serverUpdateProhibited",
+	}}
+	// domain:clIDChgType: a clIDType that may be empty, to remove the
+	// registrant.
+	clIDChgType = token(0, 16)
+)
+
+// domainAddRem is domain:addRemType, minOccurs 0.
+func domainAddRem(name string) *Element {
+	return &Element{NS: NSDomain, Name: name, Min: Optional, Content: Seq{
+		domainNS(),
+		&Element{NS: NSDomain, Name: "contact", Min: Optional, Max: Unbounded, Simple: clIDType, Attrs: []Attribute{
+			{Name: "type", Type: contactAttrType},
+		}},
+		&Element{NS: NSDomain, Name: "status", Min: Optional, Max: 11, Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{ // domain:statusType
+			{Name: "s", Type: domainStatusValueType, Required: true},
+			{Name: "lang", Type: language},
+		}},
+	}}
+}
+
+// DomainUpdate is <domain:update>, domain:updateType.
+var DomainUpdate = &Element{NS: NSDomain, Name: "update", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType},
+	domainAddRem("add"),
+	domainAddRem("rem"),
+	&Element{NS: NSDomain, Name: "chg", Min: Optional, Content: Seq{ // domain:chgType
+		&Element{NS: NSDomain, Name: "registrant", Min: Optional, Simple: clIDChgType},
+		&Element{NS: NSDomain, Name: "authInfo", Min: Optional, Content: Choice{Alts: []Particle{ // domain:authInfoChgType
+			&Element{NS: NSDomain, Name: "pw", Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{{Name: "roid", Type: roidType}}},
+			&Element{NS: NSDomain, Name: "ext", Content: Seq{Any{OtherThan: NSEPPCom}}},
+			// Declared without a type: xs:anyType.
+			&Element{NS: NSDomain, Name: "null", AnyType: true},
+		}}},
+	}},
+}}
+
+// DomainRenew is <domain:renew>, domain:renewType.
+var DomainRenew = &Element{NS: NSDomain, Name: "renew", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType},
+	&Element{NS: NSDomain, Name: "curExpDate", Simple: &Simple{Base: Date}},
+	&Element{NS: NSDomain, Name: "period", Min: Optional, Simple: pLimitType, Attrs: []Attribute{
+		{Name: "unit", Type: pUnitType, Required: true},
+	}},
+}}
+
+// DomainDelete is <domain:delete>, domain:sNameType.
+var DomainDelete = &Element{NS: NSDomain, Name: "delete", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType},
+}}
+
+// Models of secDNS-1.1.xsd (RFC 5910) for <secDNS:create> and
+// <secDNS:update>.
 var (
 	unsignedShort = &Simple{Base: UnsignedShort}
 	unsignedByte  = &Simple{Base: UnsignedByte}
@@ -170,18 +232,38 @@ func secDNSKeyData(min, max int) *Element {
 	}}
 }
 
+// secDNSDSData is secDNS:dsDataType, maxOccurs unbounded.
+func secDNSDSData() *Element {
+	return &Element{NS: NSSecDNS, Name: "dsData", Max: Unbounded, Content: Seq{
+		&Element{NS: NSSecDNS, Name: "keyTag", Simple: unsignedShort},
+		&Element{NS: NSSecDNS, Name: "alg", Simple: unsignedByte},
+		&Element{NS: NSSecDNS, Name: "digestType", Simple: unsignedByte},
+		&Element{NS: NSSecDNS, Name: "digest", Simple: &Simple{Base: HexBinary}},
+		secDNSKeyData(Optional, 0),
+	}}
+}
+
+// secDNSDSOrKey is secDNS:dsOrKeyType, as the element name, minOccurs min.
+func secDNSDSOrKey(name string, min int) *Element {
+	return &Element{NS: NSSecDNS, Name: name, Min: min, Content: Seq{
+		&Element{NS: NSSecDNS, Name: "maxSigLife", Min: Optional, Simple: maxSigLifeType},
+		Choice{Alts: []Particle{secDNSDSData(), secDNSKeyData(0, Unbounded)}},
+	}}
+}
+
 // SecDNSCreate is <secDNS:create>, secDNS:dsOrKeyType.
-var SecDNSCreate = &Element{NS: NSSecDNS, Name: "create", Content: Seq{
-	&Element{NS: NSSecDNS, Name: "maxSigLife", Min: Optional, Simple: maxSigLifeType},
-	Choice{Alts: []Particle{
-		&Element{NS: NSSecDNS, Name: "dsData", Max: Unbounded, Content: Seq{ // secDNS:dsDataType
-			&Element{NS: NSSecDNS, Name: "keyTag", Simple: unsignedShort},
-			&Element{NS: NSSecDNS, Name: "alg", Simple: unsignedByte},
-			&Element{NS: NSSecDNS, Name: "digestType", Simple: unsignedByte},
-			&Element{NS: NSSecDNS, Name: "digest", Simple: &Simple{Base: HexBinary}},
-			secDNSKeyData(Optional, 0),
-		}},
+var SecDNSCreate = secDNSDSOrKey("create", 0)
+
+// SecDNSUpdate is <secDNS:update>, secDNS:updateType.
+var SecDNSUpdate = &Element{NS: NSSecDNS, Name: "update", Attrs: []Attribute{{Name: "urgent", Type: boolean}}, Content: Seq{
+	&Element{NS: NSSecDNS, Name: "rem", Min: Optional, Content: Choice{Alts: []Particle{ // secDNS:remType
+		&Element{NS: NSSecDNS, Name: "all", Simple: boolean},
+		secDNSDSData(),
 		secDNSKeyData(0, Unbounded),
+	}}},
+	secDNSDSOrKey("add", Optional),
+	&Element{NS: NSSecDNS, Name: "chg", Min: Optional, Content: Seq{ // secDNS:chgType
+		&Element{NS: NSSecDNS, Name: "maxSigLife", Min: Optional, Simple: maxSigLifeType},
 	}},
 }}
 
@@ -239,8 +321,8 @@ var HostUpdate = &Element{NS: NSHost, Name: "update", Content: Seq{
 // Globals are the declarations wildcards may resolve to: the object
 // commands and extensions the server validates.
 var Globals = []*Element{
-	DomainCheck, DomainInfo, DomainCreate,
+	DomainCheck, DomainInfo, DomainCreate, DomainUpdate, DomainRenew, DomainDelete,
 	HostCheck, HostInfo, HostCreate, HostUpdate, HostDelete,
 	ContactCheck, ContactInfo, ContactCreate, ContactUpdate, ContactDelete,
-	SecDNSCreate,
+	SecDNSCreate, SecDNSUpdate,
 }

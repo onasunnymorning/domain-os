@@ -1230,7 +1230,21 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	if dom.ClID != entities.ClIDType(cmd.ClID) {
 		return nil, errors.Join(entities.ErrInvalidRenewal, entities.ErrInvalidRegistrar)
 	}
+	return svc.renew(ctx, dom, cmd, force, svc.domainRepository.UpdateDomain)
+}
 
+// RenewDomainAsRead renews dom, a domain the caller has read and checked,
+// for years: priced and recorded as RenewDomain does, but written only if
+// the stored domain is still as it was read (else entities.ErrDomainChanged).
+// It is the EPP server's renew.
+func (svc *DomainService) RenewDomainAsRead(ctx context.Context, dom *entities.Domain, years int) (*entities.Domain, error) {
+	cmd := &commands.RenewDomainCommand{Name: dom.Name.String(), ClID: dom.ClID.String(), Years: years}
+	return svc.renew(ctx, dom, cmd, false, svc.domainRepository.UpdateDomainIfUnchanged)
+}
+
+// renew renews dom as cmd says, and saves it with write.
+func (svc *DomainService) renew(ctx context.Context, dom *entities.Domain, cmd *commands.RenewDomainCommand, force bool,
+	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (*entities.Domain, error) {
 	// Get the TLD including the phases
 	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
 	if err != nil {
@@ -1306,7 +1320,7 @@ func (svc *DomainService) RenewDomain(ctx context.Context, cmd *commands.RenewDo
 	}
 
 	// Save the domain
-	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := write(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1465,7 +1479,21 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	if err != nil {
 		return nil, err
 	}
+	return svc.markForDeletion(ctx, dom, svc.domainRepository.UpdateDomain)
+}
 
+// MarkDomainForDeletionAsRead starts the end of life of dom, a domain the
+// caller has read and checked, as MarkDomainForDeletion does, but writes it
+// only if the stored domain is still as it was read (else
+// entities.ErrDomainChanged). It is the EPP server's delete.
+func (svc *DomainService) MarkDomainForDeletionAsRead(ctx context.Context, dom *entities.Domain) (*entities.Domain, error) {
+	return svc.markForDeletion(ctx, dom, svc.domainRepository.UpdateDomainIfUnchanged)
+}
+
+// markForDeletion marks dom for deletion and saves it with write.
+func (svc *DomainService) markForDeletion(ctx context.Context, dom *entities.Domain,
+	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (*entities.Domain, error) {
+	domainName := dom.Name.String()
 	// Get the TLD and phases
 	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
 	if err != nil {
@@ -1501,7 +1529,7 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	}
 
 	// Save the domain
-	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := write(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1513,6 +1541,24 @@ func (svc *DomainService) MarkDomainForDeletion(ctx context.Context, domainName 
 	svc.publishDomainEvent(ctx, "domain.marked_for_deletion", msg, event, nil, updatedDomain, prevState)
 
 	return updatedDomain, nil
+}
+
+// SaveDomainUpdate writes after, an update of before that the caller has
+// checked, if the stored domain is still before (else
+// entities.ErrDomainChanged), and records it as a domain.updated event. It
+// is the EPP server's update.
+func (svc *DomainService) SaveDomainUpdate(ctx context.Context, before, after *entities.Domain, command interface{}) (*entities.Domain, error) {
+	event, err := entities.NewDomainLifeCycleEvent(after.ClID.String(), "", after.Name.ParentDomain(), after.Name.String(), 0, entities.TransactionTypeUpdate)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := svc.domainRepository.UpdateDomainIfUnchanged(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	event.DomainRoID = updated.RoID.String()
+	svc.publishDomainEvent(ctx, "domain.updated", fmt.Sprintf("Domain %s updated by %s", updated.Name, updated.ClID), event, command, updated, before)
+	return updated, nil
 }
 
 // ExpireDomain expires a domain by its name. It retrieves the domain,

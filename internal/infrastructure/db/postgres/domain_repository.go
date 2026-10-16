@@ -145,6 +145,104 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 	return ToDomain(dbDomain, dr.repository), nil
 }
 
+// UpdateDomainIfUnchanged saves the domain, its nameservers and its DS
+// records in one transaction, and returns the domain as stored.
+//
+// d.UpdatedAt is the version the caller read: the domain is written only if
+// the stored domain still has it and the same sponsor, so two commands that
+// read the same domain cannot each overwrite the other's change; the second
+// is ErrDomainChanged, to be read and checked again. A domain deleted since
+// it was read is ErrDomainNotFound, never written back.
+//
+// The nameserver links are replaced with d.Hosts. Every host linked or
+// unlinked has its linked and in-bailiwick flags recomputed from its links,
+// and its version advanced, so a host update that read it before cannot
+// write the old flags back.
+func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+	read := d.UpdatedAt
+	dbDomain := ToDBDomain(d)
+	dbDomain.UpdatedAt = time.Now().UTC()
+	hostIDs := make([]int64, 0, len(d.Hosts))
+	for _, h := range d.Hosts {
+		id, err := h.RoID.Int64()
+		if err != nil {
+			return nil, err
+		}
+		hostIDs = append(hostIDs, id)
+	}
+	stored := &Domain{}
+	err := dr.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := written(updateIfAt(tx.Model(&Domain{}).Where("ro_id = ? AND cl_id = ?", dbDomain.RoID, dbDomain.ClID), read).
+			Select("*").Omit("ro_id", "created_at", "Hosts", "DSRecords").Updates(dbDomain)); err != nil {
+			return err
+		}
+		var before []int64
+		if err := tx.Raw("SELECT host_ro_id FROM domain_hosts WHERE domain_ro_id = ?", dbDomain.RoID).Scan(&before).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM domain_hosts WHERE domain_ro_id = ?", dbDomain.RoID).Error; err != nil {
+			return err
+		}
+		for _, id := range hostIDs {
+			if err := tx.Exec("INSERT INTO domain_hosts (domain_ro_id, host_ro_id) VALUES (?, ?)", dbDomain.RoID, id).Error; err != nil {
+				return err
+			}
+		}
+		if affected := unionIDs(before, hostIDs); len(affected) > 0 {
+			if err := tx.Exec(`UPDATE hosts h SET
+				linked = EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.host_ro_id = h.ro_id),
+				in_bailiwick = EXISTS (SELECT 1 FROM domain_hosts dh JOIN domains d ON d.ro_id = dh.domain_ro_id
+					WHERE dh.host_ro_id = h.ro_id AND substring(h.name from position('.' in h.name) + 1) = d.name),
+				updated_at = ?
+				WHERE h.ro_id IN ?`, dbDomain.UpdatedAt, affected).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("domain_ro_id = ?", dbDomain.RoID).Delete(&DomainDSRecord{}).Error; err != nil {
+			return err
+		}
+		if len(dbDomain.DSRecords) > 0 {
+			for i := range dbDomain.DSRecords {
+				dbDomain.DSRecords[i].ID = 0
+				dbDomain.DSRecords[i].DomainRoID = dbDomain.RoID
+			}
+			if err := tx.Create(&dbDomain.DSRecords).Error; err != nil {
+				return err
+			}
+		}
+		// Read back in the transaction, which holds the row: the result is
+		// this update, not a later one.
+		return tx.Preload("Hosts").Preload("DSRecords", orderDS).First(stored, dbDomain.RoID).Error
+	})
+	switch {
+	case errors.Is(err, errNotWritten):
+		var n int64
+		if err := dr.db.WithContext(ctx).Model(&Domain{}).Where("ro_id = ?", dbDomain.RoID).Count(&n).Error; err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, entities.ErrDomainNotFound
+		}
+		return nil, entities.ErrDomainChanged
+	case err != nil:
+		return nil, err
+	}
+	return ToDomain(stored, dr.repository), nil
+}
+
+// unionIDs is the IDs in a or b, each once.
+func unionIDs(a, b []int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	for _, id := range append(append([]int64{}, a...), b...) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // DeleteDomainByID deletes a domain by its roid, within scope. A domain that
 // does not exist, or that is in a TLD outside the scope, is ErrDomainNotFound.
 func (dr *DomainRepository) DeleteDomainByID(ctx context.Context, scope entities.RegistryScope, id int64) error {
