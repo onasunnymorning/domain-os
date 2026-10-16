@@ -241,12 +241,12 @@ func (s *EPPHostService) update(ctx context.Context, scope entities.RegistrarClI
 	}
 	for _, st := range slices.Concat(cmd.RemoveStatuses, cmd.AddStatuses) {
 		if !slices.Contains(clientHostStatuses, st) {
-			return nil, fmt.Errorf("%w: %s", entities.ErrEPPHostStatusNotClient, st)
+			return nil, fmt.Errorf("%w: %s; a client sets only %s", entities.ErrEPPStatusNotClient, st, strings.Join(clientHostStatuses, " and "))
 		}
 	}
 	switch {
 	case host.Status.IsPending():
-		return nil, fmt.Errorf("%w: %s", entities.ErrEPPHostPending, host.Name)
+		return nil, fmt.Errorf("%w: %s", entities.ErrEPPObjectPending, host.Name)
 	case host.Status.ServerUpdateProhibited:
 		return nil, fmt.Errorf("%w: serverUpdateProhibited", entities.ErrHostUpdateProhibited)
 	case host.Status.ClientUpdateProhibited && !slices.Contains(cmd.RemoveStatuses, entities.HostStatusClientUpdateProhibited):
@@ -334,16 +334,29 @@ func (s *EPPHostService) checkRename(ctx context.Context, scope entities.Registr
 
 // Delete deletes the registrar's host object, unless it has a pending
 // action or a delete prohibition, or is a nameserver of a domain.
+//
+// The host is deleted only if it is still the one checked: the same sponsor
+// and version. If another command changed it in between, the delete is read
+// and checked again, up to updateAttempts times.
 func (s *EPPHostService) Delete(ctx context.Context, scope entities.RegistrarClID, name string) error {
+	for attempt := 1; ; attempt++ {
+		err := s.delete(ctx, scope, name)
+		if !errors.Is(err, entities.ErrHostChanged) || attempt == updateAttempts {
+			return err
+		}
+	}
+}
+
+func (s *EPPHostService) delete(ctx context.Context, scope entities.RegistrarClID, name string) error {
 	host, err := s.sponsored(ctx, scope, name)
 	if err != nil {
 		return err
 	}
 	switch {
 	case host.Status.IsPending():
-		return fmt.Errorf("%w: %s", entities.ErrEPPHostPending, host.Name)
+		return fmt.Errorf("%w: %s", entities.ErrEPPObjectPending, host.Name)
 	case !host.CanBeDeleted():
-		return fmt.Errorf("%w: %s", entities.ErrEPPHostDeleteProhibited, host.Name)
+		return fmt.Errorf("%w: %s", entities.ErrEPPDeleteProhibited, host.Name)
 	}
 	links, err := s.links(ctx, host)
 	if err != nil {
@@ -352,11 +365,7 @@ func (s *EPPHostService) Delete(ctx context.Context, scope entities.RegistrarClI
 	if links > 0 {
 		return fmt.Errorf("%w: %s", entities.ErrEPPHostLinked, host.Name)
 	}
-	id, err := host.RoID.Int64()
-	if err != nil {
-		return err
-	}
-	if err := s.hosts.DeleteHostByRoid(ctx, id); err != nil {
+	if err := s.hosts.DeleteHostIfUnchanged(ctx, host); err != nil {
 		return fmt.Errorf("delete host %s: %w", host.Name, err)
 	}
 	publishHostEvent(ctx, s.events, "host.deleted", host.RoID.String(), fmt.Sprintf("Host %s deleted", host.Name), nil, nil, host)
@@ -471,14 +480,14 @@ func applyClientStatuses(host *entities.Host, remove, add []string) error {
 		if f := flag(st); *f {
 			*f = false
 		} else {
-			return fmt.Errorf("%w: %s", entities.ErrEPPHostStatusNotSet, st)
+			return fmt.Errorf("%w: %s", entities.ErrEPPStatusNotSet, st)
 		}
 	}
 	for _, st := range add {
 		if f := flag(st); !*f {
 			*f = true
 		} else {
-			return fmt.Errorf("%w: %s", entities.ErrEPPHostStatusAlreadySet, st)
+			return fmt.Errorf("%w: %s", entities.ErrEPPStatusAlreadySet, st)
 		}
 	}
 	host.SetOKIfNeeded()

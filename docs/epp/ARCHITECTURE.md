@@ -11,7 +11,7 @@
 ## Where it stands today
 
 Transport, sessions and identity are in place (Phases 1 to 3), and so are the command pipeline and the first domain commands (Phase 4). The command surface is still small:
-- It binds `<hello>`, login, logout, domain check, info and create, and every host command, all against the registry; the commands on sponsored objects enforce sponsorship and accreditation (ADR 0006). DNSSEC DS data is taken on domain create and returned on info, and RGP statuses are reported on info. Every other RFC 5730 command is answered 2101 (unimplemented).
+- It binds `<hello>`, login, logout, domain check, info and create, and every host and contact command, all against the registry; the commands on sponsored objects enforce sponsorship and accreditation (ADR 0006). DNSSEC DS data is taken on domain create and returned on info, and RGP statuses are reported on info. Every other RFC 5730 command is answered 2101 (unimplemented).
 - Every command is validated against the EPP schemas, checked against the services negotiated at login, passed through the policy hook, and recorded in the audit log (Phase 4a).
 - Logins are authenticated (Phase 2): allowed network, pinned certificate and password, with a lockout per (login, source address).
 - Sessions are leases in a cluster-wide registry with caps per source address, registrar and login, and operators can list and end them (Phase 3).
@@ -173,7 +173,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | 4c | DNSSEC: DS records on the domain (validated, stored, published with the TLD's delegations, kept from escrow imports), RFC 5910 DS data on create and info, the accepted algorithms and digest types, and the DS cap | **Done**. RDAP and escrow export do not exist yet; they carry DS records when they are built |
 | 4d | ROID repository ID from configuration (`ROID_REPOSITORY_ID`) instead of the code constant `APEX`: one per installation, appended to the stored number on read, recorded on first start and guarded against change; ROIDs always generated on create and import ([ADR 0017](../adr/0017-roid-repository-id.md)) | **Done**. Registering the ID with IANA is on the operator's RST checklist |
 | 4e | Host commands (RFC 5732): check, info, create, update (addresses, client statuses, rename) and delete. Host objects belong to a registrar; only the sponsor of an internal host's superordinate domain creates or renames a host under it; only internal hosts have addresses, and they must be public unicast; a nameserver is not deleted, and an internal one keeps an address | **Done** |
-| 4f | Contact commands (RFC 5733): check, info, create, update, delete, and refusing to delete a contact in use | Planned |
+| 4f | Contact commands (RFC 5733): check, info, create, update (statuses, partial postal addresses, phones, email, authorization information, disclosure) and delete. IDs unique in the registry; info, update and delete only for the sponsor; phone extensions refused, not stored; country codes checked against ISO 3166-1; a contact in use is not deleted | **Done** |
 | 4g | Domain update (statuses, nameservers, contacts, DNSSEC), renew and delete (pendingDelete, RGP restore) | Planned |
 | 4h | Domain transfer (request, approve, reject, cancel, query), poll messages, RFC 9154 authorization information | Planned |
 | 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |

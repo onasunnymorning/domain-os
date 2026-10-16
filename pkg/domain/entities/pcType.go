@@ -1,6 +1,9 @@
 package entities
 
-import "errors"
+import (
+	"errors"
+	"unicode/utf8"
+)
 
 const (
 	PCTYPE_MAX_LENGTH = 16
@@ -21,7 +24,7 @@ type PCType string
 
 // Validate checks if the PCType does not exceed the maximum length
 func (p *PCType) Validate() error {
-	if len(*p) <= PCTYPE_MAX_LENGTH {
+	if utf8.RuneCountInString(string(*p)) <= PCTYPE_MAX_LENGTH { // characters, as the schema counts them
 		return nil
 	}
 	return ErrInvalidPCType

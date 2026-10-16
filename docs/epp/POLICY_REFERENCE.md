@@ -131,7 +131,7 @@ Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--prot
 | A command on an object service the session did not ask for | 2307 |
 | A command carrying an extension the session did not ask for | 2103 |
 
-The greeting offers the domain, contact and host object services; contact commands are not bound yet and are answered 2101. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
+The greeting offers the domain, contact and host object services. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -211,7 +211,7 @@ A name under a domain that is not registered is available, as RST epp-05 require
 
 **`<host:info>`.** The name, ROID (ending in `ROID_REPOSITORY_ID`), statuses, addresses with their IP version, sponsor and creator, creation date, and the last updater and update date once updated.
 
-**`<host:create>`, `<host:update>` and `<host:delete>`.** Each writes a `host.created`, `host.updated` or `host.deleted` event with the session's login as actor. A create writes the host and its addresses in one insert, and an update writes all its changes in one transaction or none. An update is checked and written on one reading of the host: if another command changes the host in between, the write is refused and the update is read and checked again, up to three times, so no change is overwritten by a command that never saw it. A rename recomputes whether the host is a nameserver of its parent domain, which decides whether its addresses are published as glue. Each command applies its rules in the order below, and reports the first that fails:
+**`<host:create>`, `<host:update>` and `<host:delete>`.** Each writes a `host.created`, `host.updated` or `host.deleted` event with the session's login as actor. A create writes the host and its addresses in one insert, and an update writes all its changes in one transaction or none. An update is checked and written on one reading of the host: if another command changes the host in between, the write is refused and the update is read and checked again, up to three times, so no change is overwritten by a command that never saw it. A delete likewise removes the host only if it is still the one checked, the same sponsor and version, so a delete prohibition set meanwhile is honoured. A rename recomputes whether the host is a nameserver of its parent domain, which decides whether its addresses are published as glue. Each command applies its rules in the order below, and reports the first that fails:
 
 `<host:create>`:
 1. A name that is not a valid host name, an address that does not parse, or one that is not of the IP version its `ip` attribute names: 2005.
@@ -236,6 +236,40 @@ A name under a domain that is not registered is available, as RST epp-05 require
 1. A name that is not a valid host name: 2005. Another registrar's host: 2201. A host nobody has: 2303.
 2. A host with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304.
 3. A host that is a nameserver of a domain: 2305.
+
+**Contact objects** (RFC 5733). This registry keeps contacts (RST's `general.registryDataModel` is not `minimum`):
+- A contact ID is unique in the registry, whichever registrar sponsors it, so `<contact:check>` gives every registrar the same answer: `In use` if any contact has the ID, `Invalid contact ID` if it is not one.
+- `<contact:info>`, `<contact:update>` and `<contact:delete>` are answered only for the sponsor (ADR 0006). Anyone else gets 2201, with or without the contact's authorization information, and is not told who the sponsor is. A contact nobody has is 2303.
+- `<contact:info>` returns the ID, ROID (ending in `ROID_REPOSITORY_ID`), statuses (`linked` from the domains that use the contact now), postal addresses, phone numbers, email, sponsor and creator, the dates, the authorization information, and a `<contact:disclose flag="1">` listing what the contact discloses, when it discloses anything. By default it discloses nothing.
+- **Phone extensions are not stored.** A `<contact:voice>` or `<contact:fax>` with an `x` attribute is refused with 2102. The registry collects no more personal data than it needs. For an RST run, declare `epp.supportedContactElements` as `org`, `street`, `sp`, `pc`, `voice` and `fax`, without `voice:ext` and `fax:ext`.
+- Values are kept as the schema delivers them; postal lines are not trimmed of a trailing dot. A country code must be an ISO 3166-1 alpha-2 code (or `XK`), stored in upper case. An email address must be a single address, without a display name, whose local part is at most 64 characters and whose domain has at least two labels. An `int` postal address is in 7-bit ASCII (RFC 5733 §2.4).
+- A client sets only `clientDeleteProhibited`, `clientTransferProhibited` and `clientUpdateProhibited`.
+- Create, update and delete write `contact.created`, `contact.updated` and `contact.deleted` events with the session's login as actor; the authorization information in them is redacted. An update is checked and written on one reading of the contact, and read and checked again, up to three times, if another command changes it in between. A delete removes the contact only if it is still the one checked, the same ROID, sponsor and version: a contact deleted and created again with the ID by another registrar meanwhile is not deleted.
+- A contact ID is taken as the schema delivers it: `abc` and `abc.` are two IDs. Postal lines are limited to 255 characters, not bytes.
+- The disclosure flags are stored in `disclose_*` columns of their own. Until this release only the address flags were stored; the migrate job copies them across once (`migrateContactDisclose`), and the old `addr_int` and `addr_loc` columns are left for a later release to drop.
+
+`<contact:create>`, checking the elements in the order the frame gives them:
+1. The ID: 2005 if it is not a valid ID.
+2. Each postal address: 2005 if a line or the country code is not valid; 2306 if it is a second of its type.
+3. `<contact:voice>`, then `<contact:fax>`: 2306 if empty (leave the element out instead); 2102 with an extension; 2005 if not a valid number.
+4. The email address: 2005 if not valid.
+5. The authorization information: 2306 if it breaks the registry's rules.
+6. An ID in use: 2302.
+
+`<contact:update>`, which removes statuses, then adds them, then changes the values given:
+1. No `<contact:add>`, `<contact:rem>` or `<contact:chg>` (RFC 5733 §3.2.5): 2003.
+2. Another registrar's contact: 2201. A contact nobody has: 2303.
+3. A status the client does not control: 2306.
+4. A contact with a pending action, with `serverUpdateProhibited`, or with `clientUpdateProhibited` unless the update removes it: 2304.
+5. Removing a status the contact does not have, or adding one it has: 2306.
+6. Two postal addresses of one type: 2306. A postal address of a type the contact does not have yet, without a name and an address: 2003. Only the parts of a postal address that are given change; an empty `<contact:org>` removes the organisation.
+7. A value that is not valid: 2005, or 2102 for a phone extension. An empty `<contact:voice>` or `<contact:fax>` removes the number.
+8. Authorization information that breaks the registry's rules: 2306.
+
+`<contact:delete>`:
+1. Another registrar's contact: 2201. A contact nobody has: 2303.
+2. A contact with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304.
+3. A contact a domain uses, as registrant or as admin, tech or billing contact: 2305.
 
 **Audit log.** Every command and its response is a row of `epp_transactions`: svTRID, clTRID, session, node, registrar, login (for a `<login>`, the login presented, accepted or not), source address, command, the object identifiers it names, result code, receipt time, duration, and the frames.
 - Frames are redacted: the text of every `<pw>` and `<newPW>`, and every text and attribute value inside every `<authInfo>`, is replaced with `[redacted]`. A frame that could not be parsed is recorded without its request, which could not be redacted. The login ID and object identifiers are read as soon as a command passes validation, so a command the policy refuses is recorded with them.
@@ -353,7 +387,7 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 
 | Cap | Default | On breach |
 |---|---|---|
-| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for `domain:check` and `host:check` as `EPP_MAX_CHECK_NAMES` |
+| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for all three as `EPP_MAX_CHECK_NAMES` |
 | Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306. In place for `domain:create` |
 | DS records per domain | 8 | 2306. In place for `domain:create` (`services.MaxDSRecords`) |
 

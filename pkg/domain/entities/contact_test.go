@@ -417,7 +417,7 @@ func TestAddContactPostalInfo(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
-	a, _ := NewAddress("London", "UK")
+	a, _ := NewAddress("London", "GB")
 	pi, _ := NewContactPostalInfo("int", "Some Name", a)
 	// Add a valid 'int' postal info
 	err = c.AddPostalInfo(pi)
@@ -464,7 +464,7 @@ func TestRemoveContactPostalInfo(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
-	a, _ := NewAddress("London", "UK")
+	a, _ := NewAddress("London", "GB")
 	pi, _ := NewContactPostalInfo("int", "Some Name", a)
 	// Add a valid 'int' postal info
 	_ = c.AddPostalInfo(pi) // test setup; a failure here surfaces in the assertions below

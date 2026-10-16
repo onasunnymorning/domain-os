@@ -619,6 +619,257 @@ func TestRST_epp17_ServicePortConsistency(t *testing.T) {
 	})
 }
 
+// --- epp-06 … epp-10: contact objects -------------------------------------
+
+// This registry keeps contacts (general.registryDataModel is not minimum),
+// so the contact cases apply. The tests follow the cases' data providers
+// (epp-07-data, epp-09-postalinfo-data, epp-09-other-data,
+// epp-09-status-data). The registry stores no phone extensions, so the
+// operator declares epp.supportedContactElements as org, street, sp, pc,
+// voice and fax, without voice:ext and fax:ext; the rows that set them are
+// covered by the refusal of an extension. registrar2-c1, sponsored by
+// registrar2, stands in for epp.registeredContacts.
+
+// rstContactID stands in for an {AUTO} contact ID: 3 to 16 characters.
+func rstContactID() string {
+	id := rstRandChars()
+	if len(id) > 16 {
+		id = id[len(id)-16:]
+	}
+	return "c" + id[1:]
+}
+
+// rstAutoContact is the first row of epp-07-data: every supported element,
+// with realistic values.
+func rstAutoContact(id string) string {
+	return contactCreateXML(id, contactOpts{
+		postalInfo: postalInfoXML("int", "Ada Lovelace", "Analytical Engines Ltd.", "London", "GB", "12 St James's Square"),
+		voice:      `<contact:voice>+44.2071234567</contact:voice>`,
+		fax:        `<contact:fax>+44.2071234568</contact:fax>`,
+		email:      "ada@example.com",
+	})
+}
+
+func TestRST_epp06_ContactCheck(t *testing.T) {
+	_, _, c := objectServer(t)
+	avail := func(t *testing.T, id string) string {
+		t.Helper()
+		resp := c.roundTrip(contactCheckXML(id))
+		if code := code(resp); code != "1000" {
+			return code
+		}
+		el := resp.FindElement("//resData/chkData/cd/id")
+		require.NotNil(t, el, "a <contact:id> for the ID checked")
+		return el.SelectAttrValue("avail", "")
+	}
+	t.Run("epp-06 syntactically invalid IDs are unavailable or refused", func(t *testing.T) {
+		for _, id := range []string{"", "ab", strings.Repeat("x", 17)} {
+			assert.Contains(t, []string{"0", "false", "2001", "2004", "2005"}, avail(t, id), "%q", id)
+		}
+	})
+	t.Run("epp-06 registered IDs are unavailable", func(t *testing.T) {
+		assert.Equal(t, "0", avail(t, "registrar2-c1"))
+		assert.Equal(t, "0", avail(t, "registrar1-c1"))
+	})
+	t.Run("epp-06 unregistered IDs are available", func(t *testing.T) {
+		assert.Equal(t, "1", avail(t, rstContactID()))
+	})
+}
+
+func TestRST_epp07_ContactCreate(t *testing.T) {
+	_, _, c := objectServer(t)
+	create := func(frame string) string { return code(c.roundTrip(frame)) }
+
+	id := rstContactID()
+	t.Run("epp-07 a contact with every supported element accepted", func(t *testing.T) {
+		assert.Equal(t, "1000", create(rstAutoContact(id)))
+	})
+	t.Run("epp-07 info confirms the stored values", func(t *testing.T) {
+		info := c.roundTrip(contactInfoXML(id))
+		requireCode(t, info, "1000")
+		assert.Equal(t, "Ada Lovelace", text(info, `//infData/postalInfo[@type='int']/name`))
+		assert.Equal(t, "Analytical Engines Ltd.", text(info, `//infData/postalInfo[@type='int']/org`))
+		assert.Equal(t, "12 St James's Square", text(info, `//infData/postalInfo[@type='int']/addr/street`))
+		assert.Equal(t, "London", text(info, `//infData/postalInfo[@type='int']/addr/city`))
+		assert.Equal(t, "VA", text(info, `//infData/postalInfo[@type='int']/addr/sp`))
+		assert.Equal(t, "20166", text(info, `//infData/postalInfo[@type='int']/addr/pc`))
+		assert.Equal(t, "GB", text(info, `//infData/postalInfo[@type='int']/addr/cc`))
+		assert.Equal(t, "+44.2071234567", text(info, "//infData/voice"))
+		assert.Equal(t, "+44.2071234568", text(info, "//infData/fax"))
+		assert.Equal(t, "ada@example.com", text(info, "//infData/email"))
+	})
+
+	long := strings.Repeat("x", 256)
+	pi := func(typ, name, org, city, cc string, streets ...string) contactOpts {
+		return contactOpts{postalInfo: postalInfoXML(typ, name, org, city, cc, streets...)}
+	}
+	for _, row := range []struct {
+		name  string
+		frame string
+	}{
+		{"an empty ID", contactCreateXML("", contactOpts{})},
+		{"an ID of 17 characters", contactCreateXML(strings.Repeat("a", 17), contactOpts{})},
+		{"postal info type tni", contactCreateXML(rstContactID(), pi("tni", "Ada", "", "London", "GB"))},
+		{"an empty postal info type", contactCreateXML(rstContactID(), pi("", "Ada", "", "London", "GB"))},
+		{"an empty name", contactCreateXML(rstContactID(), pi("int", "", "", "London", "GB"))},
+		{"an org of 256 characters", contactCreateXML(rstContactID(), pi("int", "Ada", long, "London", "GB"))},
+		{"an empty city", contactCreateXML(rstContactID(), pi("int", "Ada", "", "", "GB"))},
+		{"an empty country code", contactCreateXML(rstContactID(), pi("int", "Ada", "", "London", ""))},
+		{"an empty voice number", contactCreateXML(rstContactID(), contactOpts{voice: `<contact:voice/>`})},
+		{"an empty email", contactCreateXML(rstContactID(), contactOpts{email: " "})},
+		{"a street of 256 characters", contactCreateXML(rstContactID(), pi("int", "Ada", "", "London", "GB", long))},
+		{"a city of 256 characters", contactCreateXML(rstContactID(), pi("int", "Ada", "", long, "GB"))},
+		{"country code XX", contactCreateXML(rstContactID(), pi("int", "Ada", "", "London", "XX"))},
+		{"country code U", contactCreateXML(rstContactID(), pi("int", "Ada", "", "London", "U"))},
+		{"country code USA", contactCreateXML(rstContactID(), pi("int", "Ada", "", "London", "USA"))},
+	} {
+		t.Run("epp-07 refused: "+row.name, func(t *testing.T) {
+			assert.True(t, isRefusal(create(row.frame)))
+		})
+	}
+	invalidPhones := []string{"+12345", "+1111.1", "55", "+1.", "+1.123456789012345", "+1.a", "+a.1"}
+	t.Run("epp-07 refused: invalid voice numbers", func(t *testing.T) {
+		for _, v := range invalidPhones {
+			assert.True(t, isRefusal(create(contactCreateXML(rstContactID(), contactOpts{voice: `<contact:voice>` + v + `</contact:voice>`}))), v)
+		}
+	})
+	t.Run("epp-07 refused: invalid fax numbers", func(t *testing.T) {
+		for _, v := range invalidPhones {
+			assert.True(t, isRefusal(create(contactCreateXML(rstContactID(), contactOpts{fax: `<contact:fax>` + v + `</contact:fax>`}))), v)
+		}
+	})
+	t.Run("epp-07 refused: invalid email addresses", func(t *testing.T) {
+		for _, e := range []string{"example", "example.example", "@example.com", "@", strings.Repeat("a", 65) + "@example.com"} {
+			assert.True(t, isRefusal(create(contactCreateXML(rstContactID(), contactOpts{email: e}))), e)
+		}
+	})
+	t.Run("epp-07 refused: a phone extension, which is not a supported element", func(t *testing.T) {
+		assert.True(t, isRefusal(create(contactCreateXML(rstContactID(), contactOpts{voice: `<contact:voice x="1234">+44.2071234567</contact:voice>`}))))
+	})
+}
+
+func TestRST_epp08_ContactAccessControl(t *testing.T) {
+	_, ts, c := objectServer(t)
+	id := rstContactID()
+	requireCode(t, c.roundTrip(rstAutoContact(id)), "1000")
+	other := registrar2(t, ts)
+	t.Run("epp-08 <info> by a non-sponsor refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(other.roundTrip(contactInfoXML(id)))))
+	})
+	t.Run("epp-08 <update> by a non-sponsor refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(other.roundTrip(contactUpdateXML(id, "<contact:chg><contact:email>x@example.com</contact:email></contact:chg>")))))
+		assert.True(t, isRefusal(code(other.roundTrip(contactUpdateXML(id, "<contact:add>"+contactStatusXML("clientDeleteProhibited")+"</contact:add>")))))
+	})
+}
+
+func TestRST_epp09_ContactUpdate(t *testing.T) {
+	_, _, c := objectServer(t)
+	id := rstContactID()
+	requireCode(t, c.roundTrip(rstAutoContact(id)), "1000")
+	update := func(changes string) string { return code(c.roundTrip(contactUpdateXML(id, changes))) }
+	chg := func(inner string) string { return "<contact:chg>" + inner + "</contact:chg>" }
+	long := strings.Repeat("x", 256)
+
+	t.Run("epp-09 postal info (epp-09-postalinfo-data)", func(t *testing.T) {
+		for _, typ := range []string{"int", "loc"} {
+			assert.Equal(t, "1000", update(chg(postalInfoXML(typ, "Charles Babbage", "Difference Engines Ltd.", "London", "GB", "1 Dorset Street"))), typ)
+		}
+		for _, row := range []struct{ name, frame string }{
+			{"type tni", postalInfoXML("tni", "Charles", "", "London", "GB")},
+			{"an empty type", postalInfoXML("", "Charles", "", "London", "GB")},
+			{"an empty name", postalInfoXML("int", "", "", "London", "GB")},
+			{"an org of 256 characters", postalInfoXML("int", "Charles", long, "London", "GB")},
+			{"an empty city", postalInfoXML("int", "Charles", "", "", "GB")},
+			{"an empty country code", postalInfoXML("int", "Charles", "", "London", "")},
+			{"a street of 256 characters", postalInfoXML("int", "Charles", "", "London", "GB", long)},
+			{"a city of 256 characters", postalInfoXML("int", "Charles", "", long, "GB")},
+			{"country code XX", postalInfoXML("int", "Charles", "", "London", "XX")},
+			{"country code U", postalInfoXML("int", "Charles", "", "London", "U")},
+			{"country code USA", postalInfoXML("int", "Charles", "", "London", "USA")},
+		} {
+			assert.True(t, isRefusal(update(chg(row.frame))), row.name)
+		}
+	})
+	t.Run("epp-09 voice, fax and email (epp-09-other-data)", func(t *testing.T) {
+		assert.Equal(t, "1000", update(chg(`<contact:voice>+44.2079876543</contact:voice><contact:fax>+44.2079876544</contact:fax><contact:email>charles@example.com</contact:email>`)))
+		for _, v := range []string{"+12345", "+1111.1", "55", "+1.", "+1.123456789012345", "+1.a", "+a.1"} {
+			assert.True(t, isRefusal(update(chg(`<contact:voice>`+v+`</contact:voice>`))), "voice %s", v)
+			assert.True(t, isRefusal(update(chg(`<contact:fax>`+v+`</contact:fax>`))), "fax %s", v)
+		}
+		for _, e := range []string{"example", "example.example", "@example.com", "@", strings.Repeat("a", 65) + "@example.com"} {
+			assert.True(t, isRefusal(update(chg(`<contact:email>`+e+`</contact:email>`))), "email %s", e)
+		}
+	})
+	t.Run("epp-09 statuses (epp-09-status-data)", func(t *testing.T) {
+		for i, row := range []struct {
+			add    bool
+			status string
+			pass   bool
+		}{
+			{true, "clientUpdateProhibited", true},
+			{true, "clientUpdateProhibited", false},
+			{false, "clientUpdateProhibited", true},
+			{true, "clientDeleteProhibited", true},
+			{true, "clientDeleteProhibited", false},
+			{true, "clientHold", false},
+			{true, "linked", false},
+			{true, "ok", false},
+			{true, "pendingCreate", false},
+			{true, "pendingDelete", false},
+			{true, "pendingTransfer", false},
+			{true, "pendingUpdate", false},
+			{true, "serverDeleteProhibited", false},
+			{true, "serverUpdateProhibited", false},
+			{true, "invalidStatusCode", false},
+			{false, "clientUpdateProhibited", false},
+			{false, "clientDeleteProhibited", true},
+			{false, "clientDeleteProhibited", false},
+			{false, "ok", false},
+			{false, "pendingCreate", false},
+			{false, "pendingDelete", false},
+			{false, "pendingTransfer", false},
+			{false, "pendingUpdate", false},
+			{false, "serverDeleteProhibited", false},
+			{false, "serverUpdateProhibited", false},
+			{false, "invalidStatusCode", false},
+		} {
+			el := "<contact:rem>" + contactStatusXML(row.status) + "</contact:rem>"
+			if row.add {
+				el = "<contact:add>" + contactStatusXML(row.status) + "</contact:add>"
+			}
+			got := update(el)
+			if row.pass {
+				assert.Equal(t, "1000", got, "row %d: add=%v %s", i+1, row.add, row.status)
+			} else {
+				assert.True(t, isRefusal(got), "row %d: add=%v %s: got %s", i+1, row.add, row.status, got)
+			}
+		}
+	})
+	t.Run("epp-09 info confirms the stored values", func(t *testing.T) {
+		info := c.roundTrip(contactInfoXML(id))
+		requireCode(t, info, "1000")
+		for _, typ := range []string{"int", "loc"} {
+			assert.Equal(t, "Charles Babbage", text(info, `//infData/postalInfo[@type='`+typ+`']/name`))
+			assert.Equal(t, "Difference Engines Ltd.", text(info, `//infData/postalInfo[@type='`+typ+`']/org`))
+		}
+		assert.Equal(t, "+44.2079876543", text(info, "//infData/voice"))
+		assert.Equal(t, "charles@example.com", text(info, "//infData/email"))
+		assert.Equal(t, []string{"ok"}, statuses(info))
+	})
+}
+
+func TestRST_epp10_ContactDelete(t *testing.T) {
+	_, _, c := objectServer(t)
+	id := rstContactID()
+	requireCode(t, c.roundTrip(rstAutoContact(id)), "1000")
+	t.Run("epp-10 <delete> is 1000 or 1001", func(t *testing.T) {
+		assert.Contains(t, []string{"1000", "1001"}, code(c.roundTrip(contactDeleteXML(id))))
+	})
+	t.Run("epp-10 info confirms the contact is gone", func(t *testing.T) {
+		requireCode(t, c.roundTrip(contactInfoXML(id)), "2303")
+	})
+}
+
 // --- epp-05, epp-11 … epp-13, epp-15, epp-23 … epp-27: host objects -------
 
 // This registry uses host objects (epp.hostModel = objects), so the host
@@ -639,7 +890,7 @@ var rstRandSeq atomic.Int64
 func isRefusal(code string) bool { return strings.HasPrefix(code, "2") }
 
 func TestRST_epp05_HostCheck(t *testing.T) {
-	creds, _, c := hostServer(t)
+	creds, _, c := objectServer(t)
 	// epp.registeredNameservers: one host subordinate to each TLD in the
 	// set, sponsored by another registrar.
 	creds.domains.registry.AddHost("ns1.registered.test", "registrar2", testV4)
@@ -668,7 +919,7 @@ func TestRST_epp05_HostCheck(t *testing.T) {
 }
 
 func TestRST_epp11_HostCreate(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	create := func(name string, addrs ...string) string { return code(c.roundTrip(hostCreateXML(name, addrs...))) }
 
 	external := "ns1.epp-11.rst." + rstRandChars() + ".icann"
@@ -719,7 +970,7 @@ func TestRST_epp11_HostCreate(t *testing.T) {
 }
 
 func TestRST_epp12_HostAccessControl(t *testing.T) {
-	_, ts, c := hostServer(t)
+	_, ts, c := objectServer(t)
 	parent := rstRandChars() + ".test"
 	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
 	internal, external := "ns1."+parent, "ns1.epp-12.rst."+rstRandChars()+".icann"
@@ -741,7 +992,7 @@ func TestRST_epp12_HostAccessControl(t *testing.T) {
 }
 
 func TestRST_epp13_HostUpdate(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	parent := rstRandChars() + ".test"
 	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
 	host := "ns1.epp-13.rst." + parent
@@ -838,7 +1089,7 @@ func TestRST_epp13_HostUpdate(t *testing.T) {
 }
 
 func TestRST_epp15_ObjectIntegrity(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	host := "ns1.epp-15.rst." + rstRandChars() + ".icann"
 	requireCode(t, c.roundTrip(hostCreateXML(host)), "1000")
 	requireCode(t, c.roundTrip(createXML(rstRandChars()+".test", createOpts{ns: `<domain:ns><domain:hostObj>` + host + `</domain:hostObj></domain:ns>`})), "1000")
@@ -847,12 +1098,18 @@ func TestRST_epp15_ObjectIntegrity(t *testing.T) {
 		requireCode(t, c.roundTrip(hostInfoXML(host)), "1000")
 	})
 	t.Run("epp-15 <delete> of a linked contact object refused", func(t *testing.T) {
-		rstPending(t, "Phase 4f: contact commands")
+		id := rstContactID()
+		requireCode(t, c.roundTrip(rstAutoContact(id)), "1000")
+		requireCode(t, c.roundTrip(createXML(rstRandChars()+".test", createOpts{
+			contacts: `<domain:registrant>` + id + `</domain:registrant><domain:contact type="tech">` + id + `</domain:contact>`,
+		})), "1000")
+		assert.True(t, isRefusal(code(c.roundTrip(contactDeleteXML(id)))))
+		requireCode(t, c.roundTrip(contactInfoXML(id)), "1000")
 	})
 }
 
 func TestRST_epp23_HostRename(t *testing.T) {
-	creds, _, c := hostServer(t)
+	creds, _, c := objectServer(t)
 	parent := rstRandChars() + ".test"
 	requireCode(t, c.roundTrip(createXML(parent, createOpts{})), "1000")
 	host := "ns1.epp-23.rst." + parent
@@ -903,7 +1160,7 @@ func TestRST_epp23_HostRename(t *testing.T) {
 }
 
 func TestRST_epp24_HostDelete(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	host := "ns1.epp-24.rst." + rstRandChars() + ".icann"
 	requireCode(t, c.roundTrip(hostCreateXML(host)), "1000")
 	t.Run("epp-24 <delete> is 1000 or 1001", func(t *testing.T) {
@@ -927,7 +1184,7 @@ func rstVictimDomain(t *testing.T, c *client) string {
 }
 
 func TestRST_epp25_SubordinateHostCreate(t *testing.T) {
-	_, ts, c := hostServer(t)
+	_, ts, c := objectServer(t)
 	parent := rstVictimDomain(t, c)
 	other := registrar2(t, ts)
 	t.Run("epp-25 a non-sponsor's subordinate host with addresses refused", func(t *testing.T) {
@@ -945,7 +1202,7 @@ func TestRST_epp25_SubordinateHostCreate(t *testing.T) {
 }
 
 func TestRST_epp26_WideGlue(t *testing.T) {
-	_, ts, c := hostServer(t)
+	_, ts, c := objectServer(t)
 	parent := rstVictimDomain(t, c)
 	t.Run("epp-26 a non-sponsor's internal host with glue refused", func(t *testing.T) {
 		assert.True(t, isRefusal(code(registrar2(t, ts).roundTrip(hostCreateXML("ns1.epp-26."+parent, addrXML("v4", testV4))))))
@@ -953,7 +1210,7 @@ func TestRST_epp26_WideGlue(t *testing.T) {
 }
 
 func TestRST_epp27_GluelessInternalHost(t *testing.T) {
-	_, ts, c := hostServer(t)
+	_, ts, c := objectServer(t)
 	parent := rstVictimDomain(t, c)
 	t.Run("epp-27 a non-sponsor's glueless internal host refused", func(t *testing.T) {
 		// Refused at <create>, so the sponsor never gets to delegate to it.
@@ -961,17 +1218,12 @@ func TestRST_epp27_GluelessInternalHost(t *testing.T) {
 	})
 }
 
-// --- Pending: contact and domain transform commands ----------------------
+// --- Pending: domain transform commands ----------------------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"epp-06": "Phase 4f: contact <check> (if the registry data model needs contacts)",
-	"epp-07": "Phase 4f: contact <create>",
-	"epp-08": "Phase 4f: contact <info>/<update> refused to non-sponsors with 2201 (ADR 0006)",
-	"epp-09": "Phase 4f: contact <update>",
-	"epp-10": "Phase 4f: contact <delete>",
 	"epp-16": "Phase 4g: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
 	"epp-18": "Phase 4g: domain <renew>",
 	"epp-19": "Phase 4h: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
@@ -992,8 +1244,8 @@ func TestRST_EPPPendingCases(t *testing.T) {
 
 // rstImplementedCases have their own TestRST_ function in this file.
 var rstImplementedCases = []string{
-	"epp-01", "epp-02", "epp-03", "epp-04", "epp-05", "epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-17",
-	"epp-23", "epp-24", "epp-25", "epp-26", "epp-27",
+	"epp-01", "epp-02", "epp-03", "epp-04", "epp-05", "epp-06", "epp-07", "epp-08", "epp-09", "epp-10",
+	"epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-17", "epp-23", "epp-24", "epp-25", "epp-26", "epp-27",
 }
 
 // TestRST_EPPCatalogueIsComplete fails when the pinned spec and this file

@@ -105,11 +105,68 @@ func (r *Registry) Accredit(clid, tld string) {
 	r.accredited[clid][tld] = true
 }
 
-// AddContact adds a contact sponsored by clid.
+// AddContact adds a valid contact sponsored by clid, with an international
+// postal address in Brussels.
 func (r *Registry) AddContact(id, clid string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.contacts[id] = &entities.Contact{ID: entities.ClIDType(id), ClID: entities.ClIDType(clid)}
+	r.nextID++
+	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeContact, r.repository)
+	if err != nil {
+		panic(err) // a fixture's own mistake
+	}
+	c, err := entities.NewContact(id, roid.String(), "contact@"+id+".example.com", "Contact-Auth-1!", clid)
+	if err != nil {
+		panic(err)
+	}
+	addr, err := entities.NewAddress("Brussels", "BE")
+	if err != nil {
+		panic(err)
+	}
+	pi, err := entities.NewContactPostalInfo("int", "Test Contact", addr)
+	if err != nil {
+		panic(err)
+	}
+	if err := c.AddPostalInfo(pi); err != nil {
+		panic(err)
+	}
+	c.CrRr = entities.ClIDType(clid)
+	c.CreatedAt = r.now().UTC()
+	r.contacts[id] = c
+}
+
+// Contact returns a copy of a stored contact, or nil.
+func (r *Registry) Contact(id string) *entities.Contact {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c, ok := r.contacts[id]; ok {
+		return copyContact(c)
+	}
+	return nil
+}
+
+// SetContactStatus changes a contact's statuses, as the registry's operator
+// would.
+func (r *Registry) SetContactStatus(id string, fn func(*entities.ContactStatus)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fn(&r.contacts[id].Status)
+}
+
+// copyContact copies a contact and its postal addresses.
+func copyContact(c *entities.Contact) *entities.Contact {
+	cc := *c
+	for i, pi := range c.PostalInfo {
+		if pi != nil {
+			p := *pi
+			if pi.Address != nil {
+				a := *pi.Address
+				p.Address = &a
+			}
+			cc.PostalInfo[i] = &p
+		}
+	}
+	return &cc
 }
 
 // AddHost adds a host object sponsored by clid, with addrs.
@@ -355,10 +412,93 @@ func (v registryContacts) GetContactByID(_ context.Context, id string) (*entitie
 		return nil, v.r.err
 	}
 	if c, ok := v.r.contacts[id]; ok {
-		cc := *c
-		return &cc, nil
+		return copyContact(c), nil
 	}
 	return nil, entities.ErrContactNotFound
+}
+
+func (v registryContacts) CreateContact(_ context.Context, c *entities.Contact) (*entities.Contact, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	if _, ok := v.r.contacts[c.ID.String()]; ok {
+		return nil, entities.ErrContactAlreadyExists
+	}
+	stored := copyContact(c)
+	stored.CreatedAt = v.r.now().UTC()
+	v.r.contacts[c.ID.String()] = stored
+	return copyContact(stored), nil
+}
+
+// UpdateContactIfUnchanged refuses a contact changed since c was read
+// (ErrContactChanged), as the Postgres repository does.
+func (v registryContacts) UpdateContactIfUnchanged(_ context.Context, c *entities.Contact) (*entities.Contact, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	stored, ok := v.r.contacts[c.ID.String()]
+	if !ok {
+		return nil, entities.ErrContactNotFound
+	}
+	if !stored.UpdatedAt.Equal(c.UpdatedAt) {
+		return nil, entities.ErrContactChanged
+	}
+	updated := copyContact(c)
+	updated.CreatedAt = stored.CreatedAt
+	updated.UpdatedAt = v.r.now().UTC()
+	v.r.contacts[c.ID.String()] = updated
+	return copyContact(updated), nil
+}
+
+// DeleteContactIfUnchanged refuses a contact changed or replaced since c
+// was read, as the Postgres repository does.
+func (v registryContacts) DeleteContactIfUnchanged(_ context.Context, c *entities.Contact) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	stored, ok := v.r.contacts[c.ID.String()]
+	switch {
+	case !ok:
+		return entities.ErrContactNotFound
+	case stored.RoID != c.RoID || stored.ClID != c.ClID || !stored.UpdatedAt.Equal(c.UpdatedAt):
+		return entities.ErrContactChanged
+	}
+	delete(v.r.contacts, c.ID.String())
+	return nil
+}
+
+func (v registryContacts) DeleteContactByID(_ context.Context, id string) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	delete(v.r.contacts, id)
+	return nil
+}
+
+func (v registryContacts) CountContactLinks(_ context.Context, id string) (int64, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return 0, v.r.err
+	}
+	var n int64
+	for _, d := range v.r.domains {
+		for _, ref := range []entities.ClIDType{d.RegistrantID, d.AdminID, d.TechID, d.BillingID} {
+			if ref.String() == id {
+				n++
+				break
+			}
+		}
+	}
+	return n, nil
 }
 
 type registryHosts struct {
@@ -449,6 +589,26 @@ func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Hos
 	stored.UpdatedAt = v.r.now().UTC()
 	v.r.hosts[key] = stored
 	return stored.DeepCopy(), nil
+}
+
+// DeleteHostIfUnchanged refuses a host changed since h was read, as the
+// Postgres repository does.
+func (v registryHosts) DeleteHostIfUnchanged(_ context.Context, h *entities.Host) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	id, _ := h.RoID.Int64()
+	stored := v.r.hostByRoid(id)
+	switch {
+	case stored == nil:
+		return entities.ErrHostNotFound
+	case stored.ClID != h.ClID || !stored.UpdatedAt.Equal(h.UpdatedAt):
+		return entities.ErrHostChanged
+	}
+	delete(v.r.hosts, hostKey{stored.Name.String(), stored.ClID.String()})
+	return nil
 }
 
 func (v registryHosts) DeleteHostByRoid(_ context.Context, roid int64) error {

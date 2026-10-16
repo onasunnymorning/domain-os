@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -76,6 +77,76 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Conta
 	}
 
 	return FromDBContact(dbContact, r.repository), nil
+}
+
+// UpdateContactIfUnchanged saves the contact and returns it as stored.
+//
+// c.UpdatedAt is the version the caller read: the contact is written only if
+// the stored contact still has it, so two commands that read the same
+// contact cannot each overwrite the other's change; the second is
+// ErrContactChanged, to be read and checked again. A contact deleted since
+// it was read is ErrContactNotFound, never written back.
+func (r *ContactRepository) UpdateContactIfUnchanged(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	read := c.UpdatedAt
+	dbContact := ToDBContact(c)
+	dbContact.UpdatedAt = time.Now().UTC()
+	stored := &Contact{}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := written(updateIfAt(tx.Model(&Contact{}).Where("id = ?", dbContact.ID), read).
+			Select("*").Omit("id", "ro_id", "created_at", "DomsWhereRegistrant", "DomsWhereAdmin", "DomsWhereTech", "DomsWhereBilling").
+			Updates(dbContact)); err != nil {
+			return err
+		}
+		// Read back in the transaction, which holds the row: the result is
+		// this update, not a later one.
+		return tx.Where("id = ?", dbContact.ID).First(stored).Error
+	})
+	switch {
+	case errors.Is(err, errNotWritten):
+		return nil, r.notWritten(ctx, dbContact.ID, entities.ErrContactChanged)
+	case err != nil:
+		return nil, err
+	}
+	return FromDBContact(stored, r.repository), nil
+}
+
+// DeleteContactIfUnchanged deletes the contact if it is still the one read:
+// the same ROID, sponsor and version. The ID alone could name a contact
+// deleted and created again by another registrar since it was read.
+func (r *ContactRepository) DeleteContactIfUnchanged(ctx context.Context, c *entities.Contact) error {
+	roid, err := c.RoID.Int64()
+	if err != nil {
+		return err
+	}
+	q := r.db.WithContext(ctx).Where("id = ? AND ro_id = ? AND cl_id = ?", c.ID.String(), roid, c.ClID.String())
+	if err := written(updateIfAt(q, c.UpdatedAt).Delete(&Contact{})); err != nil {
+		if errors.Is(err, errNotWritten) {
+			return r.notWritten(ctx, c.ID.String(), entities.ErrContactChanged)
+		}
+		return err
+	}
+	return nil
+}
+
+// notWritten says why a conditional write matched no row: the contact is
+// gone (ErrContactNotFound), or else changed (changed).
+func (r *ContactRepository) notWritten(ctx context.Context, id string, changed error) error {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", id).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return entities.ErrContactNotFound
+	}
+	return changed
+}
+
+// CountContactLinks counts the domains that use the contact, in any role.
+func (r *ContactRepository) CountContactLinks(ctx context.Context, id string) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&Domain{}).
+		Where("registrant_id = ? OR admin_id = ? OR tech_id = ? OR billing_id = ?", id, id, id, id).Count(&n).Error
+	return n, err
 }
 
 // DeleteContactByID deletes a contact from the database

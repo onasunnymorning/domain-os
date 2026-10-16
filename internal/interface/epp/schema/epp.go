@@ -93,17 +93,15 @@ var DomainCheck = &Element{NS: NSDomain, Name: "check", Content: Seq{
 	&Element{NS: NSDomain, Name: "name", Max: Unbounded, Simple: labelType},
 }}
 
-// pwAuthInfo is eppcom:pwAuthInfoType.
-var pwAuthInfo = &Element{NS: NSDomain, Name: "pw", Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{
-	{Name: "roid", Type: roidType},
-}}
-
-// authInfoType is domain:authInfoType: a password, or an extension
+// authInfoType is domain:authInfoType, and contact:authInfoType in ns: a
+// password (eppcom:pwAuthInfoType), or an extension
 // (eppcom:extAuthInfoType, one element outside eppcom).
-func authInfoType(min int) *Element {
-	return &Element{NS: NSDomain, Name: "authInfo", Min: min, Content: Choice{Alts: []Particle{
-		pwAuthInfo,
-		&Element{NS: NSDomain, Name: "ext", Content: Seq{Any{OtherThan: NSEPPCom}}},
+func authInfoType(ns string, min int) *Element {
+	return &Element{NS: ns, Name: "authInfo", Min: min, Content: Choice{Alts: []Particle{
+		&Element{NS: ns, Name: "pw", Simple: &Simple{Base: NormalizedString}, Attrs: []Attribute{
+			{Name: "roid", Type: roidType},
+		}},
+		&Element{NS: ns, Name: "ext", Content: Seq{Any{OtherThan: NSEPPCom}}},
 	}}}
 }
 
@@ -127,7 +125,7 @@ var (
 // DomainInfo is <domain:info>, domain:infoType.
 var DomainInfo = &Element{NS: NSDomain, Name: "info", Content: Seq{
 	&Element{NS: NSDomain, Name: "name", Simple: labelType, Attrs: []Attribute{{Name: "hosts", Type: hostsType}}},
-	authInfoType(Optional),
+	authInfoType(NSDomain, Optional),
 }}
 
 // DomainCreate is <domain:create>, domain:createType.
@@ -149,7 +147,7 @@ var DomainCreate = &Element{NS: NSDomain, Name: "create", Content: Seq{
 	&Element{NS: NSDomain, Name: "contact", Min: Optional, Max: Unbounded, Simple: clIDType, Attrs: []Attribute{
 		{Name: "type", Type: contactAttrType},
 	}},
-	authInfoType(0),
+	authInfoType(NSDomain, 0),
 }}
 
 // Models of secDNS-1.1.xsd (RFC 5910) for <secDNS:create>.
@@ -243,5 +241,6 @@ var HostUpdate = &Element{NS: NSHost, Name: "update", Content: Seq{
 var Globals = []*Element{
 	DomainCheck, DomainInfo, DomainCreate,
 	HostCheck, HostInfo, HostCreate, HostUpdate, HostDelete,
+	ContactCheck, ContactInfo, ContactCreate, ContactUpdate, ContactDelete,
 	SecDNSCreate,
 }

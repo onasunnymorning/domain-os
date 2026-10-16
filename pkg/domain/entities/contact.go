@@ -52,6 +52,9 @@ var (
 	ErrContactUpdateNotAllowed         = errors.New("contact status prohibits update")
 	ErrPostalInfoTypeExistsAlready     = errors.New("postalinfo of this type already exists")
 	ErrInvalidContactRoID              = fmt.Errorf("invalid Contact.RoID.ObjectIdentifier(), expecting '%s'", CONTACT_ROID_ID)
+	// ErrContactChanged: an update written over a contact that another
+	// command changed since it was read.
+	ErrContactChanged = errors.New("the contact was changed by another command")
 )
 
 // ErrInvalidDomainContactType is a domain's <contact> reference whose type attribute is not admin, tech or billing. It is a case of ErrInvalidContact,
@@ -112,7 +115,6 @@ func (c *Contact) SetFullStatus(status ContactStatus) error {
 
 // ContactDisclose substruct of Contact describes the flags for disclosure of certain fields in accordance with https://datatracker.ietf.org/doc/html/rfc5733#section-2.9
 // True means disclose, false means don't disclose.
-// TODO: FIXME: this creates only columns 'addr_loc' and addr_int' as booleans, I suspect because the other ones already exist. Easy way to fix woul be do prepend disclose for gorm?
 type ContactDisclose struct {
 	NameInt bool `json:"NameInt" example:"false"`
 	NameLoc bool `json:"NameLoc" example:"false"`

@@ -45,6 +45,18 @@ func (m *MockContactRepository) Count(ctx context.Context, filter queries.ListCo
 	return int64(len(m.Contacts)), nil
 }
 
+func (m *MockContactRepository) UpdateContactIfUnchanged(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	return m.UpdateContact(ctx, c)
+}
+
+func (m *MockContactRepository) DeleteContactIfUnchanged(ctx context.Context, c *entities.Contact) error {
+	return m.DeleteContactByID(ctx, c.ID.String())
+}
+
+func (m *MockContactRepository) CountContactLinks(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 func (m *MockContactRepository) BulkCreate(ctx context.Context, contacts []*entities.Contact) error {
 	return nil
 }

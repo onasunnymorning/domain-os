@@ -93,16 +93,21 @@ var rfc5730Commands = map[string]bool{
 
 func (s *Server) routes() map[routeKey]route {
 	return map[routeKey]route{
-		{command: "login"}:                      {handler: s.login},
-		{command: "logout"}:                     {handler: s.logout, requiresLogin: true},
-		{command: "check", objectNS: nsDomain}:  {handler: s.domainCheck, requiresLogin: true},
-		{command: "info", objectNS: nsDomain}:   {handler: s.domainInfo, requiresLogin: true},
-		{command: "create", objectNS: nsDomain}: {handler: s.domainCreate, requiresLogin: true},
-		{command: "check", objectNS: nsHost}:    {handler: s.hostCheck, requiresLogin: true},
-		{command: "info", objectNS: nsHost}:     {handler: s.hostInfo, requiresLogin: true},
-		{command: "create", objectNS: nsHost}:   {handler: s.hostCreate, requiresLogin: true},
-		{command: "update", objectNS: nsHost}:   {handler: s.hostUpdate, requiresLogin: true},
-		{command: "delete", objectNS: nsHost}:   {handler: s.hostDelete, requiresLogin: true},
+		{command: "login"}:                       {handler: s.login},
+		{command: "logout"}:                      {handler: s.logout, requiresLogin: true},
+		{command: "check", objectNS: nsDomain}:   {handler: s.domainCheck, requiresLogin: true},
+		{command: "info", objectNS: nsDomain}:    {handler: s.domainInfo, requiresLogin: true},
+		{command: "create", objectNS: nsDomain}:  {handler: s.domainCreate, requiresLogin: true},
+		{command: "check", objectNS: nsHost}:     {handler: s.hostCheck, requiresLogin: true},
+		{command: "info", objectNS: nsHost}:      {handler: s.hostInfo, requiresLogin: true},
+		{command: "create", objectNS: nsHost}:    {handler: s.hostCreate, requiresLogin: true},
+		{command: "update", objectNS: nsHost}:    {handler: s.hostUpdate, requiresLogin: true},
+		{command: "delete", objectNS: nsHost}:    {handler: s.hostDelete, requiresLogin: true},
+		{command: "check", objectNS: nsContact}:  {handler: s.contactCheck, requiresLogin: true},
+		{command: "info", objectNS: nsContact}:   {handler: s.contactInfo, requiresLogin: true},
+		{command: "create", objectNS: nsContact}: {handler: s.contactCreate, requiresLogin: true},
+		{command: "update", objectNS: nsContact}: {handler: s.contactUpdate, requiresLogin: true},
+		{command: "delete", objectNS: nsContact}: {handler: s.contactDelete, requiresLogin: true},
 	}
 }
 

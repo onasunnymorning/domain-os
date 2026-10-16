@@ -9,43 +9,75 @@ import (
 // Contact is the Gorm model for the Contact entity.
 type Contact struct {
 	// ID is the ID of the contact as provided by the registrar.
-	ID                       string `gorm:"primaryKey"`
-	RoID                     int64  `gorm:"uniqueIndex;not null"` // we use the int64 representation of our roid to allow time based sorting using roid
-	Voice                    string
-	Fax                      string
-	Email                    string
-	ClID                     string `gorm:"index"`
-	CrRr                     *string
-	UpRr                     *string
-	AuthInfo                 string `gorm:"not null"`
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
-	NameInt                  string
-	OrgInt                   string
-	Street1Int               string
-	Street2Int               string
-	Street3Int               string
-	CityInt                  string
-	SPInt                    string `gorm:"column:sp_int"`
-	PCInt                    string `gorm:"column:pc_int"`
-	CCInt                    string `gorm:"column:cc_int"`
-	NameLoc                  string
-	OrgLoc                   string
-	Street1Loc               string
-	Street2Loc               string
-	Street3Loc               string
-	CityLoc                  string
-	SPLoc                    string `gorm:"column:sp_loc"`
-	PCLoc                    string `gorm:"column:pc_loc"`
-	CCLoc                    string `gorm:"column:cc_loc"`
-	entities.ContactStatus   `gorm:"embedded"`
-	entities.ContactDisclose `gorm:"embedded"`
+	ID                     string `gorm:"primaryKey"`
+	RoID                   int64  `gorm:"uniqueIndex;not null"` // we use the int64 representation of our roid to allow time based sorting using roid
+	Voice                  string
+	Fax                    string
+	Email                  string
+	ClID                   string `gorm:"index"`
+	CrRr                   *string
+	UpRr                   *string
+	AuthInfo               string `gorm:"not null"`
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	NameInt                string
+	OrgInt                 string
+	Street1Int             string
+	Street2Int             string
+	Street3Int             string
+	CityInt                string
+	SPInt                  string `gorm:"column:sp_int"`
+	PCInt                  string `gorm:"column:pc_int"`
+	CCInt                  string `gorm:"column:cc_int"`
+	NameLoc                string
+	OrgLoc                 string
+	Street1Loc             string
+	Street2Loc             string
+	Street3Loc             string
+	CityLoc                string
+	SPLoc                  string `gorm:"column:sp_loc"`
+	PCLoc                  string `gorm:"column:pc_loc"`
+	CCLoc                  string `gorm:"column:cc_loc"`
+	entities.ContactStatus `gorm:"embedded"`
+	ContactDiscloseColumns
 
 	// FK relationships with domains
 	DomsWhereRegistrant []*Domain `gorm:"foreignKey:RegistrantID"`
 	DomsWhereAdmin      []*Domain `gorm:"foreignKey:AdminID"`
 	DomsWhereTech       []*Domain `gorm:"foreignKey:TechID"`
 	DomsWhereBilling    []*Domain `gorm:"foreignKey:BillingID"`
+}
+
+// ContactDiscloseColumns are a contact's disclosure flags, in columns of
+// their own. Embedded as entities.ContactDisclose, they shared the names of
+// the name, org, voice, fax and email columns, and only the address flags
+// were stored (see migrateContactDisclose). The fields are named in full,
+// not given a GORM prefix, so that go-pg, which the direct importer writes
+// contacts with, maps them to the same columns.
+type ContactDiscloseColumns struct {
+	DiscloseNameInt bool `pg:",use_zero"`
+	DiscloseNameLoc bool `pg:",use_zero"`
+	DiscloseOrgInt  bool `pg:",use_zero"`
+	DiscloseOrgLoc  bool `pg:",use_zero"`
+	DiscloseAddrInt bool `pg:",use_zero"`
+	DiscloseAddrLoc bool `pg:",use_zero"`
+	DiscloseVoice   bool `pg:",use_zero"`
+	DiscloseFax     bool `pg:",use_zero"`
+	DiscloseEmail   bool `pg:",use_zero"`
+}
+
+func toDiscloseColumns(d entities.ContactDisclose) ContactDiscloseColumns {
+	return ContactDiscloseColumns{
+		DiscloseNameInt: d.NameInt, DiscloseNameLoc: d.NameLoc, DiscloseOrgInt: d.OrgInt, DiscloseOrgLoc: d.OrgLoc,
+		DiscloseAddrInt: d.AddrInt, DiscloseAddrLoc: d.AddrLoc, DiscloseVoice: d.Voice, DiscloseFax: d.Fax, DiscloseEmail: d.Email,
+	}
+}
+
+func (c ContactDiscloseColumns) toEntity() entities.ContactDisclose {
+	return entities.ContactDisclose{
+		NameInt: c.DiscloseNameInt, NameLoc: c.DiscloseNameLoc, OrgInt: c.DiscloseOrgInt, OrgLoc: c.DiscloseOrgLoc,
+		AddrInt: c.DiscloseAddrInt, AddrLoc: c.DiscloseAddrLoc, Voice: c.DiscloseVoice, Fax: c.DiscloseFax, Email: c.DiscloseEmail,
+	}
 }
 
 // TableName specifies the table name for contacts
@@ -75,7 +107,7 @@ func ToDBContact(c *entities.Contact) *Contact {
 	dbContact.AuthInfo = c.AuthInfo.String()
 	dbContact.CreatedAt = c.CreatedAt
 	dbContact.UpdatedAt = c.UpdatedAt
-	dbContact.ContactDisclose = c.Disclose
+	dbContact.ContactDiscloseColumns = toDiscloseColumns(c.Disclose)
 	dbContact.ContactStatus = c.Status
 
 	if c.PostalInfo[0] != nil {
@@ -130,7 +162,7 @@ func FromDBContact(c *Contact, repository entities.RepositoryID) *entities.Conta
 	domainContact.AuthInfo = entities.AuthInfoType(c.AuthInfo)
 	domainContact.CreatedAt = c.CreatedAt
 	domainContact.UpdatedAt = c.UpdatedAt
-	domainContact.Disclose = c.ContactDisclose
+	domainContact.Disclose = c.ContactDiscloseColumns.toEntity()
 	domainContact.Status = c.ContactStatus
 
 	a0 := &entities.Address{
