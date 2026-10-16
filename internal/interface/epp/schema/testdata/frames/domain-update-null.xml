@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <update>
+      <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>example.com</domain:name>
+        <domain:add>
+          <domain:ns>
+            <domain:hostAttr>
+              <domain:hostName>ns1.example.net</domain:hostName>
+              <domain:hostAddr ip="v4">192.0.2.1</domain:hostAddr>
+            </domain:hostAttr>
+          </domain:ns>
+        </domain:add>
+        <domain:chg>
+          <domain:registrant/>
+          <domain:authInfo>
+            <domain:null/>
+          </domain:authInfo>
+        </domain:chg>
+      </domain:update>
+    </update>
+    <extension>
+      <secDNS:update xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1">
+        <secDNS:rem>
+          <secDNS:all>true</secDNS:all>
+        </secDNS:rem>
+        <secDNS:add>
+          <secDNS:keyData>
+            <secDNS:flags>257</secDNS:flags>
+            <secDNS:protocol>3</secDNS:protocol>
+            <secDNS:alg>1</secDNS:alg>
+            <secDNS:pubKey>AQPJ////4Q==</secDNS:pubKey>
+          </secDNS:keyData>
+        </secDNS:add>
+      </secDNS:update>
+    </extension>
+  </command>
+</epp>

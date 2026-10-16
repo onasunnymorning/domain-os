@@ -619,6 +619,166 @@ func TestRST_epp17_ServicePortConsistency(t *testing.T) {
 	})
 }
 
+// --- epp-16, epp-18, epp-21: domain update, renew and delete ---------------
+
+// The tests follow epp-16's data providers (epp-16-status-data,
+// epp-16-ns-data, epp-16-dnssec-data). The registry uses host objects and
+// the DS data interface (epp.hostModel = objects, epp.secDNSInterfaces =
+// dsData), so the rows for host attributes and key data apply only as
+// refusals. RANDHEX(32) is read as 32 octets: the SHA-256 digest that the
+// rows' digest type 2 names.
+
+func TestRST_epp16_DomainUpdate(t *testing.T) {
+	_, ts, c := domainServer(t)
+	name := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(name, createOpts{})), "1000")
+	update := func(changes, ext string) string { return code(c.roundTrip(domainUpdateXML(name, changes, ext))) }
+	statusEl := func(add bool, s string) string {
+		if add {
+			return `<domain:add><domain:status s="` + s + `"/></domain:add>`
+		}
+		return `<domain:rem><domain:status s="` + s + `"/></domain:rem>`
+	}
+
+	t.Run("epp-16 statuses (epp-16-status-data)", func(t *testing.T) {
+		for i, row := range []struct {
+			add    bool
+			status string
+			pass   bool
+		}{
+			{true, "clientDeleteProhibited", true},
+			{true, "clientHold", true},
+			{true, "clientRenewProhibited", true},
+			{true, "clientTransferProhibited", true},
+			{true, "clientUpdateProhibited", true},
+			{true, "clientHold", false},
+			{false, "clientUpdateProhibited", true},
+			{true, "linked", false},
+			{true, "ok", false},
+			{true, "pendingCreate", false},
+			{true, "pendingDelete", false},
+			{true, "pendingTransfer", false},
+			{true, "pendingUpdate", false},
+			{true, "serverDeleteProhibited", false},
+			{true, "serverRenewProhibited", false},
+			{true, "serverTransferProhibited", false},
+			{true, "serverUpdateProhibited", false},
+			{true, "invalidStatusCode", false},
+			{false, "clientDeleteProhibited", true},
+			{false, "clientHold", true},
+			{false, "clientRenewProhibited", true},
+			{false, "clientTransferProhibited", true},
+			{false, "invalidStatusCode", false},
+		} {
+			got := update(statusEl(row.add, row.status), "")
+			if row.pass {
+				assert.Equal(t, "1000", got, "row %d: add=%v %s", i+1, row.add, row.status)
+			} else {
+				assert.True(t, isRefusal(got), "row %d: add=%v %s: got %s", i+1, row.add, row.status, got)
+			}
+		}
+	})
+	t.Run("epp-16 nameservers (epp-16-ns-data, host objects)", func(t *testing.T) {
+		host := "ns1.epp-16.rst." + rstRandChars() + ".icann"
+		nsEl := func(add bool) string {
+			el := "<domain:ns><domain:hostObj>" + host + "</domain:hostObj></domain:ns>"
+			if add {
+				return "<domain:add>" + el + "</domain:add>"
+			}
+			return "<domain:rem>" + el + "</domain:rem>"
+		}
+		assert.True(t, isRefusal(update(nsEl(true), "")), "a host object that does not exist")
+		requireCode(t, c.roundTrip(hostCreateXML(host)), "1000")
+		assert.Equal(t, "1000", update(nsEl(true), ""))
+		assert.Contains(t, nameservers(c.roundTrip(infoXML(name, ""))), host)
+		assert.True(t, isRefusal(update(nsEl(true), "")), "added twice")
+		assert.Equal(t, "1000", update(nsEl(false), ""))
+		assert.True(t, isRefusal(update(nsEl(false), "")), "removed twice")
+		assert.True(t, isRefusal(update(`<domain:add><domain:ns><domain:hostAttr><domain:hostName>ns2.epp-16.rst.`+name+`</domain:hostName><domain:hostAddr ip="v4">208.77.190.196</domain:hostAddr></domain:hostAttr></domain:ns></domain:add>`, "")), "host attributes")
+	})
+	t.Run("epp-16 registrant", func(t *testing.T) {
+		assert.Equal(t, "1000", update(`<domain:chg><domain:registrant>registrar1-c2</domain:registrant></domain:chg>`, ""))
+		assert.Equal(t, "registrar1-c2", text(c.roundTrip(infoXML(name, "")), "//infData/registrant"))
+	})
+	t.Run("epp-16 DNSSEC (epp-16-dnssec-data, DS data)", func(t *testing.T) {
+		ds := func(keyTag, alg, digestType, digest string) string {
+			return `<secDNS:dsData><secDNS:keyTag>` + keyTag + `</secDNS:keyTag><secDNS:alg>` + alg + `</secDNS:alg><secDNS:digestType>` + digestType +
+				`</secDNS:digestType><secDNS:digest>` + digest + `</secDNS:digest>` +
+				`<secDNS:keyData><secDNS:flags>257</secDNS:flags><secDNS:protocol>3</secDNS:protocol><secDNS:alg>16</secDNS:alg><secDNS:pubKey>7JCMl8WwNOyFNWF6GBuMlIdtf08Cr1bO/hToZ6xCvKcu4o5ShXBzbCgzTGJHovhoUgj9wsMA1aWA</secDNS:pubKey></secDNS:keyData></secDNS:dsData>`
+		}
+		addDS := func(d string) string { return secDNSUpdateXML("", "<secDNS:add>"+d+"</secDNS:add>") }
+		for _, row := range []struct{ name, ds string }{
+			{"an empty key tag", ds("", "16", "2", testDigest)},
+			{"key tag -1", ds("-1", "16", "2", testDigest)},
+			{"key tag A", ds("A", "16", "2", testDigest)},
+			{"algorithm empty", ds("2371", "", "2", testDigest)},
+			{"algorithm -1", ds("2371", "-1", "2", testDigest)},
+			{"algorithm A", ds("2371", "A", "2", testDigest)},
+			{"algorithm 123", ds("2371", "123", "2", testDigest)},
+			{"digest type empty", ds("2371", "16", "", testDigest)},
+			{"digest type -1", ds("2371", "16", "-1", testDigest)},
+			{"digest type A", ds("2371", "16", "A", testDigest)},
+			{"digest type 255", ds("2371", "16", "255", testDigest)},
+			{"an empty digest", ds("2371", "16", "2", "")},
+		} {
+			assert.True(t, isRefusal(update("", addDS(row.ds))), row.name)
+		}
+		valid := ds("2371", "16", "2", testDigest)
+		assert.Equal(t, "1000", update("", addDS(valid)))
+		assert.Len(t, c.roundTrip(infoXML(name, "")).FindElements("//extension/infData/dsData"), 1)
+		assert.Equal(t, "1000", update("", secDNSUpdateXML("", "<secDNS:rem>"+valid+"</secDNS:rem>")))
+		assert.True(t, isRefusal(update("", secDNSUpdateXML("", "<secDNS:rem>"+valid+"</secDNS:rem>"))), "removed twice")
+		assert.True(t, isRefusal(update("", secDNSUpdateXML("", `<secDNS:rem><secDNS:keyData><secDNS:flags>257</secDNS:flags><secDNS:protocol>3</secDNS:protocol><secDNS:alg>13</secDNS:alg><secDNS:pubKey>uugEQOG7/3zv3rVGq43NQTqfmZxWn4fMIpi6ph7JKEvTRwhtw3aIV4dSk+fgpFFmORrKNznT7AIuJKy6P/Mi1Q==</secDNS:pubKey></secDNS:keyData></secDNS:rem>`))), "key data")
+	})
+	t.Run("epp-16 <update> of another registrar's domain is 2201", func(t *testing.T) {
+		other := registrar2(t, ts)
+		requireCode(t, other.roundTrip(domainUpdateXML(name, statusEl(true, "clientHold"), "")), "2201")
+	})
+}
+
+func TestRST_epp18_DomainRenew(t *testing.T) {
+	_, _, c := domainServer(t)
+	name := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(name, createOpts{})), "1000")
+	exp := exDate(t, c.roundTrip(infoXML(name, "")))
+
+	t.Run("epp-18 the expiry date moves by the period", func(t *testing.T) {
+		requireCode(t, c.roundTrip(domainRenewXML(name, exp.Format("2006-01-02"), `<domain:period unit="y">2</domain:period>`)), "1000")
+		exp = exp.AddDate(2, 0, 0)
+		assert.Equal(t, exp, exDate(t, c.roundTrip(infoXML(name, ""))))
+	})
+	t.Run("epp-18 the domain is in its renewPeriod", func(t *testing.T) {
+		info := c.roundTrip(infoXML(name, ""))
+		var rgp []string
+		for _, el := range info.FindElements("//extension/infData/rgpStatus") {
+			rgp = append(rgp, el.SelectAttrValue("s", ""))
+		}
+		assert.Contains(t, rgp, "renewPeriod")
+	})
+	t.Run("epp-18 a renew past ten years from now is refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(c.roundTrip(domainRenewXML(name, exp.Format("2006-01-02"), `<domain:period unit="y">8</domain:period>`)))))
+		assert.Equal(t, exp, exDate(t, c.roundTrip(infoXML(name, ""))), "unchanged")
+	})
+}
+
+func TestRST_epp21_DomainDelete(t *testing.T) {
+	_, _, c := domainServer(t)
+	name := rstRandChars() + ".test"
+	requireCode(t, c.roundTrip(createXML(name, createOpts{})), "1000")
+	got := code(c.roundTrip(domainDeleteXML(name)))
+	t.Run("epp-21 <delete> is 1000 or 1001", func(t *testing.T) {
+		assert.Contains(t, []string{"1000", "1001"}, got)
+	})
+	t.Run("epp-21 info: the domain is gone, or pendingDelete", func(t *testing.T) {
+		info := c.roundTrip(infoXML(name, ""))
+		if code(info) == "2303" {
+			return
+		}
+		assert.Equal(t, "1001", got, "only a pending delete leaves the domain")
+		assert.Contains(t, statusesOf(info), "pendingDelete")
+	})
+}
+
 // --- epp-06 … epp-10: contact objects -------------------------------------
 
 // This registry keeps contacts (general.registryDataModel is not minimum),
@@ -1218,17 +1378,14 @@ func TestRST_epp27_GluelessInternalHost(t *testing.T) {
 	})
 }
 
-// --- Pending: domain transform commands ----------------------------------
+// --- Pending: domain transfer --------------------------------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"epp-16": "Phase 4g: domain <update> (statuses, nameservers, registrant, DNSSEC); 2201 to non-sponsors",
-	"epp-18": "Phase 4g: domain <renew>",
 	"epp-19": "Phase 4h: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
 	"epp-20": "Phase 4h: domain <transfer> rejection",
-	"epp-21": "Phase 4g: domain <delete> and pendingDelete/purge",
 }
 
 func TestRST_EPPPendingCases(t *testing.T) {
@@ -1245,7 +1402,8 @@ func TestRST_EPPPendingCases(t *testing.T) {
 // rstImplementedCases have their own TestRST_ function in this file.
 var rstImplementedCases = []string{
 	"epp-01", "epp-02", "epp-03", "epp-04", "epp-05", "epp-06", "epp-07", "epp-08", "epp-09", "epp-10",
-	"epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-17", "epp-23", "epp-24", "epp-25", "epp-26", "epp-27",
+	"epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-16", "epp-17", "epp-18", "epp-21", "epp-23", "epp-24",
+	"epp-25", "epp-26", "epp-27",
 }
 
 // TestRST_EPPCatalogueIsComplete fails when the pinned spec and this file

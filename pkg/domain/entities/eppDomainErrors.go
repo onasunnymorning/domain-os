@@ -49,6 +49,26 @@ var (
 	// ErrEPPTooManyDS: more DS records than the registry accepts on one
 	// domain.
 	ErrEPPTooManyDS = errors.New("too many DS records")
+	// ErrEPPDomainContactNotSet: removing a contact the domain does not
+	// have in that role.
+	ErrEPPDomainContactNotSet = errors.New("the domain does not have that contact")
+	// ErrEPPNameserverNotSet: removing a nameserver the domain does not
+	// have.
+	ErrEPPNameserverNotSet = errors.New("the domain does not have that nameserver")
+	// ErrEPPDSNotSet: removing a DS record the domain does not have.
+	ErrEPPDSNotSet = errors.New("the domain does not have that DS record")
+	// ErrEPPDNSSECUrgent: a <secDNS:update urgent="true">, which this
+	// registry does not support (RFC 5910 §5.2.5: 2102).
+	ErrEPPDNSSECUrgent = errors.New("urgent DNSSEC updates are not supported")
+	// ErrEPPAuthInfoRequired: removing a domain's authorization
+	// information (<domain:null/>); the registry keeps one on every domain.
+	ErrEPPAuthInfoRequired = errors.New("a domain keeps its authorization information: change it instead")
+	// ErrEPPCurExpDate: a renew whose current expiry date is not the
+	// domain's (RFC 5731 §3.2.3).
+	ErrEPPCurExpDate = errors.New("the current expiry date given is not the domain's")
+	// ErrEPPSubordinateHosts: a delete of a domain with host objects under
+	// it (RFC 5731 §3.2.2).
+	ErrEPPSubordinateHosts = errors.New("the domain has subordinate host objects: delete or rename them first")
 	// ErrEPPAuditUnavailable wraps a failure to write the EPP audit log.
 	ErrEPPAuditUnavailable = errors.New("EPP audit log unavailable")
 )

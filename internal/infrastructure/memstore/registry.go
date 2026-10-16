@@ -230,6 +230,14 @@ func (r *Registry) Domain(name string) *entities.Domain {
 	return r.domains[name]
 }
 
+// SetDomainStatus changes a stored domain's statuses, as the registry's
+// operator would.
+func (r *Registry) SetDomainStatus(name string, fn func(*entities.DomainStatus)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fn(&r.domains[name].Status)
+}
+
 // Domains is the registry as a repositories.DomainRepository.
 func (r *Registry) Domains() repositories.DomainRepository { return registryDomains{r: r} }
 
@@ -331,10 +339,93 @@ func (v registryDomains) GetDomainByName(_ context.Context, name string, _ bool)
 		return nil, v.r.err
 	}
 	if d, ok := v.r.domains[name]; ok {
-		c := *d
-		return &c, nil
+		return v.r.copyDomain(d), nil
 	}
 	return nil, entities.ErrDomainNotFound
+}
+
+// copyDomain copies a stored domain, with its nameservers as they are now:
+// a renamed host shows its new name, as it does through the database's
+// link table. The caller holds the lock.
+func (r *Registry) copyDomain(d *entities.Domain) *entities.Domain {
+	c := d.DeepCopy()
+	for i, h := range c.Hosts {
+		id, _ := h.RoID.Int64()
+		if stored := r.hostByRoid(id); stored != nil {
+			c.Hosts[i] = stored.DeepCopy()
+		}
+	}
+	return c
+}
+
+// SaveDomainUpdate stands in for DomainService.SaveDomainUpdate: it stores
+// after if the stored domain is still before's version.
+func (r *Registry) SaveDomainUpdate(_ context.Context, _, after *entities.Domain, _ interface{}) (*entities.Domain, error) {
+	return r.writeDomainAsRead(after)
+}
+
+// RenewDomainAsRead stands in for DomainService.RenewDomainAsRead: it renews
+// dom in its TLD's current GA phase. Pricing belongs to DomainService.
+func (r *Registry) RenewDomainAsRead(_ context.Context, dom *entities.Domain, years int) (*entities.Domain, error) {
+	phase, err := r.currentPhase(dom.Name.ParentDomain())
+	if err != nil {
+		return nil, err
+	}
+	if err := dom.Renew(years, false, phase); err != nil {
+		return nil, err
+	}
+	return r.writeDomainAsRead(dom)
+}
+
+// MarkDomainForDeletionAsRead stands in for
+// DomainService.MarkDomainForDeletionAsRead.
+func (r *Registry) MarkDomainForDeletionAsRead(_ context.Context, dom *entities.Domain) (*entities.Domain, error) {
+	phase, err := r.currentPhase(dom.Name.ParentDomain())
+	if err != nil {
+		return nil, err
+	}
+	if err := dom.MarkForDeletion(phase); err != nil {
+		return nil, err
+	}
+	return r.writeDomainAsRead(dom)
+}
+
+func (r *Registry) currentPhase(tld string) (*entities.Phase, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t := entities.TLD{}
+	for _, p := range r.phases[tld] {
+		t.Phases = append(t.Phases, *p)
+	}
+	return t.GetCurrentGAPhase()
+}
+
+// writeDomainAsRead stores d if the stored domain still has its version
+// and sponsor (else ErrDomainChanged), with its nameservers as the stored
+// hosts, as the link table holds them.
+func (r *Registry) writeDomainAsRead(d *entities.Domain) (*entities.Domain, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return nil, r.err
+	}
+	stored, ok := r.domains[d.Name.String()]
+	switch {
+	case !ok:
+		return nil, entities.ErrDomainNotFound
+	case !stored.UpdatedAt.Equal(d.UpdatedAt) || stored.ClID != d.ClID:
+		return nil, entities.ErrDomainChanged
+	}
+	next := d.DeepCopy()
+	for i, h := range next.Hosts {
+		id, _ := h.RoID.Int64()
+		if host := r.hostByRoid(id); host != nil {
+			next.Hosts[i] = host
+		}
+	}
+	next.UpdatedAt = r.now().UTC()
+	r.domains[d.Name.String()] = next
+	return r.copyDomain(next), nil
 }
 
 type registryNNDNs struct {
