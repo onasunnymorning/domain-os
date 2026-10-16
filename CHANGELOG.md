@@ -1,4 +1,59 @@
 <a name="unreleased"></a>
+## [0.13.0](https://github.com/onasunnymorning/domain-os/compare/v0.12.0...v0.13.0) (2026-10-16)
+
+
+### Features
+
+* **dnssec:** DS records on domains, published and offered over EPP (Phase 4c) ([8ef89f8](https://github.com/onasunnymorning/domain-os/commit/8ef89f8005ac55bbd2ebd9bd9874417a2a8effa6))
+* **epp:** authenticate logins against registrar credentials (Phase 2b) ([3d4f749](https://github.com/onasunnymorning/domain-os/commit/3d4f74963b071ce5877f2e0dcd01091f127969c6))
+* **epp:** authenticate logins against registrar credentials (Phase 2b) ([e9e3206](https://github.com/onasunnymorning/domain-os/commit/e9e3206e05ff5dfd7fb9c34a11bd3bc0a209acc9))
+* **epp:** cluster-wide session registry, caps and admin kill (Phase 3) ([8eec6e4](https://github.com/onasunnymorning/domain-os/commit/8eec6e4094043e290509fd514c70b59695f8de68))
+* **epp:** cluster-wide session registry, caps and admin kill (Phase 3) ([1c109be](https://github.com/onasunnymorning/domain-os/commit/1c109be2d218ba627f49a44fd190919306132a6b))
+* **epp:** command pipeline, schema validation, audit log and domain check (Phase 4a) ([7809f96](https://github.com/onasunnymorning/domain-os/commit/7809f96aad306f79d5141733e5d8298846065fff))
+* **epp:** credential model, storage and admin API (Phase 2a) ([0b7a9a7](https://github.com/onasunnymorning/domain-os/commit/0b7a9a70d4f1cdb05ab7becabca5af18ae0e6f99))
+* **epp:** credential model, storage and admin API (Phase 2a) ([ad09c69](https://github.com/onasunnymorning/domain-os/commit/ad09c696dc70017c2270e7bfac1e380a4fe6483b))
+* **epp:** domain info and create with ADR 0006 checks, RGP statuses (Phase 4b) ([d07e9f0](https://github.com/onasunnymorning/domain-os/commit/d07e9f01f6a6a5a24fccd4fd3694ea14e4111aee))
+* **epp:** Phase 1 transport and session layer ([9163c66](https://github.com/onasunnymorning/domain-os/commit/9163c668285925951e6db11f400c05003e96afe6))
+* **epp:** Phase 1 transport and session layer ([eeee2e5](https://github.com/onasunnymorning/domain-os/commit/eeee2e515a0ac9512a7f5b3eac3b8fc55df62ae8))
+* **epp:** Phase 4e — host commands (RFC 5732) ([25d76b6](https://github.com/onasunnymorning/domain-os/commit/25d76b67d518114119c079800c99c21995554046))
+* **epp:** Phase 4e — host commands (RFC 5732) ([01339fb](https://github.com/onasunnymorning/domain-os/commit/01339fb70f4f040c5b60eb1170ac0afac7aa8fc1))
+* **epp:** Phase 4f — contact commands (RFC 5733) ([d7842e1](https://github.com/onasunnymorning/domain-os/commit/d7842e16cfffefb704a4a8080dbacdfb691dc9dc))
+* **epp:** Phase 4f — contact commands (RFC 5733) ([2da2639](https://github.com/onasunnymorning/domain-os/commit/2da263918ba73c6407ba007079cf7c6713f8e3d2))
+* **escrow:** carry DS records through the bulk import ([dac0c08](https://github.com/onasunnymorning/domain-os/commit/dac0c083f8f7c148912118aa4680a8518732141d))
+* **escrow:** enforce pinned RDE XML schemas at runtime so EVE PASS means conformant ([04adf60](https://github.com/onasunnymorning/domain-os/commit/04adf60813f1dfe41e96693f1b6df1ee7c70928e))
+* **escrow:** enforce the pinned RDE XML schemas at runtime so PASS means conformant ([e710cc0](https://github.com/onasunnymorning/domain-os/commit/e710cc0e10d3ca32e19613cb3b2e133c89c74259))
+* **escrow:** persist the importer's run report in the escrow workflow ([3e65268](https://github.com/onasunnymorning/domain-os/commit/3e65268842458bda562225c0f8d7e852c1e077ff))
+* **roid:** repository ID from configuration, guarded per installation (Phase 4d) ([d675c03](https://github.com/onasunnymorning/domain-os/commit/d675c03bf751dc6acb997fe36a58f84a151f2fa7))
+* **roid:** repository ID from configuration, stored with each object (Phase 4d) ([b364c49](https://github.com/onasunnymorning/domain-os/commit/b364c4916286572c6ec81d121ebf089dc99504f9))
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.9 and refresh api image tiff ([d645b29](https://github.com/onasunnymorning/domain-os/commit/d645b291e416a1c1019b8d5a3db8b0b48b8775a2))
+* **deps:** bump golang.org/x/net to v0.60.0 for CVE-2026-78669 ([17bed70](https://github.com/onasunnymorning/domain-os/commit/17bed70286169196d2a4a519692621cb727fc7ac))
+* **deps:** bump golang.org/x/net to v0.60.0 to clear the Trivy HIGH failing the image builds ([f05821f](https://github.com/onasunnymorning/domain-os/commit/f05821f0828ddcb7137ed06faf048f96c04d7620))
+* **dnssec:** address review of Phase 4c ([0b9acb9](https://github.com/onasunnymorning/domain-os/commit/0b9acb9553d6f5a20cb8f5988073c3bd48ccffde))
+* **entities:** keep trailing dots in NormalizeString ([be0dab8](https://github.com/onasunnymorning/domain-os/commit/be0dab86e61778300c5fd31edf7eec5e2d8fa164))
+* **entities:** keep trailing dots in NormalizeString ([b51347d](https://github.com/onasunnymorning/domain-os/commit/b51347d31bd11935e5021ab82323d45e1948e984))
+* **epp:** address review of Phase 2b ([41cce23](https://github.com/onasunnymorning/domain-os/commit/41cce23c0d0cf479b34fcc5d4c0dd50a23c1bad2))
+* **epp:** address review of Phase 3 ([8cd4605](https://github.com/onasunnymorning/domain-os/commit/8cd4605a525ba3cec994bb5b4ecdb98ff62e887d))
+* **epp:** address review of Phase 4a ([63458c6](https://github.com/onasunnymorning/domain-os/commit/63458c6d3542b707ecc46c999123431eab0bbec8))
+* **epp:** address review of Phase 4b ([6d90d15](https://github.com/onasunnymorning/domain-os/commit/6d90d15e96b07b73c520e10ebc93deab27b84b13))
+* **epp:** address review of Phase 4e ([f6bad38](https://github.com/onasunnymorning/domain-os/commit/f6bad384a547646b4a55543cabcfb25081eb31ef))
+* **epp:** address review of Phase 4f ([006f4c6](https://github.com/onasunnymorning/domain-os/commit/006f4c64697b43b80a08d7ceaff2008c29b7288a))
+* **epp:** apply &lt;newPW&gt; only after the session is admitted ([f68e373](https://github.com/onasunnymorning/domain-os/commit/f68e3736a52b89674d3a26691e5d0e1cd8e50ad2))
+* **escrow:** resume ingest phases from a parsed heartbeat cursor ([f3aaa6d](https://github.com/onasunnymorning/domain-os/commit/f3aaa6dd016988dea48eeb85b17b4cb915d84cb7))
+* **escrow:** resume ingest phases from a parsed heartbeat cursor ([0425cfe](https://github.com/onasunnymorning/domain-os/commit/0425cfe08504aaf9c5eca5d71b6d4bee64d870fe))
+* **escrow:** start over from legacy hosts and domains cursors ([c8e69b4](https://github.com/onasunnymorning/domain-os/commit/c8e69b4530a436972b0adf414a3d7f33242217b7))
+* **events:** redact authInfo before it reaches the outbox ([a30013e](https://github.com/onasunnymorning/domain-os/commit/a30013ed5d2a0f4d0eefd14756bee7b3679c3767))
+* **events:** redact authInfo before it reaches the outbox ([5816248](https://github.com/onasunnymorning/domain-os/commit/58162483f9f9e00943370b29b0555e0fb3804e97))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([ab57ec9](https://github.com/onasunnymorning/domain-os/commit/ab57ec9c8192f30f78ef87745e4db5798dadaef8))
+* **rdevalidate:** stop mislabeling contact rejections as a bad contact type ([7f9e7cb](https://github.com/onasunnymorning/domain-os/commit/7f9e7cb415b2936e5cbba4b972e86225d99923b6))
+* **roid:** address review of Phase 4d ([7915e5e](https://github.com/onasunnymorning/domain-os/commit/7915e5ed4850d02b9217107e5d3bc3b85c2b941f))
+* **roid:** pass the repository ID to the DS-records importer test from main ([de0c624](https://github.com/onasunnymorning/domain-os/commit/de0c624fa2cf8b2f5a7fdb8f05115df3b513fd57))
+* stop sync-registrars re-announcing registrars it never creates ([e2ea12c](https://github.com/onasunnymorning/domain-os/commit/e2ea12ce87113ee12c51e6c8b4a234a678a88489))
+* stop sync-registrars re-announcing registrars it never creates ([b6f68df](https://github.com/onasunnymorning/domain-os/commit/b6f68df44714a5f4fe52dd6c17a55d0b8a7759be))
+
 ## [0.12.0](https://github.com/onasunnymorning/domain-os/compare/v0.11.0...v0.12.0) (2026-10-04)
 
 
