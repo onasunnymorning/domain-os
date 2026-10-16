@@ -26,20 +26,22 @@ const Unbounded = -1
 
 // Namespaces the models use.
 const (
-	NSEPP    = "urn:ietf:params:xml:ns:epp-1.0"
-	NSDomain = "urn:ietf:params:xml:ns:domain-1.0"
-	NSHost   = "urn:ietf:params:xml:ns:host-1.0"
-	NSEPPCom = "urn:ietf:params:xml:ns:eppcom-1.0"
-	NSSecDNS = "urn:ietf:params:xml:ns:secDNS-1.1"
-	NSXSI    = "http://www.w3.org/2001/XMLSchema-instance"
+	NSEPP     = "urn:ietf:params:xml:ns:epp-1.0"
+	NSDomain  = "urn:ietf:params:xml:ns:domain-1.0"
+	NSHost    = "urn:ietf:params:xml:ns:host-1.0"
+	NSContact = "urn:ietf:params:xml:ns:contact-1.0"
+	NSEPPCom  = "urn:ietf:params:xml:ns:eppcom-1.0"
+	NSSecDNS  = "urn:ietf:params:xml:ns:secDNS-1.1"
+	NSXSI     = "http://www.w3.org/2001/XMLSchema-instance"
 )
 
 // prefixes name namespaces in error paths, so a path reads like the frame.
 var prefixes = map[string]string{
-	NSEPP:    "",
-	NSDomain: "domain:",
-	NSHost:   "host:",
-	NSSecDNS: "secDNS:",
+	NSEPP:     "",
+	NSDomain:  "domain:",
+	NSHost:    "host:",
+	NSContact: "contact:",
+	NSSecDNS:  "secDNS:",
 }
 
 // Error is a frame that does not match the schema. Path locates the element

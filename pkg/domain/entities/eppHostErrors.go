@@ -2,7 +2,8 @@ package entities
 
 import "errors"
 
-// Refusals of EPP host commands (RFC 5732). Like the domain refusals, they
+// Refusals of EPP host commands (RFC 5732). The refusals host and contact
+// commands share are in eppObjectErrors.go. Like the domain refusals, they
 // are domain vocabulary (INV-09) that the application layer wraps with the
 // detail, and the EPP adapter maps to result codes listed in
 // docs/epp/POLICY_REFERENCE.md.
@@ -26,19 +27,6 @@ var (
 	ErrEPPHostAddressNotPublic = errors.New("the address is not a public unicast address")
 	// ErrEPPHostAddressNotSet: removing an address the host does not have.
 	ErrEPPHostAddressNotSet = errors.New("the host does not have the address")
-	// ErrEPPHostStatusNotClient: adding or removing a status a client does
-	// not control. A client sets only clientDeleteProhibited and
-	// clientUpdateProhibited.
-	ErrEPPHostStatusNotClient = errors.New("a client can set only clientDeleteProhibited and clientUpdateProhibited")
-	// ErrEPPHostStatusAlreadySet: adding a status the host already has.
-	ErrEPPHostStatusAlreadySet = errors.New("the host already has the status")
-	// ErrEPPHostStatusNotSet: removing a status the host does not have.
-	ErrEPPHostStatusNotSet = errors.New("the host does not have the status")
-	// ErrEPPHostDeleteProhibited: a delete of a host with a delete
-	// prohibition (RFC 5732 §2.3).
-	ErrEPPHostDeleteProhibited = errors.New("the host's status prohibits deleting it")
-	// ErrEPPHostPending: a transform of a host with a pending action.
-	ErrEPPHostPending = errors.New("the host has a pending action")
 	// ErrEPPHostLinked: a delete of a host that is a nameserver of a domain
 	// (RFC 5732 §3.2.2).
 	ErrEPPHostLinked = errors.New("the host is a nameserver of a domain")

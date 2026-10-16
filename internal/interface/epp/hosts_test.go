@@ -79,17 +79,19 @@ func code(doc *etree.Document) string {
 	return doc.FindElement("//response/result").SelectAttrValue("code", "")
 }
 
-// hostLoginXML logs in as clID with the domain and host services.
-func hostLoginXML(clID, pw string) string {
+// objectsLoginXML logs in as clID with the domain, host and contact
+// services.
+func objectsLoginXML(clID, pw string) string {
 	return cmdXML(`<login><clID>`+clID+`</clID><pw>`+pw+`</pw>
 <options><version>1.0</version><lang>en</lang></options>
-<svcs><objURI>`+nsDomain+`</objURI><objURI>`+nsHost+`</objURI></svcs></login>`, "HOST-LOGIN")
+<svcs><objURI>`+nsDomain+`</objURI><objURI>`+nsHost+`</objURI><objURI>`+nsContact+`</objURI></svcs></login>`, "OBJ-LOGIN")
 }
 
-// hostServer starts a server whose registry has, besides newTestDomains'
+// objectServer starts a server whose registry has, besides newTestDomains'
 // fixtures, mine.test sponsored by registrar1, and logs registrar1 in with
-// the host service. registrar2 can log in too (rstRegistrar2).
-func hostServer(t *testing.T) (*testCredentials, *testServer, *client) {
+// the domain, host and contact services. registrar2 can log in too
+// (rstRegistrar2).
+func objectServer(t *testing.T) (*testCredentials, *testServer, *client) {
 	t.Helper()
 	creds := newTestCredentials(t)
 	rstRegistrar2(t, creds)
@@ -98,20 +100,20 @@ func hostServer(t *testing.T) (*testCredentials, *testServer, *client) {
 	reg.AddDomain(&entities.Domain{Name: "also-mine.test", ClID: testRegistrar, RoID: entities.RoidType("3_DOM-" + testRepositoryID)})
 	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
 	c := dial(t, ts.addr)
-	requireCode(t, c.roundTrip(hostLoginXML(testLogin, testPassword)), "1000")
+	requireCode(t, c.roundTrip(objectsLoginXML(testLogin, testPassword)), "1000")
 	return creds, ts, c
 }
 
-// registrar2 logs registrar2 in with the host service.
+// registrar2 logs registrar2 in with the domain, host and contact services.
 func registrar2(t *testing.T, ts *testServer) *client {
 	t.Helper()
 	c := dial(t, ts.addr)
-	requireCode(t, c.roundTrip(hostLoginXML("registrar2", "secret-pw-02")), "1000")
+	requireCode(t, c.roundTrip(objectsLoginXML("registrar2", "secret-pw-02")), "1000")
 	return c
 }
 
 func TestHostCreateInfoDelete(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 
 	t.Run("an external host, without addresses", func(t *testing.T) {
 		resp := c.roundTrip(hostCreateXML("NS1.Example.NET"))
@@ -150,7 +152,7 @@ func TestHostCreateInfoDelete(t *testing.T) {
 }
 
 func TestHostCreateRefusals(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	for _, tc := range []struct {
 		name, frame, code, says string
 	}{
@@ -187,7 +189,7 @@ func TestHostCreateRefusals(t *testing.T) {
 }
 
 func TestHostCheck(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	resp := c.roundTrip(hostCheckXML("ns1.registrar1.net", "ns1.registrar2.net", "ns1.registered.test", "ns1.nobody.test", "ns1.mine.test", "!.test"))
 	requireCode(t, resp, "1000")
 	requireSchemaValid(t, []byte(mustWrite(t, resp)))
@@ -220,7 +222,7 @@ func TestHostCheck(t *testing.T) {
 }
 
 func TestHostSponsorship(t *testing.T) {
-	_, ts, c := hostServer(t)
+	_, ts, c := objectServer(t)
 	theirs := "ns9.theirs.net"
 	requireCode(t, registrar2(t, ts).roundTrip(hostCreateXML(theirs)), "1000")
 	for _, tc := range []struct{ name, frame, code string }{
@@ -244,7 +246,7 @@ func TestHostSponsorship(t *testing.T) {
 }
 
 func TestHostUpdate(t *testing.T) {
-	creds, _, c := hostServer(t)
+	creds, _, c := objectServer(t)
 	reg := creds.domains.registry
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.mine.test", addrXML("v4", testV4))), "1000")
 	update := func(changes string) *etree.Document { return c.roundTrip(hostUpdateXML("ns1.mine.test", changes)) }
@@ -304,7 +306,7 @@ func TestHostUpdate(t *testing.T) {
 }
 
 func TestHostRename(t *testing.T) {
-	creds, _, c := hostServer(t)
+	creds, _, c := objectServer(t)
 	reg := creds.domains.registry
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.mine.test", addrXML("v4", testV4))), "1000")
 	requireCode(t, c.roundTrip(hostCreateXML("ns2.mine.test", addrXML("v4", testV4b))), "1000")
@@ -346,7 +348,7 @@ func TestHostRename(t *testing.T) {
 }
 
 func TestHostLinked(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.mine.test", addrXML("v4", testV4))), "1000")
 	requireCode(t, c.roundTrip(createXML("linked.test", createOpts{
 		ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj><domain:hostObj>ns1.mine.test</domain:hostObj></domain:ns>`,
@@ -405,7 +407,7 @@ func mustWrite(t *testing.T, doc *etree.Document) string {
 }
 
 func TestObjectElementMustMatchCommand(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.example.net")), "1000")
 	for _, tc := range []struct{ name, frame string }{
 		{"<delete> carrying <host:info>", cmdXML(`<delete><host:info xmlns:host="urn:ietf:params:xml:ns:host-1.0"><host:name>ns1.example.net</host:name></host:info></delete>`, "MIX-1")},
@@ -424,7 +426,7 @@ func TestObjectElementMustMatchCommand(t *testing.T) {
 }
 
 func TestHostUpdateNeedsAChange(t *testing.T) {
-	_, _, c := hostServer(t)
+	_, _, c := objectServer(t)
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.example.net")), "1000")
 	resp := c.roundTrip(hostUpdateXML("ns1.example.net", ""))
 	requireCode(t, resp, "2003")

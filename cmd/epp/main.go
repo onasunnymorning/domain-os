@@ -151,6 +151,9 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	hosts := services.NewEPPHostService(services.EPPHostServiceDeps{
 		Hosts: hostRepo, Domains: domainRepo, TLDs: tldRepo, Roids: roids, Events: events,
 	})
+	contacts := services.NewEPPContactService(services.EPPContactServiceDeps{
+		Contacts: postgres.NewContactRepository(db, repositoryID), Roids: roids, Events: events,
+	})
 	audit := services.NewEPPAuditService(postgres.NewEPPTransactionRepository(db), cfg.Audit.Buffer)
 
 	srv, err = epp.NewServer(epp.Options{
@@ -159,6 +162,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Sessions:      sessions,
 		Domains:       domains,
 		Hosts:         hosts,
+		Contacts:      contacts,
 		Audit:         audit,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },

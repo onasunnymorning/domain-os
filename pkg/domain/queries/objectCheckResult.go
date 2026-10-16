@@ -7,3 +7,11 @@ type HostCheckResult struct {
 	Available bool
 	Reason    string
 }
+
+// ContactCheckResult is one ID's answer to a <contact:check>: whether a
+// contact can be created with that ID, and if not, why.
+type ContactCheckResult struct {
+	ID        string
+	Available bool
+	Reason    string
+}

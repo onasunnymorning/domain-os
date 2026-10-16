@@ -241,12 +241,12 @@ func (s *EPPHostService) update(ctx context.Context, scope entities.RegistrarClI
 	}
 	for _, st := range slices.Concat(cmd.RemoveStatuses, cmd.AddStatuses) {
 		if !slices.Contains(clientHostStatuses, st) {
-			return nil, fmt.Errorf("%w: %s", entities.ErrEPPHostStatusNotClient, st)
+			return nil, fmt.Errorf("%w: %s; a client sets only %s", entities.ErrEPPStatusNotClient, st, strings.Join(clientHostStatuses, " and "))
 		}
 	}
 	switch {
 	case host.Status.IsPending():
-		return nil, fmt.Errorf("%w: %s", entities.ErrEPPHostPending, host.Name)
+		return nil, fmt.Errorf("%w: %s", entities.ErrEPPObjectPending, host.Name)
 	case host.Status.ServerUpdateProhibited:
 		return nil, fmt.Errorf("%w: serverUpdateProhibited", entities.ErrHostUpdateProhibited)
 	case host.Status.ClientUpdateProhibited && !slices.Contains(cmd.RemoveStatuses, entities.HostStatusClientUpdateProhibited):
@@ -341,9 +341,9 @@ func (s *EPPHostService) Delete(ctx context.Context, scope entities.RegistrarClI
 	}
 	switch {
 	case host.Status.IsPending():
-		return fmt.Errorf("%w: %s", entities.ErrEPPHostPending, host.Name)
+		return fmt.Errorf("%w: %s", entities.ErrEPPObjectPending, host.Name)
 	case !host.CanBeDeleted():
-		return fmt.Errorf("%w: %s", entities.ErrEPPHostDeleteProhibited, host.Name)
+		return fmt.Errorf("%w: %s", entities.ErrEPPDeleteProhibited, host.Name)
 	}
 	links, err := s.links(ctx, host)
 	if err != nil {
@@ -471,14 +471,14 @@ func applyClientStatuses(host *entities.Host, remove, add []string) error {
 		if f := flag(st); *f {
 			*f = false
 		} else {
-			return fmt.Errorf("%w: %s", entities.ErrEPPHostStatusNotSet, st)
+			return fmt.Errorf("%w: %s", entities.ErrEPPStatusNotSet, st)
 		}
 	}
 	for _, st := range add {
 		if f := flag(st); !*f {
 			*f = true
 		} else {
-			return fmt.Errorf("%w: %s", entities.ErrEPPHostStatusAlreadySet, st)
+			return fmt.Errorf("%w: %s", entities.ErrEPPStatusAlreadySet, st)
 		}
 	}
 	host.SetOKIfNeeded()

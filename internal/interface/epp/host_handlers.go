@@ -92,10 +92,10 @@ func (s *Server) hostUpdate(ctx context.Context, cmd *command) {
 	}
 	c := commands.EPPUpdateHostCommand{Name: cmd.objects[0]}
 	if add := update.SelectElement("add"); add != nil {
-		c.AddAddresses, c.AddStatuses = hostAddrs(add), hostStatuses(add)
+		c.AddAddresses, c.AddStatuses = hostAddrs(add), statusValues(add)
 	}
 	if rem := update.SelectElement("rem"); rem != nil {
-		c.RemoveAddresses, c.RemoveStatuses = hostAddrs(rem), hostStatuses(rem)
+		c.RemoveAddresses, c.RemoveStatuses = hostAddrs(rem), statusValues(rem)
 	}
 	if name := update.FindElement("chg/name"); name != nil {
 		c.NewName = schema.TokenValue(name.Text())
@@ -134,15 +134,6 @@ func hostAddrs(el *etree.Element) []commands.EPPHostAddress {
 			Version: schema.TokenValue(a.SelectAttrValue("ip", "v4")),
 			Address: schema.TokenValue(a.Text()),
 		})
-	}
-	return out
-}
-
-// hostStatuses reads the s attributes of the <host:status> children of el.
-func hostStatuses(el *etree.Element) []string {
-	var out []string
-	for _, st := range el.SelectElements("status") {
-		out = append(out, schema.TokenValue(st.SelectAttrValue("s", "")))
 	}
 	return out
 }

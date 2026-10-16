@@ -78,7 +78,7 @@ func TestEPPHostCommandsOverPostgres(t *testing.T) {
 	linked := "linked." + f.tld
 	_, err = f.domains.Create(ctx, scope1, commands.EPPCreateDomainCommand{
 		Name: linked, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
-		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
 		HostNames: []string{internal},
 	})
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestEPPHostRenameOverPostgres_Glue(t *testing.T) {
 	require.NoError(t, err)
 	_, err = f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
 		Name: domain, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
-		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
 		HostNames: []string{external},
 	})
 	require.NoError(t, err)

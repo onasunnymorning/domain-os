@@ -71,6 +71,7 @@ type testCredentials struct {
 	// service auditLog.
 	domains  *testDomains
 	hosts    *services.EPPHostService
+	contacts *services.EPPContactService
 	audit    *memstore.EPPTransactions
 	auditLog *services.EPPAuditService
 }
@@ -87,6 +88,9 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		audit:    memstore.NewEPPTransactions(),
 	}
 	tc.hosts = newTestHosts(tc.domains.registry)
+	tc.contacts = services.NewEPPContactService(services.EPPContactServiceDeps{
+		Contacts: tc.domains.registry.Contacts(), Roids: services.NewRoidService(tc.domains.registry, testRepositoryID),
+	})
 	tc.auditLog = services.NewEPPAuditService(tc.audit, 100)
 	ctx, stop := context.WithCancel(context.Background())
 	written := make(chan struct{})
@@ -121,7 +125,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

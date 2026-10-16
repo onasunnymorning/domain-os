@@ -39,6 +39,24 @@ type EPPHostService interface {
 	Delete(ctx context.Context, scope entities.RegistrarClID, name string) error
 }
 
+// EPPContactService is what the EPP server asks of the registry for
+// contact commands (RFC 5733). A contact ID is unique in the registry, so
+// check is the same for every registrar; the other commands are scoped to
+// the session's registrar (ADR 0006).
+type EPPContactService interface {
+	// Check reports, for each ID in order, whether a contact can be created
+	// with it. An error means the registry could not answer.
+	Check(ctx context.Context, ids []string) ([]*queries.ContactCheckResult, error)
+	// Info returns the registrar's contact.
+	Info(ctx context.Context, scope entities.RegistrarClID, id string) (*entities.Contact, error)
+	// Create creates a contact for the registrar.
+	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateContactCommand) (*entities.Contact, error)
+	// Update changes the registrar's contact.
+	Update(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateContactCommand) (*entities.Contact, error)
+	// Delete deletes the registrar's contact.
+	Delete(ctx context.Context, scope entities.RegistrarClID, id string) error
+}
+
 // EPPAuditLog records EPP commands and responses
 // (docs/epp/ARCHITECTURE.md §6).
 type EPPAuditLog interface {

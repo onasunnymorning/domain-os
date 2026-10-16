@@ -122,7 +122,23 @@ func (s *ContactService) publishContactEvent(
 	newState interface{},
 	previousState interface{},
 ) {
-	if s.eventPublisher == nil {
+	publishContactEvent(ctx, s.eventPublisher, eventType, subject, msg, command, newState, previousState)
+}
+
+// publishContactEvent publishes a contact's domain event, correlated with
+// the request in ctx and naming its actor. A nil publisher publishes
+// nothing. The publisher redacts the authorization information.
+func publishContactEvent(
+	ctx context.Context,
+	publisher repositories.EventPublisher,
+	eventType string,
+	subject string,
+	msg string,
+	command interface{},
+	newState interface{},
+	previousState interface{},
+) {
+	if publisher == nil {
 		return
 	}
 	data := map[string]interface{}{
@@ -150,7 +166,7 @@ func (s *ContactService) publishContactEvent(
 		domainEvent.Actor = actor
 	}
 
-	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+	if err := publisher.Publish(ctx, domainEvent); err != nil {
 		log.Printf("failed to publish contact event %s: %v", eventType, err)
 	}
 }

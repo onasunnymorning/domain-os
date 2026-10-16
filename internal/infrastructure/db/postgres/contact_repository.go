@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 	"flag"
 	"fmt"
 
@@ -76,6 +77,49 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, c *entities.Conta
 	}
 
 	return FromDBContact(dbContact, r.repository), nil
+}
+
+// UpdateContactIfUnchanged saves the contact and returns it as stored.
+//
+// c.UpdatedAt is the version the caller read: the contact is written only if
+// the stored contact still has it, so two commands that read the same
+// contact cannot each overwrite the other's change; the second is
+// ErrContactChanged, to be read and checked again. A contact deleted since
+// it was read is ErrContactNotFound, never written back.
+func (r *ContactRepository) UpdateContactIfUnchanged(ctx context.Context, c *entities.Contact) (*entities.Contact, error) {
+	read := c.UpdatedAt
+	dbContact := ToDBContact(c)
+	dbContact.UpdatedAt = time.Now().UTC()
+	update := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", dbContact.ID)
+	if read.IsZero() {
+		update = update.Where("updated_at IS NULL OR updated_at = ?", read)
+	} else {
+		update = update.Where("updated_at = ?", read)
+	}
+	// Updates, not Save: Save inserts when no row matches.
+	res := update.Select("*").Omit("id", "ro_id", "created_at", "DomsWhereRegistrant", "DomsWhereAdmin", "DomsWhereTech", "DomsWhereBilling").Updates(dbContact)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		var n int64
+		if err := r.db.WithContext(ctx).Model(&Contact{}).Where("id = ?", dbContact.ID).Count(&n).Error; err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, entities.ErrContactNotFound
+		}
+		return nil, entities.ErrContactChanged
+	}
+	return r.GetContactByID(ctx, dbContact.ID)
+}
+
+// CountContactLinks counts the domains that use the contact, in any role.
+func (r *ContactRepository) CountContactLinks(ctx context.Context, id string) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&Domain{}).
+		Where("registrant_id = ? OR admin_id = ? OR tech_id = ? OR billing_id = ?", id, id, id, id).Count(&n).Error
+	return n, err
 }
 
 // DeleteContactByID deletes a contact from the database
