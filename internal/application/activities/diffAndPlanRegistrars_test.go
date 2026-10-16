@@ -272,13 +272,24 @@ func TestDiffAndPlanRegistrars_NameCollisions(t *testing.T) {
 	})
 
 	t.Run("a collision on the normalized form is caught", func(t *testing.T) {
+		held := iana(100, "Spaced Name Ltd")
+		newcomer := iana(903, "Spaced  Name Ltd ")
+
+		p := plan(t, []entities.IANARegistrar{held, newcomer}, []entities.RegistrarListItem{existing(held)})
+
+		if len(p.Creates) != 1 || p.Creates[0].Name != "Spaced Name Ltd-2" {
+			t.Fatalf("expected one create named %q, got %+v", "Spaced Name Ltd-2", p.Creates)
+		}
+	})
+
+	t.Run("a trailing dot makes a different name", func(t *testing.T) {
 		held := iana(100, "Dotted Name Ltd")
 		newcomer := iana(903, "Dotted Name Ltd.")
 
 		p := plan(t, []entities.IANARegistrar{held, newcomer}, []entities.RegistrarListItem{existing(held)})
 
-		if len(p.Creates) != 1 || p.Creates[0].Name != "Dotted Name Ltd-2" {
-			t.Fatalf("expected one create named %q, got %+v", "Dotted Name Ltd-2", p.Creates)
+		if len(p.Creates) != 1 || p.Creates[0].Name != "Dotted Name Ltd." {
+			t.Fatalf("expected one create named %q, got %+v", "Dotted Name Ltd.", p.Creates)
 		}
 	})
 

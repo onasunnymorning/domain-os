@@ -24,9 +24,16 @@ func TestUniqueRegistrarName(t *testing.T) {
 	})
 
 	t.Run("collision is detected on the normalized form", func(t *testing.T) {
+		used := map[string]struct{}{"Acme Inc.": {}}
+		if got := UniqueRegistrarName("Acme  Inc.", used); got != "Acme Inc.-2" {
+			t.Fatalf("got %q, want %q", got, "Acme Inc.-2")
+		}
+	})
+
+	t.Run("a trailing dot is part of the name", func(t *testing.T) {
 		used := map[string]struct{}{"Acme Inc": {}}
-		if got := UniqueRegistrarName("Acme  Inc.", used); got != "Acme Inc-2" {
-			t.Fatalf("got %q, want %q", got, "Acme Inc-2")
+		if got := UniqueRegistrarName("Acme Inc.", used); got != "Acme Inc." {
+			t.Fatalf("got %q, want %q", got, "Acme Inc.")
 		}
 	})
 

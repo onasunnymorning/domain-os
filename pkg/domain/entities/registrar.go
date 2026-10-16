@@ -129,7 +129,7 @@ func NewRegistrar(clID, name, email string, gurid int, postalInfo [2]*RegistrarP
 		// By default, the nickname is the same as the name
 		NickName: NormalizeString(name),
 		GurID:    gurid,
-		Email:    strings.ToLower(NormalizeString(email)),
+		Email:    NormalizeEmail(email),
 		// Create the status as readonly by default
 		Status: RegistrarStatusReadonly,
 		// Create the IANAStatus as Unknown by default

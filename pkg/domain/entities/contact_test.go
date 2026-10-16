@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -772,4 +773,19 @@ func TestContact_Disclose_IsNil(t *testing.T) {
 	}
 
 	require.False(t, cd.IsNil())
+}
+
+// TestNewContact_KeepsTrailingDots: a trailing dot is part of a name or a
+// password, so it is stored as given; only an email address loses one.
+func TestNewContact_KeepsTrailingDots(t *testing.T) {
+	c, err := NewContact("dots-1", "123_CONT-APEX", "ops@example.com.", "Secret-Pass1.", "199-myrar")
+	require.NoError(t, err)
+	assert.Equal(t, AuthInfoType("Secret-Pass1."), c.AuthInfo, "the password is the one the registrar chose")
+	assert.Equal(t, "ops@example.com", c.Email)
+
+	a, err := NewAddress("St. Louis", "US")
+	require.NoError(t, err)
+	pi, err := NewContactPostalInfo("int", "Example Inc.", a)
+	require.NoError(t, err)
+	assert.Equal(t, PostalLineType("Example Inc."), pi.Name)
 }
