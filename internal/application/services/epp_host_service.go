@@ -176,17 +176,11 @@ func (s *EPPHostService) Create(ctx context.Context, scope entities.RegistrarClI
 	if err := host.Validate(); err != nil {
 		return nil, err
 	}
-	// One insert writes the host and its addresses together.
-	if err := s.hosts.BulkCreate(ctx, []*entities.Host{host}); err != nil {
+	// One transaction writes the host and its addresses, holding its
+	// superordinate domain against a concurrent delete.
+	created, err := s.hosts.CreateHostUnder(ctx, host, p.parent())
+	if err != nil {
 		return nil, fmt.Errorf("create host %s: %w", name, err)
-	}
-	id, err := roid.Int64()
-	if err != nil {
-		return nil, err
-	}
-	created, err := s.hosts.GetHostByRoid(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("read created host %s: %w", name, err)
 	}
 	publishHostEvent(ctx, s.events, "host.created", created.RoID.String(), fmt.Sprintf("Host %s created", name), cmd, created, nil)
 	return created, nil
@@ -301,7 +295,11 @@ func (s *EPPHostService) update(ctx context.Context, scope entities.RegistrarClI
 	if err := host.Validate(); err != nil {
 		return nil, err
 	}
-	updated, err := s.hosts.UpdateHostAndAddresses(ctx, host)
+	parent := ""
+	if renamed {
+		parent = p.parent()
+	}
+	updated, err := s.hosts.UpdateHostAndAddresses(ctx, host, parent)
 	if err != nil {
 		return nil, fmt.Errorf("update host %s: %w", before.Name, err)
 	}
@@ -527,8 +525,9 @@ type placement struct {
 }
 
 // admits checks that the registrar may have a host named name here: an
-// internal host's superordinate domain must be registered, and sponsored by
-// the registrar.
+// internal host's superordinate domain must be registered, sponsored by
+// the registrar, and not being deleted. The repository checks it again
+// under a lock on the domain, as it writes.
 func (p *placement) admits(scope entities.RegistrarClID, name string) error {
 	switch {
 	case !p.internal:
@@ -537,8 +536,19 @@ func (p *placement) admits(scope entities.RegistrarClID, name string) error {
 		return fmt.Errorf("%w: %s, for %s", entities.ErrEPPSuperordinateDomainNotFound, p.superordinate, name)
 	case p.domain.ClID.String() != scope.String():
 		return fmt.Errorf("%w: domain %s, for host %s", entities.ErrEPPNotSponsor, p.superordinate, name)
+	case p.domain.Status.PendingDelete:
+		return fmt.Errorf("%w: %s, for %s", entities.ErrEPPSuperordinatePendingDelete, p.superordinate, name)
 	}
 	return nil
+}
+
+// parent is the superordinate domain the repository holds while writing a
+// host placed here: empty for an external host.
+func (p *placement) parent() string {
+	if !p.internal {
+		return ""
+	}
+	return p.superordinate
 }
 
 // tldCache remembers which names are TLDs this registry serves, for the

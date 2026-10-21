@@ -62,6 +62,7 @@ var refusals = []struct {
 	{entities.ErrEPPAuthInfoRequired, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPCurExpDate, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPSubordinateHosts, epplib.StatusObjectAssociationProhibitsOperation},
+	{entities.ErrEPPSuperordinatePendingDelete, epplib.StatusObjectStatusProhibitsOperation},
 	{entities.ErrInBailiwickHostsMustHaveAddress, epplib.StatusParameterPolicyError},
 	{entities.ErrDomainUpdateNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
 	{entities.ErrDomainRenewExceedsMaxHorizon, epplib.StatusParameterPolicyError},

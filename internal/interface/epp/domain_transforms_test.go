@@ -233,3 +233,26 @@ func TestDomainDelete(t *testing.T) {
 		requireCode(t, c.roundTrip(domainDeleteXML("registered.test")), "2201")
 	})
 }
+
+func TestDomainUpdateRefusesARepeatedExtension(t *testing.T) {
+	_, _, c := domainServer(t)
+	requireCode(t, c.roundTrip(createXML("twice.test", createOpts{ext: secDNSCreate(dsDataXML(2371, 13, 2, testDigest))})), "1000")
+	rem := secDNSUpdateXML("", "<secDNS:rem>"+dsDataXML(2371, 13, 2, testDigest)+"</secDNS:rem>")
+	add := secDNSUpdateXML("", "<secDNS:add>"+dsDataXML(2372, 13, 2, testDigest)+"</secDNS:add>")
+	resp := c.roundTrip(domainUpdateXML("twice.test", "", rem+add))
+	requireCode(t, resp, "2001")
+	assert.Contains(t, msg(resp), "more than once")
+	ds := c.roundTrip(infoXML("twice.test", "")).FindElements("//extension/infData/dsData/keyTag")
+	assert.Equal(t, []string{"2371"}, texts(ds), "neither block was applied")
+}
+
+func TestHostUnderADomainBeingDeleted(t *testing.T) {
+	_, _, c := domainServer(t)
+	requireCode(t, c.roundTrip(createXML("going.test", createOpts{})), "1000")
+	requireCode(t, c.roundTrip(hostCreateXML("ns1.elsewhere.net")), "1000")
+	requireCode(t, c.roundTrip(domainDeleteXML("going.test")), "1001")
+	resp := c.roundTrip(hostCreateXML("ns1.going.test", addrXML("v4", testV4)))
+	requireCode(t, resp, "2304")
+	assert.Contains(t, msg(resp), "being deleted")
+	requireCode(t, c.roundTrip(hostUpdateXML("ns1.elsewhere.net", chgXML("ns2.going.test"))), "2304")
+}

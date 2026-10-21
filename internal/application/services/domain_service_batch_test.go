@@ -73,10 +73,10 @@ func TestBatchExpireDomains_Success(t *testing.T) {
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
 
 	// UpdateDomain should succeed for each — the domain is mutated in-place before this call
-	domRepo.On("UpdateDomain", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
 		return d.Name.String() == "alpha.com"
 	})).Return(dom1, nil)
-	domRepo.On("UpdateDomain", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
 		return d.Name.String() == "beta.com"
 	})).Return(dom2, nil)
 
@@ -87,7 +87,7 @@ func TestBatchExpireDomains_Success(t *testing.T) {
 
 	assert.Len(t, result.Succeeded, 2)
 	assert.Empty(t, result.Failed)
-	domRepo.AssertNumberOfCalls(t, "UpdateDomain", 2)
+	domRepo.AssertNumberOfCalls(t, "UpdateDomainColumnsIfUnchanged", 2)
 }
 
 func TestBatchExpireDomains_EmptyList(t *testing.T) {
@@ -135,7 +135,7 @@ func TestBatchExpireDomains_DomainNotFound(t *testing.T) {
 
 	tld := newTestTLDWithGAPhase("com")
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
-	domRepo.On("UpdateDomain", mock.Anything, mock.AnythingOfType("*entities.Domain")).
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.AnythingOfType("*entities.Domain")).
 		Return(dom1, nil)
 	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -213,10 +213,10 @@ func TestBatchExpireDomains_PartialFailure(t *testing.T) {
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
 
 	// First UpdateDomain call succeeds, second fails
-	domRepo.On("UpdateDomain", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
 		return d.Name.String() == "good.com"
 	})).Return(dom1, nil)
-	domRepo.On("UpdateDomain", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.MatchedBy(func(d *entities.Domain) bool {
 		return d.Name.String() == "bad.com"
 	})).Return((*entities.Domain)(nil), errors.New("db connection lost"))
 
@@ -750,7 +750,7 @@ func TestBatchRestoreDomains_Success_SingleAtomicWrite(t *testing.T) {
 	// GetQuote fetches the domain again internally
 	domRepo.On("GetDomainByName", mock.Anything, "restoreme.com", false).Return(dom, nil)
 
-	domRepo.On("UpdateDomain", mock.Anything, mock.AnythingOfType("*entities.Domain")).Return(dom, nil)
+	domRepo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, mock.AnythingOfType("*entities.Domain")).Return(dom, nil)
 	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
 	result := svc.BatchRestoreDomains(context.Background(), names)
@@ -761,7 +761,7 @@ func TestBatchRestoreDomains_Success_SingleAtomicWrite(t *testing.T) {
 	assert.Empty(t, result.Skipped)
 
 	// Both mutations landed in ONE write — no half-restored state is possible
-	domRepo.AssertNumberOfCalls(t, "UpdateDomain", 1)
+	domRepo.AssertNumberOfCalls(t, "UpdateDomainColumnsIfUnchanged", 1)
 	assert.False(t, dom.Status.PendingRestore, "PendingRestore must be unset")
 	assert.Equal(t, expiryBefore.AddDate(1, 0, 0), dom.ExpiryDate, "expiry must be extended by exactly 1 year")
 }

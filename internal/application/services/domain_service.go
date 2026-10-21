@@ -574,7 +574,7 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 	// the host rows themselves from this domain's copy of them — hosts are
 	// shared across domains and TLDs, so that is not an update path's business
 	// (#415). UpdateDomain no longer touches associations.
-	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	_, err = s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -650,7 +650,7 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 	// the host rows themselves from this domain's copy of them — hosts are
 	// shared across domains and TLDs, so that is not an update path's business
 	// (#415). UpdateDomain no longer touches associations.
-	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	_, err = s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -723,7 +723,7 @@ func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) e
 	}
 
 	// Save the domain
-	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	_, err = s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -793,7 +793,7 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 	}
 
 	// Save the domain, this will update the association
-	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	_, err = s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -875,7 +875,7 @@ func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, doma
 	}
 
 	// Save the domain, this will update the association
-	_, err = s.domainRepository.UpdateDomain(ctx, dom)
+	_, err = s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -1456,7 +1456,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	}
 
 	// Save the domain
-	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1606,7 +1606,7 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 	}
 
 	// Save the domain
-	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1675,7 +1675,7 @@ func (svc *DomainService) RestoreDomain(ctx context.Context, domainName string) 
 	}
 
 	// Save the domain
-	updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1707,7 +1707,7 @@ func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string
 	}
 
 	// Save the domain
-	updatedDom, err := svc.domainRepository.UpdateDomain(ctx, dom)
+	updatedDom, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return err
 	}
@@ -1939,7 +1939,7 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 	}
 
 	// Save the domain
-	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -1984,7 +1984,7 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	}
 
 	// Save the domain
-	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	updatedDomain, err := s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
@@ -2211,7 +2211,7 @@ func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string
 			}
 
 			// Save the domain
-			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 			if err != nil {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
 				continue
@@ -2369,7 +2369,7 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 			}
 
 			// Save the domain
-			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 			if err != nil {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
 				continue
@@ -2614,7 +2614,7 @@ func (svc *DomainService) BatchRestoreDomains(ctx context.Context, names []strin
 				continue
 			}
 
-			updatedDomain, err := svc.domainRepository.UpdateDomain(ctx, dom)
+			updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 			if err != nil {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
 				continue

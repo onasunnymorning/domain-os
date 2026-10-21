@@ -15,6 +15,9 @@ var (
 	// registry serves, whose superordinate domain is not registered
 	// (RFC 5732 §3.2.1).
 	ErrEPPSuperordinateDomainNotFound = errors.New("the host's superordinate domain is not registered")
+	// ErrEPPSuperordinatePendingDelete: a host placed under a domain that
+	// is pendingDelete.
+	ErrEPPSuperordinatePendingDelete = errors.New("the host's superordinate domain is being deleted")
 	// ErrEPPExternalHostAddress: an address on a host outside this
 	// registry's TLDs. Only a host within them needs glue.
 	ErrEPPExternalHostAddress = errors.New("a host outside this registry's TLDs takes no addresses")

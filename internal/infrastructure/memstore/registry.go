@@ -653,15 +653,57 @@ func (v registryHosts) BulkCreate(_ context.Context, hosts []*entities.Host) err
 	return nil
 }
 
-// UpdateHostAndAddresses replaces the stored host in place, so the domains
-// that have it as a nameserver see the change, as they do through the
-// database's link table. Like the Postgres repository, it refuses a host
-// changed since h was read (ErrHostChanged).
-func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Host) (*entities.Host, error) {
+// CreateHostUnder stores the host, under parent as the Postgres repository
+// checks it.
+func (v registryHosts) CreateHostUnder(_ context.Context, h *entities.Host, parent string) (*entities.Host, error) {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()
 	if v.r.err != nil {
 		return nil, v.r.err
+	}
+	if err := v.r.parentTakes(parent, h.ClID); err != nil {
+		return nil, err
+	}
+	key := hostKey{h.Name.String(), h.ClID.String()}
+	if _, ok := v.r.hosts[key]; ok {
+		return nil, entities.ErrHostAlreadyExists
+	}
+	c := h.DeepCopy()
+	c.CreatedAt = v.r.now().UTC()
+	v.r.hosts[key] = c
+	return c.DeepCopy(), nil
+}
+
+// parentTakes checks that a host of clid can be placed under the domain
+// parent (none if empty). The caller holds the lock.
+func (r *Registry) parentTakes(parent string, clid entities.ClIDType) error {
+	if parent == "" {
+		return nil
+	}
+	d, ok := r.domains[parent]
+	switch {
+	case !ok:
+		return entities.ErrEPPSuperordinateDomainNotFound
+	case d.ClID != clid:
+		return entities.ErrEPPNotSponsor
+	case d.Status.PendingDelete:
+		return entities.ErrEPPSuperordinatePendingDelete
+	}
+	return nil
+}
+
+// UpdateHostAndAddresses replaces the stored host in place, so the domains
+// that have it as a nameserver see the change, as they do through the
+// database's link table. Like the Postgres repository, it refuses a host
+// changed since h was read (ErrHostChanged).
+func (v registryHosts) UpdateHostAndAddresses(_ context.Context, h *entities.Host, parent string) (*entities.Host, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	if err := v.r.parentTakes(parent, h.ClID); err != nil {
+		return nil, err
 	}
 	id, _ := h.RoID.Int64()
 	stored := v.r.hostByRoid(id)

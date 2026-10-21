@@ -21,6 +21,10 @@ type DomainRepository interface {
 	// entities.ErrDomainChanged, and if the domain is gone,
 	// entities.ErrDomainNotFound.
 	UpdateDomainIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
+	// UpdateDomainColumnsIfUnchanged saves the domain's own columns, not
+	// its nameservers or DS records, on the same condition as
+	// UpdateDomainIfUnchanged.
+	UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	// DeleteDomainByName deletes within scope; out of scope reads as not found.
 	DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
@@ -57,6 +61,12 @@ func (m *MockDomainRepository) Create(ctx context.Context, d *entities.Domain) (
 
 // UpdateDomainIfUnchanged saves a domain as read
 func (m *MockDomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+	args := m.Called(ctx, d)
+	return args.Get(0).(*entities.Domain), args.Error(1)
+}
+
+// UpdateDomainColumnsIfUnchanged saves a domain's columns as read
+func (m *MockDomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
 	args := m.Called(ctx, d)
 	return args.Get(0).(*entities.Domain), args.Error(1)
 }

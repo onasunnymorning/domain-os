@@ -211,7 +211,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 		s.rejectSchema(cmd, err)
 		return
 	}
-	if !objectMatchesCommand(cmd) {
+	if !objectMatchesCommand(cmd) || !extensionsOnce(cmd) {
 		return
 	}
 	cmd.describe()
@@ -266,6 +266,27 @@ func objectMatchesCommand(cmd *command) bool {
 	}
 	cmd.respond(epplib.StatusCommandSyntaxError, "Command syntax error; <"+cmd.frame.command+"> carries "+got+", not an object's <"+cmd.frame.command+">", nil)
 	return false
+}
+
+// extensionsOnce answers 2001 to a command that carries an extension
+// element more than once, such as two <secDNS:update>s, and reports whether
+// it may go on. The schema's wildcard allows it, but a handler reads one: a
+// command whose second block was ignored would be answered as done.
+func extensionsOnce(cmd *command) bool {
+	ext := cmd.doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return true
+	}
+	seen := map[string]bool{}
+	for _, el := range ext.ChildElements() {
+		key := el.NamespaceURI() + " " + el.Tag
+		if seen[key] {
+			cmd.respond(epplib.StatusCommandSyntaxError, "Command syntax error; <"+el.FullTag()+"> is given more than once", nil)
+			return false
+		}
+		seen[key] = true
+	}
+	return true
 }
 
 // rejectSchema answers a frame that fails schema validation: 2001, with the

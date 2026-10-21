@@ -103,7 +103,7 @@ func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*
 // to be read and checked again. A host deleted since it was read is
 // ErrHostNotFound, never written back. A rename onto a name the registrar
 // already has is ErrHostAlreadyExists.
-func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entities.Host) (*entities.Host, error) {
+func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entities.Host, parent string) (*entities.Host, error) {
 	read := host.UpdatedAt
 	gormHost := ToDBHost(host)
 	gormHost.UpdatedAt = time.Now().UTC()
@@ -113,6 +113,9 @@ func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entit
 	}
 	stored := &Host{}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockParent(tx, parent, gormHost.ClID); err != nil {
+			return err
+		}
 		// Updates, not Save: Save inserts when no row matches.
 		err := written(updateIfAt(tx.Model(&Host{}).Where("ro_id = ?", gormHost.RoID), read).
 			Select("*").Omit("ro_id", "created_at", "Addresses").Updates(gormHost))
@@ -175,6 +178,57 @@ func (r *HostRepository) notWritten(ctx context.Context, roid int64, changed err
 		return entities.ErrHostNotFound
 	}
 	return changed
+}
+
+// CreateHostUnder creates the host and its addresses in one transaction,
+// and returns it as stored. A host placed under a domain (parent) locks the
+// domain's row first: a delete of the domain, which checks for hosts under
+// it in its own transaction, then either sees this host or is seen by it.
+func (r *HostRepository) CreateHostUnder(ctx context.Context, host *entities.Host, parent string) (*entities.Host, error) {
+	gormHost := ToDBHost(host)
+	stored := &Host{}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockParent(tx, parent, gormHost.ClID); err != nil {
+			return err
+		}
+		if err := tx.Create(gormHost).Error; err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
+			}
+			return err
+		}
+		return tx.Preload("Addresses").First(stored, gormHost.RoID).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ToHost(stored, r.repository), nil
+}
+
+// lockParent locks the row of the domain a host is placed under (parent,
+// empty if none) for the rest of the transaction, before any host row:
+// domains are locked before hosts everywhere, so writes do not deadlock.
+// The domain must be registered, sponsored by clid, and not pendingDelete.
+func lockParent(tx *gorm.DB, parent, clid string) error {
+	if parent == "" {
+		return nil
+	}
+	var rows []struct {
+		ClID          string
+		PendingDelete bool
+	}
+	if err := tx.Raw("SELECT cl_id, COALESCE(pending_delete, false) AS pending_delete FROM domains WHERE name = ? FOR SHARE", parent).Scan(&rows).Error; err != nil {
+		return err
+	}
+	switch {
+	case len(rows) == 0:
+		return fmt.Errorf("%w: %s", entities.ErrEPPSuperordinateDomainNotFound, parent)
+	case rows[0].ClID != clid:
+		return fmt.Errorf("%w: domain %s", entities.ErrEPPNotSponsor, parent)
+	case rows[0].PendingDelete:
+		return fmt.Errorf("%w: %s", entities.ErrEPPSuperordinatePendingDelete, parent)
+	}
+	return nil
 }
 
 // CountHostsByName counts the host objects named name, whichever registrar
