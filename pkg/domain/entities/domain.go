@@ -16,10 +16,13 @@ var (
 	ErrDomainAlreadyExists = errors.New("domain already exists")
 	// ErrDomainChanged: a write over a domain that another command changed
 	// since it was read.
-	ErrDomainChanged     = errors.New("the domain was changed by another command")
-	ErrInvalidDomain     = errors.New("invalid domain")
-	ErrTLDAsDomain       = errors.New("can't create a TLD as a domain")
-	ErrInvalidDomainRoID = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	ErrDomainChanged = errors.New("the domain was changed by another command")
+	// ErrDomainVersionRequired: an admin update without the domain's
+	// UpdatedAt as the caller read it, which is its version.
+	ErrDomainVersionRequired = errors.New("UpdatedAt is required: send the domain's UpdatedAt as you read it")
+	ErrInvalidDomain         = errors.New("invalid domain")
+	ErrTLDAsDomain           = errors.New("can't create a TLD as a domain")
+	ErrInvalidDomainRoID     = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	// ErrTLDNameDoesNotMatchDomain is returned when TLDName is not the domain's
 	// own parent. The two are redundant state and a drifted pair puts the
 	// domain in one TLD for policy and another for listing, zone building and

@@ -273,6 +273,11 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	if !upDom.CreatedAt.IsZero() {
 		dom.CreatedAt = upDom.CreatedAt
 	}
+	// The caller's UpdatedAt is the version it read: the write below is made
+	// only if the domain is still at it, and stamps a new one.
+	if upDom.UpdatedAt.IsZero() {
+		return nil, entities.ErrDomainVersionRequired
+	}
 	dom.UpdatedAt = upDom.UpdatedAt
 	dom.Status = upDom.Status
 	dom.RGPStatus = upDom.RGPStatus
@@ -303,8 +308,10 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 		}
 	}
 
-	// Save and return
-	updatedDomain, err := s.domainRepository.UpdateDomain(ctx, dom)
+	// Save and return. A domain changed since the caller read it is
+	// ErrDomainChanged: the caller would otherwise write back what it read,
+	// undoing the change (a renew, an expiry) it never saw.
+	updatedDomain, err := s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
 	if err != nil {
 		return nil, err
 	}
