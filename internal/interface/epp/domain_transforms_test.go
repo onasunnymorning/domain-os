@@ -214,12 +214,11 @@ func TestDomainDelete(t *testing.T) {
 		requireCode(t, c.roundTrip(domainUpdateXML("keep.test", `<domain:add><domain:status s="clientDeleteProhibited"/></domain:add>`, "")), "1000")
 		requireCode(t, c.roundTrip(domainDeleteXML("keep.test")), "2304")
 	})
-	t.Run("refused: an update prohibition, until it is removed", func(t *testing.T) {
+	t.Run("deleted: an update prohibition does not stop a delete (RFC 5731 §2.3)", func(t *testing.T) {
 		requireCode(t, c.roundTrip(createXML("locked.test", createOpts{})), "1000")
 		requireCode(t, c.roundTrip(domainUpdateXML("locked.test", `<domain:add><domain:status s="clientUpdateProhibited"/></domain:add>`, "")), "1000")
-		requireCode(t, c.roundTrip(domainDeleteXML("locked.test")), "2304")
-		requireCode(t, c.roundTrip(domainUpdateXML("locked.test", `<domain:rem><domain:status s="clientUpdateProhibited"/></domain:rem>`, "")), "1000")
 		requireCode(t, c.roundTrip(domainDeleteXML("locked.test")), "1001")
+		assert.Subset(t, statusesOf(c.roundTrip(infoXML("locked.test", ""))), []string{"pendingDelete", "clientUpdateProhibited"})
 	})
 	t.Run("refused: a subordinate host exists", func(t *testing.T) {
 		requireCode(t, c.roundTrip(createXML("parent.test", createOpts{})), "1000")

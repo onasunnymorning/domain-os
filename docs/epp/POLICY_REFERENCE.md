@@ -212,7 +212,7 @@ The policy is for what registrars submit. A DS record imported from an escrow de
 A renewed domain is in its renew grace period (`renewPeriod`, RFC 3915) and the answer carries the new expiry date in `<domain:renData>`.
 
 `<domain:delete>` answers 1001: the domain becomes `pendingDelete` and goes through its redemption period, or, within its add grace period, is purged at once by the purge workflow. In this order:
-1. A domain with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304. The registry also treats a delete as a status change, so a domain with an update prohibition is not deleted either (2304) until the prohibition is removed.
+1. A domain with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304. An update prohibition does not stop a delete: it stops updates only (RFC 5731 §2.3).
 2. A host object under the domain: 2305, naming the hosts. Delete or rename them first.
 
 Restoring a deleted domain (RFC 3915's restore request and report) is not offered yet.

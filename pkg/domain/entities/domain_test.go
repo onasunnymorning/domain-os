@@ -1672,8 +1672,10 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			wantErr: ErrDomainDeleteNotAllowed,
 		},
 		{
-			name:            "status prevents updates",
-			DomainStatus:    DomainStatus{ClientUpdateProhibited: true},
+			// RFC 5731 §2.3: an update prohibition stops updates, not a
+			// delete; only the delete prohibitions do.
+			name:            "an update prohibition does not prevent a delete",
+			DomainStatus:    DomainStatus{ClientUpdateProhibited: true, ServerUpdateProhibited: true},
 			DomainRGPStatus: DomainRGPStatus{},
 			Phase: &Phase{
 				Policy: PhasePolicy{
@@ -1681,7 +1683,19 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 					PendingDeleteGP: 5,
 				},
 			},
-			wantErr: ErrDomainUpdateNotAllowed,
+			wantErr: nil,
+		},
+		{
+			name:            "a delete prohibition prevents a delete",
+			DomainStatus:    DomainStatus{ServerDeleteProhibited: true},
+			DomainRGPStatus: DomainRGPStatus{},
+			Phase: &Phase{
+				Policy: PhasePolicy{
+					RedemptionGP:    30,
+					PendingDeleteGP: 5,
+				},
+			},
+			wantErr: ErrDomainDeleteNotAllowed,
 		},
 	}
 

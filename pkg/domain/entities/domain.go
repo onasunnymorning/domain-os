@@ -480,8 +480,15 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 		return ErrDomainDeleteNotAllowed
 	}
 
-	err := d.SetStatus(DomainStatusPendingDelete)
-	if err != nil {
+	// A delete is not an update: only the delete prohibitions stop it, not
+	// clientUpdateProhibited or serverUpdateProhibited (RFC 5731 §2.3 and
+	// §3.2.2). So pendingDelete is set here, not through SetStatus, which
+	// refuses every change while an update prohibition is set.
+	prev := d.Status
+	d.Status.PendingDelete = true
+	d.UnSetOKStatusIfNeeded()
+	if err := d.Status.Validate(); err != nil {
+		d.Status = prev
 		return errors.Join(ErrDomainDeleteNotAllowed, err)
 	}
 	d.UpRr = d.ClID
