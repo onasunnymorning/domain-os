@@ -321,7 +321,7 @@ func (ctrl *DomainController) GetDomainDNS(ctx *gin.Context) {
 
 // UpdateDomain godoc
 // @Summary Update a domain
-// @Description Update a domain
+// @Description Update a domain. UpdatedAt in the body is the domain's version as the caller read it (from GET /domains/{name}): the update is made only if the domain is still at that version, and 409 if it has changed since, so a stale copy never overwrites a change the caller did not see. Reload and retry.
 // @Tags Domains
 // @Accept json
 // @Produce json
@@ -330,6 +330,7 @@ func (ctrl *DomainController) GetDomainDNS(ctx *gin.Context) {
 // @Success 200 {object} entities.Domain
 // @Failure 400
 // @Failure 404
+// @Failure 409
 // @Failure 500
 // @Router /domains/{name} [put]
 func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
@@ -347,12 +348,16 @@ func (ctrl *DomainController) UpdateDomain(ctx *gin.Context) {
 
 	domain, err := ctrl.domainService.UpdateDomain(ctx.Request.Context(), name, &req)
 	if err != nil {
-		if errors.Is(err, entities.ErrInvalidDomain) {
+		if errors.Is(err, entities.ErrInvalidDomain) || errors.Is(err, entities.ErrDomainVersionRequired) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, entities.ErrDomainChanged) {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "the domain has changed since you loaded it: reload it and try again"})
 			return
 		}
 		ctx.JSON(500, gin.H{"error": err.Error()})
