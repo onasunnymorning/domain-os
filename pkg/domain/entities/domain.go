@@ -14,9 +14,15 @@ const (
 var (
 	ErrDomainNotFound      = errors.New("domain not found")
 	ErrDomainAlreadyExists = errors.New("domain already exists")
-	ErrInvalidDomain       = errors.New("invalid domain")
-	ErrTLDAsDomain         = errors.New("can't create a TLD as a domain")
-	ErrInvalidDomainRoID   = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
+	// ErrDomainChanged: a write over a domain that another command changed
+	// since it was read.
+	ErrDomainChanged = errors.New("the domain was changed by another command")
+	// ErrDomainVersionRequired: an admin update without the domain's
+	// UpdatedAt as the caller read it, which is its version.
+	ErrDomainVersionRequired = errors.New("UpdatedAt is required: send the domain's UpdatedAt as you read it")
+	ErrInvalidDomain         = errors.New("invalid domain")
+	ErrTLDAsDomain           = errors.New("can't create a TLD as a domain")
+	ErrInvalidDomainRoID     = fmt.Errorf("invalid Domain.RoID.ObjectIdentifier(), expecing '%s'", DOMAIN_ROID_ID)
 	// ErrTLDNameDoesNotMatchDomain is returned when TLDName is not the domain's
 	// own parent. The two are redundant state and a drifted pair puts the
 	// domain in one TLD for policy and another for listing, zone building and
@@ -477,8 +483,15 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 		return ErrDomainDeleteNotAllowed
 	}
 
-	err := d.SetStatus(DomainStatusPendingDelete)
-	if err != nil {
+	// A delete is not an update: only the delete prohibitions stop it, not
+	// clientUpdateProhibited or serverUpdateProhibited (RFC 5731 §2.3 and
+	// §3.2.2). So pendingDelete is set here, not through SetStatus, which
+	// refuses every change while an update prohibition is set.
+	prev := d.Status
+	d.Status.PendingDelete = true
+	d.UnSetOKStatusIfNeeded()
+	if err := d.Status.Validate(); err != nil {
+		d.Status = prev
 		return errors.Join(ErrDomainDeleteNotAllowed, err)
 	}
 	d.UpRr = d.ClID

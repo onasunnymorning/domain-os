@@ -118,7 +118,7 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
 
-**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
 
 **Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
 
@@ -189,6 +189,35 @@ Values are read as their schema types define them: identifiers whitespace-collap
 | Records per domain | up to 8 | |
 
 The policy is for what registrars submit. A DS record imported from an escrow deposit is kept whatever its algorithm, as long as it is well formed: the domain model checks structure (a hex digest whose length matches its digest type), not policy. Both import paths carry them: the per-domain import through `CreateDomainCommand.FromRdeDomain`, and the bulk import (deposit → SQLite → `DirectDBImporter`), which skips a malformed record the way it skips a malformed host: a `SKIP DS RECORD` log line and an entry under `skipped_ds_records` in the importer's run report. The escrow import workflow saves that report as `run-report-domains.json` in the run folder, names it in `summary.json` (`importerReportKeys`), and counts the skipped records there as `ds_records_skipped`. A bulk re-import replaces each deposited domain's DS records with the deposit's, clearing them where the deposit has none; a staging database built without DS records (before they were staged) leaves them alone. A domain's DS records are published with the TLD's delegations, for domains that are active, not pending delete and linked to at least one nameserver: `GET /tlds/{tld}/dns/ds-records` (`?format=text` for zone file lines), beside `dns/domain-delegations` and `dns/glue-records`.
+
+**`<domain:update>`, `<domain:renew>` and `<domain:delete>`.** Each is answered only for the sponsor: another registrar gets 2201, and a domain nobody has 2303. Each is checked and written on one reading of the domain: if another command changes the domain in between, including the lifecycle workflows, the write is refused and the command is read and checked again, up to three times. Pricing, the grace periods and the events (`domain.updated`, `domain.renewed`, `domain.marked_for_deletion`, with the session's login as actor) are the registration path's, as for create. The lifecycle processing (expiry, auto-renewal, restore) and the admin API's status changes also write only over the domain as they read it, so none of them overwrites a renew or update made meanwhile; a lifecycle write that loses the race is reported failed for that domain and picked up again on its next run.
+
+A domain with `clientHold` or `serverHold` keeps its nameservers and DS records, but leaves the TLD's NS, DS and glue exports until the hold is removed. A pendingDelete domain is left out of all three too.
+
+`<domain:update>` removes statuses, contacts, nameservers and DS records, then adds them, then makes the changes in `<domain:chg>`. The nameservers and DS records are written with the domain in one transaction, and every host linked or unlinked has its linked and in-bailiwick flags recomputed. A client sets only `clientDeleteProhibited`, `clientHold`, `clientRenewProhibited`, `clientTransferProhibited` and `clientUpdateProhibited`. It applies its rules in this order:
+1. No `<domain:add>`, `<domain:rem>`, `<domain:chg>` or extension (RFC 5731 §3.2.5): 2003.
+2. A status the client does not control: 2306.
+3. A domain with a pending action, with `serverUpdateProhibited`, or with `clientUpdateProhibited` unless the update removes it: 2304.
+4. Nameservers as host attributes: 2306. A `<secDNS:update urgent="true">` or a maxSigLife: 2102. Key data: 2306.
+5. Removing a status, contact, nameserver or DS record the domain does not have, or adding a status it has: 2306.
+6. Adding a contact of a type the domain has: 2306. A contact that does not exist: 2303; another registrar's: 2201. The phase's contact policy after the change (by default a registrant and a tech contact): 2003 if a required contact would be missing, 2306 if a prohibited one is given. An empty `<domain:registrant/>` removes the registrant, where the policy allows it.
+7. Adding a nameserver that is not one of the registrar's host objects: 2303. One the domain has, or more than 10: 2306. A nameserver under the domain itself without an address: 2306.
+8. Adding a DS record that is malformed: 2005. One with an algorithm or digest type the registry does not accept, one the domain has, or more than 8 in all: 2306.
+9. `<domain:null/>` for the authorization information: 2306 (the registry keeps one on every domain). A password that breaks the registry's rules: 2306.
+
+`<domain:renew>`, in this order:
+1. A `<domain:curExpDate>` that is not the domain's expiry date: 2306. This makes a renew repeated by mistake fail rather than renew twice. A time zone on the date is ignored.
+2. A period in months that is not whole years: 2306. No period is one year.
+3. A domain with `clientRenewProhibited`, `serverRenewProhibited` or a pending action: 2304.
+4. An expiry date more than the phase's maximum horizon (10 years by default) from now: 2306.
+
+A renewed domain is in its renew grace period (`renewPeriod`, RFC 3915) and the answer carries the new expiry date in `<domain:renData>`.
+
+`<domain:delete>` answers 1001: the domain becomes `pendingDelete` and goes through its redemption period, or, within its add grace period, is purged at once by the purge workflow. In this order:
+1. A domain with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304. An update prohibition does not stop a delete: it stops updates only (RFC 5731 §2.3).
+2. A host object under the domain: 2305, naming the hosts. Delete or rename them first. The check is made again in the delete's own transaction, and a host create or rename into a domain locks the domain's row first and is refused (2304) once the domain is pendingDelete, so neither can slip past the other.
+
+Restoring a deleted domain (RFC 3915's restore request and report) is not offered yet.
 
 **Host objects** (RFC 5732). This registry uses host objects (RST's `epp.hostModel` is `objects`), and they belong to a registrar:
 - Each registrar has its own host object for a name, unique per registrar, and a domain's nameservers are host objects of its sponsor. Two registrars can each have a host named `ns1.example.net`.

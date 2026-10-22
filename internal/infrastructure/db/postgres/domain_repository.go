@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -145,6 +146,175 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 	return ToDomain(dbDomain, dr.repository), nil
 }
 
+// UpdateDomainColumnsIfUnchanged saves the domain's own columns, not its
+// nameservers or DS records, if the stored domain still has the version and
+// sponsor of d as read; otherwise it is ErrDomainChanged, or
+// ErrDomainNotFound if the domain is gone. The lifecycle processing (expiry,
+// auto-renewal, restore) and the admin status changes write through it, so
+// none of them overwrites a change it did not see, such as a renew.
+func (dr *DomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+	dbDomain := ToDBDomain(d)
+	err := dr.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return updateDomainRowIfAt(tx, dbDomain, d.UpdatedAt)
+	})
+	if err != nil {
+		return nil, dr.notWritten(ctx, dbDomain.RoID, err)
+	}
+	return dr.GetDomainByID(ctx, dbDomain.RoID, true)
+}
+
+// updateDomainRowIfAt writes the domain's own columns if the stored domain
+// still has version read and the same sponsor, stamping a new version. The
+// row stays locked until the transaction ends.
+func updateDomainRowIfAt(tx *gorm.DB, dbDomain *Domain, read time.Time) error {
+	dbDomain.UpdatedAt = time.Now().UTC()
+	return written(updateIfAt(tx.Model(&Domain{}).Where("ro_id = ? AND cl_id = ?", dbDomain.RoID, dbDomain.ClID), read).
+		Select("*").Omit("ro_id", "created_at", "Hosts", "DSRecords").Updates(dbDomain))
+}
+
+// notWritten turns a conditional write's errNotWritten into
+// ErrDomainChanged, or ErrDomainNotFound if the domain is gone.
+func (dr *DomainRepository) notWritten(ctx context.Context, roid int64, err error) error {
+	if !errors.Is(err, errNotWritten) {
+		return err
+	}
+	var n int64
+	if err := dr.db.WithContext(ctx).Model(&Domain{}).Where("ro_id = ?", roid).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return entities.ErrDomainNotFound
+	}
+	return entities.ErrDomainChanged
+}
+
+// UpdateDomainIfUnchanged saves the domain, its nameservers and its DS
+// records in one transaction, and returns the domain as stored. It is the
+// EPP server's write.
+//
+// d.UpdatedAt is the version the caller read: the domain is written only if
+// the stored domain still has it and the same sponsor, so two commands that
+// read the same domain cannot each overwrite the other's change; the second
+// is ErrDomainChanged, to be read and checked again. A domain deleted since
+// it was read is ErrDomainNotFound, never written back.
+//
+// Locks are taken in one order, domains before hosts, as the host writes
+// take them: the domain's row, then every host linked before or after, in
+// ROID order. A host newly linked must still be as the caller checked it
+// (its version), or the write is ErrDomainChanged, to be checked again. The
+// hosts' linked and in-bailiwick flags are recomputed after the links
+// change, in a statement of its own, and their versions advanced so a host
+// update that read them before cannot write the old flags back.
+//
+// A domain written pendingDelete must have no host objects under it
+// (ErrEPPSubordinateHosts). Host writes that place a host under a domain
+// lock the domain's row first, so the check cannot miss one placed
+// meanwhile.
+func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+	dbDomain := ToDBDomain(d)
+	checked := map[int64]time.Time{}
+	hostIDs := make([]int64, 0, len(d.Hosts))
+	for _, h := range d.Hosts {
+		id, err := h.RoID.Int64()
+		if err != nil {
+			return nil, err
+		}
+		hostIDs = append(hostIDs, id)
+		checked[id] = h.UpdatedAt
+	}
+	stored := &Domain{}
+	err := dr.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := updateDomainRowIfAt(tx, dbDomain, d.UpdatedAt); err != nil {
+			return err
+		}
+		var before []int64
+		if err := tx.Raw("SELECT host_ro_id FROM domain_hosts WHERE domain_ro_id = ?", dbDomain.RoID).Scan(&before).Error; err != nil {
+			return err
+		}
+		affected := unionIDs(before, hostIDs)
+		if len(affected) > 0 {
+			var locked []struct {
+				RoID      int64
+				UpdatedAt time.Time
+			}
+			if err := tx.Raw("SELECT ro_id, updated_at FROM hosts WHERE ro_id IN ? ORDER BY ro_id FOR UPDATE", affected).Scan(&locked).Error; err != nil {
+				return err
+			}
+			versions := map[int64]time.Time{}
+			for _, l := range locked {
+				versions[l.RoID] = l.UpdatedAt
+			}
+			for _, id := range hostIDs {
+				if slices.Contains(before, id) {
+					continue // linked already: not checked now
+				}
+				if v, ok := versions[id]; !ok || !v.Equal(checked[id]) {
+					return errNotWritten // the host changed since it was checked
+				}
+			}
+		}
+		if err := tx.Exec("DELETE FROM domain_hosts WHERE domain_ro_id = ?", dbDomain.RoID).Error; err != nil {
+			return err
+		}
+		for _, id := range hostIDs {
+			if err := tx.Exec("INSERT INTO domain_hosts (domain_ro_id, host_ro_id) VALUES (?, ?)", dbDomain.RoID, id).Error; err != nil {
+				return err
+			}
+		}
+		if len(affected) > 0 {
+			if err := tx.Exec(`UPDATE hosts h SET
+				linked = EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.host_ro_id = h.ro_id),
+				in_bailiwick = EXISTS (SELECT 1 FROM domain_hosts dh JOIN domains d ON d.ro_id = dh.domain_ro_id
+					WHERE dh.host_ro_id = h.ro_id AND substring(h.name from position('.' in h.name) + 1) = d.name),
+				updated_at = ?
+				WHERE h.ro_id IN ?`, dbDomain.UpdatedAt, affected).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("domain_ro_id = ?", dbDomain.RoID).Delete(&DomainDSRecord{}).Error; err != nil {
+			return err
+		}
+		if len(dbDomain.DSRecords) > 0 {
+			for i := range dbDomain.DSRecords {
+				dbDomain.DSRecords[i].ID = 0
+				dbDomain.DSRecords[i].DomainRoID = dbDomain.RoID
+			}
+			if err := tx.Create(&dbDomain.DSRecords).Error; err != nil {
+				return err
+			}
+		}
+		if d.Status.PendingDelete {
+			var sub int64
+			if err := tx.Model(&Host{}).Where("cl_id = ? AND name LIKE ?", dbDomain.ClID, "%."+dbDomain.Name).Count(&sub).Error; err != nil {
+				return err
+			}
+			if sub > 0 {
+				return fmt.Errorf("%w: %s", entities.ErrEPPSubordinateHosts, dbDomain.Name)
+			}
+		}
+		// Read back in the transaction, which holds the row: the result is
+		// this update, not a later one.
+		return tx.Preload("Hosts").Preload("DSRecords", orderDS).First(stored, dbDomain.RoID).Error
+	})
+	if err != nil {
+		return nil, dr.notWritten(ctx, dbDomain.RoID, err)
+	}
+	return ToDomain(stored, dr.repository), nil
+}
+
+// unionIDs is the IDs in a or b, each once.
+func unionIDs(a, b []int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	for _, id := range append(append([]int64{}, a...), b...) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // DeleteDomainByID deletes a domain by its roid, within scope. A domain that
 // does not exist, or that is in a TLD outside the scope, is ErrDomainNotFound.
 func (dr *DomainRepository) DeleteDomainByID(ctx context.Context, scope entities.RegistryScope, id int64) error {
@@ -259,6 +429,8 @@ func (dr *DomainRepository) GetActiveDomainsWithHosts(ctx context.Context, param
 		WHERE dom.tld_name = ?
 		AND COALESCE(dom.inactive, false) = false
 		AND COALESCE(dom.pending_delete, false) = false
+		AND COALESCE(dom.client_hold, false) = false
+		AND COALESCE(dom.server_hold, false) = false
 	`, params.TldName).Scan(&queryResults).Error
 	if err != nil {
 		return nil, err
@@ -296,6 +468,8 @@ func (dr *DomainRepository) GetActiveDomainDS(ctx context.Context, tld string) (
 		WHERE dom.tld_name = ?
 		AND COALESCE(dom.inactive, false) = false
 		AND COALESCE(dom.pending_delete, false) = false
+		AND COALESCE(dom.client_hold, false) = false
+		AND COALESCE(dom.server_hold, false) = false
 		AND EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.domain_ro_id = dom.ro_id)
 		ORDER BY dom.name, ds.id
 	`, tld).Scan(&rows).Error
@@ -333,6 +507,9 @@ func (dr *DomainRepository) GetActiveDomainGlue(ctx context.Context, tld string)
 		LEFT JOIN host_addresses ha ON ho.ro_id = ha.host_ro_id 
 		WHERE dom.tld_name = ?
 		AND COALESCE(dom.inactive, false) = false
+		AND COALESCE(dom.pending_delete, false) = false
+		AND COALESCE(dom.client_hold, false) = false
+		AND COALESCE(dom.server_hold, false) = false
 		AND COALESCE(ho.in_bailiwick, false) = true
 	`, tld).Scan(&queryResults).Error
 	if err != nil {

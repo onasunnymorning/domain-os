@@ -160,7 +160,7 @@ func TestEPPHostUpdateOverPostgres_StaleAndDeleted(t *testing.T) {
 	require.NoError(t, err)
 	t.Run("a write over a host changed since it was read is refused", func(t *testing.T) {
 		read.Status.ClientDeleteProhibited, read.Status.OK = true, false
-		_, err := f.hostRepo.UpdateHostAndAddresses(ctx, read)
+		_, err := f.hostRepo.UpdateHostAndAddresses(ctx, read, "")
 		require.ErrorIs(t, err, entities.ErrHostChanged)
 		stored, err := f.hostRepo.GetHostByRoid(ctx, id)
 		require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestEPPHostUpdateOverPostgres_StaleAndDeleted(t *testing.T) {
 		current, err := f.hostRepo.GetHostByRoid(ctx, id)
 		require.NoError(t, err)
 		require.NoError(t, f.hostRepo.DeleteHostByRoid(ctx, id))
-		_, err = f.hostRepo.UpdateHostAndAddresses(ctx, current)
+		_, err = f.hostRepo.UpdateHostAndAddresses(ctx, current, "")
 		require.ErrorIs(t, err, entities.ErrHostNotFound)
 		_, err = f.hostRepo.GetHostByRoid(ctx, id)
 		require.ErrorIs(t, err, entities.ErrHostNotFound)

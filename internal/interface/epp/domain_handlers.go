@@ -54,6 +54,20 @@ var refusals = []struct {
 	{entities.ErrEPPContactTypeMissing, epplib.StatusMissingParameter},
 	{entities.ErrEPPDuplicateContactType, epplib.StatusParameterPolicyError},
 	{entities.ErrInvalidAuthInfo, epplib.StatusParameterPolicyError},
+	// Domain update, renew and delete.
+	{entities.ErrEPPDomainContactNotSet, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPNameserverNotSet, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPDSNotSet, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPDNSSECUrgent, epplib.StatusUnimplementedOption},
+	{entities.ErrEPPAuthInfoRequired, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPCurExpDate, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPSubordinateHosts, epplib.StatusObjectAssociationProhibitsOperation},
+	{entities.ErrEPPSuperordinatePendingDelete, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrInBailiwickHostsMustHaveAddress, epplib.StatusParameterPolicyError},
+	{entities.ErrDomainUpdateNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrDomainRenewExceedsMaxHorizon, epplib.StatusParameterPolicyError},
+	{entities.ErrDomainRenewNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrDomainDeleteNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
 	// Host and contact commands (RFC 5732, RFC 5733).
 	{entities.ErrEPPStatusNotClient, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPStatusAlreadySet, epplib.StatusParameterPolicyError},
@@ -207,6 +221,197 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 		code = epplib.StatusActionPending
 	}
 	cmd.respond(code, "", createData(dom))
+}
+
+// domainUpdate answers <domain:update> (RFC 5731 §3.2.5), with a
+// <secDNS:update> (RFC 5910 §5.2.5) if the session logged in with
+// secDNS-1.1.
+func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
+	scope, err := registrarScope(cmd)
+	if err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	update := cmd.doc.FindElement("/epp/command/update/*")
+	add, rem, chg := update.SelectElement("add"), update.SelectElement("rem"), update.SelectElement("chg")
+	secDNS := secDNSUpdate(cmd.doc)
+	if add == nil && rem == nil && chg == nil && secDNS == nil {
+		// RFC 5731 §3.2.5: one of them is required unless the command is
+		// extended.
+		cmd.respond(epplib.StatusMissingParameter, "Required parameter missing; give <domain:add>, <domain:rem>, <domain:chg> or an extension", nil)
+		return
+	}
+	c := commands.EPPUpdateDomainCommand{Name: cmd.objects[0], DNSSEC: secDNS}
+	if add != nil {
+		c.AddHostNames, c.AddContacts, c.AddStatuses = domainAddRem(add, &c.HostAttributes)
+	}
+	if rem != nil {
+		c.RemoveHostNames, c.RemoveContacts, c.RemoveStatuses = domainAddRem(rem, &c.HostAttributes)
+	}
+	if chg != nil {
+		if r := chg.SelectElement("registrant"); r != nil {
+			v := schema.TokenValue(r.Text())
+			c.Registrant = &v
+		}
+		if a := chg.SelectElement("authInfo"); a != nil {
+			switch {
+			case a.SelectElement("null") != nil:
+				c.AuthInfoNull = true
+			case a.SelectElement("pw") != nil:
+				v := schema.NormalizedStringValue(a.SelectElement("pw").Text())
+				c.AuthInfo = &v
+			default: // <domain:ext>: no password the registry can keep
+				v := ""
+				c.AuthInfo = &v
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
+	defer cancel()
+	if _, err := s.domains.Update(ctx, scope, c); err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	cmd.respond(epplib.StatusSuccess, "", nil)
+}
+
+// domainAddRem reads a <domain:add> or <domain:rem>: its host objects,
+// contacts and statuses. Host attributes set attrs.
+func domainAddRem(el *etree.Element, attrs *bool) (hosts []string, contacts []commands.EPPDomainContact, statuses []string) {
+	if ns := el.SelectElement("ns"); ns != nil {
+		if len(ns.SelectElements("hostAttr")) > 0 {
+			*attrs = true
+		}
+		for _, h := range ns.SelectElements("hostObj") {
+			hosts = append(hosts, schema.TokenValue(h.Text()))
+		}
+	}
+	for _, ct := range el.SelectElements("contact") {
+		contacts = append(contacts, commands.EPPDomainContact{
+			Type: schema.TokenValue(ct.SelectAttrValue("type", "")),
+			ID:   schema.TokenValue(ct.Text()),
+		})
+	}
+	return hosts, contacts, statusValues(el)
+}
+
+// secDNSUpdate reads a <secDNS:update> extension (RFC 5910 §5.2.5), or nil
+// if the command has none.
+func secDNSUpdate(doc *etree.Document) *commands.EPPDNSSECUpdate {
+	ext := doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return nil
+	}
+	for _, el := range ext.ChildElements() {
+		if el.NamespaceURI() != nsSecDNS || el.Tag != "update" {
+			continue
+		}
+		urgent := schema.TokenValue(el.SelectAttrValue("urgent", "false"))
+		u := &commands.EPPDNSSECUpdate{Urgent: urgent == "true" || urgent == "1"}
+		if rem := el.SelectElement("rem"); rem != nil {
+			if all := rem.SelectElement("all"); all != nil {
+				v := schema.TokenValue(all.Text())
+				u.RemoveAll = v == "true" || v == "1"
+			}
+			u.RemoveDS = dsDataOf(rem)
+			u.KeyData = u.KeyData || len(rem.SelectElements("keyData")) > 0
+		}
+		if add := el.SelectElement("add"); add != nil {
+			u.AddDS = dsDataOf(add)
+			u.KeyData = u.KeyData || len(add.SelectElements("keyData")) > 0
+			u.MaxSigLife = maxSigLifeOf(add, u.MaxSigLife)
+		}
+		if chg := el.SelectElement("chg"); chg != nil {
+			u.MaxSigLife = maxSigLifeOf(chg, u.MaxSigLife)
+		}
+		return u
+	}
+	return nil
+}
+
+// dsDataOf reads the <secDNS:dsData> children of el.
+func dsDataOf(el *etree.Element) []commands.EPPDSData {
+	var out []commands.EPPDSData
+	for _, ds := range el.SelectElements("dsData") {
+		num := func(name string) int {
+			n, _ := strconv.Atoi(schema.TokenValue(ds.SelectElement(name).Text())) // the schema has checked it
+			return n
+		}
+		out = append(out, commands.EPPDSData{
+			KeyTag: num("keyTag"), Algorithm: num("alg"), DigestType: num("digestType"),
+			Digest: schema.TokenValue(ds.SelectElement("digest").Text()),
+		})
+	}
+	return out
+}
+
+// maxSigLifeOf is el's <secDNS:maxSigLife>, or def if it has none.
+func maxSigLifeOf(el *etree.Element, def int) int {
+	if m := el.SelectElement("maxSigLife"); m != nil {
+		n, _ := strconv.Atoi(schema.TokenValue(m.Text())) // the schema has checked it is a positive int
+		return n
+	}
+	return def
+}
+
+// domainRenew answers <domain:renew> (RFC 5731 §3.2.3).
+func (s *Server) domainRenew(ctx context.Context, cmd *command) {
+	scope, err := registrarScope(cmd)
+	if err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	renew := cmd.doc.FindElement("/epp/command/renew/*")
+	// xs:date may carry a time zone; the expiry date is compared as a day.
+	cur := schema.TokenValue(renew.SelectElement("curExpDate").Text())
+	c := commands.EPPRenewDomainCommand{Name: cmd.objects[0], CurExpDate: dateOnly(cur)}
+	if p := renew.SelectElement("period"); p != nil {
+		c.Period, _ = strconv.Atoi(schema.TokenValue(p.Text())) // the schema has checked it is 1 to 99
+		c.PeriodUnit = schema.TokenValue(p.SelectAttrValue("unit", ""))
+	}
+	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
+	defer cancel()
+	dom, err := s.domains.Renew(ctx, scope, c)
+	if err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	cmd.respond(epplib.StatusSuccess, "", renewData(dom))
+}
+
+// dateOnly is an xs:date's YYYY-MM-DD, without its time zone.
+func dateOnly(d string) string {
+	neg := strings.HasPrefix(d, "-")
+	body := strings.TrimPrefix(d, "-")
+	// The date is the year, month and day: the first three dash-separated
+	// fields; a time zone is Z or follows a + or a fourth dash.
+	if i := strings.IndexAny(body, "Z+"); i >= 0 {
+		body = body[:i]
+	}
+	if parts := strings.SplitN(body, "-", 4); len(parts) == 4 {
+		body = strings.Join(parts[:3], "-")
+	}
+	if neg {
+		return "-" + body
+	}
+	return body
+}
+
+// domainDelete answers <domain:delete> (RFC 5731 §3.2.2): 1001, the domain
+// pendingDelete (RFC 3915), until it is purged.
+func (s *Server) domainDelete(ctx context.Context, cmd *command) {
+	scope, err := registrarScope(cmd)
+	if err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
+	defer cancel()
+	if _, err := s.domains.Delete(ctx, scope, cmd.objects[0]); err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	cmd.respond(epplib.StatusActionPending, "", nil)
 }
 
 // readSecDNSCreate reads a <secDNS:create> extension (RFC 5910 §5.2.1) into

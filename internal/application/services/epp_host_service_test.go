@@ -23,9 +23,9 @@ type racingHosts struct {
 	race func()
 }
 
-func (r *racingHosts) UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error) {
+func (r *racingHosts) UpdateHostAndAddresses(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) {
 	r.once.Do(r.race)
-	return r.HostRepository.UpdateHostAndAddresses(ctx, h)
+	return r.HostRepository.UpdateHostAndAddresses(ctx, h, parent)
 }
 
 func TestEPPHostUpdate_DoesNotOverwriteAConcurrentChange(t *testing.T) {
@@ -74,6 +74,6 @@ func TestEPPHostUpdate_ReportsAHostThatKeepsChanging(t *testing.T) {
 // alwaysChanged refuses every write as stale.
 type alwaysChanged struct{ repositories.HostRepository }
 
-func (alwaysChanged) UpdateHostAndAddresses(context.Context, *entities.Host) (*entities.Host, error) {
+func (alwaysChanged) UpdateHostAndAddresses(context.Context, *entities.Host, string) (*entities.Host, error) {
 	return nil, entities.ErrHostChanged
 }

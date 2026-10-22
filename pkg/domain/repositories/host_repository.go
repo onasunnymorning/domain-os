@@ -22,11 +22,20 @@ type HostRepository interface {
 	// Should one of the hosts fail to be created, the operation fails and no hosts are created, the error will be returned
 	BulkCreate(ctx context.Context, hosts []*entities.Host) error
 	Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
+	// CreateHostUnder creates the host and its addresses in one
+	// transaction. A host placed under a domain (parent, empty if none)
+	// locks that domain's row first, and is refused unless the domain is
+	// registered (entities.ErrEPPSuperordinateDomainNotFound), sponsored by
+	// the host's registrar (entities.ErrEPPNotSponsor) and not
+	// pendingDelete (entities.ErrEPPSuperordinatePendingDelete).
+	CreateHostUnder(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
 	// UpdateHostAndAddresses saves the host and replaces its addresses with
 	// h.Addresses, in one transaction, if the stored host is still as it was
 	// read (h.UpdatedAt): otherwise it is entities.ErrHostChanged, and if
-	// the host is gone, entities.ErrHostNotFound.
-	UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	// the host is gone, entities.ErrHostNotFound. A host renamed under a
+	// domain (parent, empty if none) is checked as CreateHostUnder checks
+	// it.
+	UpdateHostAndAddresses(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
 	// DeleteHostIfUnchanged deletes the host if the stored host is still the
 	// one read: the same sponsor and version (h.UpdatedAt). Otherwise it is
 	// entities.ErrHostChanged, and if the host is gone,
@@ -51,7 +60,8 @@ type MockHostRepository struct {
 	ListHostsFunc                func(ctx context.Context, paramas queries.ListItemsQuery) ([]*entities.Host, string, error)
 	BulkCreateFunc               func(ctx context.Context, hosts []*entities.Host) error
 	CountFunc                    func(ctx context.Context, filter queries.ListHostsFilter) (int64, error)
-	UpdateHostAndAddressesFunc   func(ctx context.Context, h *entities.Host) (*entities.Host, error)
+	UpdateHostAndAddressesFunc   func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
+	CreateHostUnderFunc          func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
 	CountHostsByNameFunc         func(ctx context.Context, name string) (int64, error)
 	DeleteHostIfUnchangedFunc    func(ctx context.Context, h *entities.Host) error
 	CountHostLinksFromOthersFunc func(ctx context.Context, roid int64, clid string) (int64, error)
@@ -103,8 +113,13 @@ func (m *MockHostRepository) Count(ctx context.Context, filter queries.ListHosts
 }
 
 // UpdateHostAndAddresses saves a host and its addresses
-func (m *MockHostRepository) UpdateHostAndAddresses(ctx context.Context, h *entities.Host) (*entities.Host, error) {
-	return m.UpdateHostAndAddressesFunc(ctx, h)
+func (m *MockHostRepository) UpdateHostAndAddresses(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) {
+	return m.UpdateHostAndAddressesFunc(ctx, h, parent)
+}
+
+// CreateHostUnder creates a host under a domain
+func (m *MockHostRepository) CreateHostUnder(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) {
+	return m.CreateHostUnderFunc(ctx, h, parent)
 }
 
 // DeleteHostIfUnchanged deletes a host as read
@@ -134,11 +149,14 @@ func NewMockHostRepository() *MockHostRepository {
 		ListHostsFunc: func(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error) {
 			return nil, "", nil
 		},
-		BulkCreateFunc:             func(ctx context.Context, hosts []*entities.Host) error { return nil },
-		CountFunc:                  func(ctx context.Context, filter queries.ListHostsFilter) (int64, error) { return 0, nil },
-		UpdateHostAndAddressesFunc: func(ctx context.Context, h *entities.Host) (*entities.Host, error) { return nil, nil },
-		CountHostsByNameFunc:       func(ctx context.Context, name string) (int64, error) { return 0, nil },
-		DeleteHostIfUnchangedFunc:  func(ctx context.Context, h *entities.Host) error { return nil },
+		BulkCreateFunc: func(ctx context.Context, hosts []*entities.Host) error { return nil },
+		CountFunc:      func(ctx context.Context, filter queries.ListHostsFilter) (int64, error) { return 0, nil },
+		UpdateHostAndAddressesFunc: func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) {
+			return nil, nil
+		},
+		CreateHostUnderFunc:       func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) { return nil, nil },
+		CountHostsByNameFunc:      func(ctx context.Context, name string) (int64, error) { return 0, nil },
+		DeleteHostIfUnchangedFunc: func(ctx context.Context, h *entities.Host) error { return nil },
 		CountHostLinksFromOthersFunc: func(ctx context.Context, roid int64, clid string) (int64, error) {
 			return 0, nil
 		},

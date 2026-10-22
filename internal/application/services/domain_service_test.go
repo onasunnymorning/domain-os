@@ -10,6 +10,8 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDomainFromCreateDomainCommand(t *testing.T) {
@@ -188,7 +190,7 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	repo := new(repositories.MockDomainRepository)
 	repo.On("GetDomainByName", ctx, "example.com", false).Return(existingDomain, nil)
 	// We just want to check if the entity passed to UpdateDomain has the preserved CreatedAt
-	repo.On("UpdateDomain", ctx, existingDomain).Return(existingDomain, nil)
+	repo.On("UpdateDomainColumnsIfUnchanged", ctx, existingDomain).Return(existingDomain, nil)
 
 	service := &DomainService{
 		domainRepository: repo,
@@ -221,6 +223,22 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	if !updatedDom.CreatedAt.Equal(originalCreatedAt) {
 		t.Errorf("expected CreatedAt to equal %v, got %v", originalCreatedAt, updatedDom.CreatedAt)
 	}
+}
+
+func TestDomainService_UpdateDomain_RequiresTheVersionRead(t *testing.T) {
+	ctx := context.Background()
+	repo := new(repositories.MockDomainRepository)
+	repo.On("GetDomainByName", ctx, "example.com", false).Return(&entities.Domain{
+		RoID: "123_DOM-APEX", Name: "example.com", TLDName: "com", ClID: "client123", AuthInfo: "sTr0N5p@zzWqRD",
+		ExpiryDate: time.Now().AddDate(1, 0, 0), UpdatedAt: time.Now(), Status: entities.DomainStatus{OK: true},
+	}, nil)
+	service := &DomainService{domainRepository: repo, eventPublisher: &noopPublisher{}}
+
+	_, err := service.UpdateDomain(ctx, "example.com", &commands.UpdateDomainCommand{
+		ClID: "client123", AuthInfo: "sTr0N5p@zzWqRD", ExpiryDate: time.Now().AddDate(1, 0, 0), Status: entities.DomainStatus{OK: true},
+	})
+	require.ErrorIs(t, err, entities.ErrDomainVersionRequired)
+	repo.AssertNotCalled(t, "UpdateDomainColumnsIfUnchanged", mock.Anything, mock.Anything)
 }
 
 type noopPublisher struct{}
