@@ -55,9 +55,6 @@ const (
 	// seedPhase is the GA phase domains are created under. Phase names are
 	// ClIDType values, so this must be 3-16 characters — plain "ga" is rejected.
 	seedPhase = "ga-phase"
-
-	// seedAuthInfo is the seeded contacts' code; it satisfies AuthInfoType.Validate.
-	seedAuthInfo = "LocalDev!23"
 )
 
 // seedRegistrars is the fixed registrar set. GurIDs sit in a high range that
@@ -390,10 +387,15 @@ func (s *seeder) seedContact(ctx context.Context, label, clid string) (string, e
 		return "", err
 	}
 
+	// Each contact gets its own generated code, never a shared constant.
+	authInfo, err := entities.GenerateAuthInfo()
+	if err != nil {
+		return "", err
+	}
 	if _, err := s.contact.CreateContact(ctx, &commands.CreateContactCommand{
 		ID:         contactID,
 		Email:      fmt.Sprintf("%s@example.com", contactID),
-		AuthInfo:   seedAuthInfo,
+		AuthInfo:   authInfo.String(),
 		ClID:       clid,
 		PostalInfo: [2]*entities.ContactPostalInfo{postal, nil},
 	}); err != nil {

@@ -1851,11 +1851,9 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 			// If there was an error other than domain not found, return it
 			return nil, err
 		}
-		// If we don't have the domain, create a placeholder
-		domain, err = entities.NewDomain("123_DOM-APEX", domainName.String(), q.ClID, "") // a quote needs no transfer code
-		if err != nil {
-			return nil, err
-		}
+		// An unregistered name: the price engine reads only the name and
+		// grandfathering, so it needs no ROID, sponsor or transfer code.
+		domain = &entities.Domain{Name: *domainName}
 	}
 
 	// Get the PremiumLabels in all currencies
