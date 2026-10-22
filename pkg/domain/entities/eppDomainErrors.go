@@ -60,9 +60,14 @@ var (
 	// ErrEPPDNSSECUrgent: a <secDNS:update urgent="true">, which this
 	// registry does not support (RFC 5910 §5.2.5: 2102).
 	ErrEPPDNSSECUrgent = errors.New("urgent DNSSEC updates are not supported")
-	// ErrEPPAuthInfoRequired: removing a domain's authorization
-	// information (<domain:null/>); the registry keeps one on every domain.
-	ErrEPPAuthInfoRequired = errors.New("a domain keeps its authorization information: change it instead")
+	// ErrEPPAuthInfoMismatch: authorization information given for a domain
+	// that does not match its code, or a domain with no code set
+	// (RFC 9154 §4.4: 2202). Which of the two is not said.
+	ErrEPPAuthInfoMismatch = errors.New("the authorization information does not match")
+	// ErrEPPAuthInfoExt: authorization information as <domain:ext> rather
+	// than a password. The registry keeps only hashed passwords (RFC 9154),
+	// so it supports no other kind (RFC 5730 §3: 2102).
+	ErrEPPAuthInfoExt = errors.New("only password authorization information is supported")
 	// ErrEPPCurExpDate: a renew whose current expiry date is not the
 	// domain's (RFC 5731 §3.2.3).
 	ErrEPPCurExpDate = errors.New("the current expiry date given is not the domain's")

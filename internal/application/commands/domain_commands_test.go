@@ -126,11 +126,11 @@ func TestCreateDomainCommand_FromRdeDomain(t *testing.T) {
 			_, err := cmd.FromRdeDomain(tc.rdeDomain)
 			require.Equal(t, tc.wantErr, err)
 			if err == nil {
-				// An escrow deposit carries no authInfo, so it is generated: check it is valid, then
-				// compare everything else exactly.
-				require.NoError(t, entities.AuthInfoType(cmd.AuthInfo).Validate())
+				// An escrow deposit carries no authInfo, and under RFC 9154 the
+				// domain is imported without a transfer code.
+				require.Empty(t, cmd.AuthInfo)
 				want := *tc.cmd
-				want.AuthInfo = cmd.AuthInfo
+				want.AuthInfo = ""
 				require.Equal(t, &want, cmd)
 			}
 		})
@@ -149,7 +149,7 @@ func TestUpdateDomainCommand_FromEntity(t *testing.T) {
 		CrRr:         entities.ClIDType("test"),
 		UpRr:         entities.ClIDType("test"),
 		ExpiryDate:   time.Now(),
-		AuthInfo:     entities.AuthInfoType("authinfo"),
+		AuthInfo:     entities.AuthInfoHash("$sha256$c2FsdHNhbHRzYWx0c2FsdA$MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI"),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		Status:       entities.DomainStatus{},
@@ -169,7 +169,7 @@ func TestUpdateDomainCommand_FromEntity(t *testing.T) {
 	require.Equal(t, dom.CrRr.String(), cmd.CrRr)
 	require.Equal(t, dom.UpRr.String(), cmd.UpRr)
 	require.Equal(t, dom.ExpiryDate, cmd.ExpiryDate)
-	require.Equal(t, dom.AuthInfo.String(), cmd.AuthInfo)
+	require.Empty(t, cmd.AuthInfo, "the domain keeps only a hash: an update from it keeps the code as it is")
 	require.Equal(t, dom.CreatedAt, cmd.CreatedAt)
 	require.Equal(t, dom.UpdatedAt, cmd.UpdatedAt)
 	require.Equal(t, dom.Status, cmd.Status)

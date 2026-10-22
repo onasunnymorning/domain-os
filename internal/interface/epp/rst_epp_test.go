@@ -542,7 +542,11 @@ func TestRST_epp14_DomainCreate(t *testing.T) {
 		requireCode(t, c.roundTrip(createXML("ok.thin", createOpts{contacts: " "})), "1000")
 	})
 	t.Run("epp-14 empty <pw> accepted (RFC 9154)", func(t *testing.T) {
-		rstPending(t, "RFC 9154 is recommended by RST (warning only); not yet scheduled")
+		resp := c.roundTrip(cmdXML(`<create><domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+<domain:name>no-code.test</domain:name><domain:registrant>registrar1-c1</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact>
+<domain:authInfo><domain:pw/></domain:authInfo></domain:create></create>`, "RST-14-9154"))
+		requireCode(t, resp, "1000")
+		assert.Nil(t, c.roundTrip(infoXML("no-code.test", "")).FindElement("//infData/authInfo"), "created with no transfer code")
 	})
 
 	t.Run("epp-14 both registrars create domains", func(t *testing.T) {
@@ -1384,8 +1388,8 @@ func TestRST_epp27_GluelessInternalHost(t *testing.T) {
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"epp-19": "Phase 4h: domain <transfer> request and approval; pendingTransfer within 120s; RFC 9154 authInfo",
-	"epp-20": "Phase 4h: domain <transfer> rejection",
+	"epp-19": "Phase 4h-2: domain <transfer> request and approval; pendingTransfer within 120s",
+	"epp-20": "Phase 4h-2: domain <transfer> rejection",
 }
 
 func TestRST_EPPPendingCases(t *testing.T) {

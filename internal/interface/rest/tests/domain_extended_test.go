@@ -171,18 +171,22 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		resp = api.PUT(fmt.Sprintf("/domains/%s", domainName), updateCmd)
 		Expect(resp.Code).To(Equal(http.StatusOK), "Update domain failed: %s", resp.Body.String())
 
-		var updated entities.Domain
+		// RFC 9154: the code is kept as a hash and never returned; the
+		// domain says only that one is set.
+		var updated struct{ AuthInfoSet bool }
 		Expect(DecodeJSON(resp, &updated)).To(Succeed())
-		Expect(updated.AuthInfo.String()).To(Equal("N3wStr0nG!P@ss"))
+		Expect(updated.AuthInfoSet).To(BeTrue())
+		Expect(resp.Body.String()).NotTo(ContainSubstring("N3wStr0nG!P@ss"))
 	})
 
 	It("should verify the update took effect", func() {
 		resp := api.GET(fmt.Sprintf("/domains/%s", domainName))
 		Expect(resp.Code).To(Equal(http.StatusOK))
 
-		var domain entities.Domain
+		var domain struct{ AuthInfoSet bool }
 		Expect(DecodeJSON(resp, &domain)).To(Succeed())
-		Expect(domain.AuthInfo.String()).To(Equal("N3wStr0nG!P@ss"))
+		Expect(domain.AuthInfoSet).To(BeTrue())
+		Expect(resp.Body.String()).NotTo(ContainSubstring("N3wStr0nG!P@ss"))
 	})
 
 	// ================================================================== //

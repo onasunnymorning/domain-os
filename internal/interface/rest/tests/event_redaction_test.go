@@ -161,7 +161,9 @@ func expectRedactedEvents(subject string, wantTypes ...string) {
 }
 
 // countAuthInfoMarkers counts AuthInfo fields holding the redaction marker and
-// fails on any that hold something else.
+// fails on any that hold something else. A domain's own JSON carries no
+// AuthInfo at all, only AuthInfoSet (RFC 9154), and that counts too: the
+// domain was in the payload, without its code.
 func countAuthInfoMarkers(node interface{}, eventType string) int {
 	GinkgoHelper()
 	n := 0
@@ -170,6 +172,12 @@ func countAuthInfoMarkers(node interface{}, eventType string) int {
 		for k, child := range v {
 			if k == "AuthInfo" {
 				Expect(child).To(Equal(postgres.RedactedMarker), "%s event carries an unredacted AuthInfo", eventType)
+				n++
+				continue
+			}
+			if k == "AuthInfoSet" {
+				_, hasCode := v["AuthInfo"]
+				Expect(hasCode).To(BeFalse(), "%s event carries a domain's AuthInfo", eventType)
 				n++
 				continue
 			}

@@ -1702,14 +1702,9 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 			}
 			cmd.ClID = mappedClID
 
-			// A deposit carries no authInfo, so mint one per domain. It is set here, on the command that
-			// both the bulk create and its per-item fallback send, so a domain keeps one value across both.
-			authInfo, aerr := entities.GenerateAuthInfo()
-			if aerr != nil {
-				rows.Close()
-				return fmt.Errorf("generate authInfo for domain import: %w", aerr)
-			}
-			cmd.AuthInfo = authInfo.String()
+			// A deposit carries no authInfo, and under RFC 9154 a domain has no transfer code until its
+			// registrar sets one: the domain is imported without one.
+			cmd.AuthInfo = ""
 
 			if registrant.Valid {
 				cmd.RegistrantID = registrant.String

@@ -8,23 +8,25 @@ import (
 
 // Domain is the GORM model for the Domain entity
 type Domain struct {
-	RoID                          int64  `gorm:"primaryKey"`
-	Name                          string `gorm:"uniqueIndex;not null"`
-	OriginalName                  string
-	UName                         string
-	RegistrantID                  *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
-	AdminID                       *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
-	TechID                        *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
-	BillingID                     *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
-	ClID                          string  `gorm:"index"`
-	CrRr                          *string
-	UpRr                          *string
-	TLDName                       string `gorm:"not null;foreignKey;index"`
-	TLD                           TLD
-	ExpiryDate                    time.Time `gorm:"not null;index"`
-	DropCatch                     bool
-	RenewedYears                  int
-	AuthInfo                      string `gorm:"not null"`
+	RoID         int64  `gorm:"primaryKey"`
+	Name         string `gorm:"uniqueIndex;not null"`
+	OriginalName string
+	UName        string
+	RegistrantID *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	AdminID      *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	TechID       *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	BillingID    *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
+	ClID         string  `gorm:"index"`
+	CrRr         *string
+	UpRr         *string
+	TLDName      string `gorm:"not null;foreignKey;index"`
+	TLD          TLD
+	ExpiryDate   time.Time `gorm:"not null;index"`
+	DropCatch    bool
+	RenewedYears int
+	// AuthInfo is the transfer code's salted hash (RFC 9154), NULL when
+	// none is set.
+	AuthInfo                      *string
 	CreatedAt                     time.Time
 	UpdatedAt                     time.Time
 	entities.DomainStatus         `gorm:"embedded"`
@@ -79,7 +81,9 @@ func ToDomain(dbDom *Domain, repository entities.RepositoryID) *entities.Domain 
 	d.ExpiryDate = dbDom.ExpiryDate
 	d.DropCatch = dbDom.DropCatch
 	d.RenewedYears = dbDom.RenewedYears
-	d.AuthInfo = entities.AuthInfoType(dbDom.AuthInfo)
+	if dbDom.AuthInfo != nil {
+		d.AuthInfo = entities.AuthInfoHash(*dbDom.AuthInfo)
+	}
 	d.CreatedAt = dbDom.CreatedAt
 	d.UpdatedAt = dbDom.UpdatedAt
 	d.Status = dbDom.DomainStatus
@@ -141,7 +145,10 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	dbDomain.ExpiryDate = d.ExpiryDate
 	dbDomain.DropCatch = d.DropCatch
 	dbDomain.RenewedYears = d.RenewedYears
-	dbDomain.AuthInfo = d.AuthInfo.String()
+	if d.AuthInfo.IsSet() {
+		h := string(d.AuthInfo)
+		dbDomain.AuthInfo = &h
+	}
 	dbDomain.CreatedAt = d.CreatedAt
 	dbDomain.UpdatedAt = d.UpdatedAt
 	dbDomain.DomainStatus = d.Status

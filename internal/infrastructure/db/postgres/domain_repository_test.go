@@ -725,7 +725,9 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	s.Require().Equal(0, len(retrievedDomain.Hosts))
 
 	// Update the domain
-	createdDomain.AuthInfo = "newAu123$th"
+	newCode, err := entities.HashAuthInfo("newAu123$th")
+	s.Require().NoError(err)
+	createdDomain.AuthInfo = newCode
 	updatedDomain, err := repo.UpdateDomain(context.Background(), createdDomain)
 	s.Require().NoError(err)
 	s.Require().NotNil(updatedDomain)
@@ -739,7 +741,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(retrievedDomain)
 	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
-	s.Require().Equal("newAu123$th", retrievedDomain.AuthInfo.String())
+	s.Require().True(retrievedDomain.AuthInfo.Matches("newAu123$th"), "the code is stored as a hash that matches it")
 }
 
 func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {

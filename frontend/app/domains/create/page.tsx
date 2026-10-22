@@ -20,7 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, ArrowLeft, PlusCircle } from "lucide-react";
 import { DomainCreateRequest } from "@/lib/types/domain";
 import { Checkbox } from "@/components/ui/checkbox";
-import { generateAuthInfo } from "@/lib/utils/authinfo";
+import { generateAuthInfo, isLikelyCompliantAuthInfo, SECURE_AUTHINFO_BITS } from "@/lib/utils/authinfo";
 import posthog from "posthog-js";
 
 const formSchema = z.object({
@@ -30,7 +30,13 @@ const formSchema = z.object({
     .refine((s) => !s.includes("."), { message: "Label must not contain dots" }),
   TLD: z.string().min(1, "TLD is required"),
   ClID: z.string().min(1, "Registrar is required"),
-  AuthInfo: z.string().min(1, "AuthInfo is required"),
+  // A transfer code is optional (RFC 9154): a domain normally has none, and
+  // the sponsor sets one when the registrant asks to transfer it.
+  AuthInfo: z
+    .string()
+    .refine((s) => s === "" || isLikelyCompliantAuthInfo(s), {
+      message: `Use a random code of at least ${SECURE_AUTHINFO_BITS} bits, or leave it empty. Generate one to be sure.`,
+    }),
   CreateDateLocal: z.string().min(1, "Create date is required"), // datetime-local
   ExpiryDateLocal: z.string().min(1, "Expiry date is required"), // datetime-local
   EnforcePhasePolicy: z.boolean().optional(),
@@ -82,8 +88,8 @@ export default function CreateDomainPage() {
       Label: "",
       TLD: "",
       ClID: "",
-      // Pre-generate a compliant AuthInfo to save a click
-      AuthInfo: generateAuthInfo(),
+      // No transfer code by default: RFC 9154's normal state.
+      AuthInfo: "",
       // Default dates: now for Create and +1 year for Expiry (both shown in the form)
       CreateDateLocal: new Date()
         .toISOString()
@@ -129,7 +135,7 @@ export default function CreateDomainPage() {
     const payload: DomainCreateRequest = {
       Name: fullName,
       ClID: values.ClID,
-      AuthInfo: values.AuthInfo,
+      AuthInfo: values.AuthInfo || undefined,
       ExpiryDate: toIsoFromLocal(values.ExpiryDateLocal),
       // Send CreatedAt explicitly so backend persists our intended create time
       CreatedAt: toIsoFromLocal(values.CreateDateLocal),
@@ -335,10 +341,10 @@ export default function CreateDomainPage() {
                     name="AuthInfo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>AuthInfo *</FormLabel>
+                        <FormLabel>Transfer code (AuthInfo)</FormLabel>
                         <div className="flex gap-2">
                           <FormControl>
-                            <Input placeholder="Secret transfer code" {...field} />
+                            <Input placeholder="None" autoComplete="off" {...field} />
                           </FormControl>
                           <Button
                             type="button"
@@ -353,7 +359,9 @@ export default function CreateDomainPage() {
                           </Button>
                         </div>
                         <FormDescription>
-                          A strong code with upper/lowercase, a digit, and a special character. Pre-filled to save a click.
+                          Optional, and normally left empty: set one only when the registrant is about to transfer the domain.
+                          The registry keeps a hash, never the code, so copy a generated code before saving.{" "}
+                          <Link href="/docs/domain-transfers" className="underline">How transfer codes work</Link>
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

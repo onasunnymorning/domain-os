@@ -43,6 +43,7 @@ var refusals = []struct {
 	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
 	{entities.ErrDuplicateHost, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPMaxSigLife, epplib.StatusUnimplementedOption},
+	{entities.ErrEPPAuthInfoExt, epplib.StatusUnimplementedOption},
 	{entities.ErrEPPKeyData, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSAlgorithm, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSDigestType, epplib.StatusParameterPolicyError},
@@ -59,7 +60,8 @@ var refusals = []struct {
 	{entities.ErrEPPNameserverNotSet, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSNotSet, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDNSSECUrgent, epplib.StatusUnimplementedOption},
-	{entities.ErrEPPAuthInfoRequired, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPAuthInfoMismatch, epplib.StatusInvalidAuthorizationInformation},
+	{entities.ErrAuthInfoNotSecure, epplib.StatusInvalidAuthorizationInformation},
 	{entities.ErrEPPCurExpDate, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPSubordinateHosts, epplib.StatusObjectAssociationProhibitsOperation},
 	{entities.ErrEPPSuperordinatePendingDelete, epplib.StatusObjectStatusProhibitsOperation},
@@ -152,11 +154,22 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	}
 	name := cmd.doc.FindElement("/epp/command/info/*/name")
 	hosts := name.SelectAttrValue("hosts", "all")
+	// A code given (RFC 9154 §5.3): an empty <domain:pw/> is given, and
+	// matches nothing.
+	var authInfo *string
+	if pw := cmd.doc.FindElement("/epp/command/info/*/authInfo/pw"); pw != nil {
+		v := schema.NormalizedStringValue(pw.Text())
+		authInfo = &v
+	}
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	info, err := s.domains.Info(ctx, scope, cmd.objects[0])
+	info, err := s.domains.Info(ctx, scope, cmd.objects[0], authInfo)
 	if err != nil {
 		s.refuse(cmd, err)
+		return
+	}
+	if info.Limited {
+		cmd.respond(epplib.StatusSuccess, "", limitedInfoData(info.Domain))
 		return
 	}
 	// Each extension's data is added only for a session that asked for it
@@ -201,6 +214,10 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 			Type: schema.TokenValue(el.SelectAttrValue("type", "")),
 			ID:   schema.TokenValue(el.Text()),
 		})
+	}
+	if create.FindElement("authInfo/ext") != nil {
+		s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+		return
 	}
 	if pw := create.FindElement("authInfo/pw"); pw != nil {
 		// eppcom:pwAuthInfoType is a normalizedString: the password is the
@@ -260,9 +277,9 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 			case a.SelectElement("pw") != nil:
 				v := schema.NormalizedStringValue(a.SelectElement("pw").Text())
 				c.AuthInfo = &v
-			default: // <domain:ext>: no password the registry can keep
-				v := ""
-				c.AuthInfo = &v
+			default: // <domain:ext>: not a password, so nothing to hash
+				s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+				return
 			}
 		}
 	}

@@ -69,11 +69,11 @@ func (f *testDomains) Check(ctx context.Context, names []string) ([]*queries.Dom
 	return f.EPPDomainService.Check(ctx, names)
 }
 
-func (f *testDomains) Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error) {
+func (f *testDomains) Info(ctx context.Context, scope entities.RegistrarClID, name string, authInfo *string) (*queries.EPPDomainInfo, error) {
 	if err := f.failure(); err != nil {
 		return nil, err
 	}
-	return f.EPPDomainService.Info(ctx, scope, name)
+	return f.EPPDomainService.Info(ctx, scope, name, authInfo)
 }
 
 func (f *testDomains) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error) {

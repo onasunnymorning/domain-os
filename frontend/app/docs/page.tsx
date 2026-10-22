@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench, BarChart3, Archive, Cpu, Bot } from 'lucide-react';
+import { Loader2, FileText, ChevronRight, Shield, Database, RefreshCw, Wrench, BarChart3, Archive, Cpu, Bot, ArrowRightLeft } from 'lucide-react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -84,6 +84,21 @@ export default function DocsIndexPage() {
                           </div>
                           <CardDescription className="text-xs leading-relaxed line-clamp-3">
                             Enforcement levels, compliance standards, and validation behaviors for contact registration details.
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                    <Link href="/docs/domain-transfers" className="group block">
+                      <Card className="border border-border/60 bg-card/40 transition-all duration-200 hover:border-orange-500/30 hover:bg-orange-500/[0.01]">
+                        <CardHeader className="p-3.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <ArrowRightLeft className="h-4 w-4 text-orange-500 shrink-0" />
+                            <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                              Domain Transfers
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                            Transfer codes under RFC 9154: how they are set, kept as hashes, checked, and cleared.
                           </CardDescription>
                         </CardHeader>
                       </Card>

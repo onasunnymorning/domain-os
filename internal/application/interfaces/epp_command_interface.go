@@ -15,8 +15,10 @@ type EPPDomainService interface {
 	// unavailable name is a result with a reason; an error means the
 	// registry could not answer.
 	Check(ctx context.Context, names []string) ([]*queries.DomainCheckResult, error)
-	// Info returns a domain the registrar sponsors.
-	Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error)
+	// Info returns a domain the registrar sponsors; or, for another
+	// registrar that gives the domain's transfer code (authInfo, nil if none
+	// was given), its limited view (RFC 9154 §5.3).
+	Info(ctx context.Context, scope entities.RegistrarClID, name string, authInfo *string) (*queries.EPPDomainInfo, error)
 	// Create registers a domain for the registrar.
 	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error)
 	// Update changes a domain the registrar sponsors.

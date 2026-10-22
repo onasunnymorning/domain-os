@@ -19,10 +19,12 @@ const serverID = "domain-os EPP"
 var supportedObjects = []string{nsDomain, nsContact, nsHost}
 
 // supportedExtensions are the extensions the greeting offers and a <login>
-// may ask for. DNSSEC (RFC 5910) is offered for DS data on <domain:create>
-// and <domain:info>; RGP (RFC 3915) for the grace period statuses on
-// <domain:info>. Their update operations arrive with <domain:update>.
-var supportedExtensions = []string{nsSecDNS, nsRGP}
+// may ask for. DNSSEC (RFC 5910) is offered for DS data on <domain:create>,
+// <domain:info> and <domain:update>; RGP (RFC 3915) for the grace period
+// statuses on <domain:info>. Secure authorization information for transfer
+// (RFC 9154) defines no elements: offering it says the registry keeps
+// domain transfer codes as RFC 9154 requires (entities.AuthInfoHash).
+var supportedExtensions = []string{nsSecDNS, nsRGP, nsSecureAuthInfo}
 
 // greetingDocument builds the RFC 5730 §2.4 greeting.
 func greetingDocument(now time.Time) *etree.Document {
@@ -178,9 +180,32 @@ func infoData(info *queries.EPPDomainInfo, hosts string) *etree.Element {
 		inf.CreateElement("domain:upDate").SetText(eppTime(d.UpdatedAt))
 	}
 	inf.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
-	// Info is answered only to the sponsor (ADR 0006), so the
-	// authorization information is always theirs to see.
-	inf.CreateElement("domain:authInfo").CreateElement("domain:pw").SetText(d.AuthInfo.String())
+	// RFC 9154 §5.3: the code itself is never returned. The sponsor is told
+	// one is set by an empty <domain:pw/>, and none by no <domain:authInfo>.
+	if d.AuthInfo.IsSet() {
+		inf.CreateElement("domain:authInfo").CreateElement("domain:pw")
+	}
+	return inf
+}
+
+// limitedInfoData builds the <domain:infData> a registrar that gave the
+// domain's transfer code sees without sponsoring it (RFC 9154 §5.3): the
+// name, ROID, statuses, sponsor and dates. No contacts, nameservers or
+// authorization information, nor any sign of whether a code is set.
+func limitedInfoData(d *entities.Domain) *etree.Element {
+	inf := etree.NewElement("domain:infData")
+	inf.CreateAttr("xmlns:domain", nsDomain)
+	inf.CreateElement("domain:name").SetText(d.Name.String())
+	inf.CreateElement("domain:roid").SetText(d.RoID.String())
+	for _, st := range d.Status.StringSlice() {
+		if st == entities.DomainStatusPendingRestore {
+			continue
+		}
+		inf.CreateElement("domain:status").CreateAttr("s", st)
+	}
+	inf.CreateElement("domain:clID").SetText(d.ClID.String())
+	inf.CreateElement("domain:crDate").SetText(eppTime(d.CreatedAt))
+	inf.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
 	return inf
 }
 

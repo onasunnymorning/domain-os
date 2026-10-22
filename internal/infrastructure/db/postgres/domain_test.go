@@ -31,7 +31,7 @@ func getValidDBDomain() *Domain {
 		UpRr:         &rarClid,
 		TLDName:      "domaintesttld",
 		RenewedYears: 1,
-		AuthInfo:     "abc123",
+		AuthInfo:     &testAuthInfoHash,
 		Hosts: []Host{
 			{
 				Name: "ns1.example.com",
@@ -66,7 +66,7 @@ func TestDomain_ToDomain(t *testing.T) {
 	require.Equal(t, *dbDomain.UpRr, d.UpRr.String())
 	require.Equal(t, dbDomain.TLDName, d.TLDName.String())
 	require.Equal(t, dbDomain.RenewedYears, d.RenewedYears)
-	require.Equal(t, dbDomain.AuthInfo, d.AuthInfo.String())
+	require.Equal(t, *dbDomain.AuthInfo, string(d.AuthInfo))
 	require.Equal(t, len(dbDomain.Hosts), len(d.Hosts))
 }
 
@@ -96,3 +96,7 @@ func TestDomain_ToDBDomain(t *testing.T) {
 	require.Equal(t, len(dbDom.Hosts), len(dbDomain.Hosts))
 
 }
+
+// testAuthInfoHash is a stored transfer code hash, in the form
+// entities.HashAuthInfo writes.
+var testAuthInfoHash = "$sha256$c2FsdHNhbHRzYWx0c2FsdA$MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI"

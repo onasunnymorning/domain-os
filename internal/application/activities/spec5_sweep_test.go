@@ -62,9 +62,9 @@ func (s *Spec5SweepActivitiesTestSuite) TestSweepSpec5Labels_Success() {
 	s.db.Create(&postgres.Spec5Label{Label: "amazon", Type: "restricted"})
 
 	// Seed Domains
-	s.db.Create(&postgres.Domain{RoID: 1, Name: "google.com", TLDName: "com", AuthInfo: "auth"})
-	s.db.Create(&postgres.Domain{RoID: 2, Name: "other.com", TLDName: "com", AuthInfo: "auth"})
-	s.db.Create(&postgres.Domain{RoID: 3, Name: "amazon.net", TLDName: "net", AuthInfo: "auth"})
+	s.db.Create(&postgres.Domain{RoID: 1, Name: "google.com", TLDName: "com", AuthInfo: nil})
+	s.db.Create(&postgres.Domain{RoID: 2, Name: "other.com", TLDName: "com", AuthInfo: nil})
+	s.db.Create(&postgres.Domain{RoID: 3, Name: "amazon.net", TLDName: "net", AuthInfo: nil})
 
 	args := Spec5SweepArgs{
 		TLDs:       []string{"com", "net"},

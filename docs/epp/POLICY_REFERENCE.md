@@ -131,7 +131,7 @@ Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--prot
 | A command on an object service the session did not ask for | 2307 |
 | A command carrying an extension the session did not ask for | 2103 |
 
-The greeting offers the domain, contact and host object services. It offers two extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>` and `<domain:info>`, and RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`. Their update operations arrive with `<domain:update>`.
+The greeting offers the domain, contact and host object services. It offers three extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>`, `<domain:info>` and `<domain:update>`; RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`; and secure authorization information for transfer (`secure-authinfo-transfer-1.0`, RFC 9154), which defines no elements and says the registry keeps domain transfer codes as below.
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -146,7 +146,7 @@ The greeting offers the domain, contact and host object services. It offers two 
 
 Availability is the same for every registrar. Names are looked up `EPP_CHECK_PARALLELISM` at a time, and each TLD's phases are read once per command. A registry that cannot answer is 2400 for the whole command; there are no partial answers. `epp_check_names` is the histogram of names per check.
 
-**`<domain:info>`.** Answered only to the sponsoring registrar (ADR 0006): another registrar gets 2201, with or without the domain's authorization information, and is not told who the sponsor is. The `<infData>` carries the name, ROID, statuses, registrant and contacts, nameservers and subordinate hosts as the `hosts` attribute selects (`all`, the default; `del`; `sub`; `none`), the sponsor and creator, the dates, and the authorization information. A session that logged in with RGP also gets `<rgp:infData>` with the domain's grace period statuses (`addPeriod`, `renewPeriod`, `autoRenewPeriod`; or, once deleted, `redemptionPeriod`, `pendingRestore` or `pendingDelete`), when it is in one.
+**`<domain:info>`.** Answered in full only to the sponsoring registrar (ADR 0006). Another registrar gets 2201 without the domain's transfer code, and is not told who the sponsor is; with the code, see *Transfer codes* below. The `<infData>` carries the name, ROID, statuses, registrant and contacts, nameservers and subordinate hosts as the `hosts` attribute selects (`all`, the default; `del`; `sub`; `none`), the sponsor and creator, and the dates. When a transfer code is set it carries an empty `<domain:authInfo><domain:pw/></domain:authInfo>`, never the code; when none is set, no `<domain:authInfo>`. A session that logged in with RGP also gets `<rgp:infData>` with the domain's grace period statuses (`addPeriod`, `renewPeriod`, `autoRenewPeriod`; or, once deleted, `redemptionPeriod`, `pendingRestore` or `pendingDelete`), when it is in one.
 
 **`<domain:create>`.** The registrar must be accredited for the TLD (ADR 0006). The domain is registered in the TLD's current general-availability phase, through the same registration path as the admin API, which prices it, assigns its ROID and writes its `domain.registered` event with the session's login (`epp:<login>`) as actor and the svTRID as correlation ID. Every rule is applied in one order, by the registry, so that of several problems with a command the first in this order is the one reported:
 
@@ -176,7 +176,8 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 | A DS record that is malformed: key tag out of range, digest not matching its type's length | 2005 |
 | A DNSSEC algorithm or digest type the registry does not accept (below) | 2306 |
 | The same DS record twice | 2306 |
-| An authorization password that breaks the registry's rules | 2306 |
+| `<domain:ext>` authorization information: the registry keeps only passwords | 2102 |
+| A transfer code not random enough (below) | 2202 (RFC 9154 §5.2) |
 
 Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID ends in the configured repository ID, `ROID_REPOSITORY_ID` (above, under Registry identity).
 
@@ -203,7 +204,7 @@ A domain with `clientHold` or `serverHold` keeps its nameservers and DS records,
 6. Adding a contact of a type the domain has: 2306. A contact that does not exist: 2303; another registrar's: 2201. The phase's contact policy after the change (by default a registrant and a tech contact): 2003 if a required contact would be missing, 2306 if a prohibited one is given. An empty `<domain:registrant/>` removes the registrant, where the policy allows it.
 7. Adding a nameserver that is not one of the registrar's host objects: 2303. One the domain has, or more than 10: 2306. A nameserver under the domain itself without an address: 2306.
 8. Adding a DS record that is malformed: 2005. One with an algorithm or digest type the registry does not accept, one the domain has, or more than 8 in all: 2306.
-9. `<domain:null/>` for the authorization information: 2306 (the registry keeps one on every domain). A password that breaks the registry's rules: 2306.
+9. `<domain:ext>` authorization information: 2102. A transfer code not random enough: 2202. An empty `<domain:pw/>` or `<domain:null/>` removes the code (RFC 9154 §4.2).
 
 `<domain:renew>`, in this order:
 1. A `<domain:curExpDate>` that is not the domain's expiry date: 2306. This makes a renew repeated by mistake fail rather than renew twice. A time zone on the date is ignored.
@@ -218,6 +219,20 @@ A renewed domain is in its renew grace period (`renewPeriod`, RFC 3915) and the 
 2. A host object under the domain: 2305, naming the hosts. Delete or rename them first. The check is made again in the delete's own transaction, and a host create or rename into a domain locks the domain's row first and is refused (2304) once the domain is pendingDelete, so neither can slip past the other.
 
 Restoring a deleted domain (RFC 3915's restore request and report) is not offered yet.
+
+**Transfer codes** (RFC 9154; [`entities.AuthInfoHash`](../../pkg/domain/entities/authInfoHash.go)). A domain's authorization information is its transfer code. The user guide is the admin UI's *Domain Transfers* page (`frontend/lib/constants/domainTransfersDoc.ts`).
+- **Unset is the normal state.** A domain is created with no code unless `<domain:create>` gives a non-empty `<domain:pw>`; the sponsor sets one with `<domain:update>` when the registrant asks to transfer, and clears it with an empty `<domain:pw/>` or `<domain:null/>`. Escrow imports create domains with no code. A completed transfer clears the code (Phase 4h-2).
+- **Kept as a hash.** A salted SHA-256 hash with a 128-bit random salt per code, `NULL` when none is set. The code itself is never stored, returned, logged or audited. SHA-256 rather than a slow password hash, because a code the registry accepts carries 128 bits or more, which no offline search exhausts. Codes stored before this were hashed by the `migrate` job (`migrateDomainAuthInfo`); they keep working until replaced.
+- **Strength, fixed in code** (`entities.ValidateSecureAuthInfo`). Length times log2 of the alphabet the code uses (26 lower-case, 26 upper-case, 10 digits, 33 other printable ASCII), at least 128 bits; at least 8 different characters; printable ASCII; at most 128 characters. Otherwise 2202 on create and update. For example 20 random characters of all four classes (131 bits), or 25 random lower-case letters and digits (129 bits). The admin API also accepts the registry's earlier rule (8 to 22 characters with upper case, lower case and a symbol, `entities.ValidateAdminAuthInfo`) so existing tooling keeps working; its UI requires the RFC 9154 rule.
+- **Checking a code** (RFC 9154 §5.3, ADR 0006 amendment of 2026-10-22). A `<domain:info>` from a registrar that does not sponsor the domain:
+
+| The registrar gives | Answer |
+|---|---|
+| No `<domain:authInfo>` | 2201 |
+| The domain's code | 1000 with name, ROID, statuses, sponsor, crDate and exDate only: no contacts, nameservers, hosts, authorization information or extensions |
+| A wrong or empty code, or any code when none is set | 2202, the same for each |
+
+The comparison is in constant time. The admin API returns `AuthInfoSet` (true or false), never the code or the hash. Contact transfer codes are not covered yet: they are kept as before until contact transfer is built.
 
 **Host objects** (RFC 5732). This registry uses host objects (RST's `epp.hostModel` is `objects`), and they belong to a registrar:
 - Each registrar has its own host object for a name, unique per registrar, and a domain's nameservers are host objects of its sponsor. Two registrars can each have a host named `ns1.example.net`.

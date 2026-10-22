@@ -109,6 +109,9 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 	if err != nil {
 		return nil, err
 	}
+	if err := entities.ValidateAdminAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
@@ -269,7 +272,16 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	dom.CrRr = entities.ClIDType(upDom.CrRr)
 	dom.UpRr = entities.ClIDType(upDom.UpRr)
 	dom.ExpiryDate = upDom.ExpiryDate
-	dom.AuthInfo = entities.AuthInfoType(upDom.AuthInfo)
+	// A code given is set, hashed (RFC 9154); none keeps the domain's code
+	// as it is: the domain as read carries only whether one is set.
+	if upDom.AuthInfo != "" {
+		if err := entities.ValidateAdminAuthInfo(upDom.AuthInfo); err != nil {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
+		if dom.AuthInfo, err = entities.HashAuthInfo(upDom.AuthInfo); err != nil {
+			return nil, err
+		}
+	}
 	if !upDom.CreatedAt.IsZero() {
 		dom.CreatedAt = upDom.CreatedAt
 	}
@@ -1186,7 +1198,12 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 	event.DomainRoID = roid.String()
 
-	// Create the domain entity
+	// Create the domain entity. The EPP server has already held the code to
+	// RFC 9154's rule (ValidateSecureAuthInfo); the admin API's rule admits
+	// that and the registry's earlier one.
+	if err := entities.ValidateAdminAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, err
+	}
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err
@@ -2020,6 +2037,9 @@ func (s *DomainService) domainFromCreateDomainCommand(cmd *commands.CreateDomain
 	roid, err := s.roidService.GenerateRoid("domain")
 	if err != nil {
 		return nil, err
+	}
+	if err := entities.ValidateAdminAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {

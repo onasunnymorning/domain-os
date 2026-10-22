@@ -33,7 +33,7 @@ func TestDomain_NewDomain(t *testing.T) {
 			name:     "example.com",
 			authInfo: "",
 			clid:     "GoMamma",
-			wantErr:  ErrInvalidAuthInfo,
+			wantErr:  nil, // no transfer code: RFC 9154's normal state
 		},
 		{
 			roid:     "123456_DOM-APEX",
@@ -107,7 +107,10 @@ func TestDomain_NewDomain(t *testing.T) {
 			if err == nil {
 				require.Equal(t, RoidType(tc.roid), d.RoID)
 				require.Equal(t, DomainName(strings.ToLower(tc.name)), d.Name)
-				require.Equal(t, AuthInfoType(tc.authInfo), d.AuthInfo)
+				require.Equal(t, tc.authInfo != "", d.AuthInfo.IsSet())
+				if tc.authInfo != "" {
+					require.True(t, d.AuthInfo.Matches(tc.authInfo), "the hash matches the code")
+				}
 				require.Equal(t, ClIDType(tc.clid), d.ClID)
 				require.False(t, d.DropCatch)
 				if strings.Contains(tc.name, "xn--") {
@@ -204,6 +207,15 @@ func TestDomain_CanBeTransferred(t *testing.T) {
 	require.False(t, domain.CanBeTransferred())
 }
 
+// validAuthInfoHash is a stored transfer code: the hash of "STr0mgP@ZZ".
+var validAuthInfoHash = func() AuthInfoHash {
+	h, err := HashAuthInfo("STr0mgP@ZZ")
+	if err != nil {
+		panic(err)
+	}
+	return h
+}()
+
 func TestDomain_Validate(t *testing.T) {
 	testcases := []struct {
 		name   string
@@ -217,7 +229,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: nil,
@@ -229,7 +241,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrInvalidDomainRoID,
@@ -241,7 +253,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.-domaintesttld",
 				TLDName:  "-domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrInvalidLabelDash,
@@ -253,7 +265,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "g",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrInvalidClIDType,
@@ -265,10 +277,10 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "S",
+				AuthInfo: "S", // not a hash this registry wrote
 				Status:   DomainStatus{OK: true},
 			},
-			want: ErrInvalidAuthInfo,
+			want: ErrInvalidAuthInfoHash,
 		},
 		{
 			name: "invalid status",
@@ -277,7 +289,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "de.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{},
 			},
 			want: ErrInvalidDomainStatusCombination,
@@ -290,7 +302,7 @@ func TestDomain_Validate(t *testing.T) {
 				TLDName:      "domaintesttld",
 				OriginalName: "de.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrOriginalNameFieldReservedForIDN,
@@ -303,7 +315,7 @@ func TestDomain_Validate(t *testing.T) {
 				TLDName:  "domaintesttld",
 				UName:    "andere.domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrUNameFieldReservedForIDNDomains,
@@ -320,7 +332,7 @@ func TestDomain_Validate(t *testing.T) {
 				TLDName:  "domaintesttld",
 				UName:    "de.domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: nil,
@@ -334,7 +346,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "path.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: nil,
@@ -348,7 +360,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "path.domaintesttld",
 				TLDName:  "domaintesttld",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrInvalidDomainRoID,
@@ -362,7 +374,7 @@ func TestDomain_Validate(t *testing.T) {
 				UName:        "cariño.domaintesttld",
 				OriginalName: "xn--carioo-zwa.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: nil,
@@ -376,7 +388,7 @@ func TestDomain_Validate(t *testing.T) {
 				UName:        "cariño.domaintesttld",
 				OriginalName: "cariño.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrOriginalNameShouldBeAlabel,
@@ -389,7 +401,7 @@ func TestDomain_Validate(t *testing.T) {
 				TLDName:      "domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrNoUNameProvidedForIDNDomain,
@@ -403,7 +415,7 @@ func TestDomain_Validate(t *testing.T) {
 				UName:        "fûkûp.domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrUNameDoesNotMatchDomain,
@@ -418,7 +430,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "example.paco",
 				TLDName:  "gza",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrTLDNameDoesNotMatchDomain,
@@ -429,7 +441,7 @@ func TestDomain_Validate(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "example.paco",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrTLDNameDoesNotMatchDomain,
@@ -443,7 +455,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "example.ac.uk",
 				TLDName:  "uk",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: ErrTLDNameDoesNotMatchDomain,
@@ -455,7 +467,7 @@ func TestDomain_Validate(t *testing.T) {
 				Name:     "example.ac.uk",
 				TLDName:  "ac.uk",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: validAuthInfoHash,
 				Status:   DomainStatus{OK: true},
 			},
 			want: nil,
@@ -469,7 +481,7 @@ func TestDomain_Validate(t *testing.T) {
 				UName:        "cariño.domaintesttld",
 				OriginalName: "xn--cario-rta.domaintesttld",
 				ClID:         "GoMamma",
-				AuthInfo:     "STr0mgP@ZZ",
+				AuthInfo:     validAuthInfoHash,
 				Status:       DomainStatus{OK: true},
 			},
 			want: ErrOriginalNameEqualToDomain,
@@ -1370,7 +1382,7 @@ func TestRegisterDomain(t *testing.T) {
 	assert.Equal(t, clid, string(domain.ClID))
 	assert.Equal(t, clid, string(domain.CrRr))
 	assert.Equal(t, years-1, domain.RenewedYears)
-	assert.Equal(t, authInfo, string(domain.AuthInfo))
+	assert.True(t, domain.AuthInfo.Matches(authInfo), "the stored hash matches the code")
 	assert.Equal(t, registrantID, string(domain.RegistrantID))
 	assert.Equal(t, adminID, string(domain.AdminID))
 	assert.Equal(t, techID, string(domain.TechID))

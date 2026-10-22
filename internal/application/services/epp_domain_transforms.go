@@ -96,15 +96,20 @@ func (s *EPPDomainService) update(ctx context.Context, scope entities.RegistrarC
 			return nil, err
 		}
 	}
+	// RFC 9154 §5.2: an empty code or <domain:null/> unsets the domain's
+	// code; a code given must be random enough, and is kept hashed.
 	switch {
-	case cmd.AuthInfoNull:
-		return nil, entities.ErrEPPAuthInfoRequired
+	case cmd.AuthInfoNull || (cmd.AuthInfo != nil && *cmd.AuthInfo == ""):
+		dom.AuthInfo = ""
 	case cmd.AuthInfo != nil:
-		a, err := entities.NewAuthInfoType(*cmd.AuthInfo)
+		if err := entities.ValidateSecureAuthInfo(*cmd.AuthInfo); err != nil {
+			return nil, err
+		}
+		h, err := entities.HashAuthInfo(*cmd.AuthInfo)
 		if err != nil {
 			return nil, err
 		}
-		dom.AuthInfo = a
+		dom.AuthInfo = h
 	}
 
 	dom.UpRr = entities.ClIDType(scope.String())

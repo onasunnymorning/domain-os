@@ -73,7 +73,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 				assert.NotNil(t, domain)
 				assert.Equal(t, tt.cmd.Name, domain.Name.String())
 				assert.Equal(t, tt.cmd.ClID, domain.ClID.String())
-				assert.Equal(t, tt.cmd.AuthInfo, domain.AuthInfo.String())
+				assert.True(t, tt.cmd.AuthInfo == "" || domain.AuthInfo.Matches(tt.cmd.AuthInfo), "the code is kept as a hash that matches it")
 				assert.Regexp(t, `^\d+_DOM-TEST$`, domain.RoID.String())
 			}
 		})
@@ -162,7 +162,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 				for i, cmd := range tt.cmds {
 					assert.Equal(t, cmd.Name, domains[i].Name.String())
 					assert.Equal(t, cmd.ClID, domains[i].ClID.String())
-					assert.Equal(t, cmd.AuthInfo, domains[i].AuthInfo.String())
+					assert.True(t, cmd.AuthInfo == "" || domains[i].AuthInfo.Matches(cmd.AuthInfo), "the code is kept as a hash that matches it")
 					assert.Regexp(t, `^\d+_DOM-TEST$`, domains[i].RoID.String())
 				}
 			}

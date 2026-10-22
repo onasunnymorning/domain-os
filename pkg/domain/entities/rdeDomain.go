@@ -49,12 +49,10 @@ type ToEntityResult struct {
 
 // ToEntity converts the RDEDomain to a Domain entity
 func (d *RDEDomain) ToEntity() (*ToEntityResult, error) {
-	// Since the Escrow specification (RFC 9022) does not specify the authInfo field, we generate a random one to import the data
-	aInfo, err := GenerateAuthInfo()
-	if err != nil {
-		return nil, err // Only if the system's entropy source fails; never fall back to a fixed value
-	}
-	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, string(aInfo))
+	// An escrow deposit has no authInfo (RFC 9022), and under RFC 9154 none
+	// is the normal state: the domain is imported with no transfer code, and
+	// its registrar sets one when the registrant asks to transfer.
+	domain, err := NewDomain(d.RoID, d.Name.String(), d.ClID, "")
 	if err != nil {
 		return nil, err
 	}
