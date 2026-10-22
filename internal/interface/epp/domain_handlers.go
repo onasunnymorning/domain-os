@@ -142,10 +142,11 @@ func withActor(ctx context.Context, cmd *command) context.Context {
 	return appcontext.WithCorrelationID(ctx, cmd.svTRID)
 }
 
-// domainInfo answers <domain:info> (RFC 5731 §3.1.2). Only the sponsor is
-// answered; anyone else gets 2201 (ADR 0006), whether or not they present
-// the domain's authorization information. The RGP statuses are added when
-// the session logged in with RGP.
+// domainInfo answers <domain:info> (RFC 5731 §3.1.2). The sponsor gets the
+// full answer. Another registrar gets the limited view with the domain's
+// transfer code, 2202 with a wrong one and 2201 with none (RFC 9154 §5.3,
+// ADR 0006 as amended). Authorization information other than a password is
+// 2102. The RGP statuses are added when the session logged in with RGP.
 func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
@@ -154,6 +155,12 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	}
 	name := cmd.doc.FindElement("/epp/command/info/*/name")
 	hosts := name.SelectAttrValue("hosts", "all")
+	// Only a password can be checked: the registry keeps nothing else
+	// (2102, as on create and update).
+	if cmd.doc.FindElement("/epp/command/info/*/authInfo/ext") != nil {
+		s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+		return
+	}
 	// A code given (RFC 9154 §5.3): an empty <domain:pw/> is given, and
 	// matches nothing.
 	var authInfo *string

@@ -122,6 +122,11 @@ func (h AuthInfoHash) parts() (salt, sum []byte, err error) {
 	return salt, sum, nil
 }
 
+// AuthInfoHashLength is the length of every hash HashAuthInfo writes: the
+// scheme, the salt and the digest, base64 without padding.
+var AuthInfoHashLength = len(authInfoHashScheme) + base64.RawStdEncoding.EncodedLen(authInfoSaltBytes) +
+	1 + base64.RawStdEncoding.EncodedLen(sha256.Size)
+
 // IsAuthInfoHash reports whether s is in the form HashAuthInfo writes, so
 // a migration can tell a hash from a code stored before RFC 9154.
 func IsAuthInfoHash(s string) bool {

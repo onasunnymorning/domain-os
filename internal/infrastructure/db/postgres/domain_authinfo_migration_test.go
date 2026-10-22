@@ -21,7 +21,7 @@ func TestMigrateDomainAuthInfo(t *testing.T) {
 		"CREATE SCHEMA authinfo_migration_test",
 		"SET LOCAL search_path TO authinfo_migration_test",
 		"CREATE TABLE domains (ro_id bigint PRIMARY KEY, auth_info text NOT NULL)",
-		"INSERT INTO domains VALUES (1, 'Secret-Auth-1!'), (2, ''), (3, '" + string(hashed) + "')",
+		"INSERT INTO domains VALUES (1, 'Secret-Auth-1!'), (2, ''), (3, '" + string(hashed) + "'), (5, '$sha256$AbCd1!')",
 	} {
 		require.NoError(t, tx.Exec(stmt).Error, stmt)
 	}
@@ -45,6 +45,8 @@ func TestMigrateDomainAuthInfo(t *testing.T) {
 	assert.Nil(t, after[2], "an empty code becomes NULL: no code")
 	require.NotNil(t, after[3])
 	assert.Equal(t, string(hashed), *after[3], "a hash is left alone")
+	require.NotNil(t, after[5])
+	assert.True(t, entities.AuthInfoHash(*after[5]).Matches("$sha256$AbCd1!"), "a plain-text code that begins like a hash is hashed too")
 
 	t.Run("a rerun changes nothing", func(t *testing.T) {
 		require.NoError(t, migrateDomainAuthInfo(tx))
@@ -52,6 +54,7 @@ func TestMigrateDomainAuthInfo(t *testing.T) {
 		assert.Equal(t, *after[1], *again[1])
 		assert.Nil(t, again[2])
 		assert.Equal(t, *after[3], *again[3])
+		assert.Equal(t, *after[5], *again[5])
 	})
 	t.Run("a domain can be stored with no code", func(t *testing.T) {
 		require.NoError(t, tx.Exec("INSERT INTO domains VALUES (4, NULL)").Error)

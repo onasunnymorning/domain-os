@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beevik/etree"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,6 +74,12 @@ func TestRFC9154_AuthInfo(t *testing.T) {
 		ext := `<domain:authInfo><domain:ext><host:delete xmlns:host="urn:ietf:params:xml:ns:host-1.0"><host:name>ns.example.net</host:name></host:delete></domain:ext></domain:authInfo>`
 		requireCode(t, c.roundTrip(domainUpdateXML("code.test", `<domain:chg>`+ext+`</domain:chg>`, "")), "2102")
 		requireCode(t, other.roundTrip(infoWithCodeXML("code.test", testTransferCode)), "1000")
+		infoExt := func(c *client) *etree.Document {
+			return c.roundTrip(cmdXML(`<info><domain:info xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">`+
+				`<domain:name>code.test</domain:name>`+ext+`</domain:info></info>`, "INF-EXT"))
+		}
+		requireCode(t, infoExt(other), "2102")
+		requireCode(t, infoExt(c), "2102")
 		requireCode(t, c.roundTrip(cmdXML(`<create><domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">`+
 			`<domain:name>ext.test</domain:name><domain:registrant>reg1</domain:registrant>`+ext+
 			`</domain:create></create>`, "CRE-EXT")), "2102")
