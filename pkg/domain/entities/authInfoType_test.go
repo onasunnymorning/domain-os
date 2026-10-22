@@ -187,8 +187,5 @@ func TestGenerateAuthInfo_AcceptedByEntityConstructors(t *testing.T) {
 		require.NoError(t, err, "NewContact rejected generated authInfo %q", a)
 		require.Equal(t, a, c.AuthInfo, "NewContact changed generated authInfo %q", a)
 
-		d, err := NewDomain("12345_DOM-APEX", "apex.domains", "myRegstrarID", a.String())
-		require.NoError(t, err, "NewDomain rejected generated authInfo %q", a)
-		require.True(t, d.AuthInfo.Matches(a.String()), "NewDomain's hash does not match generated authInfo %q", a)
 	}
 }

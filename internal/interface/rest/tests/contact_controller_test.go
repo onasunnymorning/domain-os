@@ -19,7 +19,7 @@ var _ = Describe("ContactController", Ordered, func() {
 	testContact := &commands.CreateContactCommand{
 		ID:       "contactID101",
 		Email:    "jon@doe.com",
-		AuthInfo: "str0NGP@ZZw0rd",
+		AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		ClID:     registrarClid,
 		PostalInfo: [2]*entities.ContactPostalInfo{
 			testPostalInfo,
@@ -56,7 +56,7 @@ var _ = Describe("ContactController", Ordered, func() {
 		invalidContact := &commands.CreateContactCommand{
 			ID:       "contactID102",
 			Email:    "invalid-email",
-			AuthInfo: "str0NGP@ZZw0rd",
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		}
 		resp := api.POST("/contacts", invalidContact)
 		Expect(resp.Code).To(Equal(http.StatusBadRequest))

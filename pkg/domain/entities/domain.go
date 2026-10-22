@@ -59,25 +59,25 @@ var (
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID           RoidType             `json:"RoID"`
-	Name           DomainName           `json:"Name"`         // in case of IDN, this contains the A-label
-	OriginalName   DomainName           `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
-	UName          DomainName           `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
-	RegistrantID   ClIDType             `json:"RegistrantID"`
-	AdminID        ClIDType             `json:"AdminID"`
-	TechID         ClIDType             `json:"TechID"`
-	BillingID      ClIDType             `json:"BillingID"`
-	ClID           ClIDType             `json:"ClID"`
-	CrRr           ClIDType             `json:"CrRr"`
-	UpRr           ClIDType             `json:"UpRr"`
-	TLDName        DomainName           `json:"TLDName"`
-	ExpiryDate     time.Time            `json:"ExpiryDate"`
-	DropCatch      bool                 `json:"DropCatch"`
-	RenewedYears   int                  `json:"RenewedYears"`
+	RoID         RoidType   `json:"RoID"`
+	Name         DomainName `json:"Name"`         // in case of IDN, this contains the A-label
+	OriginalName DomainName `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
+	UName        DomainName `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
+	RegistrantID ClIDType   `json:"RegistrantID"`
+	AdminID      ClIDType   `json:"AdminID"`
+	TechID       ClIDType   `json:"TechID"`
+	BillingID    ClIDType   `json:"BillingID"`
+	ClID         ClIDType   `json:"ClID"`
+	CrRr         ClIDType   `json:"CrRr"`
+	UpRr         ClIDType   `json:"UpRr"`
+	TLDName      DomainName `json:"TLDName"`
+	ExpiryDate   time.Time  `json:"ExpiryDate"`
+	DropCatch    bool       `json:"DropCatch"`
+	RenewedYears int        `json:"RenewedYears"`
 	// AuthInfo is the domain's transfer code as a salted hash (RFC 9154),
 	// empty when none is set. It never leaves the registry: JSON carries
 	// AuthInfoSet instead (see MarshalJSON).
-	AuthInfo AuthInfoHash `json:"-"`
+	AuthInfo       AuthInfoHash         `json:"-"`
 	CreatedAt      time.Time            `json:"CreatedAt"`
 	UpdatedAt      time.Time            `json:"UpdatedAt"`
 	Status         DomainStatus         `json:"Status"`
@@ -134,9 +134,8 @@ func (d *Domain) UnSetOKStatusIfNeeded() {
 // It does not set RGP statuses. See RegisterDomain instead if you are looking to create a domain as part of the registration process by a client.
 //
 // authInfo is the transfer code in plain text, or empty for none: the domain
-// keeps only its hash (RFC 9154). It must pass ValidateAdminAuthInfo, the
-// loosest rule the registry accepts; a registrar's code must also pass
-// ValidateSecureAuthInfo, which the EPP service checks first.
+// keeps only its hash (RFC 9154). It must pass ValidateDomainAuthInfo,
+// the one rule every path applies.
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
@@ -154,7 +153,7 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 		return nil, err
 	}
 
-	if err := ValidateAdminAuthInfo(authInfo); err != nil {
+	if err := ValidateDomainAuthInfo(authInfo); err != nil {
 		return nil, err
 	}
 	a, err := HashAuthInfo(authInfo)

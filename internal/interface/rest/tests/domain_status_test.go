@@ -66,7 +66,7 @@ var _ = Describe("DomainStatus", Ordered, func() {
 		contactCmd := &commands.CreateContactCommand{
 			ID:       contactID,
 			Email:    "dstest@example.com",
-			AuthInfo: "str0NGP@ZZw0rd",
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			ClID:     registrarClID,
 			PostalInfo: [2]*entities.ContactPostalInfo{
 				testPostalInfo,
@@ -79,7 +79,7 @@ var _ = Describe("DomainStatus", Ordered, func() {
 		domainCmd := &commands.CreateDomainCommand{
 			Name:         domainName,
 			ClID:         registrarClID,
-			AuthInfo:     "St@tusT3st!Pwd",
+			AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 			RegistrantID: contactID,
 			ExpiryDate:   time.Now().UTC().Add(365 * 24 * time.Hour),
 			RenewedYears: 1,

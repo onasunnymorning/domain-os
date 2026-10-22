@@ -35,7 +35,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 			cmd: &commands.CreateDomainCommand{
 				Name:           "example.com",
 				ClID:           "client123",
-				AuthInfo:       "sTr0N5p@zzWqRD",
+				AuthInfo:       "Tr4nsf3r-C0de-Xq9#Lm2!",
 				RegistrantID:   "registrant123",
 				AdminID:        "admin123",
 				TechID:         "tech123",
@@ -57,7 +57,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 			cmd: &commands.CreateDomainCommand{
 				Name:     "",
 				ClID:     "client123",
-				AuthInfo: "sTr0N5p@zzWqRD",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			},
 			wantErr: true,
 		},
@@ -101,7 +101,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 				{
 					Name:           "example1.com",
 					ClID:           "client123",
-					AuthInfo:       "sTr0N5p@zzWqRD",
+					AuthInfo:       "Tr4nsf3r-C0de-Xq9#Lm2!",
 					RegistrantID:   "registrant123",
 					AdminID:        "admin123",
 					TechID:         "tech123",
@@ -119,7 +119,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 				{
 					Name:           "example2.com",
 					ClID:           "client456",
-					AuthInfo:       "sTr0N5p@zzWqRD",
+					AuthInfo:       "Tr4nsf3r-C0de-Xq9#Lm2!",
 					RegistrantID:   "registrant456",
 					AdminID:        "admin456",
 					TechID:         "tech456",
@@ -143,7 +143,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 				{
 					Name:     "",
 					ClID:     "client123",
-					AuthInfo: "sTr0N5p@zzWqRD",
+					AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				},
 			},
 			wantErr: true,
@@ -180,7 +180,7 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 		Name:       "example.com",
 		TLDName:    "com",
 		ClID:       "client123",
-		AuthInfo:   "sTr0N5p@zzWqRD",
+		AuthInfo:   "Tr4nsf3r-C0de-Xq9#Lm2!",
 		ExpiryDate: time.Now().AddDate(1, 0, 0),
 		CreatedAt:  originalCreatedAt,
 		UpdatedAt:  time.Now(),
@@ -205,7 +205,7 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 		CrRr:         "crrr123",
 		UpRr:         "uprr123",
 		ExpiryDate:   existingDomain.ExpiryDate,
-		AuthInfo:     "sTr0N5p@zzWqRD",
+		AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 		CreatedAt:    time.Time{}, // Zero value mapped from JSON
 		UpdatedAt:    time.Now(),
 		Status:       entities.DomainStatus{OK: true},
@@ -229,13 +229,13 @@ func TestDomainService_UpdateDomain_RequiresTheVersionRead(t *testing.T) {
 	ctx := context.Background()
 	repo := new(repositories.MockDomainRepository)
 	repo.On("GetDomainByName", ctx, "example.com", false).Return(&entities.Domain{
-		RoID: "123_DOM-APEX", Name: "example.com", TLDName: "com", ClID: "client123", AuthInfo: "sTr0N5p@zzWqRD",
+		RoID: "123_DOM-APEX", Name: "example.com", TLDName: "com", ClID: "client123", AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		ExpiryDate: time.Now().AddDate(1, 0, 0), UpdatedAt: time.Now(), Status: entities.DomainStatus{OK: true},
 	}, nil)
 	service := &DomainService{domainRepository: repo, eventPublisher: &noopPublisher{}}
 
 	_, err := service.UpdateDomain(ctx, "example.com", &commands.UpdateDomainCommand{
-		ClID: "client123", AuthInfo: "sTr0N5p@zzWqRD", ExpiryDate: time.Now().AddDate(1, 0, 0), Status: entities.DomainStatus{OK: true},
+		ClID: "client123", AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!", ExpiryDate: time.Now().AddDate(1, 0, 0), Status: entities.DomainStatus{OK: true},
 	})
 	require.ErrorIs(t, err, entities.ErrDomainVersionRequired)
 	repo.AssertNotCalled(t, "UpdateDomainColumnsIfUnchanged", mock.Anything, mock.Anything)

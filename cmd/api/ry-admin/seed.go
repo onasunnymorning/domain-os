@@ -56,7 +56,7 @@ const (
 	// ClIDType values, so this must be 3-16 characters — plain "ga" is rejected.
 	seedPhase = "ga-phase"
 
-	// seedAuthInfo satisfies AuthInfoType.Validate (upper + lower + special).
+	// seedAuthInfo is the seeded contacts' code; it satisfies AuthInfoType.Validate.
 	seedAuthInfo = "LocalDev!23"
 )
 
@@ -334,10 +334,10 @@ func (s *seeder) seedDomains(ctx context.Context) error {
 		}
 
 		_, err = s.domain.Create(ctx, &commands.CreateDomainCommand{
-			Name:         name,
-			ClID:         d.Registrar,
-			CrRr:         d.Registrar,
-			AuthInfo:     seedAuthInfo,
+			Name: name,
+			ClID: d.Registrar,
+			CrRr: d.Registrar,
+			// No transfer code: RFC 9154's normal state.
 			RegistrantID: registrantID,
 			AdminID:      registrantID,
 			TechID:       registrantID,

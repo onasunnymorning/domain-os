@@ -77,7 +77,7 @@ Some lengths that pass:
 
 The estimate cannot tell a random code from a memorable one: \`Password1!Password1!\` uses four classes and enough length, but it is not random. **Always generate codes**, with a cryptographic random generator. The **Generate** button in the admin UI makes 24-character codes of about 150 bits.
 
-The admin API also accepts codes under the registry's earlier rule (8 to 22 characters with upper case, lower case and a symbol), so existing tooling keeps working. Registrars over EPP, and the admin UI, must meet the RFC 9154 rule.
+The same rule applies everywhere a code is set: registrars over EPP, the admin API and the admin UI.
 
 ---
 

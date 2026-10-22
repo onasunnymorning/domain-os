@@ -102,7 +102,7 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		contactCmd := &commands.CreateContactCommand{
 			ID:       contactID,
 			Email:    "dxtest@example.com",
-			AuthInfo: "str0NGP@ZZw0rd",
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			ClID:     registrarClID,
 			PostalInfo: [2]*entities.ContactPostalInfo{
 				testPostalInfo,
@@ -140,7 +140,7 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		registerCmd := &commands.RegisterDomainCommand{
 			Name:         domainName,
 			ClID:         registrarClID,
-			AuthInfo:     "Str0nG!P@ssw0rd",
+			AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 			RegistrantID: contactID,
 			AdminID:      contactID,
 			TechID:       contactID,
@@ -166,7 +166,7 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		// Build update command from entity and modify authInfo
 		updateCmd := &commands.UpdateDomainCommand{}
 		updateCmd.FromEntity(&domain)
-		updateCmd.AuthInfo = "N3wStr0nG!P@ss"
+		updateCmd.AuthInfo = "N3w-Tr4nsf3r-Kq8#Zp5!"
 
 		resp = api.PUT(fmt.Sprintf("/domains/%s", domainName), updateCmd)
 		Expect(resp.Code).To(Equal(http.StatusOK), "Update domain failed: %s", resp.Body.String())
@@ -176,7 +176,7 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		var updated struct{ AuthInfoSet bool }
 		Expect(DecodeJSON(resp, &updated)).To(Succeed())
 		Expect(updated.AuthInfoSet).To(BeTrue())
-		Expect(resp.Body.String()).NotTo(ContainSubstring("N3wStr0nG!P@ss"))
+		Expect(resp.Body.String()).NotTo(ContainSubstring("N3w-Tr4nsf3r-Kq8#Zp5!"))
 	})
 
 	It("should verify the update took effect", func() {
@@ -186,7 +186,7 @@ var _ = Describe("DomainExtended", Ordered, func() {
 		var domain struct{ AuthInfoSet bool }
 		Expect(DecodeJSON(resp, &domain)).To(Succeed())
 		Expect(domain.AuthInfoSet).To(BeTrue())
-		Expect(resp.Body.String()).NotTo(ContainSubstring("N3wStr0nG!P@ss"))
+		Expect(resp.Body.String()).NotTo(ContainSubstring("N3w-Tr4nsf3r-Kq8#Zp5!"))
 	})
 
 	// ================================================================== //

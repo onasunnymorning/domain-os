@@ -25,10 +25,10 @@ func (s *ContactSuite) TestBulkCreateContacts() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
-	contact2, err := entities.NewContact("contactID2", "1235_CONT-APEX", "jane@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact2, err := entities.NewContact("contactID2", "1235_CONT-APEX", "jane@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	contacts := []*entities.Contact{contact1, contact2}
@@ -50,10 +50,10 @@ func (s *ContactSuite) TestBulkCreateContacts_Duplicate() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact1, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
-	contact2, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jane@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact2, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jane@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	contacts := []*entities.Contact{contact1, contact2}
@@ -89,7 +89,7 @@ func (s *ContactSuite) TestCreateContact() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -102,7 +102,7 @@ func (s *ContactSuite) TestCreateContact_MissingFK() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", "missingFK")
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", "missingFK")
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -115,7 +115,7 @@ func (s *ContactSuite) TestCreateContact_Duplicate() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -133,7 +133,7 @@ func (s *ContactSuite) TestReadContact() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -155,7 +155,7 @@ func (s *ContactSuite) TestUpdateContact() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -176,7 +176,7 @@ func (s *ContactSuite) TestDeleteContact() {
 	defer tx.Rollback()
 	repo := NewContactRepository(tx, "APEX")
 
-	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact, err := entities.NewContact("contactID1", "1234_CONT-APEX", "jon@doe.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 
 	createdContact, err := repo.CreateContact(context.Background(), contact)
@@ -208,7 +208,7 @@ func (s *ContactSuite) TestListContacts() {
 	pi, _ := entities.NewContactPostalInfo("int", "my pi", a)
 	s.Require().NoError(err)
 
-	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "mail@me.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 	err = contact1.AddPostalInfo(pi)
 	s.Require().NoError(err)
@@ -217,7 +217,7 @@ func (s *ContactSuite) TestListContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact1)
 
-	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "mail@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "mail@me.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 	err = contact2.AddPostalInfo(pi)
 	s.Require().NoError(err)
@@ -265,7 +265,7 @@ func (s *ContactSuite) TestFilterContacts() {
 	pi, _ := entities.NewContactPostalInfo("int", "my pi", a)
 	s.Require().NoError(err)
 
-	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "clid1@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact1, err := entities.NewContact("clid1", "1234_CONT-APEX", "clid1@me.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 	err = contact1.AddPostalInfo(pi)
 	s.Require().NoError(err)
@@ -274,7 +274,7 @@ func (s *ContactSuite) TestFilterContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact1)
 
-	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "clid2@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact2, err := entities.NewContact("clid2", "1235_CONT-APEX", "clid2@me.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 	err = contact2.AddPostalInfo(pi)
 	s.Require().NoError(err)
@@ -282,7 +282,7 @@ func (s *ContactSuite) TestFilterContacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContact2)
 
-	contact3, err := entities.NewContact("clid3", "1236_CONT-APEX", "clid3@me.com", "str0NGP@ZZw0rd", s.rarClid)
+	contact3, err := entities.NewContact("clid3", "1236_CONT-APEX", "clid3@me.com", "Tr4nsf3r-C0de-Xq9#Lm2!", s.rarClid)
 	s.Require().NoError(err)
 	err = contact3.AddPostalInfo(pi)
 	s.Require().NoError(err)

@@ -171,13 +171,12 @@ func ValidateSecureAuthInfo(code string) error {
 	return nil
 }
 
-// ValidateAdminAuthInfo checks a code given through the admin API, which
-// accepts what registrars must send (ValidateSecureAuthInfo) and the
-// registry's earlier rule (AuthInfoType.Validate), so existing tooling and
-// imports keep working. An empty code is no code, and valid.
-func ValidateAdminAuthInfo(code string) error {
-	if code == "" || ValidateSecureAuthInfo(code) == nil {
+// ValidateDomainAuthInfo checks a domain transfer code from any path (EPP,
+// the admin API, the UI): empty for no code, or one that passes
+// ValidateSecureAuthInfo. Every path applies this one rule.
+func ValidateDomainAuthInfo(code string) error {
+	if code == "" {
 		return nil
 	}
-	return AuthInfoType(code).Validate()
+	return ValidateSecureAuthInfo(code)
 }

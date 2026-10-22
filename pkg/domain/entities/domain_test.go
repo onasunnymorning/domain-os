@@ -26,7 +26,7 @@ func TestDomain_NewDomain(t *testing.T) {
 			name:     "example.com",
 			authInfo: "abc123",
 			clid:     "GoMamma",
-			wantErr:  ErrInvalidAuthInfo,
+			wantErr:  ErrAuthInfoNotSecure,
 		},
 		{
 			roid:     "123456_DOM-APEX",
@@ -38,63 +38,63 @@ func TestDomain_NewDomain(t *testing.T) {
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "-example.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidLabelDash,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     ".com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrTLDAsDomain,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "Example.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  nil,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "xn--c1yn36f.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  nil,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "xn--1.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidLabelIDN,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "example.xn--1",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidLabelIDN,
 		},
 		{
 			roid:     "123456_DOM-",
 			name:     "example.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidRoid,
 		},
 		{
 			roid:     "123456_HOST-APEX",
 			name:     "example.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "GoMamma",
 			wantErr:  ErrInvalidDomainRoID,
 		},
 		{
 			roid:     "123456_DOM-APEX",
 			name:     "xn--c1yn36f.com",
-			authInfo: "abc123ABC*",
+			authInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			clid:     "g",
 			wantErr:  ErrInvalidClIDType,
 		},
@@ -126,7 +126,7 @@ func TestDomain_NewDomain(t *testing.T) {
 }
 
 func TestDomain_InvalidStatus(t *testing.T) {
-	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 	domain.Status.OK = true
 	domain.Status.PendingDelete = true
@@ -136,7 +136,7 @@ func TestDomain_InvalidStatus(t *testing.T) {
 }
 
 func TestDomain_CanBeDeleted(t *testing.T) {
-	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 
 	require.True(t, domain.CanBeDeleted())
@@ -150,7 +150,7 @@ func TestDomain_CanBeDeleted(t *testing.T) {
 }
 
 func TestDomain_CanBeUpdated(t *testing.T) {
-	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 
 	require.True(t, domain.CanBeUpdated())
@@ -164,7 +164,7 @@ func TestDomain_CanBeUpdated(t *testing.T) {
 }
 
 func TestDomain_CanBeRenewed(t *testing.T) {
-	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 
 	require.True(t, domain.CanBeRenewed())
@@ -194,7 +194,7 @@ func TestDomain_CanBeRenewed(t *testing.T) {
 }
 
 func TestDomain_CanBeTransferred(t *testing.T) {
-	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 
 	require.True(t, domain.CanBeTransferred())
@@ -207,9 +207,9 @@ func TestDomain_CanBeTransferred(t *testing.T) {
 	require.False(t, domain.CanBeTransferred())
 }
 
-// validAuthInfoHash is a stored transfer code: the hash of "STr0mgP@ZZ".
+// validAuthInfoHash is a stored transfer code: the hash of "Tr4nsf3r-C0de-Xq9#Lm2!".
 var validAuthInfoHash = func() AuthInfoHash {
-	h, err := HashAuthInfo("STr0mgP@ZZ")
+	h, err := HashAuthInfo("Tr4nsf3r-C0de-Xq9#Lm2!")
 	if err != nil {
 		panic(err)
 	}
@@ -683,7 +683,7 @@ func TestDomain_SetStatus(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 			require.NoError(t, err)
 			require.NotNil(t, d)
 			d.Status = tc.ds
@@ -736,7 +736,7 @@ func TestDomain_HasHosts(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "STr0mgP@ZZ")
+			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 			require.NoError(t, err)
 			require.NotNil(t, d)
 			d.Hosts = tc.hosts
@@ -782,7 +782,7 @@ func TestDomain_SetUnsetInactiveStatus(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "STr0mgP@ZZ")
+			d, err := NewDomain("12345_DOM-APEX", "deli.cusco", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 			require.NoError(t, err)
 			require.NotNil(t, d)
 			d.Hosts = tc.hosts
@@ -966,7 +966,7 @@ func TestDomain_UnSetStatus(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+			d, err := NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 			require.NoError(t, err)
 			require.NotNil(t, d)
 			d.Status = tc.ds
@@ -1023,7 +1023,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Status: DomainStatus{
 					Inactive:               true,
 					ClientUpdateProhibited: true,
@@ -1042,7 +1042,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Hosts: []*Host{
 					{
 						Name:   "ns1.inti.raymi",
@@ -1102,7 +1102,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Hosts: []*Host{
 					{
 						Name:   "ns1.inti.raymi",
@@ -1126,7 +1126,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Hosts: []*Host{
 					{
 						Name:   "ns1.inti.raymi",
@@ -1148,7 +1148,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Hosts: []*Host{
 					{
 						Name:   "ns1.inti.raymi",
@@ -1173,7 +1173,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Hosts: []*Host{
 					{
 						Name:   "ns1.inti.raymi",
@@ -1202,7 +1202,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Status: DomainStatus{
 					Inactive: true,
 				},
@@ -1224,7 +1224,7 @@ func TestDomain_AddHost(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Status: DomainStatus{
 					Inactive: true,
 				},
@@ -1274,7 +1274,7 @@ func TestDomain_AddHost_set_in_bailiwick(t *testing.T) {
 				RoID:     "12345_DOM-APEX",
 				Name:     "inti.raymi",
 				ClID:     "GoMamma",
-				AuthInfo: "STr0mgP@ZZ",
+				AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 				Status:   DomainStatus{Inactive: false},
 			},
 			host: &Host{
@@ -1358,7 +1358,7 @@ func TestRegisterDomain(t *testing.T) {
 	roid := "123456_DOM-APEX"
 	name := "example.com"
 	clid := "client123"
-	authInfo := "STr0mgP@ZZ"
+	authInfo := "Tr4nsf3r-C0de-Xq9#Lm2!"
 	registrantID := "registrant123"
 	adminID := "admin123"
 	techID := "tech123"
@@ -1440,7 +1440,7 @@ func TestDomain_Renew(t *testing.T) {
 		RoID:     "12345_DOM-APEX",
 		Name:     "a.pex.domains",
 		ClID:     "GoMamma",
-		AuthInfo: "STr0mgP@ZZ",
+		AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 	}
 	testcases := []struct {
 		name      string

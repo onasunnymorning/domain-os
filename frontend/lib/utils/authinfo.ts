@@ -62,9 +62,8 @@ export function estimatedAuthInfoBits(s: string): number {
 }
 
 /**
- * Whether the registry will accept s from a registrar (RFC 9154). The admin
- * API also accepts codes under the registry's earlier rule, so this is a
- * guide for the form, not the server's only rule.
+ * Whether the registry will accept s as a transfer code (RFC 9154): the same
+ * rule EPP and the admin API apply. The server's check is authoritative.
  */
 export function isLikelyCompliantAuthInfo(s: string): boolean {
   if (s.length === 0 || s.length > SECURE_AUTHINFO_MAX_LENGTH) return false;

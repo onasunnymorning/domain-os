@@ -30,8 +30,8 @@ var _ = Describe("EventAuthInfoRedaction", Ordered, func() {
 		domainName     = "redact.ertest"
 
 		contactSecret       = "Er!C0ntactSecr3t"
-		domainSecret        = "Er!D0mainSecr3t"
-		updatedDomainSecret = "Er!D0mainR0tat3d"
+		domainSecret        = "Er!D0mainSecr3t-Kq8#Zp"
+		updatedDomainSecret = "Er!D0mainR0tat3d-Wv7%"
 	)
 	secrets := []string{contactSecret, domainSecret, updatedDomainSecret}
 

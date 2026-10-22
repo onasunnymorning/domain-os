@@ -88,7 +88,8 @@ func requireNoRetiredAuthInfo(t *testing.T, authInfos []string) {
 	require.Len(t, seen, len(authInfos), "an authInfo was shared between objects")
 }
 
-func TestJiscImportToAdminAPI_GeneratesAuthInfoPerObject(t *testing.T) {
+// Contacts get a generated code each; domains none (RFC 9154: unset is the normal state).
+func TestJiscImportToAdminAPI_GeneratesContactAuthInfosAndNoDomainCodes(t *testing.T) {
 	api := &fakeAdminAPI{}
 	runAdminAPIImport(t, api)
 
@@ -98,10 +99,10 @@ func TestJiscImportToAdminAPI_GeneratesAuthInfoPerObject(t *testing.T) {
 	for _, c := range api.contacts {
 		authInfos = append(authInfos, c.AuthInfo)
 	}
+	requireNoRetiredAuthInfo(t, authInfos)
 	for _, d := range api.domains {
-		authInfos = append(authInfos, d.AuthInfo)
+		require.Empty(t, d.AuthInfo, "%s was sent a transfer code", d.Name)
 	}
-	requireNoRetiredAuthInfo(t, authInfos) // unique across contacts and domains together
 }
 
 // The importer is safe to re-run because it skips contacts that already exist. The authInfo must be minted

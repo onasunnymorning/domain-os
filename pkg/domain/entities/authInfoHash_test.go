@@ -70,11 +70,11 @@ func TestValidateSecureAuthInfo(t *testing.T) {
 	}
 }
 
-func TestValidateAdminAuthInfo(t *testing.T) {
-	assert.NoError(t, ValidateAdminAuthInfo(""), "no code")
-	assert.NoError(t, ValidateAdminAuthInfo(testCode), "an RFC 9154 code")
-	assert.NoError(t, ValidateAdminAuthInfo("Secret-Auth-1!"), "the registry's earlier rule")
-	assert.Error(t, ValidateAdminAuthInfo("weak"))
+func TestValidateDomainAuthInfo(t *testing.T) {
+	assert.NoError(t, ValidateDomainAuthInfo(""), "no code")
+	assert.NoError(t, ValidateDomainAuthInfo(testCode), "an RFC 9154 code")
+	assert.ErrorIs(t, ValidateDomainAuthInfo("Secret-Auth-1!"), ErrAuthInfoNotSecure, "the earlier 8-22 rule is gone")
+	assert.ErrorIs(t, ValidateDomainAuthInfo("weak"), ErrAuthInfoNotSecure)
 }
 
 func TestDomainJSONCarriesNoAuthInfo(t *testing.T) {
