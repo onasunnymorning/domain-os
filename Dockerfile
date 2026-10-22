@@ -81,11 +81,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:3.21.8 AS admin-api
 
 ## Install security patches and dnsviz dependencies
-## tiff is named (it arrives with graphviz) so a CVE fix in it changes this
-## layer's text: the CI build cache keys on the command and would otherwise
-## keep serving the tiff the last `apk upgrade` found.
+## tiff, libexpat and pcre2 are named (they arrive as dependencies) so a CVE
+## fix in them changes this layer's text: the CI build cache keys on the
+## command and would otherwise keep serving what the last `apk upgrade`
+## found. Name the next package Trivy flags here too.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff && \
+    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff libexpat pcre2 && \
     pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image
