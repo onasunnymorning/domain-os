@@ -72,6 +72,12 @@ function initMermaid() {
   if (mermaidInitialized) return;
   mermaid.initialize({
     startOnLoad: false,
+    // mermaid 12 defaults to the ELK layout, the "neo" look and a narrower
+    // label wrap (120px, was 200px). Pin the pre-12 rendering so the docs
+    // diagrams keep their layout, label width and the custom colours below.
+    layout: 'dagre',
+    look: 'classic',
+    flowchart: { wrappingWidth: 200 },
     theme: 'dark',
     themeVariables: {
       darkMode: true,
