@@ -98,6 +98,12 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Addr:     cfg.Redis.Addr(),
 		Password: cfg.Redis.Password,
 		DB:       0,
+		// Every caller bounds its calls (the session registry and lockouts
+		// to 500ms, command rates to 200ms) and falls back to the node when
+		// Redis does not answer in time; without this the client ignores
+		// those deadlines on an open connection and waits out its own
+		// 3-second read timeout.
+		ContextTimeoutEnabled: true,
 	})
 	// Redis holds the session registry, lockouts and command rates, and
 	// the server fails open without it (ADR 0013), so an unreachable Redis

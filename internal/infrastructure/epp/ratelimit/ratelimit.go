@@ -16,10 +16,10 @@ package ratelimit
 
 import (
 	"context"
-	"errors"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 	"time"
 
@@ -37,19 +37,26 @@ func interval(r entities.EPPRate) int64 {
 // take is GCRA over several buckets at once, at now (µs). tats are the
 // buckets' TATs (0 for a bucket not yet used). It returns the new TATs and
 // the answer; the caller stores the TATs only if the tokens were taken.
+//
+// The command runs at one time for every bucket: the earliest at which all
+// of them conform, each bucket's being its TAT less what its burst allows
+// ahead. Each bucket is then charged from that time, not from now, so a
+// bucket that was not the one waited for cannot let another command
+// through before this one runs.
 func take(now int64, tats []int64, buckets []entities.EPPRateBucket, cost int, maxWait time.Duration) ([]int64, entities.EPPRateTake) {
-	out := make([]int64, len(buckets))
 	var res entities.EPPRateTake
-	var wait int64
+	at := now
 	for i, b := range buckets {
 		iv := interval(b.Rate)
-		tat := max(tats[i], now)
-		out[i] = tat + int64(cost)*iv
-		if w := out[i] - int64(b.Rate.Burst)*iv - now; w > wait {
-			wait, res.Limiting = w, i
+		if t := tats[i] + int64(cost-b.Rate.Burst)*iv; t > at {
+			at, res.Limiting = t, i
 		}
 	}
-	res.Wait = time.Duration(wait) * time.Microsecond
+	out := make([]int64, len(buckets))
+	for i, b := range buckets {
+		out[i] = max(tats[i], at) + int64(cost)*interval(b.Rate)
+	}
+	res.Wait = time.Duration(at-now) * time.Microsecond
 	res.Taken = res.Wait <= maxWait
 	return out, res
 }
@@ -80,20 +87,20 @@ local t = redis.call('TIME')
 local now = tonumber(t[1]) * 1000000 + tonumber(t[2])
 local cost = tonumber(ARGV[1])
 local maxwait = tonumber(ARGV[2])
-local wait, limiting = 0, 1
+local at, limiting = now, 1
 local tats = {}
 for i = 1, #KEYS do
-  local iv = tonumber(ARGV[1 + 2 * i])
-  local burst = tonumber(ARGV[2 + 2 * i])
-  local tat = tonumber(redis.call('GET', KEYS[i]) or 0)
-  if tat < now then tat = now end
-  tats[i] = tat + cost * iv
-  local w = tats[i] - burst * iv - now
-  if w > wait then wait, limiting = w, i end
+  tats[i] = tonumber(redis.call('GET', KEYS[i]) or 0)
+  local due = tats[i] + (cost - tonumber(ARGV[2 + 2 * i])) * tonumber(ARGV[1 + 2 * i])
+  if due > at then at, limiting = due, i end
 end
+local wait = at - now
 if wait > maxwait then return {0, wait, limiting} end
 for i = 1, #KEYS do
-  redis.call('SET', KEYS[i], string.format('%.0f', tats[i]), 'PX', math.ceil((tats[i] - now) / 1000) + 1)
+  local tat = tats[i]
+  if tat < at then tat = at end
+  tat = tat + cost * tonumber(ARGV[1 + 2 * i])
+  redis.call('SET', KEYS[i], string.format('%.0f', tat), 'PX', math.ceil((tat - now) / 1000) + 1)
 end
 return {1, wait, limiting}
 `)
@@ -116,46 +123,48 @@ func (r *Redis) Take(ctx context.Context, buckets []entities.EPPRateBucket, cost
 	return entities.EPPRateTake{Taken: v[0] == 1, Wait: time.Duration(v[1]) * time.Microsecond, Limiting: int(v[2]) - 1}, nil
 }
 
-// reserveScript counts one against a quota if it is below the limit.
-// KEYS: the count. ARGV: limit, ttl ms. Returns 1 if reserved.
-var reserveScript = redis.NewScript(`
-local n = tonumber(redis.call('GET', KEYS[1]) or 0)
-if n >= tonumber(ARGV[1]) then return 0 end
-redis.call('INCR', KEYS[1])
-if n == 0 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
-return 1
-`)
+// A quota is a set of reservation IDs, one per create counted, so that
+// reserving and releasing are idempotent: the client retries a command
+// whose reply was lost, and a retried reservation must not take a second
+// slot, nor a retried release free one that is not its own.
 
-// releaseScript gives one back, never below 0.
-var releaseScript = redis.NewScript(`
-local n = tonumber(redis.call('GET', KEYS[1]) or 0)
-if n > 0 then redis.call('DECR', KEYS[1]) end
-return 0
+// reserveScript adds a reservation if it is there already or the quota has
+// room. KEYS: the quota. ARGV: reservation ID, limit, ttl ms. Returns 1 if
+// reserved.
+var reserveScript = redis.NewScript(`
+if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 then return 1 end
+if redis.call('SCARD', KEYS[1]) >= tonumber(ARGV[2]) then return 0 end
+redis.call('SADD', KEYS[1], ARGV[1])
+if redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[3]) end
+return 1
 `)
 
 // ReserveQuota implements interfaces.EPPRateLimiter.
 func (r *Redis) ReserveQuota(ctx context.Context, key string, limit int, ttl time.Duration) (func(context.Context), bool, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return nil, false, fmt.Errorf("reserve quota: %w", err)
+	}
+	return r.reserve(ctx, key, hex.EncodeToString(b[:]), limit, ttl)
+}
+
+// reserve reserves id against key.
+func (r *Redis) reserve(ctx context.Context, key, id string, limit int, ttl time.Duration) (func(context.Context), bool, error) {
 	k := quotaKey(key)
-	n, err := reserveScript.Run(ctx, r.client, []string{k}, limit, ttl.Milliseconds()).Int64()
+	n, err := reserveScript.Run(ctx, r.client, []string{k}, id, limit, ttl.Milliseconds()).Int64()
 	if err != nil {
 		return nil, false, fmt.Errorf("reserve quota: %w", err)
 	}
 	if n != 1 {
 		return nil, false, nil
 	}
-	return func(ctx context.Context) { _ = releaseScript.Run(ctx, r.client, []string{k}).Err() }, true, nil
+	return func(ctx context.Context) { _ = r.client.SRem(ctx, k, id).Err() }, true, nil
 }
 
 // QuotaCount is how much of a quota is used, for tests and diagnostics.
 func (r *Redis) QuotaCount(ctx context.Context, key string) (int, error) {
-	s, err := r.client.Get(ctx, quotaKey(key)).Result()
-	if errors.Is(err, redis.Nil) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(s)
+	n, err := r.client.SCard(ctx, quotaKey(key)).Result()
+	return int(n), err
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +346,19 @@ func (f *FailOpen) Take(ctx context.Context, buckets []entities.EPPRateBucket, c
 	return res, nil
 }
 
+// bounded is release with each call bounded to primaryTimeout, so a stalled
+// primary cannot hold up the command that gives its create back.
+func bounded(release func(context.Context)) func(context.Context) {
+	if release == nil {
+		return nil
+	}
+	return func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, primaryTimeout)
+		defer cancel()
+		release(ctx)
+	}
+}
+
 // ReserveQuota implements interfaces.EPPRateLimiter. A reservation is
 // released in the store that made it.
 func (f *FailOpen) ReserveQuota(ctx context.Context, key string, limit int, ttl time.Duration) (func(context.Context), bool, error) {
@@ -346,7 +368,7 @@ func (f *FailOpen) ReserveQuota(ctx context.Context, key string, limit int, ttl 
 		cancel()
 		f.result(err)
 		if err == nil {
-			return release, ok, nil
+			return bounded(release), ok, nil
 		}
 	}
 	release, ok, _ := f.fallback.ReserveQuota(ctx, key, limit, ttl)

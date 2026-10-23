@@ -233,7 +233,11 @@ func QuotaKey(clid entities.ClIDType, now time.Time) string {
 
 // Enforce decides a logged-in session's command, in order:
 //
-//  1. Decide's rules: the login's role, the check's names.
+//  1. Decide's rules: the login's role, the check's names. A check may
+//     carry no more names than its family's check bucket holds either, so
+//     a check the registrar's policy allows but its family's bucket could
+//     never pay for is refused for its size (2306), not as a rate that
+//     would never be met.
 //  2. Command rates: the command takes Cost tokens from the registrar's
 //     bucket for its class and, if it is in a family, the family's, both
 //     at once. If they are there within MaxRateDelay it is held until
@@ -250,6 +254,9 @@ func QuotaKey(clid entities.ClIDType, now time.Time) string {
 // through.
 func (e *Enforcer) Enforce(ctx context.Context, clid entities.ClIDType, role entities.EPPLoginRole, rp entities.EPPRegistrarPolicy, c Command) (d Decision, release func(context.Context)) {
 	limits := rp.Policy.Limits
+	if rp.Family != nil {
+		limits.CheckNames = min(limits.CheckNames, rp.FamilyPolicy.Limits.FamilyRates.Check.Burst)
+	}
 	if d := Decide(role, limits, c); d.Action != Allow {
 		return d, nil
 	}

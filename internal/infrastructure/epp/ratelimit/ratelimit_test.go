@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -64,6 +65,29 @@ func TestTakeFromSeveralBucketsAtOnce(t *testing.T) {
 	assert.Equal(t, 1, res.Limiting, "the family bucket is the one that waits")
 	res, _ = m.Take(ctx, []entities.EPPRateBucket{reg}, 7, 0)
 	assert.True(t, res.Taken, "a refused take took nothing from the registrar's bucket")
+}
+
+// A bucket that is not the one waited for is charged from when the command
+// runs, so it cannot let a second command through before the first runs.
+func TestEveryBucketIsChargedFromWhenTheCommandRuns(t *testing.T) {
+	m := NewMemory()
+	now := time.Unix(1_700_000_000, 0)
+	m.now = func() time.Time { return now }
+	ctx := context.Background()
+	reg := bucket("reg", 1, 1)
+	fam := bucket("fam", 100, 100)
+	m.tats["fam"] = now.Add(1990 * time.Millisecond).UnixMicro() // the family nearly spent
+
+	res, _ := m.Take(ctx, []entities.EPPRateBucket{reg, fam}, 1, time.Second)
+	require.True(t, res.Taken)
+	assert.Equal(t, time.Second, res.Wait)
+	assert.Equal(t, 1, res.Limiting, "the family's bucket")
+
+	now = now.Add(10 * time.Millisecond)
+	res, _ = m.Take(ctx, []entities.EPPRateBucket{reg, fam}, 1, time.Second)
+	assert.False(t, res.Taken, "the registrar's next token is a second after the first command runs")
+	assert.Equal(t, 0, res.Limiting)
+	assert.Equal(t, 1990*time.Millisecond, res.Wait)
 }
 
 func TestMemoryQuota(t *testing.T) {
@@ -151,6 +175,23 @@ func TestRedis(t *testing.T) {
 	require.NoError(t, client.FlushDB(ctx).Err())
 	r := NewRedis(client)
 
+	t.Run("every bucket is charged from when the command runs", func(t *testing.T) {
+		redisNow, err := client.Time(ctx).Result() // the script's clock, not this machine's
+		require.NoError(t, err)
+		require.NoError(t, client.Set(ctx, bucketKey("x:fam"), redisNow.Add(1990*time.Millisecond).UnixMicro(), time.Minute).Err())
+		b := []entities.EPPRateBucket{bucket("x:reg", 1, 1), bucket("x:fam", 100, 100)}
+		res, err := r.Take(ctx, b, 1, 1500*time.Millisecond)
+		require.NoError(t, err)
+		require.True(t, res.Taken)
+		assert.Equal(t, 1, res.Limiting)
+		assert.InDelta(t, time.Second, res.Wait, float64(100*time.Millisecond))
+		res, err = r.Take(ctx, b, 1, 1500*time.Millisecond)
+		require.NoError(t, err)
+		assert.False(t, res.Taken)
+		assert.Equal(t, 0, res.Limiting, "the registrar's bucket, charged from when the first command runs")
+		assert.InDelta(t, 2*time.Second, res.Wait, float64(100*time.Millisecond))
+	})
+
 	t.Run("buckets", func(t *testing.T) {
 		b := []entities.EPPRateBucket{bucket("t:reg", 1, 3), bucket("t:fam", 1, 10)}
 		for i := range 3 {
@@ -195,4 +236,60 @@ func TestRedis(t *testing.T) {
 		ttl, _ := client.PTTL(ctx, quotaKey("q")).Result()
 		assert.InDelta(t, time.Hour, ttl, float64(time.Minute))
 	})
+
+	t.Run("a reservation or release run again, as a retry after a lost reply, counts once", func(t *testing.T) {
+		release, ok, err := r.reserve(ctx, "retry", "id-1", 2, time.Hour)
+		require.NoError(t, err)
+		require.True(t, ok)
+		_, ok, err = r.reserve(ctx, "retry", "id-1", 2, time.Hour)
+		require.NoError(t, err)
+		assert.True(t, ok, "its own reservation, already made")
+		_, ok, _ = r.reserve(ctx, "retry", "id-2", 2, time.Hour)
+		require.True(t, ok)
+		_, ok, _ = r.reserve(ctx, "retry", "id-1", 2, time.Hour)
+		assert.True(t, ok, "still its own, though the quota is now full")
+		n, _ := r.QuotaCount(ctx, "retry")
+		assert.Equal(t, 2, n)
+
+		release(ctx)
+		release(ctx)
+		n, _ = r.QuotaCount(ctx, "retry")
+		assert.Equal(t, 1, n, "a second release does not free another create's slot")
+	})
+}
+
+// A Redis that accepts connections and never answers costs a command at
+// most primaryTimeout, with a client that honours context deadlines as
+// cmd/epp's does, before the node's buckets answer.
+func TestFailOpenBoundsAStalledRedis(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = c.Close() }) // held open, never answered
+		}
+	}()
+	client := redis.NewClient(&redis.Options{Addr: l.Addr().String(), ContextTimeoutEnabled: true, MaxRetries: -1})
+	t.Cleanup(func() { _ = client.Close() })
+	var degraded bool
+	f := NewFailOpen(NewRedis(client), NewMemory(), func(d bool) { degraded = d })
+
+	start := time.Now()
+	res, err := f.Take(context.Background(), []entities.EPPRateBucket{bucket("r", 1, 1)}, 1, 0)
+	require.NoError(t, err)
+	assert.True(t, res.Taken, "the node's bucket answered")
+	assert.True(t, degraded)
+	assert.Less(t, time.Since(start), primaryTimeout+300*time.Millisecond)
+
+	start = time.Now()
+	f.skipUntil = time.Time{}
+	_, ok, err := f.ReserveQuota(context.Background(), "q", 1, time.Hour)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Less(t, time.Since(start), primaryTimeout+300*time.Millisecond)
 }

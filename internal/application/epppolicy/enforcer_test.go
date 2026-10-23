@@ -138,6 +138,20 @@ func TestEnforce(t *testing.T) {
 		assert.Equal(t, RuleCheckNames, d.Rule)
 		assert.Nil(t, f.buckets)
 	})
+	t.Run("a check larger than the family's check bucket is refused for its size", func(t *testing.T) {
+		small := &entities.EPPPolicy{Name: "small", Limits: entities.DefaultEPPPolicyLimits()}
+		small.Limits.FamilyRates.Check = entities.EPPRate{PerSecond: 1, Burst: 20}
+		rp := entities.EPPRegistrarPolicy{Policy: gold, Family: &entities.RegistrarFamily{Name: "acme"}, FamilyPolicy: small}
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true}}
+		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, rp, Command{Name: "check", Objects: 21})
+		assert.Equal(t, Reject, d.Action)
+		assert.Equal(t, RuleCheckNames, d.Rule)
+		assert.Equal(t, 2306, d.Code)
+		assert.Contains(t, d.Msg, "at most 20 names")
+		assert.Nil(t, f.buckets, "nothing taken")
+		d, _ = enforcer(f).Enforce(ctx, "rar-a", rw, rp, Command{Name: "check", Objects: 20})
+		assert.Equal(t, Allow, d.Action)
+	})
 	t.Run("a short wait holds the command", func(t *testing.T) {
 		f := &fakeRates{take: entities.EPPRateTake{Taken: true, Wait: 300 * time.Millisecond, Limiting: 1}}
 		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, inFamily, Command{Name: "info"})

@@ -491,7 +491,8 @@ func seedEPPPolicies(db *gorm.DB) error {
 
 // backfillEPPPolicyRates gives policies stored before command rates and
 // the create quota existed (Phase 5b) their starting values: a built-in
-// policy its own, any other the default's. A stored policy always has a
+// policy its own, any other the default's, with check bursts raised to the
+// policy's check_names where that is larger. A stored policy always has a
 // check rate of at least 1, so 0 marks the rows to fill.
 func backfillEPPPolicyRates(db *gorm.DB) error {
 	var recs []EPPPolicyRecord
@@ -507,6 +508,10 @@ func backfillEPPPolicyRates(db *gorm.DB) error {
 		if !ok {
 			l = entities.DefaultEPPPolicyLimits()
 		}
+		// A check burst holds at least one full check of the policy's own
+		// size, or its largest check could never pass.
+		l.Rates.Check.Burst = max(l.Rates.Check.Burst, rec.CheckNames)
+		l.FamilyRates.Check.Burst = max(l.FamilyRates.Check.Burst, rec.CheckNames)
 		cols := map[string]any{"creates_per_day": l.CreatesPerDay}
 		for prefix, r := range map[string]entities.EPPCommandRates{"rate_": l.Rates, "family_rate_": l.FamilyRates} {
 			for class, v := range map[string]entities.EPPRate{"check": r.Check, "info": r.Info, "transform": r.Transform, "poll": r.Poll} {

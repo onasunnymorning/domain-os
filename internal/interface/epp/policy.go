@@ -133,11 +133,10 @@ func (s *Server) applyPolicy(ctx context.Context, cmd *command) bool {
 			cmd.release = d.release
 			return true
 		case <-ctx.Done():
-			if d.release != nil {
-				d.release(context.WithoutCancel(ctx))
-			}
 			cmd.respond(2400, "Command failed; the session ended while the command was held", nil)
 			cmd.closeAfterResponse()
+			cmd.release = d.release
+			s.releaseIfFailed(ctx, cmd)
 			return false
 		}
 	case policyClose:
@@ -167,7 +166,8 @@ func addReason(cmd *command, reason string) {
 }
 
 // releaseIfFailed gives back what a command counted against a quota if it
-// did not succeed (a result code of 2000 or more).
+// did not succeed (a result code of 2000 or more). The release is bounded,
+// so a stalled store cannot hold the session.
 func (s *Server) releaseIfFailed(ctx context.Context, cmd *command) {
 	if cmd.release == nil || cmd.code < 2000 {
 		return

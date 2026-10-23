@@ -432,7 +432,7 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 Every limit is at least 1, except `creates_per_day`, where 0 is no cap. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
 
 1. **Role.** A login with the `readonly` role ([Credentials](#credentials-admin-api)) may check, read (`<info>`, `<transfer op="query">`), poll and log out. Anything that changes the registry (create, update, delete, renew, transfer request, approve, reject or cancel) is 2201, *"this login is read-only"*.
-2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup.
+2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup. For a registrar in a family, the cap is also no more than the family's `check` burst, so a check the family's bucket could never pay for is refused for its size rather than as a rate it could never meet.
 3. **Command rates.** The command takes its tokens from the registrar's bucket for its class and, if the registrar is in a family, the family's ([§ Command rates](#command-rates)).
 4. **Create quota.** A `<domain:create>` counts against the registrar's `creates_per_day` ([§ Quotas](#quotas)).
 
@@ -543,7 +543,7 @@ A rate refusal carries the reason in the result's `<extValue>` (RFC 5730 §2.6),
 
 There is no standard EPP result code for a rate limit. A 23xx code says the client broke a policy, which clients do not retry blindly, unlike 2400 (an internal server error, which they may); 2306 is the policy error the registry already uses for the names per check. 2502 alone, as some registries use, would close the session at the first refusal.
 
-**Where the buckets are kept.** In Redis, shared by every node, one key per bucket holding its GCRA *theoretical arrival time* (the time it would be full again), updated by one script for all of a command's buckets at once, on Redis's clock. **If Redis cannot answer** (each call is bounded to 200 ms), the node keeps buckets of its own and sets `epp_policy_store_degraded{store="rates"}`; for 5s after a failure, commands go straight to the node's buckets, so an unresponsive Redis does not slow every command. With N nodes, up to N times a rate can pass while Redis is down (fail-open, ADR 0013).
+**Where the buckets are kept.** In Redis, shared by every node, one key per bucket holding its GCRA *theoretical arrival time* (the time it would be full again), updated by one script for all of a command's buckets at once, on Redis's clock. A held command runs at one time for all its buckets, the earliest at which every one has its tokens, and each bucket is charged from that time, so a bucket that was not the one waited for cannot let a later command run first. **If Redis cannot answer** (each call is bounded to 200 ms), the node keeps buckets of its own and sets `epp_policy_store_degraded{store="rates"}`; for 5s after a failure, commands go straight to the node's buckets, so an unresponsive Redis does not slow every command. With N nodes, up to N times a rate can pass while Redis is down (fail-open, ADR 0013).
 
 ### Per-command object caps
 
@@ -561,7 +561,7 @@ The nameserver and DS caps are rules of the registry's data, the same for every 
 |---|---|---|---|
 | `creates_per_day`: successful `<domain:create>`s per registrar per UTC day | 0 (no cap) | 100 | 2308, *"Data management policy violation; the registrar may create 100 domains a day (UTC), and has"* |
 
-A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Failed creates are Phase 6's measure.
+A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Each count is a reservation with its own ID, so a request to Redis retried after a lost reply neither takes a second slot nor gives back another create's. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Failed creates are Phase 6's measure.
 
 ### Failed creates *(Phase 6)*
 

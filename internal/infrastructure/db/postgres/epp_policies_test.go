@@ -169,6 +169,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 		}
 		old := *gold
 		old.Name = "old-test"
+		old.Limits.CheckNames, old.Limits.Rates.Check.Burst, old.Limits.FamilyRates.Check.Burst = 1500, 1500, 3000
 		require.NoError(t, repo.SavePolicy(ctx, &old, noEvents()))
 		require.NoError(t, tx.Model(&EPPPolicyRecord{}).Where("name IN ?", []string{entities.EPPPolicyProbation, "old-test"}).Updates(zero).Error)
 		require.NoError(t, seedEPPPolicies(tx))
@@ -177,9 +178,12 @@ func TestEPPPolicyRepository(t *testing.T) {
 		assert.Equal(t, entities.ProbationEPPPolicyLimits(), p.Limits, "a built-in policy its own")
 		g, err := repo.GetPolicy(ctx, "old-test")
 		require.NoError(t, err)
-		assert.Equal(t, entities.DefaultEPPPolicyLimits().Rates, g.Limits.Rates, "any other the default's")
-		assert.Equal(t, entities.DefaultEPPPolicyLimits().FamilyRates, g.Limits.FamilyRates)
+		want := entities.DefaultEPPPolicyLimits()
+		want.Rates.Check.Burst = 1500 // raised to hold its 1500-name check; the family's 3000 already does
+		assert.Equal(t, want.Rates, g.Limits.Rates, "any other the default's")
+		assert.Equal(t, want.FamilyRates, g.Limits.FamilyRates)
 		assert.Zero(t, g.Limits.CreatesPerDay)
-		assert.Equal(t, 25, g.Limits.CheckNames, "the rest is kept")
+		assert.Equal(t, 1500, g.Limits.CheckNames, "the rest is kept")
+		assert.NoError(t, g.Limits.Validate(), "a valid policy")
 	})
 }
