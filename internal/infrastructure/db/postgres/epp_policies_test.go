@@ -48,12 +48,18 @@ func TestEPPPolicyRepository(t *testing.T) {
 		p, err := repo.GetPolicy(ctx, entities.EPPPolicyDefault)
 		require.NoError(t, err)
 		assert.Equal(t, entities.DefaultEPPPolicyLimits(), p.Limits)
-		_, err = repo.GetPolicy(ctx, entities.EPPPolicyProbation)
+		p, err = repo.GetPolicy(ctx, entities.EPPPolicyProbation)
 		require.NoError(t, err)
+		assert.Equal(t, entities.ProbationEPPPolicyLimits(), p.Limits)
 	})
 
 	gold := &entities.EPPPolicy{Name: "gold-test", Description: "test", UpdatedAt: time.Now().UTC().Truncate(time.Microsecond), UpdatedBy: "ops",
-		Limits: entities.EPPPolicyLimits{SessionsPerRegistrar: 20, SessionsPerLogin: 5, SessionsPerFamily: 60, CheckNames: 25}}
+		Limits: func() entities.EPPPolicyLimits {
+			l := entities.DefaultEPPPolicyLimits()
+			l.SessionsPerRegistrar, l.SessionsPerLogin, l.SessionsPerFamily, l.CheckNames = 20, 5, 60, 25
+			l.Rates.Info, l.FamilyRates.Poll, l.CreatesPerDay = entities.EPPRate{PerSecond: 7, Burst: 21}, entities.EPPRate{PerSecond: 2, Burst: 3}, 500
+			return l
+		}()}
 	t.Run("saved and replaced, each event told what was there", func(t *testing.T) {
 		before := countEvents(entities.EventEPPPolicySaved)
 		require.NoError(t, repo.SavePolicy(ctx, gold, policyEvent(entities.EventEPPPolicySaved)))
@@ -153,5 +159,27 @@ func TestEPPPolicyRepository(t *testing.T) {
 		_, err := repo.GetPolicy(ctx, "gold-test")
 		assert.ErrorIs(t, err, entities.ErrEPPPolicyNotFound)
 		assert.ErrorIs(t, repo.DeletePolicy(ctx, "gold-test", noEvents()), entities.ErrEPPPolicyNotFound)
+	})
+	t.Run("policies stored before command rates are given their starting values", func(t *testing.T) {
+		zero := map[string]any{"creates_per_day": 0}
+		for _, prefix := range []string{"rate_", "family_rate_"} {
+			for _, class := range []string{"check", "info", "transform", "poll"} {
+				zero[prefix+class+"_per_second"], zero[prefix+class+"_burst"] = 0, 0
+			}
+		}
+		old := *gold
+		old.Name = "old-test"
+		require.NoError(t, repo.SavePolicy(ctx, &old, noEvents()))
+		require.NoError(t, tx.Model(&EPPPolicyRecord{}).Where("name IN ?", []string{entities.EPPPolicyProbation, "old-test"}).Updates(zero).Error)
+		require.NoError(t, seedEPPPolicies(tx))
+		p, err := repo.GetPolicy(ctx, entities.EPPPolicyProbation)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ProbationEPPPolicyLimits(), p.Limits, "a built-in policy its own")
+		g, err := repo.GetPolicy(ctx, "old-test")
+		require.NoError(t, err)
+		assert.Equal(t, entities.DefaultEPPPolicyLimits().Rates, g.Limits.Rates, "any other the default's")
+		assert.Equal(t, entities.DefaultEPPPolicyLimits().FamilyRates, g.Limits.FamilyRates)
+		assert.Zero(t, g.Limits.CreatesPerDay)
+		assert.Equal(t, 25, g.Limits.CheckNames, "the rest is kept")
 	})
 }

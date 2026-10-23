@@ -83,23 +83,90 @@ type EPPPolicyLimits struct {
 	// Availability is metered per name by the rate limits, so this bounds
 	// round trips, not capacity.
 	CheckNames int `json:"check_names"`
+	// Rates are the registrar's command rates, one token bucket per class.
+	Rates EPPCommandRates `json:"rates"`
+	// FamilyRates are a family's command rates, shared by all its members.
+	// They apply through the family's policy only.
+	FamilyRates EPPCommandRates `json:"family_rates"`
+	// CreatesPerDay caps the registrar's domain creates per UTC day; 0 is
+	// no cap. Only creates that succeed count.
+	CreatesPerDay int `json:"creates_per_day"`
+}
+
+// EPPRate is a token bucket: PerSecond tokens a second, holding at most
+// Burst. A full bucket lets Burst tokens through at once. Both are at
+// least 1.
+type EPPRate struct {
+	PerSecond int `json:"per_second"`
+	Burst     int `json:"burst"`
+}
+
+// EPPCommandRates are a bucket per command class. A check costs one token
+// per name it carries; every other command costs one.
+type EPPCommandRates struct {
+	Check     EPPRate `json:"check"`
+	Info      EPPRate `json:"info"`
+	Transform EPPRate `json:"transform"`
+	Poll      EPPRate `json:"poll"`
+}
+
+// Times is r with every rate and burst multiplied by n.
+func (r EPPCommandRates) Times(n int) EPPCommandRates {
+	m := func(x EPPRate) EPPRate { return EPPRate{PerSecond: x.PerSecond * n, Burst: x.Burst * n} }
+	return EPPCommandRates{Check: m(r.Check), Info: m(r.Info), Transform: m(r.Transform), Poll: m(r.Poll)}
+}
+
+// validate names each rate below 1, and a check burst that cannot hold a
+// full check.
+func (r EPPCommandRates) validate(prefix string, checkNames int) []string {
+	var bad []string
+	for _, c := range []struct {
+		name string
+		r    EPPRate
+	}{{"check", r.Check}, {"info", r.Info}, {"transform", r.Transform}, {"poll", r.Poll}} {
+		if c.r.PerSecond < 1 {
+			bad = append(bad, prefix+"."+c.name+".per_second must be at least 1")
+		}
+		if c.r.Burst < 1 {
+			bad = append(bad, prefix+"."+c.name+".burst must be at least 1")
+		}
+	}
+	if r.Check.Burst >= 1 && checkNames >= 1 && r.Check.Burst < checkNames {
+		bad = append(bad, fmt.Sprintf("%s.check.burst must be at least check_names (%d), or a full check could never pass", prefix, checkNames))
+	}
+	return bad
 }
 
 // DefaultEPPPolicyLimits are the built-in "default" policy's starting
 // limits (docs/epp/POLICY_REFERENCE.md).
 func DefaultEPPPolicyLimits() EPPPolicyLimits {
-	return EPPPolicyLimits{SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 40, CheckNames: 50}
+	rates := EPPCommandRates{
+		Check: EPPRate{PerSecond: 250, Burst: 1000}, Info: EPPRate{PerSecond: 20, Burst: 100},
+		Transform: EPPRate{PerSecond: 10, Burst: 50}, Poll: EPPRate{PerSecond: 5, Burst: 20},
+	}
+	return EPPPolicyLimits{
+		SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 40, CheckNames: 50,
+		Rates: rates, FamilyRates: rates.Times(3),
+	}
 }
 
 // ProbationEPPPolicyLimits are the built-in "probation" policy's starting
 // limits: a new registrar's, until it has shown how it uses the registry.
-// Its sessions and check names are the default's; its family cap is lower,
-// and its command rates and create quota (Phase 5b) set it apart.
+// Its sessions and check names are the default's; its family cap and
+// command rates are lower, and it may create 100 domains a day.
 func ProbationEPPPolicyLimits() EPPPolicyLimits {
-	return EPPPolicyLimits{SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 30, CheckNames: 50}
+	rates := EPPCommandRates{
+		Check: EPPRate{PerSecond: 100, Burst: 500}, Info: EPPRate{PerSecond: 10, Burst: 50},
+		Transform: EPPRate{PerSecond: 5, Burst: 25}, Poll: EPPRate{PerSecond: 5, Burst: 20},
+	}
+	return EPPPolicyLimits{
+		SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 30, CheckNames: 50,
+		Rates: rates, FamilyRates: rates.Times(3), CreatesPerDay: 100,
+	}
 }
 
-// Validate checks every limit is at least 1.
+// Validate checks every limit is at least 1, except CreatesPerDay, which is
+// at least 0, and that each check burst holds a full check.
 func (l EPPPolicyLimits) Validate() error {
 	var bad []string
 	for _, f := range []struct {
@@ -110,11 +177,16 @@ func (l EPPPolicyLimits) Validate() error {
 		{"sessions_per_family", l.SessionsPerFamily}, {"check_names", l.CheckNames},
 	} {
 		if f.v < 1 {
-			bad = append(bad, f.name)
+			bad = append(bad, f.name+" must be at least 1")
 		}
 	}
+	bad = append(bad, l.Rates.validate("rates", l.CheckNames)...)
+	bad = append(bad, l.FamilyRates.validate("family_rates", l.CheckNames)...)
+	if l.CreatesPerDay < 0 {
+		bad = append(bad, "creates_per_day must be at least 0")
+	}
 	if len(bad) > 0 {
-		return fmt.Errorf("%w: %s must be at least 1", ErrInvalidEPPPolicy, strings.Join(bad, ", "))
+		return fmt.Errorf("%w: %s", ErrInvalidEPPPolicy, strings.Join(bad, "; "))
 	}
 	return nil
 }

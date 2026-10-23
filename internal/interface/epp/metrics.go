@@ -39,6 +39,7 @@ const (
 const (
 	storeLockout  = "lockout"
 	storeSessions = "sessions"
+	storeRates    = "rates"
 )
 
 // metrics are the EPP server's Prometheus series. They live on their own
@@ -73,6 +74,7 @@ type metrics struct {
 	policyDecisions         *prometheus.CounterVec
 	auditErrors             *prometheus.CounterVec
 	checkNames              prometheus.Histogram
+	policyDelay             prometheus.Histogram
 }
 
 func newMetrics() *metrics {
@@ -177,6 +179,11 @@ func newMetrics() *metrics {
 			Help:    "Names per <check> command.",
 			Buckets: []float64{1, 2, 5, 10, 20, 50, 100},
 		}),
+		policyDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "epp_policy_delay_seconds",
+			Help:    "How long commands were held for their command rate tokens (decisions with action delay).",
+			Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1},
+		}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -188,7 +195,7 @@ func newMetrics() *metrics {
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
 		m.credentialsRefreshed, m.credentialRefreshErrors, m.policiesRefreshed, m.policyRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
-		m.policyDecisions, m.auditErrors, m.checkNames,
+		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

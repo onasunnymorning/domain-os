@@ -46,6 +46,9 @@ type policyDecision struct {
 	// code and msg answer a rejected or closed command.
 	code int
 	msg  string
+	// release gives back what the command counted against a quota, if it
+	// does not succeed.
+	release func(context.Context)
 }
 
 // commandPolicy decides, after a command has been validated and before its
@@ -58,42 +61,69 @@ type commandPolicy interface {
 
 // registrarPolicies is the policy engine (docs/epp/ARCHITECTURE.md §5): a
 // logged-in session's commands are decided by its registrar's EPP policy
-// (epppolicy.Decide), from the set the node last loaded. Commands before
-// login are outside it.
+// (epppolicy.Enforcer), from the set the node last loaded, with the
+// command rates and create quotas counted across every node. Commands
+// before login are outside it.
 type registrarPolicies struct{ s *Server }
 
-func (p registrarPolicies) decide(_ context.Context, cmd *command) policyDecision {
+func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecision {
 	auth := cmd.session.auth.Load()
 	if auth == nil {
 		return policyDecision{action: policyAllow, rule: epppolicy.RuleNone}
 	}
-	c := epppolicy.Command{Name: cmd.frame.command, Op: cmd.op(), Objects: len(cmd.objects)}
+	c := epppolicy.Command{Name: cmd.frame.command, Op: cmd.op(), Object: objectType(cmd.frame.objectNS), Objects: len(cmd.objects)}
 	if epppolicy.ClassOf(c) == epppolicy.ClassCheck {
 		p.s.metrics.checkNames.Observe(float64(c.Objects))
 	}
-	limits := p.s.policies.Load().ForRegistrar(auth.ClID).Policy.Limits
-	d := epppolicy.Decide(auth.Role, limits, c)
-	if d.Action == epppolicy.Reject {
+	rp := p.s.policies.Load().ForRegistrar(auth.ClID)
+	d, release := p.s.enforcer.Enforce(ctx, auth.ClID, auth.Role, rp, c)
+	switch d.Action {
+	case epppolicy.Reject:
 		return policyDecision{action: policyReject, rule: d.Rule, code: d.Code, msg: d.Msg}
+	case epppolicy.Delay:
+		return policyDecision{action: policyDelay, rule: d.Rule, wait: d.Wait, release: release}
+	default:
+		return policyDecision{action: policyAllow, rule: d.Rule, release: release}
 	}
-	return policyDecision{action: policyAllow, rule: d.Rule}
+}
+
+// objectType is the object an object namespace is for.
+func objectType(ns string) string {
+	switch ns {
+	case nsDomain:
+		return "domain"
+	case nsHost:
+		return "host"
+	case nsContact:
+		return "contact"
+	default:
+		return ""
+	}
 }
 
 // applyPolicy asks the policy about cmd, carries out its decision, and
-// reports whether the command may go on to its handler.
+// reports whether the command may go on to its handler. A command that
+// goes on carries the decision's release, for dispatch to call if it
+// fails.
 func (s *Server) applyPolicy(ctx context.Context, cmd *command) bool {
 	d := s.policy.decide(ctx, cmd)
 	s.metrics.policyDecisions.WithLabelValues(d.rule, d.action.String()).Inc()
 	switch d.action {
 	case policyAllow:
+		cmd.release = d.release
 		return true
 	case policyDelay:
+		s.metrics.policyDelay.Observe(d.wait.Seconds())
 		t := time.NewTimer(d.wait)
 		defer t.Stop()
 		select {
 		case <-t.C:
+			cmd.release = d.release
 			return true
 		case <-ctx.Done():
+			if d.release != nil {
+				d.release(context.WithoutCancel(ctx))
+			}
 			cmd.respond(2400, "Command failed; the session ended while the command was held", nil)
 			cmd.closeAfterResponse()
 			return false
@@ -106,4 +136,15 @@ func (s *Server) applyPolicy(ctx context.Context, cmd *command) bool {
 		cmd.respond(d.code, d.msg, nil)
 		return false
 	}
+}
+
+// releaseIfFailed gives back what a command counted against a quota if it
+// did not succeed (a result code of 2000 or more).
+func (s *Server) releaseIfFailed(ctx context.Context, cmd *command) {
+	if cmd.release == nil || cmd.code < 2000 {
+		return
+	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedStoreTimeout)
+	defer cancel()
+	cmd.release(rctx)
 }

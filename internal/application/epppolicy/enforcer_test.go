@@ -1,9 +1,13 @@
 package epppolicy
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -56,5 +60,129 @@ func TestDecide(t *testing.T) {
 	})
 	t.Run("the role rule comes first", func(t *testing.T) {
 		assert.Equal(t, RuleNone, Decide(ro, limits, Command{Name: "check", Objects: 1}).Rule)
+	})
+}
+
+// fakeRates answers Take with take and ReserveQuota with ok, recording what
+// it was asked.
+type fakeRates struct {
+	take     entities.EPPRateTake
+	takeErr  error
+	ok       bool
+	buckets  []entities.EPPRateBucket
+	cost     int
+	maxWait  time.Duration
+	quotaKey string
+	limit    int
+	released int
+}
+
+func (f *fakeRates) Take(_ context.Context, b []entities.EPPRateBucket, cost int, maxWait time.Duration) (entities.EPPRateTake, error) {
+	f.buckets, f.cost, f.maxWait = b, cost, maxWait
+	return f.take, f.takeErr
+}
+
+func (f *fakeRates) ReserveQuota(_ context.Context, key string, limit int, _ time.Duration) (func(context.Context), bool, error) {
+	f.quotaKey, f.limit = key, limit
+	if !f.ok {
+		return nil, false, nil
+	}
+	return func(context.Context) { f.released++ }, true, nil
+}
+
+func TestEnforce(t *testing.T) {
+	ctx := context.Background()
+	rw := entities.EPPLoginRoleTransform
+	gold := &entities.EPPPolicy{Name: "gold", Limits: entities.DefaultEPPPolicyLimits()}
+	famPolicy := &entities.EPPPolicy{Name: "fam", Limits: entities.ProbationEPPPolicyLimits()}
+	alone := entities.EPPRegistrarPolicy{Policy: gold}
+	inFamily := entities.EPPRegistrarPolicy{Policy: gold, Family: &entities.RegistrarFamily{Name: "acme"}, FamilyPolicy: famPolicy}
+	enforcer := func(f *fakeRates) *Enforcer {
+		e := NewEnforcer(f)
+		e.now = func() time.Time { return time.Date(2026, 10, 23, 23, 59, 0, 0, time.FixedZone("x", 3600)) }
+		return e
+	}
+
+	t.Run("a check takes a token per name from the registrar's and the family's check buckets", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true}}
+		d, release := enforcer(f).Enforce(ctx, "rar-a", rw, inFamily, Command{Name: "check", Objects: 7})
+		assert.Equal(t, Allow, d.Action)
+		assert.Nil(t, release)
+		assert.Equal(t, 7, f.cost)
+		assert.Equal(t, MaxRateDelay, f.maxWait)
+		assert.Equal(t, []entities.EPPRateBucket{
+			{Key: "reg:rar-a:check", Rate: gold.Limits.Rates.Check},
+			{Key: "fam:acme:check", Rate: famPolicy.Limits.FamilyRates.Check},
+		}, f.buckets, "the family's bucket has its own policy's family rates")
+	})
+	t.Run("every other command takes one token from its class's bucket", func(t *testing.T) {
+		for c, class := range map[Command]Class{
+			{Name: "info"}: ClassInfo, {Name: "transfer", Op: "query"}: ClassInfo,
+			{Name: "update"}: ClassTransform, {Name: "poll", Op: "req"}: ClassPoll,
+		} {
+			f := &fakeRates{take: entities.EPPRateTake{Taken: true}}
+			enforcer(f).Enforce(ctx, "rar-a", rw, alone, c)
+			assert.Equal(t, 1, f.cost, "%+v", c)
+			require.Len(t, f.buckets, 1, "no family, no family bucket")
+			assert.Equal(t, "reg:rar-a:"+string(class), f.buckets[0].Key)
+			assert.Equal(t, RateFor(gold.Limits.Rates, class), f.buckets[0].Rate)
+		}
+	})
+	t.Run("session commands and refusals by Decide take nothing", func(t *testing.T) {
+		f := &fakeRates{}
+		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "logout"})
+		assert.Equal(t, Allow, d.Action)
+		d, _ = enforcer(f).Enforce(ctx, "rar-a", entities.EPPLoginRoleReadonly, alone, Command{Name: "create", Object: "domain"})
+		assert.Equal(t, RuleRole, d.Rule)
+		d, _ = enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "check", Objects: 51})
+		assert.Equal(t, RuleCheckNames, d.Rule)
+		assert.Nil(t, f.buckets)
+	})
+	t.Run("a short wait holds the command", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true, Wait: 300 * time.Millisecond, Limiting: 1}}
+		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, inFamily, Command{Name: "info"})
+		assert.Equal(t, Decision{Action: Delay, Rule: RuleFamilyRate, Wait: 300 * time.Millisecond}, d)
+	})
+	t.Run("a longer one refuses it with 2400", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Wait: 1234 * time.Millisecond}}
+		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "update"})
+		assert.Equal(t, Reject, d.Action)
+		assert.Equal(t, RuleRate, d.Rule)
+		assert.Equal(t, 2400, d.Code)
+		assert.Equal(t, "Command failed; the registrar's transform rate is exceeded, try again in 1.3s", d.Msg)
+	})
+	t.Run("an unanswered limiter lets the command through", func(t *testing.T) {
+		f := &fakeRates{takeErr: errors.New("down")}
+		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "update"})
+		assert.Equal(t, Allow, d.Action)
+	})
+
+	probation := entities.EPPRegistrarPolicy{Policy: &entities.EPPPolicy{Name: "probation", Limits: entities.ProbationEPPPolicyLimits()}}
+	t.Run("a domain create counts against the day's quota, by UTC day", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true}, ok: true}
+		d, release := enforcer(f).Enforce(ctx, "rar-a", rw, probation, Command{Name: "create", Object: "domain"})
+		assert.Equal(t, Allow, d.Action)
+		require.NotNil(t, release)
+		assert.Equal(t, "creates:rar-a:2026-10-23", f.quotaKey, "23:59 at UTC+1 is 22:59 UTC")
+		assert.Equal(t, 100, f.limit)
+		release(ctx)
+		assert.Equal(t, 1, f.released)
+	})
+	t.Run("over the quota it is refused with 2308", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true}}
+		d, release := enforcer(f).Enforce(ctx, "rar-a", rw, probation, Command{Name: "create", Object: "domain"})
+		assert.Equal(t, Reject, d.Action)
+		assert.Equal(t, RuleCreateQuota, d.Rule)
+		assert.Equal(t, 2308, d.Code)
+		assert.Contains(t, d.Msg, "100 domains a day")
+		assert.Nil(t, release)
+	})
+	t.Run("only domain creates count, and only under a cap", func(t *testing.T) {
+		f := &fakeRates{take: entities.EPPRateTake{Taken: true}, ok: true}
+		_, release := enforcer(f).Enforce(ctx, "rar-a", rw, probation, Command{Name: "create", Object: "host"})
+		assert.Nil(t, release)
+		_, release = enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "create", Object: "domain"})
+		assert.Nil(t, release, "default has no cap")
+		assert.Empty(t, f.quotaKey)
 	})
 }

@@ -87,7 +87,7 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 
 // SavePolicy godoc
 // @Summary Create or replace an EPP policy
-// @Description Every limit must be given, at least 1. The built-in policies can be changed this way too.
+// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too.
 // @Tags EPP
 // @Accept json
 // @Produce json

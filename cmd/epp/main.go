@@ -24,6 +24,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -98,11 +99,12 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Password: cfg.Redis.Password,
 		DB:       0,
 	})
-	// Redis holds the session registry and lockouts, and the server fails
-	// open without it (ADR 0013), so an unreachable Redis is a warning, not a
-	// reason to stay down. epp_policy_store_degraded shows it.
+	// Redis holds the session registry, lockouts and command rates, and
+	// the server fails open without it (ADR 0013), so an unreachable Redis
+	// is a warning, not a reason to stay down. epp_policy_store_degraded
+	// shows it.
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		logger.Warn("Redis unreachable at start; session caps and lockouts apply per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+		logger.Warn("Redis unreachable at start; session caps, lockouts and command rates apply per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
 	} else {
 		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
@@ -126,6 +128,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 			}
 		})
 	auth := services.NewEPPAuthenticationService(credentials, passwordhash.New(passwordhash.DefaultParams), lockouts, uses, cfg.Auth.MaxConcurrentVerify)
+
+	// Command rates and create quotas (ADR 0019), counted in Redis and on
+	// the node while Redis cannot answer.
+	rates := ratelimit.NewFailOpen(ratelimit.NewRedis(redisClient), ratelimit.NewMemory(), func(degraded bool) {
+		if srv != nil {
+			srv.ReportRatesDegraded(degraded)
+		}
+	})
 
 	sessions := services.NewEPPSessionService(sessionstore.NewRedis(redisClient), entities.EPPSessionCaps{
 		PerSource: cfg.Sessions.PerSource,
@@ -171,9 +181,10 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		// The registrars' EPP policies (ADR 0019), reloaded with the
 		// credentials.
 		Policies: services.NewEPPPolicyService(postgres.NewEPPPolicyRepository(db), registrarRepo),
+		Rates:    rates,
 		Audit:    audit,
-		Logger:        logger,
-		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
+		Logger:   logger,
+		NewID:    func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})
 	if err != nil {
 		return err

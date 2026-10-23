@@ -11,9 +11,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/memstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -76,6 +78,9 @@ type testCredentials struct {
 	auditLog *services.EPPAuditService
 	// policies are the EPP policies the servers load.
 	policies *testPolicies
+	// rates counts command rates and create quotas: on the node unless a
+	// test shares one between servers or sets another.
+	rates interfaces.EPPRateLimiter
 }
 
 // testPolicies is the EPP policies as a test sets them: built-in by default.
@@ -143,6 +148,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		t:        t,
 		store:    memstore.NewEPPCredentials(testRegistrar, "registrar2"),
 		registry: memstore.NewEPPSessions(),
+		rates:    ratelimit.NewMemory(),
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
 		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
@@ -186,7 +192,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Rates: tc.rates, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

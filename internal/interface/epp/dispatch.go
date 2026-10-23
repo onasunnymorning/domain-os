@@ -47,6 +47,9 @@ type command struct {
 	// attemptedLogin is the login ID a <login> presented, for the audit log
 	// of a login that did not succeed.
 	attemptedLogin string
+	// release gives back what the policy counted against a quota for this
+	// command, if it does not succeed.
+	release func(context.Context)
 }
 
 // respond sets the response to this command. msg may be empty for the
@@ -232,6 +235,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 	}
 	cmd.handled = true
 	rt.handler(ctx, cmd)
+	s.releaseIfFailed(ctx, cmd)
 }
 
 // servicesAllowed answers a command that uses an object or extension the
