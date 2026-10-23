@@ -64,12 +64,18 @@ Never hand-edit these; to change what the UI shows, cut a release.
 
 ### `ci.yaml` — every PR and every push to `main`
 
-- **Tests & checks** (both PRs and `main`): secret scan, lint, env/contract
-  drift, Go unit + API integration tests, frontend tests.
+- **Tests & checks** (both PRs and `main`): secret scan, lint, architecture
+  gate, env/contract drift, vendor integrity, `govulncheck` (blocking; fails
+  only on vulnerable code that is actually called), Go unit + API integration
+  tests, frontend tests.
 - **`build-images`** (feature PRs only): builds each image `amd64`, loads it
   locally, and Trivy-scans (`CRITICAL`/`HIGH`). Never pushes — no Docker Hub
   login required, so fork PRs pass. Skipped on `main` pushes (tests only) and on
   release-please's version-bump PRs (no source changes to validate).
+- **Ordering**: every job starts at once. Nothing waits on another job except
+  `build-images` on the one-line `setup` job that reads the image list. A run
+  takes as long as its longest job (unit tests or the frontend image build,
+  ~5–6 min), not the sum of a chain. A merge still needs every job green.
 
 ### `release-please.yaml` — push to `main`
 
