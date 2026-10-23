@@ -191,6 +191,13 @@ func copyTransfer(t *entities.DomainTransfer) *entities.DomainTransfer {
 	return &c
 }
 
+// Queue queues msgs, as a write that causes them would.
+func (r *Registry) Queue(msgs ...*entities.PollMessage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.queue(msgs)
+}
+
 // Messages returns a copy of clid's queue, oldest first.
 func (r *Registry) Messages(clid string) []*entities.PollMessage {
 	r.mu.Lock()

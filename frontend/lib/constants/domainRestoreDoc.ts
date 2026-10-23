@@ -72,7 +72,19 @@ The report completes the restore at once:
 
 ### If the report is not sent in time
 
-The request **lapses** at its deadline. Within the hour, the *Revert Lapsed Restores* workflow returns the domain to where it was: \`pendingDelete\`, in its redemption period if that has not ended, with its original purge date. Nothing is charged. The registrar can request a restore again while the redemption period lasts. A domain with a pending restore is never purged, even past its purge date: it is reverted first.
+The request **lapses** at its deadline. Within the hour, the *Revert Lapsed Restores* workflow returns the domain to where it was: \`pendingDelete\`, in its redemption period if that has not ended, with its original purge date, and sends the registrar a poll message (*Restore lapsed: no restore report for … by …*) saying where the domain now stands. Nothing is charged. The registrar can request a restore again while the redemption period lasts. A domain with a pending restore is never purged, even past its purge date: it is reverted first.
+
+### Domains imported from an escrow deposit
+
+A deposit says which period a deleted domain is in, but not when that period ends. On import, the period **starts in full**, under the TLD's current phase:
+
+| In the deposit | After the import |
+|---|---|
+| \`redemptionPeriod\` | Restorable for the full redemption period, then pending delete |
+| \`pendingRestore\` | The restore stays requested: the registrar sends its report **here**, within the pending restore period. If it does not, the request lapses and the domain is back in a full redemption period |
+| \`pendingDelete\` (past redemption) | Purged after the pending delete period |
+
+A deleted domain the deposit gives no RGP status is treated as in its redemption period.
 
 ---
 

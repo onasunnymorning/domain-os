@@ -27,14 +27,16 @@ const (
 )
 
 // restoreDomains is a domain repository holding domains by name. Reads
-// return copies; writes store a copy, unless changed says to refuse the
-// next writes of a domain as entities.ErrDomainChanged.
+// return copies; writes store a copy and keep the poll messages they queue,
+// unless changed says to refuse the next writes of a domain as
+// entities.ErrDomainChanged.
 type restoreDomains struct {
 	repositories.DomainRepository
-	byName  map[string]*entities.Domain
-	changed map[string]int
-	readErr error
-	writes  int
+	byName   map[string]*entities.Domain
+	changed  map[string]int
+	readErr  error
+	writes   int
+	messages []*entities.PollMessage // queued by the writes made
 }
 
 func (r *restoreDomains) GetDomainByName(_ context.Context, name string, _ bool) (*entities.Domain, error) {
@@ -48,13 +50,14 @@ func (r *restoreDomains) GetDomainByName(_ context.Context, name string, _ bool)
 	return d.DeepCopy(), nil
 }
 
-func (r *restoreDomains) UpdateDomainColumnsIfUnchanged(_ context.Context, d *entities.Domain) (*entities.Domain, error) {
+func (r *restoreDomains) UpdateDomainColumnsIfUnchanged(_ context.Context, d *entities.Domain, msgs ...*entities.PollMessage) (*entities.Domain, error) {
 	r.writes++
 	if r.changed[d.Name.String()] > 0 {
 		r.changed[d.Name.String()]--
 		return nil, entities.ErrDomainChanged
 	}
 	r.byName[d.Name.String()] = d.DeepCopy()
+	r.messages = append(r.messages, msgs...)
 	return d.DeepCopy(), nil
 }
 
@@ -274,6 +277,12 @@ func TestBatchRevertLapsedRestores(t *testing.T) {
 		assert.Equal(t, 1, domains.writes)
 		require.Equal(t, []string{EventDomainRestoreReverted}, eventTypes(*events))
 		assert.Nil(t, lifecycle(t, (*events)[0]).Quote.Price, "a reversion charges nothing")
+		require.Len(t, domains.messages, 1, "the sponsor is told, with the write")
+		m := domains.messages[0]
+		assert.Equal(t, entities.ClIDType("rar1"), m.ClID)
+		assert.Nil(t, m.Transfer)
+		assert.Contains(t, m.Message, entities.PollMsgRestoreLapsed+": no restore report for lapsed.com")
+		assert.Contains(t, m.Message, "back in its redemption period")
 
 		again := svc.BatchRevertLapsedRestores(context.Background(), []string{"lapsed.com"}, now)
 		assert.Equal(t, []string{"lapsed.com"}, again.Skipped, "a retry never reverts twice")
@@ -285,6 +294,7 @@ func TestBatchRevertLapsedRestores(t *testing.T) {
 		res := svc.BatchRevertLapsedRestores(context.Background(), []string{"busy.com"}, now)
 		assert.Equal(t, []string{"busy.com"}, res.Succeeded)
 		assert.Equal(t, 2, domains.writes)
+		assert.Len(t, domains.messages, 1, "no message for the write that was refused")
 	})
 	t.Run("a domain that keeps changing fails, and the others go on", func(t *testing.T) {
 		svc, domains, _ := restoreTestService(t, nil)

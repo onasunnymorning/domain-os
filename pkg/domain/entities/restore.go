@@ -35,9 +35,15 @@ import (
 //  3. No report by PendingRestoreEnd: the restore lapses. The RestoreWorkflow
 //     loop returns the domain to where it was (Domain.RevertRestore):
 //     pendingDelete, in its redemption period if that has not ended, with
-//     its original purge date. Nothing is charged. A lapsed request cannot
-//     be reported; the registrar may request a restore again while the
-//     redemption period lasts.
+//     its original purge date, and tells the sponsor by poll message
+//     (NewRestoreLapsedPollMessage). Nothing is charged. A lapsed request
+//     cannot be reported; the registrar may request a restore again while
+//     the redemption period lasts.
+//
+// A domain imported from an escrow deposit in redemption or pending
+// restore starts that period in full at the import
+// (ApplyDepositEndOfLife): a pending restore's report is due on this
+// registry.
 //
 // A phase may waive the report (PhasePolicy.RestoreReportRequired false,
 // as registries that do not require one do): the request then restores the
@@ -206,4 +212,48 @@ func (d *Domain) RevertRestore(now time.Time) error {
 	d.Status.PendingRestore = false
 	d.RGPStatus.PendingRestoreEnd = time.Time{}
 	return d.Status.Validate()
+}
+
+// ApplyDepositEndOfLife sets d's end of life, at its import from an escrow
+// deposit at now, from the deposit's RGP statuses (RFC 9022 rgpStatus, with
+// RFC 3915's values; some deposits write redemptionGracePeriod and
+// pendingDeleteGracePeriod). A deposit says which period a domain is in but
+// not when it ends, so a period whose end is unknown starts in full at the
+// import, under policy:
+//
+//   - redemptionPeriod: pendingDelete, restorable for the redemption period,
+//     then purged after the pending delete period.
+//   - pendingRestore: the same, with a restore pending: the registrar's
+//     report is due on this registry after the pending restore period. If it
+//     does not come, the restore lapses as any other (RevertRestore), and the
+//     domain is back in its redemption period.
+//   - pendingDelete: past redemption, purged after the pending delete period.
+//
+// The EPP status pendingRestore, which some deposits use, counts as the RGP
+// status; an EPP pendingDelete with none of these RGP statuses counts as
+// redemptionPeriod, the longer reading of what is unknown. Other domains are
+// left as they are.
+func (d *Domain) ApplyDepositEndOfLife(rgpStatuses []string, policy *PhasePolicy, now time.Time) {
+	has := map[string]bool{}
+	for _, s := range rgpStatuses {
+		has[strings.ToLower(strings.TrimSpace(s))] = true
+	}
+	redemption := has["redemptionperiod"] || has["redemptiongraceperiod"]
+	restore := has["pendingrestore"] || d.Status.PendingRestore
+	pastRedemption := has["pendingdelete"] || has["pendingdeletegraceperiod"]
+	switch {
+	case restore:
+		d.RGPStatus.PendingRestoreEnd = now.AddDate(0, 0, policy.PendingRestoreDays())
+		d.Status.PendingRestore = true
+		fallthrough
+	case redemption || (d.Status.PendingDelete && !pastRedemption):
+		d.RGPStatus.RedemptionPeriodEnd = now.AddDate(0, 0, policy.RedemptionGP)
+	case pastRedemption:
+		d.RGPStatus.RedemptionPeriodEnd = now
+	default:
+		return
+	}
+	d.Status.PendingDelete = true
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, policy.PendingDeleteGP)
+	d.UnSetOKStatusIfNeeded()
 }

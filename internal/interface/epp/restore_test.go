@@ -185,3 +185,22 @@ func TestRestoreReportKeepsTheRegistrarsContent(t *testing.T) {
 	assert.WithinDuration(t, now.Add(-48*time.Hour), r.Report.DelTime, time.Second)
 	assert.Equal(t, time.UTC, r.Report.DelTime.Location())
 }
+
+// A lapsed restore's poll message has no poll data in RFC 3915: it is
+// answered with its text alone, schema-valid, and acknowledged as any other.
+func TestRestoreLapsedPollMessage(t *testing.T) {
+	creds, _, c := domainServer(t)
+	reg := creds.domains.registry
+	deleteRestorable(t, c, reg, "gone.test")
+	now := time.Now().UTC()
+	dom := reg.Domain("gone.test")
+	reg.Queue(entities.NewRestoreLapsedPollMessage(dom, now.Add(-time.Hour), now))
+
+	resp := c.roundTrip(pollReqXML())
+	requireCode(t, resp, "1301")
+	requireSchemaValid(t, []byte(mustWrite(t, resp)))
+	assert.Nil(t, resp.FindElement("//resData"))
+	assert.Contains(t, text(resp, "//msgQ/msg"), "Restore lapsed: no restore report for gone.test")
+	id := resp.FindElement("//msgQ").SelectAttrValue("id", "")
+	requireCode(t, c.roundTrip(pollAckXML(id)), "1000")
+}

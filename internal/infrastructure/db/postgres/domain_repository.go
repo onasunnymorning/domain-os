@@ -149,13 +149,18 @@ func (dr *DomainRepository) UpdateDomain(ctx context.Context, d *entities.Domain
 // UpdateDomainColumnsIfUnchanged saves the domain's own columns, not its
 // nameservers or DS records, if the stored domain still has the version and
 // sponsor of d as read; otherwise it is ErrDomainChanged, or
-// ErrDomainNotFound if the domain is gone. The lifecycle processing (expiry,
+// ErrDomainNotFound if the domain is gone. msgs, the poll messages the
+// change causes, are queued in the same transaction, so a message is never
+// sent for a change that was not written. The lifecycle processing (expiry,
 // auto-renewal, restore) and the admin status changes write through it, so
 // none of them overwrites a change it did not see, such as a renew.
-func (dr *DomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+func (dr *DomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain, msgs ...*entities.PollMessage) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
 	err := dr.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return updateDomainRowIfAt(tx, dbDomain, d.UpdatedAt)
+		if err := updateDomainRowIfAt(tx, dbDomain, d.UpdatedAt); err != nil {
+			return err
+		}
+		return queueMessages(tx, msgs, 0)
 	})
 	if err != nil {
 		return nil, dr.notWritten(ctx, dbDomain.RoID, err)

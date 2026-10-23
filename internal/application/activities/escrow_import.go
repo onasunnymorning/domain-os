@@ -1805,12 +1805,9 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 						case "pendingupdate":
 							ds.PendingUpdate = true
 						case "pendingrestore":
-							// A domain pending restore is a deleted one: it stays
-							// pendingDelete (RFC 3915 §4). The deposit has no report
-							// deadline, so the restore lapses and is reverted to
-							// redemption; the registrar requests it again.
+							// An RGP status, not an EPP one, in some deposits:
+							// entities.Domain.ApplyDepositEndOfLife reads it.
 							ds.PendingRestore = true
-							ds.PendingDelete = true
 						case "pendingdelete":
 							ds.PendingDelete = true
 						}
@@ -1839,6 +1836,7 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 
 		// Fill commands
 		now := time.Now().UTC()
+		endOfLifePolicy := entities.NewPhasePolicy()
 		for _, cmd := range cmds {
 			normalizedCmdName := strings.ToLower(strings.TrimSpace(cmd.Name))
 			// Status
@@ -1851,7 +1849,12 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 					cmd.Status = ds
 				}
 			}
-			// RGP
+			// A deleted domain's end of life, with the default periods: this
+			// path writes through the admin API and cannot read the phase.
+			eol := entities.Domain{Status: cmd.Status, RGPStatus: cmd.RGPStatus}
+			eol.ApplyDepositEndOfLife(rgpMap[normalizedCmdName], &endOfLifePolicy, now)
+			cmd.Status, cmd.RGPStatus = eol.Status, eol.RGPStatus
+			// RGP grace periods
 			if rgps, ok := rgpMap[normalizedCmdName]; ok {
 				for _, st := range rgps {
 					switch strings.ToLower(strings.TrimSpace(st)) {
@@ -1879,12 +1882,6 @@ func (a *EscrowImportActivities) importDomainsChunked(ctx context.Context, sqldb
 							safety++
 						}
 						cmd.RGPStatus.AutoRenewPeriodEnd = base.AddDate(0, 0, 45)
-					case "redemptiongraceperiod":
-						// Now + 30 days
-						cmd.RGPStatus.RedemptionPeriodEnd = now.AddDate(0, 0, 30)
-					case "pendingdeletegraceperiod":
-						// Pending delete GP -> set purge date to now + 5 days
-						cmd.RGPStatus.PurgeDate = now.AddDate(0, 0, 5)
 					}
 				}
 			}

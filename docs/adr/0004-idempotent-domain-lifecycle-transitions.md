@@ -168,7 +168,8 @@ an indexed column (`pending_restore_end`), re-checks every domain before
 writing (a domain restored, already reverted or not yet lapsed is Skipped),
 writes only over the domain as read, and pages with a (deadline, ROID) cursor
 carried across continue-as-new, as the transfer approval loop does, so a
-domain it cannot revert does not hold back the others. The reconciler applies
+domain it cannot revert does not hold back the others. The revert and the
+sponsor's poll message are one transaction. The reconciler applies
 the new interval to the existing schedule. The purge loop skips a domain with
 a restore pending, which stays `pendingDelete` meanwhile (RFC 3915 §4), until
 it is reverted.

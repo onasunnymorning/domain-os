@@ -624,6 +624,12 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 	}
 	var dsWritten int64
 
+	rgpStaged, err := stagedTableExists(sqliteDB, "domain_rgp_statuses")
+	if err != nil {
+		return total, inserted, updated, fmt.Errorf("IngestDomains: check for staged RGP statuses: %w", err)
+	}
+	policy := s.endOfLifePolicy(ctx, tld)
+
 	for {
 		rows, err := sqliteDB.Query(`SELECT name, registrant, clid, crrr, crdate, exdate, uprr, uname, originalname FROM domains WHERE name > ? ORDER BY name LIMIT ?`, lastKey, batchSize)
 		if err != nil {
@@ -705,12 +711,9 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 					case "pendingupdate":
 						ds.PendingUpdate = true
 					case "pendingrestore":
-						// A domain pending restore is a deleted one: it stays
-						// pendingDelete (RFC 3915 §4). The deposit has no report
-						// deadline, so the restore lapses and is reverted to
-						// redemption; the registrar requests it again.
+						// An RGP status, not an EPP one, in some deposits:
+						// entities.Domain.ApplyDepositEndOfLife reads it.
 						ds.PendingRestore = true
-						ds.PendingDelete = true
 					case "pendingdelete":
 						ds.PendingDelete = true
 					}
@@ -719,6 +722,24 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			}
 			sRows.Close()
 		}
+
+		// The RGP statuses: a deleted domain's end of life
+		// (entities.Domain.ApplyDepositEndOfLife).
+		rgpMap := map[string][]string{}
+		if rgpStaged {
+			rRows, err := sqliteDB.Query(`SELECT domain_name, rgp_status FROM domain_rgp_statuses WHERE domain_name >= ? AND domain_name <= ?`, first, last)
+			if err != nil {
+				return total, inserted, updated, fmt.Errorf("IngestDomains: read RGP statuses: %w", err)
+			}
+			for rRows.Next() {
+				var dn, st sql.NullString
+				if err := rRows.Scan(&dn, &st); err == nil && dn.Valid && st.Valid {
+					rgpMap[dn.String] = append(rgpMap[dn.String], st.String)
+				}
+			}
+			rRows.Close()
+		}
+		importedAt := time.Now().UTC()
 
 		var batchReport RunReport
 		var dsMap map[string][]entities.DSRecord
@@ -776,6 +797,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			if st, ok := statusMap[r.Name]; ok {
 				d.Status = st
 			}
+			d.ApplyDepositEndOfLife(rgpMap[r.Name], &policy, importedAt)
 			d.DSRecords = dsMap[r.Name]
 
 			if t, err := parseJiscTime(r.CrDate); err == nil {
@@ -823,7 +845,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 				res, err = tx.Model(&dbBatch).
 					ExcludeColumn("hosts", "tld", "ds_records").
 					OnConflict("(name) DO UPDATE").
-					Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete").
+					Set("cl_id = EXCLUDED.cl_id, cr_rr = EXCLUDED.cr_rr, up_rr = EXCLUDED.up_rr, registrant_id = EXCLUDED.registrant_id, expiry_date = EXCLUDED.expiry_date, u_name = EXCLUDED.u_name, original_name = EXCLUDED.original_name, drop_catch = EXCLUDED.drop_catch, renewed_years = EXCLUDED.renewed_years, updated_at = EXCLUDED.updated_at, ok = EXCLUDED.ok, inactive = EXCLUDED.inactive, client_transfer_prohibited = EXCLUDED.client_transfer_prohibited, client_update_prohibited = EXCLUDED.client_update_prohibited, client_delete_prohibited = EXCLUDED.client_delete_prohibited, client_renew_prohibited = EXCLUDED.client_renew_prohibited, client_hold = EXCLUDED.client_hold, server_transfer_prohibited = EXCLUDED.server_transfer_prohibited, server_update_prohibited = EXCLUDED.server_update_prohibited, server_delete_prohibited = EXCLUDED.server_delete_prohibited, server_renew_prohibited = EXCLUDED.server_renew_prohibited, server_hold = EXCLUDED.server_hold, pending_create = EXCLUDED.pending_create, pending_renew = EXCLUDED.pending_renew, pending_transfer = EXCLUDED.pending_transfer, pending_update = EXCLUDED.pending_update, pending_restore = EXCLUDED.pending_restore, pending_delete = EXCLUDED.pending_delete, redemption_period_end = EXCLUDED.redemption_period_end, purge_date = EXCLUDED.purge_date, pending_restore_end = EXCLUDED.pending_restore_end").
 					// A name that already exists under another TLD is not ours to
 					// update: without this guard the upsert would rewrite that
 					// domain's registrar, registrant and statuses from this deposit.
@@ -873,6 +895,31 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 }
 
 // stagedTableExists reports whether the staging database has the named table.
+// endOfLifePolicy is the policy a deleted domain's imported end of life
+// follows (entities.Domain.ApplyDepositEndOfLife): the redemption, pending
+// delete and pending restore periods of tld's current GA phase, or the
+// defaults where the phase cannot be read or sets none.
+func (s *DirectDBImporter) endOfLifePolicy(ctx context.Context, tld string) entities.PhasePolicy {
+	policy := entities.NewPhasePolicy()
+	if s.PG == nil {
+		return policy
+	}
+	var row struct {
+		RedemptionGP         int `pg:"redemption_gp"`
+		PendingDeleteGP      int `pg:"pending_delete_gp"`
+		PendingRestorePeriod int `pg:"pending_restore_period"`
+	}
+	_, err := s.PG.QueryOneContext(ctx, &row, `SELECT COALESCE(redemption_gp, 0) AS redemption_gp, COALESCE(pending_delete_gp, 0) AS pending_delete_gp,
+		COALESCE(pending_restore_period, 0) AS pending_restore_period FROM phases
+		WHERE tld_name = ? AND type = 'GA' AND starts <= now() AND (ends IS NULL OR ends > now()) ORDER BY starts DESC LIMIT 1`, tld)
+	if err != nil {
+		log.Printf("IngestDomains: no current GA phase policy for %s (%v); deleted domains get the default periods", tld, err)
+		return policy
+	}
+	policy.UpdatePolicy(&entities.PhasePolicy{RedemptionGP: row.RedemptionGP, PendingDeleteGP: row.PendingDeleteGP, PendingRestorePeriod: row.PendingRestorePeriod})
+	return policy
+}
+
 func stagedTableExists(sqliteDB *sql.DB, table string) (bool, error) {
 	var n int
 	if err := sqliteDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n); err != nil {

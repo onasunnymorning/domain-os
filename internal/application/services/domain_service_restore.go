@@ -229,7 +229,9 @@ func (s *DomainService) ListLapsedRestores(ctx context.Context, dueBy, afterEnd 
 
 // BatchRevertLapsedRestores reverts the restores of the named domains that
 // lapsed by dueBy (entities.Domain.RevertRestore), each written over the
-// domain as read and recorded as a domain.restore_reverted event. It reads
+// domain as read with a poll message for its sponsor in the same
+// transaction (entities.NewRestoreLapsedPollMessage), and recorded as a
+// domain.restore_reverted event. It reads
 // and checks every domain again, so a retry never reverts twice: a domain
 // gone, restored meanwhile, already reverted, or whose restore has not
 // lapsed is Skipped. A domain changed while it is reverted is read again,
@@ -269,7 +271,8 @@ func (s *DomainService) revertIfLapsed(ctx context.Context, name string, dueBy t
 		if err := dom.RevertRestore(dueBy); err != nil {
 			return false, err
 		}
-		stored, err := s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
+		msg := entities.NewRestoreLapsedPollMessage(dom, before.RGPStatus.PendingRestoreEnd, restoreNow())
+		stored, err := s.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom, msg)
 		if errors.Is(err, entities.ErrDomainChanged) && attempt < updateAttempts {
 			continue
 		}

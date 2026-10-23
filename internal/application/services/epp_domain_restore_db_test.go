@@ -10,6 +10,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -144,6 +145,15 @@ func TestEPPDomainRestoreOverPostgres(t *testing.T) {
 		assert.Equal(t, before.RGPStatus.PurgeDate.Unix(), d.RGPStatus.PurgeDate.Unix())
 		assert.Equal(t, []string{"redemptionPeriod"}, d.RGPStatuses(time.Now()))
 		assert.Contains(t, eventsOf(t, lapsed), EventDomainRestoreReverted)
+	})
+	t.Run("the sponsor is told by poll message", func(t *testing.T) {
+		polls := NewEPPPollService(postgres.NewDomainTransferRepository(db, "EPPTEST"))
+		m, n, err := polls.Request(context.Background(), scope)
+		require.NoError(t, err)
+		require.NotNil(t, m)
+		assert.Equal(t, int64(1), n, "one message, for the one domain reverted")
+		assert.Nil(t, m.Transfer)
+		assert.Contains(t, m.Message, entities.PollMsgRestoreLapsed+": no restore report for "+lapsed)
 	})
 	t.Run("a second run reverts nothing twice", func(t *testing.T) {
 		again := registry.BatchRevertLapsedRestores(context.Background(), []string{lapsed}, now)

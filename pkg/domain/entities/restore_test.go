@@ -204,3 +204,68 @@ func TestPendingRestoreNeedsPendingDelete(t *testing.T) {
 	assert.NoError(t, (&DomainStatus{PendingRestore: true, PendingDelete: true}).Validate())
 	assert.ErrorIs(t, (&DomainStatus{PendingRestore: true, PendingDelete: true, PendingTransfer: true}).Validate(), ErrInvalidDomainStatusCombination)
 }
+
+func TestNewRestoreLapsedPollMessage(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	deadline := now.Add(-time.Hour)
+	d := deletedDomain(t, now, now)
+	m := NewRestoreLapsedPollMessage(d, deadline, now)
+	assert.Equal(t, d.ClID, m.ClID)
+	assert.Equal(t, now, m.CreatedAt)
+	assert.Nil(t, m.Transfer)
+	assert.Equal(t, "Restore lapsed: no restore report for restore.domaintesttld by 2026-10-23T11:00:00Z; it is back in its redemption period until 2026-11-21T12:00:00Z, and a restore can be requested again", m.Message)
+
+	d.RGPStatus.RedemptionPeriodEnd = now.Add(-time.Minute)
+	m = NewRestoreLapsedPollMessage(d, deadline, now)
+	assert.Contains(t, m.Message, "its redemption period has ended, and it is purged after 2026-11-26T12:00:00Z")
+}
+
+func TestApplyDepositEndOfLife(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	policy := NewPhasePolicy()
+	redemptionEnd := now.AddDate(0, 0, RedemptionGP)
+	cases := []struct {
+		name                 string
+		status               DomainStatus
+		rgp                  []string
+		restoreEnd, redEnd   time.Time
+		purge                time.Time
+		pendingRestore, gone bool
+	}{
+		{"redemptionPeriod: restorable in full", DomainStatus{PendingDelete: true}, []string{"redemptionPeriod"}, time.Time{}, redemptionEnd, redemptionEnd.AddDate(0, 0, PendingDeleteGP), false, false},
+		{"redemptionGracePeriod spelling", DomainStatus{PendingDelete: true}, []string{"RedemptionGracePeriod"}, time.Time{}, redemptionEnd, redemptionEnd.AddDate(0, 0, PendingDeleteGP), false, false},
+		{"pendingRestore: the report is due here", DomainStatus{PendingDelete: true}, []string{"pendingRestore"}, now.AddDate(0, 0, PendingRestorePeriod), redemptionEnd, redemptionEnd.AddDate(0, 0, PendingDeleteGP), true, false},
+		{"pendingRestore as an EPP status", DomainStatus{PendingRestore: true}, nil, now.AddDate(0, 0, PendingRestorePeriod), redemptionEnd, redemptionEnd.AddDate(0, 0, PendingDeleteGP), true, false},
+		{"pendingDelete past redemption", DomainStatus{PendingDelete: true}, []string{"pendingDelete"}, time.Time{}, now, now.AddDate(0, 0, PendingDeleteGP), false, true},
+		{"EPP pendingDelete alone: the longer reading", DomainStatus{PendingDelete: true}, nil, time.Time{}, redemptionEnd, redemptionEnd.AddDate(0, 0, PendingDeleteGP), false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Domain{Status: tc.status}
+			d.ApplyDepositEndOfLife(tc.rgp, &policy, now)
+			require.NoError(t, d.Status.Validate())
+			assert.True(t, d.Status.PendingDelete)
+			assert.Equal(t, tc.pendingRestore, d.Status.PendingRestore)
+			assert.Equal(t, tc.restoreEnd, d.RGPStatus.PendingRestoreEnd)
+			assert.Equal(t, tc.redEnd, d.RGPStatus.RedemptionPeriodEnd)
+			assert.Equal(t, tc.purge, d.RGPStatus.PurgeDate)
+			if tc.pendingRestore {
+				assert.True(t, d.RestorePending(now))
+			}
+		})
+	}
+	t.Run("a live domain is left as it is", func(t *testing.T) {
+		d := &Domain{Status: DomainStatus{OK: true}}
+		d.ApplyDepositEndOfLife([]string{"addPeriod"}, &policy, now)
+		assert.Equal(t, DomainStatus{OK: true}, d.Status)
+		assert.True(t, d.RGPStatus.IsNil())
+	})
+	t.Run("the phase's periods apply", func(t *testing.T) {
+		p := NewPhasePolicy()
+		p.RedemptionGP, p.PendingRestorePeriod = 10, 3
+		d := &Domain{Status: DomainStatus{PendingDelete: true}}
+		d.ApplyDepositEndOfLife([]string{"pendingRestore"}, &p, now)
+		assert.Equal(t, now.AddDate(0, 0, 3), d.RGPStatus.PendingRestoreEnd)
+		assert.Equal(t, now.AddDate(0, 0, 10), d.RGPStatus.RedemptionPeriodEnd)
+	})
+}
