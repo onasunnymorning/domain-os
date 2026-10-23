@@ -24,8 +24,13 @@ func TestDateTimeValue(t *testing.T) {
 			assert.True(t, want.Equal(got), "got %s", got)
 		})
 	}
-	_, err := DateTimeValue("12026-10-01T00:00:00Z")
-	assert.Error(t, err, "a valid xs:dateTime year beyond 9999")
+	for _, raw := range []string{"12026-10-01T00:00:00Z", "-0004-02-29T00:00:00Z", "9999-12-31T23:00:00-14:00", "0001-01-01T00:00:00+14:00"} {
+		require.True(t, isDateTime(raw), raw)
+		_, err := DateTimeValue(raw)
+		assert.Error(t, err, "%s: valid, but its UTC year is outside 1 to 9999", raw)
+	}
+	_, err := DateTimeValue("0001-01-01T00:00:00Z")
+	assert.NoError(t, err)
 	_, err = DateTimeValue("not a time")
 	assert.Error(t, err)
 }

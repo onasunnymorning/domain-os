@@ -39,7 +39,7 @@ type restoreDomains struct {
 	messages []*entities.PollMessage // queued by the writes made
 }
 
-func (r *restoreDomains) GetDomainByName(_ context.Context, name string, _ bool) (*entities.Domain, error) {
+func (r *restoreDomains) GetDomainByName(_ context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
 	if r.readErr != nil {
 		return nil, r.readErr
 	}
@@ -47,7 +47,11 @@ func (r *restoreDomains) GetDomainByName(_ context.Context, name string, _ bool)
 	if !ok {
 		return nil, entities.ErrDomainNotFound
 	}
-	return d.DeepCopy(), nil
+	c := d.DeepCopy()
+	if !preloadHosts {
+		c.Hosts = nil // as the repository reads it
+	}
+	return c, nil
 }
 
 func (r *restoreDomains) UpdateDomainColumnsIfUnchanged(_ context.Context, d *entities.Domain, msgs ...*entities.PollMessage) (*entities.Domain, error) {
@@ -237,6 +241,20 @@ func TestCompleteRestoreAsRead(t *testing.T) {
 		_, err := svc.CompleteRestoreAsRead(context.Background(), dom, r, "rar1")
 		assert.ErrorIs(t, err, entities.ErrRestoreReportIncomplete)
 		assert.Zero(t, domains.writes)
+	})
+	t.Run("the admin API keeps a domain with nameservers active", func(t *testing.T) {
+		svc, domains, _ := restoreTestService(t, func(p *entities.PhasePolicy) {
+			no := false
+			p.RestoreReportRequired = &no
+		})
+		dom := deletedForRestore("delegated.com", 10)
+		dom.Hosts = []*entities.Host{{Name: "ns1.example.net"}}
+		dom.Status.Inactive = false
+		domains.add(dom)
+		stored, err := svc.RestoreDomain(context.Background(), "delegated.com")
+		require.NoError(t, err)
+		assert.False(t, stored.Status.Inactive, "read with its nameservers")
+		assert.True(t, stored.Status.OK)
 	})
 	t.Run("the admin API: request, then report", func(t *testing.T) {
 		svc, domains, events := restoreTestService(t, nil)

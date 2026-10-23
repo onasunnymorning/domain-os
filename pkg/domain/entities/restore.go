@@ -91,8 +91,9 @@ type RestoreReport struct {
 }
 
 // Validate checks the report is whole and its times possible at now: every
-// required part has content, there are two statements, and the domain was
-// deleted before the restore was requested, which was not after now.
+// required part has content, both times are given, there are two
+// statements, and the domain was deleted before the restore was requested,
+// which was not after now, both in years 1 to 9999.
 func (r *RestoreReport) Validate(now time.Time) error {
 	var missing []string
 	for _, p := range []struct{ name, v string }{
@@ -111,8 +112,23 @@ func (r *RestoreReport) Validate(now time.Time) error {
 	if given < RestoreReportStatements {
 		missing = append(missing, fmt.Sprintf("%d statements", RestoreReportStatements))
 	}
+	for _, t := range []struct {
+		name string
+		v    time.Time
+	}{{"delTime", r.DelTime}, {"resTime", r.ResTime}} {
+		if t.v.IsZero() {
+			missing = append(missing, t.name)
+		}
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: give %s", ErrRestoreReportIncomplete, strings.Join(missing, ", "))
+	}
+	// The report is kept as JSON with its event, which holds years 1 to 9999
+	// (in UTC) only.
+	for _, t := range []time.Time{r.DelTime, r.ResTime} {
+		if y := t.UTC().Year(); y < 1 || y > 9999 {
+			return fmt.Errorf("%w: a year from 1 to 9999", ErrRestoreReportTimes)
+		}
 	}
 	switch {
 	case !r.DelTime.Before(r.ResTime):

@@ -350,10 +350,10 @@ func isDateTime(v string) bool {
 	return hh < 24 && mm < 60 && ss < 60
 }
 
-// DateTimeValue is the time an xs:dateTime the schema has accepted names.
-// One without a time zone is read as UTC; 24:00:00 is the start of the next
-// day. A year beyond ±9999, which no EPP date can be written with
-// (RFC 3339), is an error.
+// DateTimeValue is the time an xs:dateTime the schema has accepted names,
+// in UTC. One without a time zone is read as UTC; 24:00:00 is the start of
+// the next day. A time whose UTC year is outside 1 to 9999, which RFC 3339
+// cannot write (nor Go's JSON), is an error.
 func DateTimeValue(raw string) (time.Time, error) {
 	m := dateTimePattern.FindStringSubmatch(raw)
 	if len(m) != 7 {
@@ -381,7 +381,11 @@ func DateTimeValue(raw string) (time.Time, error) {
 		}
 		loc = time.FixedZone(tz, offset)
 	}
-	return time.Date(year, time.Month(num(date[3])), num(date[4]), num(m[2]), num(m[3]), num(m[4]), nanos, loc), nil
+	t := time.Date(year, time.Month(num(date[3])), num(date[4]), num(m[2]), num(m[3]), num(m[4]), nanos, loc).UTC()
+	if t.Year() < 1 || t.Year() > 9999 {
+		return time.Time{}, errors.New("year out of range")
+	}
+	return t, nil
 }
 
 // daysIn is the number of days in month of the proleptic Gregorian year y.

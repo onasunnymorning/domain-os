@@ -173,3 +173,12 @@ sponsor's poll message are one transaction. The reconciler applies
 the new interval to the existing schedule. The purge loop skips a domain with
 a restore pending, which stays `pendingDelete` meanwhile (RFC 3915 §4), until
 it is reverted.
+
+Deploying it, as this ADR accepts for lifecycle loops: a `Restore` run in
+flight at the rollout was scheduled with the old activities
+(`ListRestoredDomains`, `BatchRestoreDomains`) and cannot replay on the new
+worker. It fails, and the next hourly fire runs the new sweep; no versioned
+branch keeps the old code (pre-v1, one model). The restores that run would
+have completed are moved to the new model by the `migrate` job
+(`migrateLegacyPendingRestores`): pendingDelete again, with their report due
+the default pending restore period later.

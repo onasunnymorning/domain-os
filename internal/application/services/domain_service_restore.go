@@ -49,11 +49,12 @@ func (s *DomainService) ReportRestore(ctx context.Context, domainName string, re
 	})
 }
 
-// retryRestore reads the domain and takes step on it, again if another
-// command changed it meanwhile, up to updateAttempts times.
+// retryRestore reads the domain, with its nameservers (a completed restore
+// sets inactive from them), and takes step on it, again if another command
+// changed it meanwhile, up to updateAttempts times.
 func (s *DomainService) retryRestore(ctx context.Context, domainName string, step func(*entities.Domain) (*entities.Domain, error)) (*entities.Domain, error) {
 	for attempt := 1; ; attempt++ {
-		dom, err := s.GetDomainByName(ctx, domainName, false)
+		dom, err := s.GetDomainByName(ctx, domainName, true)
 		if err != nil {
 			return nil, err
 		}

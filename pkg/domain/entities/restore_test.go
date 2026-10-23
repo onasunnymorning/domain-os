@@ -134,6 +134,8 @@ func TestCompleteRestore(t *testing.T) {
 			"resReason":     func(r *RestoreReport) { r.ResReason = "" },
 			"one statement": func(r *RestoreReport) { r.Statements = r.Statements[:1] },
 			"an empty one":  func(r *RestoreReport) { r.Statements[1] = "  " },
+			"delTime":       func(r *RestoreReport) { r.DelTime = time.Time{} },
+			"resTime":       func(r *RestoreReport) { r.ResTime = time.Time{} },
 		} {
 			t.Run(name, func(t *testing.T) {
 				d := requested(t, now)
@@ -150,6 +152,7 @@ func TestCompleteRestore(t *testing.T) {
 			"deleted after the request": func(r *RestoreReport) { r.DelTime = r.ResTime.Add(time.Second) },
 			"deleted at the request":    func(r *RestoreReport) { r.DelTime = r.ResTime },
 			"requested in the future":   func(r *RestoreReport) { r.ResTime = now.Add(time.Minute) },
+			"a year JSON cannot hold":   func(r *RestoreReport) { r.DelTime = time.Date(-4, 2, 29, 0, 0, 0, 0, time.UTC) },
 		} {
 			t.Run(name, func(t *testing.T) {
 				d := requested(t, now)
