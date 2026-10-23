@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // credentialWatch is the node's periodically refreshed view of registrars'
@@ -116,6 +118,37 @@ func (s *Server) refreshPolicies(ctx context.Context) {
 	}
 	s.policies.Store(set)
 	s.metrics.policiesRefreshed.SetToCurrentTime()
+	if s.reconcileFamilies(set) {
+		// Move the sessions' registry entries now, not at the next
+		// heartbeat, so a family's count is right at once.
+		if err := s.renewOnce(ctx); err != nil {
+			s.logger.Warn("EPP sessions not moved to their new families; the next heartbeat will", "error", err)
+		}
+	}
+}
+
+// reconcileFamilies attributes every logged-in session on this node to its
+// registrar's family in set: a registrar that joined a family counts
+// against it from now on, and one that left no longer does. Sessions stay
+// open whatever the new counts, as they do when a cap is lowered. It
+// reports whether any session moved.
+func (s *Server) reconcileFamilies(set *entities.EPPPolicySet) bool {
+	moved := false
+	for _, sess := range s.sessions.all() {
+		auth := sess.auth.Load()
+		if auth == nil {
+			continue
+		}
+		family := ""
+		if f := set.ForRegistrar(auth.ClID).Family; f != nil {
+			family = f.Name
+		}
+		if sess.familyName() != family {
+			sess.family.Store(&family)
+			moved = true
+		}
+	}
+	return moved
 }
 
 // endCompromisedSessions closes every session on this node that

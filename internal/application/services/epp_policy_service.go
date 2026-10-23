@@ -15,7 +15,9 @@ import (
 // EPPPolicyService manages EPP policies, their assignment to registrars, and
 // registrar families (entities.EPPPolicy, ADR 0019), and gives EPP nodes the
 // set they enforce. Every change is one repository transaction with its
-// outbox event, which records the actor and the object before and after.
+// outbox event, which records the actor and the object before and after,
+// read in the same transaction as the change (the repository serialises
+// changes), so they are exact under concurrent changes.
 type EPPPolicyService struct {
 	repo       repositories.EPPPolicyRepository
 	registrars repositories.RegistrarRepository
@@ -74,13 +76,11 @@ func (s *EPPPolicyService) SavePolicy(ctx context.Context, name string, cmd comm
 	if err != nil {
 		return nil, err
 	}
-	before, err := s.GetPolicy(ctx, name)
-	if err != nil && !errors.Is(err, entities.ErrEPPPolicyNotFound) {
-		return nil, err
-	}
 	p.UpdatedAt, p.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	e := s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)
-	if err := s.repo.SavePolicy(ctx, p, []entities.DomainEvent{e}); err != nil {
+	err = s.repo.SavePolicy(ctx, p, func(before *entities.EPPPolicy) []entities.DomainEvent {
+		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}
+	})
+	if err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -92,12 +92,9 @@ func (s *EPPPolicyService) DeletePolicy(ctx context.Context, name string) error 
 	if entities.IsBuiltInEPPPolicy(name) {
 		return fmt.Errorf("%w: %s", entities.ErrEPPPolicyBuiltIn, name)
 	}
-	before, err := s.repo.GetPolicy(ctx, name)
-	if err != nil {
-		return err
-	}
-	e := s.event(ctx, entities.EventEPPPolicyDeleted, name, fmt.Sprintf("EPP policy %s deleted", name), before, before, nil)
-	return s.repo.DeletePolicy(ctx, name, []entities.DomainEvent{e})
+	return s.repo.DeletePolicy(ctx, name, func(before *entities.EPPPolicy) []entities.DomainEvent {
+		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicyDeleted, name, fmt.Sprintf("EPP policy %s deleted", name), before, before, nil)}
+	})
 }
 
 // RegistrarPolicy is what applies to the registrar: its policy, and its
@@ -129,14 +126,13 @@ func (s *EPPPolicyService) AssignPolicy(ctx context.Context, clid string, cmd co
 			return nil, err
 		}
 	}
-	assignments, err := s.repo.ListAssignments(ctx)
-	if err != nil {
-		return nil, err
-	}
 	after := entities.EPPPolicyAssignment{ClID: entities.ClIDType(clid), Policy: policy}
-	before := entities.EPPPolicyAssignment{ClID: entities.ClIDType(clid), Policy: assignments[entities.ClIDType(clid)]}
-	e := s.event(ctx, entities.EventEPPPolicyAssigned, clid, fmt.Sprintf("EPP policy %s assigned to %s", nameOrDefault(policy), clid), after, before, after)
-	if err := s.repo.AssignPolicy(ctx, entities.ClIDType(clid), policy, []entities.DomainEvent{e}); err != nil {
+	err := s.repo.AssignPolicy(ctx, entities.ClIDType(clid), policy, func(prev string) []entities.DomainEvent {
+		before := entities.EPPPolicyAssignment{ClID: entities.ClIDType(clid), Policy: prev}
+		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicyAssigned, clid,
+			fmt.Sprintf("EPP policy %s assigned to %s", nameOrDefault(policy), clid), after, before, after)}
+	})
+	if err != nil {
 		return nil, err
 	}
 	return s.RegistrarPolicy(ctx, clid)
@@ -173,13 +169,11 @@ func (s *EPPPolicyService) SaveFamily(ctx context.Context, name string, cmd comm
 			return nil, fmt.Errorf("family member %s: %w", m, err)
 		}
 	}
-	before, err := s.repo.GetFamily(ctx, name)
-	if err != nil && !errors.Is(err, entities.ErrRegistrarFamilyNotFound) {
-		return nil, err
-	}
 	f.UpdatedAt, f.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	e := s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)
-	if err := s.repo.SaveFamily(ctx, f, []entities.DomainEvent{e}); err != nil {
+	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) []entities.DomainEvent {
+		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}
+	})
+	if err != nil {
 		return nil, err
 	}
 	return f, nil
@@ -187,12 +181,9 @@ func (s *EPPPolicyService) SaveFamily(ctx context.Context, name string, cmd comm
 
 // DeleteFamily deletes a family; its members belong to none.
 func (s *EPPPolicyService) DeleteFamily(ctx context.Context, name string) error {
-	before, err := s.repo.GetFamily(ctx, name)
-	if err != nil {
-		return err
-	}
-	e := s.event(ctx, entities.EventRegistrarFamilyDeleted, name, fmt.Sprintf("Registrar family %s deleted", name), before, before, nil)
-	return s.repo.DeleteFamily(ctx, name, []entities.DomainEvent{e})
+	return s.repo.DeleteFamily(ctx, name, func(before *entities.RegistrarFamily) []entities.DomainEvent {
+		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilyDeleted, name, fmt.Sprintf("Registrar family %s deleted", name), before, before, nil)}
+	})
 }
 
 func (s *EPPPolicyService) event(ctx context.Context, eventType, subject, msg string, data, before, after interface{}) entities.DomainEvent {

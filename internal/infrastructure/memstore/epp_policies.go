@@ -52,19 +52,21 @@ func (r *EPPPolicies) GetPolicy(_ context.Context, name string) (*entities.EPPPo
 	return &c, nil
 }
 
-func (r *EPPPolicies) SavePolicy(_ context.Context, p *entities.EPPPolicy, events []entities.DomainEvent) error {
+func (r *EPPPolicies) SavePolicy(_ context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	before := r.policies[p.Name]
 	c := *p
 	r.policies[p.Name] = &c
-	r.Events = append(r.Events, events...)
+	r.Events = append(r.Events, events(before)...)
 	return nil
 }
 
-func (r *EPPPolicies) DeletePolicy(_ context.Context, name string, events []entities.DomainEvent) error {
+func (r *EPPPolicies) DeletePolicy(_ context.Context, name string, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.policies[name]; !ok {
+	before, ok := r.policies[name]
+	if !ok {
 		return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, name)
 	}
 	for clid, p := range r.assignments {
@@ -78,7 +80,7 @@ func (r *EPPPolicies) DeletePolicy(_ context.Context, name string, events []enti
 		}
 	}
 	delete(r.policies, name)
-	r.Events = append(r.Events, events...)
+	r.Events = append(r.Events, events(before)...)
 	return nil
 }
 
@@ -92,15 +94,16 @@ func (r *EPPPolicies) ListAssignments(context.Context) (map[entities.ClIDType]st
 	return out, nil
 }
 
-func (r *EPPPolicies) AssignPolicy(_ context.Context, clid entities.ClIDType, policy string, events []entities.DomainEvent) error {
+func (r *EPPPolicies) AssignPolicy(_ context.Context, clid entities.ClIDType, policy string, events func(string) []entities.DomainEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	before := r.assignments[clid]
 	if policy == "" {
 		delete(r.assignments, clid)
 	} else {
 		r.assignments[clid] = policy
 	}
-	r.Events = append(r.Events, events...)
+	r.Events = append(r.Events, events(before)...)
 	return nil
 }
 
@@ -127,7 +130,7 @@ func (r *EPPPolicies) GetFamily(_ context.Context, name string) (*entities.Regis
 	return &c, nil
 }
 
-func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily, events []entities.DomainEvent) error {
+func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, other := range r.families {
@@ -140,19 +143,21 @@ func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily,
 			}
 		}
 	}
+	before := r.families[f.Name]
 	c := *f
 	r.families[f.Name] = &c
-	r.Events = append(r.Events, events...)
+	r.Events = append(r.Events, events(before)...)
 	return nil
 }
 
-func (r *EPPPolicies) DeleteFamily(_ context.Context, name string, events []entities.DomainEvent) error {
+func (r *EPPPolicies) DeleteFamily(_ context.Context, name string, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.families[name]; !ok {
+	before, ok := r.families[name]
+	if !ok {
 		return fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyNotFound, name)
 	}
 	delete(r.families, name)
-	r.Events = append(r.Events, events...)
+	r.Events = append(r.Events, events(before)...)
 	return nil
 }

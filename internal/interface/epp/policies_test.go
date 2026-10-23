@@ -109,3 +109,40 @@ func TestPoliciesReloadWithoutRestart(t *testing.T) {
 		assert.Equal(t, 1.0, m.GetCounter().GetValue())
 	})
 }
+
+// A family change reaches the sessions already open at the next reload:
+// a registrar that leaves no longer counts against the family, and one
+// that joins counts from then on. Open sessions stay open either way.
+func TestFamilyMembershipFollowsReload(t *testing.T) {
+	creds := newTestCredentials(t)
+	rstRegistrar2(t, creds)
+	one := entities.DefaultEPPPolicyLimits()
+	one.SessionsPerFamily = 1
+	creds.policies.assign("unused", "one", one)
+	both := &entities.RegistrarFamily{Name: "acme", Policy: "one", Members: []entities.ClIDType{testRegistrar, "registrar2"}}
+	creds.policies.setFamilies(both)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	ctx := context.Background()
+
+	held := dial(t, ts.addr)
+	held.login()
+	requireCode(t, dial(t, ts.addr).roundTrip(objectsLoginXML("registrar2", "secret-pw-02")), "2502")
+
+	// registrar1 leaves: its session no longer holds acme's slot.
+	creds.policies.setFamilies(&entities.RegistrarFamily{Name: "acme", Policy: "one", Members: []entities.ClIDType{"registrar2"}})
+	ts.refreshPolicies(ctx)
+	r2 := dial(t, ts.addr)
+	requireCode(t, r2.roundTrip(objectsLoginXML("registrar2", "secret-pw-02")), "1000")
+	requireCode(t, held.roundTrip(domainCheckXML("STILL-OPEN")), "1000")
+
+	// registrar1 joins again: both open sessions stay, and count.
+	creds.policies.setFamilies(both)
+	ts.refreshPolicies(ctx)
+	requireCode(t, held.roundTrip(domainCheckXML("STILL-OPEN-2")), "1000")
+	requireCode(t, dial(t, ts.addr).roundTrip(objectsLoginXML("registrar2", "secret-pw-02")), "2502")
+	for _, sess := range ts.sessions.all() {
+		if sess.auth.Load() != nil {
+			assert.Equal(t, "acme", sess.familyName())
+		}
+	}
+}

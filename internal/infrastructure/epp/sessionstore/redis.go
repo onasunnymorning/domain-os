@@ -114,12 +114,22 @@ return 1
 `)
 
 // renew extends one session's lease and rewrites its record, unless the
-// session has closed. A session the registry lost is put back.
+// session has closed. A session the registry lost is put back. A session
+// whose family changed (its registrar joined or left one, on a policy
+// reload) leaves the old family's index here, in the same step that adds
+// it to the new one.
 //
 // KEYS: session key, tombstone, all index, then the session's other indexes.
-// ARGV: id, lease ms, record.
+// ARGV: id, lease ms, record, family prefix, family ('' for none).
 var renew = redis.NewScript(clock + `
 if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+local old = redis.call('GET', KEYS[1])
+if old then
+  local ok, s = pcall(cjson.decode, old)
+  if ok and type(s) == 'table' and type(s.family) == 'string' and s.family ~= ARGV[5] then
+    redis.call('ZREM', ARGV[4] .. s.family, ARGV[1])
+  end
+end
 redis.call('SET', KEYS[1], ARGV[3], 'PX', lease)
 redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
 redis.call('ZADD', KEYS[3], exp, ARGV[1])
@@ -230,7 +240,7 @@ func (r *Redis) Renew(ctx context.Context, sessions []*entities.EPPSession, leas
 			return fmt.Errorf("encode EPP session %s: %w", s.ID, err)
 		}
 		keys := append([]string{sessionKey(s.ID), tombstoneKey(s.ID), allKey}, indexes(s)...)
-		renew.EvalSha(ctx, pipe, keys, s.ID, lease.Milliseconds(), rec)
+		renew.EvalSha(ctx, pipe, keys, s.ID, lease.Milliseconds(), rec, familyKey(""), s.Family)
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return unavailable(err)

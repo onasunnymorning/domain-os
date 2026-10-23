@@ -118,6 +118,13 @@ func (p *testPolicies) assign(clid, name string, limits entities.EPPPolicyLimits
 	p.assignments[entities.ClIDType(clid)] = name
 }
 
+// setFamilies replaces every family.
+func (p *testPolicies) setFamilies(fs ...*entities.RegistrarFamily) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.families = fs
+}
+
 // family puts members in a family under policy (empty for "default").
 func (p *testPolicies) family(name, policy string, members ...string) {
 	p.mu.Lock()

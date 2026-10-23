@@ -35,9 +35,10 @@ type EPPPolicyRecord struct {
 func (EPPPolicyRecord) TableName() string { return "epp_policies" }
 
 // EPPPolicyAssignmentRecord is a registrar's assigned policy
-// (epp_policy_assignments); a registrar with none has "default".
+// (epp_policy_assignments); a registrar with none has "default". Deleting
+// the registrar deletes it; a policy assigned cannot be deleted.
 type EPPPolicyAssignmentRecord struct {
-	ClID   string `gorm:"primaryKey;size:16"`
+	ClID   string `gorm:"primaryKey"`
 	Policy string `gorm:"not null;size:32;index"`
 }
 
@@ -48,8 +49,8 @@ func (EPPPolicyAssignmentRecord) TableName() string { return "epp_policy_assignm
 type RegistrarFamilyRecord struct {
 	Name        string `gorm:"primaryKey;size:32"`
 	Description string
-	// Policy is empty for "default".
-	Policy    string    `gorm:"size:32;index"`
+	// Policy is NULL for "default"; a policy assigned cannot be deleted.
+	Policy    *string   `gorm:"size:32;index"`
 	UpdatedAt time.Time `gorm:"not null;autoUpdateTime:false"`
 	UpdatedBy string
 }
@@ -58,9 +59,10 @@ type RegistrarFamilyRecord struct {
 func (RegistrarFamilyRecord) TableName() string { return "registrar_families" }
 
 // RegistrarFamilyMemberRecord makes a registrar a member of a family. The
-// registrar is the key, so it is in at most one.
+// registrar is the key, so it is in at most one. Deleting the registrar or
+// the family deletes it.
 type RegistrarFamilyMemberRecord struct {
-	ClID   string `gorm:"primaryKey;size:16"`
+	ClID   string `gorm:"primaryKey"`
 	Family string `gorm:"not null;size:32;index"`
 }
 
@@ -133,26 +135,61 @@ func (r *EPPPolicyRepository) GetPolicy(ctx context.Context, name string) (*enti
 	return rec.toEntity(), nil
 }
 
-// SavePolicy implements repositories.EPPPolicyRepository.
-func (r *EPPPolicyRepository) SavePolicy(ctx context.Context, p *entities.EPPPolicy, events []entities.DomainEvent) error {
+// eppPolicyLock is the transaction-scoped advisory lock every policy
+// change takes, so changes are serialised: each reads what it replaces,
+// and builds its events from that, with no other change in between. Policy
+// changes are rare administrative writes; one lock for all of them keeps
+// assignments, families and policies consistent with each other too.
+const eppPolicyLock int64 = 0x45505050 // "EPPP"
+
+// change runs fn in a transaction holding eppPolicyLock.
+func (r *EPPPolicyRepository) change(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(toPolicyRecord(p)).Error; err != nil {
-			return err
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", eppPolicyLock).Error; err != nil {
+				return fmt.Errorf("lock EPP policies: %w", err)
+			}
 		}
-		return writeEvents(tx, events)
+		return fn(tx)
 	})
 }
 
-// DeletePolicy implements repositories.EPPPolicyRepository. The policy's
-// row is locked first, so an assignment made meanwhile is seen.
-func (r *EPPPolicyRepository) DeletePolicy(ctx context.Context, name string, events []entities.DomainEvent) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ?", name).Take(&EPPPolicyRecord{}).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, name)
-		}
+// policyIn reads a policy in tx, or nil if there is none.
+func policyIn(tx *gorm.DB, name string) (*entities.EPPPolicy, error) {
+	var rec EPPPolicyRecord
+	err := tx.Where("name = ?", name).Take(&rec).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rec.toEntity(), nil
+}
+
+// SavePolicy implements repositories.EPPPolicyRepository.
+func (r *EPPPolicyRepository) SavePolicy(ctx context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
+	return r.change(ctx, func(tx *gorm.DB) error {
+		before, err := policyIn(tx, p.Name)
 		if err != nil {
 			return err
+		}
+		if err := tx.Save(toPolicyRecord(p)).Error; err != nil {
+			return err
+		}
+		return writeEvents(tx, events(before))
+	})
+}
+
+// DeletePolicy implements repositories.EPPPolicyRepository.
+func (r *EPPPolicyRepository) DeletePolicy(ctx context.Context, name string, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
+	return r.change(ctx, func(tx *gorm.DB) error {
+		before, err := policyIn(tx, name)
+		if err != nil {
+			return err
+		}
+		if before == nil {
+			return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, name)
 		}
 		var users []string
 		if err := tx.Model(&EPPPolicyAssignmentRecord{}).Where("policy = ?", name).Order("cl_id").Limit(5).Pluck("cl_id", &users).Error; err != nil {
@@ -168,7 +205,7 @@ func (r *EPPPolicyRepository) DeletePolicy(ctx context.Context, name string, eve
 		if err := tx.Where("name = ?", name).Delete(&EPPPolicyRecord{}).Error; err != nil {
 			return err
 		}
-		return writeEvents(tx, events)
+		return writeEvents(tx, events(before))
 	})
 }
 
@@ -185,36 +222,48 @@ func (r *EPPPolicyRepository) ListAssignments(ctx context.Context) (map[entities
 	return out, nil
 }
 
-// AssignPolicy implements repositories.EPPPolicyRepository. A custom
-// policy's row is locked, so a delete cannot remove it meanwhile.
-func (r *EPPPolicyRepository) AssignPolicy(ctx context.Context, clid entities.ClIDType, policy string, events []entities.DomainEvent) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("cl_id = ?", clid.String()).Delete(&EPPPolicyAssignmentRecord{}).Error; err != nil {
+// AssignPolicy implements repositories.EPPPolicyRepository. The foreign
+// keys refuse a registrar or policy that does not exist, including one
+// deleted since the caller checked.
+func (r *EPPPolicyRepository) AssignPolicy(ctx context.Context, clid entities.ClIDType, policy string, events func(string) []entities.DomainEvent) error {
+	return r.change(ctx, func(tx *gorm.DB) error {
+		var before []string
+		if err := tx.Model(&EPPPolicyAssignmentRecord{}).Where("cl_id = ?", clid.String()).Pluck("policy", &before).Error; err != nil {
 			return err
 		}
-		if policy != "" {
-			if err := lockPolicy(tx, policy); err != nil {
+		if policy == "" {
+			if err := tx.Where("cl_id = ?", clid.String()).Delete(&EPPPolicyAssignmentRecord{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Create(&EPPPolicyAssignmentRecord{ClID: clid.String(), Policy: policy}).Error; err != nil {
+		} else {
+			if p, err := policyIn(tx, policy); err != nil {
+				return err
+			} else if p == nil {
+				return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, policy)
+			}
+			err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "cl_id"}}, DoUpdates: clause.AssignmentColumns([]string{"policy"}),
+			}).Create(&EPPPolicyAssignmentRecord{ClID: clid.String(), Policy: policy}).Error
+			if isForeignKeyViolation(err) {
+				return fmt.Errorf("%w: %s", entities.ErrRegistrarNotFound, clid)
+			}
+			if err != nil {
 				return err
 			}
 		}
-		return writeEvents(tx, events)
+		prev := ""
+		if len(before) > 0 {
+			prev = before[0]
+		}
+		return writeEvents(tx, events(prev))
 	})
 }
 
-// lockPolicy locks a policy's row, unless it is a built-in one, which
-// cannot be deleted and may not be stored yet.
-func lockPolicy(tx *gorm.DB, name string) error {
-	if entities.IsBuiltInEPPPolicy(name) {
-		return nil
-	}
-	err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Where("name = ?", name).Take(&EPPPolicyRecord{}).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, name)
-	}
-	return err
+// isForeignKeyViolation reports whether err is Postgres's
+// foreign_key_violation.
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
 // ListFamilies implements repositories.EPPPolicyRepository.
@@ -246,8 +295,11 @@ func listFamilies(db *gorm.DB, name string) ([]*entities.RegistrarFamily, error)
 	out := make([]*entities.RegistrarFamily, len(recs))
 	for i, f := range recs {
 		out[i] = &entities.RegistrarFamily{
-			Name: f.Name, Description: f.Description, Policy: f.Policy,
-			Members: byFamily[f.Name], UpdatedAt: f.UpdatedAt.UTC(), UpdatedBy: f.UpdatedBy,
+			Name: f.Name, Description: f.Description, Members: byFamily[f.Name],
+			UpdatedAt: f.UpdatedAt.UTC(), UpdatedBy: f.UpdatedBy,
+		}
+		if f.Policy != nil {
+			out[i].Policy = *f.Policy
 		}
 		if out[i].Members == nil {
 			out[i].Members = []entities.ClIDType{}
@@ -256,30 +308,33 @@ func listFamilies(db *gorm.DB, name string) ([]*entities.RegistrarFamily, error)
 	return out, nil
 }
 
-// GetFamily implements repositories.EPPPolicyRepository.
-func (r *EPPPolicyRepository) GetFamily(ctx context.Context, name string) (*entities.RegistrarFamily, error) {
-	fs, err := listFamilies(r.db.WithContext(ctx), name)
-	if err != nil {
+// familyIn reads a family in tx, or nil if there is none.
+func familyIn(tx *gorm.DB, name string) (*entities.RegistrarFamily, error) {
+	fs, err := listFamilies(tx, name)
+	if err != nil || len(fs) == 0 {
 		return nil, err
-	}
-	if len(fs) == 0 {
-		return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyNotFound, name)
 	}
 	return fs[0], nil
 }
 
+// GetFamily implements repositories.EPPPolicyRepository.
+func (r *EPPPolicyRepository) GetFamily(ctx context.Context, name string) (*entities.RegistrarFamily, error) {
+	f, err := familyIn(r.db.WithContext(ctx), name)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyNotFound, name)
+	}
+	return f, nil
+}
+
 // SaveFamily implements repositories.EPPPolicyRepository. Its members are
-// replaced; a member of another family breaks the members' key and is
-// entities.ErrRegistrarInFamily.
-func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events []entities.DomainEvent) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if f.Policy != "" {
-			if err := lockPolicy(tx, f.Policy); err != nil {
-				return err
-			}
-		}
-		rec := &RegistrarFamilyRecord{Name: f.Name, Description: f.Description, Policy: f.Policy, UpdatedAt: f.UpdatedAt, UpdatedBy: f.UpdatedBy}
-		if err := tx.Save(rec).Error; err != nil {
+// replaced.
+func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
+	return r.change(ctx, func(tx *gorm.DB) error {
+		before, err := familyIn(tx, f.Name)
+		if err != nil {
 			return err
 		}
 		members := make([]string, len(f.Members))
@@ -295,40 +350,88 @@ func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.Regist
 				return fmt.Errorf("%w: %s is in %s", entities.ErrRegistrarInFamily, taken[0].ClID, taken[0].Family)
 			}
 		}
+		rec := &RegistrarFamilyRecord{Name: f.Name, Description: f.Description, UpdatedAt: f.UpdatedAt, UpdatedBy: f.UpdatedBy}
+		if f.Policy != "" {
+			if p, err := policyIn(tx, f.Policy); err != nil {
+				return err
+			} else if p == nil {
+				return fmt.Errorf("%w: %s", entities.ErrEPPPolicyNotFound, f.Policy)
+			}
+			policy := f.Policy
+			rec.Policy = &policy
+		}
+		if err := tx.Save(rec).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("family = ?", f.Name).Delete(&RegistrarFamilyMemberRecord{}).Error; err != nil {
 			return err
 		}
 		for _, m := range members {
-			// The registrar is the key: a member added to another family
-			// since the check above breaks it.
 			err := tx.Create(&RegistrarFamilyMemberRecord{ClID: m, Family: f.Name}).Error
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
-				return fmt.Errorf("%w: %s", entities.ErrRegistrarInFamily, m)
+			if isForeignKeyViolation(err) {
+				return fmt.Errorf("family member %s: %w", m, entities.ErrRegistrarNotFound)
 			}
 			if err != nil {
 				return err
 			}
 		}
-		return writeEvents(tx, events)
+		return writeEvents(tx, events(before))
 	})
 }
 
 // DeleteFamily implements repositories.EPPPolicyRepository.
-func (r *EPPPolicyRepository) DeleteFamily(ctx context.Context, name string, events []entities.DomainEvent) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Where("name = ?", name).Delete(&RegistrarFamilyRecord{})
-		if res.Error != nil {
-			return res.Error
+func (r *EPPPolicyRepository) DeleteFamily(ctx context.Context, name string, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
+	return r.change(ctx, func(tx *gorm.DB) error {
+		before, err := familyIn(tx, name)
+		if err != nil {
+			return err
 		}
-		if res.RowsAffected == 0 {
+		if before == nil {
 			return fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyNotFound, name)
 		}
 		if err := tx.Where("family = ?", name).Delete(&RegistrarFamilyMemberRecord{}).Error; err != nil {
 			return err
 		}
-		return writeEvents(tx, events)
+		if err := tx.Where("name = ?", name).Delete(&RegistrarFamilyRecord{}).Error; err != nil {
+			return err
+		}
+		return writeEvents(tx, events(before))
 	})
+}
+
+// eppPolicyForeignKeys are the policy tables' foreign keys
+// (ensureEPPPolicyForeignKeys): a registrar's deletion deletes its
+// assignment and its family membership; a policy assigned to a registrar or
+// a family cannot be deleted; a family's deletion deletes its members.
+var eppPolicyForeignKeys = []struct{ table, name, def string }{
+	{"epp_policy_assignments", "fk_epp_policy_assignments_registrar", "FOREIGN KEY (cl_id) REFERENCES registrars(cl_id) ON DELETE CASCADE"},
+	{"epp_policy_assignments", "fk_epp_policy_assignments_policy", "FOREIGN KEY (policy) REFERENCES epp_policies(name) ON DELETE RESTRICT"},
+	{"registrar_families", "fk_registrar_families_policy", "FOREIGN KEY (policy) REFERENCES epp_policies(name) ON DELETE RESTRICT"},
+	{"registrar_family_members", "fk_registrar_family_members_registrar", "FOREIGN KEY (cl_id) REFERENCES registrars(cl_id) ON DELETE CASCADE"},
+	{"registrar_family_members", "fk_registrar_family_members_family", "FOREIGN KEY (family) REFERENCES registrar_families(name) ON DELETE CASCADE"},
+}
+
+// ensureEPPPolicyForeignKeys adds eppPolicyForeignKeys that are missing.
+// They are declared here rather than as GORM relations, which would put
+// the registrar's key on the wrong table. Postgres only: the SQLite
+// databases some tests migrate do without.
+func ensureEPPPolicyForeignKeys(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+	for _, fk := range eppPolicyForeignKeys {
+		var n int64
+		if err := db.Raw("SELECT count(*) FROM pg_constraint WHERE conname = ?", fk.name).Scan(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		if err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s", fk.table, fk.name, fk.def)).Error; err != nil { // #nosec G201 -- table, name and definition are the compile-time literals above
+			return fmt.Errorf("add foreign key %s: %w", fk.name, err)
+		}
+	}
+	return nil
 }
 
 // seedEPPPolicies stores the built-in policies with their starting limits

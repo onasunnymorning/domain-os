@@ -150,6 +150,25 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 		require.NoError(t, err, "closing frees the family's slot")
 	})
 
+	t.Run("a session renewed out of its family frees the family's slot", func(t *testing.T) {
+		reg := newReg(t)
+		limits := entities.EPPSessionLimits{PerRegistrar: 10, PerLogin: 10, Family: "acme", PerFamily: 1}
+		s := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
+		require.NoError(t, reg.Open(ctx, s, lease, 100))
+		s.Family = "acme"
+		require.NoError(t, reg.Authenticate(ctx, s, lease, limits))
+
+		other := authed(newSession("192.0.2.1"), "rar-b", "rar-b")
+		require.NoError(t, reg.Open(ctx, other, lease, 100))
+		other.Family = "acme"
+		var limit *entities.EPPSessionLimitError
+		require.ErrorAs(t, reg.Authenticate(ctx, other, lease, limits), &limit)
+
+		s.Family = "" // rar-a left the family
+		require.NoError(t, reg.Renew(ctx, []*entities.EPPSession{s}, lease))
+		require.NoError(t, reg.Authenticate(ctx, other, lease, limits), "rar-a's session no longer counts against acme")
+	})
+
 	t.Run("close frees the slot", func(t *testing.T) {
 		reg := newReg(t)
 		s := newSession("192.0.2.1")

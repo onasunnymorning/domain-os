@@ -93,8 +93,10 @@ func DefaultEPPPolicyLimits() EPPPolicyLimits {
 
 // ProbationEPPPolicyLimits are the built-in "probation" policy's starting
 // limits: a new registrar's, until it has shown how it uses the registry.
+// Its sessions and check names are the default's; its family cap is lower,
+// and its command rates and create quota (Phase 5b) set it apart.
 func ProbationEPPPolicyLimits() EPPPolicyLimits {
-	return EPPPolicyLimits{SessionsPerRegistrar: 2, SessionsPerLogin: 2, SessionsPerFamily: 6, CheckNames: 20}
+	return EPPPolicyLimits{SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 30, CheckNames: 50}
 }
 
 // Validate checks every limit is at least 1.

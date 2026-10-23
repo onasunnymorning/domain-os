@@ -81,6 +81,9 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := seedEPPPolicies(db); err != nil {
 		return err
 	}
+	if err := ensureEPPPolicyForeignKeys(db); err != nil {
+		return err
+	}
 
 	// Manual indexes for tables where GORM tags can't be used (M2M join tables, composites).
 	// Using IF NOT EXISTS for idempotency.

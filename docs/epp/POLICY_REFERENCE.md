@@ -421,10 +421,10 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 
 | Limit | `default` | `probation` | Applies to | Over it |
 |---|---|---|---|---|
-| `sessions_per_registrar` | 10 | 2 | A registrar's logged-in sessions, across every node and login | `<login>` 2502, and the session closes |
-| `sessions_per_login` | 10 | 2 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
-| `sessions_per_family` | 40 | 6 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
-| `check_names` | 50 | 20 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
+| `sessions_per_registrar` | 10 | 10 | A registrar's logged-in sessions, across every node and login | `<login>` 2502, and the session closes |
+| `sessions_per_login` | 10 | 10 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
+| `sessions_per_family` | 40 | 30 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
+| `check_names` | 50 | 50 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
 
 Every limit is at least 1. The rules, in order, for each command of a logged-in session ([`epppolicy.Decide`](../../internal/application/epppolicy/enforcer.go)):
 
@@ -433,9 +433,9 @@ Every limit is at least 1. The rules, in order, for each command of a logged-in 
 
 Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, or `none` for a command allowed).
 
-**Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap.
+**Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap. A family change also moves the sessions already open: at the reload, a registrar that left a family stops counting against it, and one that joined counts from then on (its open sessions stay open, even over the family's cap).
 
-**Admin API** (permission `epp:policy:admin`; the static admin token holds it when Auth0 is off). Each change writes an outbox event (`epp.policy.saved`, `epp.policy.deleted`, `epp.policy.assigned`, `epp.family.saved`, `epp.family.deleted`) with the actor and the object before and after, in the same transaction.
+**Admin API** (permission `epp:policy:admin`; the static admin token holds it when Auth0 is off). Each change writes an outbox event (`epp.policy.saved`, `epp.policy.deleted`, `epp.policy.assigned`, `epp.family.saved`, `epp.family.deleted`) with the actor and the object before and after, in the same transaction. Policy changes are serialised by one database lock, and each reads what it replaces inside its transaction, so the before and after are exact under concurrent changes. Foreign keys tie assignments and family members to registrars: deleting a registrar deletes its assignment and its family membership.
 
 | Action | Request |
 |---|---|
