@@ -273,11 +273,22 @@ exception sit together. The code is checked against a salted hash
 Contacts and hosts have no such exception: their `<info>` stays sponsor-only.
 
 **On a transfer, sponsorship moves with the domain, not with what it refers
-to** (built in Phase 4h-2):
+to** (built in Phase 4h-2; the process is in `entities.DomainTransfer`):
 
-- *Hosts* are per registrar, so the domain's nameservers are re-linked to the
-  gaining registrar's hosts of the same names, created for it where missing.
-  The losing registrar's hosts stay its own; orphan cleanup is deferred.
+- *Hosts* are per registrar, and a host belongs to its superordinate domain's
+  sponsor (RFC 5732 §1.1). So, by where each nameserver lives:
+  - the losing registrar's hosts **under the transferred domain** move with
+    it to the gaining registrar, addresses and all, and other domains that use
+    them keep using them;
+  - an **external** nameserver is re-linked to the gaining registrar's host of
+    the same name, created for it where missing; the losing registrar's stays;
+  - a nameserver **under another domain of the registry** keeps its link. Only
+    that domain's sponsor may hold a host under it (Phase 4e, RST epp-25 to
+    27), and a copy would publish a second, diverging set of glue. Refined
+    while building 4h-2: the plan had been to copy every nameserver.
+
+  Hosts the losing registrar no longer uses stay its own; orphan cleanup is
+  deferred.
 - *Contacts* stay where they are: the domain keeps referring to the same
   contact objects, still sponsored by the losing registrar. The gaining
   registrar cannot `<info>` or `<update>` them (`2201`); it replaces them with

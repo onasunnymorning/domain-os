@@ -2,167 +2,279 @@ package entities
 
 import (
 	"errors"
+	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-// TransferStatus represents the current stage of a domain transfer.
+// Domain transfers: moving a domain from one registrar (the losing
+// registrar, its sponsor) to another (the gaining registrar), as RFC 5731
+// §3.2.4 defines the EPP <transfer> command, RFC 9154 the transfer code,
+// and the ICANN Transfer Policy the process. The user guide is the admin
+// UI's Domain Transfers page (frontend/lib/constants/domainTransfersDoc.ts);
+// the EPP result codes are in docs/epp/POLICY_REFERENCE.md.
+//
+// The process:
+//
+//  1. Request. The registrant gets a transfer code from the losing
+//     registrar and gives it to the gaining registrar, which sends
+//     <transfer op="request"> with the code and, optionally, a period.
+//     Domain.RequestTransfer checks, in order: the requester is not the
+//     sponsor; the code matches (RFC 9154 §4.4); the domain has no pending
+//     action, no transfer prohibition, and is out of its transfer lock
+//     period; and the period keeps the expiry within the phase's maximum
+//     horizon. The domain becomes pendingTransfer, and a DomainTransfer is
+//     recorded, pending until its ActionDate (the phase's pending transfer
+//     period, 5 days by default).
+//  2. Answer. The losing registrar approves or rejects it, or the gaining
+//     registrar cancels it. Unanswered by its ActionDate, the registry
+//     approves it (serverApproved; Phase 4i).
+//  3. Approval. Domain.CompleteTransfer moves the domain to the gaining
+//     registrar: its expiry is extended by the period (one year if none was
+//     given), its transfer code is cleared so it cannot be used again, its
+//     grace periods from the losing registrar's transactions end, and it
+//     enters the transfer grace period (RFC 3915 transferPeriod) and a new
+//     transfer lock period. Grandfathered pricing granted until a transfer
+//     is dropped. Host objects are re-linked in the same transaction
+//     (TransferResolution). Contacts stay as they are, still the losing
+//     registrar's: the gaining registrar is told to replace them (ADR 0006,
+//     amended 2026-10-22).
+//  4. Rejection or cancellation clears pendingTransfer and changes nothing
+//     else.
+//
+// Every step queues poll messages (NewTransferPollMessages) for the
+// registrars that did not take it, and the latest transfer of a domain can
+// be queried (<transfer op="query">) until another replaces it.
+
+// TransferStatus is a transfer's state, as RFC 5730 §2.9.3.4 names them
+// (eppcom:trStatusType).
 type TransferStatus string
 
 const (
-
-	// TransferStatusPending means the transfer is pending approval from the losing registrar.
+	// TransferStatusPending: requested, not yet answered.
 	TransferStatusPending TransferStatus = "pending"
-
-	// TransferStatusApproved means the losing registrar has approved or the transfer
-	// auto-approved after the policy’s waiting period.
-	TransferStatusApproved TransferStatus = "approved"
-
-	// TransferStatusDenied means the transfer request was explicitly rejected.
-	TransferStatusDenied TransferStatus = "denied"
+	// TransferStatusClientApproved: approved by the losing registrar.
+	TransferStatusClientApproved TransferStatus = "clientApproved"
+	// TransferStatusClientRejected: rejected by the losing registrar.
+	TransferStatusClientRejected TransferStatus = "clientRejected"
+	// TransferStatusClientCancelled: cancelled by the gaining registrar.
+	TransferStatusClientCancelled TransferStatus = "clientCancelled"
+	// TransferStatusServerApproved: approved by the registry, because the
+	// losing registrar did not answer in time.
+	TransferStatusServerApproved TransferStatus = "serverApproved"
+	// TransferStatusServerCancelled: cancelled by the registry.
+	TransferStatusServerCancelled TransferStatus = "serverCancelled"
 )
 
-var (
-	// ErrTransferComplete is returned when trying to update a transfer that is already approved or denied.
-	ErrTransferComplete = errors.New("transfer is already approved or denied and cannot be updated")
+// IsApproved reports whether the status completes the transfer.
+func (s TransferStatus) IsApproved() bool {
+	return s == TransferStatusClientApproved || s == TransferStatusServerApproved
+}
 
-	// ErrInvalidTransferStatus is returned when trying to update a transfer with an invalid status.
+// Refusals of transfer commands. The EPP adapter maps them to result codes.
+var (
+	// ErrTransferToSponsor: the requester already sponsors the domain
+	// (RFC 5731 §3.2.4: 2106).
+	ErrTransferToSponsor = errors.New("the domain is already sponsored by the requesting registrar")
+	// ErrTransferPending: a transfer is already pending (2300).
+	ErrTransferPending = errors.New("the domain is already pending transfer")
+	// ErrTransferNotPending: an answer to, or a cancellation of, a transfer
+	// that is not pending; or a query of a domain never transferred (2301).
+	ErrTransferNotPending = errors.New("the domain has no pending transfer")
+	// ErrTransferNotEligible: the domain is in its transfer lock period
+	// (2106).
+	ErrTransferNotEligible = errors.New("the domain is not eligible for transfer")
+	// ErrTransferProhibited: the domain's statuses prohibit a transfer: a
+	// transfer prohibition, or another pending action (2304).
+	ErrTransferProhibited = errors.New("the domain's status prohibits a transfer")
+	// ErrTransferExceedsMaxHorizon: the period would take the expiry beyond
+	// the phase's maximum horizon (2306).
+	ErrTransferExceedsMaxHorizon = errors.New("the transfer period would take the expiry beyond the maximum horizon")
+	// ErrInvalidTransferStatus: a transfer resolved to a status that does not
+	// end it.
 	ErrInvalidTransferStatus = errors.New("invalid transfer status")
 )
 
-// DomainTransfer holds information about a domain's transfer event.
+// DomainTransfer is one transfer request of a domain and what became of
+// it. Its fields are those of <domain:trnData> (RFC 5731 §3.2.4).
 type DomainTransfer struct {
-	// An internal ID
-	ID uuid.UUID
-
-	// The RoID of the domain being transferred.
-	DomainRoiD RoidType
-
-	// The name of domain being transferred.
+	// ID is the registry's identifier of the request.
+	ID int64
+	// DomainRoID and DomainName identify the domain.
+	DomainRoID RoidType
 	DomainName DomainName
-
-	// The registrar that is attempting to take over management of the domain.
-	GainingRegistrar Registrar
-
-	// The current or losing registrar of the domain.
-	LosingRegistrar Registrar
-
-	// TransferStatus indicates whether the transfer is pending, approved, denied or failed.
+	// Status is pending until the transfer is answered.
 	Status TransferStatus
-
-	// Time the transfer was requested (when <transfer> command was sent to the registry).
-	CreatedAt time.Time
-
-	// If the transfer is pending, this could be the deadline by which the losing registrar
-	// must respond (configured in PhasePolicy.TransferGP).
+	// RequestingClID is the gaining registrar (reID), and RequestedAt
+	// when it asked (reDate).
+	RequestingClID ClIDType
+	RequestedAt    time.Time
+	// LosingClID is the sponsor when the transfer was requested.
+	LosingClID ClIDType
+	// ActingClID is acID: while pending, the registrar that should act,
+	// the losing registrar; afterwards, the registrar that acted, or the
+	// losing registrar when the registry did.
+	ActingClID ClIDType
+	// ActionDate is acDate: while pending, when the registry will approve
+	// the transfer if the losing registrar has not answered; afterwards,
+	// when it was answered.
+	ActionDate time.Time
+	// Years is the period requested, added to the expiry on approval.
+	Years int
+	// ExpiryDate is exDate: the expiry the transfer gives the domain, while
+	// pending and once approved; zero when it was rejected or cancelled,
+	// which changes no expiry.
 	ExpiryDate time.Time
-
-	// Time the transfer was approved by the losing registrar. If the transfer is auto-approved, this will be nil.
-	AcceptDate time.Time
-
-	// Time the transfer was last updated.
-	UpdatedAt time.Time
-
-	// Optional field to store a reason for denial or failure.
-	Reason string
-
-	// Correlation ID of the transfer request.
-	CorrelationID string
-
-	// Optional: Additional metadata or logs you might want to store.
-	Notes string
 }
 
-// NewDomainTransfer creates a new DomainTransfer object with default values.
-// The transferGracePolicyDays parameter is used to calculate the ExpiryDate field and
-// should be set to the value of the TransferGP field in the PhasePolicy in which the transfer is being processed.
-func NewDomainTransfer(transferGracePolicyDays int) DomainTransfer {
-	return DomainTransfer{
-		ID:         uuid.New(),
-		Status:     TransferStatusPending,
-		CreatedAt:  time.Now().UTC(),
-		ExpiryDate: time.Now().UTC().AddDate(0, 0, transferGracePolicyDays),
-		UpdatedAt:  time.Now().UTC(),
+// RequestTransfer starts a transfer of d to gaining, who gave authInfo as
+// the domain's transfer code, for years (one if 0) under phase's policy.
+// It checks the request as the type's comment lists, then makes d
+// pendingTransfer and returns the transfer, pending. On a refusal d is
+// unchanged.
+func (d *Domain) RequestTransfer(gaining ClIDType, authInfo string, years int, phase *Phase, now time.Time) (*DomainTransfer, error) {
+	if phase == nil {
+		return nil, ErrPhaseNotProvided
 	}
+	if years == 0 {
+		years = 1
+	}
+	switch {
+	case gaining == d.ClID:
+		return nil, ErrTransferToSponsor
+	case !d.AuthInfo.Matches(authInfo):
+		// Before every status check: a registrar without the code learns
+		// nothing about the domain.
+		return nil, ErrEPPAuthInfoMismatch
+	case d.Status.PendingTransfer:
+		return nil, ErrTransferPending
+	case d.Status.HasPendings():
+		return nil, fmt.Errorf("%w: %v", ErrTransferProhibited, d.Status.StringSlice())
+	case d.Status.ClientTransferProhibited:
+		return nil, fmt.Errorf("%w: %s", ErrTransferProhibited, DomainStatusClientTransferProhibited)
+	case d.Status.ServerTransferProhibited:
+		return nil, fmt.Errorf("%w: %s", ErrTransferProhibited, DomainStatusServerTransferProhibited)
+	case now.Before(d.RGPStatus.TransferLockPeriodEnd):
+		return nil, fmt.Errorf("%w: it is in its transfer lock period until %s", ErrTransferNotEligible, d.RGPStatus.TransferLockPeriodEnd.UTC().Format(time.RFC3339))
+	}
+	expiry := d.ExpiryDate.AddDate(years, 0, 0)
+	if expiry.After(now.AddDate(phase.Policy.MaxHorizon, 0, 0)) {
+		return nil, fmt.Errorf("%w of %d years", ErrTransferExceedsMaxHorizon, phase.Policy.MaxHorizon)
+	}
+
+	// A transfer is not an update: only the transfer prohibitions stop it,
+	// so pendingTransfer is set here rather than through SetStatus, which
+	// refuses every change under an update prohibition.
+	d.Status.PendingTransfer = true
+	d.UnSetOKStatusIfNeeded()
+	return &DomainTransfer{
+		DomainRoID:     d.RoID,
+		DomainName:     d.Name,
+		Status:         TransferStatusPending,
+		RequestingClID: gaining,
+		RequestedAt:    now,
+		LosingClID:     d.ClID,
+		ActingClID:     d.ClID,
+		ActionDate:     now.AddDate(0, 0, phase.Policy.PendingTransferDays()),
+		Years:          years,
+		ExpiryDate:     expiry,
+	}, nil
 }
 
-// RequestTransferCommand is a command that can be used to request a domain transfer.
-type RequestTransferCommand struct {
-	// GainingRegistrar is the registrar that is attempting to take over management of the domain.
-	GainingRegistrar string
-
-	// LosingRegistrar is the current registrar of the domain.
-	LosingRegistrar string
-
-	// DomainName is the name of the domain being transferred.
-}
-
-// FinalizeTransferCommand is a command that can be used to approve or deny a domain transfer.
-type FinalizeTransferCommand struct {
-	// CorrelationID is an optional field that can be used to store the ID of the request that approved or denied the transfer.
-	CorrelationID string
-
-	// Reason is an optional field that can be used to store a reason for denial
-	Reason string
-
-	// Status is the new status of the transfer.
-	Status TransferStatus
-}
-
-// Finalize is a method that can be used to approve or deny a domain transfer.
-// It will return an error if the transfer cannot be finalized.
-func (t *DomainTransfer) Finalize(cmd FinalizeTransferCommand) error {
-	switch cmd.Status {
-	case TransferStatusApproved:
-		return t.approve(cmd.CorrelationID, cmd.Reason)
-	case TransferStatusDenied:
-		return t.deny(cmd.CorrelationID, cmd.Reason)
+// Resolve ends a pending transfer with status, as actor did at now; actor
+// is empty when the registry acted. It is ErrTransferNotPending if the
+// transfer has already ended.
+func (t *DomainTransfer) Resolve(status TransferStatus, actor ClIDType, now time.Time) error {
+	if t.Status != TransferStatusPending {
+		return ErrTransferNotPending
+	}
+	switch status {
+	case TransferStatusClientApproved, TransferStatusClientRejected, TransferStatusClientCancelled:
+		if actor == "" {
+			return fmt.Errorf("%w: a client status needs the client", ErrInvalidTransferStatus)
+		}
+	case TransferStatusServerApproved, TransferStatusServerCancelled:
+		actor = t.LosingClID
 	default:
-		return ErrInvalidTransferStatus
+		return fmt.Errorf("%w: %s", ErrInvalidTransferStatus, status)
 	}
-}
-
-// approve marks the transfer as approved and sets the status to TransferStatusApproved.
-// CorrelationID is an optional field that can be used to store the ID of the request that approved the transfer.
-// If the transfer is already denied, it will return an error. If the transfer is already approved, it will be idempotent.
-func (t *DomainTransfer) approve(correlationID, reason string) error {
-	now := time.Now().UTC()
-	if t.isComplete() {
-		if t.Status == TransferStatusApproved {
-			return nil // already approved - idempotent
-		}
-		return ErrTransferComplete
+	t.Status = status
+	t.ActingClID = actor
+	t.ActionDate = now
+	if !status.IsApproved() {
+		t.ExpiryDate = time.Time{}
 	}
-	t.Status = TransferStatusApproved
-	t.CorrelationID = correlationID
-	t.Reason = reason
-	t.AcceptDate = now
-	t.UpdatedAt = now
-
 	return nil
 }
 
-// deny marks the transfer as denied and sets the status to TransferStatusDenied and sets the denial reason.
-// CorrelationID is an optional field that can be used to store the ID of the request that denied the transfer.
-// If the transfer is already approved, it will return an error. If the transfer is already denied, it will be idempotent.
-func (t *DomainTransfer) deny(correlationID, reason string) error {
-	if t.isComplete() {
-		if t.Status == TransferStatusDenied {
-			return nil // already denied - idempotent
-		}
-		return ErrTransferComplete
+// CompleteTransfer applies an approved transfer t to d at now, under
+// phase's policy (step 3 of the process). t.ExpiryDate is set to the
+// expiry d gets. Host objects are the repository's to re-link.
+func (d *Domain) CompleteTransfer(t *DomainTransfer, phase *Phase, now time.Time) error {
+	if phase == nil {
+		return ErrPhaseNotProvided
 	}
-	t.Status = TransferStatusDenied
-	t.Reason = reason
-	t.CorrelationID = correlationID
-	t.UpdatedAt = time.Now().UTC()
-
+	if !t.Status.IsApproved() {
+		return fmt.Errorf("%w: %s does not complete a transfer", ErrInvalidTransferStatus, t.Status)
+	}
+	d.ClID = t.RequestingClID
+	d.ExpiryDate = d.ExpiryDate.AddDate(t.Years, 0, 0)
+	d.RenewedYears += t.Years
+	t.ExpiryDate = d.ExpiryDate
+	d.TransferredAt = now
+	// RFC 9154 §4.3: a code is used once.
+	d.AuthInfo = ""
+	// The grace periods of the losing registrar's transactions end: a
+	// delete by the gaining registrar earns it no refund of them.
+	d.RGPStatus.AddPeriodEnd = time.Time{}
+	d.RGPStatus.RenewPeriodEnd = time.Time{}
+	d.RGPStatus.AutoRenewPeriodEnd = time.Time{}
+	d.RGPStatus.TransferPeriodEnd = now.AddDate(0, 0, phase.Policy.TransferGraceDays())
+	d.RGPStatus.TransferLockPeriodEnd = now.AddDate(0, 0, phase.Policy.TransferLockDays())
+	// Grandfathered pricing granted until a transfer ends here.
+	if d.GrandFathering.GFExpiryCondition == GFConditionTransfer {
+		d.GrandFathering = DomainGrandFathering{}
+	}
+	d.Status.PendingTransfer = false
+	d.SetOKStatusIfNeeded()
 	return nil
 }
 
-// isComplete returns true if the transfer is approved or denied.
-// a completed transfer should not be updated.
-func (t *DomainTransfer) isComplete() bool {
-	return t.Status == TransferStatusApproved || t.Status == TransferStatusDenied
+// EndTransfer clears pendingTransfer after a transfer was rejected or
+// cancelled (step 4): nothing else about d changes.
+func (d *Domain) EndTransfer() {
+	d.Status.PendingTransfer = false
+	d.SetOKStatusIfNeeded()
+}
+
+// TransferResolution is the end of a pending transfer, for
+// repositories.DomainTransferRepository to write in one transaction:
+//
+//   - Domain, as the transfer leaves it, read with version
+//     Domain.UpdatedAt while sponsored by Transfer.LosingClID; written only
+//     if the stored domain is still so (else ErrDomainChanged).
+//   - Transfer, resolved; written only if the stored transfer is still
+//     pending (else ErrDomainChanged).
+//   - Messages, queued.
+//
+// For an approval the host objects go with the domain too (RFC 5732 §1.1:
+// a host's sponsor is its superordinate domain's):
+//
+//   - the losing registrar's hosts under the domain are moved to the gaining
+//     registrar, unless it already has a host of that name;
+//   - each of the domain's nameservers named in GainingHosts is re-linked
+//     to the gaining registrar's host of that name, which is created from
+//     the GainingHosts entry, as given, if the gaining registrar has none;
+//   - the domain's other nameservers keep their links: hosts under other
+//     domains of this registry, which belong to those domains' sponsors.
+//
+// The losing registrar's hosts left behind are left in place: orphan
+// cleanup is a later phase.
+type TransferResolution struct {
+	Domain   *Domain
+	Transfer *DomainTransfer
+	Messages []*PollMessage
+	// GainingHosts are the hosts the gaining registrar's copy of each
+	// re-linked nameserver is created from, with ROIDs minted, when it has
+	// none: the external hosts, and the hosts under the domain.
+	GainingHosts []*Host
 }

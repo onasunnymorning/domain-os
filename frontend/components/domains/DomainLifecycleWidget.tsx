@@ -92,6 +92,7 @@ export function DomainLifecycleWidget({ domain }: Props) {
     addPeriod(domain.RGPStatus.addPeriodEnd, "Add Grace Period", policy?.registrationGP, 5);
     addPeriod(domain.RGPStatus.autoRenewPeriodEnd, "Auto-Renew Grace Period", policy?.autoRenewalGP, 45);
     addPeriod(domain.RGPStatus.renewPeriodEnd, "Renew Grace Period", policy?.renewalGP, 5);
+    addPeriod(domain.RGPStatus.transferPeriodEnd, "Transfer Grace Period", policy?.transferGP, 5);
     addPeriod(domain.RGPStatus.transferLockPeriodEnd, "Transfer Lock", policy?.transferLockPeriod, 60);
     addPeriod(domain.RGPStatus.redemptionPeriodEnd, "Redemption Grace Period", policy?.redemptionGP, 30);
     addPeriod(domain.RGPStatus.purgeDate, "Pending Delete", policy?.pendingdeleteGP, 5);

@@ -28,6 +28,30 @@ type EPPDomainService interface {
 	// Delete starts the end of life of a domain the registrar sponsors,
 	// and returns it as it is then.
 	Delete(ctx context.Context, scope entities.RegistrarClID, name string) (*entities.Domain, error)
+	// TransferRequest asks for a domain to be transferred to the
+	// registrar, and returns the transfer, pending.
+	TransferRequest(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPTransferDomainCommand) (*entities.DomainTransfer, error)
+	// TransferApprove and TransferReject answer the pending transfer of a
+	// domain the registrar sponsors.
+	TransferApprove(ctx context.Context, scope entities.RegistrarClID, name string) (*entities.DomainTransfer, error)
+	TransferReject(ctx context.Context, scope entities.RegistrarClID, name string) (*entities.DomainTransfer, error)
+	// TransferCancel cancels a pending transfer the registrar requested.
+	TransferCancel(ctx context.Context, scope entities.RegistrarClID, name string) (*entities.DomainTransfer, error)
+	// TransferQuery returns a domain's latest transfer, to a registrar
+	// party to it or that gives the domain's transfer code (authInfo, nil
+	// if none was given).
+	TransferQuery(ctx context.Context, scope entities.RegistrarClID, name string, authInfo *string) (*entities.DomainTransfer, error)
+}
+
+// EPPPollService is what the EPP server asks of the registry for <poll>
+// (RFC 5730 §2.9.2.3): the registrar's own message queue.
+type EPPPollService interface {
+	// Request returns the registrar's oldest message and how many it has;
+	// nil and 0 when it has none.
+	Request(ctx context.Context, scope entities.RegistrarClID) (*entities.PollMessage, int64, error)
+	// Ack removes one of the registrar's messages and returns how many
+	// remain.
+	Ack(ctx context.Context, scope entities.RegistrarClID, msgID string) (int64, error)
 }
 
 // EPPHostService is what the EPP server asks of the registry for host

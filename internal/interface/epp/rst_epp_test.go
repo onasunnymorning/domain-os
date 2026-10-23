@@ -783,6 +783,91 @@ func TestRST_epp21_DomainDelete(t *testing.T) {
 	})
 }
 
+// --- epp-19, epp-20: domain transfer --------------------------------------
+
+// rstTransferSetup is the shared start of epp-19 and epp-20: a domain of
+// registrar1 in a TLD with no transfer lock (an RST TLD's policy: see
+// docs/epp/POLICY_REFERENCE.md), and registrar2, the second set of
+// credentials, logged in with RGP. The update that sets the transfer code is
+// part of each case.
+func rstTransferSetup(t *testing.T) (losing, gaining *client, name string) {
+	t.Helper()
+	_, losing, gaining = transferServer(t)
+	name = rstRandChars() + ".test"
+	requireCode(t, losing.roundTrip(createXML(name, createOpts{})), "1000")
+	return losing, gaining, name
+}
+
+// rstSetCode is the <update> RST makes to set a transfer code: a weak code
+// is refused (RFC 9154), a secure one accepted.
+func rstSetCode(t *testing.T, c *client, name string) string {
+	t.Helper()
+	weak := c.roundTrip(domainUpdateXML(name, `<domain:chg><domain:authInfo><domain:pw>abc12345</domain:pw></domain:authInfo></domain:chg>`, ""))
+	assert.True(t, isRefusal(code(weak)), "RFC 9154: an insecure code is refused")
+	secure := "N3w-Tr4nsf3r-Kq8#Zp5!" // #nosec G101 -- a test fixture's authInfo, not a credential
+	requireCode(t, c.roundTrip(domainUpdateXML(name, `<domain:chg><domain:authInfo><domain:pw>`+secure+`</domain:pw></domain:authInfo></domain:chg>`, "")), "1000")
+	return secure
+}
+
+func TestRST_epp19_DomainTransfer(t *testing.T) {
+	losing, gaining, name := rstTransferSetup(t)
+	var pw string
+	t.Run("epp-19 an insecure authInfo code is refused, a secure one set", func(t *testing.T) {
+		pw = rstSetCode(t, losing, name)
+	})
+	exp := exDate(t, losing.roundTrip(infoXML(name, "")))
+	t.Run("epp-19 a transfer with an invalid authInfo code is refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(gaining.roundTrip(transferXML("request", name, pwXML(pw+"x"))))))
+	})
+	t.Run("epp-19 a transfer extending the validity beyond ten years is refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(gaining.roundTrip(transferXML("request", name, `<domain:period unit="y">10</domain:period>`+pwXML(pw))))))
+	})
+	t.Run("epp-19 a transfer with a valid code and period is accepted", func(t *testing.T) {
+		got := code(gaining.roundTrip(transferXML("request", name, `<domain:period unit="y">1</domain:period>`+pwXML(pw))))
+		assert.Contains(t, []string{"1000", "1001"}, got)
+	})
+	t.Run("epp-19 the domain is pendingTransfer within 120 seconds", func(t *testing.T) {
+		assert.Contains(t, statusesOf(losing.roundTrip(infoXML(name, ""))), "pendingTransfer")
+	})
+	requireCode(t, losing.roundTrip(transferXML("approve", name, "")), "1000")
+	info := gaining.roundTrip(infoXML(name, ""))
+	t.Run("epp-19 after approval the gaining registrar sponsors the domain", func(t *testing.T) {
+		assert.Equal(t, "registrar2", text(info, "//infData/clID"))
+	})
+	t.Run("epp-19 the expiry date moved by the period", func(t *testing.T) {
+		assert.Equal(t, exp.AddDate(1, 0, 0), exDate(t, info))
+	})
+	t.Run("epp-19 the authInfo code is reset (RFC 9154)", func(t *testing.T) {
+		assert.Nil(t, info.FindElement("//infData/authInfo"), "no code is set")
+	})
+	t.Run("epp-19 the domain has the transferPeriod RGP status", func(t *testing.T) {
+		var rgp []string
+		for _, el := range info.FindElements("//extension/infData/rgpStatus") {
+			rgp = append(rgp, el.SelectAttrValue("s", ""))
+		}
+		assert.Contains(t, rgp, "transferPeriod")
+	})
+}
+
+func TestRST_epp20_DomainTransferRejection(t *testing.T) {
+	losing, gaining, name := rstTransferSetup(t)
+	pw := rstSetCode(t, losing, name)
+	t.Run("epp-20 a transfer with an incorrect code is refused", func(t *testing.T) {
+		assert.True(t, isRefusal(code(gaining.roundTrip(transferXML("request", name, pwXML("Wr0ng-Tr4nsf3r-Kq8#Zp5!"))))))
+	})
+	t.Run("epp-20 a transfer with the secure code is accepted", func(t *testing.T) {
+		assert.Contains(t, []string{"1000", "1001"}, code(gaining.roundTrip(transferXML("request", name, pwXML(pw)))))
+	})
+	requireCode(t, losing.roundTrip(transferXML("reject", name, "")), "1000")
+	info := losing.roundTrip(infoXML(name, ""))
+	t.Run("epp-20 after rejection the domain stays with its sponsor", func(t *testing.T) {
+		assert.Equal(t, testRegistrar, text(info, "//infData/clID"))
+	})
+	t.Run("epp-20 the domain is not pendingTransfer", func(t *testing.T) {
+		assert.NotContains(t, statusesOf(info), "pendingTransfer")
+	})
+}
+
 // --- epp-06 … epp-10: contact objects -------------------------------------
 
 // This registry keeps contacts (general.registryDataModel is not minimum),
@@ -1382,15 +1467,12 @@ func TestRST_epp27_GluelessInternalHost(t *testing.T) {
 	})
 }
 
-// --- Pending: domain transfer --------------------------------------------
+// --- Pending -------------------------------------------------------------
 
 // rstPendingCases are the StandardEPP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_EPPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
-var rstPendingCases = map[string]string{
-	"epp-19": "Phase 4h-2: domain <transfer> request and approval; pendingTransfer within 120s",
-	"epp-20": "Phase 4h-2: domain <transfer> rejection",
-}
+var rstPendingCases = map[string]string{}
 
 func TestRST_EPPPendingCases(t *testing.T) {
 	ids := make([]string, 0, len(rstPendingCases))
@@ -1406,7 +1488,7 @@ func TestRST_EPPPendingCases(t *testing.T) {
 // rstImplementedCases have their own TestRST_ function in this file.
 var rstImplementedCases = []string{
 	"epp-01", "epp-02", "epp-03", "epp-04", "epp-05", "epp-06", "epp-07", "epp-08", "epp-09", "epp-10",
-	"epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-16", "epp-17", "epp-18", "epp-21", "epp-23", "epp-24",
+	"epp-11", "epp-12", "epp-13", "epp-14", "epp-15", "epp-16", "epp-17", "epp-18", "epp-19", "epp-20", "epp-21", "epp-23", "epp-24",
 	"epp-25", "epp-26", "epp-27",
 }
 

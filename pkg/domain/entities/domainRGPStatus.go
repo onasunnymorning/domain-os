@@ -10,6 +10,10 @@ type DomainRGPStatus struct {
 	RenewPeriodEnd time.Time `json:"renewPeriodEnd"`
 	// AutoRenewPeriodEnd is the end of the period in which the domain may be deleted by the registrar after an auto-renew without causing a charge. This should be handled by the billing system.
 	AutoRenewPeriodEnd time.Time `json:"autoRenewPeriodEnd"`
+	// TransferPeriodEnd is the end of the transfer grace period
+	// (RFC 3915 transferPeriod): the days after a transfer in which the
+	// gaining registrar may delete the domain for a refund.
+	TransferPeriodEnd time.Time `json:"transferPeriodEnd"`
 	// TransferLockPeriodEnd is the end of the period in which the domain cannot be transferred. This applies after a registration and a transfer.
 	TransferLockPeriodEnd time.Time `json:"transferLockPeriodEnd"`
 	// RedemptionPeriodEnd is the date after which the domain will no longer be restorable it will remain in the repository until the purge date.
@@ -20,7 +24,7 @@ type DomainRGPStatus struct {
 
 // IsNil checks if the DomainRGPStatus object is nil
 func (d *DomainRGPStatus) IsNil() bool {
-	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferLockPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PurgeDate.IsZero()
+	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferPeriodEnd.IsZero() && d.TransferLockPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PurgeDate.IsZero()
 }
 
 // RFC 3915 grace period statuses.
@@ -28,6 +32,7 @@ const (
 	RGPStatusAddPeriod        = "addPeriod"
 	RGPStatusAutoRenewPeriod  = "autoRenewPeriod"
 	RGPStatusRenewPeriod      = "renewPeriod"
+	RGPStatusTransferPeriod   = "transferPeriod"
 	RGPStatusRedemptionPeriod = "redemptionPeriod"
 	RGPStatusPendingRestore   = "pendingRestore"
 	RGPStatusPendingDelete    = "pendingDelete"
@@ -38,7 +43,7 @@ const (
 // pendingDelete as it sets pendingRestore, and the two never hold together.
 // A domain pending delete is in redemptionPeriod while still restorable,
 // then pendingDelete until it is purged. Otherwise it is in each of the
-// add, renew and auto-renew grace periods that has not ended.
+// add, renew, auto-renew and transfer grace periods that has not ended.
 func (d *Domain) RGPStatuses(now time.Time) []string {
 	r := d.RGPStatus
 	if d.Status.PendingRestore {
@@ -60,6 +65,7 @@ func (d *Domain) RGPStatuses(now time.Time) []string {
 		{r.AddPeriodEnd, RGPStatusAddPeriod},
 		{r.RenewPeriodEnd, RGPStatusRenewPeriod},
 		{r.AutoRenewPeriodEnd, RGPStatusAutoRenewPeriod},
+		{r.TransferPeriodEnd, RGPStatusTransferPeriod},
 	} {
 		if now.Before(p.end) {
 			out = append(out, p.status)

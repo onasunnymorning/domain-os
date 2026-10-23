@@ -172,13 +172,31 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
         <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
           {!isEditing ? (
-            <div className="font-semibold">{policy.transferLockPeriod || 0} days</div>
+            <div className="font-semibold">{policy.transferLockPeriod ?? 0} days</div>
           ) : (
             <div className="flex items-center gap-1">
               <input
                 type="number" min="0"
-                value={editedPolicy?.transferLockPeriod || 0}
+                value={editedPolicy?.transferLockPeriod ?? 0}
                 onChange={(e) => handleChange('transferLockPeriod', parseInt(e.target.value) || 0)}
+                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
+              />
+              <span className="text-xs text-muted-foreground">days</span>
+            </div>
+          )}
+        </div>
+
+        {/* Pending Transfer */}
+        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Pending Transfer</div>
+          {!isEditing ? (
+            <div className="font-semibold">{policy.pendingTransferPeriod || 5} days</div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <input
+                type="number" min="1"
+                value={editedPolicy?.pendingTransferPeriod || 5}
+                onChange={(e) => handleChange('pendingTransferPeriod', parseInt(e.target.value) || 5)}
                 className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
               />
               <span className="text-xs text-muted-foreground">days</span>

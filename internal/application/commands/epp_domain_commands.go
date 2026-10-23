@@ -91,3 +91,15 @@ type EPPRenewDomainCommand struct {
 	Period     int
 	PeriodUnit string
 }
+
+// EPPTransferDomainCommand is a <domain:transfer op="request"> (RFC 5731
+// §3.2.4), as the EPP adapter read it.
+type EPPTransferDomainCommand struct {
+	Name string
+	// AuthInfo is the <domain:pw> given, nil if none was.
+	AuthInfo *string
+	// Period and PeriodUnit are the <domain:period>; a zero Period means
+	// none was given: one year.
+	Period     int
+	PeriodUnit string
+}

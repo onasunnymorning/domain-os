@@ -40,6 +40,10 @@ type Registry struct {
 	knownTLDs    map[string]bool
 	Registered   []string // names Register stored, in order
 	registerHook func(*commands.RegisterDomainCommand) error
+	// transfers are each domain's transfers, oldest first, by ROID.
+	transfers map[entities.RoidType][]*entities.DomainTransfer
+	// messages are the poll queues, in the order queued.
+	messages []*entities.PollMessage
 }
 
 // hostKey identifies a host object: each registrar has its own host object
@@ -53,6 +57,7 @@ func NewRegistry(repository entities.RepositoryID) *Registry {
 		now: time.Now, repository: repository, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
 		domains: map[string]*entities.Domain{}, contacts: map[string]*entities.Contact{},
 		hosts: map[hostKey]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
+		transfers: map[entities.RoidType][]*entities.DomainTransfer{},
 	}
 }
 
@@ -93,6 +98,16 @@ func (r *Registry) AddTLD(name string, open bool) *entities.Phase {
 	p.TLDName = entities.DomainName(name)
 	r.phases[name] = append(r.phases[name], p)
 	return p
+}
+
+// SetPolicy changes the policy of every phase of tld, as the registry's
+// operator would.
+func (r *Registry) SetPolicy(tld string, fn func(*entities.PhasePolicy)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.phases[tld] {
+		fn(&p.Policy)
+	}
 }
 
 // Accredit accredits a registrar for a TLD.
@@ -409,11 +424,17 @@ func (r *Registry) writeDomainAsRead(d *entities.Domain) (*entities.Domain, erro
 	if r.err != nil {
 		return nil, r.err
 	}
+	return r.writeDomainLocked(d, d.ClID)
+}
+
+// writeDomainLocked is writeDomainAsRead for a caller that holds the lock,
+// with the sponsor the domain was read with.
+func (r *Registry) writeDomainLocked(d *entities.Domain, readSponsor entities.ClIDType) (*entities.Domain, error) {
 	stored, ok := r.domains[d.Name.String()]
 	switch {
 	case !ok:
 		return nil, entities.ErrDomainNotFound
-	case !stored.UpdatedAt.Equal(d.UpdatedAt) || stored.ClID != d.ClID:
+	case !stored.UpdatedAt.Equal(d.UpdatedAt) || stored.ClID != readSponsor:
 		return nil, entities.ErrDomainChanged
 	}
 	next := d.DeepCopy()

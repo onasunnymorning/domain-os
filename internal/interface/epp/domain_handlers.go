@@ -70,6 +70,14 @@ var refusals = []struct {
 	{entities.ErrDomainRenewExceedsMaxHorizon, epplib.StatusParameterPolicyError},
 	{entities.ErrDomainRenewNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
 	{entities.ErrDomainDeleteNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
+	// Domain transfer (RFC 5731 §3.2.4) and poll (RFC 5730 §2.9.2.3).
+	{entities.ErrTransferToSponsor, epplib.StatusNotEligibleForTransfer},
+	{entities.ErrTransferNotEligible, epplib.StatusNotEligibleForTransfer},
+	{entities.ErrTransferPending, epplib.StatusObjectPendingTransfer},
+	{entities.ErrTransferNotPending, epplib.StatusObjectNotPendingTransfer},
+	{entities.ErrTransferProhibited, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrTransferExceedsMaxHorizon, epplib.StatusParameterPolicyError},
+	{entities.ErrPollMessageNotFound, epplib.StatusObjectDoesNotExist},
 	// Host and contact commands (RFC 5732, RFC 5733).
 	{entities.ErrEPPStatusNotClient, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPStatusAlreadySet, epplib.StatusParameterPolicyError},

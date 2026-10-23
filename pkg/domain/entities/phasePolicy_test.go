@@ -17,7 +17,9 @@ func TestNewPhasePolicy(t *testing.T) {
 	assert.Equal(t, AutoRenewalGP, phasePolicy.AutoRenewalGP)
 	assert.Equal(t, RedemptionGP, phasePolicy.RedemptionGP)
 	assert.Equal(t, PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, TransferLockPeriod, phasePolicy.TransferLockPeriod)
+	assert.Equal(t, TransferGP, phasePolicy.TransferGP)
+	assert.Equal(t, PendingTransferPeriod, phasePolicy.PendingTransferDays())
+	assert.Equal(t, TransferLockPeriod, phasePolicy.TransferLockDays())
 	assert.Equal(t, MaxHorizon, phasePolicy.MaxHorizon)
 	assert.Equal(t, &ar, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, &rv, phasePolicy.RequiresValidation)
@@ -71,20 +73,21 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 		BillingContactDataPolicy:    ContactDataPolicyTypeOptional,
 	}
 	newPolicy := &PhasePolicy{
-		MinLabelLength:     2,
-		MaxLabelLength:     64,
-		RegistrationGP:     6,
-		RenewalGP:          6,
-		AutoRenewalGP:      46,
-		TransferGP:         6,
-		RedemptionGP:       31,
-		PendingDeleteGP:    6,
-		TransferLockPeriod: 61,
-		MaxHorizon:         11,
-		AllowAutoRenew:     &ar,
-		RequiresValidation: &rv,
-		BaseCurrency:       "EUR",
-		ContactDataPolicy:  ContactDataPolicy,
+		MinLabelLength:        2,
+		MaxLabelLength:        64,
+		RegistrationGP:        6,
+		RenewalGP:             6,
+		AutoRenewalGP:         46,
+		TransferGP:            6,
+		RedemptionGP:          31,
+		PendingDeleteGP:       6,
+		TransferLockPeriod:    intPtr(61),
+		PendingTransferPeriod: 4,
+		MaxHorizon:            11,
+		AllowAutoRenew:        &ar,
+		RequiresValidation:    &rv,
+		BaseCurrency:          "EUR",
+		ContactDataPolicy:     ContactDataPolicy,
 	}
 	phasePolicy.UpdatePolicy(newPolicy)
 	assert.Equal(t, newPolicy.MinLabelLength, phasePolicy.MinLabelLength)
@@ -95,7 +98,8 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 	assert.Equal(t, newPolicy.TransferGP, phasePolicy.TransferGP)
 	assert.Equal(t, newPolicy.RedemptionGP, phasePolicy.RedemptionGP)
 	assert.Equal(t, newPolicy.PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, newPolicy.TransferLockPeriod, phasePolicy.TransferLockPeriod)
+	assert.Equal(t, 61, phasePolicy.TransferLockDays())
+	assert.Equal(t, 4, phasePolicy.PendingTransferDays())
 	assert.Equal(t, newPolicy.MaxHorizon, phasePolicy.MaxHorizon)
 	assert.Equal(t, newPolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, newPolicy.RequiresValidation, phasePolicy.RequiresValidation)
@@ -144,4 +148,19 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 	assert.Equal(t, phasePolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, phasePolicy.RequiresValidation, phasePolicy.RequiresValidation)
 	assert.Equal(t, phasePolicy.BaseCurrency, phasePolicy.BaseCurrency)
+}
+
+func intPtr(v int) *int { return &v }
+
+// TestPhasePolicy_TransferLockCanBeZero: a lock of 0 days is a setting (no
+// lock, for an RST or OT&E TLD), not "not given".
+func TestPhasePolicy_TransferLockCanBeZero(t *testing.T) {
+	p := NewPhasePolicy()
+	p.UpdatePolicy(&PhasePolicy{TransferLockPeriod: intPtr(0)})
+	assert.Equal(t, 0, p.TransferLockDays())
+	p.UpdatePolicy(&PhasePolicy{MaxHorizon: 5})
+	assert.Equal(t, 0, p.TransferLockDays(), "a policy update that does not give it leaves it")
+	assert.Equal(t, TransferLockPeriod, (&PhasePolicy{}).TransferLockDays(), "unset: the default")
+	assert.Equal(t, PendingTransferPeriod, (&PhasePolicy{}).PendingTransferDays(), "unset: the default")
+	assert.Equal(t, TransferGP, (&PhasePolicy{}).TransferGraceDays(), "unset (a phase stored before the default existed): the default")
 }
