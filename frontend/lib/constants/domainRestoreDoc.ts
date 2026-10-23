@@ -58,7 +58,7 @@ The sponsor sends a second update with \`<rgp:restore op="report">\` and the rep
 | \`statement\` (two) | That the registrar has not restored the domain to use or sell it itself, and that the report is factual |
 | \`other\` | Anything else (optional) |
 
-The registry checks that every required part has content (2003 otherwise), and that \`delTime\` is before \`resTime\`, which is not in the future (2004 otherwise). The report is kept, as sent, with the domain's *restored* event.
+The registry checks that every required part is given and has content, both times included (2003 otherwise), and that \`delTime\` is before \`resTime\`, which is not in the future, both in years 1 to 9999 in UTC (2004 otherwise). Nothing changes when a report is refused. The report is kept, as sent, with the domain's *restored* event.
 
 A report is refused with 2304 when no restore was requested, or when the request has lapsed.
 
