@@ -27,7 +27,8 @@ import (
 //     period, 5 days by default).
 //  2. Answer. The losing registrar approves or rejects it, or the gaining
 //     registrar cancels it. Unanswered by its ActionDate, the registry
-//     approves it (serverApproved; Phase 4i).
+//     approves it (serverApproved): the hourly TransferApprovalLoop
+//     workflow.
 //  3. Approval. Domain.CompleteTransfer moves the domain to the gaining
 //     registrar: its expiry is extended by the period (one year if none was
 //     given), its transfer code is cleared so it cannot be used again, its

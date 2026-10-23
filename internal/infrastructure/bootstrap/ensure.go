@@ -74,6 +74,16 @@ func desiredSchedules(opts Options) []scheduleSpec {
 			Note:          "Restores domains every 4 hours — managed by bootstrap",
 		},
 		{
+			ID:            "transfer-approval-loop",
+			Workflow:      workflows.TransferApprovalLoop,
+			Queue:         temporal.QueueLifecycle,
+			Interval:      time.Hour,
+			Offset:        15 * time.Minute,
+			Args:          []interface{}{workflows.TransferApprovalLoopParams{}},
+			CatchupWindow: time.Hour,
+			Note:          "Approves transfers unanswered by the end of their pending transfer period, hourly — managed by bootstrap",
+		},
+		{
 			ID:            "sync-registrars",
 			Workflow:      workflows.SyncRegistrarsTypeName,
 			Queue:         temporal.QueueScheduled,

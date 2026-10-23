@@ -290,6 +290,22 @@ func (r *DomainTransferRepository) LatestTransfer(ctx context.Context, roid enti
 	return r.fromTransferRecord(&rec), nil
 }
 
+// ListDueTransfers implements repositories.DomainTransferRepository. It
+// reads idx_domain_transfers_pending (status, action_date).
+func (r *DomainTransferRepository) ListDueTransfers(ctx context.Context, dueBy time.Time, limit int) ([]*entities.DomainTransfer, error) {
+	var recs []DomainTransferRecord
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND action_date <= ?", string(entities.TransferStatusPending), dueBy).
+		Order("action_date, id").Limit(limit).Find(&recs).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*entities.DomainTransfer, len(recs))
+	for i := range recs {
+		out[i] = r.fromTransferRecord(&recs[i])
+	}
+	return out, nil
+}
+
 // OldestPollMessage implements repositories.PollMessageRepository.
 func (r *DomainTransferRepository) OldestPollMessage(ctx context.Context, clid entities.ClIDType) (*entities.PollMessage, int64, error) {
 	q := r.db.WithContext(ctx).Model(&PollMessageRecord{}).Where("cl_id = ?", clid.String())

@@ -3,9 +3,12 @@ package activities
 import (
 	"context"
 	"fmt"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"log"
 	"os"
+	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -73,6 +76,9 @@ func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActiv
 		tldRepo, phaseRepo, premiumLabelRepo, fxRepo,
 		registrarRepo, eventPublisher,
 	)
+	// The transfer auto-approval loop writes through the transfer repository,
+	// which queues the poll messages in the same transaction.
+	domainService.SetTransferRepo(postgres.NewDomainTransferRepository(gormDB, repositoryID))
 
 	log.Printf("[lifecycle-activities] Initialized with direct service access (snowflake node: %d)", roidService.ListNode())
 
@@ -247,6 +253,32 @@ func (a *LifecycleActivities) BatchPurgeDomains(ctx context.Context, correlation
 		}
 	}
 
+	return result, nil
+}
+
+// ListDueTransfers names up to limit domains whose pending transfer was due
+// for an answer by dueBy (Phase 4i auto-approval).
+func (a *LifecycleActivities) ListDueTransfers(ctx context.Context, correlationID string, dueBy time.Time, limit int) ([]string, error) {
+	return a.DomainService.ListDueTransfers(appcontext.WithCorrelationID(ctx, correlationID), dueBy, limit)
+}
+
+// BatchApproveDueTransfers approves, as the registry, the pending
+// transfers of the domains named that were due by dueBy. Idempotent: a
+// transfer already answered, or not yet due, is skipped.
+func (a *LifecycleActivities) BatchApproveDueTransfers(ctx context.Context, correlationID string, dueBy time.Time, domainNames []string) (services.BatchResult, error) {
+	ctx = appcontext.WithCorrelationID(ctx, correlationID)
+	result := services.BatchResult{Succeeded: []string{}, Failed: []services.BatchFailure{}}
+	for i := 0; i < len(domainNames); i += defaultBatchChunkSize {
+		end := min(i+defaultBatchChunkSize, len(domainNames))
+		batch := a.DomainService.BatchApproveDueTransfers(ctx, domainNames[i:end], dueBy)
+		result.Succeeded = append(result.Succeeded, batch.Succeeded...)
+		result.Failed = append(result.Failed, batch.Failed...)
+		result.Skipped = append(result.Skipped, batch.Skipped...)
+		activity.RecordHeartbeat(ctx, fmt.Sprintf("approved %d/%d transfers", end, len(domainNames)))
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+	}
 	return result, nil
 }
 

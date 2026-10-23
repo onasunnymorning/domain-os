@@ -131,13 +131,14 @@ The registry answers **1001** (action pending), with the transfer in \`<domain:t
 
 - The domain has the status \`pendingTransfer\`. While pending, the sponsor cannot update, renew or delete it (2304).
 - The losing registrar receives a poll message: *Transfer requested*.
-- The transfer's \`acDate\` is the end of the **pending transfer period** (5 days by default). Automatic approval at that date (\`serverApproved\`) comes in a later release; until then, a transfer stays pending until a registrar answers it.
+- The transfer's \`acDate\` is the end of the **pending transfer period** (5 days by default). If the losing registrar has not answered by then, **the registry approves the transfer** (\`serverApproved\`), as the ICANN Transfer Policy requires. A scheduled job checks every hour, so this happens within the hour after the \`acDate\`, and the transfer completes exactly as if the losing registrar had approved it.
 
 ### 4. The answer
 
 | Op | Who | Result |
 |---|---|---|
 | \`approve\` | The losing registrar (the sponsor) | The transfer completes: \`clientApproved\` |
+| *(no answer)* | The registry, when the pending period ends | The transfer completes: \`serverApproved\` |
 | \`reject\` | The losing registrar | The domain stays: \`clientRejected\` |
 | \`cancel\` | The gaining registrar that requested it | The domain stays: \`clientCancelled\` |
 | \`query\` | The sponsor, either registrar of the latest transfer, or anyone giving the domain's code | The latest transfer, pending or not |
@@ -187,7 +188,7 @@ Each step of a transfer queues a message for the registrar that did **not** take
 | Approval | *Transfer approved; the domain's contacts are still the losing registrar's: replace them with your own* | The gaining registrar |
 | Rejection | *Transfer rejected* | The gaining registrar |
 | Cancellation | *Transfer cancelled* | The losing registrar |
-| Approval by the registry (later release) | *Transfer approved by the registry* | Both |
+| Approval by the registry, at the end of the pending period | *Transfer approved by the registry* (the gaining registrar's adds the contacts note) | Both |
 
 Every message carries the transfer as it stood at that step, as \`<domain:trnData>\`.
 

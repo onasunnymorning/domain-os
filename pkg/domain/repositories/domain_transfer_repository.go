@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -24,6 +25,10 @@ type DomainTransferRepository interface {
 	// roid, pending or not, or entities.ErrTransferNotPending if it has
 	// none.
 	LatestTransfer(ctx context.Context, roid entities.RoidType) (*entities.DomainTransfer, error)
+	// ListDueTransfers returns up to limit pending transfers whose ActionDate
+	// is at or before dueBy, the earliest first: those the registry
+	// approves because the losing registrar did not answer in time.
+	ListDueTransfers(ctx context.Context, dueBy time.Time, limit int) ([]*entities.DomainTransfer, error)
 }
 
 // PollMessageRepository is the registrars' message queues (RFC 5730
