@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -112,7 +111,7 @@ func (r *DomainTransferRepository) ResolveTransfer(ctx context.Context, res *ent
 			return err
 		}
 		if t.Status.IsApproved() {
-			if err := moveHostsWithDomain(tx, dbDomain, t, res.GainingHosts); err != nil {
+			if err := moveHostsWithDomain(tx, dbDomain, t, d.Hosts, res.GainingHosts); err != nil {
 				return err
 			}
 		}
@@ -128,78 +127,127 @@ func (r *DomainTransferRepository) ResolveTransfer(ctx context.Context, res *ent
 }
 
 // moveHostsWithDomain moves the hosts of an approved transfer, as
-// entities.TransferResolution describes.
-func moveHostsWithDomain(tx *gorm.DB, dbDomain *Domain, t *entities.DomainTransfer, gainingHosts []*entities.Host) error {
+// entities.TransferResolution describes. snapshot is the domain's
+// nameservers as the plan (gainingHosts) was made from them.
+//
+// The domain's row is locked already, so its links, and the hosts under it
+// (host writes that place a host under a domain lock its row first), cannot
+// change. Every host touched is then locked in one statement, in ROID
+// order, as the other domain and host writes lock them, so two approvals,
+// or an approval and an update, cannot deadlock. A nameserver renamed or
+// replaced since the plan was made, or a gaining registrar's host created
+// or deleted meanwhile, is errNotWritten: the transfer is read and planned
+// again.
+func moveHostsWithDomain(tx *gorm.DB, dbDomain *Domain, t *entities.DomainTransfer, snapshot, gainingHosts []*entities.Host) error {
 	losing, gaining := t.LosingClID.String(), t.RequestingClID.String()
 	now := dbDomain.UpdatedAt
 
-	// The links as they are, locked with their hosts.
-	var links []struct {
+	type hostRef struct {
 		RoID int64
 		Name string
 		ClID string
 	}
+	var links []hostRef
 	if err := tx.Raw(`SELECT h.ro_id, h.name, h.cl_id FROM domain_hosts dh JOIN hosts h ON h.ro_id = dh.host_ro_id
-		WHERE dh.domain_ro_id = ? ORDER BY h.ro_id FOR UPDATE OF h`, dbDomain.RoID).Scan(&links).Error; err != nil {
+		WHERE dh.domain_ro_id = ?`, dbDomain.RoID).Scan(&links).Error; err != nil {
 		return err
 	}
-	affected := make([]int64, 0, len(links))
+	// The links must be the nameservers the plan was made from.
+	planned := map[int64]string{}
+	for _, h := range snapshot {
+		id, err := h.RoID.Int64()
+		if err != nil {
+			return err
+		}
+		planned[id] = h.Name.String()
+	}
+	if len(links) != len(planned) {
+		return errNotWritten
+	}
 	for _, l := range links {
-		affected = append(affected, l.RoID)
+		if name, ok := planned[l.RoID]; !ok || name != l.Name {
+			return errNotWritten
+		}
 	}
 
-	// The losing registrar's hosts under the domain go with it, but for a
-	// name the gaining registrar already has.
-	var moved []int64
-	if err := tx.Raw(`SELECT ro_id FROM hosts h WHERE h.cl_id = ? AND h.name LIKE ?
-		AND NOT EXISTS (SELECT 1 FROM hosts g WHERE g.cl_id = ? AND g.name = h.name)
-		ORDER BY ro_id FOR UPDATE`, losing, "%."+dbDomain.Name, gaining).Scan(&moved).Error; err != nil {
+	// The losing registrar's hosts under the domain (RFC 5732 §1.1: the
+	// domain itself, or any name below it), but for a name the gaining
+	// registrar already has.
+	var subordinate []int64
+	if err := tx.Raw(`SELECT ro_id FROM hosts h WHERE h.cl_id = ? AND (h.name = ? OR h.name LIKE ?)
+		AND NOT EXISTS (SELECT 1 FROM hosts g WHERE g.cl_id = ? AND g.name = h.name)`,
+		losing, dbDomain.Name, "%."+dbDomain.Name, gaining).Scan(&subordinate).Error; err != nil {
 		return err
 	}
-	if len(moved) > 0 {
-		if err := tx.Exec("UPDATE hosts SET cl_id = ?, up_rr = ?, updated_at = ? WHERE ro_id IN ?", gaining, gaining, now, moved).Error; err != nil {
+	// The gaining registrar's hosts already named as re-linked nameservers.
+	byName := map[string]*entities.Host{}
+	names := make([]string, 0, len(gainingHosts))
+	for _, h := range gainingHosts {
+		byName[h.Name.String()] = h
+		names = append(names, h.Name.String())
+	}
+	var targets []hostRef
+	if len(names) > 0 {
+		if err := tx.Raw("SELECT ro_id, name, cl_id FROM hosts WHERE cl_id = ? AND name IN ?", gaining, names).Scan(&targets).Error; err != nil {
 			return err
 		}
 	}
-	affected = unionIDs(affected, moved)
 
-	// Each nameserver to re-link goes to the gaining registrar's host of
-	// that name, created if it has none.
-	byName := map[string]*entities.Host{}
-	for _, h := range gainingHosts {
-		byName[h.Name.String()] = h
+	// Lock them all, in ROID order.
+	all := unionIDs(nil, subordinate)
+	for _, l := range links {
+		all = unionIDs(all, []int64{l.RoID})
 	}
+	for _, g := range targets {
+		all = unionIDs(all, []int64{g.RoID})
+	}
+	if len(all) > 0 {
+		var locked []int64
+		if err := tx.Raw("SELECT ro_id FROM hosts WHERE ro_id IN ? ORDER BY ro_id FOR UPDATE", all).Scan(&locked).Error; err != nil {
+			return err
+		}
+		if len(locked) != len(all) {
+			return errNotWritten // one was deleted since it was read
+		}
+	}
+
+	if len(subordinate) > 0 {
+		if err := tx.Exec("UPDATE hosts SET cl_id = ?, up_rr = ?, updated_at = ? WHERE ro_id IN ?", gaining, gaining, now, subordinate).Error; err != nil {
+			return err
+		}
+	}
+	gainingByName := map[string]int64{}
+	for _, g := range targets {
+		gainingByName[g.Name] = g.RoID
+	}
+	affected := all
 	for _, l := range links {
 		template, relink := byName[l.Name]
-		if !relink || slices.Contains(moved, l.RoID) {
+		if !relink || slices.Contains(subordinate, l.RoID) {
 			continue
 		}
-		var target Host
-		// Locked, so the gaining registrar cannot delete it before it is
-		// linked.
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ? AND cl_id = ?", l.Name, gaining).First(&target).Error
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
+		target, ok := gainingByName[l.Name]
+		if !ok {
 			h := *template
 			h.ClID, h.CrRr, h.UpRr = t.RequestingClID, t.RequestingClID, ""
 			h.CreatedAt, h.UpdatedAt = now, now
-			target = *ToDBHost(&h)
-			if err := tx.Create(&target).Error; err != nil {
+			row := ToDBHost(&h)
+			if err := tx.Create(row).Error; err != nil {
+				if isUniqueViolation(err) {
+					return errNotWritten // the gaining registrar created it meanwhile
+				}
 				return err
 			}
-		case err != nil:
-			return err
-		}
-		if target.RoID == l.RoID {
-			continue
+			target = row.RoID
+			gainingByName[l.Name] = target
 		}
 		if err := tx.Exec("DELETE FROM domain_hosts WHERE domain_ro_id = ? AND host_ro_id = ?", dbDomain.RoID, l.RoID).Error; err != nil {
 			return err
 		}
-		if err := tx.Exec("INSERT INTO domain_hosts (domain_ro_id, host_ro_id) VALUES (?, ?)", dbDomain.RoID, target.RoID).Error; err != nil {
+		if err := tx.Exec("INSERT INTO domain_hosts (domain_ro_id, host_ro_id) VALUES (?, ?)", dbDomain.RoID, target).Error; err != nil {
 			return err
 		}
-		affected = unionIDs(affected, []int64{target.RoID})
+		affected = unionIDs(affected, []int64{target})
 	}
 	return recomputeHostLinks(tx, affected, now)
 }

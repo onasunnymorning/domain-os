@@ -259,15 +259,19 @@ func (d *Domain) EndTransfer() {
 // For an approval the host objects go with the domain too (RFC 5732 §1.1:
 // a host's sponsor is its superordinate domain's):
 //
-//   - the losing registrar's hosts under the domain are moved to the gaining
-//     registrar, unless it already has a host of that name;
+//   - the losing registrar's hosts under the domain (named as the domain, or
+//     below it) are moved to the gaining registrar, unless it already has a
+//     host of that name;
 //   - each of the domain's nameservers named in GainingHosts is re-linked
 //     to the gaining registrar's host of that name, which is created from
 //     the GainingHosts entry, as given, if the gaining registrar has none;
 //   - the domain's other nameservers keep their links: hosts under other
 //     domains of this registry, which belong to those domains' sponsors.
 //
-// The losing registrar's hosts left behind are left in place: orphan
+// GainingHosts is planned from Domain.Hosts as read: if the domain's
+// nameservers are no longer those (a host renamed meanwhile, which does not
+// change the domain's version), the write is ErrDomainChanged, to be planned
+// again. The losing registrar's hosts left behind are left in place: orphan
 // cleanup is a later phase.
 type TransferResolution struct {
 	Domain   *Domain

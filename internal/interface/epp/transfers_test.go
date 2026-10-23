@@ -306,6 +306,10 @@ func TestPoll(t *testing.T) {
 		assert.Equal(t, "p2.test", text(losing.roundTrip(pollReqXML()), "//resData/trnData/name"))
 		requireCode(t, losing.roundTrip(pollAckXML(id)), "2303") // acknowledged once
 	})
+	t.Run("op is a token: surrounding spaces are allowed", func(t *testing.T) {
+		requireCode(t, losing.roundTrip(cmdXML(`<poll op=" req "/>`, "POLL-SP")), "1301")
+		requireCode(t, gaining.roundTrip(cmdXML(`<transfer op=" query "><domain:transfer xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>p2.test</domain:name></domain:transfer></transfer>`, "TRN-SP")), "1000")
+	})
 	t.Run("an empty queue: 1300", func(t *testing.T) {
 		drain(t, losing)
 		resp := losing.roundTrip(pollReqXML())

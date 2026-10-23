@@ -418,13 +418,15 @@ func (c *command) describe() {
 	}
 }
 
-// op is the op attribute of a <poll> or <transfer>, or "".
+// op is the op attribute of a <poll> or <transfer>, whitespace-collapsed
+// as the schema's token type defines it, or "".
 func (c *command) op() string {
 	if c.doc == nil || (c.frame.command != "poll" && c.frame.command != "transfer") {
 		return ""
 	}
 	if el := c.doc.FindElement("/epp/command/" + c.frame.command); el != nil {
-		return el.SelectAttrValue("op", "")
+		// xs:token: op=" req " is valid, and means req.
+		return schema.TokenValue(el.SelectAttrValue("op", ""))
 	}
 	return ""
 }

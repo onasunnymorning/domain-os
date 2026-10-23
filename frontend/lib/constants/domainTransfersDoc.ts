@@ -121,7 +121,7 @@ The registry checks, in this order, and refuses at the first problem:
 | No other pending action (pending delete, restore…), no \`clientTransferProhibited\` or \`serverTransferProhibited\` | 2304 |
 | The domain is out of its **transfer lock** period | 2106 |
 | The new expiry stays within the TLD phase's **maximum horizon** (10 years by default) | 2306 |
-| The transfer has a price for the gaining registrar | 2400 |
+| The transfer can be quoted for the gaining registrar (a phase with no transfer price quotes it at no charge, as it does a registration or a renewal) | 2400 |
 
 An update prohibition (\`clientUpdateProhibited\`, \`serverUpdateProhibited\`) does **not** stop a transfer.
 

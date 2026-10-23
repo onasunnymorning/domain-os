@@ -172,7 +172,8 @@ func (s *EPPDomainService) domain(ctx context.Context, scope entities.RegistrarC
 
 // nameserversToRelink names the nameservers of dom that the gaining
 // registrar is to have its own host objects for (entities.TransferResolution):
-// the hosts under dom, which go with it, and the external hosts. A host
+// the hosts under dom (named dom or below it), which go with it, and the
+// external hosts. A host
 // under another domain of this registry belongs to that domain's sponsor
 // and keeps its link: the gaining registrar cannot hold one of its own
 // (RST epp-25 to epp-27), and a copy would publish a second set of glue.
@@ -181,7 +182,7 @@ func (s *EPPDomainService) nameserversToRelink(ctx context.Context, dom *entitie
 	var out []string
 	for _, h := range dom.Hosts {
 		name := h.Name.String()
-		if strings.HasSuffix(name, "."+dom.Name.String()) {
+		if name == dom.Name.String() || strings.HasSuffix(name, "."+dom.Name.String()) {
 			out = append(out, name)
 			continue
 		}

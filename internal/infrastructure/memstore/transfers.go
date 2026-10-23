@@ -53,6 +53,18 @@ func (r *Registry) ResolveTransferAsRead(_ context.Context, dom *entities.Domain
 	if len(all) == 0 || all[len(all)-1].ID != tr.ID || all[len(all)-1].Status != entities.TransferStatusPending {
 		return nil, nil, entities.ErrDomainChanged
 	}
+	// Everything is checked before anything changes, as the Postgres
+	// transaction refuses a stale approval whole: the domain's version and
+	// sponsor, and its nameservers as the plan was made from them.
+	current, ok := r.domains[dom.Name.String()]
+	switch {
+	case !ok:
+		return nil, nil, entities.ErrDomainNotFound
+	case !current.UpdatedAt.Equal(dom.UpdatedAt) || current.ClID != tr.LosingClID:
+		return nil, nil, entities.ErrDomainChanged
+	case !sameNameservers(r.copyDomain(current).Hosts, dom.Hosts):
+		return nil, nil, entities.ErrDomainChanged
+	}
 	if err := tr.Resolve(status, actor, now); err != nil {
 		return nil, nil, err
 	}
@@ -79,7 +91,8 @@ func (r *Registry) ResolveTransferAsRead(_ context.Context, dom *entities.Domain
 func (r *Registry) moveHosts(dom *entities.Domain, tr *entities.DomainTransfer, relink []string) {
 	losing, gaining := tr.LosingClID.String(), tr.RequestingClID.String()
 	for key, h := range r.hosts {
-		if key.clid != losing || !strings.HasSuffix(key.name, "."+dom.Name.String()) {
+		under := key.name == dom.Name.String() || strings.HasSuffix(key.name, "."+dom.Name.String())
+		if key.clid != losing || !under {
 			continue
 		}
 		if _, taken := r.hosts[hostKey{key.name, gaining}]; taken {
@@ -104,6 +117,24 @@ func (r *Registry) moveHosts(dom *entities.Domain, tr *entities.DomainTransfer, 
 		}
 		dom.Hosts[i] = target.DeepCopy()
 	}
+}
+
+// sameNameservers reports whether a and b are the same host objects with
+// the same names.
+func sameNameservers(a, b []*entities.Host) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	names := map[entities.RoidType]entities.DomainName{}
+	for _, h := range a {
+		names[h.RoID] = h.Name
+	}
+	for _, h := range b {
+		if n, ok := names[h.RoID]; !ok || n != h.Name {
+			return false
+		}
+	}
+	return true
 }
 
 // recordTransfer stores a new transfer, numbering it, and queues msgs. The

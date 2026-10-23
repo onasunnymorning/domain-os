@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,9 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	for _, h := range []string{"ns1." + name, "ns." + other} {
+	// name itself is a host under the domain too (RFC 5732: its
+	// superordinate domain is the domain): it moves with it.
+	for _, h := range []string{"ns1." + name, "ns." + other, name} {
 		_, err := hosts.Create(ctx, scope1, commands.EPPCreateHostCommand{Name: h, Addresses: []commands.EPPHostAddress{{Address: "208.77.190.196"}}})
 		require.NoError(t, err)
 	}
@@ -81,7 +84,10 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tr.ID, latest.ID)
 		assert.Equal(t, entities.ClIDType(rar2), latest.RequestingClID)
-		assert.WithinDuration(t, tr.ActionDate, latest.ActionDate, 0)
+		// Postgres keeps microseconds; the transfer's times are taken to the
+		// microsecond, so the answer and the stored transfer agree.
+		assert.WithinDuration(t, tr.ActionDate, latest.ActionDate, time.Microsecond)
+		assert.Equal(t, tr.ActionDate, tr.ActionDate.Truncate(time.Microsecond))
 		msg, n, err := polls.Request(ctx, scope1)
 		require.NoError(t, err)
 		require.NotNil(t, msg)
@@ -96,6 +102,26 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		assert.Zero(t, left)
 	})
 
+	t.Run("an approval planned over a renamed nameserver is refused whole, to be planned again", func(t *testing.T) {
+		stale, err := f.domainRepo.GetDomainByName(ctx, name, true)
+		require.NoError(t, err)
+		pending, err := transfers.LatestTransfer(ctx, stale.RoID)
+		require.NoError(t, err)
+		relink, err := svc.nameserversToRelink(ctx, stale)
+		require.NoError(t, err)
+		// A rename does not change the domain's version.
+		_, err = hosts.Update(ctx, scope1, commands.EPPUpdateHostCommand{Name: "ns1." + rar1 + ".net", NewName: "ns9." + rar1 + ".net"})
+		require.NoError(t, err)
+		_, _, err = f.registry.ResolveTransferAsRead(ctx, stale, pending, entities.TransferStatusClientApproved, entities.ClIDType(rar1), relink)
+		require.ErrorIs(t, err, entities.ErrDomainChanged)
+		dom, err := f.domainRepo.GetDomainByName(ctx, name, false)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ClIDType(rar1), dom.ClID, "nothing written")
+		assert.NotNil(t, hostRow("ns1."+name, rar1), "no host moved")
+		_, err = hosts.Update(ctx, scope1, commands.EPPUpdateHostCommand{Name: "ns9." + rar1 + ".net", NewName: "ns1." + rar1 + ".net"})
+		require.NoError(t, err)
+	})
+
 	tr, err = svc.TransferApprove(ctx, scope1, name)
 	require.NoError(t, err)
 	require.Equal(t, entities.TransferStatusClientApproved, tr.Status)
@@ -107,7 +133,7 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		assert.False(t, dom.Status.PendingTransfer)
 		assert.False(t, dom.AuthInfo.IsSet())
 		assert.False(t, dom.TransferredAt.IsZero())
-		assert.WithinDuration(t, tr.ExpiryDate, dom.ExpiryDate, 0)
+		assert.WithinDuration(t, tr.ExpiryDate, dom.ExpiryDate, time.Microsecond)
 		assert.False(t, dom.RGPStatus.TransferPeriodEnd.IsZero())
 		byName := map[string]entities.ClIDType{}
 		for _, h := range dom.Hosts {
@@ -123,6 +149,8 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		moved := hostRow("ns1."+name, rar2)
 		require.NotNil(t, moved)
 		assert.Nil(t, hostRow("ns1."+name, rar1), "moved, not copied")
+		assert.NotNil(t, hostRow(name, rar2), "a host named as the domain moves too")
+		assert.Nil(t, hostRow(name, rar1))
 		var addrs int64
 		require.NoError(t, db.Table("host_addresses").Where("host_ro_id = ?", moved.RoID).Count(&addrs).Error)
 		assert.Equal(t, int64(1), addrs, "its address goes with it")

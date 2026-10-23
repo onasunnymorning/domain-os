@@ -35,7 +35,7 @@ const (
 
 // RequestTransferAsRead starts a transfer of dom, a domain the caller has
 // read, to gaining for years: entities.Domain.RequestTransfer checks it in
-// the TLD's current GA phase, and the transfer must have a price for the
+// the TLD's current GA phase, and the transfer must be quotable for the
 // gaining registrar. The domain is written pendingTransfer only if it is
 // still as it was read (else entities.ErrDomainChanged), with the transfer
 // and the losing registrar's poll message, and the request is recorded as
@@ -49,12 +49,16 @@ func (s *DomainService) RequestTransferAsRead(ctx context.Context, dom *entities
 		return nil, nil, err
 	}
 	before := dom.DeepCopy()
-	now := time.Now().UTC()
+	now := transferNow()
 	tr, err := dom.RequestTransfer(gaining, authInfo, years, phase, now)
 	if err != nil {
 		return nil, nil, err
 	}
-	// A transfer the registry cannot price is refused now, not on approval.
+	// A transfer the registry cannot quote (a currency without an exchange
+	// rate, say) is refused now, not on approval. A phase with no transfer
+	// price quotes it at no charge, as it does a registration or a renewal:
+	// requiring a configured price is one rule for every transaction, not
+	// for transfers alone.
 	if _, err := s.transferQuote(ctx, dom, gaining, tr.Years, phase); err != nil {
 		return nil, nil, err
 	}
@@ -87,7 +91,7 @@ func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities
 		return nil, nil, ErrTransfersNotConfigured
 	}
 	before := dom.DeepCopy()
-	now := time.Now().UTC()
+	now := transferNow()
 	if err := tr.Resolve(status, actor, now); err != nil {
 		return nil, nil, err
 	}
@@ -143,6 +147,11 @@ func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities
 		fmt.Sprintf("Transfer of %s from %s to %s: %s", stored.Name, tr.LosingClID, tr.RequestingClID, tr.Status), event, tr, stored, before)
 	return stored, tr, nil
 }
+
+// transferNow is the time a transfer step happens at, to the microsecond
+// the database keeps: what a command answers is then what a later query
+// reads back.
+func transferNow() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
 
 // currentGAPhase is the current GA phase of dom's TLD, whose policy every
 // transaction on an existing domain follows.
