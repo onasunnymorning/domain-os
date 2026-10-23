@@ -74,6 +74,59 @@ type testCredentials struct {
 	contacts *services.EPPContactService
 	audit    *memstore.EPPTransactions
 	auditLog *services.EPPAuditService
+	// policies are the EPP policies the servers load.
+	policies *testPolicies
+}
+
+// testPolicies is the EPP policies as a test sets them: built-in by default.
+// A running server sees a change at its next refresh (refreshPolicies).
+type testPolicies struct {
+	mu          sync.Mutex
+	policies    []*entities.EPPPolicy
+	assignments map[entities.ClIDType]string
+	families    []*entities.RegistrarFamily
+	err         error
+}
+
+func (p *testPolicies) PolicySet(context.Context) (*entities.EPPPolicySet, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err != nil {
+		return nil, p.err
+	}
+	return entities.NewEPPPolicySet(p.policies, p.assignments, p.families, time.Now()), nil
+}
+
+// limitDefault changes the "default" policy's limits, which every
+// registrar not assigned another has.
+func (p *testPolicies) limitDefault(fn func(*entities.EPPPolicyLimits)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	l := entities.DefaultEPPPolicyLimits()
+	fn(&l)
+	p.policies = append(p.policies, &entities.EPPPolicy{Name: entities.EPPPolicyDefault, Limits: l})
+}
+
+// assign gives clid a custom policy with limits.
+func (p *testPolicies) assign(clid, name string, limits entities.EPPPolicyLimits) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.policies = append(p.policies, &entities.EPPPolicy{Name: name, Limits: limits})
+	if p.assignments == nil {
+		p.assignments = map[entities.ClIDType]string{}
+	}
+	p.assignments[entities.ClIDType(clid)] = name
+}
+
+// family puts members in a family under policy (empty for "default").
+func (p *testPolicies) family(name, policy string, members ...string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f := &entities.RegistrarFamily{Name: name, Policy: policy}
+	for _, m := range members {
+		f.Members = append(f.Members, entities.ClIDType(m))
+	}
+	p.families = append(p.families, f)
 }
 
 // newTestCredentials seeds the default test registrar.
@@ -86,6 +139,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
 		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
+		policies: &testPolicies{},
 	}
 	tc.hosts = newTestHosts(tc.domains.registry)
 	tc.contacts = services.NewEPPContactService(services.EPPContactServiceDeps{
@@ -125,13 +179,13 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 
 // tracker is the session service a server built from cfg uses.
 func (tc *testCredentials) tracker(cfg config.EPP) *services.EPPSessionService {
-	caps := entities.EPPSessionCaps{PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin}
+	caps := entities.EPPSessionCaps{PerSource: cfg.Sessions.PerSource}
 	var reg repositories.EPPSessionRegistry = tc.registry
 	if tc.shared != nil {
 		reg = tc.shared

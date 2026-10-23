@@ -3,6 +3,8 @@ package epp
 import (
 	"context"
 	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 )
 
 // policyAction is what the policy decides for a command.
@@ -54,12 +56,27 @@ type commandPolicy interface {
 	decide(ctx context.Context, cmd *command) policyDecision
 }
 
-// allowAll is the policy until the policy engine arrives (Phase 5): every
-// command proceeds.
-type allowAll struct{}
+// registrarPolicies is the policy engine (docs/epp/ARCHITECTURE.md §5): a
+// logged-in session's commands are decided by its registrar's EPP policy
+// (epppolicy.Decide), from the set the node last loaded. Commands before
+// login are outside it.
+type registrarPolicies struct{ s *Server }
 
-func (allowAll) decide(context.Context, *command) policyDecision {
-	return policyDecision{action: policyAllow, rule: "none"}
+func (p registrarPolicies) decide(_ context.Context, cmd *command) policyDecision {
+	auth := cmd.session.auth.Load()
+	if auth == nil {
+		return policyDecision{action: policyAllow, rule: epppolicy.RuleNone}
+	}
+	c := epppolicy.Command{Name: cmd.frame.command, Op: cmd.op(), Objects: len(cmd.objects)}
+	if epppolicy.ClassOf(c) == epppolicy.ClassCheck {
+		p.s.metrics.checkNames.Observe(float64(c.Objects))
+	}
+	limits := p.s.policies.Load().ForRegistrar(auth.ClID).Policy.Limits
+	d := epppolicy.Decide(auth.Role, limits, c)
+	if d.Action == epppolicy.Reject {
+		return policyDecision{action: policyReject, rule: d.Rule, code: d.Code, msg: d.Msg}
+	}
+	return policyDecision{action: policyAllow, rule: d.Rule}
 }
 
 // applyPolicy asks the policy about cmd, carries out its decision, and

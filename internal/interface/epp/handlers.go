@@ -113,7 +113,8 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	// then the heartbeat must renew the session as not logged in, or it
 	// would add it to the registrar's and login's indexes without a cap
 	// check.
-	if err := s.authenticateInRegistry(ctx, sess, auth); err != nil {
+	limits := s.policies.Load().ForRegistrar(auth.ClID).SessionLimits(auth.SessionCap)
+	if err := s.authenticateInRegistry(ctx, sess, auth, limits); err != nil {
 		s.metrics.logins.WithLabelValues(loginSessionLimit).Inc()
 		s.logger.Warn("EPP login refused: session limit", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
 			"client_ip", sess.clientIP, "error", err)
@@ -135,6 +136,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	}
 	sess.objects, sess.extensions = objects, extensions
 	sess.authAt.Store(time.Now().UnixNano())
+	sess.family.Store(&limits.Family)
 	sess.auth.Store(auth)
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
 		// The login timeout fired, or the session was ended, while this
@@ -192,12 +194,9 @@ func (s *Server) logout(_ context.Context, cmd *command) {
 }
 
 // domainCheck answers <domain:check>: whether each name is available, in
-// the order asked. More names than EPP_MAX_CHECK_NAMES is 2306; a registry
-// that cannot answer is 2400.
+// the order asked. More names than the registrar's policy allows is 2306,
+// from the policy engine; a registry that cannot answer is 2400.
 func (s *Server) domainCheck(ctx context.Context, cmd *command) {
-	if !s.checkSizeAllowed(cmd) {
-		return
-	}
 	names := cmd.objects // the <domain:name>s, read by describe
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()

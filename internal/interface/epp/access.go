@@ -63,6 +63,7 @@ func (s *Server) watchCredentials(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		s.refreshCredentials(ctx)
+		s.refreshPolicies(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -98,6 +99,23 @@ func (s *Server) refreshCredentials(ctx context.Context) {
 		return
 	}
 	s.endCompromisedSessions(ids)
+}
+
+// refreshPolicies reloads the EPP policies, their assignments and the
+// registrar families. A failed load keeps the set last loaded, or the
+// built-in policies' starting limits before the first: enforcement fails
+// open to what the node knows, and the next refresh catches up.
+func (s *Server) refreshPolicies(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Auth.RefreshInterval)
+	defer cancel()
+	set, err := s.policySource.PolicySet(ctx)
+	if err != nil {
+		s.metrics.policyRefreshErrors.Inc()
+		s.logger.Error("EPP policies not refreshed; keeping the previous set", "error", err)
+		return
+	}
+	s.policies.Store(set)
+	s.metrics.policiesRefreshed.SetToCurrentTime()
 }
 
 // endCompromisedSessions closes every session on this node that

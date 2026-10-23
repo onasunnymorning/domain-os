@@ -40,9 +40,6 @@ type EPP struct {
 
 // EPPCommands bounds what one command may ask of the registry.
 type EPPCommands struct {
-	// MaxCheckNames is the most names one <check> may carry; more is
-	// answered 2306. The policy engine (Phase 5) takes this over.
-	MaxCheckNames int
 	// CheckParallelism is how many lookups one <check> runs at once.
 	CheckParallelism int
 }
@@ -69,10 +66,10 @@ type EPPSessions struct {
 	// Heartbeat is how often the node renews its sessions.
 	Lease     time.Duration
 	Heartbeat time.Duration
-	// Caps on live sessions, across every node.
-	PerSource    int
-	PerRegistrar int
-	PerLogin     int
+	// PerSource caps live sessions from one source address, across every
+	// node, before anyone has logged in. The caps per registrar, login and
+	// family are the registrars' EPP policies' (ADR 0019).
+	PerSource int
 }
 
 // EPPAuth governs how logins are authenticated against registrars'
@@ -191,14 +188,11 @@ var eppDefaults = EPP{
 		MaxLoginAttempts:    3,
 	},
 	Sessions: EPPSessions{
-		Lease:        90 * time.Second,
-		Heartbeat:    30 * time.Second,
-		PerSource:    20,
-		PerRegistrar: 10,
-		PerLogin:     10,
+		Lease:     90 * time.Second,
+		Heartbeat: 30 * time.Second,
+		PerSource: 20,
 	},
 	Commands: EPPCommands{
-		MaxCheckNames:    50,
 		CheckParallelism: 8,
 	},
 	Audit: EPPAudit{
@@ -270,10 +264,7 @@ func LoadEPP() (EPP, error) {
 	collect(setDuration(&cfg.Sessions.Lease, "EPP_SESSION_LEASE", os.Getenv("EPP_SESSION_LEASE")))
 	collect(setDuration(&cfg.Sessions.Heartbeat, "EPP_SESSION_HEARTBEAT", os.Getenv("EPP_SESSION_HEARTBEAT")))
 	collect(setPositiveInt(&cfg.Sessions.PerSource, "EPP_MAX_SESSIONS_PER_SOURCE_IP", os.Getenv("EPP_MAX_SESSIONS_PER_SOURCE_IP")))
-	collect(setPositiveInt(&cfg.Sessions.PerRegistrar, "EPP_MAX_SESSIONS_PER_REGISTRAR", os.Getenv("EPP_MAX_SESSIONS_PER_REGISTRAR")))
-	collect(setPositiveInt(&cfg.Sessions.PerLogin, "EPP_MAX_SESSIONS_PER_LOGIN", os.Getenv("EPP_MAX_SESSIONS_PER_LOGIN")))
 
-	collect(setPositiveInt(&cfg.Commands.MaxCheckNames, "EPP_MAX_CHECK_NAMES", os.Getenv("EPP_MAX_CHECK_NAMES")))
 	collect(setPositiveInt(&cfg.Commands.CheckParallelism, "EPP_CHECK_PARALLELISM", os.Getenv("EPP_CHECK_PARALLELISM")))
 
 	collect(setDuration(&cfg.Audit.Retention, "EPP_AUDIT_RETENTION", os.Getenv("EPP_AUDIT_RETENTION")))

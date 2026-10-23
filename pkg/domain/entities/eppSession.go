@@ -28,6 +28,7 @@ const (
 	EPPSessionLimitSource    EPPSessionLimit = "source_ip"
 	EPPSessionLimitRegistrar EPPSessionLimit = "registrar"
 	EPPSessionLimitLogin     EPPSessionLimit = "login"
+	EPPSessionLimitFamily    EPPSessionLimit = "family"
 )
 
 // EPPSessionLimitError says which cap a session hit. It wraps
@@ -43,21 +44,12 @@ func (e *EPPSessionLimitError) Error() string {
 
 func (e *EPPSessionLimitError) Unwrap() error { return ErrEPPSessionLimit }
 
-// EPPSessionCaps are the session caps. They are server settings until the
-// policy engine makes them per tier (Phase 5).
+// EPPSessionCaps are the session caps that are server settings: the cap
+// per source address, applied before anyone has logged in. The caps per
+// registrar, login and family are the registrar's EPP policy's
+// (EPPSessionLimits).
 type EPPSessionCaps struct {
-	PerSource    int
-	PerRegistrar int
-	PerLogin     int
-}
-
-// ForLogin is the cap for a login: its own session cap when set, otherwise
-// the default.
-func (c EPPSessionCaps) ForLogin(loginCap int) int {
-	if loginCap > 0 {
-		return loginCap
-	}
-	return c.PerLogin
+	PerSource int
 }
 
 // EPPSession is one live session as the registry records it.
@@ -71,6 +63,9 @@ type EPPSession struct {
 	Role          EPPLoginRole `json:"role,omitempty"`
 	LoginCap      int          `json:"-"`
 	CredentialIDs []uuid.UUID  `json:"credential_ids,omitempty"`
+	// Family is the registrar family the session counts against, if its
+	// registrar is in one.
+	Family string `json:"family,omitempty"`
 
 	ConnectedAt     time.Time  `json:"connected_at"`
 	AuthenticatedAt *time.Time `json:"authenticated_at,omitempty"`

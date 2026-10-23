@@ -109,7 +109,7 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 		open := func(clid, login string) error {
 			s := newSession("192.0.2.1")
 			require.NoError(t, reg.Open(ctx, s, lease, 100))
-			return reg.Authenticate(ctx, authed(s, clid, login), lease, 3, 2)
+			return reg.Authenticate(ctx, authed(s, clid, login), lease, entities.EPPSessionLimits{PerRegistrar: 3, PerLogin: 2})
 		}
 		require.NoError(t, open("rar-a", "rar-a"))
 		require.NoError(t, open("rar-a", "rar-a"))
@@ -124,18 +124,44 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 		require.NoError(t, open("rar-b", "rar-b"), "another registrar has its own cap")
 	})
 
+	t.Run("family cap, across its members", func(t *testing.T) {
+		reg := newReg(t)
+		open := func(clid, family string) (*entities.EPPSession, error) {
+			s := newSession("192.0.2.1")
+			require.NoError(t, reg.Open(ctx, s, lease, 100))
+			s = authed(s, clid, clid)
+			s.Family = family
+			return s, reg.Authenticate(ctx, s, lease, entities.EPPSessionLimits{PerRegistrar: 10, PerLogin: 10, Family: family, PerFamily: 2})
+		}
+		first, err := open("rar-a", "acme")
+		require.NoError(t, err)
+		_, err = open("rar-b", "acme")
+		require.NoError(t, err)
+		var limit *entities.EPPSessionLimitError
+		_, err = open("rar-c", "acme")
+		require.ErrorAs(t, err, &limit, "a third member's session is over the family's cap")
+		assert.Equal(t, entities.EPPSessionLimitFamily, limit.Limit)
+		assert.Equal(t, 2, limit.Cap)
+		_, err = open("rar-d", "")
+		require.NoError(t, err, "a registrar in no family is not counted")
+
+		require.NoError(t, reg.Close(ctx, first))
+		_, err = open("rar-c", "acme")
+		require.NoError(t, err, "closing frees the family's slot")
+	})
+
 	t.Run("close frees the slot", func(t *testing.T) {
 		reg := newReg(t)
 		s := newSession("192.0.2.1")
 		require.NoError(t, reg.Open(ctx, s, lease, 1))
-		require.NoError(t, reg.Authenticate(ctx, authed(s, "rar-a", "rar-a"), lease, 1, 1))
+		require.NoError(t, reg.Authenticate(ctx, authed(s, "rar-a", "rar-a"), lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}))
 		require.NoError(t, reg.Close(ctx, s))
 		_, err := reg.Get(ctx, s.ID)
 		require.ErrorIs(t, err, entities.ErrEPPSessionNotFound)
 
 		next := newSession("192.0.2.1")
 		require.NoError(t, reg.Open(ctx, next, lease, 1))
-		require.NoError(t, reg.Authenticate(ctx, authed(next, "rar-a", "rar-a"), lease, 1, 1))
+		require.NoError(t, reg.Authenticate(ctx, authed(next, "rar-a", "rar-a"), lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}))
 	})
 
 	t.Run("an expired lease frees the slot", func(t *testing.T) {
@@ -177,7 +203,7 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 		reg := newReg(t)
 		s := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
 		require.NoError(t, reg.Open(ctx, s, lease, 1))
-		require.NoError(t, reg.Authenticate(ctx, s, lease, 1, 1))
+		require.NoError(t, reg.Authenticate(ctx, s, lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}))
 		// A heartbeat took its snapshot just before the session closed.
 		stale := *s
 		require.NoError(t, reg.Close(ctx, s))
@@ -187,20 +213,20 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 
 		next := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
 		require.NoError(t, reg.Open(ctx, next, lease, 1), "the source slot is free")
-		require.NoError(t, reg.Authenticate(ctx, next, lease, 1, 1), "and the registrar and login slots")
+		require.NoError(t, reg.Authenticate(ctx, next, lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}), "and the registrar and login slots")
 	})
 
 	t.Run("close frees every slot whatever the caller's copy says", func(t *testing.T) {
 		reg := newReg(t)
 		s := authed(newSession("192.0.2.1"), "rar-a", "rar-a")
 		require.NoError(t, reg.Open(ctx, s, lease, 5))
-		require.NoError(t, reg.Authenticate(ctx, s, lease, 1, 1))
+		require.NoError(t, reg.Authenticate(ctx, s, lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}))
 		// The caller's copy predates the login.
 		require.NoError(t, reg.Close(ctx, &entities.EPPSession{ID: s.ID, ClientIP: s.ClientIP}))
 
 		next := newSession("192.0.2.2")
 		require.NoError(t, reg.Open(ctx, next, lease, 5))
-		require.NoError(t, reg.Authenticate(ctx, authed(next, "rar-a", "rar-a"), lease, 1, 1))
+		require.NoError(t, reg.Authenticate(ctx, authed(next, "rar-a", "rar-a"), lease, entities.EPPSessionLimits{PerRegistrar: 1, PerLogin: 1}))
 	})
 
 	t.Run("list filters and pages", func(t *testing.T) {
@@ -211,13 +237,13 @@ func runContract(t *testing.T, newReg func(t *testing.T) repositories.EPPSession
 			s := newSession("192.0.2.1")
 			require.NoError(t, reg.Open(ctx, s, lease, 100))
 			if i%2 == 0 {
-				require.NoError(t, reg.Authenticate(ctx, authed(s, "rar-a", "rar-a", cred), lease, 100, 100))
+				require.NoError(t, reg.Authenticate(ctx, authed(s, "rar-a", "rar-a", cred), lease, entities.EPPSessionLimits{PerRegistrar: 100, PerLogin: 100}))
 				want = append(want, s.ID)
 			}
 		}
 		other := authed(newSession("192.0.2.9"), "rar-b", "rar-b")
 		require.NoError(t, reg.Open(ctx, other, lease, 100))
-		require.NoError(t, reg.Authenticate(ctx, other, lease, 100, 100))
+		require.NoError(t, reg.Authenticate(ctx, other, lease, entities.EPPSessionLimits{PerRegistrar: 100, PerLogin: 100}))
 
 		var got []string
 		cursor := ""

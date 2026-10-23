@@ -53,6 +53,7 @@ type session struct {
 
 	state         atomic.Int32
 	auth          atomic.Pointer[entities.EPPAuthenticatedLogin] // set by a successful <login>
+	family        atomic.Pointer[string]                         // the registrar family it counts against, set with auth
 	authAt        atomic.Int64                                   // Unix nanoseconds of the login
 	commands      atomic.Int64
 	lastCommandAt atomic.Int64 // Unix nanoseconds; 0 before the first command
@@ -67,6 +68,9 @@ func (s *session) snapshot(node string) *entities.EPPSession {
 	}
 	if a := s.auth.Load(); a != nil {
 		rec.Authenticate(a, time.Unix(0, s.authAt.Load()))
+		if f := s.family.Load(); f != nil {
+			rec.Family = *f
+		}
 	}
 	if ns := s.lastCommandAt.Load(); ns != 0 {
 		t := time.Unix(0, ns).UTC()
@@ -76,6 +80,14 @@ func (s *session) snapshot(node string) *entities.EPPSession {
 }
 
 func (s *session) currentState() sessionState { return sessionState(s.state.Load()) }
+
+// familyName is the registrar family the session counts against, if any.
+func (s *session) familyName() string {
+	if f := s.family.Load(); f != nil {
+		return *f
+	}
+	return ""
+}
 
 func (s *session) setState(st sessionState) { s.state.Store(int32(st)) }
 

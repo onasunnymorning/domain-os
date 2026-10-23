@@ -42,6 +42,7 @@ func tombstoneKey(id string) string   { return "epp:session-closed:" + id }
 func sourceKey(ip string) string      { return "epp:sessions:ip:" + ip }
 func registrarKey(clid string) string { return "epp:sessions:clid:" + clid }
 func loginKey(login string) string    { return "epp:sessions:login:" + login }
+func familyKey(name string) string    { return "epp:sessions:family:" + name }
 
 // Redis is a repositories.EPPSessionRegistry in Redis.
 type Redis struct {
@@ -83,26 +84,32 @@ redis.call('SET', KEYS[3], ARGV[4], 'PX', lease)
 return 1
 `)
 
-// authenticate takes a slot in the registrar and login indexes if both are
-// below their caps, and rewrites the record. It returns 1, or -1 at the
-// registrar cap, or -2 at the login cap.
+// authenticate takes a slot in the registrar, login and family indexes if
+// each is below its cap, and rewrites the record. It returns 1, or -1 at the
+// registrar cap, -2 at the login cap, or -3 at the family cap. A family cap
+// of 0 means the session is in no family, and its index is left alone.
 //
-// KEYS: registrar index, login index, session key.
-// ARGV: id, lease ms, registrar cap, login cap, record.
+// KEYS: registrar index, login index, family index, session key.
+// ARGV: id, lease ms, registrar cap, login cap, family cap, record.
 var authenticate = redis.NewScript(clock + `
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
+local family = tonumber(ARGV[5]) > 0
+local n = 2
+if family then n = 3 end
+for i = 1, n do redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', now) end
 if not redis.call('ZSCORE', KEYS[1], ARGV[1]) and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
   return -1
 end
 if not redis.call('ZSCORE', KEYS[2], ARGV[1]) and redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[4]) then
   return -2
 end
-redis.call('ZADD', KEYS[1], exp, ARGV[1])
-redis.call('PEXPIRE', KEYS[1], lease)
-redis.call('ZADD', KEYS[2], exp, ARGV[1])
-redis.call('PEXPIRE', KEYS[2], lease)
-redis.call('SET', KEYS[3], ARGV[5], 'PX', lease)
+if family and not redis.call('ZSCORE', KEYS[3], ARGV[1]) and redis.call('ZCARD', KEYS[3]) >= tonumber(ARGV[5]) then
+  return -3
+end
+for i = 1, n do
+  redis.call('ZADD', KEYS[i], exp, ARGV[1])
+  redis.call('PEXPIRE', KEYS[i], lease)
+end
+redis.call('SET', KEYS[4], ARGV[6], 'PX', lease)
 return 1
 `)
 
@@ -128,7 +135,8 @@ return 1
 // tombstone.
 //
 // KEYS: session key, tombstone, all index, then the caller's indexes.
-// ARGV: id, tombstone ms, source prefix, registrar prefix, login prefix.
+// ARGV: id, tombstone ms, source prefix, registrar prefix, login prefix,
+// family prefix.
 var closeSession = redis.NewScript(clock + `
 local rec = redis.call('GET', KEYS[1])
 if rec then
@@ -137,6 +145,7 @@ if rec then
     if type(s.client_ip) == 'string' then redis.call('ZREM', ARGV[3] .. s.client_ip, ARGV[1]) end
     if type(s.clid) == 'string' then redis.call('ZREM', ARGV[4] .. s.clid, ARGV[1]) end
     if type(s.login_id) == 'string' then redis.call('ZREM', ARGV[5] .. s.login_id, ARGV[1]) end
+    if type(s.family) == 'string' then redis.call('ZREM', ARGV[6] .. s.family, ARGV[1]) end
   end
 end
 for i = 3, #KEYS do redis.call('ZREM', KEYS[i], ARGV[1]) end
@@ -163,23 +172,30 @@ func (r *Redis) Open(ctx context.Context, s *entities.EPPSession, lease time.Dur
 	return nil
 }
 
-// Authenticate records s's login under its registrar's and login's caps.
-func (r *Redis) Authenticate(ctx context.Context, s *entities.EPPSession, lease time.Duration, perRegistrar, perLogin int) error {
+// Authenticate records s's login under its registrar's, login's and
+// family's caps.
+func (r *Redis) Authenticate(ctx context.Context, s *entities.EPPSession, lease time.Duration, limits entities.EPPSessionLimits) error {
 	rec, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("encode EPP session %s: %w", s.ID, err)
 	}
+	perFamily := 0
+	if s.Family != "" {
+		perFamily = limits.PerFamily
+	}
 	res, err := authenticate.Run(ctx, r.client,
-		[]string{registrarKey(string(s.ClID)), loginKey(string(s.LoginID)), sessionKey(s.ID)},
-		s.ID, lease.Milliseconds(), perRegistrar, perLogin, rec).Int()
+		[]string{registrarKey(string(s.ClID)), loginKey(string(s.LoginID)), familyKey(s.Family), sessionKey(s.ID)},
+		s.ID, lease.Milliseconds(), limits.PerRegistrar, limits.PerLogin, perFamily, rec).Int()
 	if err != nil {
 		return unavailable(err)
 	}
 	switch res {
 	case -1:
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: perRegistrar}
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: limits.PerRegistrar}
 	case -2:
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: perLogin}
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: limits.PerLogin}
+	case -3:
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitFamily, Cap: perFamily}
 	}
 	return nil
 }
@@ -189,6 +205,9 @@ func indexes(s *entities.EPPSession) []string {
 	keys := []string{sourceKey(s.ClientIP.String())}
 	if s.Authenticated() {
 		keys = append(keys, registrarKey(string(s.ClID)), loginKey(string(s.LoginID)))
+	}
+	if s.Family != "" {
+		keys = append(keys, familyKey(s.Family))
 	}
 	return keys
 }
@@ -228,7 +247,7 @@ const tombstoneTTL = 10 * time.Minute
 func (r *Redis) Close(ctx context.Context, s *entities.EPPSession) error {
 	keys := append([]string{sessionKey(s.ID), tombstoneKey(s.ID), allKey}, indexes(s)...)
 	err := closeSession.Run(ctx, r.client, keys, s.ID, tombstoneTTL.Milliseconds(),
-		sourceKey(""), registrarKey(""), loginKey("")).Err()
+		sourceKey(""), registrarKey(""), loginKey(""), familyKey("")).Err()
 	if err != nil {
 		return unavailable(err)
 	}

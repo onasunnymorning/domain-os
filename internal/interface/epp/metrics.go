@@ -65,6 +65,8 @@ type metrics struct {
 	allowedNetworks         prometheus.Gauge
 	credentialsRefreshed    prometheus.Gauge
 	credentialRefreshErrors prometheus.Counter
+	policiesRefreshed       prometheus.Gauge
+	policyRefreshErrors     prometheus.Counter
 	storeDegraded           *prometheus.GaugeVec
 	registrarSessions       *prometheus.GaugeVec
 	registryRenewals        *prometheus.CounterVec
@@ -146,6 +148,14 @@ func newMetrics() *metrics {
 			Name: "epp_credential_refresh_errors_total",
 			Help: "Failed reloads of the allowed networks or the compromised credentials.",
 		}),
+		policiesRefreshed: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "epp_policies_refreshed_timestamp_seconds",
+			Help: "When the EPP policies, assignments and registrar families were last loaded, as a Unix timestamp.",
+		}),
+		policyRefreshErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "epp_policy_refresh_errors_total",
+			Help: "Failed reloads of the EPP policies; the node keeps the set it last loaded.",
+		}),
 		registrarSessions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_registrar_sessions",
 			Help: "Logged-in sessions on this node, by registrar and login. Sum across nodes for the cluster.",
@@ -156,7 +166,7 @@ func newMetrics() *metrics {
 		}, []string{"result"}),
 		policyDecisions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "epp_policy_decisions_total",
-			Help: "Policy decisions on validated commands, by the rule that decided and the action: allow, delay, reject or close.",
+			Help: "Policy decisions on the validated commands of logged-in sessions, by the rule that decided and the action: allow, delay, reject or close.",
 		}, []string{"rule", "action"}),
 		auditErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "epp_audit_errors_total",
@@ -177,7 +187,7 @@ func newMetrics() *metrics {
 		m.commandDuration, m.frameBytes, m.framesRejected, m.certNotAfter,
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
-		m.credentialsRefreshed, m.credentialRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
+		m.credentialsRefreshed, m.credentialRefreshErrors, m.policiesRefreshed, m.policyRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
 		m.policyDecisions, m.auditErrors, m.checkNames,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),

@@ -35,8 +35,8 @@ func Auth0Middleware(domain, audience, legacyToken string, auth0Enabled bool) gi
 		// endpoint, so withholding permissions from it would protect nothing
 		// and would only make the escrow key registry unusable in local
 		// development (ADR-0009). Grant them explicitly instead.
-		log.Printf("[Auth0Middleware] Auth0 is disabled: the static admin token grants every permission, including escrow key, platform registry, EPP credential and EPP session administration")
-		staticTokenPermissions := []string{ScopeEscrowKeysAdmin, ScopeEscrowPlatformKeysAdmin, ScopeRegistryPlatformAdmin, ScopeEPPCredentialsAdmin, ScopeEPPSessionsAdmin}
+		log.Printf("[Auth0Middleware] Auth0 is disabled: the static admin token grants every permission, including escrow key, platform registry, EPP credential, EPP session and EPP policy administration")
+		staticTokenPermissions := []string{ScopeEscrowKeysAdmin, ScopeEscrowPlatformKeysAdmin, ScopeRegistryPlatformAdmin, ScopeEPPCredentialsAdmin, ScopeEPPSessionsAdmin, ScopeEPPPolicyAdmin}
 		return func(c *gin.Context) {
 			authHeader := c.GetHeader("Authorization")
 			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {

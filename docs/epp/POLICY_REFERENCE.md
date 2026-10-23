@@ -7,7 +7,7 @@ Settings live in one of two places:
 | Kind | Lives in | How to change | Takes effect |
 |---|---|---|---|
 | **Server settings**: how a node listens, terminates TLS and times out | Environment variables, read once at start by `internal/config/epp.go` (INV-17). Each is registered in `internal/config/env_registry.go` and published in `deploy/contract.json` (`make generate-contract`) | Set the variable in the deployment's environment (Doppler for local and dev) | On restart. An unusable value stops the server at start rather than being silently replaced by a default |
-| **Policy limits**: what a registrar may do over its sessions | Database, versioned per tier with per-registrar overrides *(Phase 5)* | Admin API *(Phase 5)* | Within the policy reload interval, without a restart *(Phase 5)* |
+| **Policy limits**: what a registrar may do over its sessions | Database: named EPP policies, assigned to registrars and registrar families ([§ Policies](#policies)) | Admin API (`/epp/policies`, `/epp/families`, `/registrars/{clid}/epp/policy`) | Within `EPP_CREDENTIAL_REFRESH_INTERVAL`, without a restart |
 
 A value marked *(planned)* does not exist yet. The phase that introduces it is named in [ARCHITECTURE.md § Roadmap](ARCHITECTURE.md#roadmap).
 
@@ -94,7 +94,6 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EPP_MAX_CHECK_NAMES` | `50` | Names one `<check>` may carry; more is answered 2306 without a lookup. Moves into the policy engine in Phase 5 |
 | `EPP_CHECK_PARALLELISM` | `8` | Availability lookups one `<check>` runs at once. Must be below `EPP_DB_MAX_OPEN_CONNS`, so one check cannot take every connection |
 
 **Audit log**
@@ -118,7 +117,7 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
 
-**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (the registrar's EPP policy, [§ Policies](#policies); `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
 
 **Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
 
@@ -181,7 +180,7 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 
 Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID ends in the configured repository ID, `ROID_REPOSITORY_ID` (above, under Registry identity).
 
-**DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`) until the policy engine (Phase 5):
+**DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`): rules of the registry's data, the same for every registrar, so not in the EPP policies (ADR 0019):
 
 | | Accepted | Refused |
 |---|---|---|
@@ -297,7 +296,7 @@ All four are set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`,
 - An address must be of the IP version its `ip` attribute names (`v4` when absent), and public unicast: loopback, unspecified, private, link-local, multicast and IPv4-mapped IPv6 addresses are refused. Addresses are stored, and shown, in canonical form. At most 10 per host (`entities.MAX_ADDRESSES_PER_HOST`).
 - A client sets only `clientDeleteProhibited` and `clientUpdateProhibited`. `linked` is reported by `<host:info>` from the domains that use the host now.
 
-**`<host:check>`.** Up to `EPP_MAX_CHECK_NAMES` names, each answered in order with whether the session's registrar can create it:
+**`<host:check>`.** Up to the registrar's policy's `check_names` names (50 by default), each answered in order with whether the session's registrar can create it:
 
 | Reason | When |
 |---|---|
@@ -391,7 +390,7 @@ A registrar's EPP logins, passwords, certificate pins and allowed networks are m
 
 Every change is written in one transaction with an outbox event (`epp.login.created`, `epp.password.added`, `epp.certificate_pin.retired`, and so on; subject: the registrar's ClID). Events never carry a password or a hash. Delivering them to the registrar's technical contact needs an outbox consumer that does not exist yet.
 
-These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`) until the policy engine makes them per-tier (Phase 5):
+These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`), the same for every registrar (ADR 0014):
 
 | Rule | Value |
 |---|---|
@@ -411,23 +410,56 @@ A credential is never deleted. A retired one stays as the record of when, and fr
 
 ---
 
-## Policy limits *(planned)*
+## Policies
 
-The defaults below form the `default` tier and will be seeded from code constants. A tier can be overridden per registrar. "Family" means a group of affiliated registrars capped together.
+The limits each registrar is held to are its **EPP policy**: data, changed through the admin API and reloaded by every node within `EPP_CREDENTIAL_REFRESH_INTERVAL`, without a restart ([ADR 0019](../adr/0019-epp-policies.md); [`entities.EPPPolicy`](../../pkg/domain/entities/eppPolicy.go)).
+
+- **A policy is a named set of limits.** Two are built in: `default`, for every registrar not assigned another, and `probation`, for new registrars. The `migrate` job stores them with their starting limits (below) if they are not stored yet. Their limits can be changed; they cannot be deleted. Any other policy is custom.
+- **A registrar is assigned one policy**, or none for `default`. There are no per-registrar overrides: a registrar that needs other limits gets a policy of its own.
+- **A registrar family** groups affiliated registrars, often the accreditations of one company, so limits apply to them together as well as to each. A registrar is in at most one family. A family is assigned a policy too: its `sessions_per_family` caps the family's sessions, while each member's own policy caps the member.
+- **A login's own `session_cap`** ([Credentials](#credentials-admin-api)), when set, replaces its registrar's policy's `sessions_per_login`.
+
+| Limit | `default` | `probation` | Applies to | Over it |
+|---|---|---|---|---|
+| `sessions_per_registrar` | 10 | 2 | A registrar's logged-in sessions, across every node and login | `<login>` 2502, and the session closes |
+| `sessions_per_login` | 10 | 2 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
+| `sessions_per_family` | 40 | 6 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
+| `check_names` | 50 | 20 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
+
+Every limit is at least 1. The rules, in order, for each command of a logged-in session ([`epppolicy.Decide`](../../internal/application/epppolicy/enforcer.go)):
+
+1. **Role.** A login with the `readonly` role ([Credentials](#credentials-admin-api)) may check, read (`<info>`, `<transfer op="query">`), poll and log out. Anything that changes the registry (create, update, delete, renew, transfer request, approve, reject or cancel) is 2201, *"this login is read-only"*.
+2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup.
+
+Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, or `none` for a command allowed).
+
+**Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap.
+
+**Admin API** (permission `epp:policy:admin`; the static admin token holds it when Auth0 is off). Each change writes an outbox event (`epp.policy.saved`, `epp.policy.deleted`, `epp.policy.assigned`, `epp.family.saved`, `epp.family.deleted`) with the actor and the object before and after, in the same transaction.
+
+| Action | Request |
+|---|---|
+| List policies, the built-in ones included | `GET /epp/policies` |
+| One policy | `GET /epp/policies/{name}` |
+| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 |
+| Delete a custom policy | `DELETE /epp/policies/{name}` → 204. 409 for a built-in policy, or one a registrar or family is assigned |
+| What applies to a registrar | `GET /registrars/{clid}/epp/policy`: its policy, and its family with the family's policy |
+| Assign a registrar its policy | `PUT /registrars/{clid}/epp/policy` with `{"policy": "gold"}`; `"default"` or `""` removes the assignment. 404 for an unknown registrar or policy |
+| List families | `GET /epp/families` |
+| One family | `GET /epp/families/{name}` |
+| Create or replace a family, its members included | `PUT /epp/families/{name}` with `{"description": "…", "policy": "gold", "members": ["clid1", "clid2"]}`. 409 for a member of another family; 404 for an unknown registrar or policy |
+| Delete a family | `DELETE /epp/families/{name}` → 204; its members belong to none |
 
 ### Sessions
 
-In place (Phase 3), as server settings; the policy engine (Phase 5) makes the caps per tier and adds the per-family cap.
+The session caps per registrar, login and family are the registrars' policies' ([§ Policies](#policies)). These are server settings:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`) |
-| `EPP_MAX_SESSIONS_PER_REGISTRAR` | `10` | Logged-in sessions per registrar, across every node and login. Over it, `<login>` is answered 2502 and the session closes |
-| `EPP_MAX_SESSIONS_PER_LOGIN` | `10` | Logged-in sessions per login, across every node. A login's own `session_cap` ([Credentials](#credentials-admin-api)) overrides it. Over it, 2502 |
+| `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`). It applies before anyone has logged in, so it is not a policy |
 | `EPP_SESSION_LEASE` | `90s` | How long a session stays in the registry without a renewal. A crashed node's sessions disappear after this. Lease times use Redis's clock, not the nodes', so clock skew between nodes does not matter. A closed session cannot be renewed back by a heartbeat that read it just before it closed |
 | `EPP_SESSION_HEARTBEAT` | `30s` | How often a node renews its sessions. At most half the lease, so one missed renewal never drops a live session. The registry's command count and last command time are this fresh |
 | `EPP_NODE_ID` | the hostname | The node's name in the registry |
-| Sessions per family | 40, *(Phase 5)* | Needs registrar families |
 
 **If Redis cannot answer** (each call is bounded to 500 ms), the node applies the same caps to its own sessions and sets `epp_policy_store_degraded{store="sessions"}`. A node's own count is a backstop, not the cluster's: with N nodes, up to N times a cap can be open until Redis returns. When it does, each node puts its sessions back within one heartbeat.
 
@@ -456,8 +488,8 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 
 | Rule | Value | Where to change it |
 |---|---|---|
-| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) until Phase 5 |
-| Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) until Phase 5 |
+| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) |
+| Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) |
 | While locked | 2501, and the session closes, even with the right password | |
 | Failed logins per session | 3, then 2501 and the session closes | `EPP_MAX_LOGIN_ATTEMPTS` |
 | Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013), with each Redis call bounded to 500 ms, and `epp_policy_store_degraded{store="lockout"}` is 1. The node-local count holds at most 100,000 (login, address) pairs and never drops a lock in force to make room. Redis being down at start is a warning, not a failure | |
@@ -468,7 +500,7 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 
-### Command rates *(Phase 5)*
+### Command rates *(Phase 5b)*
 
 Token buckets per registrar. A family gets 3× the registrar rate.
 
@@ -481,15 +513,17 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 
 `check` is metered in names so that batch size does not change capacity. A higher-volume registrar gets a tier with a larger budget, not a larger batch.
 
-### Per-command object caps *(Phase 5)*
+### Per-command object caps
 
 | Cap | Default | On breach |
 |---|---|---|
-| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for all three as `EPP_MAX_CHECK_NAMES` |
-| Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306. In place for `domain:create` |
-| DS records per domain | 8 | 2306. In place for `domain:create` (`services.MaxDSRecords`) |
+| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. The policy's `check_names` ([§ Policies](#policies)) |
+| Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306 |
+| DS records per domain | 8 (`services.MaxDSRecords`) | 2306 |
 
-### Quotas *(Phase 5)*
+The nameserver and DS caps are rules of the registry's data, the same for every registrar, so they are not in the policies (ADR 0019).
+
+### Quotas *(Phase 5b)*
 
 | Quota | Default |
 |---|---|

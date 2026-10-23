@@ -29,6 +29,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // forceCloseGrace is how long Shutdown waits for sessions to unwind after it
@@ -61,6 +62,9 @@ type Options struct {
 	Contacts interfaces.EPPContactService
 	// Polls answers <poll>. Required.
 	Polls interfaces.EPPPollService
+	// Policies is where the registrars' EPP policies are read from, every
+	// credential refresh interval. Required.
+	Policies interfaces.EPPPolicySource
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -86,9 +90,13 @@ type Server struct {
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
 	watch    credentialWatch
-	logger   *slog.Logger
-	newID    func() string
-	router   map[routeKey]route
+	// policySource is read into policies every refresh; until the first
+	// read succeeds, policies holds the built-in policies' starting limits.
+	policySource interfaces.EPPPolicySource
+	policies     atomic.Pointer[entities.EPPPolicySet]
+	logger       *slog.Logger
+	newID        func() string
+	router       map[routeKey]route
 
 	serving   atomic.Bool
 	draining  atomic.Bool
@@ -125,6 +133,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Audit == nil {
 		return nil, errors.New("epp: Options.Audit is required")
 	}
+	if opts.Policies == nil {
+		return nil, errors.New("epp: Options.Policies is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
@@ -136,12 +147,14 @@ func NewServer(opts Options) (*Server, error) {
 		contacts: opts.Contacts,
 		polls:    opts.Polls,
 		auditLog: opts.Audit,
-		policy:   allowAll{},
 		logger:   opts.Logger,
 		newID:    opts.NewID,
 		served:   make(chan struct{}),
 	}
 	s.router = s.routes()
+	s.policySource = opts.Policies
+	s.policies.Store(entities.DefaultEPPPolicySet())
+	s.policy = registrarPolicies{s: s}
 
 	var err error
 	if s.cfg.TLS.SelfSigned {
