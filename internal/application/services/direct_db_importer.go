@@ -705,7 +705,12 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 					case "pendingupdate":
 						ds.PendingUpdate = true
 					case "pendingrestore":
+						// A domain pending restore is a deleted one: it stays
+						// pendingDelete (RFC 3915 §4). The deposit has no report
+						// deadline, so the restore lapses and is reverted to
+						// redemption; the registrar requests it again.
 						ds.PendingRestore = true
+						ds.PendingDelete = true
 					case "pendingdelete":
 						ds.PendingDelete = true
 					}

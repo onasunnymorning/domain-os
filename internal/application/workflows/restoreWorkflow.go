@@ -4,40 +4,44 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/application/activities"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
-	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 )
 
-// RestoreLoopParams defines the input parameters for the RestoreWorkflow.
-// The workflow tolerates being started without arguments (zero values apply),
-// which keeps existing schedules and manual triggers compatible.
+// RestoreLoopParams are the input of RestoreWorkflow. Zero values apply when
+// it is started without arguments, as the schedule does.
 type RestoreLoopParams struct {
-	// BatchSize caps how many domains are listed and processed per run
-	// (default: 1000, the admin API maximum page size).
+	// BatchSize caps how many lapsed restores one run lists and reverts
+	// (default 1000).
 	BatchSize int `json:"batchSize,omitempty"`
-	// ContinuationCount tracks how many times this run has continued-as-new.
-	// Managed by the workflow — leave zero when starting a run.
+	// ContinuationCount is how many times this sweep has continued-as-new.
+	// The workflow manages it; leave it zero.
 	ContinuationCount int `json:"continuationCount,omitempty"`
+	// DueBy, AfterRestoreEnd and AfterRoID carry one sweep across
+	// continue-as-new: the time it started with, and the (deadline, ROID) of
+	// the last domain it listed. The workflow manages them; leave them zero.
+	DueBy           time.Time `json:"dueBy,omitempty"`
+	AfterRestoreEnd time.Time `json:"afterRestoreEnd,omitempty"`
+	AfterRoID       int64     `json:"afterRoid,omitempty"`
 }
 
-// RestoreLoopResult is the structured output of the RestoreWorkflow.
+// RestoreLoopResult is the outcome of one run.
 type RestoreLoopResult struct {
 	StartedAt      time.Time        `json:"startedAt"`
 	CompletedAt    time.Time        `json:"completedAt"`
+	DueBy          time.Time        `json:"dueBy"`
 	TotalFound     int              `json:"totalFound"`
 	TotalProcessed int              `json:"totalProcessed"`
-	Restored       int              `json:"restored"`
+	Reverted       int              `json:"reverted"`
 	Failed         int              `json:"failed"`
 	Skipped        int              `json:"skipped"`
 	Notes          []string         `json:"notes"`
 	Failures       []RestoreFailure `json:"failures,omitempty"`
 }
 
-// RestoreFailure records a single restore failure.
+// RestoreFailure is one domain whose lapsed restore could not be reverted.
 type RestoreFailure struct {
 	DomainName string `json:"domainName"`
 	Error      string `json:"error"`
@@ -46,126 +50,105 @@ type RestoreFailure struct {
 func (r *RestoreLoopResult) addFailure(domainName, errMsg string) {
 	r.Failed++
 	if len(r.Failures) < maxFailureSamples {
-		r.Failures = append(r.Failures, RestoreFailure{
-			DomainName: domainName,
-			Error:      errMsg,
-		})
+		r.Failures = append(r.Failures, RestoreFailure{DomainName: domainName, Error: errMsg})
 	}
 }
 
-// RestoreWorkflow completes restoration for domains in pendingRestore state:
-// each domain has PendingRestore unset and is force-renewed for one year in a
-// single write. The batch activity is idempotent under retries — domains whose
-// restore was already completed are reported as Skipped.
+// RestoreWorkflow reverts the restores whose report the registrar did not
+// send in time (RFC 3915): a domain pendingRestore past its
+// PendingRestoreEnd (the phase's pending restore period, 7 days by
+// default) returns to pendingDelete as it was before the request, in its
+// redemption period if that has not ended, with its original purge date
+// (entities.Domain.RevertRestore). A restore completes in the EPP command
+// that sends the report, never here.
 //
-// The list is processed one page per run. When a full page was returned there
-// may be more pendingRestore domains, so the workflow continues-as-new — but
-// only when the run made progress and the continuation cap is not exceeded.
+// A sweep lists the restores lapsed as of its start, a page per run in
+// (deadline, ROID) order, and reverts each page in one batch activity. The
+// batch reads and checks every domain again, so it is idempotent under
+// retries: a domain restored meanwhile, already reverted, or whose restore
+// has not lapsed is Skipped. A full page continues-as-new from the page's
+// last domain, so a domain that cannot be reverted is passed over, not
+// listed again, and cannot hold back the ones after it; the next sweep
+// retries it. maxContinuationRuns bounds a sweep.
 func RestoreWorkflow(ctx workflow.Context, params RestoreLoopParams) (RestoreLoopResult, error) {
 	started := workflow.Now(ctx)
-	result := RestoreLoopResult{
-		StartedAt: started,
+	dueBy := params.DueBy
+	if dueBy.IsZero() {
+		dueBy = started // a new sweep
 	}
-
-	// Register a query handler so progress is visible
-	err := workflow.SetQueryHandler(ctx, "progress", func() (RestoreLoopResult, error) {
+	result := RestoreLoopResult{StartedAt: started, DueBy: dueBy}
+	if err := workflow.SetQueryHandler(ctx, "progress", func() (RestoreLoopResult, error) {
 		return result, nil
-	})
-	if err != nil {
+	}); err != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Failed to register query handler: "+err.Error())
 		return result, err
 	}
-
 	workflowID := getWorkflowID(ctx)
-
-	retrypolicy := &temporal.RetryPolicy{
+	retry := &temporal.RetryPolicy{
 		InitialInterval:    time.Second,
 		BackoffCoefficient: 2.0,
 		MaximumInterval:    10 * time.Minute,
 		MaximumAttempts:    3,
 	}
+	listCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: time.Minute, RetryPolicy: retry})
+	batchSize := pageSizeOrDefaultWorkflow(params.BatchSize)
 
-	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Minute,
-		RetryPolicy:         retrypolicy,
-	}
-	ctx = workflow.WithActivityOptions(ctx, options)
-
-	// Step 1: List restored domains (one page per run)
-	query := &queries.RestoredDomainsQuery{
-		PageSize: params.BatchSize,
-	}
-	domainList := []response.DomainRestoredItem{}
-	listErr := workflow.ExecuteActivity(ctx, activities.ListRestoredDomains, workflowID, query).Get(ctx, &domainList)
-	if listErr != nil {
+	var lapsed []services.LapsedRestore
+	if err := workflow.ExecuteActivity(listCtx, "ListLapsedRestores", workflowID, dueBy, params.AfterRestoreEnd, params.AfterRoID, batchSize).Get(ctx, &lapsed); err != nil {
 		result.CompletedAt = workflow.Now(ctx)
-		result.Notes = append(result.Notes, "Failed to list restored domains: "+listErr.Error())
-		return result, listErr
+		result.Notes = append(result.Notes, "Failed to list lapsed restores: "+err.Error())
+		return result, err
 	}
-
-	result.TotalFound = len(domainList)
-
-	if len(domainList) == 0 {
+	result.TotalFound = len(lapsed)
+	if len(lapsed) == 0 {
 		result.CompletedAt = workflow.Now(ctx)
-		result.Notes = append(result.Notes, "No restored domains found")
+		result.Notes = append(result.Notes, "No lapsed restores")
 		return result, nil
 	}
 
-	// Step 2: Batch restore
-	domainNames := make([]string, len(domainList))
-	for i, d := range domainList {
-		domainNames[i] = d.Name
-	}
-
-	var restoreBatch services.BatchResult
 	batchCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Minute,
 		HeartbeatTimeout:    2 * time.Minute,
-		RetryPolicy:         retrypolicy,
+		RetryPolicy:         retry,
 	})
-	restoreErr := workflow.ExecuteActivity(batchCtx, "BatchRestoreDomains", workflowID, domainNames).Get(ctx, &restoreBatch)
-	if restoreErr != nil {
-		result.CompletedAt = workflow.Now(ctx)
-		result.Notes = append(result.Notes, "Batch restore failed: "+restoreErr.Error())
-		return result, restoreErr
+	names := make([]string, len(lapsed))
+	for i, l := range lapsed {
+		names[i] = l.DomainName
 	}
-
-	result.Restored = len(restoreBatch.Succeeded)
-	result.Skipped = len(restoreBatch.Skipped)
-	result.TotalProcessed = len(restoreBatch.Succeeded) + len(restoreBatch.Skipped) + len(restoreBatch.Failed)
-	for _, f := range restoreBatch.Failed {
+	var batch services.BatchResult
+	if err := workflow.ExecuteActivity(batchCtx, "BatchRevertLapsedRestores", workflowID, dueBy, names).Get(ctx, &batch); err != nil {
+		result.CompletedAt = workflow.Now(ctx)
+		result.Notes = append(result.Notes, "Batch revert failed: "+err.Error())
+		return result, err
+	}
+	result.Reverted = len(batch.Succeeded)
+	result.Skipped = len(batch.Skipped)
+	result.TotalProcessed = len(batch.Succeeded) + len(batch.Skipped) + len(batch.Failed)
+	for _, f := range batch.Failed {
 		result.addFailure(f.DomainName, f.Error)
 	}
-
 	result.CompletedAt = workflow.Now(ctx)
-
 	if result.Failed > 0 {
 		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
 	}
 
-	// A full page means there may be more pendingRestore domains waiting.
-	// Drain them with continue-as-new, guarded against hot loops.
-	fullPage := len(domainList) >= pageSizeOrDefaultWorkflow(params.BatchSize)
-	if fullPage {
-		progressed := result.Restored+result.Skipped > 0
-		if !progressed {
-			result.Notes = append(result.Notes, "Full page processed without progress — "+
-				"not continuing to avoid a hot loop. Remaining domains will be retried on the next scheduled run.")
-			return result, nil
-		}
+	// A full page may have more after it. The cursor moves past this page
+	// whatever became of it, so the sweep always advances.
+	if len(lapsed) >= batchSize {
 		if params.ContinuationCount >= maxContinuationRuns {
 			result.Notes = append(result.Notes, "Continuation cap reached ("+strconv.Itoa(maxContinuationRuns)+
-				" runs) — remaining domains will be picked up by the next scheduled run.")
+				" runs) — the remaining restores are picked up by the next scheduled run.")
 			return result, nil
 		}
-		result.Notes = append(result.Notes, "Full page of "+strconv.Itoa(len(domainList))+
-			" restored domains processed — continuing in a new run to drain the remainder.")
-		nextParams := params
-		nextParams.ContinuationCount++
-		return result, workflow.NewContinueAsNewError(ctx, RestoreTypeName, nextParams)
+		result.Notes = append(result.Notes, "Full page of "+strconv.Itoa(len(lapsed))+
+			" lapsed restores processed — continuing in a new run from the last one.")
+		last := lapsed[len(lapsed)-1]
+		next := params
+		next.ContinuationCount++
+		next.DueBy, next.AfterRestoreEnd, next.AfterRoID = dueBy, last.RestoreEnd, last.RoID
+		return result, workflow.NewContinueAsNewError(ctx, RestoreTypeName, next)
 	}
-
 	return result, nil
 }
 

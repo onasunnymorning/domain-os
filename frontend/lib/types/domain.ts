@@ -29,6 +29,8 @@ export interface DomainRGPStatus {
   transferLockPeriodEnd?: string;
   redemptionPeriodEnd?: string;
   purgeDate?: string;
+  // When a requested restore lapses unless its report is sent (RFC 3915 pendingRestore).
+  pendingRestoreEnd?: string;
 }
 
 export interface DomainListItem {

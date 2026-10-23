@@ -632,7 +632,7 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 	}
 
 	var dbDomains []*Domain
-	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
+	err = dr.db.WithContext(ctx).Order("ro_id ASC").Select("ro_id", "name", "expiry_date", "purge_date").Where(&Domain{ClID: clid, TLDName: tld}).Where(purgeableFilter, before).Where(activeGAPhaseFilter).Limit(pagesize).Find(&dbDomains, "ro_id > ?", roidInt).Error
 	if err != nil {
 		return nil, err
 	}
@@ -649,18 +649,44 @@ func (dr *DomainRepository) ListPurgeableDomains(ctx context.Context, before tim
 // and whose purge date falls on or before the given cutoff time.
 func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error) {
 	var count int64
-	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true", before).Where(activeGAPhaseFilter).Count(&count).Error
+	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where(purgeableFilter, before).Where(activeGAPhaseFilter).Count(&count).Error
 	return count, err
 }
 
-// CountRestoredDomains returns the number of domains that are in pendingRestore state (have been restored using the Domain.Restore() function)
+// purgeableFilter selects the domains to purge by a time (its one
+// parameter): pendingDelete with a purge date at or before it. A domain
+// whose restore was requested is not purged while the restore is pending:
+// it stays pendingDelete meanwhile (RFC 3915 §4), and its pending restore
+// period can outlast its purge date. A lapsed restore is reverted first
+// (Domain.RevertRestore), then purged.
+const purgeableFilter = "purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true AND COALESCE(pending_restore, false) = false"
+
+// ListLapsedRestores returns the domains whose restore lapsed by dueBy
+// (repositories.DomainRepository), served by the pending_restore_end index.
+func (dr *DomainRepository) ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error) {
+	var rows []*Domain
+	err := dr.db.WithContext(ctx).Select("ro_id", "name", "pending_restore_end").
+		Where("COALESCE(pending_restore, false) = true AND pending_restore_end <= ?", dueBy).
+		Where("(pending_restore_end, ro_id) > (?, ?)", afterEnd, afterRoID).
+		Order("pending_restore_end ASC, ro_id ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entities.Domain, len(rows))
+	for i, d := range rows {
+		out[i] = ToDomain(d, dr.repository)
+	}
+	return out, nil
+}
+
+// CountRestoredDomains returns the number of domains whose restore was requested and is pending (pendingRestore)
 func (dr *DomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
 	var count int64
 	err := dr.db.WithContext(ctx).Model(&Domain{}).Where(&Domain{ClID: clid, TLDName: tld}).Where("COALESCE(pending_restore, false) = true").Where(activeGAPhaseFilter).Count(&count).Error
 	return count, err
 }
 
-// ListRestoredDomains returns a list of domains that are in pendingRestore state (have been restored using the Domain.Restore() function)
+// ListRestoredDomains returns a list of domains whose restore was requested and is pending (pendingRestore)
 func (dr *DomainRepository) ListRestoredDomains(ctx context.Context, pagesize int, clid, tld, cursor string) ([]*entities.Domain, error) {
 	roidInt, err := getInt64RoidFromDomainRoidString(cursor)
 	if err != nil {

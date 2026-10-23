@@ -327,6 +327,44 @@ var HostUpdate = &Element{NS: NSHost, Name: "update", Content: Seq{
 	&Element{NS: NSHost, Name: "chg", Min: Optional, Content: Seq{hostName()}}, // host:chgType
 }}
 
+// Models of rgp-1.0.xsd (RFC 3915) for <rgp:update>.
+var (
+	// rgp:rgpOpType
+	rgpOpType = &Simple{Base: Token, Enum: []string{"request", "report"}}
+	dateTime  = &Simple{Base: DateTime}
+)
+
+// rgpMixed is rgp:mixedType, minOccurs min.
+//
+// Its children are laxly validated against the server's global
+// declarations: a child that xmllint would check against a declaration the
+// server does not validate commands with (a <domain:infData> copied into
+// <rgp:preData>, say) is accepted here unchecked. The server only stores a
+// report's content.
+func rgpMixed(name string, min int) *Element {
+	return &Element{NS: NSRGP, Name: name, Min: min, Mixed: true}
+}
+
+// rgpReportText is rgp:reportTextType, maxOccurs max.
+func rgpReportText(name string, max int) *Element {
+	return &Element{NS: NSRGP, Name: name, Max: max, Mixed: true, Attrs: []Attribute{{Name: "lang", Type: language}}}
+}
+
+// RGPUpdate is <rgp:update>, rgp:updateType.
+var RGPUpdate = &Element{NS: NSRGP, Name: "update", Content: Seq{
+	&Element{NS: NSRGP, Name: "restore", Attrs: []Attribute{{Name: "op", Type: rgpOpType, Required: true}}, Content: Seq{ // rgp:restoreType
+		&Element{NS: NSRGP, Name: "report", Min: Optional, Content: Seq{ // rgp:reportType
+			rgpMixed("preData", 0),
+			rgpMixed("postData", 0),
+			&Element{NS: NSRGP, Name: "delTime", Simple: dateTime},
+			&Element{NS: NSRGP, Name: "resTime", Simple: dateTime},
+			rgpReportText("resReason", 0),
+			rgpReportText("statement", 2),
+			rgpMixed("other", Optional),
+		}},
+	}},
+}}
+
 // Globals are the declarations wildcards may resolve to: the object
 // commands and extensions the server validates.
 var Globals = []*Element{
@@ -334,4 +372,5 @@ var Globals = []*Element{
 	HostCheck, HostInfo, HostCreate, HostUpdate, HostDelete,
 	ContactCheck, ContactInfo, ContactCreate, ContactUpdate, ContactDelete,
 	SecDNSCreate, SecDNSUpdate,
+	RGPUpdate,
 }

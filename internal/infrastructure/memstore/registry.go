@@ -405,6 +405,41 @@ func (r *Registry) MarkDomainForDeletionAsRead(_ context.Context, dom *entities.
 	return r.writeDomainAsRead(dom)
 }
 
+// RequestRestoreAsRead stands in for DomainService.RequestRestoreAsRead:
+// it requests dom's restore in its TLD's current GA phase, and restores it
+// at once if the phase requires no report. Pricing and events belong to
+// DomainService.
+func (r *Registry) RequestRestoreAsRead(_ context.Context, dom *entities.Domain, actor entities.ClIDType) (*entities.Domain, error) {
+	phase, err := r.currentPhase(dom.Name.ParentDomain())
+	if err != nil {
+		return nil, err
+	}
+	now := r.now().UTC()
+	if err := dom.RequestRestore(phase, now); err != nil {
+		return nil, err
+	}
+	if !phase.Policy.RequiresRestoreReport() {
+		if _, err := dom.CompleteRestore(nil, phase, now); err != nil {
+			return nil, err
+		}
+	}
+	dom.UpRr = actor
+	return r.writeDomainAsRead(dom)
+}
+
+// CompleteRestoreAsRead stands in for DomainService.CompleteRestoreAsRead.
+func (r *Registry) CompleteRestoreAsRead(_ context.Context, dom *entities.Domain, report entities.RestoreReport, actor entities.ClIDType) (*entities.Domain, error) {
+	phase, err := r.currentPhase(dom.Name.ParentDomain())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := dom.CompleteRestore(&report, phase, r.now().UTC()); err != nil {
+		return nil, err
+	}
+	dom.UpRr = actor
+	return r.writeDomainAsRead(dom)
+}
+
 func (r *Registry) currentPhase(tld string) (*entities.Phase, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

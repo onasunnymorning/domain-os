@@ -215,11 +215,17 @@ func limitedInfoData(d *entities.Domain) *etree.Element {
 // rgpInfoData builds <rgp:infData> (RFC 3915 §4.1), or nil when the domain
 // is in no grace period.
 func rgpInfoData(d *entities.Domain, now time.Time) *etree.Element {
+	return rgpData("rgp:infData", d, now)
+}
+
+// rgpData builds tag, <rgp:infData> or <rgp:upData> (RFC 3915 §4.1, §4.2.5),
+// with the domain's RGP statuses at now, or nil when it has none.
+func rgpData(tag string, d *entities.Domain, now time.Time) *etree.Element {
 	statuses := d.RGPStatuses(now)
 	if len(statuses) == 0 {
 		return nil
 	}
-	inf := etree.NewElement("rgp:infData")
+	inf := etree.NewElement(tag)
 	inf.CreateAttr("xmlns:rgp", nsRGP)
 	for _, st := range statuses {
 		inf.CreateElement("rgp:rgpStatus").CreateAttr("s", st)

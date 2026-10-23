@@ -151,3 +151,24 @@ with this ADR):
 - Existing Temporal schedules need no migration: `restore-loop` keeps
   starting the workflow without args (zero-value params apply), and the
   schedule reconciler updates nothing because intervals/queues are unchanged.
+
+## Amendment, 2026-10-23: the restore loop reverts instead of completing (EPP Phase 4i-2)
+
+RFC 3915 restores a deleted domain in two registrar steps, a request and a
+report, and the EPP server now offers both. The report completes the restore
+in its own command, written over the domain as read, with its charges (the
+restore fee and the renewal). Restore completion is therefore no longer a
+lifecycle transition, and `BatchRestoreDomains` is gone.
+
+What remains time-driven is a request whose report never came. `restore-loop`
+(workflow type `Restore`, unchanged) now runs hourly at :45 and reverts those:
+a domain `pendingRestore` past its `pendingRestoreEnd` returns to
+`pendingDelete` as before the request. It keeps this ADR's rules: it lists by
+an indexed column (`pending_restore_end`), re-checks every domain before
+writing (a domain restored, already reverted or not yet lapsed is Skipped),
+writes only over the domain as read, and pages with a (deadline, ROID) cursor
+carried across continue-as-new, as the transfer approval loop does, so a
+domain it cannot revert does not hold back the others. The reconciler applies
+the new interval to the existing schedule. The purge loop skips a domain with
+a restore pending, which stays `pendingDelete` meanwhile (RFC 3915 §4), until
+it is reverted.

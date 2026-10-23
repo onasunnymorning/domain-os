@@ -66,6 +66,7 @@ func NewDomainController(e *gin.Engine, domService interfaces.DomainService, han
 		domainGroup.POST(":name/renew/force", controller.ForceRenew)
 		domainGroup.DELETE(":name/markdelete", controller.MarkDomainForDeletion)
 		domainGroup.POST(":name/restore", controller.RestoreDomain)
+		domainGroup.POST(":name/restore/report", controller.ReportRestore)
 
 		// Lifecycle endpoints
 		domainGroup.GET("expiring", controller.ListExpiringDomains)
@@ -819,32 +820,68 @@ func (ctrl *DomainController) Expire(ctx *gin.Context) {
 }
 
 // RestoreDomain godoc
-// @Summary Restore a domain
-// @Description Restore a domain. It marks the domain as pendingRestore, this relies on a downstream process to process the restore. The operation will fail with error if the domain is not in a state that allows restoration.
+// @Summary Request a domain's restore
+// @Description Requests the restore of a deleted domain in its redemption period, for its sponsor (RFC 3915). The domain becomes pendingRestore, still pendingDelete, until its restore report is sent (POST /domains/{name}/restore/report) or the phase's pending restore period ends, when the restore lapses. A phase that requires no report restores the domain at once.
 // @Tags Domains
 // @Produce json
 // @Param domain path string true "Domain Name"
 // @Success 200 {object} entities.Domain
 // @Failure 400
 // @Failure 404
+// @Failure 409
 // @Failure 500
 // @Router /domains/{name}/restore [post]
 func (ctrl *DomainController) RestoreDomain(ctx *gin.Context) {
 	dom, err := ctrl.domainService.RestoreDomain(ctx.Request.Context(), ctx.Param("name"))
 	if err != nil {
-		if errors.Is(err, entities.ErrDomainNotFound) {
-			ctx.JSON(404, gin.H{"error": err.Error()})
-			return
-		}
-		if errors.Is(err, entities.ErrDomainRestoreNotAllowed) {
-			ctx.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(500, gin.H{"error": err.Error()})
+		restoreError(ctx, err)
 		return
 	}
-
 	ctx.JSON(200, dom)
+}
+
+// ReportRestore godoc
+// @Summary Send a domain's restore report
+// @Description Sends the restore report of a domain whose restore was requested, for its sponsor (RFC 3915 §4.2.5), which completes the restore: the domain leaves pendingDelete and is renewed for a year, and further years while its expiry would be past. The report needs preData, postData, resReason, two statements, and delTime before resTime, neither in the future.
+// @Tags Domains
+// @Accept json
+// @Produce json
+// @Param domain path string true "Domain Name"
+// @Param report body entities.RestoreReport true "The restore report"
+// @Success 200 {object} entities.Domain
+// @Failure 400
+// @Failure 404
+// @Failure 409
+// @Failure 500
+// @Router /domains/{name}/restore/report [post]
+func (ctrl *DomainController) ReportRestore(ctx *gin.Context) {
+	var report entities.RestoreReport
+	if err := ctx.ShouldBindJSON(&report); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	dom, err := ctrl.domainService.ReportRestore(ctx.Request.Context(), ctx.Param("name"), report)
+	if err != nil {
+		restoreError(ctx, err)
+		return
+	}
+	ctx.JSON(200, dom)
+}
+
+// restoreError answers a refused restore step: 404 for a domain that does
+// not exist, 400 for a report that is incomplete or impossible, 409 for a
+// domain whose state does not allow the step, 500 otherwise.
+func restoreError(ctx *gin.Context, err error) {
+	switch {
+	case errors.Is(err, entities.ErrDomainNotFound):
+		ctx.JSON(404, gin.H{"error": err.Error()})
+	case errors.Is(err, entities.ErrRestoreReportIncomplete), errors.Is(err, entities.ErrRestoreReportTimes):
+		ctx.JSON(400, gin.H{"error": err.Error()})
+	case errors.Is(err, entities.ErrDomainRestoreNotAllowed), errors.Is(err, entities.ErrRestoreNotPending), errors.Is(err, entities.ErrDomainChanged):
+		ctx.JSON(409, gin.H{"error": err.Error()})
+	default:
+		ctx.JSON(500, gin.H{"error": err.Error()})
+	}
 }
 
 // SetDropCatch godoc

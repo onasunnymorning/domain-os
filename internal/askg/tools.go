@@ -392,6 +392,8 @@ func mapPhaseToOutput(p *entities.Phase) mcp.PhaseOutput {
 			PendingDeleteGP:       p.Policy.PendingDeleteGP,
 			PendingTransferPeriod: p.Policy.PendingTransferDays(),
 			TransferLockPeriod:    p.Policy.TransferLockDays(),
+			PendingRestorePeriod:  p.Policy.PendingRestoreDays(),
+			RestoreReportRequired: p.Policy.RequiresRestoreReport(),
 			MaxHorizon:            p.Policy.MaxHorizon,
 			AllowAutoRenew:        p.Policy.AllowAutoRenew,
 			BaseCurrency:          p.Policy.BaseCurrency,

@@ -204,6 +204,24 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
           )}
         </div>
 
+        {/* Pending Restore: days to send the restore report (RFC 3915) */}
+        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Pending Restore</div>
+          {!isEditing ? (
+            <div className="font-semibold">{policy.pendingRestorePeriod || 7} days</div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <input
+                type="number" min="1"
+                value={editedPolicy?.pendingRestorePeriod || 7}
+                onChange={(e) => handleChange('pendingRestorePeriod', parseInt(e.target.value) || 7)}
+                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
+              />
+              <span className="text-xs text-muted-foreground">days</span>
+            </div>
+          )}
+        </div>
+
         {/* Max Horizon */}
         <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Max Horizon</div>
@@ -236,6 +254,14 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
           value={isEditing ? editedPolicy?.requiresValidation : policy.requiresValidation}
           isEditing={isEditing}
           onChange={(v) => handleChange('requiresValidation', v)}
+        />
+
+        {/* Restore Report Required: unset means required (the .com behaviour) */}
+        <ToggleField
+          label="Restore Report Required"
+          value={(isEditing ? editedPolicy?.restoreReportRequired : policy.restoreReportRequired) ?? true}
+          isEditing={isEditing}
+          onChange={(v) => handleChange('restoreReportRequired', v)}
         />
 
         {/* Base Currency */}

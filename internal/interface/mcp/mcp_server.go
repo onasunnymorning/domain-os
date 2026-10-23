@@ -98,6 +98,8 @@ type PolicyOutput struct {
 	PendingDeleteGP       int    `json:"pendingDeleteGP,omitempty" jsonschema:"Pending delete period in days."`
 	PendingTransferPeriod int    `json:"pendingTransferPeriod,omitempty" jsonschema:"Days the losing registrar has to approve or reject a transfer request before the registry approves it."`
 	TransferLockPeriod    int    `json:"transferLockPeriod" jsonschema:"Transfer lock period in days after a registration or a transfer, in which the domain cannot be transferred. 0 is no lock."`
+	PendingRestorePeriod  int    `json:"pendingRestorePeriod,omitempty" jsonschema:"Days a registrar has to send the restore report after requesting a restore (RFC 3915) before the request lapses."`
+	RestoreReportRequired bool   `json:"restoreReportRequired" jsonschema:"Whether a restore waits for the registrar's restore report. False restores a deleted domain on its request alone."`
 	MaxHorizon            int    `json:"maxHorizon,omitempty" jsonschema:"Maximum registration horizon in years."`
 	AllowAutoRenew        *bool  `json:"allowAutoRenew,omitempty" jsonschema:"Whether auto-renewal is permitted in this phase."`
 	BaseCurrency          string `json:"baseCurrency,omitempty" jsonschema:"Base currency for pricing in this phase (ISO 4217)."`
@@ -326,6 +328,8 @@ func mapPhase(p *entities.Phase) PhaseOutput {
 			PendingDeleteGP:       p.Policy.PendingDeleteGP,
 			PendingTransferPeriod: p.Policy.PendingTransferDays(),
 			TransferLockPeriod:    p.Policy.TransferLockDays(),
+			PendingRestorePeriod:  p.Policy.PendingRestoreDays(),
+			RestoreReportRequired: p.Policy.RequiresRestoreReport(),
 			MaxHorizon:            p.Policy.MaxHorizon,
 			AllowAutoRenew:        p.Policy.AllowAutoRenew,
 			BaseCurrency:          p.Policy.BaseCurrency,

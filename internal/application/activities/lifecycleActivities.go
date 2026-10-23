@@ -294,34 +294,28 @@ func withWorkflowIDs(ctx context.Context, correlationID string) context.Context 
 	return ctx
 }
 
-// BatchRestoreDomains restores domains in batch via the service layer.
-func (a *LifecycleActivities) BatchRestoreDomains(ctx context.Context, correlationID string, domainNames []string) (services.BatchResult, error) {
-	result := services.BatchResult{
-		Succeeded: []string{},
-		Failed:    []services.BatchFailure{},
-	}
+// ListLapsedRestores lists up to limit domains whose restore lapsed by
+// dueBy, after the cursor (afterEnd, afterRoID), for RestoreWorkflow.
+func (a *LifecycleActivities) ListLapsedRestores(ctx context.Context, correlationID string, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]services.LapsedRestore, error) {
+	return a.DomainService.ListLapsedRestores(withWorkflowIDs(ctx, correlationID), dueBy, afterEnd, afterRoID, limit)
+}
 
-	if len(domainNames) == 0 {
-		return result, nil
-	}
-
+// BatchRevertLapsedRestores reverts the restores of the domains named that
+// lapsed by dueBy. Idempotent: a domain restored, already reverted, or
+// whose restore has not lapsed is skipped.
+func (a *LifecycleActivities) BatchRevertLapsedRestores(ctx context.Context, correlationID string, dueBy time.Time, domainNames []string) (services.BatchResult, error) {
+	ctx = withWorkflowIDs(ctx, correlationID)
+	result := services.BatchResult{Succeeded: []string{}, Failed: []services.BatchFailure{}}
 	for i := 0; i < len(domainNames); i += defaultBatchChunkSize {
-		end := i + defaultBatchChunkSize
-		if end > len(domainNames) {
-			end = len(domainNames)
-		}
-		chunk := domainNames[i:end]
-
-		batchResult := a.DomainService.BatchRestoreDomains(ctx, chunk)
-		result.Succeeded = append(result.Succeeded, batchResult.Succeeded...)
-		result.Failed = append(result.Failed, batchResult.Failed...)
-
-		activity.RecordHeartbeat(ctx, fmt.Sprintf("restored %d/%d domains", end, len(domainNames)))
-
+		end := min(i+defaultBatchChunkSize, len(domainNames))
+		batch := a.DomainService.BatchRevertLapsedRestores(ctx, domainNames[i:end], dueBy)
+		result.Succeeded = append(result.Succeeded, batch.Succeeded...)
+		result.Failed = append(result.Failed, batch.Failed...)
+		result.Skipped = append(result.Skipped, batch.Skipped...)
+		activity.RecordHeartbeat(ctx, fmt.Sprintf("reverted %d/%d restores", end, len(domainNames)))
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
 	}
-
 	return result, nil
 }

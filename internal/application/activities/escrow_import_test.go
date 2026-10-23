@@ -137,6 +137,7 @@ func TestImportDomainsChunkedStatusParsingFix(t *testing.T) {
 			ds.PendingUpdate = true
 		case "pendingrestore":
 			ds.PendingRestore = true
+			ds.PendingDelete = true
 		case "pendingdelete":
 			ds.PendingDelete = true
 		}

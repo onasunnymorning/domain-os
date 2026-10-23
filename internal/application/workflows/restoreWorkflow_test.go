@@ -2,18 +2,19 @@ package workflows
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/application/activities"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 )
 
 type RestoreWorkflowTestSuite struct {
@@ -25,181 +26,146 @@ type RestoreWorkflowTestSuite struct {
 func (s *RestoreWorkflowTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
 	s.env.RegisterWorkflowWithOptions(RestoreWorkflow, workflow.RegisterOptions{Name: RestoreTypeName})
-
-	// Register stub function for string-based batch activity so the test env can resolve it
+	// The activities are LifecycleActivities methods, registered by name.
 	s.env.RegisterActivityWithOptions(
-		func(ctx context.Context, correlationID string, domainNames []string) (services.BatchResult, error) {
+		func(ctx context.Context, correlationID string, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]services.LapsedRestore, error) {
+			return nil, nil
+		},
+		activity.RegisterOptions{Name: "ListLapsedRestores"},
+	)
+	s.env.RegisterActivityWithOptions(
+		func(ctx context.Context, correlationID string, dueBy time.Time, names []string) (services.BatchResult, error) {
 			return services.BatchResult{}, nil
 		},
-		activity.RegisterOptions{Name: "BatchRestoreDomains"},
+		activity.RegisterOptions{Name: "BatchRevertLapsedRestores"},
 	)
 }
 
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_NoDomains() {
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return([]response.DomainRestoredItem{}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
+func (s *RestoreWorkflowTestSuite) result() RestoreLoopResult {
 	s.Require().True(s.env.IsWorkflowCompleted())
-	s.Require().NoError(s.env.GetWorkflowError())
-
-	var result RestoreLoopResult
-	s.Require().NoError(s.env.GetWorkflowResult(&result))
-	s.Equal(0, result.TotalFound)
-	s.Contains(result.Notes, "No restored domains found")
+	var r RestoreLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&r))
+	return r
 }
 
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_Success() {
-	domains := []response.DomainRestoredItem{
-		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
-		{Name: "restored2.com", RoID: "ro2", ClID: "reg2"},
-	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(domains, nil)
-
-	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
-		Return(services.BatchResult{
-			Succeeded: []string{"restored1.com", "restored2.com"},
-			Failed:    []services.BatchFailure{},
-		}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
+// continuedWith is the input a continue-as-new carries.
+func (s *RestoreWorkflowTestSuite) continuedWith() RestoreLoopParams {
 	s.Require().True(s.env.IsWorkflowCompleted())
-	s.Require().NoError(s.env.GetWorkflowError())
-
-	var result RestoreLoopResult
-	s.Require().NoError(s.env.GetWorkflowResult(&result))
-	s.Equal(2, result.TotalFound)
-	s.Equal(2, result.Restored)
-	s.Equal(0, result.Failed)
-	s.Equal(2, result.TotalProcessed)
-	s.Empty(result.Failures)
-}
-
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_PartialFailure() {
-	domains := []response.DomainRestoredItem{
-		{Name: "ok.com", RoID: "ro1", ClID: "reg1"},
-		{Name: "fail.com", RoID: "ro2", ClID: "reg2"},
-	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(domains, nil)
-
-	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
-		Return(services.BatchResult{
-			Succeeded: []string{"ok.com"},
-			Failed: []services.BatchFailure{
-				{DomainName: "fail.com", Error: "restore failed: grace period expired"},
-			},
-		}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
-	s.Require().True(s.env.IsWorkflowCompleted())
-	s.Require().NoError(s.env.GetWorkflowError())
-
-	var result RestoreLoopResult
-	s.Require().NoError(s.env.GetWorkflowResult(&result))
-	s.Equal(2, result.TotalFound)
-	s.Equal(1, result.Restored)
-	s.Equal(1, result.Failed)
-	s.Equal(2, result.TotalProcessed)
-	s.Require().Len(result.Failures, 1)
-	s.Equal("fail.com", result.Failures[0].DomainName)
-	s.Contains(result.Failures[0].Error, "grace period expired")
-	s.Contains(result.Notes, "Completed with failures — review the failures list for details")
-}
-
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_SkippedAreCounted() {
-	domains := []response.DomainRestoredItem{
-		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
-		{Name: "alreadydone.com", RoID: "ro2", ClID: "reg2"},
-	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(domains, nil)
-
-	// alreadydone.com was completed by a previous (retried) attempt
-	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
-		Return(services.BatchResult{
-			Succeeded: []string{"restored1.com"},
-			Skipped:   []string{"alreadydone.com"},
-		}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
-	s.Require().True(s.env.IsWorkflowCompleted())
-	s.Require().NoError(s.env.GetWorkflowError())
-
-	var result RestoreLoopResult
-	s.Require().NoError(s.env.GetWorkflowResult(&result))
-	s.Equal(1, result.Restored)
-	s.Equal(1, result.Skipped)
-	s.Equal(0, result.Failed)
-	s.Equal(2, result.TotalProcessed)
-}
-
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_FullPage_ContinuesAsNew() {
-	// BatchSize 2 and exactly 2 results — a full page means more may be waiting
-	domains := []response.DomainRestoredItem{
-		{Name: "restored1.com", RoID: "ro1", ClID: "reg1"},
-		{Name: "restored2.com", RoID: "ro2", ClID: "reg2"},
-	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(domains, nil)
-
-	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
-		Return(services.BatchResult{
-			Succeeded: []string{"restored1.com", "restored2.com"},
-		}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{BatchSize: 2})
-	s.Require().True(s.env.IsWorkflowCompleted())
-
 	err := s.env.GetWorkflowError()
 	s.Require().Error(err)
-	s.Contains(err.Error(), "continue as new")
+	var ce *workflow.ContinueAsNewError
+	s.Require().True(errors.As(err, &ce), "continue-as-new, got %v", err)
+	s.Equal(RestoreTypeName, ce.WorkflowType.Name)
+	var next RestoreLoopParams
+	s.Require().NoError(converter.GetDefaultDataConverter().FromPayloads(ce.Input, &next))
+	return next
 }
 
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_FullPage_NoProgress_DoesNotContinue() {
-	// Full page but nothing succeeded — must complete instead of hot-looping
-	domains := []response.DomainRestoredItem{
-		{Name: "poison1.com", RoID: "ro1", ClID: "reg1"},
-		{Name: "poison2.com", RoID: "ro2", ClID: "reg2"},
+func lapsed(names ...string) []services.LapsedRestore {
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	out := make([]services.LapsedRestore, len(names))
+	for i, n := range names {
+		out[i] = services.LapsedRestore{DomainName: n, RoID: int64(100 + i), RestoreEnd: base.Add(time.Duration(i) * time.Minute)}
 	}
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(domains, nil)
+	return out
+}
 
-	s.env.OnActivity("BatchRestoreDomains", mock.Anything, mock.Anything, mock.Anything).
-		Return(services.BatchResult{
-			Succeeded: []string{},
-			Failed: []services.BatchFailure{
-				{DomainName: "poison1.com", Error: "boom"},
-				{DomainName: "poison2.com", Error: "boom"},
-			},
-		}, nil)
-
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{BatchSize: 2})
-	s.Require().True(s.env.IsWorkflowCompleted())
+func (s *RestoreWorkflowTestSuite) Test_NothingLapsed() {
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, time.Time{}, int64(0), 1000).Return([]services.LapsedRestore{}, nil)
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{})
 	s.Require().NoError(s.env.GetWorkflowError())
-
-	var result RestoreLoopResult
-	s.Require().NoError(s.env.GetWorkflowResult(&result))
-	s.Equal(2, result.Failed)
-	foundNote := false
-	for _, n := range result.Notes {
-		if strings.HasPrefix(n, "Full page processed without progress") {
-			foundNote = true
-		}
-	}
-	s.True(foundNote, "expected the no-progress note, got: %v", result.Notes)
+	r := s.result()
+	s.Equal(0, r.TotalFound)
+	s.Contains(r.Notes, "No lapsed restores")
 }
 
-func (s *RestoreWorkflowTestSuite) Test_RestoreWorkflow_ListError() {
-	s.env.OnActivity(activities.ListRestoredDomains, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("API unavailable: connection refused"))
+func (s *RestoreWorkflowTestSuite) Test_RevertsWhatLapsed_AsOfTheSweepsStart() {
+	var listedBy, revertedBy time.Time
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, time.Time{}, int64(0), 1000).
+		Return(func(_ context.Context, _ string, dueBy, _ time.Time, _ int64, _ int) ([]services.LapsedRestore, error) {
+			listedBy = dueBy
+			return lapsed("a.test", "b.test", "c.test"), nil
+		})
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, mock.Anything, []string{"a.test", "b.test", "c.test"}).
+		Return(func(_ context.Context, _ string, dueBy time.Time, _ []string) (services.BatchResult, error) {
+			revertedBy = dueBy
+			return services.BatchResult{
+				Succeeded: []string{"a.test"},
+				Skipped:   []string{"b.test"},
+				Failed:    []services.BatchFailure{{DomainName: "c.test", Error: "boom"}},
+			}, nil
+		})
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{})
+	s.Require().NoError(s.env.GetWorkflowError())
+	r := s.result()
+	s.Equal(3, r.TotalFound)
+	s.Equal(1, r.Reverted)
+	s.Equal(1, r.Skipped)
+	s.Equal(1, r.Failed)
+	s.Equal(3, r.TotalProcessed)
+	s.Equal("c.test", r.Failures[0].DomainName)
+	s.False(listedBy.IsZero())
+	s.Equal(listedBy, revertedBy, "the batch re-checks against the same time it listed by")
+	s.Equal(r.StartedAt, r.DueBy)
+}
 
-	s.env.ExecuteWorkflow(RestoreWorkflow, RestoreLoopParams{})
-	s.Require().True(s.env.IsWorkflowCompleted())
+func (s *RestoreWorkflowTestSuite) Test_FullPage_ContinuesFromItsLastDomain() {
+	page := lapsed("a.test", "b.test")
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, time.Time{}, int64(0), 2).Return(page, nil)
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, mock.Anything, []string{"a.test", "b.test"}).
+		Return(services.BatchResult{Succeeded: []string{"a.test", "b.test"}}, nil)
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{BatchSize: 2})
+	next := s.continuedWith()
+	s.Equal(1, next.ContinuationCount)
+	s.Equal(page[1].RestoreEnd, next.AfterRestoreEnd)
+	s.Equal(page[1].RoID, next.AfterRoID)
+	s.False(next.DueBy.IsZero(), "the sweep keeps its time")
+}
+
+// A page whose domains all fail cannot hold back the ones after it.
+func (s *RestoreWorkflowTestSuite) Test_FullPageOfFailures_StillMovesOn() {
+	page := lapsed("poison1.test", "poison2.test")
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, time.Time{}, int64(0), 2).Return(page, nil)
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(services.BatchResult{Failed: []services.BatchFailure{{DomainName: "poison1.test", Error: "x"}, {DomainName: "poison2.test", Error: "y"}}}, nil)
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{BatchSize: 2})
+	next := s.continuedWith()
+	s.Equal(page[1].RoID, next.AfterRoID)
+}
+
+func (s *RestoreWorkflowTestSuite) Test_ContinuedSweep_KeepsItsTimeAndCursor() {
+	dueBy := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	after := time.Date(2026, 10, 1, 0, 1, 0, 0, time.UTC)
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, dueBy, after, int64(101), 2).Return(lapsed("c.test"), nil)
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, dueBy, []string{"c.test"}).
+		Return(services.BatchResult{Succeeded: []string{"c.test"}}, nil)
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{BatchSize: 2, ContinuationCount: 1, DueBy: dueBy, AfterRestoreEnd: after, AfterRoID: 101})
+	s.Require().NoError(s.env.GetWorkflowError(), "a short page ends the sweep")
+	s.Equal(dueBy, s.result().DueBy)
+}
+
+func (s *RestoreWorkflowTestSuite) Test_ContinuationCap() {
+	page := lapsed("a.test", "b.test")
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, 2).Return(page, nil)
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(services.BatchResult{Succeeded: []string{"a.test", "b.test"}}, nil)
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{BatchSize: 2, ContinuationCount: maxContinuationRuns})
+	s.Require().NoError(s.env.GetWorkflowError(), "the cap ends the sweep; the next hourly run picks up the rest")
+}
+
+func (s *RestoreWorkflowTestSuite) Test_ListFailure() {
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, 1000).Return(nil, fmt.Errorf("db down"))
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{})
 	s.Require().Error(s.env.GetWorkflowError())
 }
 
-func TestRestoreWorkflowTestSuite(t *testing.T) {
+func (s *RestoreWorkflowTestSuite) Test_BatchFailure() {
+	s.env.OnActivity("ListLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, 1000).Return(lapsed("a.test"), nil)
+	s.env.OnActivity("BatchRevertLapsedRestores", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(services.BatchResult{}, fmt.Errorf("db down"))
+	s.env.ExecuteWorkflow(RestoreTypeName, RestoreLoopParams{})
+	s.Require().Error(s.env.GetWorkflowError())
+}
+
+func TestRestoreWorkflow(t *testing.T) {
 	suite.Run(t, new(RestoreWorkflowTestSuite))
 }
