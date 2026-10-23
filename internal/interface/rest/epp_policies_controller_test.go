@@ -63,13 +63,19 @@ func TestEPPPoliciesRequirePermission(t *testing.T) {
 
 func TestEPPPoliciesAPI(t *testing.T) {
 	r, repo := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
-	limits := `{"limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25}}`
+	limits := `{"limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25,` +
+		`"rates":{"check":{"per_second":250,"burst":1000},"info":{"per_second":20,"burst":100},"transform":{"per_second":10,"burst":50},"poll":{"per_second":5,"burst":20}},` +
+		`"family_rates":{"check":{"per_second":750,"burst":3000},"info":{"per_second":60,"burst":300},"transform":{"per_second":30,"burst":150},"poll":{"per_second":15,"burst":60}},` +
+		`"creates_per_day":100}}`
 
 	w := do(r, http.MethodPut, "/epp/policies/gold", limits)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var p entities.EPPPolicy
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &p))
 	assert.Equal(t, 25, p.Limits.CheckNames)
+	assert.Equal(t, entities.EPPRate{PerSecond: 10, Burst: 50}, p.Limits.Rates.Transform)
+	assert.Equal(t, entities.EPPRate{PerSecond: 750, Burst: 3000}, p.Limits.FamilyRates.Check)
+	assert.Equal(t, 100, p.Limits.CreatesPerDay)
 	assert.Equal(t, "ops@example.com", p.UpdatedBy)
 
 	w = do(r, http.MethodGet, "/epp/policies", "")
@@ -80,6 +86,9 @@ func TestEPPPoliciesAPI(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodPut, "/epp/policies/silver", `{"limits":{"check_names":0}}`).Code)
 	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodPut, "/epp/policies/silver", `not json`).Code)
+	w = do(r, http.MethodPut, "/epp/policies/silver", strings.Replace(limits, `"burst":1000`, `"burst":10`, 1))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "rates.check.burst must be at least check_names (25)")
 
 	w = do(r, http.MethodPut, "/registrars/rar-a/epp/policy", `{"policy":"gold"}`)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())

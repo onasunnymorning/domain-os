@@ -35,7 +35,8 @@ func policyTestService() (*EPPPolicyService, *memstore.EPPPolicies, context.Cont
 
 func TestEPPPolicyServicePolicies(t *testing.T) {
 	svc, repo, ctx := policyTestService()
-	limits := entities.EPPPolicyLimits{SessionsPerRegistrar: 20, SessionsPerLogin: 5, SessionsPerFamily: 60, CheckNames: 25}
+	limits := entities.DefaultEPPPolicyLimits()
+	limits.SessionsPerRegistrar, limits.SessionsPerLogin, limits.SessionsPerFamily, limits.CheckNames = 20, 5, 60, 25
 
 	t.Run("the built-in policies are there before anything is stored", func(t *testing.T) {
 		ps, err := svc.ListPolicies(ctx)
@@ -86,7 +87,8 @@ func TestEPPPolicyServicePolicies(t *testing.T) {
 
 func TestEPPPolicyServiceAssignmentsAndFamilies(t *testing.T) {
 	svc, repo, ctx := policyTestService()
-	gold := entities.EPPPolicyLimits{SessionsPerRegistrar: 20, SessionsPerLogin: 5, SessionsPerFamily: 3, CheckNames: 25}
+	gold := entities.DefaultEPPPolicyLimits()
+	gold.SessionsPerRegistrar, gold.SessionsPerLogin, gold.SessionsPerFamily, gold.CheckNames = 20, 5, 3, 25
 	_, err := svc.SavePolicy(ctx, "gold", commands.SaveEPPPolicyCommand{Limits: gold})
 	require.NoError(t, err)
 

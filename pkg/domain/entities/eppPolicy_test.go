@@ -20,14 +20,37 @@ func TestNewEPPPolicy(t *testing.T) {
 		func(l *EPPPolicyLimits) { l.SessionsPerLogin = -1 },
 		func(l *EPPPolicyLimits) { l.SessionsPerFamily = 0 },
 		func(l *EPPPolicyLimits) { l.CheckNames = 0 },
+		func(l *EPPPolicyLimits) { l.Rates.Info.PerSecond = 0 },
+		func(l *EPPPolicyLimits) { l.Rates.Poll.Burst = 0 },
+		func(l *EPPPolicyLimits) { l.FamilyRates.Transform.PerSecond = 0 },
+		func(l *EPPPolicyLimits) { l.Rates.Check.Burst = l.CheckNames - 1 },
+		func(l *EPPPolicyLimits) { l.FamilyRates.Check.Burst = l.CheckNames - 1 },
+		func(l *EPPPolicyLimits) { l.CreatesPerDay = -1 },
 	} {
 		l := DefaultEPPPolicyLimits()
 		edit(&l)
 		_, err := NewEPPPolicy("gold", "", l)
 		assert.ErrorIs(t, err, ErrInvalidEPPPolicy)
 	}
+	l := DefaultEPPPolicyLimits()
+	l.CreatesPerDay, l.Rates.Check.Burst = 0, l.CheckNames
+	_, err = NewEPPPolicy("gold", "", l)
+	assert.NoError(t, err, "no create cap, and a check burst of exactly one full check")
+	_, err = NewEPPPolicy("gold", "", EPPPolicyLimits{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rates.check.per_second must be at least 1", "every bad limit is named")
 	assert.True(t, (&EPPPolicy{Name: EPPPolicyProbation}).BuiltIn())
 	assert.False(t, (&EPPPolicy{Name: "gold"}).BuiltIn())
+}
+
+func TestStartingLimits(t *testing.T) {
+	for _, p := range BuiltInEPPPolicies() {
+		require.NoError(t, p.Limits.Validate(), p.Name)
+		assert.Equal(t, p.Limits.Rates.Times(3), p.Limits.FamilyRates, "%s: a family's rates start at 3× a registrar's", p.Name)
+	}
+	assert.Zero(t, DefaultEPPPolicyLimits().CreatesPerDay, "default has no create cap")
+	assert.Equal(t, 100, ProbationEPPPolicyLimits().CreatesPerDay)
+	assert.Equal(t, EPPRate{PerSecond: 250, Burst: 1000}, DefaultEPPPolicyLimits().Rates.Check)
 }
 
 func TestNewRegistrarFamily(t *testing.T) {

@@ -23,12 +23,50 @@ import (
 type EPPPolicyRecord struct {
 	Name                 string `gorm:"primaryKey;size:32"`
 	Description          string
-	SessionsPerRegistrar int       `gorm:"not null"`
-	SessionsPerLogin     int       `gorm:"not null"`
-	SessionsPerFamily    int       `gorm:"not null"`
-	CheckNames           int       `gorm:"not null"`
-	UpdatedAt            time.Time `gorm:"not null;autoUpdateTime:false"`
-	UpdatedBy            string
+	SessionsPerRegistrar int `gorm:"not null"`
+	SessionsPerLogin     int `gorm:"not null"`
+	SessionsPerFamily    int `gorm:"not null"`
+	CheckNames           int `gorm:"not null"`
+	// Rates and FamilyRates are columns rate_check_per_second,
+	// rate_check_burst, ... and family_rate_check_per_second, ....
+	Rates         EPPRateColumns `gorm:"embedded;embeddedPrefix:rate_"`
+	FamilyRates   EPPRateColumns `gorm:"embedded;embeddedPrefix:family_rate_"`
+	CreatesPerDay int            `gorm:"not null;default:0"`
+	UpdatedAt     time.Time      `gorm:"not null;autoUpdateTime:false"`
+	UpdatedBy     string
+}
+
+// EPPRateColumns are a policy's command rates, a rate and a burst per
+// class. Rows from before the rates existed are given their starting
+// values by the migration (seedEPPPolicies); the column default of 0 is
+// only so the columns can be added to them.
+type EPPRateColumns struct {
+	CheckPerSecond     int `gorm:"not null;default:0"`
+	CheckBurst         int `gorm:"not null;default:0"`
+	InfoPerSecond      int `gorm:"not null;default:0"`
+	InfoBurst          int `gorm:"not null;default:0"`
+	TransformPerSecond int `gorm:"not null;default:0"`
+	TransformBurst     int `gorm:"not null;default:0"`
+	PollPerSecond      int `gorm:"not null;default:0"`
+	PollBurst          int `gorm:"not null;default:0"`
+}
+
+func toRateColumns(r entities.EPPCommandRates) EPPRateColumns {
+	return EPPRateColumns{
+		CheckPerSecond: r.Check.PerSecond, CheckBurst: r.Check.Burst,
+		InfoPerSecond: r.Info.PerSecond, InfoBurst: r.Info.Burst,
+		TransformPerSecond: r.Transform.PerSecond, TransformBurst: r.Transform.Burst,
+		PollPerSecond: r.Poll.PerSecond, PollBurst: r.Poll.Burst,
+	}
+}
+
+func (c EPPRateColumns) toEntity() entities.EPPCommandRates {
+	return entities.EPPCommandRates{
+		Check:     entities.EPPRate{PerSecond: c.CheckPerSecond, Burst: c.CheckBurst},
+		Info:      entities.EPPRate{PerSecond: c.InfoPerSecond, Burst: c.InfoBurst},
+		Transform: entities.EPPRate{PerSecond: c.TransformPerSecond, Burst: c.TransformBurst},
+		Poll:      entities.EPPRate{PerSecond: c.PollPerSecond, Burst: c.PollBurst},
+	}
 }
 
 // TableName pins the table name.
@@ -80,7 +118,9 @@ func toPolicyRecord(p *entities.EPPPolicy) *EPPPolicyRecord {
 		Name: p.Name, Description: p.Description,
 		SessionsPerRegistrar: p.Limits.SessionsPerRegistrar, SessionsPerLogin: p.Limits.SessionsPerLogin,
 		SessionsPerFamily: p.Limits.SessionsPerFamily, CheckNames: p.Limits.CheckNames,
-		UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+		Rates: toRateColumns(p.Limits.Rates), FamilyRates: toRateColumns(p.Limits.FamilyRates),
+		CreatesPerDay: p.Limits.CreatesPerDay,
+		UpdatedAt:     p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 	}
 }
 
@@ -90,6 +130,8 @@ func (r *EPPPolicyRecord) toEntity() *entities.EPPPolicy {
 		Limits: entities.EPPPolicyLimits{
 			SessionsPerRegistrar: r.SessionsPerRegistrar, SessionsPerLogin: r.SessionsPerLogin,
 			SessionsPerFamily: r.SessionsPerFamily, CheckNames: r.CheckNames,
+			Rates: r.Rates.toEntity(), FamilyRates: r.FamilyRates.toEntity(),
+			CreatesPerDay: r.CreatesPerDay,
 		},
 		UpdatedAt: r.UpdatedAt.UTC(), UpdatedBy: r.UpdatedBy,
 	}
@@ -444,6 +486,42 @@ func seedEPPPolicies(db *gorm.DB) error {
 			return fmt.Errorf("seed EPP policy %s: %w", p.Name, err)
 		}
 	}
-	return nil
+	return backfillEPPPolicyRates(db)
 }
 
+// backfillEPPPolicyRates gives policies stored before command rates and
+// the create quota existed (Phase 5b) their starting values: a built-in
+// policy its own, any other the default's, with check bursts raised to the
+// policy's check_names where that is larger. A stored policy always has a
+// check rate of at least 1, so 0 marks the rows to fill.
+func backfillEPPPolicyRates(db *gorm.DB) error {
+	var recs []EPPPolicyRecord
+	if err := db.Where("rate_check_per_second = 0").Find(&recs).Error; err != nil {
+		return fmt.Errorf("find EPP policies without rates: %w", err)
+	}
+	starting := map[string]entities.EPPPolicyLimits{}
+	for _, p := range entities.BuiltInEPPPolicies() {
+		starting[p.Name] = p.Limits
+	}
+	for _, rec := range recs {
+		l, ok := starting[rec.Name]
+		if !ok {
+			l = entities.DefaultEPPPolicyLimits()
+		}
+		// A check burst holds at least one full check of the policy's own
+		// size, or its largest check could never pass.
+		l.Rates.Check.Burst = max(l.Rates.Check.Burst, rec.CheckNames)
+		l.FamilyRates.Check.Burst = max(l.FamilyRates.Check.Burst, rec.CheckNames)
+		cols := map[string]any{"creates_per_day": l.CreatesPerDay}
+		for prefix, r := range map[string]entities.EPPCommandRates{"rate_": l.Rates, "family_rate_": l.FamilyRates} {
+			for class, v := range map[string]entities.EPPRate{"check": r.Check, "info": r.Info, "transform": r.Transform, "poll": r.Poll} {
+				cols[prefix+class+"_per_second"], cols[prefix+class+"_burst"] = v.PerSecond, v.Burst
+			}
+		}
+		err := db.Model(&EPPPolicyRecord{}).Where("name = ? AND rate_check_per_second = 0", rec.Name).Updates(cols).Error
+		if err != nil {
+			return fmt.Errorf("fill EPP policy %s's rates: %w", rec.Name, err)
+		}
+	}
+	return nil
+}

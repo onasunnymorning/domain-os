@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -48,6 +49,10 @@ type session struct {
 	// session's own goroutine. objects and extensions are the services the
 	// session logged in with.
 	failedLogins int
+	// rateRefusals counts the session's command rate refusals, to close a
+	// session that keeps being refused. Only the session's goroutine
+	// touches it.
+	rateRefusals epppolicy.RefusalStreak
 	objects      []string
 	extensions   []string
 

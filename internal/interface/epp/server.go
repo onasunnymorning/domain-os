@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
@@ -65,6 +66,9 @@ type Options struct {
 	// Policies is where the registrars' EPP policies are read from, every
 	// credential refresh interval. Required.
 	Policies interfaces.EPPPolicySource
+	// Rates counts the registrars' and families' command rates and daily
+	// create quotas, across every node. Required.
+	Rates interfaces.EPPRateLimiter
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -89,6 +93,7 @@ type Server struct {
 	polls    interfaces.EPPPollService
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
+	enforcer *epppolicy.Enforcer
 	watch    credentialWatch
 	// policySource is read into policies every refresh; until the first
 	// read succeeds, policies holds the built-in policies' starting limits.
@@ -136,6 +141,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Policies == nil {
 		return nil, errors.New("epp: Options.Policies is required")
 	}
+	if opts.Rates == nil {
+		return nil, errors.New("epp: Options.Rates is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
@@ -154,6 +162,7 @@ func NewServer(opts Options) (*Server, error) {
 	s.router = s.routes()
 	s.policySource = opts.Policies
 	s.policies.Store(entities.DefaultEPPPolicySet())
+	s.enforcer = epppolicy.NewEnforcer(opts.Rates)
 	s.policy = registrarPolicies{s: s}
 
 	var err error
@@ -274,6 +283,12 @@ func (s *Server) Ready() bool {
 // unreachable, for epp_policy_store_degraded{store="lockout"}.
 func (s *Server) ReportLockoutDegraded(degraded bool) {
 	s.reportStoreDegraded(storeLockout, degraded)
+}
+
+// ReportRatesDegraded records whether the shared command rate store is
+// unreachable, for epp_policy_store_degraded{store="rates"}.
+func (s *Server) ReportRatesDegraded(degraded bool) {
+	s.reportStoreDegraded(storeRates, degraded)
 }
 
 // ReportAuditError records a failure of the audit log's batch writer: a

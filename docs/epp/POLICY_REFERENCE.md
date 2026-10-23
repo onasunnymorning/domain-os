@@ -416,7 +416,7 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 
 - **A policy is a named set of limits.** Two are built in: `default`, for every registrar not assigned another, and `probation`, for new registrars. The `migrate` job stores them with their starting limits (below) if they are not stored yet. Their limits can be changed; they cannot be deleted. Any other policy is custom.
 - **A registrar is assigned one policy**, or none for `default`. There are no per-registrar overrides: a registrar that needs other limits gets a policy of its own.
-- **A registrar family** groups affiliated registrars, often the accreditations of one company, so limits apply to them together as well as to each. A registrar is in at most one family. A family is assigned a policy too: its `sessions_per_family` caps the family's sessions, while each member's own policy caps the member.
+- **A registrar family** groups affiliated registrars, often the accreditations of one company, so limits apply to them together as well as to each. A registrar is in at most one family. A family is assigned a policy too: its `sessions_per_family` caps the family's sessions and its `family_rates` the family's commands, while each member's own policy caps the member.
 - **A login's own `session_cap`** ([Credentials](#credentials-admin-api)), when set, replaces its registrar's policy's `sessions_per_login`.
 
 | Limit | `default` | `probation` | Applies to | Over it |
@@ -425,13 +425,18 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 | `sessions_per_login` | 10 | 10 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
 | `sessions_per_family` | 40 | 30 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
 | `check_names` | 50 | 50 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
+| `rates` | [Command rates](#command-rates) | [Command rates](#command-rates) | A registrar's commands, a token bucket per class | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
+| `family_rates` | 3× `rates` | 3× `rates` | A family's commands, across its members, from the family's policy | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
+| `creates_per_day` | 0 (no cap) | 100 | A registrar's successful domain creates per UTC day | 2308 |
 
-Every limit is at least 1. The rules, in order, for each command of a logged-in session ([`epppolicy.Decide`](../../internal/application/epppolicy/enforcer.go)):
+Every limit is at least 1, except `creates_per_day`, where 0 is no cap. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
 
 1. **Role.** A login with the `readonly` role ([Credentials](#credentials-admin-api)) may check, read (`<info>`, `<transfer op="query">`), poll and log out. Anything that changes the registry (create, update, delete, renew, transfer request, approve, reject or cancel) is 2201, *"this login is read-only"*.
-2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup.
+2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup. For a registrar in a family, the cap is also no more than the family's `check` burst, so a check the family's bucket could never pay for is refused for its size rather than as a rate it could never meet.
+3. **Command rates.** The command takes its tokens from the registrar's bucket for its class and, if the registrar is in a family, the family's ([§ Command rates](#command-rates)).
+4. **Create quota.** A `<domain:create>` counts against the registrar's `creates_per_day` ([§ Quotas](#quotas)).
 
-Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, or `none` for a command allowed).
+A command refused by one rule is not counted by the later ones. Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, `rate`, `family_rate`, `create_quota`, or `none` for a command allowed at once) and its action (`allow`, `delay`, `reject`).
 
 **Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap. A family change also moves the sessions already open: at the reload, a registrar that left a family stops counting against it, and one that joined counts from then on (its open sessions stay open, even over the family's cap).
 
@@ -441,7 +446,7 @@ Session limits apply at `<login>`, in one atomic step in the session registry wi
 |---|---|
 | List policies, the built-in ones included | `GET /epp/policies` |
 | One policy | `GET /epp/policies/{name}` |
-| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 |
+| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
 | Delete a custom policy | `DELETE /epp/policies/{name}` → 204. 409 for a built-in policy, or one a registrar or family is assigned |
 | What applies to a registrar | `GET /registrars/{clid}/epp/policy`: its policy, and its family with the family's policy |
 | Assign a registrar its policy | `PUT /registrars/{clid}/epp/policy` with `{"policy": "gold"}`; `"default"` or `""` removes the assignment. 404 for an unknown registrar or policy |
@@ -500,18 +505,45 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 
-### Command rates *(Phase 5b)*
+### Command rates
 
-Token buckets per registrar. A family gets 3× the registrar rate.
+Every command of a logged-in session, other than `<login>`, `<logout>` and `<hello>`, takes tokens from **token buckets**: its registrar's bucket for the command's class and, if the registrar is in a family, the family's bucket for that class. The buckets are the policies' `rates` and `family_rates` ([§ Policies](#policies)). A bucket refills at `per_second` tokens a second and holds at most `burst`, so a quiet registrar can send a burst at once and then its rate.
 
-| Class | Rate | Burst | Cost |
-|---|---|---|---|
-| `check` | 250 names/s | 1000 names | One token **per name** |
-| `info` | 20/s | 100 | Per command |
-| transform (create, update, delete, renew, transfer) | 10/s | 50 | Per command |
-| `poll` | 5/s | 20 | Per command |
+| Class | Commands | Cost | `default` rate / burst | `probation` rate / burst |
+|---|---|---|---|---|
+| `check` | `<check>` | One token **per name** | 250 / 1000 | 100 / 500 |
+| `info` | `<info>`, `<transfer op="query">` | One per command | 20 / 100 | 10 / 50 |
+| `transform` | create, update, delete, renew, transfer request, approve, reject, cancel | One per command | 10 / 50 | 5 / 25 |
+| `poll` | `<poll>` (req and ack) | One per command | 5 / 20 | 5 / 20 |
 
-`check` is metered in names so that batch size does not change capacity. A higher-volume registrar gets a tier with a larger budget, not a larger batch.
+A family's starting rates are 3× its policy's registrar rates (`family_rates`). `check` is metered in names so that batch size does not change capacity: a higher-volume registrar gets a policy with a larger budget, not a larger batch.
+
+**Over the rate.**
+
+| Wait for the tokens | Answer |
+|---|---|
+| None | The command runs |
+| Up to 1s (`epppolicy.MaxRateDelay`, code) | The command is **held** until its tokens are there, then runs (`action="delay"`, `epp_policy_delay_seconds`). Its tokens are taken when it is held, so it keeps its place. A session that sends one command at a time is slowed to its rate and nothing fails |
+| More than 1s | **2306**, *"Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s"* (or *"the registrar family's"*), with a machine-readable reason (below), and the session continues. No tokens are taken, so a refused command costs nothing. This happens to a client running many sessions at once past its rate |
+| The session's 10th refusal within 10s (`epppolicy.RefusalsBeforeClose`, `RefusalWindow`, code) | **2502**, *"Session limit exceeded; server closing connection; 10 command rate refusals within 10s"*, and the session closes (`action="close"`). Its client is not backing off; reconnecting costs a handshake and a login, under the session caps and the lockout |
+
+A rate refusal carries the reason in the result's `<extValue>` (RFC 5730 §2.6), so a client can tell it from any other 2306 and knows when to try again:
+
+```xml
+<result code="2306">
+  <msg>Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s</msg>
+  <extValue>
+    <value><undef/></value>
+    <reason>rate-limit; class=check; scope=registrar; retry-after-ms=1300</reason>
+  </extValue>
+</result>
+```
+
+`class` is `check`, `info`, `transform` or `poll`; `scope` is `registrar` or `family`. The 2502 that closes a session carries the same reason.
+
+There is no standard EPP result code for a rate limit. A 23xx code says the client broke a policy, which clients do not retry blindly, unlike 2400 (an internal server error, which they may); 2306 is the policy error the registry already uses for the names per check. 2502 alone, as some registries use, would close the session at the first refusal.
+
+**Where the buckets are kept.** In Redis, shared by every node, one key per bucket holding its GCRA *theoretical arrival time* (the time it would be full again), updated by one script for all of a command's buckets at once, on Redis's clock. A held command runs at one time for all its buckets, the earliest at which every one has its tokens, and each bucket is charged from that time, so a bucket that was not the one waited for cannot let a later command run first. **If Redis cannot answer** (each call is bounded to 200 ms), the node keeps buckets of its own and sets `epp_policy_store_degraded{store="rates"}`; for 5s after a failure, commands go straight to the node's buckets, so an unresponsive Redis does not slow every command. With N nodes, up to N times a rate can pass while Redis is down (fail-open, ADR 0013).
 
 ### Per-command object caps
 
@@ -523,11 +555,13 @@ Token buckets per registrar. A family gets 3× the registrar rate.
 
 The nameserver and DS caps are rules of the registry's data, the same for every registrar, so they are not in the policies (ADR 0019).
 
-### Quotas *(Phase 5b)*
+### Quotas
 
-| Quota | Default |
-|---|---|
-| Creates per day, `probation` tier | 100 |
+| Quota | `default` | `probation` | Over it |
+|---|---|---|---|
+| `creates_per_day`: successful `<domain:create>`s per registrar per UTC day | 0 (no cap) | 100 | 2308, *"Data management policy violation; the registrar may create 100 domains a day (UTC), and has"* |
+
+A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Each count is a reservation with its own ID, so a request to Redis retried after a lost reply neither takes a second slot nor gives back another create's. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Failed creates are Phase 6's measure.
 
 ### Failed creates *(Phase 6)*
 
