@@ -32,6 +32,7 @@ const (
 	NSContact = "urn:ietf:params:xml:ns:contact-1.0"
 	NSEPPCom  = "urn:ietf:params:xml:ns:eppcom-1.0"
 	NSSecDNS  = "urn:ietf:params:xml:ns:secDNS-1.1"
+	NSRGP     = "urn:ietf:params:xml:ns:rgp-1.0"
 	NSXSI     = "http://www.w3.org/2001/XMLSchema-instance"
 )
 
@@ -42,6 +43,7 @@ var prefixes = map[string]string{
 	NSHost:    "host:",
 	NSContact: "contact:",
 	NSSecDNS:  "secDNS:",
+	NSRGP:     "rgp:",
 }
 
 // Error is a frame that does not match the schema. Path locates the element
@@ -53,8 +55,9 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Path + ": " + e.Reason }
 
-// Element is an element declaration. Exactly one of Simple, Content and
-// AnyType describes its content; if none does, the element must be empty.
+// Element is an element declaration. Exactly one of Simple, Content,
+// AnyType and Mixed describes its content; if none does, the element must
+// be empty.
 type Element struct {
 	NS, Name string
 	// Min and Max are minOccurs and maxOccurs where the element is used as
@@ -68,6 +71,10 @@ type Element struct {
 	// AnyType is xs:anyType: any attributes, text and children, with
 	// children validated only where a global declaration exists (lax).
 	AnyType bool
+	// Mixed is a restriction of xs:anyType to mixed content with a lax
+	// wildcard, as rgp:mixedType: any text and children, children
+	// validated as AnyType's are, and only the declared Attrs.
+	Mixed bool
 }
 
 // Optional is a Min of minOccurs="0"; a zero Min means 1.
@@ -169,6 +176,9 @@ func (v *validator) element(el *etree.Element, decl *Element, parent string) err
 	}
 	if err := v.attributes(el, decl, path); err != nil {
 		return err
+	}
+	if decl.Mixed {
+		return v.lax(el, path)
 	}
 	kids := el.ChildElements()
 	text, hasText := textOf(el)

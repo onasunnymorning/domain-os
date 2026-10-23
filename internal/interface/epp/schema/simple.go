@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -30,6 +31,9 @@ const (
 	// Date is xs:date: a Gregorian calendar date, with an optional time
 	// zone.
 	Date
+	// DateTime is xs:dateTime: a date and a time of day, with an optional
+	// time zone.
+	DateTime
 )
 
 // Simple is an XSD simple type: a built-in base and the facets restricting
@@ -56,6 +60,9 @@ var (
 	intPattern      = regexp.MustCompile(`^[+-]?[0-9]+$`)
 	hexPattern      = regexp.MustCompile(`^[0-9A-Fa-f]*$`)
 	datePattern     = regexp.MustCompile(`^(-?)([0-9]{4,})-([0-9]{2})-([0-9]{2})(Z|[+-][0-9]{2}:[0-9]{2})?$`)
+	// dateTimePattern: the date, "T", the time, an optional time zone and,
+	// after a time zone only, trailing whitespace (libxml2's reading).
+	dateTimePattern = regexp.MustCompile(`^(-?[0-9]{4,}-[0-9]{2}-[0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?(?:(Z|[+-][0-9]{2}:[0-9]{2})[ \t\r\n]*)?$`)
 )
 
 // inRange applies MinInclusive and MaxInclusive, when set.
@@ -201,6 +208,10 @@ func (t *Simple) validate(raw string) error {
 		if !isDate(raw) {
 			return errors.New("not a date")
 		}
+	case DateTime:
+		if !isDateTime(raw) {
+			return errors.New("not a date and time")
+		}
 	}
 	if n := t.length(v); (t.MinLen > 0 && n < t.MinLen) || (t.MaxLen > 0 && n > t.MaxLen) {
 		switch {
@@ -318,6 +329,63 @@ func isDate(v string) bool {
 		}
 	}
 	return true
+}
+
+// isDateTime reports whether v is an xs:dateTime as libxml2 reads one: a
+// date as isDate reads it, "T", hours, minutes and seconds of two digits
+// (24:00:00 allowed, as the end of the day), optional fractional seconds,
+// and an optional time zone. libxml2 refuses leading whitespace, and
+// trailing whitespace too unless a time zone precedes it.
+func isDateTime(v string) bool {
+	m := dateTimePattern.FindStringSubmatch(v)
+	if len(m) != 7 || !isDate(m[1]+m[6]) {
+		return false
+	}
+	hh, _ := strconv.Atoi(m[2])
+	mm, _ := strconv.Atoi(m[3])
+	ss, _ := strconv.Atoi(m[4])
+	if hh == 24 {
+		return mm == 0 && ss == 0 && strings.Trim(m[5], ".0") == ""
+	}
+	return hh < 24 && mm < 60 && ss < 60
+}
+
+// DateTimeValue is the time an xs:dateTime the schema has accepted names,
+// in UTC. One without a time zone is read as UTC; 24:00:00 is the start of
+// the next day. A time whose UTC year is outside 1 to 9999, which RFC 3339
+// cannot write (nor Go's JSON), is an error.
+func DateTimeValue(raw string) (time.Time, error) {
+	m := dateTimePattern.FindStringSubmatch(raw)
+	if len(m) != 7 {
+		return time.Time{}, errors.New("not a date and time")
+	}
+	date := datePattern.FindStringSubmatch(m[1])
+	if len(date) != 6 {
+		return time.Time{}, errors.New("not a date and time")
+	}
+	year, err := strconv.Atoi(date[1] + date[2])
+	if err != nil || year < -9999 || year > 9999 {
+		return time.Time{}, errors.New("year out of range")
+	}
+	num := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	nanos := 0
+	if frac := strings.TrimPrefix(m[5], "."); frac != "" {
+		frac = (frac + "000000000")[:9]
+		nanos = num(frac)
+	}
+	loc := time.UTC
+	if tz := m[6]; tz != "" && tz != "Z" {
+		offset := (num(tz[1:3])*60 + num(tz[4:6])) * 60
+		if tz[0] == '-' {
+			offset = -offset
+		}
+		loc = time.FixedZone(tz, offset)
+	}
+	t := time.Date(year, time.Month(num(date[3])), num(date[4]), num(m[2]), num(m[3]), num(m[4]), nanos, loc).UTC()
+	if t.Year() < 1 || t.Year() > 9999 {
+		return time.Time{}, errors.New("year out of range")
+	}
+	return t, nil
 }
 
 // daysIn is the number of days in month of the proleptic Gregorian year y.

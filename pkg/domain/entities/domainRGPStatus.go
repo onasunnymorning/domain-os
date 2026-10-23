@@ -20,11 +20,15 @@ type DomainRGPStatus struct {
 	RedemptionPeriodEnd time.Time `json:"redemptionPeriodEnd"`
 	// PurgeDate is date after which the domain should be purged and become available for registration again.
 	PurgeDate time.Time `json:"purgeDate" gorm:"index"`
+	// PendingRestoreEnd is when a requested restore lapses unless its
+	// report has been sent (RFC 3915 pendingRestore; see restore.go). Zero
+	// when no restore is pending.
+	PendingRestoreEnd time.Time `json:"pendingRestoreEnd" gorm:"index"`
 }
 
 // IsNil checks if the DomainRGPStatus object is nil
 func (d *DomainRGPStatus) IsNil() bool {
-	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferPeriodEnd.IsZero() && d.TransferLockPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PurgeDate.IsZero()
+	return d.AddPeriodEnd.IsZero() && d.RenewPeriodEnd.IsZero() && d.AutoRenewPeriodEnd.IsZero() && d.TransferPeriodEnd.IsZero() && d.TransferLockPeriodEnd.IsZero() && d.RedemptionPeriodEnd.IsZero() && d.PurgeDate.IsZero() && d.PendingRestoreEnd.IsZero()
 }
 
 // RFC 3915 grace period statuses.
@@ -39,11 +43,12 @@ const (
 )
 
 // RGPStatuses returns the RFC 3915 grace period statuses of d at now. A
-// domain whose restore has been requested is pendingRestore: Restore clears
-// pendingDelete as it sets pendingRestore, and the two never hold together.
-// A domain pending delete is in redemptionPeriod while still restorable,
-// then pendingDelete until it is purged. Otherwise it is in each of the
-// add, renew, auto-renew and transfer grace periods that has not ended.
+// domain whose restore has been requested is pendingRestore, until the
+// restore completes or is reverted; its EPP status stays pendingDelete
+// meanwhile (RFC 3915 §4). A domain pending delete is otherwise in
+// redemptionPeriod while still restorable, then pendingDelete until it is
+// purged. Any other domain is in each of the add, renew, auto-renew and
+// transfer grace periods that has not ended.
 func (d *Domain) RGPStatuses(now time.Time) []string {
 	r := d.RGPStatus
 	if d.Status.PendingRestore {

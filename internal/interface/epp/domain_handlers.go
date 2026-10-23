@@ -3,6 +3,7 @@ package epp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,6 +79,12 @@ var refusals = []struct {
 	{entities.ErrTransferProhibited, epplib.StatusObjectStatusProhibitsOperation},
 	{entities.ErrTransferExceedsMaxHorizon, epplib.StatusParameterPolicyError},
 	{entities.ErrPollMessageNotFound, epplib.StatusObjectDoesNotExist},
+	// Domain restore (RFC 3915 §4.2.5).
+	{entities.ErrDomainRestoreNotAllowed, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrRestoreNotPending, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrRestoreWithChanges, epplib.StatusParameterPolicyError},
+	{entities.ErrRestoreReportIncomplete, epplib.StatusMissingParameter},
+	{entities.ErrRestoreReportTimes, epplib.StatusValueRangeError},
 	// Host and contact commands (RFC 5732, RFC 5733).
 	{entities.ErrEPPStatusNotClient, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPStatusAlreadySet, epplib.StatusParameterPolicyError},
@@ -257,7 +264,9 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 
 // domainUpdate answers <domain:update> (RFC 5731 §3.2.5), with a
 // <secDNS:update> (RFC 5910 §5.2.5) if the session logged in with
-// secDNS-1.1.
+// secDNS-1.1, or an <rgp:update> (RFC 3915 §4.2.5), a restore, if it
+// logged in with RGP. A restore is answered with the domain's RGP statuses
+// in <rgp:upData>, when it has any: pendingRestore after a request.
 func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
@@ -267,13 +276,18 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	update := cmd.doc.FindElement("/epp/command/update/*")
 	add, rem, chg := update.SelectElement("add"), update.SelectElement("rem"), update.SelectElement("chg")
 	secDNS := secDNSUpdate(cmd.doc)
-	if add == nil && rem == nil && chg == nil && secDNS == nil {
+	restore, err := rgpRestore(cmd.doc)
+	if err != nil {
+		s.refuse(cmd, err)
+		return
+	}
+	if add == nil && rem == nil && chg == nil && secDNS == nil && restore == nil {
 		// RFC 5731 §3.2.5: one of them is required unless the command is
 		// extended.
 		cmd.respond(epplib.StatusMissingParameter, "Required parameter missing; give <domain:add>, <domain:rem>, <domain:chg> or an extension", nil)
 		return
 	}
-	c := commands.EPPUpdateDomainCommand{Name: cmd.objects[0], DNSSEC: secDNS}
+	c := commands.EPPUpdateDomainCommand{Name: cmd.objects[0], DNSSEC: secDNS, Restore: restore}
 	if add != nil {
 		c.AddHostNames, c.AddContacts, c.AddStatuses = domainAddRem(add, &c.HostAttributes)
 	}
@@ -300,11 +314,77 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
-	if _, err := s.domains.Update(ctx, scope, c); err != nil {
+	dom, err := s.domains.Update(ctx, scope, c)
+	if err != nil {
 		s.refuse(cmd, err)
 		return
 	}
+	if restore != nil {
+		cmd.respond(epplib.StatusSuccess, "", nil, rgpData("rgp:upData", dom, time.Now()))
+		return
+	}
 	cmd.respond(epplib.StatusSuccess, "", nil)
+}
+
+// rgpRestore reads an <rgp:update> extension (RFC 3915 §4.2.5), or nil if
+// the command has none. A report's free-text parts are kept as sent, XML
+// included; its times are read as the schema defines them, and one the
+// registry cannot hold is entities.ErrRestoreReportTimes.
+func rgpRestore(doc *etree.Document) (*commands.EPPRestore, error) {
+	ext := doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return nil, nil
+	}
+	for _, el := range ext.ChildElements() {
+		if el.NamespaceURI() != nsRGP || el.Tag != "update" {
+			continue
+		}
+		restore := el.SelectElement("restore")
+		r := &commands.EPPRestore{}
+		if schema.TokenValue(restore.SelectAttrValue("op", "")) != "report" {
+			return r, nil
+		}
+		rep := restore.SelectElement("report")
+		if rep == nil {
+			// The schema allows op="report" without one (RFC 3915 §4.2.5
+			// requires it).
+			return nil, fmt.Errorf("%w: give <rgp:report>", entities.ErrRestoreReportIncomplete)
+		}
+		report := &entities.RestoreReport{
+			PreData:   innerXML(rep.SelectElement("preData")),
+			PostData:  innerXML(rep.SelectElement("postData")),
+			ResReason: innerXML(rep.SelectElement("resReason")),
+		}
+		for _, st := range rep.SelectElements("statement") {
+			report.Statements = append(report.Statements, innerXML(st))
+		}
+		if o := rep.SelectElement("other"); o != nil {
+			report.Other = innerXML(o)
+		}
+		for _, t := range []struct {
+			name string
+			into *time.Time
+		}{{"delTime", &report.DelTime}, {"resTime", &report.ResTime}} {
+			v, err := schema.DateTimeValue(rep.SelectElement(t.name).Text())
+			if err != nil {
+				return nil, fmt.Errorf("%w: %s: %w", entities.ErrRestoreReportTimes, t.name, err)
+			}
+			*t.into = v.UTC()
+		}
+		r.Report = report
+		return r, nil
+	}
+	return nil, nil
+}
+
+// innerXML is el's content as sent: its text and child elements, as XML.
+func innerXML(el *etree.Element) string {
+	var b strings.Builder
+	var settings etree.WriteSettings
+	for _, tok := range el.Child {
+		tok.WriteTo(&b, &settings)
+	}
+	return b.String()
 }
 
 // domainAddRem reads a <domain:add> or <domain:rem>: its host objects,

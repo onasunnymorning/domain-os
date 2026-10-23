@@ -96,6 +96,7 @@ export function DomainLifecycleWidget({ domain }: Props) {
     addPeriod(domain.RGPStatus.transferLockPeriodEnd, "Transfer Lock", policy?.transferLockPeriod, 60);
     addPeriod(domain.RGPStatus.redemptionPeriodEnd, "Redemption Grace Period", policy?.redemptionGP, 30);
     addPeriod(domain.RGPStatus.purgeDate, "Pending Delete", policy?.pendingdeleteGP, 5);
+    addPeriod(domain.RGPStatus.pendingRestoreEnd, "Restore Report Due", policy?.pendingRestorePeriod, 7);
 
     return activePeriods;
   }, [domain.RGPStatus, policy]);

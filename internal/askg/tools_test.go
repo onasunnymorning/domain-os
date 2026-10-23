@@ -292,6 +292,10 @@ func (m *mockDomainSvc) ExpireDomain(context.Context, string) (*entities.Domain,
 func (m *mockDomainSvc) RestoreDomain(context.Context, string) (*entities.Domain, error) {
 	panic("not used")
 }
+
+func (m *mockDomainSvc) ReportRestore(context.Context, string, entities.RestoreReport) (*entities.Domain, error) {
+	return nil, nil
+}
 func (m *mockDomainSvc) PurgeDomain(context.Context, entities.RegistryScope, string) error {
 	panic("not used")
 }

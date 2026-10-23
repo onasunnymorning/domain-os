@@ -38,7 +38,7 @@ export const STATUS_DESCRIPTIONS: Record<string, string> = {
   PendingRenew: "Renewal in progress; finalization pending.",
   PendingTransfer: "Transfer requested; the current registrar approves or rejects it, or the registry approves it when the pending period ends.",
   PendingUpdate: "Update submitted; awaiting completion.",
-  PendingRestore: "Restore requested; awaiting report/processing.",
+  PendingRestore: "Restore requested; the domain stays pending delete until its restore report is sent, or the request lapses.",
   PendingDelete: "Deletion pending; may progress to purge.",
 };
 
@@ -50,6 +50,7 @@ export const RGP_LABELS: Record<string, string> = {
   transferLockPeriodEnd: "Transfer Lock",
   redemptionPeriodEnd: "Redemption GP",
   purgeDate: "Purge Scheduled",
+  pendingRestoreEnd: "Restore Report Due",
 };
 
 export const RGP_DESCRIPTIONS: Record<string, string> = {
@@ -60,4 +61,5 @@ export const RGP_DESCRIPTIONS: Record<string, string> = {
   "Transfer Lock": "No transfer until it ends: applied after a registration and after each transfer.",
   "Redemption GP": "Deleted but restorable for a limited time.",
   "Purge Scheduled": "Domain scheduled to be removed from the registry.",
+  "Restore Report Due": "A restore was requested: the registrar must send its restore report by then, or the domain returns to redemption.",
 };

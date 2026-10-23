@@ -218,7 +218,35 @@ A renewed domain is in its renew grace period (`renewPeriod`, RFC 3915) and the 
 1. A domain with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304. An update prohibition does not stop a delete: it stops updates only (RFC 5731 §2.3).
 2. A host object under the domain: 2305, naming the hosts. Delete or rename them first. The check is made again in the delete's own transaction, and a host create or rename into a domain locks the domain's row first and is refused (2304) once the domain is pendingDelete, so neither can slip past the other.
 
-Restoring a deleted domain (RFC 3915's restore request and report) is not offered yet.
+**Restore** (RFC 3915 §4.2.5; [`entities.Domain.RequestRestore`](../../pkg/domain/entities/restore.go) describes the process). The user guide is the admin UI's *Domain Restore* page (`frontend/lib/constants/domainRestoreDoc.ts`). A deleted domain is restored with a `<domain:update>` that changes nothing (`<domain:chg/>`) and carries `<rgp:update>`, for a session that logged in with RGP (2103 otherwise), in two steps, as .com does:
+
+| Step | `<rgp:restore op>` | Answer |
+|---|---|---|
+| Request | `request` | 1000, with `<rgp:upData><rgp:rgpStatus s="pendingRestore"/>` |
+| Report | `report`, with `<rgp:report>` | 1000, the domain restored |
+
+Both are answered only for the sponsor (2201 otherwise), and each is checked in this order:
+1. Any other change in the same update (an `<domain:add>`, `<domain:rem>` or `<domain:chg>` with content, or `<secDNS:update>`): 2306. Send it separately once the domain is restored.
+2. A request for a domain that is not `pendingDelete`, whose redemption period has ended, or whose restore is already pending: 2304. A report with no restore pending, or after the request lapsed: 2304.
+3. A report with a required part missing (2003): `op="report"` without `<rgp:report>`; an empty `preData`, `postData` or `resReason`; fewer than two non-empty `statement`s; or no `delTime` or `resTime` (over EPP the schema requires both, 2001 without; the admin API's JSON can leave one out). A report whose times are not possible (2004): a `delTime` not before `resTime`, a `resTime` in the future, or a time whose year in UTC is outside 1 to 9999 (the report is kept as JSON with its event, which cannot hold such a year; `-0004-02-29T00:00:00Z` and `9999-12-31T23:00:00-14:00` are valid `xs:dateTime`s refused here). Each is checked before anything is written.
+4. A restore the registry cannot price (its restore fee and the renewal): 2400.
+
+During `pendingRestore` the EPP status stays `pendingDelete` (RFC 3915 §4), so every other update, renew, delete and transfer is still 2304, and `<rgp:infData>` shows `pendingRestore`. The report restores the domain in the command, written over the domain as read: `pendingDelete` and `pendingRestore` are cleared with the redemption period and purge date; the expiry is extended by a year, and by further years while it would still be past; no renew grace period starts. The report is kept as sent (XML included) on the `domain.restored` event. A restore is two charges, two events: `domain.restored` with the restore fee quote, and `domain.renewed` with the renewal quote for the years added (ICANN's RGP terms: the restore fee is in addition to the renewal). The request is recorded as `domain.restore_requested`, with no years and no quote. When the fees are taken, and whether a lapsed request is refunded, is the billing system's to decide.
+
+A request whose report is not sent by its deadline (`pendingRestoreEnd`) lapses: the `Restore` workflow (schedule `restore-loop`, hourly at :45 on the `lifecycle` queue) returns the domain to `pendingDelete` as before the request, in its redemption period if that has not ended, with its original purge date, recorded as `domain.restore_reverted` without a charge. It re-checks each domain before reverting it, and pages with a (deadline, ROID) cursor, as the transfer approval sweep does. A domain with a restore pending is never purged, even past its purge date. The sponsor is told by a poll message queued in the same transaction as the revert: text alone (`<msg>` beginning `Restore lapsed:`, naming the domain, the deadline missed, and either the end of the redemption period, when a restore can be requested again, or the purge date), with no `<resData>`, since RFC 3915 defines no poll data.
+
+Restores requested before this model (pendingRestore without pendingDelete or a deadline, completed by the old `Restore` loop without a report) are moved to it by the `migrate` job: pendingDelete again, the report due 7 days after the job ran, the redemption end and purge date kept.
+
+A domain imported from an escrow deposit (RFC 9022) in its end of life keeps it ([`entities.Domain.ApplyDepositEndOfLife`](../../pkg/domain/entities/restore.go)). A deposit says which RGP period a domain is in, not when it ends, so the period starts in full at the import, under the TLD's current GA phase: `redemptionPeriod` is restorable for `redemptionGP`; `pendingRestore` keeps its restore, with the report due here after `pendingRestorePeriod` (and the redemption period started in full behind it, for if the report does not come); `pendingDelete` is purged after `pendingdeleteGP`. An EPP `pendingDelete` with none of these RGP statuses is read as `redemptionPeriod`, the longer reading of what is unknown. The bulk importer reads the phase; the admin-API import path uses the default periods.
+
+| Phase policy setting | Default | Meaning |
+|---|---|---|
+| `redemptionGP` | 30 days | How long a deleted domain can be restored (`redemptionPeriod`) |
+| `pendingdeleteGP` | 5 days | How long it then waits to be purged |
+| `pendingRestorePeriod` | 7 days | How long the registrar has to send the report after a request. A phase stored before this setting existed has 0, read as 7 |
+| `restoreReportRequired` | true | `false` restores a domain on its request alone, for registries (often ccTLDs) that do not require a report: the request answers 1000 with no `<rgp:upData>` and records the three events |
+
+Set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`, or the admin UI's phase page); a change applies to restores requested after it. The admin API acts for the sponsor with the same rules: `POST /domains/{name}/restore` requests, `POST /domains/{name}/restore/report` reports (JSON `preData`, `postData`, `delTime`, `resTime`, `resReason`, `statements`, `other`); 409 for a state that does not allow the step, 400 for a refused report.
 
 **Transfer codes** (RFC 9154; [`entities.AuthInfoHash`](../../pkg/domain/entities/authInfoHash.go)). A domain's authorization information is its transfer code. The user guide is the admin UI's *Domain Transfers* page (`frontend/lib/constants/domainTransfersDoc.ts`).
 - **Unset is the normal state.** A domain is created with no code unless `<domain:create>` gives a non-empty `<domain:pw>`; the sponsor sets one with `<domain:update>` when the registrant asks to transfer, and clears it with an empty `<domain:pw/>` or `<domain:null/>`. Escrow imports create domains with no code. A completed transfer clears the code: a code works once.

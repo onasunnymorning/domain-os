@@ -38,6 +38,9 @@ var clientDomainStatuses = []string{
 //   - the authorization information, if changed, keeps to the registry's
 //     rules.
 //
+// An update with <rgp:restore> (RFC 3915 §4.2.5) restores a deleted domain
+// instead: see restore.
+//
 // The checks and the write are made on one reading of the domain: if
 // another command changes it in between, the update is read and checked
 // again, up to updateAttempts times.
@@ -54,6 +57,9 @@ func (s *EPPDomainService) update(ctx context.Context, scope entities.RegistrarC
 	dom, err := s.sponsoredDomain(ctx, scope, cmd.Name)
 	if err != nil {
 		return nil, err
+	}
+	if cmd.Restore != nil {
+		return s.restore(ctx, scope, dom, cmd)
 	}
 	for _, st := range slices.Concat(cmd.RemoveStatuses, cmd.AddStatuses) {
 		if !slices.Contains(clientDomainStatuses, st) {
@@ -120,6 +126,21 @@ func (s *EPPDomainService) update(ctx context.Context, scope entities.RegistrarC
 		return nil, err
 	}
 	return s.register.SaveDomainUpdate(ctx, before, dom, cmd)
+}
+
+// restore answers an update with <rgp:restore> (RFC 3915 §4.2.5) of dom, a
+// domain the session's registrar sponsors: a request or a report, as
+// entities.Domain.RequestRestore and CompleteRestore describe. The update
+// may change nothing else (entities.ErrRestoreWithChanges).
+func (s *EPPDomainService) restore(ctx context.Context, scope entities.RegistrarClID, dom *entities.Domain, cmd commands.EPPUpdateDomainCommand) (*entities.Domain, error) {
+	if cmd.Changes() {
+		return nil, entities.ErrRestoreWithChanges
+	}
+	me := entities.ClIDType(scope)
+	if cmd.Restore.Report == nil {
+		return s.register.RequestRestoreAsRead(ctx, dom, me)
+	}
+	return s.register.CompleteRestoreAsRead(ctx, dom, *cmd.Restore.Report, me)
 }
 
 // Renew renews a domain the session's registrar sponsors (RFC 5731

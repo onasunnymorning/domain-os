@@ -74,7 +74,7 @@ type DomainStatus struct {
 	PendingRenew             bool `json:"PendingRenew"`             // PendingRenew means a renew command has been received but there is a pending action that needs to be completed before the domain is fully renewed
 	PendingTransfer          bool `json:"PendingTransfer"`          // PendingTransfer means a transfer command has been received but there is a pending action that needs to be completed before the domain is fully transferred
 	PendingUpdate            bool `json:"PendingUpdate"`            // PendingUpdate means an update command has been received but there is a pending action that needs to be completed before the domain is fully updated
-	PendingRestore           bool `json:"PendingRestore"`           // PendingRestore means a restore command has been received but there is a pending action that needs to be completed before the domain is fully restored
+	PendingRestore           bool `json:"PendingRestore"`           // PendingRestore means a restore has been requested and its report is awaited (RFC 3915 pendingRestore, an RGP status, not an EPP one: the domain stays PendingDelete meanwhile; see restore.go)
 	PendingDelete            bool `json:"PendingDelete"`            // PendingDelete means the domain is in it's EOL cycle and will be deleted on the PurgeDate. It remains resotrable until RedemptionGPEnd
 }
 
@@ -110,7 +110,12 @@ func (ds *DomainStatus) Validate() error {
 	if ds.PendingUpdate && (ds.ClientUpdateProhibited || ds.ServerUpdateProhibited) {
 		return ErrInvalidDomainStatusCombination
 	}
-	if trueCount(ds.PendingCreate, ds.PendingRenew, ds.PendingTransfer, ds.PendingUpdate, ds.PendingDelete, ds.PendingRestore) > 1 {
+	// pendingRestore is the RGP status of a deleted domain whose restore was
+	// requested: its EPP status stays pendingDelete (RFC 3915 §4).
+	if ds.PendingRestore && !ds.PendingDelete {
+		return ErrInvalidDomainStatusCombination
+	}
+	if trueCount(ds.PendingCreate, ds.PendingRenew, ds.PendingTransfer, ds.PendingUpdate, ds.PendingDelete) > 1 {
 		return ErrInvalidDomainStatusCombination
 	}
 

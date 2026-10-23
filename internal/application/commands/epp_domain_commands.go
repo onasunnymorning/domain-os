@@ -1,5 +1,7 @@
 package commands
 
+import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
+
 // EPPCreateDomainCommand is a <domain:create> as the EPP server hands it to
 // the registry: what the frame said, schema-valid but otherwise unchecked,
 // so that every rule is applied in one order by the service. The sponsoring
@@ -64,6 +66,24 @@ type EPPUpdateDomainCommand struct {
 	AuthInfoNull bool
 	// DNSSEC is the <secDNS:update>, nil if none was given.
 	DNSSEC *EPPDNSSECUpdate
+	// Restore is the <rgp:update> (RFC 3915 §4.2.5), nil if none was
+	// given.
+	Restore *EPPRestore
+}
+
+// Changes reports whether the update changes the domain: anything but a
+// restore.
+func (c *EPPUpdateDomainCommand) Changes() bool {
+	return len(c.AddHostNames)+len(c.RemoveHostNames)+len(c.AddContacts)+len(c.RemoveContacts)+
+		len(c.AddStatuses)+len(c.RemoveStatuses) > 0 ||
+		c.HostAttributes || c.Registrant != nil || c.AuthInfo != nil || c.AuthInfoNull || c.DNSSEC != nil
+}
+
+// EPPRestore is an <rgp:restore>: op="request", or op="report" with the
+// restore report.
+type EPPRestore struct {
+	// Report is the <rgp:report> of op="report"; nil for op="request".
+	Report *entities.RestoreReport
 }
 
 // EPPDNSSECUpdate is a <secDNS:update> (RFC 5910 §5.2.5).

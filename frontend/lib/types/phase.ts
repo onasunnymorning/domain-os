@@ -17,6 +17,10 @@ export interface PhasePolicy {
   pendingTransferPeriod?: number;
   redemptionGP?: number;
   pendingdeleteGP?: number;
+  // Days a registrar has to send the restore report after requesting a restore (RFC 3915).
+  pendingRestorePeriod?: number;
+  // Whether a restore waits for the restore report; unset is true. False restores on the request alone.
+  restoreReportRequired?: boolean;
   // Days after a registration or a transfer in which the domain cannot be transferred; 0 is no lock.
   transferLockPeriod?: number;
   maxHorizon?: number;

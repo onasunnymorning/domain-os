@@ -74,7 +74,7 @@ func TestDomain_RequestTransfer(t *testing.T) {
 		refused(t, d, "gaining", transferTestCode, 1, ErrTransferPending)
 	})
 	t.Run("another pending action, or a transfer prohibition: 2304", func(t *testing.T) {
-		for _, st := range []DomainStatus{{PendingDelete: true}, {PendingRestore: true}, {ClientTransferProhibited: true}, {ServerTransferProhibited: true}} {
+		for _, st := range []DomainStatus{{PendingDelete: true}, {PendingDelete: true, PendingRestore: true}, {ClientTransferProhibited: true}, {ServerTransferProhibited: true}} {
 			d := transferTestDomain(t, now)
 			d.Status = st
 			refused(t, d, "gaining", transferTestCode, 1, ErrTransferProhibited)

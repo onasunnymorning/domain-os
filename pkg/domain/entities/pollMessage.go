@@ -2,6 +2,7 @@ package entities
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -25,8 +26,8 @@ type PollMessage struct {
 	// Message is its human-readable text (<msg>).
 	Message string
 	// Transfer is the transfer the message is about, as it stood when the
-	// message was queued: its <domain:trnData>. Every message is about a
-	// transfer for now.
+	// message was queued: its <domain:trnData>. Nil for a message about
+	// something else, such as a lapsed restore, which is its text alone.
 	Transfer *DomainTransfer
 }
 
@@ -77,4 +78,25 @@ func NewTransferPollMessages(t *DomainTransfer, actor ClIDType, now time.Time) [
 		out = append(out, &PollMessage{ClID: to, CreatedAt: now, Message: msg, Transfer: &snapshot})
 	}
 	return out
+}
+
+// PollMsgRestoreLapsed begins the message a registrar gets when its
+// restore request lapses (NewRestoreLapsedPollMessage).
+const PollMsgRestoreLapsed = "Restore lapsed"
+
+// NewRestoreLapsedPollMessage returns the message for d's sponsor when the
+// registry reverts its lapsed restore (Domain.RevertRestore): the restore
+// report was not sent by deadline. It says where the domain now stands, d as
+// reverted: back in its redemption period, so a restore can be requested
+// again, or past it, waiting to be purged. RFC 3915 defines no poll data,
+// so the message is text alone.
+func NewRestoreLapsedPollMessage(d *Domain, deadline, now time.Time) *PollMessage {
+	text := fmt.Sprintf("%s: no restore report for %s by %s", PollMsgRestoreLapsed, d.Name, deadline.UTC().Format(time.RFC3339))
+	if now.Before(d.RGPStatus.RedemptionPeriodEnd) {
+		text += fmt.Sprintf("; it is back in its redemption period until %s, and a restore can be requested again",
+			d.RGPStatus.RedemptionPeriodEnd.UTC().Format(time.RFC3339))
+	} else {
+		text += fmt.Sprintf("; its redemption period has ended, and it is purged after %s", d.RGPStatus.PurgeDate.UTC().Format(time.RFC3339))
+	}
+	return &PollMessage{ClID: d.ClID, CreatedAt: now, Message: text}
 }
