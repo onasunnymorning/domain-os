@@ -136,6 +136,7 @@ func main() {
 	lifecycleWorker.RegisterWorkflow(workflows.ExpiryLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.PurgeLoop)
 	lifecycleWorker.RegisterWorkflowWithOptions(workflows.RestoreWorkflow, workflow.RegisterOptions{Name: workflows.RestoreTypeName})
+	lifecycleWorker.RegisterWorkflow(workflows.TransferApprovalLoop)
 	lifecycleWorker.RegisterWorkflow(workflows.TombstoneBackfill)
 
 	// Drain Data (Deprecated data-pipeline)

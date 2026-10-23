@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -117,13 +116,7 @@ func (s *EPPDomainService) answer(ctx context.Context, scope entities.RegistrarC
 	if tr == nil || tr.Status != entities.TransferStatusPending || !dom.Status.PendingTransfer {
 		return nil, entities.ErrTransferNotPending
 	}
-	var relink []string
-	if status.IsApproved() {
-		if relink, err = s.nameserversToRelink(ctx, dom); err != nil {
-			return nil, err
-		}
-	}
-	_, tr, err = s.register.ResolveTransferAsRead(ctx, dom, tr, status, me, relink)
+	_, tr, err = s.register.ResolveTransferAsRead(ctx, dom, tr, status, me)
 	return tr, err
 }
 
@@ -168,56 +161,4 @@ func (s *EPPDomainService) domain(ctx context.Context, scope entities.RegistrarC
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 	return s.domains.GetDomainByName(ctx, dn.String(), true)
-}
-
-// nameserversToRelink names the nameservers of dom that the gaining
-// registrar is to have its own host objects for (entities.TransferResolution):
-// the hosts under dom (named dom or below it), which go with it, and the
-// external hosts. A host
-// under another domain of this registry belongs to that domain's sponsor
-// and keeps its link: the gaining registrar cannot hold one of its own
-// (RST epp-25 to epp-27), and a copy would publish a second set of glue.
-func (s *EPPDomainService) nameserversToRelink(ctx context.Context, dom *entities.Domain) ([]string, error) {
-	served := map[string]bool{}
-	var out []string
-	for _, h := range dom.Hosts {
-		name := h.Name.String()
-		if name == dom.Name.String() || strings.HasSuffix(name, "."+dom.Name.String()) {
-			out = append(out, name)
-			continue
-		}
-		internal, err := s.underServedTLD(ctx, name, served)
-		if err != nil {
-			return nil, err
-		}
-		if !internal {
-			out = append(out, name)
-		}
-	}
-	return out, nil
-}
-
-// underServedTLD reports whether host name is under a TLD this registry
-// serves (RFC 5732 §1.1: an internal host). served caches the answers.
-func (s *EPPDomainService) underServedTLD(ctx context.Context, name string, served map[string]bool) (bool, error) {
-	labels := strings.Split(name, ".")
-	for i := 1; i < len(labels); i++ {
-		tld := strings.Join(labels[i:], ".")
-		ok, seen := served[tld]
-		if !seen {
-			_, err := s.tlds.GetByName(ctx, tld, false)
-			switch {
-			case err == nil:
-				ok = true
-			case errors.Is(err, entities.ErrTLDNotFound):
-			default:
-				return false, fmt.Errorf("look up TLD %s: %w", tld, err)
-			}
-			served[tld] = ok
-		}
-		if ok {
-			return true, nil
-		}
-	}
-	return false, nil
 }

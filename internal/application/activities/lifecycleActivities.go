@@ -3,9 +3,12 @@ package activities
 import (
 	"context"
 	"fmt"
-	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"log"
 	"os"
+	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/appcontext"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -73,6 +76,9 @@ func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActiv
 		tldRepo, phaseRepo, premiumLabelRepo, fxRepo,
 		registrarRepo, eventPublisher,
 	)
+	// The transfer auto-approval loop writes through the transfer repository,
+	// which queues the poll messages in the same transaction.
+	domainService.SetTransferRepo(postgres.NewDomainTransferRepository(gormDB, repositoryID))
 
 	log.Printf("[lifecycle-activities] Initialized with direct service access (snowflake node: %d)", roidService.ListNode())
 
@@ -248,6 +254,44 @@ func (a *LifecycleActivities) BatchPurgeDomains(ctx context.Context, correlation
 	}
 
 	return result, nil
+}
+
+// ListDueTransfers lists up to limit pending transfers due for an answer by
+// dueBy, after the sweep's cursor (afterDate, afterID).
+func (a *LifecycleActivities) ListDueTransfers(ctx context.Context, correlationID string, dueBy, afterDate time.Time, afterID int64, limit int) ([]services.DueTransfer, error) {
+	return a.DomainService.ListDueTransfers(withWorkflowIDs(ctx, correlationID), dueBy, afterDate, afterID, limit)
+}
+
+// BatchApproveDueTransfers approves, as the registry, the pending
+// transfers of the domains named that were due by dueBy. Idempotent: a
+// transfer already answered, or not yet due, is skipped.
+func (a *LifecycleActivities) BatchApproveDueTransfers(ctx context.Context, correlationID string, dueBy time.Time, domainNames []string) (services.BatchResult, error) {
+	ctx = withWorkflowIDs(ctx, correlationID)
+	result := services.BatchResult{Succeeded: []string{}, Failed: []services.BatchFailure{}}
+	for i := 0; i < len(domainNames); i += defaultBatchChunkSize {
+		end := min(i+defaultBatchChunkSize, len(domainNames))
+		batch := a.DomainService.BatchApproveDueTransfers(ctx, domainNames[i:end], dueBy)
+		result.Succeeded = append(result.Succeeded, batch.Succeeded...)
+		result.Failed = append(result.Failed, batch.Failed...)
+		result.Skipped = append(result.Skipped, batch.Skipped...)
+		activity.RecordHeartbeat(ctx, fmt.Sprintf("approved %d/%d transfers", end, len(domainNames)))
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+	}
+	return result, nil
+}
+
+// withWorkflowIDs marks ctx, for the events the service writes, as INV-16
+// has it: the workflow ID as correlation ID, the run ID as trace ID. These
+// activities call the service directly, so prepareRequest, which sends both
+// as headers to the admin API, never runs.
+func withWorkflowIDs(ctx context.Context, correlationID string) context.Context {
+	ctx = appcontext.WithCorrelationID(ctx, correlationID)
+	if runID := getTemporalRunID(ctx); runID != "" {
+		ctx = appcontext.WithTraceID(ctx, runID)
+	}
+	return ctx
 }
 
 // BatchRestoreDomains restores domains in batch via the service layer.

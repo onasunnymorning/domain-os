@@ -239,6 +239,22 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "restoreWorkflow.doc.md",
 		},
 		{
+			Key:          "transfer-approval-loop",
+			Name:         "Approve Due Transfers",
+			Description:  "Approves, as the registry, domain transfers the losing registrar has not answered by the end of the pending transfer period",
+			Queue:        temporal.QueueLifecycle,
+			Category:     "lifecycle",
+			Tags:         []string{"lifecycle", "transfers", "GO"},
+			Scheduled:    true,
+			ScheduleInfo: "Every hour",
+			ScheduleID:   "transfer-approval-loop",
+			Steps: []WorkflowStep{
+				{Key: "list-due-transfers", Label: "List Due Transfers", ActivityName: "ListDueTransfers"},
+				{Key: "batch-approve", Label: "Batch Approve", ActivityName: "BatchApproveDueTransfers"},
+			},
+			docFile: "transferApprovalLoop.doc.md",
+		},
+		{
 			Key:         "spec5-sweep",
 			Name:        "Spec5 Domain Sweep",
 			Description: "Sweeps the domain inventory to return a list of Spec5 labels that exist as registered domains",

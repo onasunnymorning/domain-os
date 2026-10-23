@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -16,9 +17,9 @@ import (
 var ErrTransfersNotConfigured = errors.New("domain transfers are not configured")
 
 // SetTransferRepo sets the repository the transfer writes go through. Only
-// the processes that transfer domains (EPP, and the auto-approval workflow
-// to come) need it; like SetTombstoneRepo, a setter keeps the other call
-// sites as they are.
+// the processes that transfer domains (EPP, and the worker's lifecycle
+// activities, for the auto-approval loop) need it; like SetTombstoneRepo, a
+// setter keeps the other call sites as they are.
 func (s *DomainService) SetTransferRepo(repo repositories.DomainTransferRepository) {
 	s.transferRepo = repo
 }
@@ -79,14 +80,14 @@ func (s *DomainService) RequestTransferAsRead(ctx context.Context, dom *entities
 // ResolveTransferAsRead ends tr, the pending transfer of dom, a domain the
 // caller has read, with status as actor did (empty when the registry did).
 // An approval completes the transfer (entities.Domain.CompleteTransfer) in
-// the TLD's current GA phase, re-links the nameservers named in relink to
-// the gaining registrar's hosts (entities.TransferResolution), and is
+// the TLD's current GA phase, re-links dom's nameservers as
+// nameserversToRelink plans from them (entities.TransferResolution), and is
 // recorded as a billable domain.transferred event with the gaining
 // registrar's transfer quote. A rejection or cancellation clears
 // pendingTransfer. Every outcome queues poll messages for the registrars
 // that did not act. Written only if dom and tr are still as read (else
 // entities.ErrDomainChanged).
-func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType, relink []string) (*entities.Domain, *entities.DomainTransfer, error) {
+func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (*entities.Domain, *entities.DomainTransfer, error) {
 	if s.transferRepo == nil {
 		return nil, nil, ErrTransfersNotConfigured
 	}
@@ -103,6 +104,10 @@ func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities
 			return nil, nil, err
 		}
 		if quote, err = s.transferQuote(ctx, dom, tr.RequestingClID, tr.Years, phase); err != nil {
+			return nil, nil, err
+		}
+		relink, err := s.nameserversToRelink(ctx, dom)
+		if err != nil {
 			return nil, nil, err
 		}
 		if err := dom.CompleteTransfer(tr, phase, now); err != nil {
@@ -148,6 +153,89 @@ func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities
 	return stored, tr, nil
 }
 
+// DueTransfer is a pending transfer due for an answer: its domain, and its
+// place in the sweep's (ActionDate, ID) order, the cursor of the next page.
+type DueTransfer struct {
+	DomainName string    `json:"domainName"`
+	ID         int64     `json:"id"`
+	ActionDate time.Time `json:"actionDate"`
+}
+
+// ListDueTransfers lists, up to limit, the pending transfers of existing
+// domains that were due for an answer by dueBy, in (ActionDate, ID) order
+// after the cursor (afterDate, afterID; zero for the first page): the
+// transfers the registry approves because the losing registrar did not
+// answer in time (workflows.TransferApprovalLoop).
+func (s *DomainService) ListDueTransfers(ctx context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]DueTransfer, error) {
+	if s.transferRepo == nil {
+		return nil, ErrTransfersNotConfigured
+	}
+	due, err := s.transferRepo.ListDueTransfers(ctx, dueBy, afterDate, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DueTransfer, len(due))
+	for i, t := range due {
+		out[i] = DueTransfer{DomainName: t.DomainName.String(), ID: t.ID, ActionDate: t.ActionDate}
+	}
+	return out, nil
+}
+
+// BatchApproveDueTransfers approves, as the registry (serverApproved), the
+// pending transfer of each domain named whose acDate is at or before dueBy:
+// ResolveTransferAsRead, with poll messages to both registrars. Each domain
+// is read and checked again, so the batch is idempotent under retries: a
+// domain whose transfer was answered meanwhile, or is not yet due, or that
+// no longer exists, is Skipped. A domain changed while being approved is
+// read again, up to updateAttempts times. One domain's failure does not stop
+// the batch.
+func (s *DomainService) BatchApproveDueTransfers(ctx context.Context, names []string, dueBy time.Time) BatchResult {
+	result := BatchResult{Succeeded: make([]string, 0, len(names)), Failed: make([]BatchFailure, 0)}
+	for _, name := range names {
+		approved, err := s.approveIfDue(ctx, name, dueBy)
+		switch {
+		case err != nil:
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: err.Error()})
+		case approved:
+			result.Succeeded = append(result.Succeeded, name)
+		default:
+			result.Skipped = append(result.Skipped, name)
+		}
+	}
+	return result
+}
+
+// approveIfDue approves name's transfer if it is pending and due, reporting
+// whether it did.
+func (s *DomainService) approveIfDue(ctx context.Context, name string, dueBy time.Time) (bool, error) {
+	for attempt := 1; ; attempt++ {
+		dom, err := s.domainRepository.GetDomainByName(ctx, name, true)
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		tr, err := s.transferRepo.LatestTransfer(ctx, dom.RoID)
+		if errors.Is(err, entities.ErrTransferNotPending) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if tr.Status != entities.TransferStatusPending || !dom.Status.PendingTransfer || tr.ActionDate.After(dueBy) {
+			return false, nil
+		}
+		_, _, err = s.ResolveTransferAsRead(ctx, dom, tr, entities.TransferStatusServerApproved, "")
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, entities.ErrDomainChanged) || attempt == updateAttempts {
+			return false, err
+		}
+	}
+}
+
 // transferNow is the time a transfer step happens at, to the microsecond
 // the database keeps: what a command answers is then what a later query
 // reads back.
@@ -174,4 +262,56 @@ func (s *DomainService) transferQuote(ctx context.Context, dom *entities.Domain,
 		Years:           years,
 		PhaseName:       phase.Name.String(),
 	})
+}
+
+// nameserversToRelink names the nameservers of dom that the gaining
+// registrar is to have its own host objects for (entities.TransferResolution):
+// the hosts under dom (named dom or below it), which go with it, and the
+// external hosts. A host
+// under another domain of this registry belongs to that domain's sponsor
+// and keeps its link: the gaining registrar cannot hold one of its own
+// (RST epp-25 to epp-27), and a copy would publish a second set of glue.
+func (s *DomainService) nameserversToRelink(ctx context.Context, dom *entities.Domain) ([]string, error) {
+	served := map[string]bool{}
+	var out []string
+	for _, h := range dom.Hosts {
+		name := h.Name.String()
+		if name == dom.Name.String() || strings.HasSuffix(name, "."+dom.Name.String()) {
+			out = append(out, name)
+			continue
+		}
+		internal, err := s.underServedTLD(ctx, name, served)
+		if err != nil {
+			return nil, err
+		}
+		if !internal {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// underServedTLD reports whether host name is under a TLD this registry
+// serves (RFC 5732 §1.1: an internal host). served caches the answers.
+func (s *DomainService) underServedTLD(ctx context.Context, name string, served map[string]bool) (bool, error) {
+	labels := strings.Split(name, ".")
+	for i := 1; i < len(labels); i++ {
+		tld := strings.Join(labels[i:], ".")
+		ok, seen := served[tld]
+		if !seen {
+			_, err := s.tldRepo.GetByName(ctx, tld, false)
+			switch {
+			case err == nil:
+				ok = true
+			case errors.Is(err, entities.ErrTLDNotFound):
+			default:
+				return false, fmt.Errorf("look up TLD %s: %w", tld, err)
+			}
+			served[tld] = ok
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -68,10 +68,9 @@ type EPPDomainRegistrar interface {
 	// messages it causes.
 	RequestTransferAsRead(ctx context.Context, dom *entities.Domain, gaining entities.ClIDType, authInfo string, years int) (*entities.Domain, *entities.DomainTransfer, error)
 	// ResolveTransferAsRead ends tr, dom's pending transfer, with status as
-	// actor did (empty for the registry). On approval, relink names the
-	// nameservers the gaining registrar is to have its own host objects for
-	// (entities.TransferResolution).
-	ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType, relink []string) (*entities.Domain, *entities.DomainTransfer, error)
+	// actor did (empty for the registry). An approval re-links dom's
+	// nameservers as entities.TransferResolution describes.
+	ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (*entities.Domain, *entities.DomainTransfer, error)
 }
 
 // EPPDomainServiceDeps are what EPPDomainService reads and writes through.

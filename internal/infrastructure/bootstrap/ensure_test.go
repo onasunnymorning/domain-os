@@ -15,8 +15,8 @@ import (
 func Test_desiredSchedules_AllDefined(t *testing.T) {
 	specs := desiredSchedules(testOptions)
 
-	// We must have exactly 9 schedules.
-	require.Len(t, specs, 9, "expected 9 schedules in desiredSchedules()")
+	// We must have exactly 10 schedules.
+	require.Len(t, specs, 10, "expected 10 schedules in desiredSchedules()")
 
 	// Map by ID for easy lookup
 	byID := make(map[string]scheduleSpec, len(specs))
@@ -34,6 +34,19 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		require.Len(t, s.Args, 1)
 		_, ok = s.Args[0].(workflows.ExpiryLoopParams)
 		assert.True(t, ok, "ExpiryLoop args should be ExpiryLoopParams, got %T", s.Args[0])
+		assert.NotEmpty(t, s.Note)
+	})
+
+	t.Run("transfer-approval-loop", func(t *testing.T) {
+		s, ok := byID["transfer-approval-loop"]
+		require.True(t, ok, "missing schedule transfer-approval-loop")
+		assert.Equal(t, temporal.QueueLifecycle, s.Queue)
+		assert.Equal(t, time.Hour, s.Interval)
+		assert.Equal(t, 15*time.Minute, s.Offset)
+		assert.Equal(t, time.Hour, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.TransferApprovalLoopParams)
+		assert.True(t, ok, "TransferApprovalLoop args should be TransferApprovalLoopParams, got %T", s.Args[0])
 		assert.NotEmpty(t, s.Note)
 	})
 

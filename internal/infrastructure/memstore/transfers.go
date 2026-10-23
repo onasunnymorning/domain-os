@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
@@ -37,8 +38,10 @@ func (r *Registry) RequestTransferAsRead(_ context.Context, dom *entities.Domain
 }
 
 // ResolveTransferAsRead stands in for DomainService.ResolveTransferAsRead,
-// moving and re-linking hosts as entities.TransferResolution describes.
-func (r *Registry) ResolveTransferAsRead(_ context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType, relink []string) (*entities.Domain, *entities.DomainTransfer, error) {
+// moving and re-linking hosts as entities.TransferResolution describes, with
+// the nameservers planned as DomainService plans them: those under the
+// domain and the external ones.
+func (r *Registry) ResolveTransferAsRead(_ context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (*entities.Domain, *entities.DomainTransfer, error) {
 	phase, err := r.currentPhase(dom.Name.ParentDomain())
 	if err != nil {
 		return nil, nil, err
@@ -72,7 +75,7 @@ func (r *Registry) ResolveTransferAsRead(_ context.Context, dom *entities.Domain
 		if err := dom.CompleteTransfer(tr, phase, now); err != nil {
 			return nil, nil, err
 		}
-		r.moveHosts(dom, tr, relink)
+		r.moveHosts(dom, tr, r.relinkPlan(dom))
 	} else {
 		dom.EndTransfer()
 	}
@@ -117,6 +120,31 @@ func (r *Registry) moveHosts(dom *entities.Domain, tr *entities.DomainTransfer, 
 		}
 		dom.Hosts[i] = target.DeepCopy()
 	}
+}
+
+// relinkPlan names dom's nameservers under dom or under no TLD the
+// registry knows. The caller holds the lock.
+func (r *Registry) relinkPlan(dom *entities.Domain) []string {
+	var out []string
+	for _, h := range dom.Hosts {
+		name := h.Name.String()
+		if name == dom.Name.String() || strings.HasSuffix(name, "."+dom.Name.String()) {
+			out = append(out, name)
+			continue
+		}
+		internal := false
+		labels := strings.Split(name, ".")
+		for i := 1; i < len(labels); i++ {
+			if r.knownTLDs[strings.Join(labels[i:], ".")] {
+				internal = true
+				break
+			}
+		}
+		if !internal {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // sameNameservers reports whether a and b are the same host objects with
@@ -200,6 +228,40 @@ func (v registryTransfers) LatestTransfer(_ context.Context, roid entities.RoidT
 		return nil, entities.ErrTransferNotPending
 	}
 	return copyTransfer(all[len(all)-1]), nil
+}
+
+func (v registryTransfers) ListDueTransfers(_ context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]*entities.DomainTransfer, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	live := map[entities.RoidType]bool{}
+	for _, d := range v.r.domains {
+		live[d.RoID] = true
+	}
+	after := func(t *entities.DomainTransfer) bool {
+		if c := t.ActionDate.Compare(afterDate); c != 0 {
+			return c > 0
+		}
+		return t.ID > afterID
+	}
+	var out []*entities.DomainTransfer
+	for roid, all := range v.r.transfers {
+		if t := all[len(all)-1]; live[roid] && t.Status == entities.TransferStatusPending && !t.ActionDate.After(dueBy) && after(t) {
+			out = append(out, copyTransfer(t))
+		}
+	}
+	slices.SortFunc(out, func(a, b *entities.DomainTransfer) int {
+		if c := a.ActionDate.Compare(b.ActionDate); c != 0 {
+			return c
+		}
+		return int(a.ID - b.ID)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 type registryPolls struct {

@@ -107,12 +107,11 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 		require.NoError(t, err)
 		pending, err := transfers.LatestTransfer(ctx, stale.RoID)
 		require.NoError(t, err)
-		relink, err := svc.nameserversToRelink(ctx, stale)
-		require.NoError(t, err)
 		// A rename does not change the domain's version.
 		_, err = hosts.Update(ctx, scope1, commands.EPPUpdateHostCommand{Name: "ns1." + rar1 + ".net", NewName: "ns9." + rar1 + ".net"})
 		require.NoError(t, err)
-		_, _, err = f.registry.ResolveTransferAsRead(ctx, stale, pending, entities.TransferStatusClientApproved, entities.ClIDType(rar1), relink)
+		// The plan is made from stale's nameservers, read before the rename.
+		_, _, err = f.registry.ResolveTransferAsRead(ctx, stale, pending, entities.TransferStatusClientApproved, entities.ClIDType(rar1))
 		require.ErrorIs(t, err, entities.ErrDomainChanged)
 		dom, err := f.domainRepo.GetDomainByName(ctx, name, false)
 		require.NoError(t, err)
@@ -187,3 +186,129 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestTransferAutoApprovalOverPostgres runs the auto-approval loop's
+// service path on Postgres: a transfer past its acDate is listed and
+// approved by the registry, both registrars are told, a transfer not yet
+// due is left alone, and a second run approves nothing twice.
+func TestTransferAutoApprovalOverPostgres(t *testing.T) {
+	f := newEPPFixture(t)
+	ctx, db, tld, rar1, rar2 := context.Background(), f.db, f.tld, f.rar1, f.rar2
+	scope1, scope2 := entities.RegistrarClID(rar1), entities.RegistrarClID(rar2)
+	transfers := postgres.NewDomainTransferRepository(db, "EPPTEST")
+	f.registry.SetTransferRepo(transfers)
+	svc := NewEPPDomainService(EPPDomainServiceDeps{
+		Domains: f.domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: f.tldRepo, Phases: postgres.NewGormPhaseRepository(db),
+		Contacts: postgres.NewContactRepository(db, "EPPTEST"), Hosts: f.hostRepo, Registrars: postgres.NewGormRegistrarRepository(db),
+		Transfers: transfers, Register: f.registry, CheckParallelism: 2,
+	})
+	polls := NewEPPPollService(transfers)
+	require.NoError(t, NewAccreditationService(postgres.NewAccreditationRepository(db), postgres.NewGormRegistrarRepository(db), f.tldRepo, f.events).
+		CreateAccreditation(ctx, tld, rar2))
+	require.NoError(t, db.Exec("UPDATE phases SET transfer_lock_period = 0 WHERE tld_name = ?", tld).Error)
+
+	const code = "Tr4nsf3r-C0de-Xq9#Lm2!" // #nosec G101 -- a test fixture's authInfo, not a credential
+	due, notDue, gone := "due."+tld, "later."+tld, "gone."+tld
+	for _, n := range []string{due, notDue, gone} {
+		_, err := svc.Create(ctx, scope1, commands.EPPCreateDomainCommand{
+			Name: n, RegistrantID: "c" + rar1, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
+			HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: code,
+		})
+		require.NoError(t, err)
+		_, err = svc.TransferRequest(ctx, scope2, commands.EPPTransferDomainCommand{Name: n, AuthInfo: ptr(code)})
+		require.NoError(t, err)
+	}
+	// The losing registrar did not answer in time: due's pending period ended
+	// an hour ago.
+	require.NoError(t, db.Exec("UPDATE domain_transfers SET action_date = ? WHERE domain_name = ?", time.Now().UTC().Add(-time.Hour), due).Error)
+	// gone was due earlier still, but the domain has since been deleted: its
+	// transfer stays pending in the history, and must not hold up the sweep.
+	require.NoError(t, db.Exec("UPDATE domain_transfers SET action_date = ? WHERE domain_name = ?", time.Now().UTC().Add(-2*time.Hour), gone).Error)
+	goneDom, err := f.domainRepo.GetDomainByName(ctx, gone, false)
+	require.NoError(t, err)
+	goneID, err := goneDom.RoID.Int64()
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("DELETE FROM domain_hosts WHERE domain_ro_id = ?", goneID).Error)
+	require.NoError(t, db.Exec("DELETE FROM domains WHERE ro_id = ?", goneID).Error)
+	for _, s := range []entities.RegistrarClID{scope1, scope2} {
+		for {
+			m, _, err := polls.Request(ctx, s)
+			require.NoError(t, err)
+			if m == nil {
+				break
+			}
+			_, err = polls.Ack(ctx, s, strconv.FormatInt(m.ID, 10))
+			require.NoError(t, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	listed, err := f.registry.ListDueTransfers(ctx, now, time.Time{}, 0, 1000)
+	require.NoError(t, err)
+	names := dueNames(listed)
+	require.Contains(t, names, due)
+	require.NotContains(t, names, notDue, "not yet due")
+	require.NotContains(t, names, gone, "the domain no longer exists")
+
+	t.Run("the cursor passes over what a sweep has listed", func(t *testing.T) {
+		var mine DueTransfer
+		for _, d := range listed {
+			if d.DomainName == due {
+				mine = d
+			}
+		}
+		after, err := f.registry.ListDueTransfers(ctx, now, mine.ActionDate, mine.ID, 1000)
+		require.NoError(t, err)
+		assert.NotContains(t, dueNames(after), due)
+	})
+
+	// notDue is passed too: the batch re-checks each domain, and skips it.
+	res := f.registry.BatchApproveDueTransfers(ctx, []string{due, notDue}, now)
+	assert.Equal(t, []string{due}, res.Succeeded)
+	assert.Equal(t, []string{notDue}, res.Skipped)
+	assert.Empty(t, res.Failed)
+
+	t.Run("approved by the registry", func(t *testing.T) {
+		dom, err := f.domainRepo.GetDomainByName(ctx, due, true)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ClIDType(rar2), dom.ClID)
+		assert.False(t, dom.Status.PendingTransfer)
+		tr, err := transfers.LatestTransfer(ctx, dom.RoID)
+		require.NoError(t, err)
+		assert.Equal(t, entities.TransferStatusServerApproved, tr.Status)
+		assert.Equal(t, entities.ClIDType(rar1), tr.ActingClID, "acID stays the losing registrar when the registry acts")
+		assert.Equal(t, entities.ClIDType(rar2), dom.Hosts[0].ClID, "the external nameserver is re-linked to the gaining registrar's")
+	})
+	t.Run("both registrars are told", func(t *testing.T) {
+		for _, s := range []entities.RegistrarClID{scope1, scope2} {
+			m, n, err := polls.Request(ctx, s)
+			require.NoError(t, err)
+			require.NotNil(t, m, "registrar %s", s)
+			assert.Equal(t, int64(1), n)
+			assert.Contains(t, m.Message, entities.PollMsgTransferServerApproved)
+			assert.Equal(t, entities.TransferStatusServerApproved, m.Transfer.Status)
+		}
+	})
+	t.Run("the domain not due stays pending", func(t *testing.T) {
+		dom, err := f.domainRepo.GetDomainByName(ctx, notDue, false)
+		require.NoError(t, err)
+		assert.True(t, dom.Status.PendingTransfer)
+		assert.Equal(t, entities.ClIDType(rar1), dom.ClID)
+	})
+	t.Run("a second run approves nothing twice", func(t *testing.T) {
+		again := f.registry.BatchApproveDueTransfers(ctx, []string{due}, now)
+		assert.Empty(t, again.Succeeded)
+		assert.Equal(t, []string{due}, again.Skipped)
+		listed, err := f.registry.ListDueTransfers(ctx, now, time.Time{}, 0, 1000)
+		require.NoError(t, err)
+		assert.NotContains(t, dueNames(listed), due)
+	})
+}
+
+func dueNames(due []DueTransfer) []string {
+	out := make([]string, len(due))
+	for i, d := range due {
+		out[i] = d.DomainName
+	}
+	return out
+}

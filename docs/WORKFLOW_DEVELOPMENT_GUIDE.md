@@ -14,7 +14,7 @@
 | `fast-ops` | Serial Drift, UpdateFX | Low-latency, sub-minute activities |
 | `scheduled` | Event Relay, Event Prune, Sync Spec5, Spec5 Sweep, Sync Registrars | Periodic background work |
 | `heavy-batch` | Escrow Import, TLD Cleanup, Take Snapshot, Seed from Snapshot | Multi-hour, resource-intensive |
-| `lifecycle` | Expiry Loop, Purge Loop, Restore Workflow, Tombstone Backfill | Domain state-machine transitions |
+| `lifecycle` | Expiry Loop, Purge Loop, Restore Workflow, Transfer Approval Loop, Tombstone Backfill | Domain state-machine transitions |
 
 ### Directory Layout
 
