@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-14T14:06:15Z",
+  "generated": "2026-10-23T17:34:04Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -438,21 +438,6 @@
             "name": "EPP_MAX_SESSIONS_PER_SOURCE_IP",
             "default": "20",
             "description": "Live sessions from one source address, across every node. Over it, the connection is closed before the greeting"
-          },
-          {
-            "name": "EPP_MAX_SESSIONS_PER_REGISTRAR",
-            "default": "10",
-            "description": "Logged-in sessions per registrar, across every node and login. Over it, \u003clogin\u003e is answered 2502 and the session closes"
-          },
-          {
-            "name": "EPP_MAX_SESSIONS_PER_LOGIN",
-            "default": "10",
-            "description": "Logged-in sessions per EPP login, across every node, unless the login has its own session cap. Over it, \u003clogin\u003e is answered 2502"
-          },
-          {
-            "name": "EPP_MAX_CHECK_NAMES",
-            "default": "50",
-            "description": "Names one \u003ccheck\u003e may carry; more is answered 2306. Availability lookups are metered per name, so this bounds round trips, not capacity"
           },
           {
             "name": "EPP_CHECK_PARALLELISM",

@@ -59,6 +59,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&EPPTransactionRecord{},
 		&DomainTransferRecord{},
 		&PollMessageRecord{},
+		&EPPPolicyRecord{},
+		&EPPPolicyAssignmentRecord{},
+		&RegistrarFamilyRecord{},
+		&RegistrarFamilyMemberRecord{},
 		&InstallationSetting{},
 	)
 	if err != nil {
@@ -72,6 +76,12 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateLegacyPendingRestores(db); err != nil {
+		return err
+	}
+	if err := seedEPPPolicies(db); err != nil {
+		return err
+	}
+	if err := ensureEPPPolicyForeignKeys(db); err != nil {
 		return err
 	}
 

@@ -84,19 +84,23 @@ func (r *EPPSessions) Open(_ context.Context, s *entities.EPPSession, lease time
 	return nil
 }
 
-// Authenticate records s's login under its registrar's and login's caps.
-func (r *EPPSessions) Authenticate(_ context.Context, s *entities.EPPSession, lease time.Duration, perRegistrar, perLogin int) error {
+// Authenticate records s's login under its registrar's, login's and
+// family's caps.
+func (r *EPPSessions) Authenticate(_ context.Context, s *entities.EPPSession, lease time.Duration, limits entities.EPPSessionLimits) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := r.failure(); err != nil {
 		return err
 	}
 	now := r.now()
-	if r.count(s.ID, now, func(o *entities.EPPSession) bool { return o.ClID == s.ClID }) >= perRegistrar {
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: perRegistrar}
+	if r.count(s.ID, now, func(o *entities.EPPSession) bool { return o.ClID == s.ClID }) >= limits.PerRegistrar {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: limits.PerRegistrar}
 	}
-	if r.count(s.ID, now, func(o *entities.EPPSession) bool { return o.LoginID == s.LoginID }) >= perLogin {
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: perLogin}
+	if r.count(s.ID, now, func(o *entities.EPPSession) bool { return o.LoginID == s.LoginID }) >= limits.PerLogin {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: limits.PerLogin}
+	}
+	if s.Family != "" && r.count(s.ID, now, func(o *entities.EPPSession) bool { return o.Family == s.Family }) >= limits.PerFamily {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitFamily, Cap: limits.PerFamily}
 	}
 	r.sessions[s.ID] = memSession{s: *s, expires: now.Add(lease)}
 	return nil

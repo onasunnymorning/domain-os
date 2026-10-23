@@ -191,8 +191,8 @@ func TestContactCheck(t *testing.T) {
 		"free-1":        {"1", ""},
 	}, got)
 
-	t.Run("more IDs than EPP_MAX_CHECK_NAMES", func(t *testing.T) {
-		ids := make([]string, testConfig().Commands.MaxCheckNames+1)
+	t.Run("more IDs than the policy allows", func(t *testing.T) {
+		ids := make([]string, entities.DefaultEPPPolicyLimits().CheckNames+1)
 		for i := range ids {
 			ids[i] = "free-1"
 		}

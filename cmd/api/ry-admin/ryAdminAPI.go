@@ -405,6 +405,9 @@ func main() {
 	eppRedis := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword})
 	eppSessionService := appservices.NewEPPSessionService(sessionstore.NewRedis(eppRedis), entities.EPPSessionCaps{}, 0, eventPublisher)
 	rest.NewEPPSessionsController(r, eppSessionService, authMiddleware)
+	// EPP policies and registrar families (ADR 0019): the EPP servers reload
+	// them within their credential refresh interval.
+	rest.NewEPPPoliciesController(r, appservices.NewEPPPolicyService(postgres.NewEPPPolicyRepository(gormDB), registrarRepo), authMiddleware)
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)

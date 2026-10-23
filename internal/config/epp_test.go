@@ -22,8 +22,8 @@ var eppEnv = []string{
 	"EPP_REQUIRE_ALLOWLIST", "EPP_CREDENTIAL_REFRESH_INTERVAL", "EPP_MAX_CONCURRENT_LOGINS", "EPP_MAX_LOGIN_ATTEMPTS",
 	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
 	"EPP_NODE_ID", "EPP_SESSION_LEASE", "EPP_SESSION_HEARTBEAT",
-	"EPP_MAX_SESSIONS_PER_SOURCE_IP", "EPP_MAX_SESSIONS_PER_REGISTRAR", "EPP_MAX_SESSIONS_PER_LOGIN",
-	"EPP_MAX_CHECK_NAMES", "EPP_CHECK_PARALLELISM",
+	"EPP_MAX_SESSIONS_PER_SOURCE_IP",
+	"EPP_CHECK_PARALLELISM",
 	"EPP_AUDIT_RETENTION", "EPP_AUDIT_QUERY_RESPONSES", "EPP_AUDIT_BUFFER", "EPP_DB_MAX_OPEN_CONNS",
 }
 
@@ -61,9 +61,9 @@ func TestLoadEPPDefaults(t *testing.T) {
 		Read: 30 * time.Second, Write: 60 * time.Second, MaxSession: 24 * time.Hour, Drain: 30 * time.Second,
 	}, cfg.Timeouts)
 	assert.Equal(t, "localhost:6379", cfg.Redis.Addr())
-	assert.Equal(t, EPPSessions{NodeID: want.Sessions.NodeID, Lease: 90 * time.Second, Heartbeat: 30 * time.Second, PerSource: 20, PerRegistrar: 10, PerLogin: 10}, cfg.Sessions)
+	assert.Equal(t, EPPSessions{NodeID: want.Sessions.NodeID, Lease: 90 * time.Second, Heartbeat: 30 * time.Second, PerSource: 20}, cfg.Sessions)
 	assert.Equal(t, EPPAuth{RequireAllowlist: true, RefreshInterval: 30 * time.Second, MaxConcurrentVerify: 8, MaxLoginAttempts: 3}, cfg.Auth)
-	assert.Equal(t, EPPCommands{MaxCheckNames: 50, CheckParallelism: 8}, cfg.Commands)
+	assert.Equal(t, EPPCommands{CheckParallelism: 8}, cfg.Commands)
 	assert.Equal(t, EPPAudit{Retention: 365 * 24 * time.Hour, QueryResponses: false, Buffer: 10000}, cfg.Audit)
 	assert.Equal(t, 20, cfg.DB.MaxOpenConns)
 }
@@ -81,10 +81,10 @@ func TestLoadEPPOverrides(t *testing.T) {
 		"EPP_READ_TIMEOUT": "10s", "EPP_WRITE_TIMEOUT": "15s", "EPP_MAX_SESSION_DURATION": "12h", "EPP_DRAIN_TIMEOUT": "1m",
 		"EPP_REQUIRE_ALLOWLIST": "false", "EPP_CREDENTIAL_REFRESH_INTERVAL": "10s", "EPP_MAX_CONCURRENT_LOGINS": "4", "EPP_MAX_LOGIN_ATTEMPTS": "5",
 		"EPP_NODE_ID": "epp-1", "EPP_SESSION_LEASE": "60s", "EPP_SESSION_HEARTBEAT": "20s",
-		"EPP_MAX_SESSIONS_PER_SOURCE_IP": "30", "EPP_MAX_SESSIONS_PER_REGISTRAR": "15", "EPP_MAX_SESSIONS_PER_LOGIN": "5",
-		"DB_USER": "epp", "DB_PASS": "pw", "DB_HOST": "db", "DB_PORT": "5433", "DB_NAME": "dos", "DB_SSLMODE": "require",
-		"EPP_MAX_CHECK_NAMES": "20", "EPP_CHECK_PARALLELISM": "4",
-		"EPP_AUDIT_RETENTION": "720h", "EPP_AUDIT_QUERY_RESPONSES": "true", "EPP_AUDIT_BUFFER": "500", "EPP_DB_MAX_OPEN_CONNS": "12",
+		"EPP_MAX_SESSIONS_PER_SOURCE_IP": "30",
+		"DB_USER":                        "epp", "DB_PASS": "pw", "DB_HOST": "db", "DB_PORT": "5433", "DB_NAME": "dos", "DB_SSLMODE": "require",
+		"EPP_CHECK_PARALLELISM": "4",
+		"EPP_AUDIT_RETENTION":   "720h", "EPP_AUDIT_QUERY_RESPONSES": "true", "EPP_AUDIT_BUFFER": "500", "EPP_DB_MAX_OPEN_CONNS": "12",
 	}
 	for k, v := range set {
 		t.Setenv(k, v)
@@ -105,8 +105,8 @@ func TestLoadEPPOverrides(t *testing.T) {
 			Read: 10 * time.Second, Write: 15 * time.Second, MaxSession: 12 * time.Hour, Drain: time.Minute,
 		},
 		Auth:     EPPAuth{RequireAllowlist: false, RefreshInterval: 10 * time.Second, MaxConcurrentVerify: 4, MaxLoginAttempts: 5},
-		Sessions: EPPSessions{NodeID: "epp-1", Lease: time.Minute, Heartbeat: 20 * time.Second, PerSource: 30, PerRegistrar: 15, PerLogin: 5},
-		Commands: EPPCommands{MaxCheckNames: 20, CheckParallelism: 4},
+		Sessions: EPPSessions{NodeID: "epp-1", Lease: time.Minute, Heartbeat: 20 * time.Second, PerSource: 30},
+		Commands: EPPCommands{CheckParallelism: 4},
 		Audit:    EPPAudit{Retention: 720 * time.Hour, QueryResponses: true, Buffer: 500},
 		DB:       EPPDatabase{MaxOpenConns: 12, User: "epp", Pass: "pw", Host: "db", Port: "5433", Name: "dos", SSLMode: "require"},
 	}, cfg)
@@ -135,9 +135,7 @@ func TestLoadEPPRejects(t *testing.T) {
 		{"non-boolean flag", map[string]string{"EPP_PROXY_PROTOCOL": "yes please"}, "EPP_PROXY_PROTOCOL"},
 		{"non-boolean allowlist flag", map[string]string{"EPP_REQUIRE_ALLOWLIST": "sometimes"}, "EPP_REQUIRE_ALLOWLIST"},
 		{"heartbeat too close to the lease", map[string]string{"EPP_SESSION_HEARTBEAT": "60s"}, "EPP_SESSION_HEARTBEAT"},
-		{"zero sessions per login", map[string]string{"EPP_MAX_SESSIONS_PER_LOGIN": "0"}, "EPP_MAX_SESSIONS_PER_LOGIN"},
 		{"zero login attempts", map[string]string{"EPP_MAX_LOGIN_ATTEMPTS": "0"}, "EPP_MAX_LOGIN_ATTEMPTS"},
-		{"zero check names", map[string]string{"EPP_MAX_CHECK_NAMES": "0"}, "EPP_MAX_CHECK_NAMES"},
 		{"check parallelism takes the pool", map[string]string{"EPP_CHECK_PARALLELISM": "20"}, "EPP_CHECK_PARALLELISM"},
 		{"retention without unit", map[string]string{"EPP_AUDIT_RETENTION": "365"}, "EPP_AUDIT_RETENTION"},
 		{"non-boolean query responses", map[string]string{"EPP_AUDIT_QUERY_RESPONSES": "some"}, "EPP_AUDIT_QUERY_RESPONSES"},

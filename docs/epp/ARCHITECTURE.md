@@ -82,7 +82,7 @@ A login must pass three checks:
 - It is loaded from file and hot-reloaded: new handshakes get the new certificate, and live sessions are untouched.
 - Registrars who pin *our* certificate are told the new fingerprint a set number of days ahead (optionally also published as a DANE/TLSA record).
 
-*Today:* all of this section is in place except the change notifications reaching the technical contact: changes are written to the outbox, but nothing yet delivers them. Logins, passwords (Argon2id), registrar-level pins and allowed networks have the retire lifecycle, the caps and an admin API ([POLICY_REFERENCE.md § Credentials](POLICY_REFERENCE.md#credentials-admin-api)). Each login is checked against the database, and a compromise retire ends the sessions that used the credential within the refresh interval ([§ Authentication](POLICY_REFERENCE.md#authentication)). The session cap per login is stored but enforced with the session registry (Phase 3), and the `readonly` role with the policy engine (Phase 5).
+*Today:* all of this section is in place except the change notifications reaching the technical contact: changes are written to the outbox, but nothing yet delivers them. Logins, passwords (Argon2id), registrar-level pins and allowed networks have the retire lifecycle, the caps and an admin API ([POLICY_REFERENCE.md § Credentials](POLICY_REFERENCE.md#credentials-admin-api)). Each login is checked against the database, and a compromise retire ends the sessions that used the credential within the refresh interval ([§ Authentication](POLICY_REFERENCE.md#authentication)). The session cap per login is enforced with the session registry (Phase 3), and the `readonly` role by the policy engine (Phase 5a: 2201 for any change to the registry).
 
 ## 3. Session management
 
@@ -95,8 +95,8 @@ A login must pass three checks:
 - **Caps** apply per registrar, per login, per family, per source IP and per node. Over the cap, the server answers 2502 and closes.
 - **Operators can list live sessions and kill one** through the admin API. They can also kill every session that authenticated with a given credential, which is the second half of a compromise retire (§2).
 
-*Today:* all of this section except the per-family cap, which needs registrar families (Phase 5), and the per-node cap on sessions, which is the per-node connection cap of §1.
-- Every session is a lease in Redis, written by one atomic script at connect (source cap) and at login (registrar and login caps; a login's own session cap overrides the default). Over the source cap the connection closes before the greeting; over a registrar or login cap `<login>` is answered 2502.
+*Today:* all of this section except the per-node cap on sessions, which is the per-node connection cap of §1. The caps per registrar, login and family are the registrars' EPP policies' (Phase 5a, [ADR 0019](../adr/0019-epp-policies.md)); the source cap is a server setting.
+- Every session is a lease in Redis, written by one atomic script at connect (source cap) and at login (registrar, login and family caps, from the registrar's policy and its family's; a login's own session cap overrides the policy's per-login cap). Over the source cap the connection closes before the greeting; over a registrar or login cap `<login>` is answered 2502.
 - Each node renews its sessions every heartbeat, writing the command count and last command time, and puts back any the registry lost. So after a Redis outage the registry heals within one heartbeat, and a crashed node's sessions expire with their leases.
 - If Redis cannot answer, the node applies the same caps to its own sessions (fail-open, ADR 0013) and sets `epp_policy_store_degraded{store="sessions"}`.
 - The admin API lists sessions (`GET /epp/sessions`, filterable by registrar, login, source and credential) and ends them (`DELETE /epp/sessions/{id}`, or by filter, including by credential), over Redis pub/sub to whichever node holds the session. Each kill request is recorded as an `epp.session.kill_requested` event before it is sent. See [POLICY_REFERENCE.md § Sessions](POLICY_REFERENCE.md#sessions).
@@ -109,7 +109,7 @@ A login must pass three checks:
 - **Per-command object caps** (names per check, nameservers, DS records). A breach returns 2306.
 - `clTRID` is echoed. `svTRID` is globally unique and doubles as the correlation ID in logs and audit.
 
-*Today:* all of this section. The check, nameserver and DS caps move into the policy engine in Phase 5. Schema validation uses Go models of the XSDs, kept in agreement with xmllint by a differential test (ADR 0016). Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. The pipeline and every answer are in [POLICY_REFERENCE.md § Command handling](POLICY_REFERENCE.md#command-handling).
+*Today:* all of this section. The check cap is the registrar's policy's (Phase 5a); the nameserver and DS caps are rules of the registry's data, the same for everyone (ADR 0019). Schema validation uses Go models of the XSDs, kept in agreement with xmllint by a differential test (ADR 0016). Commands that are not bound are answered 2000 (unknown) or 2101 (unimplemented), and the session continues. The pipeline and every answer are in [POLICY_REFERENCE.md § Command handling](POLICY_REFERENCE.md#command-handling).
 
 ## 5. Policy enforcement
 
@@ -119,7 +119,7 @@ A `PolicyEnforcer` sits between parse and dispatch: `Decide(session, command)` r
 - **Token buckets (GCRA)** per (registrar, command class) and per (family, command class). The classes are `check`, `info`, `transform` and `poll`. A `check` costs one token **per name**, so the batch size is about efficiency, not capacity. Every other class costs one token per command.
 - **Quotas,** such as daily creates for a probationary tier.
 
-Policies are versioned and tiered (default, probation, custom). They are assigned per registrar with optional overrides, and are hot-reloaded by every node. If Redis is unavailable, enforcement **fails open** to node-local caps and buckets, and raises a metric and an alert.
+Policies are named sets of limits (built in: `default` and `probation`; any number custom), each registrar assigned one and each registrar family one, and are hot-reloaded by every node ([ADR 0019](../adr/0019-epp-policies.md)). If Redis is unavailable, enforcement **fails open** to node-local caps and buckets, and raises a metric and an alert.
 
 ### Anti-dropcatch and fairness
 
@@ -130,7 +130,7 @@ Policies are versioned and tiered (default, probation, custom). They are assigne
 5. **Randomised release.** Names leaving pendingDelete are purged in random order, at an unpublished offset within a window.
 6. **Check→create correlation.** Detect bursts of checks followed by an immediate create on the same name. This ships behind a flag and is enabled once we have data.
 
-*Today:* the hook between validation and dispatch is in place, with a pass-through policy; `epp_policy_decisions_total` counts its decisions. Nothing else in this section exists yet.
+*Today (Phase 5a, [ADR 0019](../adr/0019-epp-policies.md)):* policies are named sets of limits in the database, two built in (`default`, `probation`) and any number custom, assigned per registrar (no overrides), with registrar families assigned their own; every node reloads them with the credentials. At the hook between validation and dispatch, `epppolicy.Decide` applies the login's role (a `readonly` login cannot transform: 2201) and the check cap (2306); session caps per registrar, login and family apply at login. Token buckets and quotas are Phase 5b; the anti-dropcatch measures, Phase 6. See [POLICY_REFERENCE.md § Policies](POLICY_REFERENCE.md#policies).
 
 ## 6. Observability
 
@@ -179,6 +179,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | 4h-2 | Domain transfer (request, approve, reject, cancel, query) and the poll queue (req, ack); hosts under the domain move with it, external nameservers re-linked to the gaining registrar's hosts (created if missing), nameservers under other domains keep their links; contacts left in place; the code cleared on transfer; `transferPeriod`; a per-phase transfer lock that can be 0 and a pending transfer period | **Done**. RST epp-19 and epp-20 pass |
 | 4i-1 | Transfer auto-approval at the end of the pending transfer period (`serverApproved`): the hourly `TransferApprovalLoop` workflow, poll messages to both registrars | **Done** |
 | 4i-2 | RGP restore (RFC 3915) through `<domain:update>` with `<rgp:update>`: the request (pendingRestore, the EPP status still pendingDelete, a 7-day pending restore period) and the report (checked, kept on the event; the restore completes in the command, renewing until the expiry is in the future); two charges, the restore fee and the renewal; the `Restore` loop reverts lapsed requests instead of finalising; a per-phase pending restore period and an option to restore without a report; a poll message to the sponsor for a lapsed request; escrow imports start a deleted domain's RGP period in full, a pending restore's report due here; `xs:dateTime` and mixed content in the schema models | **Done** |
-| 5 | Policy engine: versioned tiered policies (including the session caps), registrar families and their session cap, token buckets, object caps, quotas, hot reload | Planned |
+| 5a | Policy engine: named policies in the database (`default` and `probation` built in, custom ones), assigned per registrar; registrar families with their own policy and session cap; hot reload with the credentials; the `readonly` role enforced; the check cap and the registrar and login session caps moved from environment variables into the policies ([ADR 0019](../adr/0019-epp-policies.md)) | **Done** |
+| 5b | Command rates: GCRA token buckets per (registrar, class) and (family, class) in Redis, `check` metered per name, node-local buckets when Redis is down; the daily create quota | Planned |
 | 6 | Anti-dropcatch: failed-create budget and escalation, fair queueing, randomised release in `purgeLoop` | Planned |
 | 7 | Alert rules, dashboards, load and drop-time simulation, fuzzing, an OT&E run of ICANN's RST against a deployed environment, operator runbook | Planned |

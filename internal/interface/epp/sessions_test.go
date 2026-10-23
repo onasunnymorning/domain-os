@@ -23,7 +23,12 @@ import (
 // registry, as two nodes behind a load balancer share Postgres and Redis.
 func twoNodes(t *testing.T, change func(*config.EPP)) (a, b *testServer, creds *testCredentials) {
 	t.Helper()
-	creds = newTestCredentials(t)
+	return twoNodesFor(t, newTestCredentials(t), change)
+}
+
+// twoNodesFor is twoNodes over creds, whose policies a test may have set.
+func twoNodesFor(t *testing.T, creds *testCredentials, change func(*config.EPP)) (a, b *testServer, _ *testCredentials) {
+	t.Helper()
 	cfg := testConfig()
 	if change != nil {
 		change(&cfg)
@@ -64,7 +69,9 @@ func TestSourceCapSpansNodes(t *testing.T) {
 }
 
 func TestRegistrarCapSpansNodes(t *testing.T) {
-	a, b, _ := twoNodes(t, func(c *config.EPP) { c.Sessions.PerRegistrar = 2 })
+	creds := newTestCredentials(t)
+	creds.policies.limitDefault(func(l *entities.EPPPolicyLimits) { l.SessionsPerRegistrar = 2 })
+	a, b, _ := twoNodesFor(t, creds, nil)
 	dial(t, a.addr).login()
 	dial(t, b.addr).login()
 
@@ -212,8 +219,8 @@ func TestTwoNodesOverRedis(t *testing.T) {
 
 	creds := newTestCredentials(t)
 	creds.shared = sessionstore.NewRedis(client)
+	creds.policies.limitDefault(func(l *entities.EPPPolicyLimits) { l.SessionsPerRegistrar = 2 })
 	cfg := testConfig()
-	cfg.Sessions.PerRegistrar = 2
 	cfgA, cfgB := cfg, cfg
 	cfgA.Sessions.NodeID, cfgB.Sessions.NodeID = "node-a", "node-b"
 	a := startServerWith(t, cfgA, listenLoopback(t), creds)
@@ -250,8 +257,8 @@ func TestTwoNodesOverRedis(t *testing.T) {
 
 func TestRegistryOutageAdmitsLoginsUpToTheCap(t *testing.T) {
 	cfg := testConfig()
-	cfg.Sessions.PerRegistrar, cfg.Sessions.PerLogin = 1, 1
 	creds := newTestCredentials(t)
+	creds.policies.limitDefault(func(l *entities.EPPPolicyLimits) { l.SessionsPerRegistrar, l.SessionsPerLogin = 1, 1 })
 	ts := startServerWith(t, cfg, listenLoopback(t), creds)
 	creds.registry.Fail(errors.New("redis down"))
 
@@ -267,9 +274,9 @@ type heartbeatDuringLogin struct {
 	renewed []*entities.EPPSession
 }
 
-func (h *heartbeatDuringLogin) Authenticate(ctx context.Context, s *entities.EPPSession, l *entities.EPPAuthenticatedLogin) error {
+func (h *heartbeatDuringLogin) Authenticate(ctx context.Context, s *entities.EPPSession, l *entities.EPPAuthenticatedLogin, limits entities.EPPSessionLimits) error {
 	_ = h.srv.renewOnce(ctx)
-	return h.EPPSessionService.Authenticate(ctx, s, l)
+	return h.EPPSessionService.Authenticate(ctx, s, l, limits)
 }
 
 func (h *heartbeatDuringLogin) Renew(ctx context.Context, sessions []*entities.EPPSession) error {
@@ -305,7 +312,9 @@ func TestHeartbeatNeverRenewsAPendingLogin(t *testing.T) {
 }
 
 func TestNewPasswordIsNotAppliedToALoginOverItsCap(t *testing.T) {
-	a, b, _ := twoNodes(t, func(c *config.EPP) { c.Sessions.PerRegistrar = 1 })
+	creds := newTestCredentials(t)
+	creds.policies.limitDefault(func(l *entities.EPPPolicyLimits) { l.SessionsPerRegistrar = 1 })
+	a, b, _ := twoNodesFor(t, creds, nil)
 	dial(t, a.addr).login()
 
 	refused := dial(t, b.addr)

@@ -24,8 +24,8 @@ type EPPSessionService struct {
 }
 
 // NewEPPSessionService returns a service over registry. The EPP server
-// passes its caps and lease; the admin API, which only lists and kills, can
-// pass zero values. events may be nil.
+// passes its source cap and lease; the admin API, which only lists and
+// kills, can pass zero values. events may be nil.
 func NewEPPSessionService(registry repositories.EPPSessionRegistry, caps entities.EPPSessionCaps, lease time.Duration, events repositories.EventPublisher) *EPPSessionService {
 	return &EPPSessionService{registry: registry, caps: caps, lease: lease, events: events, now: time.Now}
 }
@@ -38,11 +38,12 @@ func (s *EPPSessionService) Open(ctx context.Context, sess *entities.EPPSession)
 	return s.registry.Open(ctx, sess, s.lease, s.caps.PerSource)
 }
 
-// Authenticate records who sess logged in as, under the registrar's cap and
-// the login's own cap or the default.
-func (s *EPPSessionService) Authenticate(ctx context.Context, sess *entities.EPPSession, login *entities.EPPAuthenticatedLogin) error {
+// Authenticate records who sess logged in as, under limits: the caps of the
+// registrar's EPP policy, the login's own cap, and its family's.
+func (s *EPPSessionService) Authenticate(ctx context.Context, sess *entities.EPPSession, login *entities.EPPAuthenticatedLogin, limits entities.EPPSessionLimits) error {
 	sess.Authenticate(login, s.now())
-	return s.registry.Authenticate(ctx, sess, s.lease, s.caps.PerRegistrar, s.caps.ForLogin(login.SessionCap))
+	sess.Family = limits.Family
+	return s.registry.Authenticate(ctx, sess, s.lease, limits)
 }
 
 // Renew extends the leases of sessions.

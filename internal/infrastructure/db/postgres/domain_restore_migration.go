@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -24,10 +25,13 @@ func migrateLegacyPendingRestores(db *gorm.DB) error {
 	if !db.Migrator().HasTable("domains") {
 		return nil
 	}
-	err := db.Exec(`UPDATE domains SET pending_delete = true, ok = false,
-		pending_restore_end = now() + make_interval(days => ?)
-		WHERE pending_restore = true AND (pending_restore_end IS NULL OR pending_restore_end < '0002-01-01')`,
-		entities.PendingRestorePeriod).Error
+	// Plain SQL with the times as parameters, so the tests that migrate an
+	// SQLite database run it too.
+	due := time.Now().UTC().AddDate(0, 0, entities.PendingRestorePeriod)
+	unset := time.Date(2, 1, 1, 0, 0, 0, 0, time.UTC)
+	err := db.Exec(`UPDATE domains SET pending_delete = true, ok = false, pending_restore_end = ?
+		WHERE pending_restore = true AND (pending_restore_end IS NULL OR pending_restore_end < ?)`,
+		due, unset).Error
 	if err != nil {
 		return fmt.Errorf("pending restore migration: %w", err)
 	}

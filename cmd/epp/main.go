@@ -128,7 +128,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	auth := services.NewEPPAuthenticationService(credentials, passwordhash.New(passwordhash.DefaultParams), lockouts, uses, cfg.Auth.MaxConcurrentVerify)
 
 	sessions := services.NewEPPSessionService(sessionstore.NewRedis(redisClient), entities.EPPSessionCaps{
-		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
+		PerSource: cfg.Sessions.PerSource,
 	}, cfg.Sessions.Lease, nil)
 
 	domainRepo := postgres.NewDomainRepository(db, repositoryID)
@@ -168,7 +168,10 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Hosts:         hosts,
 		Contacts:      contacts,
 		Polls:         services.NewEPPPollService(transfers),
-		Audit:         audit,
+		// The registrars' EPP policies (ADR 0019), reloaded with the
+		// credentials.
+		Policies: services.NewEPPPolicyService(postgres.NewEPPPolicyRepository(db), registrarRepo),
+		Audit:    audit,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})

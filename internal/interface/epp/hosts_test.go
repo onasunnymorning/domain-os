@@ -212,8 +212,8 @@ func TestHostCheck(t *testing.T) {
 		"!.test":              {"0", "Invalid host name"},
 	}, got)
 
-	t.Run("more names than EPP_MAX_CHECK_NAMES", func(t *testing.T) {
-		names := make([]string, testConfig().Commands.MaxCheckNames+1)
+	t.Run("more names than the policy allows", func(t *testing.T) {
+		names := make([]string, entities.DefaultEPPPolicyLimits().CheckNames+1)
 		for i := range names {
 			names[i] = "ns1.registrar1.net"
 		}

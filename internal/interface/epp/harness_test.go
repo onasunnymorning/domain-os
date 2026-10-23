@@ -51,14 +51,12 @@ func testConfig() config.EPP {
 			MaxLoginAttempts:    3,
 		},
 		Sessions: config.EPPSessions{
-			NodeID:       "node-a",
-			Lease:        10 * time.Second,
-			Heartbeat:    time.Second,
-			PerSource:    20,
-			PerRegistrar: 10,
-			PerLogin:     10,
+			NodeID:    "node-a",
+			Lease:     10 * time.Second,
+			Heartbeat: time.Second,
+			PerSource: 20,
 		},
-		Commands: config.EPPCommands{MaxCheckNames: 50, CheckParallelism: 4},
+		Commands: config.EPPCommands{CheckParallelism: 4},
 	}
 }
 

@@ -16,7 +16,8 @@ const authScopesKey = "auth_scopes"
 // Permissions checked by the admin API. They are the first per-permission
 // checks in this API (ADR-0009); ADR-0002 will generalise them. With Auth0
 // enabled a principal holds them through its Auth0 roles; with Auth0 disabled
-// the static admin token holds both, because it already reaches everything.
+// the static admin token holds them all, because it already reaches
+// everything.
 const (
 	// ScopeEscrowKeysAdmin allows changing an operator's escrow parties, keys
 	// and arrangements, for the operator in the request scope.
@@ -36,6 +37,10 @@ const (
 	// ScopeEPPSessionsAdmin allows listing live EPP sessions and ending them.
 	// It is an operations duty, separate from managing credentials.
 	ScopeEPPSessionsAdmin = "epp:sessions:admin"
+	// ScopeEPPPolicyAdmin allows changing the EPP policies, their assignment
+	// to registrars, and registrar families (ADR 0019). Reading them needs
+	// it too: families say which registrars are affiliated.
+	ScopeEPPPolicyAdmin = "epp:policy:admin"
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,

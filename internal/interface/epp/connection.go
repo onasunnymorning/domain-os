@@ -89,14 +89,15 @@ func (s *Server) openInRegistry(ctx context.Context, sess *session) error {
 	return nil
 }
 
-// authenticateInRegistry records who the session logged in as, under the
-// registrar's and the login's caps, failing open to this node's own sessions
-// like openInRegistry. The fallback counts leave sess out: it is already
-// registered locally, and counting it would refuse a login under its cap.
-func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth *entities.EPPAuthenticatedLogin) error {
+// authenticateInRegistry records who the session logged in as, under limits
+// (its registrar's EPP policy, its login's own cap, its family's), failing
+// open to this node's own sessions like openInRegistry. The fallback counts
+// leave sess out: it is already registered locally, and counting it would
+// refuse a login under its cap.
+func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth *entities.EPPAuthenticatedLogin, limits entities.EPPSessionLimits) error {
 	regCtx, cancel := context.WithTimeout(ctx, sharedStoreTimeout)
 	defer cancel()
-	err := s.tracker.Authenticate(regCtx, sess.snapshot(s.cfg.Sessions.NodeID), auth)
+	err := s.tracker.Authenticate(regCtx, sess.snapshot(s.cfg.Sessions.NodeID), auth, limits)
 	switch {
 	case err == nil:
 		s.reportStoreDegraded(storeSessions, false)
@@ -106,12 +107,14 @@ func (s *Server) authenticateInRegistry(ctx context.Context, sess *session, auth
 	}
 	s.reportStoreDegraded(storeSessions, true)
 	s.logger.Warn("EPP session registry unavailable; applying the caps on this node only", "connection_id", sess.id, "error", err)
-	caps := s.tracker.Caps()
-	if n := s.sessions.count(func(o *session) bool { return o != sess && o.registrar() == string(auth.ClID) }); n >= caps.PerRegistrar {
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: caps.PerRegistrar}
+	if n := s.sessions.count(func(o *session) bool { return o != sess && o.registrar() == string(auth.ClID) }); n >= limits.PerRegistrar {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitRegistrar, Cap: limits.PerRegistrar}
 	}
-	if perLogin := caps.ForLogin(auth.SessionCap); s.sessions.count(func(o *session) bool { return o != sess && o.loggedInAs() == string(auth.LoginID) }) >= perLogin {
-		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: perLogin}
+	if s.sessions.count(func(o *session) bool { return o != sess && o.loggedInAs() == string(auth.LoginID) }) >= limits.PerLogin {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitLogin, Cap: limits.PerLogin}
+	}
+	if limits.Family != "" && s.sessions.count(func(o *session) bool { return o != sess && o.familyName() == limits.Family }) >= limits.PerFamily {
+		return &entities.EPPSessionLimitError{Limit: entities.EPPSessionLimitFamily, Cap: limits.PerFamily}
 	}
 	return nil
 }

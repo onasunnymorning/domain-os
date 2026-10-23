@@ -2,7 +2,6 @@ package epp
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/beevik/etree"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
@@ -19,11 +18,8 @@ import (
 // scoped to the session's registrar (ADR 0006).
 
 // hostCheck answers <host:check>: whether the registrar can create each
-// name, in the order asked. More names than EPP_MAX_CHECK_NAMES is 2306.
+// name, in the order asked. More names than the registrar's policy allows is 2306.
 func (s *Server) hostCheck(ctx context.Context, cmd *command) {
-	if !s.checkSizeAllowed(cmd) {
-		return
-	}
 	scope, err := registrarScope(cmd)
 	if err != nil {
 		s.refuse(cmd, err)
@@ -136,17 +132,6 @@ func hostAddrs(el *etree.Element) []commands.EPPHostAddress {
 		})
 	}
 	return out
-}
-
-// checkSizeAllowed answers a <check> with more names than
-// EPP_MAX_CHECK_NAMES 2306, and reports whether it may go on.
-func (s *Server) checkSizeAllowed(cmd *command) bool {
-	s.metrics.checkNames.Observe(float64(len(cmd.objects)))
-	if max := s.cfg.Commands.MaxCheckNames; len(cmd.objects) > max {
-		cmd.respond(epplib.StatusParameterPolicyError, fmt.Sprintf("Parameter value policy error; at most %d names per check", max), nil)
-		return false
-	}
-	return true
 }
 
 // hostCheckData builds <host:chkData> from check results, in request order.

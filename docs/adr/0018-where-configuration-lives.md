@@ -22,7 +22,7 @@ Every setting has exactly one home, chosen by what kind of setting it is.
 
    Such a setting changes with a deploy. It is read once at start, in `cmd/` or `internal/config` (INV-17). It is registered in `internal/config/env_registry.go`, which generates `deploy/contract.json` and `.env.example`; `TestEnvRegistryDrift`, `TestContractDrift` and `TestEnvExampleDrift` keep them in step.
 
-2. **Database: business and policy settings.** Use this for what operators change at runtime, what varies per TLD, registrar or tier, and what needs history, an admin UI or a change without a restart. Examples: phases, prices, EPP credentials and allowed networks, and EPP policies (Phase 5).
+2. **Database: business and policy settings.** Use this for what operators change at runtime, what varies per TLD, registrar or tier, and what needs history, an admin UI or a change without a restart. Examples: phases, prices, EPP credentials and allowed networks, and EPP policies ([ADR 0019](0019-epp-policies.md)).
    - Each kind of setting gets a **typed table** with a validating entity (INV-08), and a migration (ADR 0010).
    - It is edited through the admin API, never by hand in the database, so every change goes through the same validation and is attributable.
    - Processes cache it and reload it, by polling today (`EPP_CREDENTIAL_REFRESH_INTERVAL`, 30s).
