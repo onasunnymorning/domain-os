@@ -77,9 +77,12 @@ type Domain struct {
 	// AuthInfo is the domain's transfer code as a salted hash (RFC 9154),
 	// empty when none is set. It never leaves the registry: JSON carries
 	// AuthInfoSet instead (see MarshalJSON).
-	AuthInfo       AuthInfoHash         `json:"-"`
-	CreatedAt      time.Time            `json:"CreatedAt"`
-	UpdatedAt      time.Time            `json:"UpdatedAt"`
+	AuthInfo  AuthInfoHash `json:"-"`
+	CreatedAt time.Time    `json:"CreatedAt"`
+	UpdatedAt time.Time    `json:"UpdatedAt"`
+	// TransferredAt is when the domain last moved to another registrar
+	// (<domain:trDate>), zero if it never has.
+	TransferredAt  time.Time            `json:"TransferredAt"`
 	Status         DomainStatus         `json:"Status"`
 	RGPStatus      DomainRGPStatus      `json:"RGPStatus"`
 	GrandFathering DomainGrandFathering `json:"GrandFathering"`
@@ -409,7 +412,7 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 
 	// Set the RGP statuses
 	dom.RGPStatus.AddPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
-	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockPeriod)
+	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockDays())
 
 	// Set the expiry date
 	dom.ExpiryDate = dom.CreatedAt.AddDate(years, 0, 0)
@@ -667,6 +670,7 @@ func (d *Domain) DeepCopy() *Domain {
 		AuthInfo:       d.AuthInfo,
 		CreatedAt:      d.CreatedAt,
 		UpdatedAt:      d.UpdatedAt,
+		TransferredAt:  d.TransferredAt,
 		Status:         d.Status,         // Struct copied by value
 		RGPStatus:      d.RGPStatus,      // Struct copied by value
 		GrandFathering: d.GrandFathering, // Struct copied by value

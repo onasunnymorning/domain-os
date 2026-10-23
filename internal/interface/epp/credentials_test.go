@@ -125,7 +125,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

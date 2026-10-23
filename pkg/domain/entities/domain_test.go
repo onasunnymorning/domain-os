@@ -1367,7 +1367,7 @@ func TestRegisterDomain(t *testing.T) {
 		Name: "registration",
 		Policy: PhasePolicy{
 			RegistrationGP:     30,
-			TransferLockPeriod: 60,
+			TransferLockPeriod: intPtr(60),
 			AutoRenewalGP:      7,
 		},
 	}
@@ -1395,7 +1395,7 @@ func TestRegisterDomain(t *testing.T) {
 	assert.Equal(t, expectedRegistrationGPEnd.Year(), domain.RGPStatus.AddPeriodEnd.Year())
 	assert.Equal(t, expectedRegistrationGPEnd.Month(), domain.RGPStatus.AddPeriodEnd.Month())
 	assert.Equal(t, expectedRegistrationGPEnd.Day(), domain.RGPStatus.AddPeriodEnd.Day())
-	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockPeriod)
+	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockDays())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Year(), domain.RGPStatus.TransferLockPeriodEnd.Year())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Month(), domain.RGPStatus.TransferLockPeriodEnd.Month())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Day(), domain.RGPStatus.TransferLockPeriodEnd.Day())

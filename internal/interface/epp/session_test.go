@@ -72,11 +72,12 @@ func TestUnboundCommands(t *testing.T) {
 	c := dial(t, ts.addr)
 	c.login()
 
-	transfer := cmdXML(`<transfer op="query"><domain:transfer xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>example.test</domain:name></domain:transfer></transfer>`, "TRN-1")
+	// Contact transfer is an RFC 5730 command not bound yet.
+	transfer := cmdXML(`<transfer op="query"><contact:transfer xmlns:contact="urn:ietf:params:xml:ns:contact-1.0"><contact:id>c1</contact:id></contact:transfer></transfer>`, "TRN-1")
 	requireCode(t, c.roundTrip(transfer), "2101")
 	requireCode(t, c.roundTrip(cmdXML("<frobnicate/>", "FRB-1")), "2000")
 	requireCode(t, c.roundTrip(domainCheckXML("CHK-3")), "1000")
-	assert.Equal(t, 1.0, ts.counter(t, "commands", testRegistrar, "domain:transfer", "2101"))
+	assert.Equal(t, 1.0, ts.counter(t, "commands", testRegistrar, "contact:transfer", "2101"))
 }
 
 func TestFramesRejectedBeforeDispatch(t *testing.T) {

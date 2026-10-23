@@ -11,9 +11,13 @@ export interface PhasePolicy {
   registrationGP?: number;
   renewalGP?: number;
   autoRenewalGP?: number;
+  // Grace period after a transfer (RFC 3915 transferPeriod).
   transferGP?: number;
+  // Days the losing registrar has to answer a transfer request before the registry approves it.
+  pendingTransferPeriod?: number;
   redemptionGP?: number;
   pendingdeleteGP?: number;
+  // Days after a registration or a transfer in which the domain cannot be transferred; 0 is no lock.
   transferLockPeriod?: number;
   maxHorizon?: number;
   allowAutorenew?: boolean;

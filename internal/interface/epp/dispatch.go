@@ -62,6 +62,16 @@ func (c *command) respond(code int, msg string, resData *etree.Element, extensio
 	c.response = responseDocument(code, msg, c.frame.clTRID, c.svTRID, resData, exts...)
 }
 
+// respondWithQueue sets a <poll> response: code with its standard text,
+// msgQ after the result, and resData, which may be nil.
+func (c *command) respondWithQueue(code int, msgQ, resData *etree.Element) {
+	c.code = code
+	c.response = responseDocument(code, "", c.frame.clTRID, c.svTRID, resData)
+	resp := c.response.FindElement("/epp/response")
+	result := resp.SelectElement("result")
+	resp.InsertChildAt(result.Index()+1, msgQ)
+}
+
 // closeAfterResponse ends the session once the response is written.
 func (c *command) closeAfterResponse() {
 	c.session.setState(stateClosing)
@@ -93,24 +103,26 @@ var rfc5730Commands = map[string]bool{
 
 func (s *Server) routes() map[routeKey]route {
 	return map[routeKey]route{
-		{command: "login"}:                       {handler: s.login},
-		{command: "logout"}:                      {handler: s.logout, requiresLogin: true},
-		{command: "check", objectNS: nsDomain}:   {handler: s.domainCheck, requiresLogin: true},
-		{command: "info", objectNS: nsDomain}:    {handler: s.domainInfo, requiresLogin: true},
-		{command: "create", objectNS: nsDomain}:  {handler: s.domainCreate, requiresLogin: true},
-		{command: "update", objectNS: nsDomain}:  {handler: s.domainUpdate, requiresLogin: true},
-		{command: "renew", objectNS: nsDomain}:   {handler: s.domainRenew, requiresLogin: true},
-		{command: "delete", objectNS: nsDomain}:  {handler: s.domainDelete, requiresLogin: true},
-		{command: "check", objectNS: nsHost}:     {handler: s.hostCheck, requiresLogin: true},
-		{command: "info", objectNS: nsHost}:      {handler: s.hostInfo, requiresLogin: true},
-		{command: "create", objectNS: nsHost}:    {handler: s.hostCreate, requiresLogin: true},
-		{command: "update", objectNS: nsHost}:    {handler: s.hostUpdate, requiresLogin: true},
-		{command: "delete", objectNS: nsHost}:    {handler: s.hostDelete, requiresLogin: true},
-		{command: "check", objectNS: nsContact}:  {handler: s.contactCheck, requiresLogin: true},
-		{command: "info", objectNS: nsContact}:   {handler: s.contactInfo, requiresLogin: true},
-		{command: "create", objectNS: nsContact}: {handler: s.contactCreate, requiresLogin: true},
-		{command: "update", objectNS: nsContact}: {handler: s.contactUpdate, requiresLogin: true},
-		{command: "delete", objectNS: nsContact}: {handler: s.contactDelete, requiresLogin: true},
+		{command: "login"}:                        {handler: s.login},
+		{command: "logout"}:                       {handler: s.logout, requiresLogin: true},
+		{command: "check", objectNS: nsDomain}:    {handler: s.domainCheck, requiresLogin: true},
+		{command: "info", objectNS: nsDomain}:     {handler: s.domainInfo, requiresLogin: true},
+		{command: "create", objectNS: nsDomain}:   {handler: s.domainCreate, requiresLogin: true},
+		{command: "update", objectNS: nsDomain}:   {handler: s.domainUpdate, requiresLogin: true},
+		{command: "renew", objectNS: nsDomain}:    {handler: s.domainRenew, requiresLogin: true},
+		{command: "delete", objectNS: nsDomain}:   {handler: s.domainDelete, requiresLogin: true},
+		{command: "transfer", objectNS: nsDomain}: {handler: s.domainTransfer, requiresLogin: true},
+		{command: "poll"}:                         {handler: s.poll, requiresLogin: true},
+		{command: "check", objectNS: nsHost}:      {handler: s.hostCheck, requiresLogin: true},
+		{command: "info", objectNS: nsHost}:       {handler: s.hostInfo, requiresLogin: true},
+		{command: "create", objectNS: nsHost}:     {handler: s.hostCreate, requiresLogin: true},
+		{command: "update", objectNS: nsHost}:     {handler: s.hostUpdate, requiresLogin: true},
+		{command: "delete", objectNS: nsHost}:     {handler: s.hostDelete, requiresLogin: true},
+		{command: "check", objectNS: nsContact}:   {handler: s.contactCheck, requiresLogin: true},
+		{command: "info", objectNS: nsContact}:    {handler: s.contactInfo, requiresLogin: true},
+		{command: "create", objectNS: nsContact}:  {handler: s.contactCreate, requiresLogin: true},
+		{command: "update", objectNS: nsContact}:  {handler: s.contactUpdate, requiresLogin: true},
+		{command: "delete", objectNS: nsContact}:  {handler: s.contactDelete, requiresLogin: true},
 	}
 }
 
@@ -339,7 +351,7 @@ func (s *Server) finish(ctx context.Context, rw *epplib.ResponseWriter, cmd *com
 // queued.
 func (s *Server) audit(ctx context.Context, cmd *command) {
 	label := cmd.frame.label()
-	query := entities.EPPCommandIsQuery(label, cmd.isPollRequest())
+	query := entities.EPPCommandIsQuery(label, cmd.op())
 	tx := &entities.EPPTransaction{
 		SvTRID:     cmd.svTRID,
 		ClTRID:     cmd.frame.clTRID,
@@ -406,15 +418,17 @@ func (c *command) describe() {
 	}
 }
 
-// isPollRequest reports whether the command is <poll op="req">.
-func (c *command) isPollRequest() bool {
-	if c.doc == nil || c.frame.command != "poll" {
-		return false
+// op is the op attribute of a <poll> or <transfer>, whitespace-collapsed
+// as the schema's token type defines it, or "".
+func (c *command) op() string {
+	if c.doc == nil || (c.frame.command != "poll" && c.frame.command != "transfer") {
+		return ""
 	}
-	if p := c.doc.FindElement("/epp/command/poll"); p != nil {
-		return p.SelectAttrValue("op", "") == "req"
+	if el := c.doc.FindElement("/epp/command/" + c.frame.command); el != nil {
+		// xs:token: op=" req " is valid, and means req.
+		return schema.TokenValue(el.SelectAttrValue("op", ""))
 	}
-	return false
+	return ""
 }
 
 // greeting is epp-lib's Greeting hook, sent once when a session opens.

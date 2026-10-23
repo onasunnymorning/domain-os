@@ -53,7 +53,8 @@ type DomainService struct {
 	fxRepo           repositories.FXRepository
 	rarRepo          repositories.RegistrarRepository
 	eventPublisher   repositories.EventPublisher
-	tombstoneRepo    repositories.TombstoneRepository // optional — for domain archival
+	tombstoneRepo    repositories.TombstoneRepository      // optional — for domain archival
+	transferRepo     repositories.DomainTransferRepository // optional — for the transfer writes (SetTransferRepo)
 }
 
 // SetTombstoneRepo sets the optional tombstone repository for domain archival.

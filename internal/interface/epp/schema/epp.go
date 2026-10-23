@@ -206,6 +206,15 @@ var DomainRenew = &Element{NS: NSDomain, Name: "renew", Content: Seq{
 	}},
 }}
 
+// DomainTransfer is <domain:transfer>, domain:transferType.
+var DomainTransfer = &Element{NS: NSDomain, Name: "transfer", Content: Seq{
+	&Element{NS: NSDomain, Name: "name", Simple: labelType},
+	&Element{NS: NSDomain, Name: "period", Min: Optional, Simple: pLimitType, Attrs: []Attribute{
+		{Name: "unit", Type: pUnitType, Required: true},
+	}},
+	authInfoType(NSDomain, Optional),
+}}
+
 // DomainDelete is <domain:delete>, domain:sNameType.
 var DomainDelete = &Element{NS: NSDomain, Name: "delete", Content: Seq{
 	&Element{NS: NSDomain, Name: "name", Simple: labelType},
@@ -321,7 +330,7 @@ var HostUpdate = &Element{NS: NSHost, Name: "update", Content: Seq{
 // Globals are the declarations wildcards may resolve to: the object
 // commands and extensions the server validates.
 var Globals = []*Element{
-	DomainCheck, DomainInfo, DomainCreate, DomainUpdate, DomainRenew, DomainDelete,
+	DomainCheck, DomainInfo, DomainCreate, DomainUpdate, DomainRenew, DomainDelete, DomainTransfer,
 	HostCheck, HostInfo, HostCreate, HostUpdate, HostDelete,
 	ContactCheck, ContactInfo, ContactCreate, ContactUpdate, ContactDelete,
 	SecDNSCreate, SecDNSUpdate,

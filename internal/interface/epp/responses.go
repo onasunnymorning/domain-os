@@ -180,6 +180,9 @@ func infoData(info *queries.EPPDomainInfo, hosts string) *etree.Element {
 		inf.CreateElement("domain:upDate").SetText(eppTime(d.UpdatedAt))
 	}
 	inf.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
+	if !d.TransferredAt.IsZero() {
+		inf.CreateElement("domain:trDate").SetText(eppTime(d.TransferredAt))
+	}
 	// RFC 9154 §5.3: the code itself is never returned. The sponsor is told
 	// one is set by an empty <domain:pw/>, and none by no <domain:authInfo>.
 	if d.AuthInfo.IsSet() {

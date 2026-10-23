@@ -46,6 +46,7 @@ type EPPDomainService struct {
 	contacts   repositories.ContactRepository
 	hosts      repositories.HostRepository
 	registrars repositories.RegistrarRepository
+	transfers  repositories.DomainTransferRepository
 	register   EPPDomainRegistrar
 	// parallelism bounds the lookups one <check> runs at once.
 	parallelism int
@@ -62,6 +63,15 @@ type EPPDomainRegistrar interface {
 	SaveDomainUpdate(ctx context.Context, before, after *entities.Domain, command interface{}) (*entities.Domain, error)
 	RenewDomainAsRead(ctx context.Context, dom *entities.Domain, years int) (*entities.Domain, error)
 	MarkDomainForDeletionAsRead(ctx context.Context, dom *entities.Domain) (*entities.Domain, error)
+	// RequestTransferAsRead starts a transfer of dom to gaining
+	// (entities.Domain.RequestTransfer), for years, and queues the poll
+	// messages it causes.
+	RequestTransferAsRead(ctx context.Context, dom *entities.Domain, gaining entities.ClIDType, authInfo string, years int) (*entities.Domain, *entities.DomainTransfer, error)
+	// ResolveTransferAsRead ends tr, dom's pending transfer, with status as
+	// actor did (empty for the registry). On approval, relink names the
+	// nameservers the gaining registrar is to have its own host objects for
+	// (entities.TransferResolution).
+	ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType, relink []string) (*entities.Domain, *entities.DomainTransfer, error)
 }
 
 // EPPDomainServiceDeps are what EPPDomainService reads and writes through.
@@ -73,7 +83,9 @@ type EPPDomainServiceDeps struct {
 	Contacts   repositories.ContactRepository
 	Hosts      repositories.HostRepository
 	Registrars repositories.RegistrarRepository
-	Register   EPPDomainRegistrar
+	// Transfers reads the domains' transfers; Register writes them.
+	Transfers repositories.DomainTransferRepository
+	Register  EPPDomainRegistrar
 	// CheckParallelism bounds the concurrent lookups of one <check>.
 	CheckParallelism int
 }
@@ -85,7 +97,7 @@ func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
 	}
 	return &EPPDomainService{
 		domains: d.Domains, nndns: d.NNDNs, tlds: d.TLDs, phases: d.Phases,
-		contacts: d.Contacts, hosts: d.Hosts, registrars: d.Registrars, register: d.Register,
+		contacts: d.Contacts, hosts: d.Hosts, registrars: d.Registrars, transfers: d.Transfers, register: d.Register,
 		parallelism: d.CheckParallelism, now: time.Now,
 	}
 }

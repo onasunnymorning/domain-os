@@ -93,6 +93,14 @@ export default function DomainDetailPage() {
 
   const { data: renewalQuote, isLoading: isQuoteLoading } = useDomainQuote(renewalQuoteReq);
 
+  // When the domain last moved to another registrar; Go's zero time (year 1)
+  // means it never has.
+  const transferredAt = useMemo(() => {
+    if (!domain?.TransferredAt) return null;
+    const d = new Date(domain.TransferredAt);
+    return Number.isFinite(d.getTime()) && d.getUTCFullYear() > 1 ? d : null;
+  }, [domain?.TransferredAt]);
+
   const activeRGPLabels = useMemo(() => {
     const r: any = domain?.RGPStatus || {};
     const inFuture = (v?: string) => {
@@ -104,6 +112,7 @@ export default function DomainDetailPage() {
     if (inFuture(r.addPeriodEnd)) labels.push(RGP_LABELS.addPeriodEnd);
     if (inFuture(r.autoRenewPeriodEnd)) labels.push(RGP_LABELS.autoRenewPeriodEnd);
     if (inFuture(r.renewPeriodEnd)) labels.push(RGP_LABELS.renewPeriodEnd);
+    if (inFuture(r.transferPeriodEnd)) labels.push(RGP_LABELS.transferPeriodEnd);
     if (inFuture(r.transferLockPeriodEnd)) labels.push(RGP_LABELS.transferLockPeriodEnd);
     if (inFuture(r.redemptionPeriodEnd)) labels.push(RGP_LABELS.redemptionPeriodEnd);
     if (inFuture(r.purgeDate)) labels.push(RGP_LABELS.purgeDate);
@@ -440,6 +449,22 @@ export default function DomainDetailPage() {
                     )}
                   </div>
                 </div>
+                {transferredAt && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      Transferred{" "}
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(transferredAt, { addSuffix: true })}
+                      </span>
+                    </div>
+                    <div className="font-medium">
+                      <span title={transferredAt.toISOString()}>
+                        {formatUTCString(transferredAt)}
+                        <span className="ml-2 text-xs text-muted-foreground">({formatLocalString(transferredAt)} local)</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">
                     {domain.ExpiryDate ? (

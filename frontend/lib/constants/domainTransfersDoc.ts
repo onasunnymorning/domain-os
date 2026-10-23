@@ -1,11 +1,13 @@
 // The /docs/domain-transfers page. Keep it in step with
-// pkg/domain/entities/authInfoHash.go (the rules) and
+// pkg/domain/entities/authInfoHash.go (the code rules),
+// pkg/domain/entities/transfer.go (the transfer process),
+// internal/application/services/epp_domain_transfer.go (who may do what) and
 // docs/epp/POLICY_REFERENCE.md (the EPP result codes).
 export const DOMAIN_TRANSFERS_DOC_MARKDOWN = `# Domain Transfers
 
 A **transfer** moves a domain from one registrar (the *losing* registrar, its current sponsor) to another (the *gaining* registrar). The registrant proves they want the move by giving the gaining registrar the domain's **transfer code**, which EPP calls *authorization information* or *AuthInfo*.
 
-Domain OS follows **RFC 9154** (*Extensible Provisioning Protocol Secure Authorization Information for Transfer*) for transfer codes. This page explains how codes are set, kept and checked. The transfer commands themselves are described under *The transfer flow*, below.
+Domain OS follows **RFC 9154** (*Extensible Provisioning Protocol Secure Authorization Information for Transfer*) for transfer codes, **RFC 5731** for the EPP \`<domain:transfer>\` command, and the **ICANN Transfer Policy** for the process. This page explains how codes are set, kept and checked, then the transfer itself, step by step: what each registrar can do, what changes when a transfer completes, and the messages each registrar receives.
 
 ---
 
@@ -95,33 +97,142 @@ This lets a gaining registrar confirm a code with the registrant before requesti
 
 ---
 
+## The transfer flow
+
+### 1. Before the request
+
+1. The registrant asks the **losing** registrar for a transfer code.
+2. The losing registrar sets a fresh random code (\`<domain:update>\`, see *Setting and clearing a code*) and gives it to the registrant.
+3. The registrant gives the code to the **gaining** registrar. The gaining registrar may check it first with \`<domain:info>\` (see *Checking a code before a transfer*).
+
+### 2. The request
+
+The gaining registrar sends \`<transfer op="request">\` with the domain's name, its code in \`<domain:authInfo><domain:pw>\`, and optionally a \`<domain:period>\`: the years the transfer adds to the expiry, **one year** if none is given (months are accepted in whole years).
+
+The registry checks, in this order, and refuses at the first problem:
+
+| Check | Refused with |
+|---|---|
+| The domain exists | 2303 |
+| The gaining registrar is accredited for the domain's TLD | 2201 |
+| The gaining registrar is not already the sponsor | 2106 |
+| The code matches. This is checked before anything about the domain's state, so a registrar without the code learns nothing | 2202 |
+| No transfer is already pending | 2300 |
+| No other pending action (pending delete, restore…), no \`clientTransferProhibited\` or \`serverTransferProhibited\` | 2304 |
+| The domain is out of its **transfer lock** period | 2106 |
+| The new expiry stays within the TLD phase's **maximum horizon** (10 years by default) | 2306 |
+| The transfer can be quoted for the gaining registrar (a phase with no transfer price quotes it at no charge, as it does a registration or a renewal) | 2400 |
+
+An update prohibition (\`clientUpdateProhibited\`, \`serverUpdateProhibited\`) does **not** stop a transfer.
+
+The registry answers **1001** (action pending), with the transfer in \`<domain:trnData>\`.
+
+### 3. Pending
+
+- The domain has the status \`pendingTransfer\`. While pending, the sponsor cannot update, renew or delete it (2304).
+- The losing registrar receives a poll message: *Transfer requested*.
+- The transfer's \`acDate\` is the end of the **pending transfer period** (5 days by default). Automatic approval at that date (\`serverApproved\`) comes in a later release; until then, a transfer stays pending until a registrar answers it.
+
+### 4. The answer
+
+| Op | Who | Result |
+|---|---|---|
+| \`approve\` | The losing registrar (the sponsor) | The transfer completes: \`clientApproved\` |
+| \`reject\` | The losing registrar | The domain stays: \`clientRejected\` |
+| \`cancel\` | The gaining registrar that requested it | The domain stays: \`clientCancelled\` |
+| \`query\` | The sponsor, either registrar of the latest transfer, or anyone giving the domain's code | The latest transfer, pending or not |
+
+Any other registrar gets **2201** and learns nothing. Answering a transfer that is not pending is **2301**. Each answer is **1000**, with the transfer in \`<domain:trnData>\`.
+
+### 5. What an approval changes
+
+Everything below happens in one database transaction, so the domain, its nameservers and the messages never disagree.
+
+| What | After the transfer |
+|---|---|
+| Sponsor | The gaining registrar |
+| Expiry date | Extended by the transfer period (one year by default) |
+| Transfer date | Set (\`<domain:trDate>\`) |
+| Transfer code | **Cleared**: a code works once (RFC 9154). The gaining registrar sets a new one when the registrant next asks |
+| Grace periods | The losing registrar's add, renew and auto-renew grace periods end. The domain enters the **transfer grace period** (RGP status \`transferPeriod\`, 5 days by default) |
+| Transfer lock | A new lock starts (60 days by default; 0 in test TLDs) |
+| Statuses | The client statuses (such as \`clientUpdateProhibited\`) stay; \`pendingTransfer\` is removed |
+| Grandfathered pricing | Ends if it was granted *until transfer* |
+| Contacts | **Stay as they are**, still the losing registrar's contact objects. The gaining registrar should replace them with its own; its poll message says so |
+| Billing | The gaining registrar is charged the TLD's transfer price for the period, recorded on a \`domain.transferred\` event |
+
+**Nameservers.** Host objects belong to a registrar, so each of the domain's nameservers is handled by where it lives:
+
+| The nameserver is… | What happens |
+|---|---|
+| Under the transferred domain (\`ns1.example.test\` for \`example.test\`) | The host object **moves** with the domain to the gaining registrar, with its addresses (RFC 5732: a host belongs to its domain's sponsor). Other domains that use it keep using it |
+| Outside the registry's TLDs (\`ns1.dns-provider.net\`) | The domain is linked to the gaining registrar's host of the same name, which is **created** for it if it has none. The losing registrar's host stays |
+| Under another domain of the registry (\`ns.other.test\`) | The link **stays**. Only that domain's sponsor may hold a host under it; a copy would publish a second, diverging set of glue records |
+
+Hosts the losing registrar no longer uses are left in place; cleaning them up is a later release.
+
+### 6. Rejection and cancellation
+
+The domain loses \`pendingTransfer\` and nothing else changes: same sponsor, expiry and transfer code.
+
+---
+
+## Poll messages
+
+Each step of a transfer queues a message for the registrar that did **not** take it; when the registry acts, both are told.
+
+| Step | Message | To |
+|---|---|---|
+| Request | *Transfer requested* | The losing registrar |
+| Approval | *Transfer approved; the domain's contacts are still the losing registrar's: replace them with your own* | The gaining registrar |
+| Rejection | *Transfer rejected* | The gaining registrar |
+| Cancellation | *Transfer cancelled* | The losing registrar |
+| Approval by the registry (later release) | *Transfer approved by the registry* | Both |
+
+Every message carries the transfer as it stood at that step, as \`<domain:trnData>\`.
+
+A registrar reads its queue with \`<poll op="req">\`: **1301** with the oldest message and the number waiting (\`<msgQ count id>\`), or **1300** when the queue is empty. Reading does not remove a message: \`<poll op="ack" msgID="…">\` does, answering **1000** with how many remain. A queue is the registrar's own: another registrar's message ID, or one already acknowledged, is **2303**.
+
+---
+
+## Settings per TLD phase
+
+| Setting | Default | What it does |
+|---|---|---|
+| Pending transfer period | 5 days | How long the losing registrar has to answer |
+| Transfer grace period | 5 days | The \`transferPeriod\` after a transfer |
+| Transfer lock period | 60 days | No transfer for this long after a registration or a transfer. Set it to **0** for an RST or OT&E test TLD, where a domain must be transferable at once |
+| Maximum horizon | 10 years | A transfer cannot take the expiry further out than this |
+
+Change them on the TLD's phase, under **Policy**.
+
+---
+
 ## EPP result codes
 
 | Code | When |
 |---|---|
-| 2202 | A code too weak to set (create or update); a wrong code, or a code for a domain with none (info, transfer) |
-| 2201 | A registrar that does not sponsor the domain gives no code |
+| 1001 | A transfer request was accepted and is pending |
+| 1300, 1301 | \`<poll op="req">\`: no messages; a message to acknowledge |
+| 2003 | \`<poll op="ack">\` without a \`msgID\` |
 | 2102 | Authorization information that is not a password (\`<domain:ext>\`): the registry keeps only hashed passwords |
-
----
-
-## The transfer flow
-
-The EPP transfer commands (\`<domain:transfer>\` request, query, approve, reject and cancel) and the poll queue that tells both registrars about a transfer are being built in the next release. This section will then describe each step. What is decided:
-
-- **Request.** The gaining registrar requests the transfer with the domain's code. A wrong code is refused (2202). A domain under a transfer prohibition, in another pending state, or in its transfer lock period after registration or a previous transfer, cannot be transferred.
-- **Pending.** The domain is \`pendingTransfer\`. Both registrars get a poll message. The losing registrar may approve or reject; the gaining registrar may cancel.
-- **Approval.** On approval the domain moves to the gaining registrar and its transfer code is cleared, so the code cannot be used again.
-  - **Nameservers.** Hosts belong to a registrar, so the domain's nameservers are linked to the gaining registrar's hosts of the same names, which are created for it if it has none (with their addresses, for hosts under the registry's TLDs). The losing registrar's hosts are left in place.
-  - **Contacts.** Contacts stay as they are: the domain keeps pointing at the same contact objects, still sponsored by the losing registrar. The gaining registrar should replace them with its own, as the poll message says.
-- **Transfer lock.** After registration and after each transfer, a domain cannot be transferred again for the phase's transfer lock period (60 days by default, settable per TLD phase; 0 for test TLDs).
-- **Auto-approval.** A transfer the losing registrar does not answer within the transfer grace period is approved automatically. This follows in a later release.
+| 2106 | A transfer request by the sponsor, or in the transfer lock period |
+| 2201 | A registrar with no part in the domain (without its code, for info and query) |
+| 2202 | A code too weak to set; a wrong code, or a code for a domain with none |
+| 2300 | A transfer request while one is pending |
+| 2301 | An answer to, or query of, a transfer that is not pending or does not exist |
+| 2303 | A domain, or a poll message in the registrar's queue, that does not exist |
+| 2304 | A transfer request blocked by the domain's statuses; a change to a domain pending transfer |
+| 2306 | A transfer period that would exceed the maximum horizon |
 
 ---
 
 ## References
 
 - RFC 9154, Extensible Provisioning Protocol (EPP) Secure Authorization Information for Transfer
+- RFC 5730, Extensible Provisioning Protocol (\`<poll>\`, transfer statuses)
 - RFC 5731, EPP Domain Name Mapping (\`<domain:info>\`, \`<domain:update>\`, \`<domain:transfer>\`)
+- RFC 5732, EPP Host Mapping (hosts belong to their domain's sponsor)
+- RFC 3915, Domain Registry Grace Period Mapping (\`transferPeriod\`)
 - ICANN Transfer Policy
 `;

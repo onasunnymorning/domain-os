@@ -241,7 +241,7 @@ func (e *InProcessToolExecutor) executeTLD(ctx context.Context, rawInput any) (*
 type knowledgeSearchOutput struct {
 	LowConfidence bool                   `json:"low_confidence"`
 	Message       string                 `json:"message,omitempty"`
-	Results       []knowledgeSearchEntry  `json:"results,omitempty"`
+	Results       []knowledgeSearchEntry `json:"results,omitempty"`
 }
 
 // knowledgeSearchEntry is a single chunk from the knowledge search results.
@@ -365,8 +365,10 @@ func deriveDomainRGPPhase(dom *entities.Domain) (phase, endDate string) {
 		return "autoRenewPeriod", dom.RGPStatus.AutoRenewPeriodEnd.Format(time.RFC3339)
 	}
 
-	if !dom.RGPStatus.TransferLockPeriodEnd.IsZero() && dom.RGPStatus.TransferLockPeriodEnd.After(now) {
-		return "transferPeriod", dom.RGPStatus.TransferLockPeriodEnd.Format(time.RFC3339)
+	// Transfer grace period (RFC 3915). The transfer lock is not an RGP
+	// period.
+	if !dom.RGPStatus.TransferPeriodEnd.IsZero() && dom.RGPStatus.TransferPeriodEnd.After(now) {
+		return "transferPeriod", dom.RGPStatus.TransferPeriodEnd.Format(time.RFC3339)
 	}
 
 	return "", ""
@@ -380,18 +382,19 @@ func mapPhaseToOutput(p *entities.Phase) mcp.PhaseOutput {
 		Type:   string(p.Type),
 		Starts: p.Starts.Format(time.RFC3339),
 		Policy: mcp.PolicyOutput{
-			MinLabelLength:     p.Policy.MinLabelLength,
-			MaxLabelLength:     p.Policy.MaxLabelLength,
-			RegistrationGP:     p.Policy.RegistrationGP,
-			RenewalGP:          p.Policy.RenewalGP,
-			AutoRenewalGP:      p.Policy.AutoRenewalGP,
-			TransferGP:         p.Policy.TransferGP,
-			RedemptionGP:       p.Policy.RedemptionGP,
-			PendingDeleteGP:    p.Policy.PendingDeleteGP,
-			TransferLockPeriod: p.Policy.TransferLockPeriod,
-			MaxHorizon:         p.Policy.MaxHorizon,
-			AllowAutoRenew:     p.Policy.AllowAutoRenew,
-			BaseCurrency:       p.Policy.BaseCurrency,
+			MinLabelLength:        p.Policy.MinLabelLength,
+			MaxLabelLength:        p.Policy.MaxLabelLength,
+			RegistrationGP:        p.Policy.RegistrationGP,
+			RenewalGP:             p.Policy.RenewalGP,
+			AutoRenewalGP:         p.Policy.AutoRenewalGP,
+			TransferGP:            p.Policy.TransferGraceDays(),
+			RedemptionGP:          p.Policy.RedemptionGP,
+			PendingDeleteGP:       p.Policy.PendingDeleteGP,
+			PendingTransferPeriod: p.Policy.PendingTransferDays(),
+			TransferLockPeriod:    p.Policy.TransferLockDays(),
+			MaxHorizon:            p.Policy.MaxHorizon,
+			AllowAutoRenew:        p.Policy.AllowAutoRenew,
+			BaseCurrency:          p.Policy.BaseCurrency,
 		},
 	}
 

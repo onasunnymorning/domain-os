@@ -26,9 +26,12 @@ type Domain struct {
 	RenewedYears int
 	// AuthInfo is the transfer code's salted hash (RFC 9154), NULL when
 	// none is set.
-	AuthInfo                      *string
-	CreatedAt                     time.Time
-	UpdatedAt                     time.Time
+	AuthInfo  *string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	// TransferredAt is when the domain last moved to another registrar,
+	// NULL if it never has.
+	TransferredAt                 *time.Time
 	entities.DomainStatus         `gorm:"embedded"`
 	entities.DomainRGPStatus      `gorm:"embedded"`
 	entities.DomainGrandFathering `gorm:"embedded"`
@@ -86,6 +89,9 @@ func ToDomain(dbDom *Domain, repository entities.RepositoryID) *entities.Domain 
 	}
 	d.CreatedAt = dbDom.CreatedAt
 	d.UpdatedAt = dbDom.UpdatedAt
+	if dbDom.TransferredAt != nil {
+		d.TransferredAt = *dbDom.TransferredAt
+	}
 	d.Status = dbDom.DomainStatus
 	d.RGPStatus = dbDom.DomainRGPStatus
 	d.GrandFathering = dbDom.DomainGrandFathering
@@ -151,6 +157,10 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	}
 	dbDomain.CreatedAt = d.CreatedAt
 	dbDomain.UpdatedAt = d.UpdatedAt
+	if !d.TransferredAt.IsZero() {
+		t := d.TransferredAt
+		dbDomain.TransferredAt = &t
+	}
 	dbDomain.DomainStatus = d.Status
 	dbDomain.DomainRGPStatus = d.RGPStatus
 	dbDomain.DomainGrandFathering = d.GrandFathering

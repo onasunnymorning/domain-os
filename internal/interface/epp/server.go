@@ -59,6 +59,8 @@ type Options struct {
 	Hosts interfaces.EPPHostService
 	// Contacts answers contact commands. Required.
 	Contacts interfaces.EPPContactService
+	// Polls answers <poll>. Required.
+	Polls interfaces.EPPPollService
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -80,6 +82,7 @@ type Server struct {
 	domains  interfaces.EPPDomainService
 	hosts    interfaces.EPPHostService
 	contacts interfaces.EPPContactService
+	polls    interfaces.EPPPollService
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
 	watch    credentialWatch
@@ -116,6 +119,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Contacts == nil {
 		return nil, errors.New("epp: Options.Contacts is required")
 	}
+	if opts.Polls == nil {
+		return nil, errors.New("epp: Options.Polls is required")
+	}
 	if opts.Audit == nil {
 		return nil, errors.New("epp: Options.Audit is required")
 	}
@@ -128,6 +134,7 @@ func NewServer(opts Options) (*Server, error) {
 		domains:  opts.Domains,
 		hosts:    opts.Hosts,
 		contacts: opts.Contacts,
+		polls:    opts.Polls,
 		auditLog: opts.Audit,
 		policy:   allowAll{},
 		logger:   opts.Logger,

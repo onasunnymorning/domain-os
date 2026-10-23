@@ -167,8 +167,15 @@ func (dr *DomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, 
 // still has version read and the same sponsor, stamping a new version. The
 // row stays locked until the transaction ends.
 func updateDomainRowIfAt(tx *gorm.DB, dbDomain *Domain, read time.Time) error {
+	return updateDomainRowIfAtFrom(tx, dbDomain, read, dbDomain.ClID)
+}
+
+// updateDomainRowIfAtFrom is updateDomainRowIfAt for a write that changes
+// the sponsor: the stored domain must still have version read and sponsor
+// readSponsor.
+func updateDomainRowIfAtFrom(tx *gorm.DB, dbDomain *Domain, read time.Time, readSponsor string) error {
 	dbDomain.UpdatedAt = time.Now().UTC()
-	return written(updateIfAt(tx.Model(&Domain{}).Where("ro_id = ? AND cl_id = ?", dbDomain.RoID, dbDomain.ClID), read).
+	return written(updateIfAt(tx.Model(&Domain{}).Where("ro_id = ? AND cl_id = ?", dbDomain.RoID, readSponsor), read).
 		Select("*").Omit("ro_id", "created_at", "Hosts", "DSRecords").Updates(dbDomain))
 }
 
@@ -261,15 +268,8 @@ func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *enti
 				return err
 			}
 		}
-		if len(affected) > 0 {
-			if err := tx.Exec(`UPDATE hosts h SET
-				linked = EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.host_ro_id = h.ro_id),
-				in_bailiwick = EXISTS (SELECT 1 FROM domain_hosts dh JOIN domains d ON d.ro_id = dh.domain_ro_id
-					WHERE dh.host_ro_id = h.ro_id AND substring(h.name from position('.' in h.name) + 1) = d.name),
-				updated_at = ?
-				WHERE h.ro_id IN ?`, dbDomain.UpdatedAt, affected).Error; err != nil {
-				return err
-			}
+		if err := recomputeHostLinks(tx, affected, dbDomain.UpdatedAt); err != nil {
+			return err
 		}
 		if err := tx.Where("domain_ro_id = ?", dbDomain.RoID).Delete(&DomainDSRecord{}).Error; err != nil {
 			return err
@@ -300,6 +300,21 @@ func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *enti
 		return nil, dr.notWritten(ctx, dbDomain.RoID, err)
 	}
 	return ToDomain(stored, dr.repository), nil
+}
+
+// recomputeHostLinks sets the linked and in-bailiwick flags of hosts ids
+// from the links as they now are, and advances their versions to at, so a
+// host update that read them before cannot write the old flags back.
+func recomputeHostLinks(tx *gorm.DB, ids []int64, at time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return tx.Exec(`UPDATE hosts h SET
+		linked = EXISTS (SELECT 1 FROM domain_hosts dh WHERE dh.host_ro_id = h.ro_id),
+		in_bailiwick = EXISTS (SELECT 1 FROM domain_hosts dh JOIN domains d ON d.ro_id = dh.domain_ro_id
+			WHERE dh.host_ro_id = h.ro_id AND substring(h.name from position('.' in h.name) + 1) = d.name),
+		updated_at = ?
+		WHERE h.ro_id IN ?`, at, ids).Error
 }
 
 // unionIDs is the IDs in a or b, each once.

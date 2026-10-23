@@ -143,10 +143,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	// prices the domain, assigns its ROID, stores it and writes its event.
 	registry := services.NewDomainService(domainRepo, hostRepo, *roids, nndnRepo, tldRepo, phaseRepo,
 		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events)
+	// Transfers and the poll queue share a repository: a transfer's writes
+	// queue its messages in the same transaction.
+	transfers := postgres.NewDomainTransferRepository(db, repositoryID)
+	registry.SetTransferRepo(transfers)
 	domains := services.NewEPPDomainService(services.EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: postgres.NewContactRepository(db, repositoryID), Hosts: hostRepo, Registrars: registrarRepo,
-		Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
+		Transfers: transfers, Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
 	})
 	hosts := services.NewEPPHostService(services.EPPHostServiceDeps{
 		Hosts: hostRepo, Domains: domainRepo, TLDs: tldRepo, Roids: roids, Events: events,
@@ -163,6 +167,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Domains:       domains,
 		Hosts:         hosts,
 		Contacts:      contacts,
+		Polls:         services.NewEPPPollService(transfers),
 		Audit:         audit,
 		Logger:        logger,
 		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },

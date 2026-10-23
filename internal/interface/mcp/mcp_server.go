@@ -40,7 +40,7 @@ type GetDomainOutput struct {
 	Statuses            []string `json:"statuses" jsonschema:"EPP status codes currently active on the domain per RFC 5731 section 2.3. Values include ok, inactive, clientHold, serverHold, clientTransferProhibited, serverTransferProhibited, clientUpdateProhibited, serverUpdateProhibited, clientDeleteProhibited, serverDeleteProhibited, clientRenewProhibited, serverRenewProhibited, pendingCreate, pendingRenew, pendingTransfer, pendingUpdate, pendingRestore, pendingDelete."`
 	CreatedDate         string   `json:"createdDate" jsonschema:"Registry creation date in RFC 3339 format."`
 	ExpiryDate          string   `json:"expiryDate" jsonschema:"Registry expiry date in RFC 3339 format. After this date the domain enters the renewal/redemption lifecycle."`
-	RGPPhase            string   `json:"rgpPhase,omitempty" jsonschema:"Current Registry Grace Period phase if any. Possible values: addPeriod (grace after initial registration), renewPeriod (grace after manual renewal), autoRenewPeriod (grace after auto-renewal), transferPeriod (transfer lock period), redemptionPeriod (domain deleted but restorable), pendingDelete (past redemption and awaiting purge), pendingRestore (restore submitted and awaiting completion). Empty if no grace period is active."`
+	RGPPhase            string   `json:"rgpPhase,omitempty" jsonschema:"Current Registry Grace Period phase if any. Possible values: addPeriod (grace after initial registration), renewPeriod (grace after manual renewal), autoRenewPeriod (grace after auto-renewal), transferPeriod (grace after a transfer), redemptionPeriod (domain deleted but restorable), pendingDelete (past redemption and awaiting purge), pendingRestore (restore submitted and awaiting completion). Empty if no grace period is active."`
 	RGPPhaseEndDate     string   `json:"rgpPhaseEndDate,omitempty" jsonschema:"Date when the current RGP phase ends in RFC 3339 format. Empty if no grace period is active or if not applicable to the current phase."`
 	Nameservers         []string `json:"nameservers" jsonschema:"Fully-qualified hostnames of the nameservers delegated for this domain."`
 	SponsoringRegistrar string   `json:"sponsoringRegistrar" jsonschema:"Client identifier (ClID) of the registrar currently sponsoring this domain. This is the EPP clIDType (3-16 ASCII characters)."`
@@ -69,12 +69,12 @@ type GetTLDOutput struct {
 
 // PhaseOutput represents a currently active TLD lifecycle phase.
 type PhaseOutput struct {
-	Name     string        `json:"name" jsonschema:"Phase identifier (ClIDType)."`
-	Type     string        `json:"type" jsonschema:"Phase type: GA (General Availability) or Launch (pre-GA launch phase)."`
-	Starts   string        `json:"starts" jsonschema:"Phase start date in RFC 3339 format."`
-	Ends     string        `json:"ends,omitempty" jsonschema:"Phase end date in RFC 3339 format. Empty if the phase is open-ended."`
-	Prices   []PriceOutput `json:"prices" jsonschema:"Per-currency pricing for domain operations in this phase. Amounts are in minor currency units (e.g. cents for USD)."`
-	Policy   PolicyOutput  `json:"policy" jsonschema:"Phase policy defining registration rules and grace period durations."`
+	Name   string        `json:"name" jsonschema:"Phase identifier (ClIDType)."`
+	Type   string        `json:"type" jsonschema:"Phase type: GA (General Availability) or Launch (pre-GA launch phase)."`
+	Starts string        `json:"starts" jsonschema:"Phase start date in RFC 3339 format."`
+	Ends   string        `json:"ends,omitempty" jsonschema:"Phase end date in RFC 3339 format. Empty if the phase is open-ended."`
+	Prices []PriceOutput `json:"prices" jsonschema:"Per-currency pricing for domain operations in this phase. Amounts are in minor currency units (e.g. cents for USD)."`
+	Policy PolicyOutput  `json:"policy" jsonschema:"Phase policy defining registration rules and grace period durations."`
 }
 
 // PriceOutput represents per-currency pricing for a TLD phase.
@@ -88,18 +88,19 @@ type PriceOutput struct {
 
 // PolicyOutput represents the registration policy for a TLD phase.
 type PolicyOutput struct {
-	MinLabelLength     int    `json:"minLabelLength,omitempty" jsonschema:"Minimum domain label length in characters."`
-	MaxLabelLength     int    `json:"maxLabelLength,omitempty" jsonschema:"Maximum domain label length in characters."`
-	RegistrationGP     int    `json:"registrationGP,omitempty" jsonschema:"Registration grace period in days."`
-	RenewalGP          int    `json:"renewalGP,omitempty" jsonschema:"Renewal grace period in days."`
-	AutoRenewalGP      int    `json:"autoRenewalGP,omitempty" jsonschema:"Auto-renewal grace period in days."`
-	TransferGP         int    `json:"transferGP,omitempty" jsonschema:"Transfer grace period in days."`
-	RedemptionGP       int    `json:"redemptionGP,omitempty" jsonschema:"Redemption grace period in days."`
-	PendingDeleteGP    int    `json:"pendingDeleteGP,omitempty" jsonschema:"Pending delete period in days."`
-	TransferLockPeriod int    `json:"transferLockPeriod,omitempty" jsonschema:"Transfer lock period in days after a transfer completes."`
-	MaxHorizon         int    `json:"maxHorizon,omitempty" jsonschema:"Maximum registration horizon in years."`
-	AllowAutoRenew     *bool  `json:"allowAutoRenew,omitempty" jsonschema:"Whether auto-renewal is permitted in this phase."`
-	BaseCurrency       string `json:"baseCurrency,omitempty" jsonschema:"Base currency for pricing in this phase (ISO 4217)."`
+	MinLabelLength        int    `json:"minLabelLength,omitempty" jsonschema:"Minimum domain label length in characters."`
+	MaxLabelLength        int    `json:"maxLabelLength,omitempty" jsonschema:"Maximum domain label length in characters."`
+	RegistrationGP        int    `json:"registrationGP,omitempty" jsonschema:"Registration grace period in days."`
+	RenewalGP             int    `json:"renewalGP,omitempty" jsonschema:"Renewal grace period in days."`
+	AutoRenewalGP         int    `json:"autoRenewalGP,omitempty" jsonschema:"Auto-renewal grace period in days."`
+	TransferGP            int    `json:"transferGP,omitempty" jsonschema:"Transfer grace period in days."`
+	RedemptionGP          int    `json:"redemptionGP,omitempty" jsonschema:"Redemption grace period in days."`
+	PendingDeleteGP       int    `json:"pendingDeleteGP,omitempty" jsonschema:"Pending delete period in days."`
+	PendingTransferPeriod int    `json:"pendingTransferPeriod,omitempty" jsonschema:"Days the losing registrar has to approve or reject a transfer request before the registry approves it."`
+	TransferLockPeriod    int    `json:"transferLockPeriod" jsonschema:"Transfer lock period in days after a registration or a transfer, in which the domain cannot be transferred. 0 is no lock."`
+	MaxHorizon            int    `json:"maxHorizon,omitempty" jsonschema:"Maximum registration horizon in years."`
+	AllowAutoRenew        *bool  `json:"allowAutoRenew,omitempty" jsonschema:"Whether auto-renewal is permitted in this phase."`
+	BaseCurrency          string `json:"baseCurrency,omitempty" jsonschema:"Base currency for pricing in this phase (ISO 4217)."`
 }
 
 // ---------------------------------------------------------------------------
@@ -254,9 +255,10 @@ func deriveRGPPhase(dom *entities.Domain) (phase, endDate string) {
 		return "autoRenewPeriod", dom.RGPStatus.AutoRenewPeriodEnd.Format(time.RFC3339)
 	}
 
-	// Transfer lock period
-	if !dom.RGPStatus.TransferLockPeriodEnd.IsZero() && dom.RGPStatus.TransferLockPeriodEnd.After(now) {
-		return "transferPeriod", dom.RGPStatus.TransferLockPeriodEnd.Format(time.RFC3339)
+	// Transfer grace period (RFC 3915). The transfer lock is not an RGP
+	// period.
+	if !dom.RGPStatus.TransferPeriodEnd.IsZero() && dom.RGPStatus.TransferPeriodEnd.After(now) {
+		return "transferPeriod", dom.RGPStatus.TransferPeriodEnd.Format(time.RFC3339)
 	}
 
 	return "", ""
@@ -314,18 +316,19 @@ func mapPhase(p *entities.Phase) PhaseOutput {
 		Type:   string(p.Type),
 		Starts: p.Starts.Format(time.RFC3339),
 		Policy: PolicyOutput{
-			MinLabelLength:     p.Policy.MinLabelLength,
-			MaxLabelLength:     p.Policy.MaxLabelLength,
-			RegistrationGP:     p.Policy.RegistrationGP,
-			RenewalGP:          p.Policy.RenewalGP,
-			AutoRenewalGP:      p.Policy.AutoRenewalGP,
-			TransferGP:         p.Policy.TransferGP,
-			RedemptionGP:       p.Policy.RedemptionGP,
-			PendingDeleteGP:    p.Policy.PendingDeleteGP,
-			TransferLockPeriod: p.Policy.TransferLockPeriod,
-			MaxHorizon:         p.Policy.MaxHorizon,
-			AllowAutoRenew:     p.Policy.AllowAutoRenew,
-			BaseCurrency:       p.Policy.BaseCurrency,
+			MinLabelLength:        p.Policy.MinLabelLength,
+			MaxLabelLength:        p.Policy.MaxLabelLength,
+			RegistrationGP:        p.Policy.RegistrationGP,
+			RenewalGP:             p.Policy.RenewalGP,
+			AutoRenewalGP:         p.Policy.AutoRenewalGP,
+			TransferGP:            p.Policy.TransferGraceDays(),
+			RedemptionGP:          p.Policy.RedemptionGP,
+			PendingDeleteGP:       p.Policy.PendingDeleteGP,
+			PendingTransferPeriod: p.Policy.PendingTransferDays(),
+			TransferLockPeriod:    p.Policy.TransferLockDays(),
+			MaxHorizon:            p.Policy.MaxHorizon,
+			AllowAutoRenew:        p.Policy.AllowAutoRenew,
+			BaseCurrency:          p.Policy.BaseCurrency,
 		},
 	}
 

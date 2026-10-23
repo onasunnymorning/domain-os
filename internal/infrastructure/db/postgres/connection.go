@@ -57,6 +57,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&EPPCertificatePinRecord{},
 		&EPPAllowedNetworkRecord{},
 		&EPPTransactionRecord{},
+		&DomainTransferRecord{},
+		&PollMessageRecord{},
 		&InstallationSetting{},
 	)
 	if err != nil {

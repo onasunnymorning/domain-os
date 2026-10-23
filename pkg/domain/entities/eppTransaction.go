@@ -42,16 +42,20 @@ type EPPTransaction struct {
 }
 
 // EPPCommandIsQuery reports whether a command, named as in
-// EPPTransaction.Command, only reads: <hello>, <check>, <info> and
-// <poll op="req">, plus frames that never named a command. Everything else
-// is a transform, and its audit record is written before the response is
-// sent.
-func EPPCommandIsQuery(command string, pollReq bool) bool {
+// EPPTransaction.Command, only reads: <hello>, <check>, <info>,
+// <poll op="req"> and <transfer op="query">, plus frames that never named a
+// command. op is the command's op attribute, for <poll> and <transfer>.
+// Everything else is a transform, and its audit record is written before
+// the response is sent.
+func EPPCommandIsQuery(command, op string) bool {
 	switch command {
 	case "hello", "unknown":
 		return true
 	case "poll":
-		return pollReq
+		return op == "req"
+	}
+	if strings.HasSuffix(command, ":transfer") {
+		return op == "query"
 	}
 	return strings.HasSuffix(command, ":check") || strings.HasSuffix(command, ":info")
 }

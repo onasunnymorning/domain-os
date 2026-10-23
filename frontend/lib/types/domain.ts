@@ -23,6 +23,9 @@ export interface DomainRGPStatus {
   addPeriodEnd?: string;
   renewPeriodEnd?: string;
   autoRenewPeriodEnd?: string;
+  // The transfer grace period (RFC 3915 transferPeriod), after a transfer.
+  transferPeriodEnd?: string;
+  // The transfer lock: no transfer until then (after a registration or a transfer).
   transferLockPeriodEnd?: string;
   redemptionPeriodEnd?: string;
   purgeDate?: string;
@@ -83,6 +86,8 @@ export interface DomainDetail extends DomainListItem {
   RenewedYears?: number;
   // RFC 9154: the registry never returns a transfer code, only whether one is set.
   AuthInfoSet?: boolean;
+  // When the domain last moved to another registrar; the zero time if never.
+  TransferredAt?: string;
   RegistrantID?: string;
   AdminID?: string;
   TechID?: string;
