@@ -25,10 +25,14 @@ type DomainTransferRepository interface {
 	// roid, pending or not, or entities.ErrTransferNotPending if it has
 	// none.
 	LatestTransfer(ctx context.Context, roid entities.RoidType) (*entities.DomainTransfer, error)
-	// ListDueTransfers returns up to limit pending transfers whose ActionDate
-	// is at or before dueBy, the earliest first: those the registry
-	// approves because the losing registrar did not answer in time.
-	ListDueTransfers(ctx context.Context, dueBy time.Time, limit int) ([]*entities.DomainTransfer, error)
+	// ListDueTransfers returns up to limit pending transfers of domains that
+	// still exist, whose ActionDate is at or before dueBy, in (ActionDate,
+	// ID) order after the cursor (afterDate, afterID; zero for the start):
+	// those the registry approves because the losing registrar did not
+	// answer in time. A sweep pages with the cursor, so a transfer that
+	// cannot be approved is passed over, not listed again, until the next
+	// sweep.
+	ListDueTransfers(ctx context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]*entities.DomainTransfer, error)
 }
 
 // PollMessageRepository is the registrars' message queues (RFC 5730

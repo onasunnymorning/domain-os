@@ -291,11 +291,14 @@ func (r *DomainTransferRepository) LatestTransfer(ctx context.Context, roid enti
 }
 
 // ListDueTransfers implements repositories.DomainTransferRepository. It
-// reads idx_domain_transfers_pending (status, action_date).
-func (r *DomainTransferRepository) ListDueTransfers(ctx context.Context, dueBy time.Time, limit int) ([]*entities.DomainTransfer, error) {
+// reads idx_domain_transfers_pending (status, action_date). A transfer of a
+// domain since deleted stays pending in the history and is left out.
+func (r *DomainTransferRepository) ListDueTransfers(ctx context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]*entities.DomainTransfer, error) {
 	var recs []DomainTransferRecord
 	if err := r.db.WithContext(ctx).
 		Where("status = ? AND action_date <= ?", string(entities.TransferStatusPending), dueBy).
+		Where("(action_date, id) > (?, ?)", afterDate, afterID).
+		Where("EXISTS (SELECT 1 FROM domains d WHERE d.ro_id = domain_transfers.domain_ro_id)").
 		Order("action_date, id").Limit(limit).Find(&recs).Error; err != nil {
 		return nil, err
 	}

@@ -16,9 +16,16 @@ type TransferApprovalLoopParams struct {
 	// BatchSize caps how many due transfers one run lists and approves
 	// (default 1000).
 	BatchSize int `json:"batchSize,omitempty"`
-	// ContinuationCount is how many times this run has continued-as-new.
+	// ContinuationCount is how many times this sweep has continued-as-new.
 	// The workflow manages it; leave it zero.
 	ContinuationCount int `json:"continuationCount,omitempty"`
+	// DueBy, AfterActionDate and AfterID carry one sweep across
+	// continue-as-new: the due time it started with, and the (acDate, ID)
+	// of the last transfer it listed. The workflow manages them; leave them
+	// zero.
+	DueBy           time.Time `json:"dueBy,omitempty"`
+	AfterActionDate time.Time `json:"afterActionDate,omitempty"`
+	AfterID         int64     `json:"afterId,omitempty"`
 }
 
 // TransferApprovalLoopResult is the outcome of one run.
@@ -55,15 +62,22 @@ func (r *TransferApprovalLoopResult) addFailure(domainName, errMsg string) {
 // registrar does (entities.DomainTransfer), and both registrars get a poll
 // message.
 //
-// A run lists one page of due transfers, as of the run's start, and
-// approves them in one batch activity. The batch reads and checks every
-// domain again, so it is idempotent under retries: a transfer answered
-// meanwhile, approved by an earlier attempt, or not yet due is Skipped. A
-// full page continues-as-new to drain the rest, but only after progress and
-// within maxContinuationRuns, so a poison batch cannot loop.
+// A sweep lists the transfers due as of its start, of domains that still
+// exist, a page per run in (acDate, ID) order, and approves each page in
+// one batch activity. The batch reads and checks every domain again, so it
+// is idempotent under retries: a transfer answered meanwhile, approved by
+// an earlier attempt, or not yet due is Skipped. A full page continues-as-
+// new from the page's last transfer, so a transfer that cannot be approved
+// is passed over, not listed again, and cannot hold back the ones after it;
+// it is retried by the next hourly sweep. maxContinuationRuns bounds a
+// sweep.
 func TransferApprovalLoop(ctx workflow.Context, params TransferApprovalLoopParams) (TransferApprovalLoopResult, error) {
 	started := workflow.Now(ctx)
-	result := TransferApprovalLoopResult{StartedAt: started, DueBy: started}
+	dueBy := params.DueBy
+	if dueBy.IsZero() {
+		dueBy = started // a new sweep
+	}
+	result := TransferApprovalLoopResult{StartedAt: started, DueBy: dueBy}
 	if err := workflow.SetQueryHandler(ctx, "progress", func() (TransferApprovalLoopResult, error) {
 		return result, nil
 	}); err != nil {
@@ -81,14 +95,14 @@ func TransferApprovalLoop(ctx workflow.Context, params TransferApprovalLoopParam
 	listCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: time.Minute, RetryPolicy: retry})
 	batchSize := pageSizeOrDefaultWorkflow(params.BatchSize)
 
-	var names []string
-	if err := workflow.ExecuteActivity(listCtx, "ListDueTransfers", workflowID, started, batchSize).Get(ctx, &names); err != nil {
+	var due []services.DueTransfer
+	if err := workflow.ExecuteActivity(listCtx, "ListDueTransfers", workflowID, dueBy, params.AfterActionDate, params.AfterID, batchSize).Get(ctx, &due); err != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Failed to list due transfers: "+err.Error())
 		return result, err
 	}
-	result.TotalFound = len(names)
-	if len(names) == 0 {
+	result.TotalFound = len(due)
+	if len(due) == 0 {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "No transfers due")
 		return result, nil
@@ -99,8 +113,12 @@ func TransferApprovalLoop(ctx workflow.Context, params TransferApprovalLoopParam
 		HeartbeatTimeout:    2 * time.Minute,
 		RetryPolicy:         retry,
 	})
+	names := make([]string, len(due))
+	for i, d := range due {
+		names[i] = d.DomainName
+	}
 	var batch services.BatchResult
-	if err := workflow.ExecuteActivity(batchCtx, "BatchApproveDueTransfers", workflowID, started, names).Get(ctx, &batch); err != nil {
+	if err := workflow.ExecuteActivity(batchCtx, "BatchApproveDueTransfers", workflowID, dueBy, names).Get(ctx, &batch); err != nil {
 		result.CompletedAt = workflow.Now(ctx)
 		result.Notes = append(result.Notes, "Batch approval failed: "+err.Error())
 		return result, err
@@ -116,21 +134,20 @@ func TransferApprovalLoop(ctx workflow.Context, params TransferApprovalLoopParam
 		result.Notes = append(result.Notes, "Completed with failures — review the failures list for details")
 	}
 
-	if len(names) >= batchSize {
-		if result.Approved+result.Skipped == 0 {
-			result.Notes = append(result.Notes, "Full page processed without progress — not continuing, to avoid a hot loop. "+
-				"The remaining transfers are retried on the next scheduled run.")
-			return result, nil
-		}
+	// A full page may have more after it. The cursor moves past this page
+	// whatever became of it, so the sweep always advances.
+	if len(due) >= batchSize {
 		if params.ContinuationCount >= maxContinuationRuns {
 			result.Notes = append(result.Notes, "Continuation cap reached ("+strconv.Itoa(maxContinuationRuns)+
 				" runs) — the remaining transfers are picked up by the next scheduled run.")
 			return result, nil
 		}
-		result.Notes = append(result.Notes, "Full page of "+strconv.Itoa(len(names))+
-			" due transfers processed — continuing in a new run to drain the remainder.")
+		result.Notes = append(result.Notes, "Full page of "+strconv.Itoa(len(due))+
+			" due transfers processed — continuing in a new run from the last one.")
+		last := due[len(due)-1]
 		next := params
 		next.ContinuationCount++
+		next.DueBy, next.AfterActionDate, next.AfterID = dueBy, last.ActionDate, last.ID
 		return result, workflow.NewContinueAsNewError(ctx, TransferApprovalLoop, next)
 	}
 	return result, nil

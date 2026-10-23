@@ -230,19 +230,34 @@ func (v registryTransfers) LatestTransfer(_ context.Context, roid entities.RoidT
 	return copyTransfer(all[len(all)-1]), nil
 }
 
-func (v registryTransfers) ListDueTransfers(_ context.Context, dueBy time.Time, limit int) ([]*entities.DomainTransfer, error) {
+func (v registryTransfers) ListDueTransfers(_ context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]*entities.DomainTransfer, error) {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()
 	if v.r.err != nil {
 		return nil, v.r.err
 	}
+	live := map[entities.RoidType]bool{}
+	for _, d := range v.r.domains {
+		live[d.RoID] = true
+	}
+	after := func(t *entities.DomainTransfer) bool {
+		if c := t.ActionDate.Compare(afterDate); c != 0 {
+			return c > 0
+		}
+		return t.ID > afterID
+	}
 	var out []*entities.DomainTransfer
-	for _, all := range v.r.transfers {
-		if t := all[len(all)-1]; t.Status == entities.TransferStatusPending && !t.ActionDate.After(dueBy) {
+	for roid, all := range v.r.transfers {
+		if t := all[len(all)-1]; live[roid] && t.Status == entities.TransferStatusPending && !t.ActionDate.After(dueBy) && after(t) {
 			out = append(out, copyTransfer(t))
 		}
 	}
-	slices.SortFunc(out, func(a, b *entities.DomainTransfer) int { return a.ActionDate.Compare(b.ActionDate) })
+	slices.SortFunc(out, func(a, b *entities.DomainTransfer) int {
+		if c := a.ActionDate.Compare(b.ActionDate); c != 0 {
+			return c
+		}
+		return int(a.ID - b.ID)
+	})
 	if len(out) > limit {
 		out = out[:limit]
 	}

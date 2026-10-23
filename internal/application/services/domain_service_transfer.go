@@ -153,23 +153,32 @@ func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities
 	return stored, tr, nil
 }
 
-// ListDueTransfers names the domains whose pending transfer was due for
-// an answer by dueBy, earliest first, up to limit: the transfers the
-// registry approves because the losing registrar did not answer in time
-// (workflows.TransferApprovalLoop).
-func (s *DomainService) ListDueTransfers(ctx context.Context, dueBy time.Time, limit int) ([]string, error) {
+// DueTransfer is a pending transfer due for an answer: its domain, and its
+// place in the sweep's (ActionDate, ID) order, the cursor of the next page.
+type DueTransfer struct {
+	DomainName string    `json:"domainName"`
+	ID         int64     `json:"id"`
+	ActionDate time.Time `json:"actionDate"`
+}
+
+// ListDueTransfers lists, up to limit, the pending transfers of existing
+// domains that were due for an answer by dueBy, in (ActionDate, ID) order
+// after the cursor (afterDate, afterID; zero for the first page): the
+// transfers the registry approves because the losing registrar did not
+// answer in time (workflows.TransferApprovalLoop).
+func (s *DomainService) ListDueTransfers(ctx context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]DueTransfer, error) {
 	if s.transferRepo == nil {
 		return nil, ErrTransfersNotConfigured
 	}
-	due, err := s.transferRepo.ListDueTransfers(ctx, dueBy, limit)
+	due, err := s.transferRepo.ListDueTransfers(ctx, dueBy, afterDate, afterID, limit)
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, len(due))
+	out := make([]DueTransfer, len(due))
 	for i, t := range due {
-		names[i] = t.DomainName.String()
+		out[i] = DueTransfer{DomainName: t.DomainName.String(), ID: t.ID, ActionDate: t.ActionDate}
 	}
-	return names, nil
+	return out, nil
 }
 
 // BatchApproveDueTransfers approves, as the registry (serverApproved), the

@@ -208,8 +208,8 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 	require.NoError(t, db.Exec("UPDATE phases SET transfer_lock_period = 0 WHERE tld_name = ?", tld).Error)
 
 	const code = "Tr4nsf3r-C0de-Xq9#Lm2!" // #nosec G101 -- a test fixture's authInfo, not a credential
-	due, notDue := "due."+tld, "later."+tld
-	for _, n := range []string{due, notDue} {
+	due, notDue, gone := "due."+tld, "later."+tld, "gone."+tld
+	for _, n := range []string{due, notDue, gone} {
 		_, err := svc.Create(ctx, scope1, commands.EPPCreateDomainCommand{
 			Name: n, RegistrantID: "c" + rar1, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
 			HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: code,
@@ -221,6 +221,15 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 	// The losing registrar did not answer in time: due's pending period ended
 	// an hour ago.
 	require.NoError(t, db.Exec("UPDATE domain_transfers SET action_date = ? WHERE domain_name = ?", time.Now().UTC().Add(-time.Hour), due).Error)
+	// gone was due earlier still, but the domain has since been deleted: its
+	// transfer stays pending in the history, and must not hold up the sweep.
+	require.NoError(t, db.Exec("UPDATE domain_transfers SET action_date = ? WHERE domain_name = ?", time.Now().UTC().Add(-2*time.Hour), gone).Error)
+	goneDom, err := f.domainRepo.GetDomainByName(ctx, gone, false)
+	require.NoError(t, err)
+	goneID, err := goneDom.RoID.Int64()
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("DELETE FROM domain_hosts WHERE domain_ro_id = ?", goneID).Error)
+	require.NoError(t, db.Exec("DELETE FROM domains WHERE ro_id = ?", goneID).Error)
 	for _, s := range []entities.RegistrarClID{scope1, scope2} {
 		for {
 			m, _, err := polls.Request(ctx, s)
@@ -234,10 +243,24 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	names, err := f.registry.ListDueTransfers(ctx, now, 1000)
+	listed, err := f.registry.ListDueTransfers(ctx, now, time.Time{}, 0, 1000)
 	require.NoError(t, err)
+	names := dueNames(listed)
 	require.Contains(t, names, due)
-	require.NotContains(t, names, notDue)
+	require.NotContains(t, names, notDue, "not yet due")
+	require.NotContains(t, names, gone, "the domain no longer exists")
+
+	t.Run("the cursor passes over what a sweep has listed", func(t *testing.T) {
+		var mine DueTransfer
+		for _, d := range listed {
+			if d.DomainName == due {
+				mine = d
+			}
+		}
+		after, err := f.registry.ListDueTransfers(ctx, now, mine.ActionDate, mine.ID, 1000)
+		require.NoError(t, err)
+		assert.NotContains(t, dueNames(after), due)
+	})
 
 	// notDue is passed too: the batch re-checks each domain, and skips it.
 	res := f.registry.BatchApproveDueTransfers(ctx, []string{due, notDue}, now)
@@ -276,8 +299,16 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 		again := f.registry.BatchApproveDueTransfers(ctx, []string{due}, now)
 		assert.Empty(t, again.Succeeded)
 		assert.Equal(t, []string{due}, again.Skipped)
-		names, err := f.registry.ListDueTransfers(ctx, now, 1000)
+		listed, err := f.registry.ListDueTransfers(ctx, now, time.Time{}, 0, 1000)
 		require.NoError(t, err)
-		assert.NotContains(t, names, due)
+		assert.NotContains(t, dueNames(listed), due)
 	})
+}
+
+func dueNames(due []DueTransfer) []string {
+	out := make([]string, len(due))
+	for i, d := range due {
+		out[i] = d.DomainName
+	}
+	return out
 }

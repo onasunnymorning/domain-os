@@ -256,17 +256,17 @@ func (a *LifecycleActivities) BatchPurgeDomains(ctx context.Context, correlation
 	return result, nil
 }
 
-// ListDueTransfers names up to limit domains whose pending transfer was due
-// for an answer by dueBy (Phase 4i auto-approval).
-func (a *LifecycleActivities) ListDueTransfers(ctx context.Context, correlationID string, dueBy time.Time, limit int) ([]string, error) {
-	return a.DomainService.ListDueTransfers(appcontext.WithCorrelationID(ctx, correlationID), dueBy, limit)
+// ListDueTransfers lists up to limit pending transfers due for an answer by
+// dueBy, after the sweep's cursor (afterDate, afterID).
+func (a *LifecycleActivities) ListDueTransfers(ctx context.Context, correlationID string, dueBy, afterDate time.Time, afterID int64, limit int) ([]services.DueTransfer, error) {
+	return a.DomainService.ListDueTransfers(withWorkflowIDs(ctx, correlationID), dueBy, afterDate, afterID, limit)
 }
 
 // BatchApproveDueTransfers approves, as the registry, the pending
 // transfers of the domains named that were due by dueBy. Idempotent: a
 // transfer already answered, or not yet due, is skipped.
 func (a *LifecycleActivities) BatchApproveDueTransfers(ctx context.Context, correlationID string, dueBy time.Time, domainNames []string) (services.BatchResult, error) {
-	ctx = appcontext.WithCorrelationID(ctx, correlationID)
+	ctx = withWorkflowIDs(ctx, correlationID)
 	result := services.BatchResult{Succeeded: []string{}, Failed: []services.BatchFailure{}}
 	for i := 0; i < len(domainNames); i += defaultBatchChunkSize {
 		end := min(i+defaultBatchChunkSize, len(domainNames))
@@ -280,6 +280,18 @@ func (a *LifecycleActivities) BatchApproveDueTransfers(ctx context.Context, corr
 		}
 	}
 	return result, nil
+}
+
+// withWorkflowIDs marks ctx, for the events the service writes, as INV-16
+// has it: the workflow ID as correlation ID, the run ID as trace ID. These
+// activities call the service directly, so prepareRequest, which sends both
+// as headers to the admin API, never runs.
+func withWorkflowIDs(ctx context.Context, correlationID string) context.Context {
+	ctx = appcontext.WithCorrelationID(ctx, correlationID)
+	if runID := getTemporalRunID(ctx); runID != "" {
+		ctx = appcontext.WithTraceID(ctx, runID)
+	}
+	return ctx
 }
 
 // BatchRestoreDomains restores domains in batch via the service layer.
