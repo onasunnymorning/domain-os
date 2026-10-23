@@ -155,7 +155,9 @@ func requireGeneratedAuthInfos(t *testing.T, authInfos []string) {
 	require.Len(t, seen, len(authInfos), "an authInfo was shared between objects")
 }
 
-func TestImportDomainsChunked_GeneratesAuthInfoPerDomain(t *testing.T) {
+// Domains are imported with no transfer code (RFC 9154: unset is the normal
+// state); the registrant asks their registrar for one when they transfer.
+func TestImportDomainsChunked_SendsNoAuthInfo(t *testing.T) {
 	db := stagedDBForAuthInfo(t)
 	seedDomains(t, db, importPageSize+50)
 	api := startAdminAPI(t, false)
@@ -174,21 +176,18 @@ func TestImportDomainsChunked_GeneratesAuthInfoPerDomain(t *testing.T) {
 	require.Empty(t, api.domainSingleCalls)
 	require.Equal(t, int64(importPageSize+50), counts["domains_imported"])
 
-	var authInfos []string
 	for _, page := range api.domainBulkCalls {
 		for _, c := range page {
 			require.NotEqual(t, "zz-unmapped.radio", c.Name, "a domain of an unmapped registrar must be skipped")
-			authInfos = append(authInfos, c.AuthInfo)
+			require.Empty(t, c.AuthInfo, "%s was sent a transfer code", c.Name)
 		}
 	}
-	require.Len(t, authInfos, importPageSize+50)
-	requireGeneratedAuthInfos(t, authInfos) // unique across the page boundary too
 	require.Equal(t, int64(1), tallies["domains_skipped_unmapped"])
 }
 
-// When the bulk request is rejected the import retries the same page one object at a time. A domain
-// must arrive with the authInfo it was first sent with, not a freshly generated one.
-func TestImportDomainsChunked_FallbackReusesTheSameAuthInfo(t *testing.T) {
+// When the bulk request is rejected the import retries the same page one object at a time, still
+// with no transfer code.
+func TestImportDomainsChunked_FallbackSendsNoAuthInfo(t *testing.T) {
 	db := stagedDBForAuthInfo(t)
 	seedDomains(t, db, 30)
 	api := startAdminAPI(t, true)
@@ -201,16 +200,9 @@ func TestImportDomainsChunked_FallbackReusesTheSameAuthInfo(t *testing.T) {
 
 	require.Len(t, api.domainBulkCalls, 1)
 	require.Len(t, api.domainSingleCalls, 30)
-	viaBulk := make(map[string]string, 30)
-	for _, c := range api.domainBulkCalls[0] {
-		viaBulk[c.Name] = c.AuthInfo
-	}
-	var authInfos []string
 	for _, c := range api.domainSingleCalls {
-		require.Equal(t, viaBulk[c.Name], c.AuthInfo, "%s changed authInfo between the bulk request and its fallback", c.Name)
-		authInfos = append(authInfos, c.AuthInfo)
+		require.Empty(t, c.AuthInfo, "%s was sent a transfer code", c.Name)
 	}
-	requireGeneratedAuthInfos(t, authInfos)
 }
 
 func TestImportContactsChunked_GeneratesAuthInfoPerContact(t *testing.T) {

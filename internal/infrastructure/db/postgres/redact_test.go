@@ -106,7 +106,9 @@ func TestToDBDomainEvent_RedactsAuthInfo(t *testing.T) {
 			for col, b := range map[string][]byte{
 				"command": rec.Command, "before_state": rec.BeforeState, "after_state": rec.AfterState,
 			} {
-				if b != nil {
+				// A domain's JSON has no AuthInfo at all, only AuthInfoSet
+				// (RFC 9154); a command or contact keeps the key, redacted.
+				if b != nil && bytes.Contains(b, []byte(`"AuthInfo":`)) {
 					assert.Contains(t, string(b), `"AuthInfo":"`+RedactedMarker+`"`, "%s column lost the AuthInfo marker", col)
 				}
 			}
@@ -126,6 +128,7 @@ func TestFromTombstone_RedactsAuthInfo(t *testing.T) {
 
 	var snap map[string]interface{}
 	require.NoError(t, json.Unmarshal(rec.LastSnapshot, &snap))
-	assert.Equal(t, RedactedMarker, snap["AuthInfo"])
+	assert.NotContains(t, snap, "AuthInfo", "a domain snapshot carries no transfer code, not even its hash")
+	assert.Equal(t, true, snap["AuthInfoSet"])
 	assert.Equal(t, "example.com", snap["Name"])
 }

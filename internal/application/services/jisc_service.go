@@ -1012,11 +1012,7 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 		regDate, _ := time.Parse("2006-01-02", d.RegisteredDate)
 		expDate, _ := time.Parse("2006-01-02", d.RegisterExpireDate)
 
-		// The export carries no authInfo, so mint one per domain.
-		domainAuthInfo, aerr := entities.GenerateAuthInfo()
-		if aerr != nil {
-			return fmt.Errorf("generate authInfo for domain %s: %w", d.DomainName, aerr)
-		}
+		// The export carries no authInfo, and under RFC 9154 a domain has none until its registrar sets one.
 		domainCmds = append(domainCmds, commands.CreateDomainCommand{
 			Name:         d.DomainName,
 			ClID:         rarClID,
@@ -1026,7 +1022,6 @@ func (s *JiscService) ImportToAdminAPI(jsonPath, apiURL, token string) error {
 			BillingID:    contactID,
 			CreatedAt:    regDate,
 			ExpiryDate:   expDate,
-			AuthInfo:     domainAuthInfo.String(),
 			Status:       entities.DomainStatus{OK: true},
 		})
 

@@ -26,7 +26,7 @@ var _ = Describe("DomainController", Ordered, func() {
 	domainCmd := &commands.CreateDomainCommand{
 		Name:         domainName,
 		ClID:         registrarClID,
-		AuthInfo:     "domainAuth123!",
+		AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 		RegistrantID: contactID,
 		ExpiryDate:   time.Now().Add(365 * 24 * time.Hour),
 		RenewedYears: 1,
@@ -72,7 +72,7 @@ var _ = Describe("DomainController", Ordered, func() {
 		contactCmd := &commands.CreateContactCommand{
 			ID:       contactID,
 			Email:    "domtest@example.com",
-			AuthInfo: "str0NGP@ZZw0rd",
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			ClID:     registrarClID,
 			PostalInfo: [2]*entities.ContactPostalInfo{
 				testPostalInfo,

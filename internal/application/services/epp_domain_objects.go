@@ -43,9 +43,15 @@ const subordinateHostPage = 100
 
 // Info returns a domain the session's registrar sponsors, with its
 // nameservers and the host objects subordinate to it (RFC 5731 §3.1.2). A
-// domain sponsored by another registrar is entities.ErrEPPNotSponsor, and a missing
-// one entities.ErrDomainNotFound.
-func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClID, name string) (*queries.EPPDomainInfo, error) {
+// missing domain is entities.ErrDomainNotFound.
+//
+// Another registrar's domain is entities.ErrEPPNotSponsor (ADR 0006), unless
+// the registrar gives the domain's transfer code (authInfo): RFC 9154 §5.3
+// lets a gaining registrar check a code before it asks for a transfer. A
+// code that matches gets the limited view; one that does not, or any code for
+// a domain with none set, is entities.ErrEPPAuthInfoMismatch, so the
+// registrar cannot tell whether a code is set.
+func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClID, name string, authInfo *string) (*queries.EPPDomainInfo, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
@@ -58,7 +64,13 @@ func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClI
 		return nil, err
 	}
 	if dom.ClID != entities.ClIDType(scope) {
-		return nil, entities.ErrEPPNotSponsor
+		switch {
+		case authInfo == nil:
+			return nil, entities.ErrEPPNotSponsor
+		case !dom.AuthInfo.Matches(*authInfo):
+			return nil, entities.ErrEPPAuthInfoMismatch
+		}
+		return &queries.EPPDomainInfo{Domain: dom, Limited: true}, nil
 	}
 	sub, err := s.subordinateHosts(ctx, dom.ClID.String(), dn.String())
 	if err != nil {
@@ -161,8 +173,12 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err != nil {
 		return nil, err
 	}
-	if _, err := entities.NewAuthInfoType(cmd.AuthInfo); err != nil {
-		return nil, err
+	// RFC 9154 §5.1: a domain may be created without a code (the normal
+	// case), and one given must be random enough.
+	if cmd.AuthInfo != "" {
+		if err := entities.ValidateSecureAuthInfo(cmd.AuthInfo); err != nil {
+			return nil, err
+		}
 	}
 
 	dom, err := s.register.RegisterDomain(ctx, &commands.RegisterDomainCommand{

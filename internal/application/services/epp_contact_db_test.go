@@ -73,7 +73,7 @@ func TestEPPContactCommandsOverPostgres(t *testing.T) {
 		require.NoError(t, err)
 		_, err = f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
 			Name: "contacts." + f.tld, Period: 1, PeriodUnit: "y", RegistrantID: id,
-			Contacts: []commands.EPPDomainContact{{Type: "tech", ID: id}}, AuthInfo: "Domain-Auth-1!",
+			Contacts: []commands.EPPDomainContact{{Type: "tech", ID: id}}, AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		})
 		require.NoError(t, err)
 		info, err := svc.Info(ctx, scope, id)

@@ -112,7 +112,7 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		contactCmd := &commands.CreateContactCommand{
 			ID:       contactID,
 			Email:    "lctest@example.com",
-			AuthInfo: "str0NGP@ZZw0rd",
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 			ClID:     registrarClID,
 			PostalInfo: [2]*entities.ContactPostalInfo{
 				testPostalInfo,
@@ -155,7 +155,7 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		registerCmd := &commands.RegisterDomainCommand{
 			Name:         domainName,
 			ClID:         registrarClID,
-			AuthInfo:     "Str0nG!P@ssw0rd",
+			AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 			RegistrantID: contactID,
 			AdminID:      contactID,
 			TechID:       contactID,
@@ -175,7 +175,7 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		registerCmd := &commands.RegisterDomainCommand{
 			Name:         domainName,
 			ClID:         registrarClID,
-			AuthInfo:     "Str0nG!P@ssw0rd",
+			AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 			RegistrantID: contactID,
 			AdminID:      contactID,
 			TechID:       contactID,
@@ -194,7 +194,7 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		registerCmd := &commands.RegisterDomainCommand{
 			Name:         idnDomainName,
 			ClID:         registrarClID,
-			AuthInfo:     "IdN$ecr3tP@ss",
+			AuthInfo:     "Tr4nsf3r-C0de-Xq9#Lm2!",
 			RegistrantID: contactID,
 			AdminID:      contactID,
 			TechID:       contactID,

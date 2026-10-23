@@ -56,7 +56,7 @@ func TestDomainSetDSRecords(t *testing.T) {
 	require.NoError(t, d.SetDSRecords(nil))
 	assert.Nil(t, d.DSRecords)
 
-	dom, err := NewDomain("1_DOM-APEX", "example.com", "registrar1", "Abc!def123x")
+	dom, err := NewDomain("1_DOM-APEX", "example.com", "registrar1", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	require.NoError(t, err)
 	dom.DSRecords = []DSRecord{a, a}
 	require.ErrorIs(t, dom.Validate(), ErrDuplicateDSRecord, "a domain holding duplicates is invalid however they got there")

@@ -43,6 +43,7 @@ var refusals = []struct {
 	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
 	{entities.ErrDuplicateHost, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPMaxSigLife, epplib.StatusUnimplementedOption},
+	{entities.ErrEPPAuthInfoExt, epplib.StatusUnimplementedOption},
 	{entities.ErrEPPKeyData, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSAlgorithm, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSDigestType, epplib.StatusParameterPolicyError},
@@ -59,7 +60,8 @@ var refusals = []struct {
 	{entities.ErrEPPNameserverNotSet, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDSNotSet, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPDNSSECUrgent, epplib.StatusUnimplementedOption},
-	{entities.ErrEPPAuthInfoRequired, epplib.StatusParameterPolicyError},
+	{entities.ErrEPPAuthInfoMismatch, epplib.StatusInvalidAuthorizationInformation},
+	{entities.ErrAuthInfoNotSecure, epplib.StatusInvalidAuthorizationInformation},
 	{entities.ErrEPPCurExpDate, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPSubordinateHosts, epplib.StatusObjectAssociationProhibitsOperation},
 	{entities.ErrEPPSuperordinatePendingDelete, epplib.StatusObjectStatusProhibitsOperation},
@@ -140,10 +142,11 @@ func withActor(ctx context.Context, cmd *command) context.Context {
 	return appcontext.WithCorrelationID(ctx, cmd.svTRID)
 }
 
-// domainInfo answers <domain:info> (RFC 5731 §3.1.2). Only the sponsor is
-// answered; anyone else gets 2201 (ADR 0006), whether or not they present
-// the domain's authorization information. The RGP statuses are added when
-// the session logged in with RGP.
+// domainInfo answers <domain:info> (RFC 5731 §3.1.2). The sponsor gets the
+// full answer. Another registrar gets the limited view with the domain's
+// transfer code, 2202 with a wrong one and 2201 with none (RFC 9154 §5.3,
+// ADR 0006 as amended). Authorization information other than a password is
+// 2102. The RGP statuses are added when the session logged in with RGP.
 func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
 	if err != nil {
@@ -152,11 +155,28 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	}
 	name := cmd.doc.FindElement("/epp/command/info/*/name")
 	hosts := name.SelectAttrValue("hosts", "all")
+	// Only a password can be checked: the registry keeps nothing else
+	// (2102, as on create and update).
+	if cmd.doc.FindElement("/epp/command/info/*/authInfo/ext") != nil {
+		s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+		return
+	}
+	// A code given (RFC 9154 §5.3): an empty <domain:pw/> is given, and
+	// matches nothing.
+	var authInfo *string
+	if pw := cmd.doc.FindElement("/epp/command/info/*/authInfo/pw"); pw != nil {
+		v := schema.NormalizedStringValue(pw.Text())
+		authInfo = &v
+	}
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	info, err := s.domains.Info(ctx, scope, cmd.objects[0])
+	info, err := s.domains.Info(ctx, scope, cmd.objects[0], authInfo)
 	if err != nil {
 		s.refuse(cmd, err)
+		return
+	}
+	if info.Limited {
+		cmd.respond(epplib.StatusSuccess, "", limitedInfoData(info.Domain))
 		return
 	}
 	// Each extension's data is added only for a session that asked for it
@@ -201,6 +221,10 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 			Type: schema.TokenValue(el.SelectAttrValue("type", "")),
 			ID:   schema.TokenValue(el.Text()),
 		})
+	}
+	if create.FindElement("authInfo/ext") != nil {
+		s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+		return
 	}
 	if pw := create.FindElement("authInfo/pw"); pw != nil {
 		// eppcom:pwAuthInfoType is a normalizedString: the password is the
@@ -260,9 +284,9 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 			case a.SelectElement("pw") != nil:
 				v := schema.NormalizedStringValue(a.SelectElement("pw").Text())
 				c.AuthInfo = &v
-			default: // <domain:ext>: no password the registry can keep
-				v := ""
-				c.AuthInfo = &v
+			default: // <domain:ext>: not a password, so nothing to hash
+				s.refuse(cmd, entities.ErrEPPAuthInfoExt)
+				return
 			}
 		}
 	}

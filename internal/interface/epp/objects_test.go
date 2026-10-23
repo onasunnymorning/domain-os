@@ -27,7 +27,7 @@ func createXML(name string, o createOpts) string {
 		o.contacts = `<domain:registrant>registrar1-c1</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact>`
 	}
 	if o.pw == "" {
-		o.pw = "Secret-Auth-1!"
+		o.pw = "Tr4nsf3r-C0de-Xq9#Lm2!"
 	}
 	ext := ""
 	if o.ext != "" {
@@ -86,7 +86,8 @@ func TestDomainCreateThenInfo(t *testing.T) {
 	assert.Equal(t, testRegistrar, text(info, "//infData/crID"))
 	assert.Equal(t, text(resp, "//resData/creData/crDate"), text(info, "//infData/crDate"))
 	assert.Equal(t, text(resp, "//resData/creData/exDate"), text(info, "//infData/exDate"))
-	assert.Equal(t, "Secret-Auth-1!", text(info, "//infData/authInfo/pw"), "the sponsor sees its authorization information")
+	require.NotNil(t, info.FindElement("//infData/authInfo/pw"), "the sponsor is told a code is set (RFC 9154 §5.3)")
+	assert.Empty(t, text(info, "//infData/authInfo/pw"), "but never sees it")
 	var statuses []string
 	for _, el := range inf.SelectElements("status") {
 		statuses = append(statuses, el.SelectAttrValue("s", ""))
@@ -130,7 +131,7 @@ func TestDomainCreateThenInfo(t *testing.T) {
 		}
 		require.NotNil(t, create, "a transform's record is written before it is answered")
 		assert.Equal(t, []string{"new.test"}, create.Objects)
-		assert.NotContains(t, create.Request, "Secret-Auth-1!")
+		assert.NotContains(t, create.Request, "Tr4nsf3r-C0de-Xq9#Lm2!")
 		assert.Contains(t, create.Response, "<domain:creData")
 	})
 }
@@ -173,7 +174,7 @@ func TestDomainCreateRefusals(t *testing.T) {
 		{"another registrar's contact", createXML("theirs.test", createOpts{contacts: `<domain:registrant>registrar2-c1</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact>`}), "2201", "registrar2-c1"},
 		{"an unknown host", createXML("nohost.test", createOpts{ns: `<domain:ns><domain:hostObj>ns9.nowhere.net</domain:hostObj></domain:ns>`}), "2303", "ns9.nowhere.net"},
 		{"another registrar's host", createXML("theirhost.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar2.net</domain:hostObj></domain:ns>`}), "2303", "ns1.registrar2.net"},
-		{"an authInfo that breaks the password rules", createXML("weak.test", createOpts{pw: "weak"}), "2306", ""},
+		{"an authInfo that is not random enough (RFC 9154)", createXML("weak.test", createOpts{pw: "Secret-Auth-1!"}), "2202", "128 bits"}, // #nosec G101 -- a deliberately weak test authInfo, not a credential
 		{"a host object named twice", createXML("twice.test", createOpts{ns: `<domain:ns><domain:hostObj>ns1.registrar1.net</domain:hostObj><domain:hostObj>NS1.registrar1.net</domain:hostObj></domain:ns>`}), "2306", "ns1.registrar1.net is named more than once"},
 		{"an invalid name wins over a bad period, host attributes and repeated contacts", createXML("-bad-.test", createOpts{
 			period: `<domain:period unit="m">13</domain:period>`,
@@ -193,11 +194,12 @@ func TestDomainCreateRefusals(t *testing.T) {
 	assert.Empty(t, creds.domains.registry.Registered, "none of them registered anything")
 
 	t.Run("the authInfo is stored as the schema reads it", func(t *testing.T) {
-		// A tab in a normalizedString is a space: the password validated
-		// is the one stored and returned.
-		requireCode(t, c.roundTrip(createXML("tab.test", createOpts{pw: "Secret\tAuth-1!"})), "1000") // #nosec G101 -- a test fixture's authInfo, not a credential
-		assert.Equal(t, entities.AuthInfoType("Secret Auth-1!"), creds.domains.registry.Domain("tab.test").AuthInfo)
-		assert.Equal(t, "Secret Auth-1!", text(c.roundTrip(infoXML("tab.test", "")), "//infData/authInfo/pw"))
+		// A tab in a normalizedString is a space: the code validated is the
+		// one hashed, and the one that matches.
+		requireCode(t, c.roundTrip(createXML("tab.test", createOpts{pw: "Tr4nsf3r\tC0de-Xq9#Lm2!"})), "1000") // #nosec G101 -- a test fixture's authInfo, not a credential
+		stored := creds.domains.registry.Domain("tab.test").AuthInfo
+		assert.True(t, stored.Matches("Tr4nsf3r C0de-Xq9#Lm2!"))
+		assert.False(t, stored.Matches("Tr4nsf3r\tC0de-Xq9#Lm2!"))
 	})
 	t.Run("months in whole years are accepted", func(t *testing.T) {
 		resp := c.roundTrip(createXML("m24.test", createOpts{period: `<domain:period unit="m">24</domain:period>`}))

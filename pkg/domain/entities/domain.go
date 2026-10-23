@@ -1,10 +1,10 @@
 package entities
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
-
-	"errors"
 )
 
 const (
@@ -59,22 +59,25 @@ var (
 // Domain is the domain object in a domain Name registry inspired by the EPP Domain object.
 // Ref: https://datatracker.ietf.org/doc/html/rfc5731
 type Domain struct {
-	RoID           RoidType             `json:"RoID"`
-	Name           DomainName           `json:"Name"`         // in case of IDN, this contains the A-label
-	OriginalName   DomainName           `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
-	UName          DomainName           `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
-	RegistrantID   ClIDType             `json:"RegistrantID"`
-	AdminID        ClIDType             `json:"AdminID"`
-	TechID         ClIDType             `json:"TechID"`
-	BillingID      ClIDType             `json:"BillingID"`
-	ClID           ClIDType             `json:"ClID"`
-	CrRr           ClIDType             `json:"CrRr"`
-	UpRr           ClIDType             `json:"UpRr"`
-	TLDName        DomainName           `json:"TLDName"`
-	ExpiryDate     time.Time            `json:"ExpiryDate"`
-	DropCatch      bool                 `json:"DropCatch"`
-	RenewedYears   int                  `json:"RenewedYears"`
-	AuthInfo       AuthInfoType         `json:"AuthInfo"`
+	RoID         RoidType   `json:"RoID"`
+	Name         DomainName `json:"Name"`         // in case of IDN, this contains the A-label
+	OriginalName DomainName `json:"OriginalName"` // is used to indicate that the domain name is an IDN variant. This element contains the domain name (A-label) used to generate the IDN variant.
+	UName        DomainName `json:"UName"`        // is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).
+	RegistrantID ClIDType   `json:"RegistrantID"`
+	AdminID      ClIDType   `json:"AdminID"`
+	TechID       ClIDType   `json:"TechID"`
+	BillingID    ClIDType   `json:"BillingID"`
+	ClID         ClIDType   `json:"ClID"`
+	CrRr         ClIDType   `json:"CrRr"`
+	UpRr         ClIDType   `json:"UpRr"`
+	TLDName      DomainName `json:"TLDName"`
+	ExpiryDate   time.Time  `json:"ExpiryDate"`
+	DropCatch    bool       `json:"DropCatch"`
+	RenewedYears int        `json:"RenewedYears"`
+	// AuthInfo is the domain's transfer code as a salted hash (RFC 9154),
+	// empty when none is set. It never leaves the registry: JSON carries
+	// AuthInfoSet instead (see MarshalJSON).
+	AuthInfo       AuthInfoHash         `json:"-"`
 	CreatedAt      time.Time            `json:"CreatedAt"`
 	UpdatedAt      time.Time            `json:"UpdatedAt"`
 	Status         DomainStatus         `json:"Status"`
@@ -129,6 +132,10 @@ func (d *Domain) UnSetOKStatusIfNeeded() {
 // NewDomain creates a new Domain object. It returns an error if the Domain object is invalid.
 // This function is intended to admin functionality such as importing domains from an escrow file.
 // It does not set RGP statuses. See RegisterDomain instead if you are looking to create a domain as part of the registration process by a client.
+//
+// authInfo is the transfer code in plain text, or empty for none: the domain
+// keeps only its hash (RFC 9154). It must pass ValidateDomainAuthInfo,
+// the one rule every path applies.
 func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 	var err error
 
@@ -146,7 +153,10 @@ func NewDomain(roid, name, clid, authInfo string) (*Domain, error) {
 		return nil, err
 	}
 
-	a, err := NewAuthInfoType(authInfo)
+	if err := ValidateDomainAuthInfo(authInfo); err != nil {
+		return nil, err
+	}
+	a, err := HashAuthInfo(authInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -678,4 +688,15 @@ func (d *Domain) DeepCopy() *Domain {
 	}
 
 	return newDomain
+}
+
+// MarshalJSON writes the domain without its authorization information
+// hash, and with AuthInfoSet saying whether a code is set: the hash stays in
+// the registry (RFC 9154 §4.3), in the admin API and in events alike.
+func (d Domain) MarshalJSON() ([]byte, error) {
+	type withoutMethods Domain
+	return json.Marshal(struct {
+		withoutMethods
+		AuthInfoSet bool `json:"AuthInfoSet"`
+	}{withoutMethods(d), d.AuthInfo.IsSet()})
 }

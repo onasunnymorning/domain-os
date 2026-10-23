@@ -109,6 +109,9 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 	if err != nil {
 		return nil, err
 	}
+	if err := entities.ValidateDomainAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
+	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
@@ -269,7 +272,16 @@ func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *co
 	dom.CrRr = entities.ClIDType(upDom.CrRr)
 	dom.UpRr = entities.ClIDType(upDom.UpRr)
 	dom.ExpiryDate = upDom.ExpiryDate
-	dom.AuthInfo = entities.AuthInfoType(upDom.AuthInfo)
+	// A code given is set, hashed (RFC 9154); none keeps the domain's code
+	// as it is: the domain as read carries only whether one is set.
+	if upDom.AuthInfo != "" {
+		if err := entities.ValidateDomainAuthInfo(upDom.AuthInfo); err != nil {
+			return nil, errors.Join(entities.ErrInvalidDomain, err)
+		}
+		if dom.AuthInfo, err = entities.HashAuthInfo(upDom.AuthInfo); err != nil {
+			return nil, err
+		}
+	}
 	if !upDom.CreatedAt.IsZero() {
 		dom.CreatedAt = upDom.CreatedAt
 	}
@@ -1186,7 +1198,9 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	}
 	event.DomainRoID = roid.String()
 
-	// Create the domain entity
+	if err := entities.ValidateDomainAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, err
+	}
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err
@@ -1837,11 +1851,9 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 			// If there was an error other than domain not found, return it
 			return nil, err
 		}
-		// If we don't have the domain, create a placeholder
-		domain, err = entities.NewDomain("123_DOM-APEX", domainName.String(), q.ClID, "str0ngP@zz")
-		if err != nil {
-			return nil, err
-		}
+		// An unregistered name: the price engine reads only the name and
+		// grandfathering, so it needs no ROID, sponsor or transfer code.
+		domain = &entities.Domain{Name: *domainName}
 	}
 
 	// Get the PremiumLabels in all currencies
@@ -2020,6 +2032,9 @@ func (s *DomainService) domainFromCreateDomainCommand(cmd *commands.CreateDomain
 	roid, err := s.roidService.GenerateRoid("domain")
 	if err != nil {
 		return nil, err
+	}
+	if err := entities.ValidateDomainAuthInfo(cmd.AuthInfo); err != nil {
+		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
 	d, err := entities.NewDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo)
 	if err != nil {

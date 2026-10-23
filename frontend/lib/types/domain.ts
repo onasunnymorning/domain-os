@@ -81,7 +81,8 @@ export interface DomainDetail extends DomainListItem {
   UpRr?: string;
   DropCatch?: boolean;
   RenewedYears?: number;
-  AuthInfo?: string;
+  // RFC 9154: the registry never returns a transfer code, only whether one is set.
+  AuthInfoSet?: boolean;
   RegistrantID?: string;
   AdminID?: string;
   TechID?: string;
@@ -127,7 +128,8 @@ export interface DomainCreateRequest {
   // Required
   Name: string;
   ClID: string;
-  AuthInfo: string;
+  // A transfer code to set, or empty for none (RFC 9154's normal state).
+  AuthInfo?: string;
   // time.RFC3339 string expected by backend
   ExpiryDate: string;
 

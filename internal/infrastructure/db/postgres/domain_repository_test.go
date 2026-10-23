@@ -158,7 +158,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomain() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -185,7 +185,7 @@ func (s *DomainSuite) TestDomainRepository_CreateDomainWithHosts() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -244,7 +244,7 @@ func (s *DomainSuite) TestDomainRepository_GetGlue() {
 	}
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -293,7 +293,7 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -355,7 +355,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByName() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -387,7 +387,7 @@ func (s *DomainSuite) TestDomainRepository_GetDomainByRoID() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -415,7 +415,7 @@ func (s *DomainSuite) TestDomainRepository_CreateWithHostAndRetrieve() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -445,7 +445,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomain() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -473,7 +473,7 @@ func (s *DomainSuite) TestDomainRepository_DeleteDomain() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -509,7 +509,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	NOW := time.Now().UTC()
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -522,7 +522,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 
 	// Create a second domain
-	domain, err = entities.NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err = entities.NewDomain("12345_DOM-APEX", "de.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -535,7 +535,7 @@ func (s *DomainSuite) TestDomainRepository_ListDomains() {
 	s.Require().NoError(err)
 
 	// Create a third domain
-	domain, err = entities.NewDomain("123456_DOM-APEX", "prins.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err = entities.NewDomain("123456_DOM-APEX", "prins.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -705,7 +705,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	repo := NewDomainRepository(tx, "APEX")
 
 	// Create a domain
-	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "geoff.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	domain.RegistrantID = "myTestContact007"
@@ -725,7 +725,9 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	s.Require().Equal(0, len(retrievedDomain.Hosts))
 
 	// Update the domain
-	createdDomain.AuthInfo = "newAu123$th"
+	newCode, err := entities.HashAuthInfo("newAu123$th")
+	s.Require().NoError(err)
+	createdDomain.AuthInfo = newCode
 	updatedDomain, err := repo.UpdateDomain(context.Background(), createdDomain)
 	s.Require().NoError(err)
 	s.Require().NotNil(updatedDomain)
@@ -739,7 +741,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainWithHosts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(retrievedDomain)
 	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
-	s.Require().Equal("newAu123$th", retrievedDomain.AuthInfo.String())
+	s.Require().True(retrievedDomain.AuthInfo.Matches("newAu123$th"), "the code is stored as a hash that matches it")
 }
 
 func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
@@ -755,7 +757,7 @@ func (s *DomainSuite) TestDomainRepository_ListExpiringDomains() {
 		// Create a domain
 		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
 		name := fmt.Sprintf("geoff-%d.domaintesttld%d", i, i)
-		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
 		domain.TLDName = entities.DomainName(fmt.Sprintf("domaintesttld%d", i))
@@ -840,7 +842,7 @@ func (s *DomainSuite) TestDomainRepository_NullBooleanHandling() {
 	for i := 0; i < 3; i++ {
 		roid := fmt.Sprintf("99%d_DOM-APEX", i)
 		name := fmt.Sprintf("null-test-%d.domaintesttld", i)
-		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
 		domain.TLDName = "domaintesttld"
@@ -938,7 +940,7 @@ func (s *DomainSuite) TestDomainRepository_ListPurgeableDomains() {
 		// Create a domain
 		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
 		name := fmt.Sprintf("geoff-%d.domaintesttld", i)
-		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
 		domain.TLDName = "domaintesttld"
@@ -1043,7 +1045,7 @@ func (s *DomainSuite) TestDomainRepository_ListRestoredDomains() {
 		// Create a domain
 		roid := fmt.Sprintf("1234%d_DOM-APEX", i)
 		name := fmt.Sprintf("geoff-%d.domaintesttld", i)
-		domain, err := entities.NewDomain(roid, name, "GoMamma", "STr0mgP@ZZ")
+		domain, err := entities.NewDomain(roid, name, "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
 		domain.TLDName = "domaintesttld"
@@ -1124,7 +1126,7 @@ func (s *DomainSuite) TestDomainRepository_BulkCreate() {
 			fmt.Sprintf("BULK%d_DOM-APEX", i),
 			fmt.Sprintf("bulk%d.domaintesttld", i),
 			"GoMamma",
-			"STr0mgP@ZZ",
+			"Tr4nsf3r-C0de-Xq9#Lm2!",
 		)
 		s.Require().NoError(err)
 		domain.ClID = "domaintestRar"
@@ -1166,7 +1168,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainCannotChangeTLD() {
 	defer tx.Rollback()
 	repo := NewDomainRepository(tx, "APEX")
 
-	domain, err := entities.NewDomain("1234_DOM-APEX", "tldguard.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("1234_DOM-APEX", "tldguard.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 	created, err := repo.Create(context.Background(), domain)
@@ -1188,7 +1190,7 @@ func (s *DomainSuite) TestDomainRepository_UpdateDomainDoesNotInsert() {
 	defer tx.Rollback()
 	repo := NewDomainRepository(tx, "APEX")
 
-	domain, err := entities.NewDomain("9999_DOM-APEX", "never-created.domaintesttld", "GoMamma", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("9999_DOM-APEX", "never-created.domaintesttld", "GoMamma", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	domain.ClID = "domaintestRar"
 
@@ -1205,7 +1207,7 @@ func (s *DomainSuite) TestDomainRepository_DSRecords() {
 	repo := NewDomainRepository(tx, "APEX")
 	ctx := context.Background()
 
-	domain, err := entities.NewDomain("98765_DOM-APEX", "signed.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	domain, err := entities.NewDomain("98765_DOM-APEX", "signed.domaintesttld", "domaintestRar", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	a, err := entities.NewDSRecord(2371, 13, 2, "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4")
 	s.Require().NoError(err)
@@ -1248,7 +1250,7 @@ func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
 	digest := "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"
 
 	// A delegated domain: active, with hosts, so in the zone.
-	delegated, err := entities.NewDomain("5551_DOM-APEX", "delegated.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	delegated, err := entities.NewDomain("5551_DOM-APEX", "delegated.domaintesttld", "domaintestRar", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	delegated.Hosts = s.hosts
 	delegated.Status.Inactive = false
@@ -1259,7 +1261,7 @@ func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
 	s.Require().NoError(err)
 
 	// An inactive one with DS records: not in the zone, so neither are they.
-	idle, err := entities.NewDomain("5552_DOM-APEX", "idle.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	idle, err := entities.NewDomain("5552_DOM-APEX", "idle.domaintesttld", "domaintestRar", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	idle.Status.Inactive = true
 	s.Require().NoError(idle.SetDSRecords([]entities.DSRecord{ds}))
@@ -1268,7 +1270,7 @@ func (s *DomainSuite) TestDomainRepository_GetActiveDomainDS() {
 
 	// One flagged active but with no nameserver link, as a half-applied
 	// host change can leave it: no delegation, so no DS either.
-	unlinked, err := entities.NewDomain("5553_DOM-APEX", "unlinked.domaintesttld", "domaintestRar", "STr0mgP@ZZ")
+	unlinked, err := entities.NewDomain("5553_DOM-APEX", "unlinked.domaintesttld", "domaintestRar", "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	unlinked.Status.Inactive = false
 	s.Require().NoError(unlinked.SetDSRecords([]entities.DSRecord{ds}))

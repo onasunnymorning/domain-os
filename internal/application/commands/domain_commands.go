@@ -15,7 +15,7 @@ var (
 type RegisterDomainCommand struct {
 	Name         string       `json:"Name" binding:"required"`
 	ClID         string       `json:"ClID" binding:"required"`
-	AuthInfo     string       `json:"AuthInfo"  binding:"required"`
+	AuthInfo     string       `json:"AuthInfo"`
 	RegistrantID string       `json:"RegistrantID"` // Contacts must exist before registering a domain
 	AdminID      string       `json:"AdminID"`      // Contacts must exist before registering a domain
 	TechID       string       `json:"TechID"`       // Contacts must exist before registering a domain
@@ -76,7 +76,7 @@ type CreateDomainCommand struct {
 	ExpiryDate   time.Time `json:"ExpiryDate" binding:"required"`
 	DropCatch    bool      `json:"DropCatch"`
 	RenewedYears int       `json:"RenewedYears"`
-	AuthInfo     string    `json:"AuthInfo"  binding:"required"`
+	AuthInfo     string    `json:"AuthInfo"`
 	CreatedAt    time.Time `json:"CreatedAt"`
 	// UpdatedAt is the domain's version as the caller read it, not a value
 	// to store: the update is made only if the domain is still at it.
@@ -160,7 +160,9 @@ func (cmd *CreateDomainCommand) FromRdeDomain(rdeDomain *entities.RDEDomain) (*F
 	cmd.CrRr = dom.CrRr.String()
 	cmd.UpRr = dom.UpRr.String()
 	cmd.ExpiryDate = dom.ExpiryDate
-	cmd.AuthInfo = dom.AuthInfo.String()
+	// The domain keeps only a hash of its transfer code (RFC 9154): the
+	// command carries none, so the domain it creates has none.
+	cmd.AuthInfo = ""
 	cmd.CreatedAt = dom.CreatedAt
 	cmd.UpdatedAt = dom.UpdatedAt
 	cmd.Status = dom.Status
@@ -183,7 +185,7 @@ type UpdateDomainCommand struct {
 	UpRr               string                        `json:"UpRr"`
 	ExpiryDate         time.Time                     `json:"ExpiryDate" binding:"required"`
 	DropCatch          bool                          `json:"DropCatch"`
-	AuthInfo           string                        `json:"AuthInfo"  binding:"required"`
+	AuthInfo           string                        `json:"AuthInfo"`
 	CreatedAt          time.Time                     `json:"CreatedAt"`
 	UpdatedAt          time.Time                     `json:"UpdatedAt"`
 	Status             entities.DomainStatus         `json:"Status"`
@@ -218,7 +220,9 @@ func (cmd *UpdateDomainCommand) FromEntity(dom *entities.Domain) {
 	cmd.UpRr = dom.UpRr.String()
 	cmd.ExpiryDate = dom.ExpiryDate
 	cmd.DropCatch = dom.DropCatch
-	cmd.AuthInfo = dom.AuthInfo.String()
+	// The domain keeps only a hash of its transfer code (RFC 9154): an
+	// update without one keeps the code as it is.
+	cmd.AuthInfo = ""
 	cmd.CreatedAt = dom.CreatedAt
 	cmd.UpdatedAt = dom.UpdatedAt
 	cmd.Status = dom.Status

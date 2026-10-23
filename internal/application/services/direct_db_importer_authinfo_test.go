@@ -188,7 +188,9 @@ func TestDirectDBImporter_ImportContacts_StoresAGeneratedAuthInfoPerContact(t *t
 	require.Equal(t, first, storedAuthInfos(t, db, q, clID), "re-import replaced stored authInfos")
 }
 
-func TestDirectDBImporter_ImportDomains_StoresAGeneratedAuthInfoPerDomain(t *testing.T) {
+// Domains are imported with no transfer code (RFC 9154: unset is the normal state), and a re-import
+// leaves a code a registrar has set since alone.
+func TestDirectDBImporter_ImportDomains_StoresNoAuthInfo(t *testing.T) {
 	db := authInfoTestDB(t)
 	const tld = "aidomains"
 	clID := seedFixtures(t, db, tld, 91002)
@@ -211,12 +213,17 @@ func TestDirectDBImporter_ImportDomains_StoresAGeneratedAuthInfoPerDomain(t *tes
 	require.NoError(t, err)
 	require.Equal(t, int64(directImportRows), total)
 
-	q := `SELECT name AS key, auth_info FROM domains WHERE tld_name = ?`
-	first := storedAuthInfos(t, db, q, tld)
-	requireGeneratedAuthInfos(t, directImportRows, first)
+	var withCode int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM domains WHERE tld_name = ? AND auth_info IS NOT NULL`, tld).Scan(&withCode).Error)
+	require.Zero(t, withCode, "an imported domain was given a transfer code")
 
-	// As with contacts, a re-import must leave stored authInfos alone.
+	// A registrar sets a code; a re-import must leave it alone.
+	set, err := entities.HashAuthInfo("Tr4nsf3r-C0de-Xq9#Lm2!")
+	require.NoError(t, err)
+	name := fmt.Sprintf("d%05d.%s", 0, tld)
+	require.NoError(t, db.Exec(`UPDATE domains SET auth_info = ? WHERE name = ?`, string(set), name).Error)
 	_, _, _, err = importer.ImportDomains(context.Background(), staged, tld, nil, services.ImportCursor{}, noop)
 	require.NoError(t, err)
-	require.Equal(t, first, storedAuthInfos(t, db, q, tld), "re-import replaced stored authInfos")
+	q := `SELECT name AS key, auth_info FROM domains WHERE tld_name = ? AND auth_info IS NOT NULL`
+	require.Equal(t, map[string]string{name: string(set)}, storedAuthInfos(t, db, q, tld), "re-import changed stored transfer codes")
 }

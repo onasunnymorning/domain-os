@@ -116,6 +116,8 @@ attribute rule it anticipates is exactly the operator scope defined here.
    (authorization error) on mismatch. Create: the session registrar must be
    accredited for the TLD. This rule is established now, before those verbs are
    written.
+   *Amended 2026-10-22:* a domain `<info>` from a registrar that gives the
+   domain's transfer code is the one exception; see Amendments.
 6. **Cross-side visibility is an explicit policy decision, deferred.** Whether
    an operator may read registrar-sponsored contact data through domains in
    their TLDs is undecided until a real second tenant exists on either side.
@@ -248,6 +250,39 @@ Listed so that "not done" is on the record rather than inferred:
   rather than merely non-empty, on both `/zone-slavings*` and the `serial-drift`
   launchpad path. Since the value is a `RegistryOperator.RyID` — itself a
   `ClIDType` — every legitimate value already passes.
+
+## Amendments
+
+### 2026-10-22: transfer codes and transfers (EPP Phase 4h)
+
+**A correct transfer code shows a limited view to a non-sponsor.** RFC 9154
+§5.3 lets a registrar that does not sponsor a domain check a transfer code with
+`<domain:info>` before requesting the transfer. The registry follows it:
+
+| The non-sponsor gives | Answer |
+|---|---|
+| No code | `2201`, as rule 5 says |
+| The domain's code | `1000` with name, ROID, statuses, sponsor, crDate and exDate only: no contacts, nameservers, subordinate hosts, authorization information or extensions |
+| A wrong code, or any code when none is set | `2202` |
+
+The code is the registrant's consent, given to the registrar they chose, so
+the view is the exception that consent covers and no more. It is decided in the
+service (`EPPDomainService.Info`), not the handler, so the scope check and the
+exception sit together. The code is checked against a salted hash
+(`entities.AuthInfoHash`), and a wrong one is not told apart from an unset one.
+Contacts and hosts have no such exception: their `<info>` stays sponsor-only.
+
+**On a transfer, sponsorship moves with the domain, not with what it refers
+to** (built in Phase 4h-2):
+
+- *Hosts* are per registrar, so the domain's nameservers are re-linked to the
+  gaining registrar's hosts of the same names, created for it where missing.
+  The losing registrar's hosts stay its own; orphan cleanup is deferred.
+- *Contacts* stay where they are: the domain keeps referring to the same
+  contact objects, still sponsored by the losing registrar. The gaining
+  registrar cannot `<info>` or `<update>` them (`2201`); it replaces them with
+  its own, and the transfer's poll message says so. Copying them was rejected:
+  it would duplicate registrant data the industry is moving away from holding.
 
 ## Action Items
 

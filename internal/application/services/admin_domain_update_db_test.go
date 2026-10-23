@@ -22,7 +22,7 @@ func TestAdminDomainUpdateOverPostgres(t *testing.T) {
 	name := "admin." + f.tld
 	_, err := f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
 		Name: name, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
-		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 	})
 	require.NoError(t, err)
 
@@ -32,7 +32,7 @@ func TestAdminDomainUpdateOverPostgres(t *testing.T) {
 	edit := func(d *entities.Domain) *commands.UpdateDomainCommand {
 		return &commands.UpdateDomainCommand{
 			RegistrantID: d.RegistrantID.String(), TechID: d.TechID.String(), ClID: d.ClID.String(),
-			CrRr: d.CrRr.String(), UpRr: d.UpRr.String(), ExpiryDate: d.ExpiryDate, AuthInfo: d.AuthInfo.String(),
+			CrRr: d.CrRr.String(), UpRr: d.UpRr.String(), ExpiryDate: d.ExpiryDate,
 			CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Status: d.Status, RGPStatus: d.RGPStatus,
 			GrandFathering: entities.DomainGrandFathering{GFAmount: 100, GFCurrency: "USD", GFExpiryCondition: "transfer"},
 		}

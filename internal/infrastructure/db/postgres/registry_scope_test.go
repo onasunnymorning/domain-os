@@ -82,7 +82,7 @@ func (s *RegistryScopeSuite) TestDomainDeleteIsConfinedToTheOperator() {
 	repo := NewDomainRepository(tx, "APEX")
 	ctx := context.Background()
 
-	d, err := entities.NewDomain("7101_DOM-APEX", "kept."+rsOwnerTLD, rsRar, "STr0mgP@ZZ")
+	d, err := entities.NewDomain("7101_DOM-APEX", "kept."+rsOwnerTLD, rsRar, "Tr4nsf3r-C0de-Xq9#Lm2!")
 	s.Require().NoError(err)
 	created, err := repo.Create(ctx, d)
 	s.Require().NoError(err)

@@ -149,7 +149,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	create := commands.EPPCreateDomainCommand{
 		Name: "epp." + tld, Period: 3, PeriodUnit: "y", RegistrantID: "c" + rar1,
 		Contacts:  []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
-		HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: "Domain-Auth-1!",
+		HostNames: []string{"ns1." + rar1 + ".net"}, AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		DSData: []commands.EPPDSData{{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4"}},
 	}
 
@@ -167,13 +167,14 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	assert.Regexp(t, `^\d+_DOM-EPPTEST$`, dom.RoID.String(), "minted with the configured repository ID")
 
 	t.Run("the domain is stored as registered", func(t *testing.T) {
-		info, err := svc.Info(ctx, scope1, create.Name)
+		info, err := svc.Info(ctx, scope1, create.Name, nil)
 		require.NoError(t, err)
 		d := info.Domain
 		assert.Equal(t, dom.RoID, d.RoID, "read back as it was minted")
 		assert.Equal(t, entities.ClIDType(rar1), d.CrRr)
 		assert.Equal(t, entities.ClIDType("c"+rar1), d.RegistrantID)
-		assert.Equal(t, entities.AuthInfoType("Domain-Auth-1!"), d.AuthInfo)
+		assert.True(t, d.AuthInfo.Matches("Tr4nsf3r-C0de-Xq9#Lm2!"), "stored as a hash that matches the code (RFC 9154)")
+		assert.NotContains(t, string(d.AuthInfo), "Tr4nsf3r-C0de-Xq9#Lm2!")
 		require.Len(t, d.Hosts, 1)
 		assert.Equal(t, "ns1."+rar1+".net", d.Hosts[0].Name.String())
 		assert.WithinDuration(t, d.CreatedAt.AddDate(3, 0, 0), d.ExpiryDate, time.Second)
@@ -201,7 +202,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		require.ErrorIs(t, err, ErrDomainExists)
 	})
 	t.Run("another registrar cannot read it", func(t *testing.T) {
-		_, err := svc.Info(ctx, scope2, create.Name)
+		_, err := svc.Info(ctx, scope2, create.Name, nil)
 		require.ErrorIs(t, err, entities.ErrEPPNotSponsor)
 	})
 	t.Run("its registration event does not carry the authInfo (#484)", func(t *testing.T) {
@@ -210,7 +211,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 			Where("subject = ? AND type = ?", create.Name, "domain.registered").Scan(&rows).Error)
 		require.Len(t, rows, 1)
 		for _, col := range []string{rows[0].Command, rows[0].BeforeState, rows[0].AfterState, rows[0].Data} {
-			assert.NotContains(t, col, "Domain-Auth-1!")
+			assert.NotContains(t, col, "Tr4nsf3r-C0de-Xq9#Lm2!")
 		}
 		assert.Contains(t, rows[0].Command, "[redacted]")
 	})

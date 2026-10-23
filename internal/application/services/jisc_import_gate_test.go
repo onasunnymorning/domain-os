@@ -87,7 +87,8 @@ func TestJiscImportToDirectDB_UnknownRegistrarStopsBeforeAnyWrite(t *testing.T) 
 	require.Zero(t, countRows(t, db, `SELECT COUNT(*) FROM domains WHERE tld_name = 'ac.uk'`))
 }
 
-func TestJiscImportToDirectDB_PassingQAImportsWithGeneratedAuthInfos(t *testing.T) {
+// Contacts are given generated codes; domains none (RFC 9154: unset is the normal state).
+func TestJiscImportToDirectDB_PassingQAImportsContactAuthInfosAndNoDomainCodes(t *testing.T) {
 	db := authInfoTestDB(t)
 	clID := seedFixtures(t, db, "ac.uk", 91003)
 	jsonPath := writeJiscJSON(t, gateRecords("qa-one.ac.uk", "qa-two.ac.uk", "qa-three.ac.uk")...)
@@ -100,7 +101,7 @@ func TestJiscImportToDirectDB_PassingQAImportsWithGeneratedAuthInfos(t *testing.
 
 	require.Equal(t, int64(3), countRows(t, db, `SELECT COUNT(*) FROM domains WHERE tld_name = 'ac.uk'`))
 	require.Equal(t, int64(3), countRows(t, db, `SELECT COUNT(*) FROM contacts WHERE cl_id = ?`, clID))
-	requireGeneratedAuthInfos(t, 3, storedAuthInfos(t, db, `SELECT name AS key, auth_info FROM domains WHERE tld_name = ?`, "ac.uk"))
+	require.Zero(t, countRows(t, db, `SELECT COUNT(*) FROM domains WHERE tld_name = 'ac.uk' AND auth_info IS NOT NULL`), "an imported domain was given a transfer code")
 	requireGeneratedAuthInfos(t, 3, storedAuthInfos(t, db, `SELECT id AS key, auth_info FROM contacts WHERE cl_id = ?`, clID))
 	_, err := os.Stat(strings.TrimSuffix(jsonPath, filepath.Ext(jsonPath)) + "_runreport.json")
 	require.NoError(t, err, "a run that passed the gate writes its run report")

@@ -30,7 +30,7 @@ func newTestTLDWithGAPhase(tldName string) *entities.TLD {
 
 // newTestDomain builds a minimal domain in "ok" state with the given expiry.
 func newTestDomain(name, clid, roid string, expiry time.Time) *entities.Domain {
-	d, _ := entities.NewDomain(roid, name, clid, "Auth1234!@")
+	d, _ := entities.NewDomain(roid, name, clid, "Tr4nsf3r-C0de-Xq9#Lm2!")
 	d.ExpiryDate = expiry
 	d.Status.OK = true
 	return d
@@ -704,7 +704,7 @@ func TestBatchRestoreDomains_DomainNotFound(t *testing.T) {
 // newPendingRestoreDomain builds a domain in pendingRestore state with an
 // expiry date in the recent past, as left behind by Domain.Restore().
 func newPendingRestoreDomain(name, clid, roid string) *entities.Domain {
-	d, _ := entities.NewDomain(roid, name, clid, "Auth1234!@")
+	d, _ := entities.NewDomain(roid, name, clid, "Tr4nsf3r-C0de-Xq9#Lm2!")
 	d.ExpiryDate = time.Now().UTC().AddDate(0, 0, -20)
 	d.Status.OK = false
 	d.Status.PendingRestore = true

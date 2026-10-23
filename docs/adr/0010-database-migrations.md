@@ -79,6 +79,15 @@ is made as **expand → contract across two releases**:
 1. Release N adds the new shape. Code writes both shapes and reads the new one.
 2. Release N+1 removes the old shape in an explicit, reviewed migration step.
 
+A **one-way data change** (data the earlier release can no longer read, and
+that cannot be turned back) is not made safe by expand → contract alone. Before v1, with
+no traffic to keep up, such a change ships as a documented **cutover**: stop the
+services that write the data, run `migrate`, start the new release, and never
+roll back past it. The first was RFC 9154's hashing of domain transfer codes
+(`migrateDomainAuthInfo`; see `docs/epp/POLICY_REFERENCE.md`, *Transfer codes*).
+After v1 such a change needs a staged design instead: readers and writers that
+accept both forms for a release, then the rewrite.
+
 The first time a change needs a contract step, it triggers [#410](https://github.com/onasunnymorning/domain-os/issues/410):
 adopt a versioned tool (goose or atlas) for those steps, run by the same
 `migrate` job, under the same lock and version record.

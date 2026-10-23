@@ -28,7 +28,7 @@ func TestEPPDomainWritesOverPostgres_HoldAndRaces(t *testing.T) {
 	name := "races." + f.tld
 	_, err := f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
 		Name: name, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
-		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Domain-Auth-1!",
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}}, AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		HostNames: []string{"ns1." + f.rar1 + ".net"},
 	})
 	require.NoError(t, err)

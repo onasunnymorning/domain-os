@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useDomain, useDomainQuote } from "@/lib/hooks/useDomains";
 import { formatDistanceToNow } from "date-fns";
 import type { DomainDetail } from "@/lib/types/domain";
-import { HelpCircle, Eye, EyeOff, Server, Repeat, RefreshCcw } from "lucide-react";
+import { HelpCircle, Server, Repeat, RefreshCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -69,7 +69,6 @@ export default function DomainDetailPage() {
   const router = useRouter();
   const name = decodeURIComponent(params.name || "");
   const { data, isLoading, error } = useDomain(name, !!name);
-  const [showAuth, setShowAuth] = useState(false);
   const [showRawHosts, setShowRawHosts] = useState(false);
   const domain = (data || {}) as DomainDetail;
 
@@ -492,30 +491,20 @@ export default function DomainDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Contacts & Access</CardTitle>
-              <CardDescription>Auth info and contact handles</CardDescription>
+              <CardDescription>Transfer code and contact handles</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">AuthInfo</div>
+                <div className="text-xs text-muted-foreground">Transfer code (AuthInfo)</div>
+                {/* RFC 9154: the registry keeps only a hash of the code and never returns it.
+                    It shows only whether one is set; see /docs/domain-transfers. */}
                 <div className="flex items-center gap-2">
-                  <code className="px-2 py-1 bg-muted rounded text-sm">
-                    {domain.AuthInfo ? (showAuth ? domain.AuthInfo : '••••••••••••••') : '-'}
-                  </code>
-                  {domain.AuthInfo && (
-                    <>
-                      <Button variant="outline" size="icon" aria-label={showAuth ? 'Hide AuthInfo' : 'Show AuthInfo'} onClick={() => setShowAuth((v) => !v)}>
-                        {showAuth ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                      <CopyButton
-                        value={domain.AuthInfo!}
-                        variant="outline"
-                        size="icon"
-                        aria-label="Copy AuthInfo"
-                        tooltip="Copy AuthInfo"
-                        iconClassName="h-4 w-4"
-                      />
-                    </>
-                  )}
+                  <Badge variant={domain.AuthInfoSet ? 'default' : 'outline'} aria-label="Transfer code status">
+                    {domain.AuthInfoSet ? 'Set' : 'Not set'}
+                  </Badge>
+                  <Link href="/docs/domain-transfers" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+                    How transfer codes work
+                  </Link>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

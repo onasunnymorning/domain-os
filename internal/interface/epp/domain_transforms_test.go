@@ -99,10 +99,12 @@ func TestDomainUpdate(t *testing.T) {
 		requireCode(t, update(rem(`<domain:contact type="admin">registrar1-c1</domain:contact>`), ""), "1000")
 	})
 	t.Run("authorization information", func(t *testing.T) {
-		requireCode(t, update(`<domain:chg><domain:authInfo><domain:pw>New-Auth-2?</domain:pw></domain:authInfo></domain:chg>`, ""), "1000")
-		assert.Equal(t, "New-Auth-2?", text(info(), "//infData/authInfo/pw"))
-		requireCode(t, update(`<domain:chg><domain:authInfo><domain:null/></domain:authInfo></domain:chg>`, ""), "2306")
-		requireCode(t, update(`<domain:chg><domain:authInfo><domain:pw>weak</domain:pw></domain:authInfo></domain:chg>`, ""), "2306")
+		requireCode(t, update(`<domain:chg><domain:authInfo><domain:pw>N3w-Tr4nsf3r-Kq8#Zp5!</domain:pw></domain:authInfo></domain:chg>`, ""), "1000")
+		require.NotNil(t, info().FindElement("//infData/authInfo/pw"), "the sponsor is told a code is set")
+		assert.Empty(t, text(info(), "//infData/authInfo/pw"), "but never sees it")
+		requireCode(t, update(`<domain:chg><domain:authInfo><domain:pw>weak</domain:pw></domain:authInfo></domain:chg>`, ""), "2202")
+		requireCode(t, update(`<domain:chg><domain:authInfo><domain:null/></domain:authInfo></domain:chg>`, ""), "1000")
+		assert.Nil(t, info().FindElement("//infData/authInfo"), "unset: no <domain:authInfo> at all")
 	})
 	t.Run("DNSSEC", func(t *testing.T) {
 		ds := dsDataXML(2371, 13, 2, testDigest)

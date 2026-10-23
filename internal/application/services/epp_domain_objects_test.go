@@ -48,7 +48,7 @@ func validCreate(name string) commands.EPPCreateDomainCommand {
 	return commands.EPPCreateDomainCommand{
 		Name: name, Period: 2, PeriodUnit: "y", RegistrantID: "rar-one-c",
 		Contacts:  []commands.EPPDomainContact{{Type: "admin", ID: "rar-one-c"}, {Type: "tech", ID: "rar-one-c"}},
-		HostNames: []string{"ns1.rar-one.net"}, AuthInfo: "Ab3!Ab3!Ab3!xy",
+		HostNames: []string{"ns1.rar-one.net"}, AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 	}
 }
 
@@ -107,7 +107,7 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 				c.HostNames = append(c.HostNames, fmt.Sprintf("ns%d.rar-one.net", i))
 			}
 		}, entities.ErrMaxHostsPerDomainExceeded},
-		{"weak authInfo", rar1, func(c *commands.EPPCreateDomainCommand) { c.AuthInfo = "" }, entities.ErrInvalidAuthInfo},
+		{"authInfo not random enough (RFC 9154)", rar1, func(c *commands.EPPCreateDomainCommand) { c.AuthInfo = "Secret-Auth-1!" }, entities.ErrAuthInfoNotSecure},
 		{"maxSigLife", rar1, func(c *commands.EPPCreateDomainCommand) { c.MaxSigLife = 604800 }, entities.ErrEPPMaxSigLife},
 		{"key data", rar1, func(c *commands.EPPCreateDomainCommand) { c.KeyData = true }, entities.ErrEPPKeyData},
 		{"RSASHA1 DS", rar1, func(c *commands.EPPCreateDomainCommand) { c.DSData = []commands.EPPDSData{ds(5, 2, digest256)} }, entities.ErrEPPDSAlgorithm},
@@ -230,17 +230,17 @@ func TestEPPDomainInfo(t *testing.T) {
 	reg.AddHost("ns2.mine.test", rar1.String())
 	reg.AddHost("ns1.notmine.test", rar1.String())
 
-	info, err := svc.Info(context.Background(), rar1, "MINE.test")
+	info, err := svc.Info(context.Background(), rar1, "MINE.test", nil)
 	require.NoError(t, err)
 	assert.Equal(t, entities.DomainName("mine.test"), info.Domain.Name)
 	assert.Equal(t, []string{"ns1.mine.test", "ns2.mine.test"}, info.SubordinateHosts)
 
-	_, err = svc.Info(context.Background(), rar2, "mine.test")
+	_, err = svc.Info(context.Background(), rar2, "mine.test", nil)
 	require.ErrorIs(t, err, entities.ErrEPPNotSponsor, "ADR 0006: another registrar gets 2201")
-	_, err = svc.Info(context.Background(), rar1, "absent.test")
+	_, err = svc.Info(context.Background(), rar1, "absent.test", nil)
 	require.ErrorIs(t, err, entities.ErrDomainNotFound)
-	_, err = svc.Info(context.Background(), rar1, "-bad-.test")
+	_, err = svc.Info(context.Background(), rar1, "-bad-.test", nil)
 	require.ErrorIs(t, err, entities.ErrInvalidDomain)
-	_, err = svc.Info(context.Background(), "", "mine.test")
+	_, err = svc.Info(context.Background(), "", "mine.test", nil)
 	require.ErrorIs(t, err, entities.ErrInvalidRegistrarClID, "a missing scope is refused, never treated as all")
 }
