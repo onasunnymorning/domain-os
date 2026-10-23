@@ -95,7 +95,6 @@ const (
 	codeAuthorizationError   = 2201
 	codeParameterPolicyError = 2306
 	codeDataPolicyViolation  = 2308
-	codeCommandFailed        = 2400
 )
 
 // Rule names, for epp_policy_decisions_total{rule}.
@@ -119,6 +118,10 @@ type Decision struct {
 	Msg    string
 	// Wait is how long a Delay holds the command.
 	Wait time.Duration
+	// Reason, for a rate refusal, is a machine-readable reason for the
+	// response's <extValue>: "rate-limit; class=...; scope=...;
+	// retry-after-ms=...".
+	Reason string
 }
 
 // Decide applies the policy's rules to a command of a logged-in session, in
@@ -148,6 +151,32 @@ func Decide(role entities.EPPLoginRole, limits entities.EPPPolicyLimits, c Comma
 // command slows a session down to its rate without failing anything; a
 // client that runs many sessions at once past its rate gets refusals.
 const MaxRateDelay = time.Second
+
+// A session refused for its rate RefusalsBeforeClose times within
+// RefusalWindow is closed with 2502: its client is not backing off.
+const (
+	RefusalsBeforeClose = 10
+	RefusalWindow       = 10 * time.Second
+)
+
+// RefusalStreak counts one session's rate refusals. The zero value is
+// ready; it is not safe for concurrent use (a session runs one command at
+// a time).
+type RefusalStreak struct{ times []time.Time }
+
+// Record counts a refusal at now and reports whether the session has now
+// had RefusalsBeforeClose within RefusalWindow.
+func (r *RefusalStreak) Record(now time.Time) bool {
+	kept := r.times[:0]
+	for _, t := range r.times {
+		if now.Sub(t) < RefusalWindow {
+			kept = append(kept, t)
+		}
+	}
+	kept = append(kept, now)
+	r.times = kept
+	return len(r.times) >= RefusalsBeforeClose
+}
 
 // quotaTTL keeps a day's create count a day past its end, for diagnosis.
 const quotaTTL = 48 * time.Hour
@@ -208,7 +237,9 @@ func QuotaKey(clid entities.ClIDType, now time.Time) string {
 //  2. Command rates: the command takes Cost tokens from the registrar's
 //     bucket for its class and, if it is in a family, the family's, both
 //     at once. If they are there within MaxRateDelay it is held until
-//     then (Delay); if not it is refused with 2400 and takes nothing.
+//     then (Delay); if not it is refused with 2306, with Reason, and takes
+//     nothing. Closing a session that keeps being refused
+//     (RefusalStreak) is the caller's, which holds the session.
 //  3. The create quota: a domain create counts against the registrar's
 //     creates for the UTC day, if its policy caps them. Over the cap it is
 //     refused with 2308.
@@ -236,8 +267,14 @@ func (e *Enforcer) Enforce(ctx context.Context, clid entities.ClIDType, role ent
 		}
 		switch {
 		case !take.Taken:
-			return Decision{Action: Reject, Rule: rule, Code: codeCommandFailed,
-				Msg: fmt.Sprintf("Command failed; %s %s rate is exceeded, try again in %s", whose, class, roundUp(take.Wait))}, nil
+			retry := roundUp(take.Wait)
+			scope := "registrar"
+			if rule == RuleFamilyRate {
+				scope = "family"
+			}
+			return Decision{Action: Reject, Rule: rule, Code: codeParameterPolicyError,
+				Msg:    fmt.Sprintf("Parameter value policy error; %s %s rate is exceeded, try again in %s", whose, class, retry),
+				Reason: fmt.Sprintf("rate-limit; class=%s; scope=%s; retry-after-ms=%d", class, scope, retry.Milliseconds())}, nil
 		case take.Wait > 0:
 			d = Decision{Action: Delay, Rule: rule, Wait: take.Wait}
 		}

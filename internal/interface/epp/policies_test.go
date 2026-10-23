@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -167,11 +168,24 @@ func TestCommandRates(t *testing.T) {
 
 	requireCode(t, c.roundTrip(checkOf(50)), "1000")
 	resp := c.roundTrip(checkOf(3))
-	requireCode(t, resp, "2400")
+	requireCode(t, resp, "2306")
 	assert.Contains(t, msg(resp), "the registrar's check rate is exceeded, try again in")
+	assert.Equal(t, "undef", resp.FindElement("/epp/response/result/extValue/value/*").Tag)
+	assert.Regexp(t, `^rate-limit; class=check; scope=registrar; retry-after-ms=\d+$`, resp.FindElement("/epp/response/result/extValue/reason").Text())
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "rate", "reject"))
 	// The session goes on, and other classes have their own buckets.
 	requireCode(t, c.roundTrip(pollReqXML()), "1300")
+
+	t.Run("a session that keeps being refused is closed with 2502", func(t *testing.T) {
+		for range epppolicy.RefusalsBeforeClose - 2 {
+			requireCode(t, c.roundTrip(checkOf(3)), "2306")
+		}
+		resp := c.roundTrip(checkOf(3))
+		requireCode(t, resp, "2502")
+		assert.Contains(t, msg(resp), "command rate refusals")
+		c.requireClosed()
+		assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "rate", "close"))
+	})
 }
 
 func TestFamilyCommandRates(t *testing.T) {
@@ -189,7 +203,7 @@ func TestFamilyCommandRates(t *testing.T) {
 	two := dial(t, ts.addr)
 	requireCode(t, two.roundTrip(objectsLoginXML("registrar2", "secret-pw-02")), "1000")
 	resp := two.roundTrip(checkOf(20))
-	requireCode(t, resp, "2400")
+	requireCode(t, resp, "2306")
 	assert.Contains(t, msg(resp), "the registrar family's check rate", "the family's bucket is shared by its members")
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "family_rate", "reject"))
 	requireCode(t, two.roundTrip(checkOf(10)), "1000") // what is left fits

@@ -425,8 +425,8 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 | `sessions_per_login` | 10 | 10 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
 | `sessions_per_family` | 40 | 30 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
 | `check_names` | 50 | 50 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
-| `rates` | [Command rates](#command-rates) | [Command rates](#command-rates) | A registrar's commands, a token bucket per class | Held up to 1s, then 2400 |
-| `family_rates` | 3× `rates` | 3× `rates` | A family's commands, across its members, from the family's policy | Held up to 1s, then 2400 |
+| `rates` | [Command rates](#command-rates) | [Command rates](#command-rates) | A registrar's commands, a token bucket per class | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
+| `family_rates` | 3× `rates` | 3× `rates` | A family's commands, across its members, from the family's policy | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
 | `creates_per_day` | 0 (no cap) | 100 | A registrar's successful domain creates per UTC day | 2308 |
 
 Every limit is at least 1, except `creates_per_day`, where 0 is no cap. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
@@ -524,9 +524,24 @@ A family's starting rates are 3× its policy's registrar rates (`family_rates`).
 |---|---|
 | None | The command runs |
 | Up to 1s (`epppolicy.MaxRateDelay`, code) | The command is **held** until its tokens are there, then runs (`action="delay"`, `epp_policy_delay_seconds`). Its tokens are taken when it is held, so it keeps its place. A session that sends one command at a time is slowed to its rate and nothing fails |
-| More than 1s | **2400**, *"Command failed; the registrar's check rate is exceeded, try again in 1.3s"* (or *"the registrar family's"*), and the session continues. No tokens are taken, so a refused command costs nothing. This happens to a client running many sessions at once past its rate |
+| More than 1s | **2306**, *"Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s"* (or *"the registrar family's"*), with a machine-readable reason (below), and the session continues. No tokens are taken, so a refused command costs nothing. This happens to a client running many sessions at once past its rate |
+| The session's 10th refusal within 10s (`epppolicy.RefusalsBeforeClose`, `RefusalWindow`, code) | **2502**, *"Session limit exceeded; server closing connection; 10 command rate refusals within 10s"*, and the session closes (`action="close"`). Its client is not backing off; reconnecting costs a handshake and a login, under the session caps and the lockout |
 
-There is no standard EPP result code for a rate limit. 2400 is the transient failure RFC 5730 says a client can retry; 2502 would close the session, which costs a reconnect and a login.
+A rate refusal carries the reason in the result's `<extValue>` (RFC 5730 §2.6), so a client can tell it from any other 2306 and knows when to try again:
+
+```xml
+<result code="2306">
+  <msg>Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s</msg>
+  <extValue>
+    <value><undef/></value>
+    <reason>rate-limit; class=check; scope=registrar; retry-after-ms=1300</reason>
+  </extValue>
+</result>
+```
+
+`class` is `check`, `info`, `transform` or `poll`; `scope` is `registrar` or `family`. The 2502 that closes a session carries the same reason.
+
+There is no standard EPP result code for a rate limit. A 23xx code says the client broke a policy, which clients do not retry blindly, unlike 2400 (an internal server error, which they may); 2306 is the policy error the registry already uses for the names per check. 2502 alone, as some registries use, would close the session at the first refusal.
 
 **Where the buckets are kept.** In Redis, shared by every node, one key per bucket holding its GCRA *theoretical arrival time* (the time it would be full again), updated by one script for all of a command's buckets at once, on Redis's clock. **If Redis cannot answer** (each call is bounded to 200 ms), the node keeps buckets of its own and sets `epp_policy_store_degraded{store="rates"}`; for 5s after a failure, commands go straight to the node's buckets, so an unresponsive Redis does not slow every command. With N nodes, up to N times a rate can pass while Redis is down (fail-open, ADR 0013).
 

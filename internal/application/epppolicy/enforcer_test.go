@@ -143,13 +143,17 @@ func TestEnforce(t *testing.T) {
 		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, inFamily, Command{Name: "info"})
 		assert.Equal(t, Decision{Action: Delay, Rule: RuleFamilyRate, Wait: 300 * time.Millisecond}, d)
 	})
-	t.Run("a longer one refuses it with 2400", func(t *testing.T) {
+	t.Run("a longer one refuses it with 2306 and a machine-readable reason", func(t *testing.T) {
 		f := &fakeRates{take: entities.EPPRateTake{Wait: 1234 * time.Millisecond}}
 		d, _ := enforcer(f).Enforce(ctx, "rar-a", rw, alone, Command{Name: "update"})
 		assert.Equal(t, Reject, d.Action)
 		assert.Equal(t, RuleRate, d.Rule)
-		assert.Equal(t, 2400, d.Code)
-		assert.Equal(t, "Command failed; the registrar's transform rate is exceeded, try again in 1.3s", d.Msg)
+		assert.Equal(t, 2306, d.Code)
+		assert.Equal(t, "Parameter value policy error; the registrar's transform rate is exceeded, try again in 1.3s", d.Msg)
+		assert.Equal(t, "rate-limit; class=transform; scope=registrar; retry-after-ms=1300", d.Reason)
+		f = &fakeRates{take: entities.EPPRateTake{Wait: 2 * time.Second, Limiting: 1}}
+		d, _ = enforcer(f).Enforce(ctx, "rar-a", rw, inFamily, Command{Name: "check", Objects: 1})
+		assert.Equal(t, "rate-limit; class=check; scope=family; retry-after-ms=2000", d.Reason)
 	})
 	t.Run("an unanswered limiter lets the command through", func(t *testing.T) {
 		f := &fakeRates{takeErr: errors.New("down")}
@@ -185,4 +189,21 @@ func TestEnforce(t *testing.T) {
 		assert.Nil(t, release, "default has no cap")
 		assert.Empty(t, f.quotaKey)
 	})
+}
+
+func TestRefusalStreak(t *testing.T) {
+	var r RefusalStreak
+	now := time.Unix(1_700_000_000, 0)
+	for i := 1; i < RefusalsBeforeClose; i++ {
+		assert.False(t, r.Record(now), "refusal %d", i)
+		now = now.Add(RefusalWindow / RefusalsBeforeClose / 2)
+	}
+	assert.True(t, r.Record(now), "the tenth within the window")
+
+	var spread RefusalStreak
+	now = time.Unix(1_700_000_000, 0)
+	for i := range 3 * RefusalsBeforeClose {
+		assert.False(t, spread.Record(now), "refusal %d, spread out", i)
+		now = now.Add(RefusalWindow / (RefusalsBeforeClose - 2))
+	}
 }

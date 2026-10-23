@@ -2,7 +2,10 @@ package epp
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/beevik/etree"
 
 	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 )
@@ -46,6 +49,9 @@ type policyDecision struct {
 	// code and msg answer a rejected or closed command.
 	code int
 	msg  string
+	// reason, when set, goes in the response's <extValue> (RFC 5730
+	// §2.6), so a client can tell what refused it.
+	reason string
 	// release gives back what the command counted against a quota, if it
 	// does not succeed.
 	release func(context.Context)
@@ -79,7 +85,13 @@ func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecis
 	d, release := p.s.enforcer.Enforce(ctx, auth.ClID, auth.Role, rp, c)
 	switch d.Action {
 	case epppolicy.Reject:
-		return policyDecision{action: policyReject, rule: d.Rule, code: d.Code, msg: d.Msg}
+		if (d.Rule == epppolicy.RuleRate || d.Rule == epppolicy.RuleFamilyRate) && cmd.session.rateRefusals.Record(time.Now()) {
+			// The client is not backing off: end the session.
+			return policyDecision{action: policyClose, rule: d.Rule, code: 2502,
+				msg:    fmt.Sprintf("Session limit exceeded; server closing connection; %d command rate refusals within %s", epppolicy.RefusalsBeforeClose, epppolicy.RefusalWindow),
+				reason: d.Reason}
+		}
+		return policyDecision{action: policyReject, rule: d.Rule, code: d.Code, msg: d.Msg, reason: d.Reason}
 	case epppolicy.Delay:
 		return policyDecision{action: policyDelay, rule: d.Rule, wait: d.Wait, release: release}
 	default:
@@ -130,12 +142,28 @@ func (s *Server) applyPolicy(ctx context.Context, cmd *command) bool {
 		}
 	case policyClose:
 		cmd.respond(d.code, d.msg, nil)
+		addReason(cmd, d.reason)
 		cmd.closeAfterResponse()
 		return false
 	default:
 		cmd.respond(d.code, d.msg, nil)
+		addReason(cmd, d.reason)
 		return false
 	}
+}
+
+// addReason adds reason to the response's result as an <extValue> (RFC
+// 5730 §2.6): <value><undef/></value>, since no one element of the command
+// is at fault, and the reason. Nothing is added for an empty reason.
+func addReason(cmd *command, reason string) {
+	if reason == "" {
+		return
+	}
+	result := cmd.response.FindElement("/epp/response/result")
+	ext := etree.NewElement("extValue")
+	ext.CreateElement("value").CreateElement("undef")
+	ext.CreateElement("reason").SetText(reason)
+	result.AddChild(ext)
 }
 
 // releaseIfFailed gives back what a command counted against a quota if it
