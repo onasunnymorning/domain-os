@@ -117,3 +117,26 @@ Both are recorded first as outbox events with you as actor. A suspension or lock
 ### Drain a node
 
 Send it SIGTERM (a rolling deploy does). `/readyz` answers 503 at once, so the load balancer stops sending it sessions; idle sessions close, in-flight commands get `EPP_DRAIN_TIMEOUT` (30s) to finish, and what is still open then is closed. Registrars reconnect to the other nodes. Their sessions leave the session registry as they close, so session caps free up straight away.
+
+### Load and drop tests
+
+`cmd/tools/eppload` drives an EPP server with many sessions, to measure it or to rehearse a drop. Run it against a test environment, never production: `create` and `drop` register domains. It logs in as one login, whose client certificate must be pinned and whose source network allowed ([§ Credentials](POLICY_REFERENCE.md#credentials-admin-api)); the password is read from `EPP_PASSWORD`.
+
+```bash
+EPP_PASSWORD=... go run ./cmd/tools/eppload -addr epp.test.example:700 -cert client.pem -key client-key.pem -login registrar1 -scenario check -sessions 8 -duration 1m
+```
+
+| Scenario | What every session does | What to read |
+|---|---|---|
+| `check` | `<domain:check>`s of `-check-names` (50) generated names | Checks per second and p99 latency (the target is 250ms), and `rate-limit` refusals once the registrar's check rate is reached |
+| `create` | Creates new names under `-tld`, with `-registrant`, `-contacts admin=…,tech=…` and `-authinfo` | Creates per second, `create-queue` refusals (2400) when the node's slots are taken, the create quota (2308) |
+| `drop` | Races, from `-at`, to create the names in `-names` (one per line), round robin, as a dropcatcher does | Who won each name and when after the start, the 2302s before the release, and the failed-create escalation: holds, `failed-creates` closes (2502) and the 2501 of a suspended login |
+
+The report (`-json` for JSON) has each command's count, rate, result codes and p50, p95, p99 and maximum latency, the refusals by `<extValue>` reason, and how often the server ended a session. With `-reconnect` (the default) a session the server ends logs in again, as a client would, so a drop run shows the whole escalation. Watch the *EPP server* dashboard while it runs.
+
+A drop rehearsal: delete a set of test domains, let their redemption and pending delete periods run out (set them short on the test TLD's phase), and start `drop` before the purge loop's next scheduled run. The names are released at a random offset within its 45-minute window and in a random order ([§ Release of deleted names](POLICY_REFERENCE.md#release-of-deleted-names)), so no session can aim for the moment.
+
+### Fuzz the frame decoder
+
+`make fuzz-epp` (`FUZZTIME=1m` each by default) fuzzes the frame scanner (`FuzzScanFrame`), the whole command pipeline of a logged-in session (`FuzzDispatch`: every frame is answered and none panics the server), and the schema models against xmllint (`FuzzModelsAgreeWithXmllint`). The seeds are the schema corpus; a failing input is saved under `internal/interface/epp/testdata/fuzz` and replayed by `go test` until fixed.
+

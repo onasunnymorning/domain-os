@@ -45,7 +45,7 @@ var (
 
 // testClientCertificate is one client certificate for the whole test
 // binary, so the default credentials can pin it.
-func testClientCertificate(t *testing.T) tls.Certificate {
+func testClientCertificate(t testing.TB) tls.Certificate {
 	t.Helper()
 	clientCertOnce.Do(func() { clientCert, clientCertErr = SelfSignedCertificate() })
 	require.NoError(t, clientCertErr)
@@ -61,7 +61,7 @@ func certificatePEM(c tls.Certificate) []byte {
 // from the same testCredentials share both, as the nodes of a cluster share
 // the database and Redis.
 type testCredentials struct {
-	t        *testing.T
+	t        testing.TB
 	store    *memstore.EPPCredentials
 	registry *memstore.EPPSessions
 	// shared, when set, replaces registry: the Redis one, in the test that
@@ -181,7 +181,7 @@ func (p *testPolicies) family(name, policy string, members ...string) {
 }
 
 // newTestCredentials seeds the default test registrar.
-func newTestCredentials(t *testing.T) *testCredentials {
+func newTestCredentials(t testing.TB) *testCredentials {
 	t.Helper()
 	tc := &testCredentials{
 		t:        t,
