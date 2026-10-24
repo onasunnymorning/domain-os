@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -79,7 +80,10 @@ func cli(args []string) error {
 	if err != nil {
 		return fmt.Errorf("client certificate: %w", err)
 	}
-	host, _, _ := strings.Cut(o.Addr, ":")
+	host, _, err := net.SplitHostPort(o.Addr)
+	if err != nil {
+		return fmt.Errorf("-addr: %w", err)
+	}
 	o.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, ServerName: host, MinVersion: tls.VersionTLS12,
 		InsecureSkipVerify: *insecure} //nolint:gosec // G402: -insecure is for a local server's self-signed certificate
 	o.Create.Contacts = map[string]string{}

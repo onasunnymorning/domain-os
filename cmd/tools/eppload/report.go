@@ -27,14 +27,17 @@ type report struct {
 
 // commandReport is one command's results.
 type commandReport struct {
-	Count     int           `json:"count"`
-	PerSecond float64       `json:"per_second"`
-	Codes     map[int]int   `json:"codes"`
-	P50       time.Duration `json:"p50"`
-	P95       time.Duration `json:"p95"`
-	P99       time.Duration `json:"p99"`
-	Max       time.Duration `json:"max"`
-	latencies []time.Duration
+	Count     int     `json:"count"`
+	PerSecond float64 `json:"per_second"`
+	// NamesPerSecond is the names a check scenario's checks carried: what
+	// the check rate limit counts.
+	NamesPerSecond float64       `json:"names_per_second,omitempty"`
+	Codes          map[int]int   `json:"codes"`
+	P50            time.Duration `json:"p50"`
+	P95            time.Duration `json:"p95"`
+	P99            time.Duration `json:"p99"`
+	Max            time.Duration `json:"max"`
+	latencies      []time.Duration
 }
 
 func quantile(sorted []time.Duration, q float64) time.Duration {
@@ -77,6 +80,9 @@ func buildReport(o options, logs []*sessionLog, d *drop, elapsed time.Duration) 
 			cr.PerSecond = float64(cr.Count) / elapsed.Seconds()
 		}
 	}
+	if cr := rep.Commands["domain:check"]; cr != nil && o.Scenario == "check" {
+		cr.NamesPerSecond = cr.PerSecond * float64(o.CheckNames)
+	}
 	if d != nil {
 		for _, n := range d.order {
 			r := d.won[n]
@@ -109,7 +115,11 @@ func (r *report) print(w io.Writer) {
 		for _, code := range codes {
 			parts = append(parts, fmt.Sprintf("%d×%d", code, cr.Codes[code]))
 		}
-		fmt.Fprintf(w, "  %-14s %7d (%.1f/s)  p50 %s  p95 %s  p99 %s  max %s  [%s]\n", c, cr.Count, cr.PerSecond,
+		rate := fmt.Sprintf("%.1f/s", cr.PerSecond)
+		if cr.NamesPerSecond > 0 {
+			rate += fmt.Sprintf(", %.0f names/s", cr.NamesPerSecond)
+		}
+		fmt.Fprintf(w, "  %-14s %7d (%s)  p50 %s  p95 %s  p99 %s  max %s  [%s]\n", c, cr.Count, rate,
 			cr.P50.Round(time.Microsecond), cr.P95.Round(time.Microsecond), cr.P99.Round(time.Microsecond), cr.Max.Round(time.Microsecond), strings.Join(parts, " "))
 	}
 	if len(r.Reasons) > 0 {

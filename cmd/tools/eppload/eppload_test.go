@@ -169,6 +169,10 @@ func TestCheckScenario(t *testing.T) {
 	assert.Positive(t, cr.Count)
 	assert.Equal(t, cr.Count, cr.Codes[1000])
 	assert.Positive(t, cr.PerSecond)
+	assert.InDelta(t, cr.PerSecond*5, cr.NamesPerSecond, 0.001, "names per second, what the check rate counts")
+	var out bytes.Buffer
+	rep.print(&out)
+	assert.Contains(t, out.String(), "names/s")
 	assert.GreaterOrEqual(t, cr.P99, cr.P50)
 	assert.Equal(t, 3, rep.Commands["login"].Codes[1000])
 	assert.Zero(t, rep.Errors)
