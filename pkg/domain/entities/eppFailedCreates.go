@@ -12,6 +12,18 @@ var ErrInvalidCreateOutcomeRange = errors.New("invalid range of days")
 // ErrEPPSuspensionNotFound is a login that is not suspended.
 var ErrEPPSuspensionNotFound = errors.New("the login is not suspended")
 
+// EventEPPLoginSuspended records a login suspended for failed creates, by
+// the EPP node that suspended it.
+const EventEPPLoginSuspended = "epp.login.suspended"
+
+// EPPLoginSuspendedData is an epp.login.suspended event's data: the
+// suspension, the strike that caused it, and where the create came from.
+type EPPLoginSuspendedData struct {
+	EPPLoginSuspension
+	Strikes  int    `json:"strikes"`
+	ClientIP string `json:"client_ip"`
+}
+
 // EventEPPLoginSuspensionLifted records an operator ending a login's
 // suspension for failed creates early.
 const EventEPPLoginSuspensionLifted = "epp.login.suspension_lifted"

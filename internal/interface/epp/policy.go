@@ -90,7 +90,7 @@ func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecis
 	switch d.Action {
 	case epppolicy.Close:
 		if d.Suspended {
-			p.s.loginSuspended(auth, cmd.session)
+			p.s.loginSuspended(ctx, auth, cmd.session, d)
 		}
 		return policyDecision{action: policyClose, rule: d.Rule, code: d.Code, msg: d.Msg, reason: d.Reason}
 	case epppolicy.Reject:
@@ -174,11 +174,20 @@ func addReason(cmd *command, reason string) {
 	result.AddChild(ext)
 }
 
+// eventSource is the outbox source of what the EPP server records on its
+// own, as for <newPW>.
+const eventSource = "domain-os/epp"
+
 // loginSuspended raises the alert for a login just suspended for failed
 // creates and ends its other sessions on this node; the session that was
 // suspended is closed by its command's answer. Other nodes refuse the
 // login's next domain create and its next login.
-func (s *Server) loginSuspended(auth *entities.EPPAuthenticatedLogin, from *session) {
+//
+// It also records an epp.login.suspended event, with the system as actor.
+// The suspension holds whether or not the event is written: Redis holds
+// the suspension, and the event is its record, so a failed write is logged
+// and counted (epp_events_lost_total), not a reason to let the login go on.
+func (s *Server) loginSuspended(ctx context.Context, auth *entities.EPPAuthenticatedLogin, from *session, d epppolicy.Decision) {
 	s.metrics.loginsSuspended.WithLabelValues(string(auth.ClID)).Inc()
 	s.logger.Error("EPP login suspended for creating registered names past the failed-create budget",
 		"clid", auth.ClID, "login", auth.LoginID, "connection_id", from.id, "client_ip", from.clientIP,
@@ -187,6 +196,17 @@ func (s *Server) loginSuspended(auth *entities.EPPAuthenticatedLogin, from *sess
 		if sess != from && sess.loggedInAs() == string(auth.LoginID) {
 			s.endSession(sess.id, endedSuspended)
 		}
+	}
+	e := entities.NewDomainEvent(eventSource, entities.EventEPPLoginSuspended, string(auth.ClID),
+		fmt.Sprintf("EPP login %s suspended for creating registered names past the failed-create budget", auth.LoginID),
+		entities.EPPLoginSuspendedData{EPPLoginSuspension: d.Suspension, Strikes: d.Strikes, ClientIP: from.clientIP})
+	e.Actor = "system"
+	e.AfterState = d.Suspension
+	ectx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedStoreTimeout*4)
+	defer cancel()
+	if err := s.events.Publish(ectx, e); err != nil {
+		s.metrics.eventsLost.WithLabelValues(entities.EventEPPLoginSuspended).Inc()
+		s.logger.Error("EPP login suspension event not written", "clid", auth.ClID, "login", auth.LoginID, "error", err)
 	}
 }
 

@@ -81,6 +81,7 @@ type metrics struct {
 	checkNames              prometheus.Histogram
 	policyDelay             prometheus.Histogram
 	loginsSuspended         *prometheus.CounterVec
+	eventsLost              *prometheus.CounterVec
 	createQueueWait         prometheus.Histogram
 	createQueueTimeouts     prometheus.Counter
 }
@@ -205,6 +206,10 @@ func newMetrics() *metrics {
 			Name: "epp_create_queue_timeouts_total",
 			Help: "<domain:create>s refused with 2400 for want of a slot within EPP_CREATE_QUEUE_WAIT.",
 		}),
+		eventsLost: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_events_lost_total",
+			Help: "Outbox events the EPP server could not write, by event type. What they record still happened.",
+		}, []string{"event"}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -216,7 +221,7 @@ func newMetrics() *metrics {
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
 		m.credentialsRefreshed, m.credentialRefreshErrors, m.policiesRefreshed, m.policyRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
-		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay, m.loginsSuspended, m.createQueueWait, m.createQueueTimeouts,
+		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay, m.loginsSuspended, m.eventsLost, m.createQueueWait, m.createQueueTimeouts,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

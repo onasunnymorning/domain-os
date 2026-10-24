@@ -132,8 +132,11 @@ type Decision struct {
 	// scope=...; suspended-for-ms=...".
 	Reason string
 	// Suspended is set when this command's strike suspended its login, for
-	// the caller to end the login's other sessions and raise the alert.
-	Suspended bool
+	// the caller to end the login's other sessions, raise the alert and
+	// record the event; Suspension and Strikes describe it.
+	Suspended  bool
+	Suspension entities.EPPLoginSuspension
+	Strikes    int
 }
 
 // Decide applies the policy's rules to a command of a logged-in session, in
@@ -398,7 +401,12 @@ func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EP
 	switch {
 	case st.Suspended > 0:
 		left := st.Suspended.Round(time.Second)
-		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing, Suspended: st.NewlySuspended,
+		sus := entities.EPPLoginSuspension{ClID: who.ClID, Login: who.Login, Scope: scope, EndsAt: e.now().Add(st.Suspended).UTC().Truncate(time.Second)}
+		if st.Over > 0 && rp.Family != nil {
+			sus.Family = rp.Family.Name
+		}
+		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing,
+			Suspended: st.NewlySuspended, Suspension: sus, Strikes: st.Strikes,
 			Msg:    fmt.Sprintf("Session limit exceeded; server closing connection; the login is suspended for %s for creating registered names", left),
 			Reason: fmt.Sprintf("failed-creates; scope=%s; suspended-for-ms=%d", scope, left.Milliseconds())}, false
 	case st.Strikes > e.esc.TarpitStrikes:

@@ -201,6 +201,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Rates:          rates,
 		FailedCreates:  failedCreates,
 		CreateOutcomes: outcomes,
+		Events:         events,
 		Audit:          audit,
 		Logger:         logger,
 		NewID:          func() string { return strconv.FormatInt(ids.GenerateID(), 10) },

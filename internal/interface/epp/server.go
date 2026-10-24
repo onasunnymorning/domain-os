@@ -31,6 +31,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 // forceCloseGrace is how long Shutdown waits for sessions to unwind after it
@@ -76,6 +77,9 @@ type Options struct {
 	// CreateOutcomes keeps each registrar's daily counts of creates that
 	// created a domain and that failed for a registered name. Required.
 	CreateOutcomes epppolicy.CreateOutcomes
+	// Events records what the server decides on its own, such as a login
+	// suspended for failed creates, in the outbox. Required.
+	Events repositories.EventPublisher
 	// Escalation, if set, replaces epppolicy.DefaultEscalation; tests
 	// shorten it.
 	Escalation *epppolicy.Escalation
@@ -104,6 +108,7 @@ type Server struct {
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
 	enforcer *epppolicy.Enforcer
+	events   repositories.EventPublisher
 	// creates admits <domain:create>s, a fair share at a time.
 	creates *createGate
 	watch   credentialWatch
@@ -162,6 +167,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.CreateOutcomes == nil {
 		return nil, errors.New("epp: Options.CreateOutcomes is required")
 	}
+	if opts.Events == nil {
+		return nil, errors.New("epp: Options.Events is required")
+	}
 	if opts.Config.Commands.CreatesInFlight < 1 || opts.Config.Commands.CreateQueueWait <= 0 {
 		return nil, errors.New("epp: Config.Commands.CreatesInFlight and CreateQueueWait must be positive")
 	}
@@ -185,6 +193,7 @@ func NewServer(opts Options) (*Server, error) {
 	s.router = s.routes()
 	s.policySource = opts.Policies
 	s.policies.Store(entities.DefaultEPPPolicySet())
+	s.events = opts.Events
 	s.enforcer = epppolicy.NewEnforcer(opts.Rates, opts.FailedCreates, opts.CreateOutcomes)
 	if opts.Escalation != nil {
 		s.enforcer.WithEscalation(*opts.Escalation)

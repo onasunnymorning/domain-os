@@ -270,6 +270,17 @@ func TestFailedCreateBudget(t *testing.T) {
 	c.requireClosed()
 	other.requireClosed() // the login's other sessions end too
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.loginsSuspended, testRegistrar))
+	suspended := creds.events.of(entities.EventEPPLoginSuspended)
+	require.Len(t, suspended, 1)
+	assert.Equal(t, "system", suspended[0].Actor)
+	data, ok := suspended[0].Data.(entities.EPPLoginSuspendedData)
+	require.True(t, ok)
+	assert.Equal(t, entities.ClIDType(testRegistrar), data.ClID)
+	assert.Equal(t, testLogin, data.Login)
+	assert.Equal(t, "registrar", data.Scope)
+	assert.Equal(t, 4, data.Strikes, "past SuspendAfter (3)")
+	assert.WithinDuration(t, time.Now().Add(time.Minute), data.EndsAt, 2*time.Second)
+	assert.NotEmpty(t, data.ClientIP)
 
 	resp = dial(t, ts.addr).roundTrip(objectsLoginXML(testLogin, testPassword))
 	requireCode(t, resp, "2501")
@@ -310,4 +321,23 @@ func TestCreatesWaitForASlot(t *testing.T) {
 	running, waiting := ts.creates.inFlight()
 	assert.Zero(t, running)
 	assert.Zero(t, waiting)
+}
+
+// A suspension holds even when its event cannot be written.
+func TestSuspensionWithoutItsEvent(t *testing.T) {
+	creds := newTestCredentials(t)
+	tight := entities.DefaultEPPPolicyLimits()
+	tight.FailedCreates = entities.EPPFailedCreateBudget{Failures: 1, RatioPercent: 100}
+	creds.policies.assign(testRegistrar, "tight", tight)
+	creds.escalation = &epppolicy.Escalation{TarpitStrikes: 0, TarpitStep: time.Millisecond, SuspendAfter: 0, SuspendFor: time.Minute}
+	creds.events.err = errors.New("database down")
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(objectsLoginXML(testLogin, testPassword)), "1000")
+	requireCode(t, c.roundTrip(createXML("registered.test", createOpts{})), "2302")
+	resp := c.roundTrip(createXML("registered.test", createOpts{}))
+	requireCode(t, resp, "2502")
+	assert.Contains(t, msg(resp), "suspended")
+	assert.Equal(t, 1.0, counterOf(t, ts.metrics.eventsLost, entities.EventEPPLoginSuspended))
+	requireCode(t, dial(t, ts.addr).roundTrip(objectsLoginXML(testLogin, testPassword)), "2501")
 }
