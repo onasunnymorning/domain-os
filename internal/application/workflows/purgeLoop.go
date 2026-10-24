@@ -14,6 +14,10 @@ import (
 
 const (
 	maxPurgeFailureSamples = 50
+	// defaultReleaseWindowMinutes is how long after a scheduled run starts
+	// its purge may begin: the hourly schedule leaves 15 minutes for the
+	// purge itself before the next run.
+	defaultReleaseWindowMinutes = 45
 )
 
 // PurgeLoopParams defines the input parameters for the PurgeLoop workflow.
@@ -26,13 +30,27 @@ type PurgeLoopParams struct {
 	// ContinuationCount tracks how many times this run has continued-as-new.
 	// Managed by the workflow — leave zero when starting a run.
 	ContinuationCount int `json:"continuationCount,omitempty"`
+	// ReleaseWindowMinutes is the window the purge starts at a random
+	// offset within (randomised release, docs/epp/ARCHITECTURE.md §5).
+	// Unset is 45 minutes; 0 starts at once, for a manual run.
+	ReleaseWindowMinutes *int `json:"releaseWindowMinutes,omitempty"`
+}
+
+// releaseWindow is the run's release window.
+func (p PurgeLoopParams) releaseWindow() time.Duration {
+	if p.ReleaseWindowMinutes == nil {
+		return defaultReleaseWindowMinutes * time.Minute
+	}
+	return time.Duration(max(*p.ReleaseWindowMinutes, 0)) * time.Minute
 }
 
 // PurgeLoopResult is the structured output of the PurgeLoop workflow.
 type PurgeLoopResult struct {
-	StartedAt      time.Time          `json:"startedAt"`
-	CompletedAt    time.Time          `json:"completedAt"`
-	ReferenceTime  time.Time          `json:"referenceTime"`
+	StartedAt     time.Time `json:"startedAt"`
+	CompletedAt   time.Time `json:"completedAt"`
+	ReferenceTime time.Time `json:"referenceTime"`
+	// ReleaseOffset is how long the run waited before purging.
+	ReleaseOffset  time.Duration      `json:"releaseOffset"`
 	TotalFound     int64              `json:"totalFound"`
 	TotalProcessed int                `json:"totalProcessed"`
 	Purged         int                `json:"purged"`
@@ -61,6 +79,13 @@ func (r *PurgeLoopResult) addFailure(domainName, errMsg string) {
 
 // PurgeLoop permanently deletes domains that are pendingDelete and whose purge
 // date has passed.
+//
+// The release is randomised (anti-dropcatch): a scheduled run waits a
+// random offset within its release window before it purges, and each
+// batch is purged in a random order, so the moment a name is released
+// cannot be known in advance. Both draws are activities (ReleaseOffset,
+// ShuffleForRelease), keeping the workflow deterministic (INV-06).
+// Continuations, which drain a large batch, do not wait again.
 //
 // The run locks a single reference time which both the count and list queries
 // evaluate (serialized as the `before` cutoff), eliminating TOCTOU races. The
@@ -111,6 +136,23 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 	}
 	result.ReferenceTime = referenceTime
 
+	// Randomised release: wait a random offset within the window first.
+	// What is purged is still what was purgeable at the reference time.
+	if !params.DryRun && params.ContinuationCount == 0 {
+		if window := params.releaseWindow(); window > 0 {
+			var offset time.Duration
+			if err := workflow.ExecuteActivity(ctx, activities.ReleaseOffset, window).Get(ctx, &offset); err != nil {
+				result.Notes = append(result.Notes, "Release offset not drawn; purging at once: "+err.Error())
+			} else {
+				result.ReleaseOffset = offset
+				if err := workflow.Sleep(ctx, offset); err != nil {
+					result.CompletedAt = workflow.Now(ctx)
+					return result, err
+				}
+			}
+		}
+	}
+
 	// Both count and list serialize this cutoff to the admin API, so they
 	// evaluate the same instant.
 	query := queries.PurgeableDomainsQuery{
@@ -159,10 +201,16 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 		return result, nil
 	}
 
-	// Step 3: Batch purge
+	// Step 3: Batch purge, in a random order.
 	domainNames := make([]string, len(domains))
 	for i, d := range domains {
 		domainNames[i] = d.Name
+	}
+	var shuffled []string
+	if err := workflow.ExecuteActivity(ctx, activities.ShuffleForRelease, domainNames).Get(ctx, &shuffled); err != nil {
+		result.Notes = append(result.Notes, "Release order not shuffled; purging in listed order: "+err.Error())
+	} else {
+		domainNames = shuffled
 	}
 
 	var purgeBatch services.BatchResult

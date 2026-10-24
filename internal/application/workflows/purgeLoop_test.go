@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -31,6 +32,8 @@ func (s *PurgeLoopWorkflowTestSuite) SetupTest() {
 		},
 		activity.RegisterOptions{Name: "BatchPurgeDomains"},
 	)
+	s.env.RegisterActivity(activities.ReleaseOffset)
+	s.env.RegisterActivity(activities.ShuffleForRelease)
 }
 
 func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_NoDomains() {
@@ -214,6 +217,56 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_ContinueAsNew() {
 	err := s.env.GetWorkflowError()
 	s.Require().Error(err)
 	s.Contains(err.Error(), "continue as new")
+}
+
+// A scheduled run waits its random offset before it purges, and purges in
+// the order drawn.
+func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_RandomisedRelease() {
+	start := s.env.Now()
+	var countedAt time.Time
+	s.env.OnActivity(activities.ReleaseOffset, mock.Anything, 45*time.Minute).Return(20*time.Minute, nil).Once()
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { countedAt = s.env.Now() }).Return(&response.CountResult{Count: 3}, nil)
+	s.env.OnActivity(activities.ListPurgeableDomains, mock.Anything, mock.Anything, mock.Anything).
+		Return([]response.DomainExpiryItem{{Name: "a.test"}, {Name: "b.test"}, {Name: "c.test"}}, nil)
+	s.env.OnActivity(activities.ShuffleForRelease, mock.Anything, []string{"a.test", "b.test", "c.test"}).
+		Return([]string{"c.test", "a.test", "b.test"}, nil).Once()
+	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, []string{"c.test", "a.test", "b.test"}).
+		Return(services.BatchResult{Succeeded: []string{"c.test", "a.test", "b.test"}}, nil).Once()
+
+	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{})
+	s.Require().True(s.env.IsWorkflowCompleted())
+	s.Require().NoError(s.env.GetWorkflowError())
+	var result PurgeLoopResult
+	s.Require().NoError(s.env.GetWorkflowResult(&result))
+	s.Equal(20*time.Minute, result.ReleaseOffset)
+	s.Equal(3, result.Purged)
+	s.GreaterOrEqual(countedAt.Sub(start), 20*time.Minute, "the purge began after the offset")
+	s.Empty(result.Notes)
+}
+
+// A continuation, a dry run and a run with no window purge at once.
+func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_NoReleaseWait() {
+	zero := 0
+	for _, p := range []PurgeLoopParams{{ContinuationCount: 1}, {DryRun: true}, {ReleaseWindowMinutes: &zero}} {
+		s.SetupTest()
+		s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
+		s.env.ExecuteWorkflow(PurgeLoop, p)
+		s.Require().NoError(s.env.GetWorkflowError())
+		s.env.AssertNotCalled(s.T(), "ReleaseOffset", mock.Anything, mock.Anything)
+		var result PurgeLoopResult
+		s.Require().NoError(s.env.GetWorkflowResult(&result))
+		s.Zero(result.ReleaseOffset, "%+v", p)
+	}
+}
+
+func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_ReleaseWindowFromParams() {
+	ten := 10
+	s.env.OnActivity(activities.ReleaseOffset, mock.Anything, 10*time.Minute).Return(time.Minute, nil).Once()
+	s.env.OnActivity(activities.GetPurgeableDomainCount, mock.Anything, mock.Anything, mock.Anything).Return(&response.CountResult{Count: 0}, nil)
+	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{ReleaseWindowMinutes: &ten})
+	s.Require().NoError(s.env.GetWorkflowError())
+	s.env.AssertExpectations(s.T())
 }
 
 func TestPurgeLoopWorkflowTestSuite(t *testing.T) {

@@ -14,6 +14,8 @@
 
 The Purge Loop is a scheduled workflow that runs every hour to permanently remove domains that are `pendingDelete` and whose purge date has passed. It locks a single reference time which **both** the count and list queries evaluate — the cutoff is serialized to the admin API as the `before` parameter, so the server can no longer silently substitute its own `time.Now()` (a defect in the previous implementation, where the query object was accepted but never put on the wire; `ReferenceTimeOverride` and dry-run previews were no-ops as a result).
 
+**Randomised release** (anti-dropcatch, `docs/epp/ARCHITECTURE.md` §5): a scheduled run waits a random offset within its release window (`releaseWindowMinutes`, 45 by default; `0` for none) before it counts and lists, and each batch is purged in a random order, so the moment a name is released cannot be known in advance. Both draws are activities (`ReleaseOffset`, `ShuffleForRelease`, from `crypto/rand`), so the workflow stays deterministic: a replay reads the recorded draw. The reference time is locked before the wait, so what is purged is what was purgeable when the run started. Dry runs and continuations do not wait; the offset is in the result (`releaseOffset`) once the run has made it.
+
 **Idempotency**: the batch purge activity reports already-purged domains (deleted by an earlier retry or concurrently) as `Skipped` instead of failing them, so activity retries converge.
 
 **Hot-loop protection**: continue-as-new fires only when the run made progress (purged + skipped > 0) and at most `maxContinuationRuns` (50) times per scheduled run.
@@ -22,13 +24,15 @@ The Purge Loop is a scheduled workflow that runs every hour to permanently remov
 
 ```mermaid
 graph TD
-    A["Lock Reference Time"] --> B["Count Purgeable Domains"]
+    A["Lock Reference Time"] --> R["Wait a random offset (first run, not dry)"]
+    R --> B["Count Purgeable Domains"]
     B --> C{"Count = 0?"}
     C -- Yes --> DONE1["✅ Return result (nothing to process)"]
     C -- No --> D["List Purgeable Domains"]
     D --> E{"Dry Run?"}
     E -- Yes --> DONE2["✅ Return Dry Run result"]
-    E -- No --> F["Batch Purge Domains"]
+    E -- No --> S["Shuffle the release order"]
+    S --> F["Batch Purge Domains"]
     F --> H["Aggregate results into PurgeLoopResult"]
     H --> I{"Batch Cap Reached?"}
     I -- No --> DONE3["✅ Return final structured result"]

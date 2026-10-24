@@ -437,6 +437,10 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 					loopParams.ReferenceTimeOverride = &parsedTime
 				}
 			}
+			if rw, ok := req.Params["releaseWindowMinutes"].(float64); ok && rw >= 0 {
+				minutes := int(rw)
+				loopParams.ReleaseWindowMinutes = &minutes
+			}
 		}
 		wfID = fmt.Sprintf("purge-loop-%s", ts)
 		workflow = workflows.PurgeLoop
