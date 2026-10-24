@@ -170,6 +170,8 @@ var Registry = []EnvVar{
 	{Name: "EPP_SESSION_HEARTBEAT", Services: []Service{ServiceEPP}, Default: "30s", Description: "How often a node renews its sessions in the registry. At most half of EPP_SESSION_LEASE"},
 	{Name: "EPP_MAX_SESSIONS_PER_SOURCE_IP", Services: []Service{ServiceEPP}, Default: "20", Description: "Live sessions from one source address, across every node. Over it, the connection is closed before the greeting"},
 	{Name: "EPP_CHECK_PARALLELISM", Services: []Service{ServiceEPP}, Default: "8", Description: "Availability lookups one <check> runs at once. Below EPP_DB_MAX_OPEN_CONNS"},
+	{Name: "EPP_MAX_CREATES_IN_FLIGHT", Services: []Service{ServiceEPP}, Default: "10", Description: "<domain:create>s one EPP node runs at once; waiting creates are let in one registrar or family at a time, in turn. Below EPP_DB_MAX_OPEN_CONNS"},
+	{Name: "EPP_CREATE_QUEUE_WAIT", Services: []Service{ServiceEPP}, Default: "5s", Description: "Longest a <domain:create> waits for a slot before it is refused with 2400"},
 	{Name: "EPP_AUDIT_RETENTION", Services: []Service{ServiceEPP}, Default: "8760h", Description: "How long the EPP audit log keeps each command and response; older rows are deleted hourly"},
 	{Name: "EPP_AUDIT_QUERY_RESPONSES", Services: []Service{ServiceEPP}, Default: "false", Description: "Also keep the response frames of queries (check, info, poll req) in the audit log. Transforms always keep both frames"},
 	{Name: "EPP_AUDIT_BUFFER", Services: []Service{ServiceEPP}, Default: "10000", Description: "Query records one node may hold before writing them in a batch. When full, records are written one by one; none is dropped"},

@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-23T17:34:04Z",
+  "generated": "2026-10-24T01:30:58Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -443,6 +443,16 @@
             "name": "EPP_CHECK_PARALLELISM",
             "default": "8",
             "description": "Availability lookups one \u003ccheck\u003e runs at once. Below EPP_DB_MAX_OPEN_CONNS"
+          },
+          {
+            "name": "EPP_MAX_CREATES_IN_FLIGHT",
+            "default": "10",
+            "description": "\u003cdomain:create\u003es one EPP node runs at once; waiting creates are let in one registrar or family at a time, in turn. Below EPP_DB_MAX_OPEN_CONNS"
+          },
+          {
+            "name": "EPP_CREATE_QUEUE_WAIT",
+            "default": "5s",
+            "description": "Longest a \u003cdomain:create\u003e waits for a slot before it is refused with 2400"
           },
           {
             "name": "EPP_AUDIT_RETENTION",

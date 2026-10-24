@@ -281,3 +281,33 @@ func TestFailedCreateBudget(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(4), got[0].Failed, "the creates that ran and failed; the closed ones did not run")
 }
+
+// A <domain:create> waits for one of the node's create slots, and is
+// refused with 2400 if none comes within the queue wait.
+func TestCreatesWaitForASlot(t *testing.T) {
+	creds := newTestCredentials(t)
+	cfg := testConfig()
+	cfg.Commands.CreatesInFlight, cfg.Commands.CreateQueueWait = 1, 50*time.Millisecond
+	ts := startServerWith(t, cfg, listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	c.login()
+
+	hold, _, err := ts.creates.acquire(context.Background(), "someone-else", time.Second)
+	require.NoError(t, err)
+	start := time.Now()
+	resp := c.roundTrip(createXML("queued.test", createOpts{}))
+	requireCode(t, resp, "2400")
+	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
+	assert.Contains(t, msg(resp), "busy with creates")
+	assert.Regexp(t, `^create-queue; waited-ms=\d+$`, resp.FindElement("/epp/response/result/extValue/reason").Text())
+	assert.Nil(t, creds.domains.registry.Domain("queued.test"))
+	var m dto.Metric
+	require.NoError(t, ts.metrics.createQueueTimeouts.Write(&m))
+	assert.Equal(t, 1.0, m.GetCounter().GetValue())
+
+	go func() { time.Sleep(20 * time.Millisecond); hold() }()
+	requireCode(t, c.roundTrip(createXML("queued.test", createOpts{})), "1000") // let in when the slot frees
+	running, waiting := ts.creates.inFlight()
+	assert.Zero(t, running)
+	assert.Zero(t, waiting)
+}

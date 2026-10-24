@@ -56,7 +56,7 @@ func testConfig() config.EPP {
 			Heartbeat: time.Second,
 			PerSource: 20,
 		},
-		Commands: config.EPPCommands{CheckParallelism: 4},
+		Commands: config.EPPCommands{CheckParallelism: 4, CreatesInFlight: 10, CreateQueueWait: 5 * time.Second},
 	}
 }
 

@@ -42,6 +42,13 @@ type EPP struct {
 type EPPCommands struct {
 	// CheckParallelism is how many lookups one <check> runs at once.
 	CheckParallelism int
+	// CreatesInFlight is how many <domain:create>s the node runs at once.
+	// Creates waiting for a slot are let in fairly: one registrar (or
+	// family) at a time, in turn.
+	CreatesInFlight int
+	// CreateQueueWait is the longest a create waits for a slot before it
+	// is refused with 2400.
+	CreateQueueWait time.Duration
 }
 
 // EPPAudit is the EPP audit log (docs/epp/ARCHITECTURE.md §6).
@@ -194,6 +201,8 @@ var eppDefaults = EPP{
 	},
 	Commands: EPPCommands{
 		CheckParallelism: 8,
+		CreatesInFlight:  10,
+		CreateQueueWait:  5 * time.Second,
 	},
 	Audit: EPPAudit{
 		Retention: 365 * 24 * time.Hour,
@@ -266,6 +275,8 @@ func LoadEPP() (EPP, error) {
 	collect(setPositiveInt(&cfg.Sessions.PerSource, "EPP_MAX_SESSIONS_PER_SOURCE_IP", os.Getenv("EPP_MAX_SESSIONS_PER_SOURCE_IP")))
 
 	collect(setPositiveInt(&cfg.Commands.CheckParallelism, "EPP_CHECK_PARALLELISM", os.Getenv("EPP_CHECK_PARALLELISM")))
+	collect(setPositiveInt(&cfg.Commands.CreatesInFlight, "EPP_MAX_CREATES_IN_FLIGHT", os.Getenv("EPP_MAX_CREATES_IN_FLIGHT")))
+	collect(setDuration(&cfg.Commands.CreateQueueWait, "EPP_CREATE_QUEUE_WAIT", os.Getenv("EPP_CREATE_QUEUE_WAIT")))
 
 	collect(setDuration(&cfg.Audit.Retention, "EPP_AUDIT_RETENTION", os.Getenv("EPP_AUDIT_RETENTION")))
 	cfg.Audit.QueryResponses, err = parseBoolDefaultFalse("EPP_AUDIT_QUERY_RESPONSES", os.Getenv("EPP_AUDIT_QUERY_RESPONSES"))
@@ -311,6 +322,9 @@ func (c EPP) validate() error {
 	}
 	if c.Commands.CheckParallelism >= c.DB.MaxOpenConns {
 		errs = append(errs, fmt.Errorf("EPP_CHECK_PARALLELISM (%d) must be below EPP_DB_MAX_OPEN_CONNS (%d), so one <check> cannot take every connection", c.Commands.CheckParallelism, c.DB.MaxOpenConns))
+	}
+	if c.Commands.CreatesInFlight >= c.DB.MaxOpenConns {
+		errs = append(errs, fmt.Errorf("EPP_MAX_CREATES_IN_FLIGHT (%d) must be below EPP_DB_MAX_OPEN_CONNS (%d), so creates cannot take every connection", c.Commands.CreatesInFlight, c.DB.MaxOpenConns))
 	}
 	if c.Limits.MaxHandshakes > c.Limits.MaxConnections {
 		errs = append(errs, fmt.Errorf("EPP_MAX_HANDSHAKES (%d) exceeds EPP_MAX_CONNECTIONS (%d)", c.Limits.MaxHandshakes, c.Limits.MaxConnections))

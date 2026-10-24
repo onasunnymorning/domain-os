@@ -104,7 +104,9 @@ type Server struct {
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
 	enforcer *epppolicy.Enforcer
-	watch    credentialWatch
+	// creates admits <domain:create>s, a fair share at a time.
+	creates *createGate
+	watch   credentialWatch
 	// policySource is read into policies every refresh; until the first
 	// read succeeds, policies holds the built-in policies' starting limits.
 	policySource interfaces.EPPPolicySource
@@ -160,6 +162,9 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.CreateOutcomes == nil {
 		return nil, errors.New("epp: Options.CreateOutcomes is required")
 	}
+	if opts.Config.Commands.CreatesInFlight < 1 || opts.Config.Commands.CreateQueueWait <= 0 {
+		return nil, errors.New("epp: Config.Commands.CreatesInFlight and CreateQueueWait must be positive")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
@@ -175,6 +180,8 @@ func NewServer(opts Options) (*Server, error) {
 		newID:    opts.NewID,
 		served:   make(chan struct{}),
 	}
+	s.creates = newCreateGate(s.cfg.Commands.CreatesInFlight)
+	s.metrics.watchCreates(s.creates)
 	s.router = s.routes()
 	s.policySource = opts.Policies
 	s.policies.Store(entities.DefaultEPPPolicySet())
