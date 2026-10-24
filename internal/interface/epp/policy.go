@@ -84,7 +84,9 @@ func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecis
 	}
 	rp := p.s.policies.Load().ForRegistrar(auth.ClID)
 	d, release := p.s.enforcer.Enforce(ctx, epppolicy.Caller{ClID: auth.ClID, Login: string(auth.LoginID), Role: auth.Role}, rp, c)
-	cmd.recorded = func(ctx context.Context, code int) { p.s.enforcer.Recorded(ctx, auth.ClID, rp, c, code) }
+	if epppolicy.IsDomainCreate(c) {
+		cmd.recorded = func(ctx context.Context, code int) { p.s.enforcer.Recorded(ctx, auth.ClID, rp, c, code) }
+	}
 	switch d.Action {
 	case epppolicy.Close:
 		if d.Suspended {

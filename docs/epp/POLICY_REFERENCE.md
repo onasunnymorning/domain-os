@@ -572,7 +572,7 @@ A dropcatcher sends creates for names that are about to be released, and most ar
 
 **Counting.** Every `<domain:create>` answered 1000 or 1001 (a domain created) or 2302 (the name is registered) is counted, per registrar and per family, over the **last 5 minutes** (the current minute and the four before it). Other answers are not counted. A registrar or family is **over budget** when it has at least `failures` creates answered 2302 **and** they are at least `ratio_percent` of its counted creates. Both must hold: a busy registrar with some failures, or a quiet one with a few, is within it.
 
-**Escalation.** While the registrar or its family is over budget, each `<domain:create>` the registrar sends is a **strike** (`epppolicy.DefaultEscalation`, code):
+**Escalation.** While the registrar or its family is over budget, each `<domain:create>` the registrar sends is a **strike** against the one over budget (`epppolicy.DefaultEscalation`, code). A family's strikes are shared by its members, so a family over budget is escalated as one, however many accreditations send the creates. Strikes belong to the registrar or family, not the login: a login that carries a run on past the 20th strike is suspended at its first create.
 
 | Strike | Answer |
 |---|---|
@@ -580,7 +580,7 @@ A dropcatcher sends creates for names that are about to be released, and most ar
 | 11th to 20th | **2502**, *"the registrar's creates of registered names are over their budget"* (or *"the registrar family's"*), and the session closes. `<extValue>` reason: `failed-creates; scope=registrar; suspended-for-ms=0` |
 | 21st | The **login is suspended for 15 minutes**: 2502 and the session closes, with reason `failed-creates; scope=…; suspended-for-ms=900000`. The node's other sessions of the login end (`epp_sessions_ended_total{reason="login_suspended"}`); on other nodes, the login's next domain create closes its session the same way. A login while suspended is refused with 2501, *"the login is suspended for … for creating registered names"* (`epp_logins_total{result="suspended"}`). `epp_logins_suspended_total{clid}` counts suspensions: alert on any |
 
-Strikes expire 5 minutes after the last; they stop while the registrar and its family are back within budget. A suspension ends on its own; there is no API to lift one early yet (operator runbook, Phase 7).
+Strikes expire 5 minutes after the last; they stop while the registrar and its family are back within budget. A suspension's reason names the scope (`registrar` or `family`) whose strikes caused it. A suspension ends on its own; there is no API to lift one early yet (operator runbook, Phase 7).
 
 **Accounting.** Each registrar's creates per UTC day, created and refused 2302, are kept in `epp_create_outcomes` as the basis for a future fee. Each node writes its counts every minute and when it stops. They are read with `GET /registrars/{clid}/epp/create-outcomes?from=YYYY-MM-DD&to=YYYY-MM-DD` (permission `epp:policy:admin`; the last 30 days by default, at most 366), one row per day with any creates.
 

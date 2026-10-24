@@ -290,7 +290,8 @@ func eppPolicyError(ctx *gin.Context, err error) {
 	case errors.Is(err, entities.ErrEPPPolicyBuiltIn), errors.Is(err, entities.ErrEPPPolicyInUse),
 		errors.Is(err, entities.ErrRegistrarInFamily):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily):
+	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily),
+		errors.Is(err, entities.ErrInvalidCreateOutcomeRange):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "the EPP policy request failed"})

@@ -1,6 +1,13 @@
 package entities
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrInvalidCreateOutcomeRange is a request for daily create counts whose
+// days are out of order or too far apart.
+var ErrInvalidCreateOutcomeRange = errors.New("invalid range of days")
 
 // The failed-create budget (docs/epp/ARCHITECTURE.md §5, anti-dropcatch):
 // domain creates answered 2302 because the name is registered are counted
@@ -24,10 +31,10 @@ type EPPFailedCreateScope struct {
 type EPPFailedCreateCheck struct {
 	// Login is the login sending the create, whose suspension is checked.
 	Login string
-	// Strikes names the strike count of the registrar sending it.
-	Strikes string
 	// Scopes are the counts to hold the create to: the registrar's, and
-	// its family's if it is in one.
+	// its family's if it is in one. The first over its budget takes the
+	// strike, so a family over budget is escalated as one, however many
+	// of its members send the creates.
 	Scopes []EPPFailedCreateScope
 	// SuspendAfter is how many strikes suspend the login, for SuspendFor.
 	SuspendAfter int
@@ -35,8 +42,10 @@ type EPPFailedCreateCheck struct {
 }
 
 // EPPFailedCreateStanding is the answer: whether the login is suspended,
-// and if not, how many strikes the registrar has, a strike being one
-// create sent while over budget (this one included).
+// and if not, how many strikes the scope over budget has, a strike being
+// one create sent while it is over (this one included). A scope's strikes
+// are shared by every login sending its creates: a login that carries on a
+// run past SuspendAfter is suspended at its first strike.
 type EPPFailedCreateStanding struct {
 	// Suspended is how much longer the login is suspended; 0 if it is not.
 	Suspended time.Duration
@@ -44,7 +53,8 @@ type EPPFailedCreateStanding struct {
 	NewlySuspended bool
 	// Strikes is 0 when every scope is within its budget.
 	Strikes int
-	// Over is the index of the first scope over its budget.
+	// Over is the index of the first scope over its budget, or of the
+	// scope whose strikes suspended the login.
 	Over int
 }
 

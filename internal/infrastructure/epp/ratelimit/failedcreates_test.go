@@ -15,7 +15,7 @@ import (
 
 func check(budget entities.EPPFailedCreateBudget, family *entities.EPPFailedCreateBudget) entities.EPPFailedCreateCheck {
 	c := entities.EPPFailedCreateCheck{
-		Login: "login-a", Strikes: "rar-a", SuspendAfter: 3, SuspendFor: 15 * time.Minute,
+		Login: "login-a", SuspendAfter: 3, SuspendFor: 15 * time.Minute,
 		Scopes: []entities.EPPFailedCreateScope{{Key: "reg:rar-a", Budget: budget}},
 	}
 	if family != nil {
@@ -64,15 +64,28 @@ func failedCreatesContract(t *testing.T, tr failedCreateTracker) {
 	assert.False(t, st.NewlySuspended)
 	assert.Positive(t, st.Suspended, "and stays suspended")
 
-	t.Run("a family over its budget strikes a member within its own", func(t *testing.T) {
-		c := check(budget, &entities.EPPFailedCreateBudget{Failures: 5, RatioPercent: 50})
-		c.Login, c.Strikes, c.Scopes[0].Key = "login-b", "rar-b", "reg:rar-b"
+	t.Run("a family over its budget is struck as one, whichever member sends the create", func(t *testing.T) {
+		family := &entities.EPPFailedCreateBudget{Failures: 5, RatioPercent: 50}
+		member := func(clid, login string) entities.EPPFailedCreateCheck {
+			c := check(budget, family)
+			c.Login, c.Scopes[0].Key = login, "reg:"+clid
+			return c
+		}
 		record(t, tr, []string{"reg:rar-b", "fam:acme"}, 1, 0)
 		record(t, tr, []string{"reg:rar-c", "fam:acme"}, 4, 4)
-		st, err := tr.Assess(ctx, c)
+		st, err := tr.Assess(ctx, member("rar-b", "login-b"))
 		require.NoError(t, err)
 		assert.Equal(t, 1, st.Strikes)
 		assert.Equal(t, 1, st.Over, "the family's scope")
+		for i := 2; i <= 3; i++ {
+			st, _ = tr.Assess(ctx, member("rar-c", "login-c"))
+			assert.Equal(t, i, st.Strikes, "the family's strikes, not rar-c's own")
+		}
+		st, _ = tr.Assess(ctx, member("rar-d", "login-d"))
+		assert.True(t, st.NewlySuspended, "past SuspendAfter for the family")
+		st, _ = tr.Assess(ctx, member("rar-d", "login-d"))
+		assert.Positive(t, st.Suspended)
+		assert.Equal(t, 1, st.Over, "the suspension remembers it was the family's")
 	})
 }
 
@@ -118,7 +131,7 @@ func TestRedisFailedCreates(t *testing.T) {
 	require.NoError(t, client.FlushDB(ctx).Err())
 	failedCreatesContract(t, NewRedis(client))
 
-	ttl, err := client.PTTL(ctx, strikeKey("rar-a")).Result()
+	ttl, err := client.PTTL(ctx, strikeKey("reg:rar-a")).Result()
 	require.NoError(t, err)
 	assert.InDelta(t, entities.EPPFailedCreateWindow, ttl, float64(time.Second), "strikes expire a window after the last")
 }

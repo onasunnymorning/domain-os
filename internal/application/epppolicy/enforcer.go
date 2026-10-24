@@ -251,8 +251,9 @@ func (e *Enforcer) WithEscalation(x Escalation) *Enforcer {
 // Escalation is the escalation in force.
 func (e *Enforcer) Escalation() Escalation { return e.esc }
 
-// isDomainCreate reports whether c is a <domain:create>.
-func isDomainCreate(c Command) bool { return c.Name == "create" && c.Object == "domain" }
+// IsDomainCreate reports whether c is a <domain:create>, the only command
+// the failed-create budget and the create quota count.
+func IsDomainCreate(c Command) bool { return c.Name == "create" && c.Object == "domain" }
 
 // failedCreateScopes are the counts a registrar's creates are held to: its
 // own and its family's, with their budgets.
@@ -363,7 +364,7 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 			d = Decision{Action: Delay, Rule: rule, Wait: take.Wait}
 		}
 	}
-	if !isDomainCreate(c) {
+	if !IsDomainCreate(c) {
 		return d, nil
 	}
 	if closed, ok := e.failedCreates(ctx, who, rp, &d); !ok {
@@ -385,7 +386,7 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EPPRegistrarPolicy, d *Decision) (Decision, bool) {
 	scopes := failedCreateScopes(who.ClID, rp)
 	st, err := e.failed.Assess(ctx, entities.EPPFailedCreateCheck{
-		Login: who.Login, Strikes: who.ClID.String(), Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
+		Login: who.Login, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
 	})
 	if err != nil {
 		return Decision{}, true
@@ -415,7 +416,7 @@ func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EP
 // (1000 or 1001), or one refused because the name is registered (2302).
 // Other commands and other results are not counted.
 func (e *Enforcer) Recorded(ctx context.Context, clid entities.ClIDType, rp entities.EPPRegistrarPolicy, c Command, code int) {
-	if !isDomainCreate(c) {
+	if !IsDomainCreate(c) {
 		return
 	}
 	var failed bool

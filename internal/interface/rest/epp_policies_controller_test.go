@@ -136,7 +136,9 @@ func TestEPPCreateOutcomesAPI(t *testing.T) {
 	assert.Equal(t, "[]", w.Body.String(), "the last 30 days: none")
 
 	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=yesterday", "").Code)
-	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-10-02&to=2026-10-01", "").Code)
+	w = do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-10-02&to=2026-10-01", "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid range of days")
 	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2024-01-01&to=2026-01-01", "").Code)
 	assert.Equal(t, http.StatusNotFound, do(r, http.MethodGet, "/registrars/nobody/epp/create-outcomes", "").Code)
 }

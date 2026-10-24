@@ -15,9 +15,10 @@ import (
 //
 // Creates are counted per scope (a registrar or a family) in one-minute
 // slots, each holding how many creates failed (2302) and succeeded; the
-// window is the current slot and the four before it. A registrar's strikes
-// count its creates sent while over budget and expire a window after the
-// last; a login's suspension is a key that expires when it ends.
+// window is the current slot and the four before it. A scope's strikes
+// count the creates sent while it is over budget and expire a window after
+// the last; a login's suspension is a key, holding the index of the scope
+// that suspended it, that expires when it ends.
 
 // windowSlots is the number of one-minute slots in the window.
 const windowSlots = int64(entities.EPPFailedCreateWindow / time.Minute)
@@ -25,23 +26,23 @@ const windowSlots = int64(entities.EPPFailedCreateWindow / time.Minute)
 func slotOf(t time.Time) int64 { return t.Unix() / 60 }
 
 func suspensionKey(login string) string { return "epp:suspended:" + login }
-func strikeKey(k string) string         { return "epp:fc-strikes:" + k }
+func strikeKey(scope string) string     { return "epp:fc-strikes:" + scope }
 
 // ---------------------------------------------------------------------------
 // Redis
 // ---------------------------------------------------------------------------
 
 // assessScript is Assess. Slot keys (epp:fc:<scope>:<slot>, hashes of f
-// and s) are named inside the script, so, like the rest of this package,
-// it needs a single Redis, not a cluster.
+// and s) and strike keys (epp:fc-strikes:<scope>) are named inside the
+// script, so, like the rest of this package, it needs a single Redis, not
+// a cluster.
 //
-// KEYS: the suspension, the strikes. ARGV: suspend after, suspend for ms,
-// window ms, slots, scope count, then per scope its key, failures and
-// ratio. Returns {suspended ms, newly suspended 0/1, strikes, over scope
-// from 1}.
+// KEYS: the suspension. ARGV: suspend after, suspend for ms, window ms,
+// slots, scope count, then per scope its key, failures and ratio. Returns
+// {suspended ms, newly suspended 0/1, strikes, scope from 1}.
 var assessScript = redis.NewScript(`
 local suspended = redis.call('PTTL', KEYS[1])
-if suspended > 0 then return {suspended, 0, 0, 0} end
+if suspended > 0 then return {suspended, 0, 0, tonumber(redis.call('GET', KEYS[1])) or 1} end
 local t = redis.call('TIME')
 local slot = math.floor(tonumber(t[1]) / 60)
 local slots = tonumber(ARGV[4])
@@ -57,10 +58,11 @@ for i = 1, tonumber(ARGV[5]) do
   if over == 0 and f >= tonumber(ARGV[base + 2]) and f * 100 >= tonumber(ARGV[base + 3]) * (f + ok) then over = i end
 end
 if over == 0 then return {0, 0, 0, 0} end
-local strikes = redis.call('INCR', KEYS[2])
-redis.call('PEXPIRE', KEYS[2], ARGV[3])
+local strikeKey = 'epp:fc-strikes:' .. ARGV[5 + (over - 1) * 3 + 1]
+local strikes = redis.call('INCR', strikeKey)
+redis.call('PEXPIRE', strikeKey, ARGV[3])
 if strikes > tonumber(ARGV[1]) then
-  redis.call('SET', KEYS[1], '1', 'PX', ARGV[2])
+  redis.call('SET', KEYS[1], over, 'PX', ARGV[2])
   return {tonumber(ARGV[2]), 1, strikes, over}
 end
 return {0, 0, strikes, over}
@@ -88,7 +90,7 @@ func (r *Redis) Assess(ctx context.Context, c entities.EPPFailedCreateCheck) (en
 	for _, s := range c.Scopes {
 		args = append(args, s.Key, s.Budget.Failures, s.Budget.RatioPercent)
 	}
-	v, err := assessScript.Run(ctx, r.client, []string{suspensionKey(c.Login), strikeKey(c.Strikes)}, args...).Int64Slice()
+	v, err := assessScript.Run(ctx, r.client, []string{suspensionKey(c.Login)}, args...).Int64Slice()
 	if err != nil {
 		return entities.EPPFailedCreateStanding{}, fmt.Errorf("assess failed creates: %w", err)
 	}
@@ -137,20 +139,26 @@ type expiring struct {
 	until time.Time
 }
 
+// suspension is a login's suspension and the scope index that caused it.
+type suspension struct {
+	until time.Time
+	scope int
+}
+
 // MemoryFailedCreates keeps the counts on this node only.
 type MemoryFailedCreates struct {
 	now        func() time.Time
 	mu         sync.Mutex
 	slots      map[string]map[int64]*outcomes
 	strikes    map[string]*expiring
-	suspension map[string]time.Time
+	suspension map[string]suspension
 }
 
 // NewMemoryFailedCreates returns node-local counts.
 func NewMemoryFailedCreates() *MemoryFailedCreates {
 	return &MemoryFailedCreates{
 		now: time.Now, slots: map[string]map[int64]*outcomes{},
-		strikes: map[string]*expiring{}, suspension: map[string]time.Time{},
+		strikes: map[string]*expiring{}, suspension: map[string]suspension{},
 	}
 }
 
@@ -159,9 +167,9 @@ func (m *MemoryFailedCreates) Assess(_ context.Context, c entities.EPPFailedCrea
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	if until, ok := m.suspension[c.Login]; ok {
-		if now.Before(until) {
-			return entities.EPPFailedCreateStanding{Suspended: until.Sub(now)}, nil
+	if s, ok := m.suspension[c.Login]; ok {
+		if now.Before(s.until) {
+			return entities.EPPFailedCreateStanding{Suspended: s.until.Sub(now), Over: s.scope}, nil
 		}
 		delete(m.suspension, c.Login)
 	}
@@ -181,19 +189,44 @@ func (m *MemoryFailedCreates) Assess(_ context.Context, c entities.EPPFailedCrea
 	if over < 0 {
 		return entities.EPPFailedCreateStanding{}, nil
 	}
-	e := m.strikes[c.Strikes]
+	key := c.Scopes[over].Key
+	e := m.strikes[key]
 	if e == nil || !now.Before(e.until) {
+		m.sweep(now)
 		e = &expiring{}
-		m.strikes[c.Strikes] = e
+		m.strikes[key] = e
 	}
 	e.n++
 	e.until = now.Add(entities.EPPFailedCreateWindow)
 	st := entities.EPPFailedCreateStanding{Strikes: e.n, Over: over}
 	if e.n > c.SuspendAfter {
-		m.suspension[c.Login] = now.Add(c.SuspendFor)
+		m.suspension[c.Login] = suspension{until: now.Add(c.SuspendFor), scope: over}
 		st.Suspended, st.NewlySuspended = c.SuspendFor, true
 	}
 	return st, nil
+}
+
+// sweepAbove is how many strike counts and suspensions the node keeps
+// before it drops those that have ended.
+const sweepAbove = 1024
+
+// sweep drops strike counts and suspensions that have ended, once there
+// are more than sweepAbove of either.
+func (m *MemoryFailedCreates) sweep(now time.Time) {
+	if len(m.strikes) > sweepAbove {
+		for k, e := range m.strikes {
+			if !now.Before(e.until) {
+				delete(m.strikes, k)
+			}
+		}
+	}
+	if len(m.suspension) > sweepAbove {
+		for k, s := range m.suspension {
+			if !now.Before(s.until) {
+				delete(m.suspension, k)
+			}
+		}
+	}
 }
 
 // Record implements interfaces.EPPFailedCreateTracker. Slots that have
@@ -232,7 +265,7 @@ func (m *MemoryFailedCreates) Record(_ context.Context, scopes []string, failed 
 func (m *MemoryFailedCreates) Suspended(_ context.Context, login string) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return max(m.suspension[login].Sub(m.now()), 0), nil
+	return max(m.suspension[login].until.Sub(m.now()), 0), nil
 }
 
 // ---------------------------------------------------------------------------

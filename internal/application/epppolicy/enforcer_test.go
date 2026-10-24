@@ -273,7 +273,7 @@ func TestFailedCreateEscalation(t *testing.T) {
 		assert.Equal(t, Allow, d.Action)
 		require.NotNil(t, failed.asked)
 		assert.Equal(t, entities.EPPFailedCreateCheck{
-			Login: "login-a", Strikes: "rar-a", SuspendAfter: 20, SuspendFor: 15 * time.Minute,
+			Login: "login-a", SuspendAfter: 20, SuspendFor: 15 * time.Minute,
 			Scopes: []entities.EPPFailedCreateScope{
 				{Key: "reg:rar-a", Budget: gold.Limits.FailedCreates},
 				{Key: "fam:acme", Budget: famPolicy.Limits.FamilyFailedCreates},
@@ -300,6 +300,11 @@ func TestFailedCreateEscalation(t *testing.T) {
 		assert.True(t, d.Suspended, "newly: the caller ends the login's other sessions and raises the alert")
 		assert.Contains(t, d.Msg, "suspended for 15m0s")
 		assert.Equal(t, "failed-creates; scope=registrar; suspended-for-ms=900000", d.Reason)
+	})
+	t.Run("a login suspended by its family's strikes says so", func(t *testing.T) {
+		d, _ := run(entities.EPPFailedCreateStanding{Suspended: 10 * time.Minute, Over: 1}, entities.EPPRateTake{Taken: true})
+		assert.Equal(t, "failed-creates; scope=family; suspended-for-ms=600000", d.Reason)
+		assert.False(t, d.Suspended, "not newly")
 	})
 	t.Run("other commands are not assessed", func(t *testing.T) {
 		failed := &fakeFailed{}

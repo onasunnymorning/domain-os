@@ -38,10 +38,10 @@ const MaxCreateOutcomeDays = 366
 // CreateOutcomes returns a registrar's daily counts of domain creates that
 // created a domain and that failed because the name is registered, from
 // from to to (UTC days, inclusive). to before from, or a span over
-// MaxCreateOutcomeDays, is entities.ErrInvalidEPPPolicy.
+// MaxCreateOutcomeDays, is entities.ErrInvalidCreateOutcomeRange.
 func (s *EPPPolicyService) CreateOutcomes(ctx context.Context, clid string, from, to time.Time) ([]entities.EPPCreateOutcomes, error) {
 	if to.Before(from) || to.Sub(from) > MaxCreateOutcomeDays*24*time.Hour {
-		return nil, fmt.Errorf("%w: from must be on or before to, at most %d days apart", entities.ErrInvalidEPPPolicy, MaxCreateOutcomeDays)
+		return nil, fmt.Errorf("%w: from must be on or before to, at most %d days apart", entities.ErrInvalidCreateOutcomeRange, MaxCreateOutcomeDays)
 	}
 	if _, err := s.registrars.GetByClID(ctx, clid, false); err != nil {
 		return nil, err
