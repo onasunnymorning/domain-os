@@ -21,13 +21,39 @@ import (
 type EPPPolicyService struct {
 	repo       repositories.EPPPolicyRepository
 	registrars repositories.RegistrarRepository
+	outcomes   repositories.EPPCreateOutcomeRepository
 	now        func() time.Time
 }
 
 // NewEPPPolicyService returns the service. registrars checks that an
-// assigned registrar or a family member exists.
-func NewEPPPolicyService(repo repositories.EPPPolicyRepository, registrars repositories.RegistrarRepository) *EPPPolicyService {
-	return &EPPPolicyService{repo: repo, registrars: registrars, now: time.Now}
+// assigned registrar or a family member exists; outcomes holds the
+// registrars' daily create counts.
+func NewEPPPolicyService(repo repositories.EPPPolicyRepository, registrars repositories.RegistrarRepository, outcomes repositories.EPPCreateOutcomeRepository) *EPPPolicyService {
+	return &EPPPolicyService{repo: repo, registrars: registrars, outcomes: outcomes, now: time.Now}
+}
+
+// MaxCreateOutcomeDays is the longest span of days CreateOutcomes returns.
+const MaxCreateOutcomeDays = 366
+
+// CreateOutcomes returns a registrar's daily counts of domain creates that
+// created a domain and that failed because the name is registered, from
+// from to to (UTC days, inclusive). to before from, or a span over
+// MaxCreateOutcomeDays, is entities.ErrInvalidEPPPolicy.
+func (s *EPPPolicyService) CreateOutcomes(ctx context.Context, clid string, from, to time.Time) ([]entities.EPPCreateOutcomes, error) {
+	if to.Before(from) || to.Sub(from) > MaxCreateOutcomeDays*24*time.Hour {
+		return nil, fmt.Errorf("%w: from must be on or before to, at most %d days apart", entities.ErrInvalidEPPPolicy, MaxCreateOutcomeDays)
+	}
+	if _, err := s.registrars.GetByClID(ctx, clid, false); err != nil {
+		return nil, err
+	}
+	out, err := s.outcomes.ListCreateOutcomes(ctx, entities.ClIDType(clid), from, to)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []entities.EPPCreateOutcomes{}
+	}
+	return out, nil
 }
 
 // PolicySet returns every policy, assignment and family, for an EPP node.

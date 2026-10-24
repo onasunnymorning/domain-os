@@ -3,6 +3,7 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -48,6 +49,7 @@ func NewEPPPoliciesController(e *gin.Engine, svc interfaces.EPPPolicyService, ha
 		r.GET("", ctrl.GetRegistrarPolicy)
 		r.PUT("", ctrl.AssignPolicy)
 	}
+	e.GET("/registrars/:clid/epp/create-outcomes", handler, permitted, ctrl.CreateOutcomes)
 	return ctrl
 }
 
@@ -168,6 +170,42 @@ func (ctrl *EPPPoliciesController) AssignPolicy(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, rp)
+}
+
+// CreateOutcomes godoc
+// @Summary A registrar's daily domain create outcomes
+// @Description For each UTC day: domain creates that created a domain, and those refused because the name is registered (2302), the basis for a fee on failed creates. Days with neither are left out. from and to default to the last 30 days, and may be at most 366 days apart.
+// @Tags EPP
+// @Produce json
+// @Param clid path string true "Registrar ClID"
+// @Param from query string false "First UTC day, YYYY-MM-DD"
+// @Param to query string false "Last UTC day, YYYY-MM-DD"
+// @Success 200 {array} entities.EPPCreateOutcomes
+// @Failure 400
+// @Failure 404
+// @Router /registrars/{clid}/epp/create-outcomes [get]
+func (ctrl *EPPPoliciesController) CreateOutcomes(ctx *gin.Context) {
+	to := time.Now().UTC()
+	from := to.AddDate(0, 0, -29)
+	for _, q := range []struct {
+		name string
+		into *time.Time
+	}{{"from", &from}, {"to", &to}} {
+		if v := ctx.Query(q.name); v != "" {
+			t, err := time.Parse(time.DateOnly, v)
+			if err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": q.name + " must be a date, YYYY-MM-DD"})
+				return
+			}
+			*q.into = t
+		}
+	}
+	out, err := ctrl.svc.CreateOutcomes(ctx.Request.Context(), ctx.Param("clid"), from, to)
+	if err != nil {
+		eppPolicyError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, out)
 }
 
 // ListFamilies godoc

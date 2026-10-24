@@ -21,6 +21,8 @@ const (
 const (
 	endedCompromised = "credential_compromised"
 	endedAdminKill   = "admin_kill"
+	// endedSuspended is a session of a login suspended for failed creates.
+	endedSuspended = "login_suspended"
 )
 
 // Audit failures, for epp_audit_errors_total.
@@ -40,6 +42,9 @@ const (
 	storeLockout  = "lockout"
 	storeSessions = "sessions"
 	storeRates    = "rates"
+	// storeFailedCreates is the failed-create budget's counts, strikes and
+	// suspensions.
+	storeFailedCreates = "failed_creates"
 )
 
 // metrics are the EPP server's Prometheus series. They live on their own
@@ -75,6 +80,7 @@ type metrics struct {
 	auditErrors             *prometheus.CounterVec
 	checkNames              prometheus.Histogram
 	policyDelay             prometheus.Histogram
+	loginsSuspended         *prometheus.CounterVec
 }
 
 func newMetrics() *metrics {
@@ -184,6 +190,10 @@ func newMetrics() *metrics {
 			Help:    "How long commands were held for their command rate tokens (decisions with action delay).",
 			Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1},
 		}),
+		loginsSuspended: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "epp_logins_suspended_total",
+			Help: "Logins suspended for creating registered names past the failed-create budget, by registrar. Alert on any.",
+		}, []string{"clid"}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -195,7 +205,7 @@ func newMetrics() *metrics {
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
 		m.credentialsRefreshed, m.credentialRefreshErrors, m.policiesRefreshed, m.policyRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
-		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay,
+		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay, m.loginsSuspended,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

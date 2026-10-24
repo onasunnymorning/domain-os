@@ -428,15 +428,18 @@ The limits each registrar is held to are its **EPP policy**: data, changed throu
 | `rates` | [Command rates](#command-rates) | [Command rates](#command-rates) | A registrar's commands, a token bucket per class | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
 | `family_rates` | 3× `rates` | 3× `rates` | A family's commands, across its members, from the family's policy | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
 | `creates_per_day` | 0 (no cap) | 100 | A registrar's successful domain creates per UTC day | 2308 |
+| `failed_creates` | 100 failures, 90% | 50 failures, 90% | A registrar's domain creates of registered names over 5 minutes | Held, then 2502, then the login suspended ([§ Failed creates](#failed-creates)) |
+| `family_failed_creates` | 300 failures, 90% | 150 failures, 90% | A family's, across its members, from the family's policy | The same, for the member sending the create |
 
-Every limit is at least 1, except `creates_per_day`, where 0 is no cap. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
+Every limit is at least 1, except `creates_per_day`, where 0 is no cap, and a `ratio_percent`, which is 1 to 100. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
 
 1. **Role.** A login with the `readonly` role ([Credentials](#credentials-admin-api)) may check, read (`<info>`, `<transfer op="query">`), poll and log out. Anything that changes the registry (create, update, delete, renew, transfer request, approve, reject or cancel) is 2201, *"this login is read-only"*.
 2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup. For a registrar in a family, the cap is also no more than the family's `check` burst, so a check the family's bucket could never pay for is refused for its size rather than as a rate it could never meet.
 3. **Command rates.** The command takes its tokens from the registrar's bucket for its class and, if the registrar is in a family, the family's ([§ Command rates](#command-rates)).
-4. **Create quota.** A `<domain:create>` counts against the registrar's `creates_per_day` ([§ Quotas](#quotas)).
+4. **Failed creates.** A `<domain:create>` from a login suspended for failed creates, or while the registrar or its family is over its failed-create budget, is escalated ([§ Failed creates](#failed-creates)).
+5. **Create quota.** A `<domain:create>` counts against the registrar's `creates_per_day` ([§ Quotas](#quotas)).
 
-A command refused by one rule is not counted by the later ones. Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, `rate`, `family_rate`, `create_quota`, or `none` for a command allowed at once) and its action (`allow`, `delay`, `reject`).
+A command refused by one rule is not counted by the later ones. Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, `rate`, `family_rate`, `failed_creates`, `create_quota`, or `none` for a command allowed at once) and its action (`allow`, `delay`, `reject`, `close`).
 
 **Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap. A family change also moves the sessions already open: at the reload, a registrar that left a family stops counting against it, and one that joined counts from then on (its open sessions stay open, even over the family's cap).
 
@@ -446,7 +449,7 @@ A command refused by one rule is not counted by the later ones. Session limits a
 |---|---|
 | List policies, the built-in ones included | `GET /epp/policies` |
 | One policy | `GET /epp/policies/{name}` |
-| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
+| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0, "failed_creates": {"failures": 100, "ratio_percent": 90}, "family_failed_creates": {"failures": 300, "ratio_percent": 90}}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
 | Delete a custom policy | `DELETE /epp/policies/{name}` → 204. 409 for a built-in policy, or one a registrar or family is assigned |
 | What applies to a registrar | `GET /registrars/{clid}/epp/policy`: its policy, and its family with the family's policy |
 | Assign a registrar its policy | `PUT /registrars/{clid}/epp/policy` with `{"policy": "gold"}`; `"default"` or `""` removes the assignment. 404 for an unknown registrar or policy |
@@ -561,12 +564,24 @@ The nameserver and DS caps are rules of the registry's data, the same for every 
 |---|---|---|---|
 | `creates_per_day`: successful `<domain:create>`s per registrar per UTC day | 0 (no cap) | 100 | 2308, *"Data management policy violation; the registrar may create 100 domains a day (UTC), and has"* |
 
-A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Each count is a reservation with its own ID, so a request to Redis retried after a lost reply neither takes a second slot nor gives back another create's. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Failed creates are Phase 6's measure.
+A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Each count is a reservation with its own ID, so a request to Redis retried after a lost reply neither takes a second slot nor gives back another create's. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Creates of registered names are the failed-create budget's ([§ Failed creates](#failed-creates)).
 
-### Failed creates *(Phase 6)*
+### Failed creates
 
-| Setting | Default |
+A dropcatcher sends creates for names that are about to be released, and most are refused because the name is still registered (2302). The **failed-create budget** ([§ Policies](#policies): `failed_creates`, and a family's `family_failed_creates`) is when that is a run rather than ordinary use.
+
+**Counting.** Every `<domain:create>` answered 1000 or 1001 (a domain created) or 2302 (the name is registered) is counted, per registrar and per family, over the **last 5 minutes** (the current minute and the four before it). Other answers are not counted. A registrar or family is **over budget** when it has at least `failures` creates answered 2302 **and** they are at least `ratio_percent` of its counted creates. Both must hold: a busy registrar with some failures, or a quiet one with a few, is within it.
+
+**Escalation.** While the registrar or its family is over budget, each `<domain:create>` the registrar sends is a **strike** (`epppolicy.DefaultEscalation`, code):
+
+| Strike | Answer |
 |---|---|
-| Trigger | At least 100 `domain:create` results of 2302 in 5 minutes **and** a failure ratio of at least 90% |
-| Escalation | Tarpit (+1s per command, rising) → 2502 → login suspended for 15m, with an alert |
-| Accounting | Daily failed-create count per registrar, kept as the basis for a future fee |
+| 1st to 10th | The create is **held** 1s per strike (1s, 2s, … 10s), on top of any rate wait, then runs (`rule="failed_creates"`, `action="delay"`) |
+| 11th to 20th | **2502**, *"the registrar's creates of registered names are over their budget"* (or *"the registrar family's"*), and the session closes. `<extValue>` reason: `failed-creates; scope=registrar; suspended-for-ms=0` |
+| 21st | The **login is suspended for 15 minutes**: 2502 and the session closes, with reason `failed-creates; scope=…; suspended-for-ms=900000`. The node's other sessions of the login end (`epp_sessions_ended_total{reason="login_suspended"}`); on other nodes, the login's next domain create closes its session the same way. A login while suspended is refused with 2501, *"the login is suspended for … for creating registered names"* (`epp_logins_total{result="suspended"}`). `epp_logins_suspended_total{clid}` counts suspensions: alert on any |
+
+Strikes expire 5 minutes after the last; they stop while the registrar and its family are back within budget. A suspension ends on its own; there is no API to lift one early yet (operator runbook, Phase 7).
+
+**Accounting.** Each registrar's creates per UTC day, created and refused 2302, are kept in `epp_create_outcomes` as the basis for a future fee. Each node writes its counts every minute and when it stops. They are read with `GET /registrars/{clid}/epp/create-outcomes?from=YYYY-MM-DD&to=YYYY-MM-DD` (permission `epp:policy:admin`; the last 30 days by default, at most 366), one row per day with any creates.
+
+**Where it is counted.** In Redis, shared by every node: per-minute counts per registrar and family, a registrar's strikes, and a login's suspension, all on Redis's clock. **If Redis cannot answer** (each call bounded to 200 ms, then skipped for 5s), the node counts on its own and sets `epp_policy_store_degraded{store="failed_creates"}`; a suspension made on the node holds after Redis returns.

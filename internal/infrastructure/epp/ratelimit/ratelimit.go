@@ -1,6 +1,6 @@
-// Package ratelimit keeps the EPP command rate buckets and daily create
-// quotas (docs/epp/ARCHITECTURE.md §5, docs/epp/POLICY_REFERENCE.md
-// § Command rates).
+// Package ratelimit keeps the EPP command rate buckets, daily create
+// quotas and the failed-create budget's counts (docs/epp/ARCHITECTURE.md
+// §5, docs/epp/POLICY_REFERENCE.md § Command rates and § Failed creates).
 //
 // Buckets are GCRA (the generic cell rate algorithm): each bucket is one
 // number, its theoretical arrival time (TAT), the time at which it would be
@@ -292,43 +292,53 @@ const (
 	retryPrimary = 5 * time.Second
 )
 
+// breaker decides when to try the primary store: always, except for
+// retryPrimary after it fails. degraded is called with true when the
+// primary fails and false when it answers again, for a metric and an
+// alert.
+type breaker struct {
+	degraded  func(bool)
+	now       func() time.Time
+	mu        sync.Mutex
+	skipUntil time.Time
+}
+
+func newBreaker(degraded func(bool)) breaker {
+	if degraded == nil {
+		degraded = func(bool) {}
+	}
+	return breaker{degraded: degraded, now: time.Now}
+}
+
+// usePrimary reports whether to try the primary now.
+func (b *breaker) usePrimary() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return !b.now().Before(b.skipUntil)
+}
+
+// result records how the primary answered.
+func (b *breaker) result(err error) {
+	b.mu.Lock()
+	if err != nil {
+		b.skipUntil = b.now().Add(retryPrimary)
+	} else {
+		b.skipUntil = time.Time{}
+	}
+	b.mu.Unlock()
+	b.degraded(err != nil)
+}
+
 // FailOpen uses primary and, when it fails, fallback, for retryPrimary
-// before trying primary again. It never returns an error. degraded is
-// called with true when primary fails and false when it answers again, for
-// a metric and an alert.
+// before trying primary again. It never returns an error.
 type FailOpen struct {
+	breaker
 	primary, fallback limiter
-	degraded          func(bool)
-	now               func() time.Time
-	mu                sync.Mutex
-	skipUntil         time.Time
 }
 
 // NewFailOpen returns a limiter that degrades from primary to fallback.
 func NewFailOpen(primary, fallback limiter, degraded func(bool)) *FailOpen {
-	if degraded == nil {
-		degraded = func(bool) {}
-	}
-	return &FailOpen{primary: primary, fallback: fallback, degraded: degraded, now: time.Now}
-}
-
-// usePrimary reports whether to try the primary now.
-func (f *FailOpen) usePrimary() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return !f.now().Before(f.skipUntil)
-}
-
-// result records how the primary answered.
-func (f *FailOpen) result(err error) {
-	f.mu.Lock()
-	if err != nil {
-		f.skipUntil = f.now().Add(retryPrimary)
-	} else {
-		f.skipUntil = time.Time{}
-	}
-	f.mu.Unlock()
-	f.degraded(err != nil)
+	return &FailOpen{breaker: newBreaker(degraded), primary: primary, fallback: fallback}
 }
 
 // Take implements interfaces.EPPRateLimiter.

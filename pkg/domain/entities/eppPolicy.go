@@ -91,6 +91,38 @@ type EPPPolicyLimits struct {
 	// CreatesPerDay caps the registrar's domain creates per UTC day; 0 is
 	// no cap. Only creates that succeed count.
 	CreatesPerDay int `json:"creates_per_day"`
+	// FailedCreates is when the registrar's domain creates of names that
+	// are already registered (2302) are a dropcatch run, and escalated.
+	FailedCreates EPPFailedCreateBudget `json:"failed_creates"`
+	// FamilyFailedCreates is the same for a family, across its members. It
+	// applies through the family's policy only.
+	FamilyFailedCreates EPPFailedCreateBudget `json:"family_failed_creates"`
+}
+
+// EPPFailedCreateBudget is when domain creates refused because the name is
+// registered (2302) are over budget, over the last five minutes: at least
+// Failures of them, making up at least RatioPercent of the creates that
+// were answered 2302 or created a domain. Both must hold, so a busy
+// registrar with some failures, or a quiet one with a few, is within it.
+type EPPFailedCreateBudget struct {
+	Failures     int `json:"failures"`
+	RatioPercent int `json:"ratio_percent"`
+}
+
+// Over reports whether failed and succeeded creates are over the budget.
+func (b EPPFailedCreateBudget) Over(failed, succeeded int) bool {
+	return failed >= b.Failures && failed*100 >= b.RatioPercent*(failed+succeeded)
+}
+
+func (b EPPFailedCreateBudget) validate(prefix string) []string {
+	var bad []string
+	if b.Failures < 1 {
+		bad = append(bad, prefix+".failures must be at least 1")
+	}
+	if b.RatioPercent < 1 || b.RatioPercent > 100 {
+		bad = append(bad, prefix+".ratio_percent must be 1 to 100")
+	}
+	return bad
 }
 
 // EPPRate is a token bucket: PerSecond tokens a second, holding at most
@@ -147,13 +179,16 @@ func DefaultEPPPolicyLimits() EPPPolicyLimits {
 	return EPPPolicyLimits{
 		SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 40, CheckNames: 50,
 		Rates: rates, FamilyRates: rates.Times(3),
+		FailedCreates:       EPPFailedCreateBudget{Failures: 100, RatioPercent: 90},
+		FamilyFailedCreates: EPPFailedCreateBudget{Failures: 300, RatioPercent: 90},
 	}
 }
 
 // ProbationEPPPolicyLimits are the built-in "probation" policy's starting
 // limits: a new registrar's, until it has shown how it uses the registry.
-// Its sessions and check names are the default's; its family cap and
-// command rates are lower, and it may create 100 domains a day.
+// Its sessions and check names are the default's; its family cap, command
+// rates and failed-create budget are lower, and it may create 100 domains
+// a day.
 func ProbationEPPPolicyLimits() EPPPolicyLimits {
 	rates := EPPCommandRates{
 		Check: EPPRate{PerSecond: 100, Burst: 500}, Info: EPPRate{PerSecond: 10, Burst: 50},
@@ -162,6 +197,8 @@ func ProbationEPPPolicyLimits() EPPPolicyLimits {
 	return EPPPolicyLimits{
 		SessionsPerRegistrar: 10, SessionsPerLogin: 10, SessionsPerFamily: 30, CheckNames: 50,
 		Rates: rates, FamilyRates: rates.Times(3), CreatesPerDay: 100,
+		FailedCreates:       EPPFailedCreateBudget{Failures: 50, RatioPercent: 90},
+		FamilyFailedCreates: EPPFailedCreateBudget{Failures: 150, RatioPercent: 90},
 	}
 }
 
@@ -185,6 +222,8 @@ func (l EPPPolicyLimits) Validate() error {
 	if l.CreatesPerDay < 0 {
 		bad = append(bad, "creates_per_day must be at least 0")
 	}
+	bad = append(bad, l.FailedCreates.validate("failed_creates")...)
+	bad = append(bad, l.FamilyFailedCreates.validate("family_failed_creates")...)
 	if len(bad) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalidEPPPolicy, strings.Join(bad, "; "))
 	}

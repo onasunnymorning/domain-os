@@ -8,6 +8,7 @@ import (
 	"github.com/beevik/etree"
 
 	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // policyAction is what the policy decides for a command.
@@ -82,8 +83,14 @@ func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecis
 		p.s.metrics.checkNames.Observe(float64(c.Objects))
 	}
 	rp := p.s.policies.Load().ForRegistrar(auth.ClID)
-	d, release := p.s.enforcer.Enforce(ctx, auth.ClID, auth.Role, rp, c)
+	d, release := p.s.enforcer.Enforce(ctx, epppolicy.Caller{ClID: auth.ClID, Login: string(auth.LoginID), Role: auth.Role}, rp, c)
+	cmd.recorded = func(ctx context.Context, code int) { p.s.enforcer.Recorded(ctx, auth.ClID, rp, c, code) }
 	switch d.Action {
+	case epppolicy.Close:
+		if d.Suspended {
+			p.s.loginSuspended(auth, cmd.session)
+		}
+		return policyDecision{action: policyClose, rule: d.Rule, code: d.Code, msg: d.Msg, reason: d.Reason}
 	case epppolicy.Reject:
 		if (d.Rule == epppolicy.RuleRate || d.Rule == epppolicy.RuleFamilyRate) && cmd.session.rateRefusals.Record(time.Now()) {
 			// The client is not backing off: end the session.
@@ -163,6 +170,33 @@ func addReason(cmd *command, reason string) {
 	ext.CreateElement("value").CreateElement("undef")
 	ext.CreateElement("reason").SetText(reason)
 	result.AddChild(ext)
+}
+
+// loginSuspended raises the alert for a login just suspended for failed
+// creates and ends its other sessions on this node; the session that was
+// suspended is closed by its command's answer. Other nodes refuse the
+// login's next domain create and its next login.
+func (s *Server) loginSuspended(auth *entities.EPPAuthenticatedLogin, from *session) {
+	s.metrics.loginsSuspended.WithLabelValues(string(auth.ClID)).Inc()
+	s.logger.Error("EPP login suspended for creating registered names past the failed-create budget",
+		"clid", auth.ClID, "login", auth.LoginID, "connection_id", from.id, "client_ip", from.clientIP,
+		"suspended_for", s.enforcer.Escalation().SuspendFor)
+	for _, sess := range s.sessions.all() {
+		if sess != from && sess.loggedInAs() == string(auth.LoginID) {
+			s.endSession(sess.id, endedSuspended)
+		}
+	}
+}
+
+// afterHandler counts the outcome of a command that ran, and gives back
+// what it counted against a quota if it failed.
+func (s *Server) afterHandler(ctx context.Context, cmd *command) {
+	if cmd.recorded != nil {
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedStoreTimeout)
+		cmd.recorded(rctx, cmd.code)
+		cancel()
+	}
+	s.releaseIfFailed(ctx, cmd)
 }
 
 // releaseIfFailed gives back what a command counted against a quota if it

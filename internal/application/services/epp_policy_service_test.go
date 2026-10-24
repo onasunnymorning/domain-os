@@ -29,7 +29,7 @@ func (k knownRegistrars) GetByClID(_ context.Context, clid string, _ bool) (*ent
 
 func policyTestService() (*EPPPolicyService, *memstore.EPPPolicies, context.Context) {
 	repo := memstore.NewEPPPolicies()
-	svc := NewEPPPolicyService(repo, knownRegistrars{clids: map[string]bool{"rar-a": true, "rar-b": true, "rar-c": true}})
+	svc := NewEPPPolicyService(repo, knownRegistrars{clids: map[string]bool{"rar-a": true, "rar-b": true, "rar-c": true}}, memstore.NewEPPCreateOutcomes())
 	return svc, repo, appcontext.WithUserID(context.Background(), "ops@example.com")
 }
 

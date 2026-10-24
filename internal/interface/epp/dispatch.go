@@ -50,6 +50,9 @@ type command struct {
 	// release gives back what the policy counted against a quota for this
 	// command, if it does not succeed.
 	release func(context.Context)
+	// recorded counts the command's outcome for the policy, once it has
+	// run.
+	recorded func(ctx context.Context, code int)
 }
 
 // respond sets the response to this command. msg may be empty for the
@@ -235,7 +238,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 	}
 	cmd.handled = true
 	rt.handler(ctx, cmd)
-	s.releaseIfFailed(ctx, cmd)
+	s.afterHandler(ctx, cmd)
 }
 
 // servicesAllowed answers a command that uses an object or extension the
