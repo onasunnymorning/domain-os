@@ -81,6 +81,8 @@ type metrics struct {
 	checkNames              prometheus.Histogram
 	policyDelay             prometheus.Histogram
 	loginsSuspended         *prometheus.CounterVec
+	createQueueWait         prometheus.Histogram
+	createQueueTimeouts     prometheus.Counter
 }
 
 func newMetrics() *metrics {
@@ -194,6 +196,15 @@ func newMetrics() *metrics {
 			Name: "epp_logins_suspended_total",
 			Help: "Logins suspended for creating registered names past the failed-create budget, by registrar. Alert on any.",
 		}, []string{"clid"}),
+		createQueueWait: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "epp_create_queue_wait_seconds",
+			Help:    "How long <domain:create>s waited for a slot on this node, those that waited at all.",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+		}),
+		createQueueTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "epp_create_queue_timeouts_total",
+			Help: "<domain:create>s refused with 2400 for want of a slot within EPP_CREATE_QUEUE_WAIT.",
+		}),
 		storeDegraded: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "epp_policy_store_degraded",
 			Help: "1 while Redis is unreachable for a store and the node fails open to its own counts and caps (ADR 0013).",
@@ -205,9 +216,23 @@ func newMetrics() *metrics {
 		m.certReloadErrors, m.draining,
 		m.loginFailures, m.clientCertNotAfter, m.sessionsEnded, m.allowedNetworks,
 		m.credentialsRefreshed, m.credentialRefreshErrors, m.policiesRefreshed, m.policyRefreshErrors, m.storeDegraded, m.registrarSessions, m.registryRenewals,
-		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay, m.loginsSuspended,
+		m.policyDecisions, m.auditErrors, m.checkNames, m.policyDelay, m.loginsSuspended, m.createQueueWait, m.createQueueTimeouts,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	return m
+}
+
+// watchCreates reports the create gate's slots in use and waiters.
+func (m *metrics) watchCreates(g *createGate) {
+	m.registry.MustRegister(
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "epp_creates_in_flight",
+			Help: "<domain:create>s running on this node, at most EPP_MAX_CREATES_IN_FLIGHT.",
+		}, func() float64 { running, _ := g.inFlight(); return float64(running) }),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "epp_creates_waiting",
+			Help: "<domain:create>s waiting for a slot on this node.",
+		}, func() float64 { _, waiting := g.inFlight(); return float64(waiting) }),
+	)
 }

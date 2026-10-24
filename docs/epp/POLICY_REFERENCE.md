@@ -95,6 +95,8 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 | Variable | Default | Meaning |
 |---|---|---|
 | `EPP_CHECK_PARALLELISM` | `8` | Availability lookups one `<check>` runs at once. Must be below `EPP_DB_MAX_OPEN_CONNS`, so one check cannot take every connection |
+| `EPP_MAX_CREATES_IN_FLIGHT` | `10` | `<domain:create>`s one node runs at once, let in fairly when they queue ([§ Create queue](#create-queue)). Must be below `EPP_DB_MAX_OPEN_CONNS`, so creates cannot take every connection |
+| `EPP_CREATE_QUEUE_WAIT` | `5s` | The longest a `<domain:create>` waits for a slot before it is refused with 2400 |
 
 **Audit log**
 
@@ -585,3 +587,16 @@ Strikes expire 5 minutes after the last; they stop while the registrar and its f
 **Accounting.** Each registrar's creates per UTC day, created and refused 2302, are kept in `epp_create_outcomes` as the basis for a future fee. Each node writes its counts every minute and when it stops. They are read with `GET /registrars/{clid}/epp/create-outcomes?from=YYYY-MM-DD&to=YYYY-MM-DD` (permission `epp:policy:admin`; the last 30 days by default, at most 366), one row per day with any creates.
 
 **Where it is counted.** In Redis, shared by every node: per-minute counts per registrar and family, a registrar's strikes, and a login's suspension, all on Redis's clock. **If Redis cannot answer** (each call bounded to 200 ms, then skipped for 5s), the node counts on its own and sets `epp_policy_store_degraded{store="failed_creates"}`; a suspension made on the node holds after Redis returns.
+
+### Create queue
+
+Each node runs at most `EPP_MAX_CREATES_IN_FLIGHT` `<domain:create>`s at once ([§ Server settings](#server-settings-environment)), so a burst of creates, at a drop for instance, cannot take the database pool from checks, infos and the other commands. A create takes a slot after the policy has let it through (a create held for its rate or its failed-create strikes holds no slot while it waits) and gives it back when it has been answered.
+
+**When every slot is taken**, creates wait in a queue per **registrar family**, or per registrar for one in no family, and a freed slot goes to the next queue **in turn**, not to the next create in line. A registrar, or a family of accreditations, sending many creates at once waits behind itself; one sending a few is let in at its next turn. A family is one queue however many accreditations it has, so splitting creates across accreditations does not buy more turns.
+
+| Wait | Answer |
+|---|---|
+| A slot comes within `EPP_CREATE_QUEUE_WAIT` | The create runs (`epp_create_queue_wait_seconds`) |
+| None comes | **2400**, *"Command failed; the registry is busy with creates, try again"*, with `<extValue>` reason `create-queue; waited-ms=5000`, and the session continues (`epp_create_queue_timeouts_total`). The create quota gives the create back, and the failed-create budget does not count it; a strike it took because the registrar was over budget stands, since a strike counts creates sent |
+
+`epp_creates_in_flight` and `epp_creates_waiting` show the slots in use and the creates waiting. The queue is per node; across N nodes, up to N × `EPP_MAX_CREATES_IN_FLIGHT` creates run at once, and the database pool of each node bounds its share.

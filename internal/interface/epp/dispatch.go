@@ -113,7 +113,7 @@ func (s *Server) routes() map[routeKey]route {
 		{command: "logout"}:                       {handler: s.logout, requiresLogin: true},
 		{command: "check", objectNS: nsDomain}:    {handler: s.domainCheck, requiresLogin: true},
 		{command: "info", objectNS: nsDomain}:     {handler: s.domainInfo, requiresLogin: true},
-		{command: "create", objectNS: nsDomain}:   {handler: s.domainCreate, requiresLogin: true},
+		{command: "create", objectNS: nsDomain}:   {handler: s.admitCreate(s.domainCreate), requiresLogin: true},
 		{command: "update", objectNS: nsDomain}:   {handler: s.domainUpdate, requiresLogin: true},
 		{command: "renew", objectNS: nsDomain}:    {handler: s.domainRenew, requiresLogin: true},
 		{command: "delete", objectNS: nsDomain}:   {handler: s.domainDelete, requiresLogin: true},
