@@ -607,4 +607,4 @@ A deleted domain is purged, and its name can be registered again, once its redem
 
 | Setting | Default | Where to change it |
 |---|---|---|
-| Release window | 45 minutes, inside the hourly schedule | `releaseWindowMinutes` on the `purge-loop` workflow's parameters; `0` purges at once (a manual run from the admin UI or `POST /workflows/launch` with `{"workflowType": "purge-loop", "params": {"releaseWindowMinutes": 0}}`) |
+| Release window | 45 minutes for the scheduled runs, inside the hourly schedule | `releaseWindowMinutes` on the `purge-loop` workflow's parameters. A run launched by hand (the admin UI, or `POST /workflows/launch` with `{"workflowType": "purge-loop"}`) purges at once unless it passes a window. The offset is not shown, even to the workflow's progress query, until it has passed |

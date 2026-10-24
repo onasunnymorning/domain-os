@@ -234,6 +234,13 @@ func (s *PurgeLoopWorkflowTestSuite) Test_PurgeLoop_RandomisedRelease() {
 	s.env.OnActivity("BatchPurgeDomains", mock.Anything, mock.Anything, []string{"c.test", "a.test", "b.test"}).
 		Return(services.BatchResult{Succeeded: []string{"c.test", "a.test", "b.test"}}, nil).Once()
 
+	s.env.RegisterDelayedCallback(func() {
+		v, err := s.env.QueryWorkflow("progress")
+		s.Require().NoError(err)
+		var during PurgeLoopResult
+		s.Require().NoError(v.Get(&during))
+		s.Zero(during.ReleaseOffset, "the progress query does not tell when the purge will start")
+	}, 10*time.Minute)
 	s.env.ExecuteWorkflow(PurgeLoop, PurgeLoopParams{})
 	s.Require().True(s.env.IsWorkflowCompleted())
 	s.Require().NoError(s.env.GetWorkflowError())

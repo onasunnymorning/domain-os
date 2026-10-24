@@ -144,11 +144,13 @@ func PurgeLoop(ctx workflow.Context, params PurgeLoopParams) (PurgeLoopResult, e
 			if err := workflow.ExecuteActivity(ctx, activities.ReleaseOffset, window).Get(ctx, &offset); err != nil {
 				result.Notes = append(result.Notes, "Release offset not drawn; purging at once: "+err.Error())
 			} else {
-				result.ReleaseOffset = offset
 				if err := workflow.Sleep(ctx, offset); err != nil {
 					result.CompletedAt = workflow.Now(ctx)
 					return result, err
 				}
+				// Only now: the progress query must not tell when the
+				// purge will start.
+				result.ReleaseOffset = offset
 			}
 		}
 	}
