@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beevik/etree"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -226,4 +227,57 @@ func TestCreateQuota(t *testing.T) {
 	assert.Nil(t, creds.domains.registry.Domain("second.test"))
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "create_quota", "reject"))
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.first.test", addrXML("v4", "192.0.2.1"))), "1000") // host creates do not count
+}
+
+// Creating registered names past the failed-create budget is held, then
+// closed, then suspends the login (docs/epp/POLICY_REFERENCE.md § Failed
+// creates).
+func TestFailedCreateBudget(t *testing.T) {
+	creds := newTestCredentials(t)
+	tight := entities.DefaultEPPPolicyLimits()
+	tight.FailedCreates = entities.EPPFailedCreateBudget{Failures: 2, RatioPercent: 100}
+	creds.policies.assign(testRegistrar, "tight", tight)
+	creds.escalation = &epppolicy.Escalation{TarpitStrikes: 2, TarpitStep: 50 * time.Millisecond, SuspendAfter: 3, SuspendFor: time.Minute}
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	login := func() *client {
+		c := dial(t, ts.addr)
+		requireCode(t, c.roundTrip(objectsLoginXML(testLogin, testPassword)), "1000")
+		return c
+	}
+	taken := func(c *client) *etree.Document { return c.roundTrip(createXML("registered.test", createOpts{})) }
+
+	c := login()
+	requireCode(t, taken(c), "2302")
+	requireCode(t, taken(c), "2302") // two failures: the budget is reached
+	start := time.Now()
+	requireCode(t, taken(c), "2302")
+	requireCode(t, taken(c), "2302")
+	assert.GreaterOrEqual(t, time.Since(start), 150*time.Millisecond, "strikes 1 and 2 were held 50ms and 100ms")
+	assert.Equal(t, 2.0, counterOf(t, ts.metrics.policyDecisions, "failed_creates", "delay"))
+
+	resp := taken(c)
+	requireCode(t, resp, "2502")
+	assert.Contains(t, msg(resp), "the registrar's creates of registered names are over their budget")
+	assert.Equal(t, "failed-creates; scope=registrar; suspended-for-ms=0", resp.FindElement("/epp/response/result/extValue/reason").Text())
+	c.requireClosed()
+
+	other := login()
+	c = login()
+	resp = taken(c)
+	requireCode(t, resp, "2502")
+	assert.Contains(t, msg(resp), "the login is suspended for 1m0s")
+	assert.Equal(t, "failed-creates; scope=registrar; suspended-for-ms=60000", resp.FindElement("/epp/response/result/extValue/reason").Text())
+	c.requireClosed()
+	other.requireClosed() // the login's other sessions end too
+	assert.Equal(t, 1.0, counterOf(t, ts.metrics.loginsSuspended, testRegistrar))
+
+	resp = dial(t, ts.addr).roundTrip(objectsLoginXML(testLogin, testPassword))
+	requireCode(t, resp, "2501")
+	assert.Contains(t, msg(resp), "suspended")
+
+	require.NoError(t, creds.outcomes.Flush(context.Background()))
+	got, err := creds.outcomeStore.ListCreateOutcomes(context.Background(), testRegistrar, time.Now(), time.Now())
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(4), got[0].Failed, "the creates that ran and failed; the closed ones did not run")
 }

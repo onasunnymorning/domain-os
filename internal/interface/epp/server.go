@@ -69,6 +69,16 @@ type Options struct {
 	// Rates counts the registrars' and families' command rates and daily
 	// create quotas, across every node. Required.
 	Rates interfaces.EPPRateLimiter
+	// FailedCreates counts the registrars' and families' domain creates of
+	// registered names, and keeps the failed-create budget's strikes and
+	// login suspensions, across every node. Required.
+	FailedCreates interfaces.EPPFailedCreateTracker
+	// CreateOutcomes keeps each registrar's daily counts of creates that
+	// created a domain and that failed for a registered name. Required.
+	CreateOutcomes epppolicy.CreateOutcomes
+	// Escalation, if set, replaces epppolicy.DefaultEscalation; tests
+	// shorten it.
+	Escalation *epppolicy.Escalation
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -144,6 +154,12 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Rates == nil {
 		return nil, errors.New("epp: Options.Rates is required")
 	}
+	if opts.FailedCreates == nil {
+		return nil, errors.New("epp: Options.FailedCreates is required")
+	}
+	if opts.CreateOutcomes == nil {
+		return nil, errors.New("epp: Options.CreateOutcomes is required")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
@@ -162,7 +178,10 @@ func NewServer(opts Options) (*Server, error) {
 	s.router = s.routes()
 	s.policySource = opts.Policies
 	s.policies.Store(entities.DefaultEPPPolicySet())
-	s.enforcer = epppolicy.NewEnforcer(opts.Rates)
+	s.enforcer = epppolicy.NewEnforcer(opts.Rates, opts.FailedCreates, opts.CreateOutcomes)
+	if opts.Escalation != nil {
+		s.enforcer.WithEscalation(*opts.Escalation)
+	}
 	s.policy = registrarPolicies{s: s}
 
 	var err error
@@ -289,6 +308,12 @@ func (s *Server) ReportLockoutDegraded(degraded bool) {
 // unreachable, for epp_policy_store_degraded{store="rates"}.
 func (s *Server) ReportRatesDegraded(degraded bool) {
 	s.reportStoreDegraded(storeRates, degraded)
+}
+
+// ReportFailedCreatesDegraded records whether the shared failed-create
+// store is unreachable, for epp_policy_store_degraded{store="failed_creates"}.
+func (s *Server) ReportFailedCreatesDegraded(degraded bool) {
+	s.reportStoreDegraded(storeFailedCreates, degraded)
 }
 
 // ReportAuditError records a failure of the audit log's batch writer: a

@@ -63,6 +63,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&EPPPolicyAssignmentRecord{},
 		&RegistrarFamilyRecord{},
 		&RegistrarFamilyMemberRecord{},
+		&EPPCreateOutcomeRecord{},
 		&InstallationSetting{},
 	)
 	if err != nil {

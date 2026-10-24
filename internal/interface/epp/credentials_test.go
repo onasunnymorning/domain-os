@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
@@ -81,6 +82,13 @@ type testCredentials struct {
 	// rates counts command rates and create quotas: on the node unless a
 	// test shares one between servers or sets another.
 	rates interfaces.EPPRateLimiter
+	// failed counts failed creates; outcomes keeps the daily counts, in
+	// outcomeStore.
+	failed       *ratelimit.MemoryFailedCreates
+	outcomes     *services.EPPCreateOutcomeRecorder
+	outcomeStore *memstore.EPPCreateOutcomes
+	// escalation, when set, replaces the failed-create escalation.
+	escalation *epppolicy.Escalation
 }
 
 // testPolicies is the EPP policies as a test sets them: built-in by default.
@@ -149,6 +157,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		store:    memstore.NewEPPCredentials(testRegistrar, "registrar2"),
 		registry: memstore.NewEPPSessions(),
 		rates:    ratelimit.NewMemory(),
+		failed:   ratelimit.NewMemoryFailedCreates(),
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
 		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
@@ -159,6 +168,8 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		Contacts: tc.domains.registry.Contacts(), Roids: services.NewRoidService(tc.domains.registry, testRepositoryID),
 	})
 	tc.auditLog = services.NewEPPAuditService(tc.audit, 100)
+	tc.outcomeStore = memstore.NewEPPCreateOutcomes()
+	tc.outcomes = services.NewEPPCreateOutcomeRecorder(tc.outcomeStore)
 	ctx, stop := context.WithCancel(context.Background())
 	written := make(chan struct{})
 	go func() { defer close(written); tc.auditLog.Run(ctx, time.Second, nil) }()
@@ -192,7 +203,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Rates: tc.rates, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Rates: tc.rates, FailedCreates: tc.failed, CreateOutcomes: tc.outcomes, Escalation: tc.escalation, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

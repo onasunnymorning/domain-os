@@ -58,6 +58,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 			l := entities.DefaultEPPPolicyLimits()
 			l.SessionsPerRegistrar, l.SessionsPerLogin, l.SessionsPerFamily, l.CheckNames = 20, 5, 60, 25
 			l.Rates.Info, l.FamilyRates.Poll, l.CreatesPerDay = entities.EPPRate{PerSecond: 7, Burst: 21}, entities.EPPRate{PerSecond: 2, Burst: 3}, 500
+			l.FailedCreates = entities.EPPFailedCreateBudget{Failures: 7, RatioPercent: 75}
 			return l
 		}()}
 	t.Run("saved and replaced, each event told what was there", func(t *testing.T) {
@@ -171,6 +172,9 @@ func TestEPPPolicyRepository(t *testing.T) {
 		old.Name = "old-test"
 		old.Limits.CheckNames, old.Limits.Rates.Check.Burst, old.Limits.FamilyRates.Check.Burst = 1500, 1500, 3000
 		require.NoError(t, repo.SavePolicy(ctx, &old, noEvents()))
+		for _, prefix := range []string{"failed_creates_", "family_failed_creates_"} {
+			zero[prefix+"failures"], zero[prefix+"ratio_percent"] = 0, 0
+		}
 		require.NoError(t, tx.Model(&EPPPolicyRecord{}).Where("name IN ?", []string{entities.EPPPolicyProbation, "old-test"}).Updates(zero).Error)
 		require.NoError(t, seedEPPPolicies(tx))
 		p, err := repo.GetPolicy(ctx, entities.EPPPolicyProbation)
@@ -183,6 +187,8 @@ func TestEPPPolicyRepository(t *testing.T) {
 		assert.Equal(t, want.Rates, g.Limits.Rates, "any other the default's")
 		assert.Equal(t, want.FamilyRates, g.Limits.FamilyRates)
 		assert.Zero(t, g.Limits.CreatesPerDay)
+		assert.Equal(t, want.FailedCreates, g.Limits.FailedCreates)
+		assert.Equal(t, want.FamilyFailedCreates, g.Limits.FamilyFailedCreates)
 		assert.Equal(t, 1500, g.Limits.CheckNames, "the rest is kept")
 		assert.NoError(t, g.Limits.Validate(), "a valid policy")
 	})

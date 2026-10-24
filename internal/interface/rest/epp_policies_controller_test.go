@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -34,13 +35,18 @@ func eppPoliciesRouter(t *testing.T, scopes ...string) (*gin.Engine, *memstore.E
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	repo := memstore.NewEPPPolicies()
+	outcomes := memstore.NewEPPCreateOutcomes()
+	_ = outcomes.AddCreateOutcomes(context.Background(), []entities.EPPCreateOutcomes{
+		{ClID: "rar-a", Day: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Succeeded: 3, Failed: 140},
+		{ClID: "rar-a", Day: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), Failed: 9},
+	})
 	r := gin.New()
 	grant := func(c *gin.Context) {
 		ctx := appcontext.WithAuthScopes(c.Request.Context(), scopes)
 		c.Request = c.Request.WithContext(appcontext.WithUserID(ctx, "ops@example.com"))
 		c.Next()
 	}
-	NewEPPPoliciesController(r, services.NewEPPPolicyService(repo, policyRegistrars{}), grant)
+	NewEPPPoliciesController(r, services.NewEPPPolicyService(repo, policyRegistrars{}, outcomes), grant)
 	return r, repo
 }
 
@@ -54,7 +60,7 @@ func do(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
 
 func TestEPPPoliciesRequirePermission(t *testing.T) {
 	r, _ := eppPoliciesRouter(t, ScopeEPPSessionsAdmin)
-	for _, p := range []string{"/epp/policies", "/epp/families", "/registrars/rar-a/epp/policy"} {
+	for _, p := range []string{"/epp/policies", "/epp/families", "/registrars/rar-a/epp/policy", "/registrars/rar-a/epp/create-outcomes"} {
 		w := do(r, http.MethodGet, p, "")
 		assert.Equal(t, http.StatusForbidden, w.Code, p)
 		assert.Contains(t, w.Body.String(), ScopeEPPPolicyAdmin)
@@ -66,7 +72,7 @@ func TestEPPPoliciesAPI(t *testing.T) {
 	limits := `{"limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25,` +
 		`"rates":{"check":{"per_second":250,"burst":1000},"info":{"per_second":20,"burst":100},"transform":{"per_second":10,"burst":50},"poll":{"per_second":5,"burst":20}},` +
 		`"family_rates":{"check":{"per_second":750,"burst":3000},"info":{"per_second":60,"burst":300},"transform":{"per_second":30,"burst":150},"poll":{"per_second":15,"burst":60}},` +
-		`"creates_per_day":100}}`
+		`"creates_per_day":100,"failed_creates":{"failures":100,"ratio_percent":90},"family_failed_creates":{"failures":300,"ratio_percent":90}}}`
 
 	w := do(r, http.MethodPut, "/epp/policies/gold", limits)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -112,4 +118,27 @@ func TestEPPPoliciesAPI(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, do(r, http.MethodDelete, "/epp/families/acme", "").Code)
 	assert.Equal(t, http.StatusNotFound, do(r, http.MethodGet, "/epp/families/acme", "").Code)
 	assert.NotEmpty(t, repo.Events)
+}
+
+func TestEPPCreateOutcomesAPI(t *testing.T) {
+	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
+	w := do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-01-01&to=2026-01-31", "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var got []entities.EPPCreateOutcomes
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	require.Len(t, got, 2)
+	assert.Equal(t, int64(140), got[0].Failed)
+
+	w = do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-01-02&to=2026-01-02", "")
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Len(t, got, 1)
+	w = do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes", "")
+	assert.Equal(t, "[]", w.Body.String(), "the last 30 days: none")
+
+	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=yesterday", "").Code)
+	w = do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-10-02&to=2026-10-01", "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid range of days")
+	assert.Equal(t, http.StatusBadRequest, do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2024-01-01&to=2026-01-01", "").Code)
+	assert.Equal(t, http.StatusNotFound, do(r, http.MethodGet, "/registrars/nobody/epp/create-outcomes", "").Code)
 }

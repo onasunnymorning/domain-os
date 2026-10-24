@@ -77,6 +77,8 @@ const (
 	Reject
 	// Delay holds the command for Wait, then lets it through.
 	Delay
+	// Close answers the command with Code and Msg and ends the session.
+	Close
 )
 
 func (a Action) String() string {
@@ -85,6 +87,8 @@ func (a Action) String() string {
 		return "reject"
 	case Delay:
 		return "delay"
+	case Close:
+		return "close"
 	default:
 		return "allow"
 	}
@@ -95,6 +99,8 @@ const (
 	codeAuthorizationError   = 2201
 	codeParameterPolicyError = 2306
 	codeDataPolicyViolation  = 2308
+	codeSessionLimitClosing  = 2502
+	codeObjectExists         = 2302
 )
 
 // Rule names, for epp_policy_decisions_total{rule}.
@@ -108,6 +114,8 @@ const (
 	RuleFamilyRate = "family_rate"
 	// RuleCreateQuota is the registrar's domain creates per day.
 	RuleCreateQuota = "create_quota"
+	// RuleFailedCreates is the failed-create budget.
+	RuleFailedCreates = "failed_creates"
 )
 
 // Decision is Decide's answer. Rule names the rule that decided.
@@ -118,10 +126,14 @@ type Decision struct {
 	Msg    string
 	// Wait is how long a Delay holds the command.
 	Wait time.Duration
-	// Reason, for a rate refusal, is a machine-readable reason for the
-	// response's <extValue>: "rate-limit; class=...; scope=...;
-	// retry-after-ms=...".
+	// Reason, for a rate refusal or a failed-create close, is a
+	// machine-readable reason for the response's <extValue>: "rate-limit;
+	// class=...; scope=...; retry-after-ms=..." or "failed-creates;
+	// scope=...; suspended-for-ms=...".
 	Reason string
+	// Suspended is set when this command's strike suspended its login, for
+	// the caller to end the login's other sessions and raise the alert.
+	Suspended bool
 }
 
 // Decide applies the policy's rules to a command of a logged-in session, in
@@ -181,16 +193,76 @@ func (r *RefusalStreak) Record(now time.Time) bool {
 // quotaTTL keeps a day's create count a day past its end, for diagnosis.
 const quotaTTL = 48 * time.Hour
 
-// Enforcer decides commands under every rule: Decide's, then the command
-// rates, then the daily create quota (docs/epp/ARCHITECTURE.md §5).
-type Enforcer struct {
-	rates interfaces.EPPRateLimiter
-	now   func() time.Time
+// Escalation is the failed-create budget's escalation
+// (docs/epp/POLICY_REFERENCE.md § Failed creates). A strike is a domain
+// create sent while the registrar, or its family, is over budget.
+type Escalation struct {
+	// TarpitStrikes: the first strikes hold the create TarpitStep per
+	// strike.
+	TarpitStrikes int
+	TarpitStep    time.Duration
+	// SuspendAfter: strikes after TarpitStrikes, up to SuspendAfter, close
+	// the session with 2502; the next suspends the login for SuspendFor.
+	SuspendAfter int
+	SuspendFor   time.Duration
 }
 
-// NewEnforcer returns an enforcer counting in rates.
-func NewEnforcer(rates interfaces.EPPRateLimiter) *Enforcer {
-	return &Enforcer{rates: rates, now: time.Now}
+// DefaultEscalation holds the 1st strike 1s and the 10th 10s, closes the
+// session for the 11th to the 20th, and suspends the login for 15 minutes
+// at the 21st.
+var DefaultEscalation = Escalation{TarpitStrikes: 10, TarpitStep: time.Second, SuspendAfter: 20, SuspendFor: 15 * time.Minute}
+
+// CreateOutcomes keeps each registrar's daily counts of creates that
+// created a domain and that failed because the name is registered.
+type CreateOutcomes interface {
+	Add(clid entities.ClIDType, failed bool)
+}
+
+// Caller is who sent a command: the registrar, the login and its role.
+type Caller struct {
+	ClID  entities.ClIDType
+	Login string
+	Role  entities.EPPLoginRole
+}
+
+// Enforcer decides commands under every rule: Decide's, then the command
+// rates, the failed-create budget and the daily create quota
+// (docs/epp/ARCHITECTURE.md §5).
+type Enforcer struct {
+	rates    interfaces.EPPRateLimiter
+	failed   interfaces.EPPFailedCreateTracker
+	outcomes CreateOutcomes
+	esc      Escalation
+	now      func() time.Time
+}
+
+// NewEnforcer returns an enforcer counting rates and quotas in rates,
+// failed creates in failed, and daily outcomes in outcomes.
+func NewEnforcer(rates interfaces.EPPRateLimiter, failed interfaces.EPPFailedCreateTracker, outcomes CreateOutcomes) *Enforcer {
+	return &Enforcer{rates: rates, failed: failed, outcomes: outcomes, esc: DefaultEscalation, now: time.Now}
+}
+
+// WithEscalation replaces the escalation, before the enforcer is used.
+func (e *Enforcer) WithEscalation(x Escalation) *Enforcer {
+	e.esc = x
+	return e
+}
+
+// Escalation is the escalation in force.
+func (e *Enforcer) Escalation() Escalation { return e.esc }
+
+// IsDomainCreate reports whether c is a <domain:create>, the only command
+// the failed-create budget and the create quota count.
+func IsDomainCreate(c Command) bool { return c.Name == "create" && c.Object == "domain" }
+
+// failedCreateScopes are the counts a registrar's creates are held to: its
+// own and its family's, with their budgets.
+func failedCreateScopes(clid entities.ClIDType, rp entities.EPPRegistrarPolicy) []entities.EPPFailedCreateScope {
+	out := []entities.EPPFailedCreateScope{{Key: "reg:" + clid.String(), Budget: rp.Policy.Limits.FailedCreates}}
+	if rp.Family != nil {
+		out = append(out, entities.EPPFailedCreateScope{Key: "fam:" + rp.Family.Name, Budget: rp.FamilyPolicy.Limits.FamilyFailedCreates})
+	}
+	return out
 }
 
 // Cost is how many tokens c takes from its class's buckets: one per name
@@ -244,7 +316,12 @@ func QuotaKey(clid entities.ClIDType, now time.Time) string {
 //     then (Delay); if not it is refused with 2306, with Reason, and takes
 //     nothing. Closing a session that keeps being refused
 //     (RefusalStreak) is the caller's, which holds the session.
-//  3. The create quota: a domain create counts against the registrar's
+//  3. The failed-create budget, for a domain create: a login suspended
+//     for failed creates is closed (2502). Otherwise, while the registrar
+//     or its family is over its budget, each create is a strike, escalated
+//     as the Escalation says: held (with any rate wait), then the session
+//     closed (2502), then the login suspended and closed.
+//  4. The create quota: a domain create counts against the registrar's
 //     creates for the UTC day, if its policy caps them. Over the cap it is
 //     refused with 2308.
 //
@@ -252,12 +329,13 @@ func QuotaKey(clid entities.ClIDType, now time.Time) string {
 // calls it if the create does not succeed. Counting fails open: the
 // limiter falls back to the node, and an error from it lets the command
 // through.
-func (e *Enforcer) Enforce(ctx context.Context, clid entities.ClIDType, role entities.EPPLoginRole, rp entities.EPPRegistrarPolicy, c Command) (d Decision, release func(context.Context)) {
+func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegistrarPolicy, c Command) (d Decision, release func(context.Context)) {
+	clid := who.ClID
 	limits := rp.Policy.Limits
 	if rp.Family != nil {
 		limits.CheckNames = min(limits.CheckNames, rp.FamilyPolicy.Limits.FamilyRates.Check.Burst)
 	}
-	if d := Decide(role, limits, c); d.Action != Allow {
+	if d := Decide(who.Role, limits, c); d.Action != Allow {
 		return d, nil
 	}
 	class := ClassOf(c)
@@ -286,7 +364,13 @@ func (e *Enforcer) Enforce(ctx context.Context, clid entities.ClIDType, role ent
 			d = Decision{Action: Delay, Rule: rule, Wait: take.Wait}
 		}
 	}
-	if c.Name == "create" && c.Object == "domain" && limits.CreatesPerDay > 0 {
+	if !IsDomainCreate(c) {
+		return d, nil
+	}
+	if closed, ok := e.failedCreates(ctx, who, rp, &d); !ok {
+		return closed, nil
+	}
+	if limits.CreatesPerDay > 0 {
 		release, ok, err := e.rates.ReserveQuota(ctx, QuotaKey(clid, e.now()), limits.CreatesPerDay, quotaTTL)
 		if err == nil && !ok {
 			return Decision{Action: Reject, Rule: RuleCreateQuota, Code: codeDataPolicyViolation,
@@ -295,6 +379,71 @@ func (e *Enforcer) Enforce(ctx context.Context, clid entities.ClIDType, role ent
 		return d, release
 	}
 	return d, nil
+}
+
+// failedCreates applies the failed-create budget to a domain create: it
+// adds a tarpit to d, or returns the closing decision and false.
+func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EPPRegistrarPolicy, d *Decision) (Decision, bool) {
+	scopes := failedCreateScopes(who.ClID, rp)
+	st, err := e.failed.Assess(ctx, entities.EPPFailedCreateCheck{
+		Login: who.Login, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
+	})
+	if err != nil {
+		return Decision{}, true
+	}
+	scope, whose := "registrar", "the registrar's"
+	if st.Over > 0 {
+		scope, whose = "family", "the registrar family's"
+	}
+	switch {
+	case st.Suspended > 0:
+		left := st.Suspended.Round(time.Second)
+		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing, Suspended: st.NewlySuspended,
+			Msg:    fmt.Sprintf("Session limit exceeded; server closing connection; the login is suspended for %s for creating registered names", left),
+			Reason: fmt.Sprintf("failed-creates; scope=%s; suspended-for-ms=%d", scope, left.Milliseconds())}, false
+	case st.Strikes > e.esc.TarpitStrikes:
+		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing,
+			Msg:    fmt.Sprintf("Session limit exceeded; server closing connection; %s creates of registered names are over their budget", whose),
+			Reason: fmt.Sprintf("failed-creates; scope=%s; suspended-for-ms=0", scope)}, false
+	case st.Strikes > 0:
+		d.Action, d.Rule = Delay, RuleFailedCreates
+		d.Wait += time.Duration(st.Strikes) * e.esc.TarpitStep
+	}
+	return Decision{}, true
+}
+
+// Recorded counts a domain create's outcome: one that created a domain
+// (1000 or 1001), or one refused because the name is registered (2302).
+// Other commands and other results are not counted.
+func (e *Enforcer) Recorded(ctx context.Context, clid entities.ClIDType, rp entities.EPPRegistrarPolicy, c Command, code int) {
+	if !IsDomainCreate(c) {
+		return
+	}
+	var failed bool
+	switch code {
+	case 1000, 1001:
+	case codeObjectExists:
+		failed = true
+	default:
+		return
+	}
+	scopes := failedCreateScopes(clid, rp)
+	keys := make([]string, len(scopes))
+	for i, sc := range scopes {
+		keys[i] = sc.Key
+	}
+	_ = e.failed.Record(ctx, keys, failed) // fails open: the tracker falls back to the node
+	e.outcomes.Add(clid, failed)
+}
+
+// LoginSuspended is how much longer a login is suspended for failed
+// creates, or 0.
+func (e *Enforcer) LoginSuspended(ctx context.Context, login string) time.Duration {
+	d, err := e.failed.Suspended(ctx, login)
+	if err != nil {
+		return 0
+	}
+	return d
 }
 
 // roundUp is w to the next tenth of a second, at least 0.1s, for a client

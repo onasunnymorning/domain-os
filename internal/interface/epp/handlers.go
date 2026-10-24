@@ -3,6 +3,7 @@ package epp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -19,7 +20,10 @@ const (
 	loginSuccess = "success"
 	loginFailure = "failure"
 	loginLocked  = "locked"
-	loginError   = "error"
+	// loginSuspended is a login with good credentials refused because it
+	// is suspended for failed creates.
+	loginSuspended = "suspended"
+	loginError     = "error"
 	// loginSessionLimit is a login with good credentials refused because its
 	// registrar or login is at its session cap.
 	loginSessionLimit = "session_limit"
@@ -105,6 +109,16 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		s.metrics.logins.WithLabelValues(loginError).Inc()
 		s.logger.Error("EPP login failed: credentials unavailable", "connection_id", sess.id, "login", loginCmd.LoginID, "error", err)
 		cmd.respond(epplib.StatusCommandFailed, "", nil)
+		return
+	}
+
+	if left := s.enforcer.LoginSuspended(ctx, string(auth.LoginID)); left > 0 {
+		s.metrics.logins.WithLabelValues(loginSuspended).Inc()
+		s.logger.Warn("EPP login refused: suspended for failed creates", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
+			"client_ip", sess.clientIP, "suspended_for", left.Round(time.Second))
+		cmd.respond(epplib.StatusAuthenticationErrorClosingConnection,
+			fmt.Sprintf("Authentication error; server closing connection; the login is suspended for %s for creating registered names", left.Round(time.Second)), nil)
+		cmd.closeAfterResponse()
 		return
 	}
 

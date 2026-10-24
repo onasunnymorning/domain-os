@@ -32,8 +32,21 @@ type EPPPolicyRecord struct {
 	Rates         EPPRateColumns `gorm:"embedded;embeddedPrefix:rate_"`
 	FamilyRates   EPPRateColumns `gorm:"embedded;embeddedPrefix:family_rate_"`
 	CreatesPerDay int            `gorm:"not null;default:0"`
-	UpdatedAt     time.Time      `gorm:"not null;autoUpdateTime:false"`
-	UpdatedBy     string
+	// FailedCreates and FamilyFailedCreates are columns
+	// failed_creates_failures, failed_creates_ratio_percent and
+	// family_failed_creates_....
+	FailedCreates       EPPFailedCreateColumns `gorm:"embedded;embeddedPrefix:failed_creates_"`
+	FamilyFailedCreates EPPFailedCreateColumns `gorm:"embedded;embeddedPrefix:family_failed_creates_"`
+	UpdatedAt           time.Time              `gorm:"not null;autoUpdateTime:false"`
+	UpdatedBy           string
+}
+
+// EPPFailedCreateColumns are a failed-create budget. Like the rates, rows
+// from before it existed are given their starting values by the migration;
+// the column default of 0 is only so the columns can be added.
+type EPPFailedCreateColumns struct {
+	Failures     int `gorm:"not null;default:0"`
+	RatioPercent int `gorm:"not null;default:0"`
 }
 
 // EPPRateColumns are a policy's command rates, a rate and a burst per
@@ -120,7 +133,8 @@ func toPolicyRecord(p *entities.EPPPolicy) *EPPPolicyRecord {
 		SessionsPerFamily: p.Limits.SessionsPerFamily, CheckNames: p.Limits.CheckNames,
 		Rates: toRateColumns(p.Limits.Rates), FamilyRates: toRateColumns(p.Limits.FamilyRates),
 		CreatesPerDay: p.Limits.CreatesPerDay,
-		UpdatedAt:     p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+		FailedCreates: EPPFailedCreateColumns(p.Limits.FailedCreates), FamilyFailedCreates: EPPFailedCreateColumns(p.Limits.FamilyFailedCreates),
+		UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 	}
 }
 
@@ -132,6 +146,7 @@ func (r *EPPPolicyRecord) toEntity() *entities.EPPPolicy {
 			SessionsPerFamily: r.SessionsPerFamily, CheckNames: r.CheckNames,
 			Rates: r.Rates.toEntity(), FamilyRates: r.FamilyRates.toEntity(),
 			CreatesPerDay: r.CreatesPerDay,
+			FailedCreates: entities.EPPFailedCreateBudget(r.FailedCreates), FamilyFailedCreates: entities.EPPFailedCreateBudget(r.FamilyFailedCreates),
 		},
 		UpdatedAt: r.UpdatedAt.UTC(), UpdatedBy: r.UpdatedBy,
 	}
@@ -486,7 +501,42 @@ func seedEPPPolicies(db *gorm.DB) error {
 			return fmt.Errorf("seed EPP policy %s: %w", p.Name, err)
 		}
 	}
-	return backfillEPPPolicyRates(db)
+	if err := backfillEPPPolicyRates(db); err != nil {
+		return err
+	}
+	return backfillEPPPolicyFailedCreates(db)
+}
+
+// startingLimits is the limits a stored policy starts from: a built-in
+// policy's own, any other's the default's.
+func startingLimits(name string) entities.EPPPolicyLimits {
+	for _, p := range entities.BuiltInEPPPolicies() {
+		if p.Name == name {
+			return p.Limits
+		}
+	}
+	return entities.DefaultEPPPolicyLimits()
+}
+
+// backfillEPPPolicyFailedCreates gives policies stored before the
+// failed-create budget existed (Phase 6a) their starting budgets. A stored
+// budget has at least 1 failure, so 0 marks the rows to fill.
+func backfillEPPPolicyFailedCreates(db *gorm.DB) error {
+	var recs []EPPPolicyRecord
+	if err := db.Where("failed_creates_failures = 0").Find(&recs).Error; err != nil {
+		return fmt.Errorf("find EPP policies without a failed-create budget: %w", err)
+	}
+	for _, rec := range recs {
+		l := startingLimits(rec.Name)
+		err := db.Model(&EPPPolicyRecord{}).Where("name = ? AND failed_creates_failures = 0", rec.Name).Updates(map[string]any{
+			"failed_creates_failures": l.FailedCreates.Failures, "failed_creates_ratio_percent": l.FailedCreates.RatioPercent,
+			"family_failed_creates_failures": l.FamilyFailedCreates.Failures, "family_failed_creates_ratio_percent": l.FamilyFailedCreates.RatioPercent,
+		}).Error
+		if err != nil {
+			return fmt.Errorf("fill EPP policy %s's failed-create budget: %w", rec.Name, err)
+		}
+	}
+	return nil
 }
 
 // backfillEPPPolicyRates gives policies stored before command rates and
@@ -499,15 +549,8 @@ func backfillEPPPolicyRates(db *gorm.DB) error {
 	if err := db.Where("rate_check_per_second = 0").Find(&recs).Error; err != nil {
 		return fmt.Errorf("find EPP policies without rates: %w", err)
 	}
-	starting := map[string]entities.EPPPolicyLimits{}
-	for _, p := range entities.BuiltInEPPPolicies() {
-		starting[p.Name] = p.Limits
-	}
 	for _, rec := range recs {
-		l, ok := starting[rec.Name]
-		if !ok {
-			l = entities.DefaultEPPPolicyLimits()
-		}
+		l := startingLimits(rec.Name)
 		// A check burst holds at least one full check of the policy's own
 		// size, or its largest check could never pass.
 		l.Rates.Check.Burst = max(l.Rates.Check.Burst, rec.CheckNames)

@@ -26,6 +26,9 @@ func TestNewEPPPolicy(t *testing.T) {
 		func(l *EPPPolicyLimits) { l.Rates.Check.Burst = l.CheckNames - 1 },
 		func(l *EPPPolicyLimits) { l.FamilyRates.Check.Burst = l.CheckNames - 1 },
 		func(l *EPPPolicyLimits) { l.CreatesPerDay = -1 },
+		func(l *EPPPolicyLimits) { l.FailedCreates.Failures = 0 },
+		func(l *EPPPolicyLimits) { l.FailedCreates.RatioPercent = 101 },
+		func(l *EPPPolicyLimits) { l.FamilyFailedCreates.RatioPercent = 0 },
 	} {
 		l := DefaultEPPPolicyLimits()
 		edit(&l)
@@ -51,6 +54,14 @@ func TestStartingLimits(t *testing.T) {
 	assert.Zero(t, DefaultEPPPolicyLimits().CreatesPerDay, "default has no create cap")
 	assert.Equal(t, 100, ProbationEPPPolicyLimits().CreatesPerDay)
 	assert.Equal(t, EPPRate{PerSecond: 250, Burst: 1000}, DefaultEPPPolicyLimits().Rates.Check)
+}
+
+func TestFailedCreateBudget(t *testing.T) {
+	b := EPPFailedCreateBudget{Failures: 100, RatioPercent: 90}
+	assert.True(t, b.Over(100, 0))
+	assert.True(t, b.Over(900, 100), "exactly 90%")
+	assert.False(t, b.Over(99, 0), "too few")
+	assert.False(t, b.Over(899, 101), "a busy registrar with failures, under 90%")
 }
 
 func TestNewRegistrarFamily(t *testing.T) {
