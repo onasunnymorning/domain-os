@@ -19,6 +19,8 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
@@ -303,7 +305,7 @@ func main() {
 	hostService := appservices.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	// Domains
 	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
-	domainService := appservices.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
+	domainService := appservices.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher, postgres.NewTransactor(gormDB))
 
 	// Domain Tombstones — archival records for purged domains
 	tombstoneRepo := postgres.NewGormTombstoneRepository(gormDB)
@@ -405,6 +407,8 @@ func main() {
 	eppRedis := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword})
 	eppSessionService := appservices.NewEPPSessionService(sessionstore.NewRedis(eppRedis), entities.EPPSessionCaps{}, 0, eventPublisher)
 	rest.NewEPPSessionsController(r, eppSessionService, authMiddleware)
+	rest.NewEPPLockoutsController(r, appservices.NewEPPLockoutService(lockout.NewRedis(eppRedis, lockout.DefaultPolicy), postgres.NewEPPCredentialRepository(gormDB), eventPublisher), authMiddleware)
+	rest.NewEPPSuspensionsController(r, appservices.NewEPPSuspensionService(ratelimit.NewRedis(eppRedis), postgres.NewEPPCredentialRepository(gormDB), eventPublisher), authMiddleware)
 	// EPP policies and registrar families (ADR 0019): the EPP servers reload
 	// them within their credential refresh interval.
 	rest.NewEPPPoliciesController(r, appservices.NewEPPPolicyService(postgres.NewEPPPolicyRepository(gormDB), registrarRepo, postgres.NewEPPCreateOutcomeRepository(gormDB)), authMiddleware)

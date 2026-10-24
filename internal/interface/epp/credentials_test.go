@@ -89,6 +89,37 @@ type testCredentials struct {
 	outcomeStore *memstore.EPPCreateOutcomes
 	// escalation, when set, replaces the failed-create escalation.
 	escalation *epppolicy.Escalation
+	// events records the outbox events the server writes.
+	events *testEvents
+}
+
+// testEvents records published events; err, when set, fails them.
+type testEvents struct {
+	mu     sync.Mutex
+	events []entities.DomainEvent
+	err    error
+}
+
+func (e *testEvents) Publish(_ context.Context, events ...entities.DomainEvent) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.err != nil {
+		return e.err
+	}
+	e.events = append(e.events, events...)
+	return nil
+}
+
+func (e *testEvents) of(typ string) []entities.DomainEvent {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []entities.DomainEvent
+	for _, ev := range e.events {
+		if ev.Type == typ {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 // testPolicies is the EPP policies as a test sets them: built-in by default.
@@ -158,6 +189,7 @@ func newTestCredentials(t *testing.T) *testCredentials {
 		registry: memstore.NewEPPSessions(),
 		rates:    ratelimit.NewMemory(),
 		failed:   ratelimit.NewMemoryFailedCreates(),
+		events:   &testEvents{},
 		lockout:  lockout.NewMemory(lockout.Policy{MaxFailures: 5, Window: time.Minute, BaseLock: time.Minute, MaxLock: time.Hour, StrikeMemory: time.Hour}),
 		domains:  newTestDomains(),
 		audit:    memstore.NewEPPTransactions(),
@@ -203,7 +235,7 @@ func (tc *testCredentials) authenticator() *services.EPPAuthenticationService {
 func (tc *testCredentials) options(cfg config.EPP, newID func() string) Options {
 	return Options{
 		Config: cfg, Authenticator: tc.authenticator(), Sessions: tc.tracker(cfg),
-		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Rates: tc.rates, FailedCreates: tc.failed, CreateOutcomes: tc.outcomes, Escalation: tc.escalation, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
+		Domains: tc.domains, Hosts: tc.hosts, Contacts: tc.contacts, Polls: services.NewEPPPollService(tc.domains.registry.Polls()), Policies: tc.policies, Rates: tc.rates, FailedCreates: tc.failed, CreateOutcomes: tc.outcomes, Escalation: tc.escalation, Events: tc.events, Audit: tc.auditLog, Logger: discardLogger(), NewID: newID,
 	}
 }
 

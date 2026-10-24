@@ -169,7 +169,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	// Registration goes through DomainService, as from the admin API: it
 	// prices the domain, assigns its ROID, stores it and writes its event.
 	registry := services.NewDomainService(domainRepo, hostRepo, *roids, nndnRepo, tldRepo, phaseRepo,
-		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events)
+		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events, postgres.NewTransactor(db))
 	// Transfers and the poll queue share a repository: a transfer's writes
 	// queue its messages in the same transaction.
 	transfers := postgres.NewDomainTransferRepository(db, repositoryID)
@@ -201,6 +201,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Rates:          rates,
 		FailedCreates:  failedCreates,
 		CreateOutcomes: outcomes,
+		Events:         events,
 		Audit:          audit,
 		Logger:         logger,
 		NewID:          func() string { return strconv.FormatInt(ids.GenerateID(), 10) },

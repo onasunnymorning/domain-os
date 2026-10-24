@@ -72,7 +72,9 @@ func (s *DomainService) retryRestore(ctx context.Context, domainName string, ste
 // requires no restore report restores the domain at once, as
 // CompleteRestoreAsRead does. The domain is written only if it is still as
 // read (else entities.ErrDomainChanged).
-func (s *DomainService) RequestRestoreAsRead(ctx context.Context, dom *entities.Domain, actor entities.ClIDType) (*entities.Domain, error) {
+func (s *DomainService) RequestRestoreAsRead(ctx context.Context, dom *entities.Domain, actor entities.ClIDType) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	phase, err := s.currentGAPhase(ctx, dom)
 	if err != nil {
 		return nil, err
@@ -118,7 +120,9 @@ func (s *DomainService) CompleteRestoreAsRead(ctx context.Context, dom *entities
 // dom as read. requested says the request is part of the same command (a
 // phase that requires no report), so it is recorded too.
 func (s *DomainService) completeRestore(ctx context.Context, before, dom *entities.Domain, report *entities.RestoreReport,
-	phase *entities.Phase, actor entities.ClIDType, now time.Time, requested bool) (*entities.Domain, error) {
+	phase *entities.Phase, actor entities.ClIDType, now time.Time, requested bool) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	years, err := dom.CompleteRestore(report, phase, now)
 	if err != nil {
 		return nil, err
@@ -256,7 +260,9 @@ func (s *DomainService) BatchRevertLapsedRestores(ctx context.Context, names []s
 
 // revertIfLapsed reverts the domain's restore if it lapsed by dueBy, and
 // reports whether it did.
-func (s *DomainService) revertIfLapsed(ctx context.Context, name string, dueBy time.Time) (bool, error) {
+func (s *DomainService) revertIfLapsed(ctx context.Context, name string, dueBy time.Time) (_ bool, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	for attempt := 1; ; attempt++ {
 		dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
 		if errors.Is(err, entities.ErrDomainNotFound) {

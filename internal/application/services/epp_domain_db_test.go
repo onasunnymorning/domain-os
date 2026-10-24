@@ -126,7 +126,7 @@ func newEPPFixture(t *testing.T) *eppFixture {
 	require.NoError(t, accreditations.CreateAccreditation(ctx, tld, rar1))
 
 	registry := NewDomainService(domainRepo, hostRepo, *roids, postgres.NewGormNNDNRepository(db), tldRepo, phaseRepo,
-		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), rarRepo, events)
+		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), rarRepo, events, postgres.NewTransactor(db))
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: contactRepo, Hosts: hostRepo, Registrars: rarRepo, Register: registry, CheckParallelism: 2,

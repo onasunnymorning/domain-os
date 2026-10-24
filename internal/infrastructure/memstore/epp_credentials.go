@@ -152,3 +152,20 @@ func (s *EPPCredentials) ListCompromisedSince(_ context.Context, since time.Time
 	}
 	return out, nil
 }
+
+// ListRegistrarsWithExpiringPins implements
+// repositories.EPPCredentialRepository: the registrars whose access has a
+// notice due.
+func (s *EPPCredentials) ListRegistrarsWithExpiringPins(_ context.Context, now time.Time) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for clid, a := range s.access {
+		c := a.Clone()
+		if len(c.NoteExpiringPins(now, "")) > 0 {
+			out = append(out, clid)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}

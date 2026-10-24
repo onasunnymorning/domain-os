@@ -85,6 +85,12 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		cmd.closeAfterResponse()
 		return
 	case errors.Is(err, entities.ErrEPPAuthentication):
+		var locked *entities.EPPLockStartedError
+		if errors.As(err, &locked) {
+			l := locked.Lockout
+			s.record(ctx, entities.NewDomainEvent(eventSource, entities.EventEPPLoginLocked, string(l.ClID),
+				fmt.Sprintf("EPP login %s locked out from %s after failed passwords", l.Login, l.ClientIP), l))
+		}
 		reason := loginFailureReason(err)
 		s.metrics.logins.WithLabelValues(loginFailure).Inc()
 		s.metrics.loginFailures.WithLabelValues(reason).Inc()

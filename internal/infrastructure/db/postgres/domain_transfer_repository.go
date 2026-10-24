@@ -72,7 +72,7 @@ func NewDomainTransferRepository(db *gorm.DB, repository entities.RepositoryID) 
 func (r *DomainTransferRepository) RequestTransfer(ctx context.Context, d *entities.Domain, t *entities.DomainTransfer, msgs []*entities.PollMessage) (*entities.Domain, error) {
 	dbDomain := ToDBDomain(d)
 	stored := &Domain{}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		if err := updateDomainRowIfAt(tx, dbDomain, d.UpdatedAt); err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (r *DomainTransferRepository) ResolveTransfer(ctx context.Context, res *ent
 	d, t := res.Domain, res.Transfer
 	dbDomain := ToDBDomain(d)
 	stored := &Domain{}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		if err := updateDomainRowIfAtFrom(tx, dbDomain, d.UpdatedAt, t.LosingClID.String()); err != nil {
 			return err
 		}
@@ -280,7 +280,7 @@ func (r *DomainTransferRepository) LatestTransfer(ctx context.Context, roid enti
 		return nil, err
 	}
 	var rec DomainTransferRecord
-	err = r.db.WithContext(ctx).Where("domain_ro_id = ?", id).Order("id DESC").First(&rec).Error
+	err = dbFrom(ctx, r.db).Where("domain_ro_id = ?", id).Order("id DESC").First(&rec).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, entities.ErrTransferNotPending
 	}
@@ -295,7 +295,7 @@ func (r *DomainTransferRepository) LatestTransfer(ctx context.Context, roid enti
 // domain since deleted stays pending in the history and is left out.
 func (r *DomainTransferRepository) ListDueTransfers(ctx context.Context, dueBy, afterDate time.Time, afterID int64, limit int) ([]*entities.DomainTransfer, error) {
 	var recs []DomainTransferRecord
-	if err := r.db.WithContext(ctx).
+	if err := dbFrom(ctx, r.db).
 		Where("status = ? AND action_date <= ?", string(entities.TransferStatusPending), dueBy).
 		Where("(action_date, id) > (?, ?)", afterDate, afterID).
 		Where("EXISTS (SELECT 1 FROM domains d WHERE d.ro_id = domain_transfers.domain_ro_id)").
@@ -311,7 +311,7 @@ func (r *DomainTransferRepository) ListDueTransfers(ctx context.Context, dueBy, 
 
 // OldestPollMessage implements repositories.PollMessageRepository.
 func (r *DomainTransferRepository) OldestPollMessage(ctx context.Context, clid entities.ClIDType) (*entities.PollMessage, int64, error) {
-	q := r.db.WithContext(ctx).Model(&PollMessageRecord{}).Where("cl_id = ?", clid.String())
+	q := dbFrom(ctx, r.db).Model(&PollMessageRecord{}).Where("cl_id = ?", clid.String())
 	var n int64
 	if err := q.Count(&n).Error; err != nil {
 		return nil, 0, err
@@ -320,7 +320,7 @@ func (r *DomainTransferRepository) OldestPollMessage(ctx context.Context, clid e
 		return nil, 0, nil
 	}
 	var rec PollMessageRecord
-	if err := r.db.WithContext(ctx).Where("cl_id = ?", clid.String()).Order("id").First(&rec).Error; err != nil {
+	if err := dbFrom(ctx, r.db).Where("cl_id = ?", clid.String()).Order("id").First(&rec).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, 0, nil // acknowledged since it was counted
 		}
@@ -332,7 +332,7 @@ func (r *DomainTransferRepository) OldestPollMessage(ctx context.Context, clid e
 // AckPollMessage implements repositories.PollMessageRepository.
 func (r *DomainTransferRepository) AckPollMessage(ctx context.Context, clid entities.ClIDType, id int64) (int64, error) {
 	var n int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		res := tx.Where("id = ? AND cl_id = ?", id, clid.String()).Delete(&PollMessageRecord{})
 		if res.Error != nil {
 			return res.Error

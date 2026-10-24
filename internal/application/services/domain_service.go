@@ -55,6 +55,8 @@ type DomainService struct {
 	eventPublisher   repositories.EventPublisher
 	tombstoneRepo    repositories.TombstoneRepository      // optional — for domain archival
 	transferRepo     repositories.DomainTransferRepository // optional — for the transfer writes (SetTransferRepo)
+	// tx runs each domain change and its outbox events in one transaction.
+	tx repositories.Transactor
 }
 
 // SetTombstoneRepo sets the optional tombstone repository for domain archival.
@@ -84,6 +86,7 @@ func NewDomainService(
 	fxr repositories.FXRepository,
 	rRepo repositories.RegistrarRepository,
 	ep repositories.EventPublisher,
+	tx repositories.Transactor,
 ) *DomainService {
 	return &DomainService{
 		domainRepository: dRepo,
@@ -96,7 +99,39 @@ func NewDomainService(
 		fxRepo:           fxr,
 		rarRepo:          rRepo,
 		eventPublisher:   ep,
+		tx:               tx,
 	}
+}
+
+// begin opens a transaction for a domain change and its events, or joins
+// the one ctx carries. done ends it, given the method's error: it rolls
+// back if the method failed, an event could not be written, or the method
+// panicked (re-panicking), and commits otherwise. Use it as
+//
+//	ctx, done := s.begin(ctx)
+//	defer done(&err)
+//
+// in a method whose error result is named err.
+func (s *DomainService) begin(ctx context.Context) (context.Context, func(*error)) {
+	ctx, finish := s.tx.Begin(ctx)
+	ctx, failures := appcontext.WithEventFailures(ctx)
+	return ctx, func(errp *error) {
+		if r := recover(); r != nil {
+			_ = finish(fmt.Errorf("panic: %v", r))
+			panic(r)
+		}
+		if *errp == nil {
+			*errp = failures.Err()
+		}
+		*errp = finish(*errp)
+	}
+}
+
+// atomically runs fn in a transaction, as begin does.
+func (s *DomainService) atomically(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
+	return fn(ctx)
 }
 
 // Create creates a new domain using the provided CreateDomainCommand.
@@ -104,7 +139,9 @@ func NewDomainService(
 // validates the resulting domain entity, and persists it in the domain repository.
 // Returns the created Domain or an error if validation fails or persistence is unsuccessful.
 // It optionally validates the domain against the current GA phase polify if so stated in the command.
-func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCommand) (*entities.Domain, error) {
+func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCommand) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Every domain gets a new ROID of this registry's (ADR 0017).
 	roid, err := s.roidService.GenerateRoid("domain")
 	if err != nil {
@@ -224,7 +261,9 @@ func (s *DomainService) Create(ctx context.Context, cmd *commands.CreateDomainCo
 // Hosts are not created or associated with the domains.
 // Hosts, Registrars and Contacts must exist before calling this method or the operation will fail if a reference is not found.
 // It logs a domain lifecycle event for the bulk operation.
-func (s *DomainService) BulkCreate(ctx context.Context, cmds []*commands.CreateDomainCommand) error {
+func (s *DomainService) BulkCreate(ctx context.Context, cmds []*commands.CreateDomainCommand) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	doms, err := s.bulkDomainFromCreateDomainCommands(cmds)
 	if err != nil {
 		return err
@@ -248,7 +287,9 @@ func (s *DomainService) BulkCreate(ctx context.Context, cmds []*commands.CreateD
 // UpdateDomain updates the details of an existing domain identified by its name.
 // It retrieves the domain from the repository, applies the changes specified in upDom,
 // optionally validates the domain against the current GA phase policy if so stated in the command,
-func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (*entities.Domain, error) {
+func (s *DomainService) UpdateDomain(ctx context.Context, name string, upDom *commands.UpdateDomainCommand) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Look up the domain
 	dom, err := s.domainRepository.GetDomainByName(ctx, name, false)
 	if err != nil {
@@ -382,7 +423,9 @@ func (s *DomainService) ensureInScope(ctx context.Context, scope entities.Regist
 //
 // With dropHosts the domain's host links are removed first — after the scope
 // check, so an out-of-scope request cannot strip another operator's domain.
-func (s *DomainService) DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string, dropHosts bool) error {
+func (s *DomainService) DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string, dropHosts bool) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// We don't want to fail of a deleting a domain because it doesn't exist - idemp.
 	prevState, _ := s.GetDomainByName(ctx, name, false)
 
@@ -397,7 +440,7 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, scope entities.R
 		}
 	}
 
-	err := s.domainRepository.DeleteDomainByName(ctx, scope, name)
+	err = s.domainRepository.DeleteDomainByName(ctx, scope, name)
 	if err != nil {
 		// Still idempotent for a domain that genuinely is not there. But one
 		// that exists and was not deleted is outside the caller's scope, and
@@ -447,7 +490,9 @@ func (s *DomainService) DeleteDomainByName(ctx context.Context, scope entities.R
 // 5. Deletes the domain from the repository.
 //
 // 6. Logs a lifecycle event for the domain.
-func (s *DomainService) PurgeDomain(ctx context.Context, scope entities.RegistryScope, name string) error {
+func (s *DomainService) PurgeDomain(ctx context.Context, scope entities.RegistryScope, name string) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
@@ -552,7 +597,9 @@ func (s *DomainService) ListDomains(ctx context.Context, params queries.ListItem
 }
 
 // AddHostToDomain adds a host to a domain
-func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string, ignoreUpdateProhibitions bool) error {
+func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid string, ignoreUpdateProhibitions bool) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
@@ -636,7 +683,9 @@ func (s *DomainService) AddHostToDomain(ctx context.Context, name string, roid s
 }
 
 // AddHostToDomainByHostName adds a host to a domain by host name
-func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, ignoreUpdateProhibitions bool) error {
+func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainName, hostName string, ignoreUpdateProhibitions bool) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Normalize: trim trailing dots and whitespace for robustness
 	domainName = strings.TrimRight(strings.TrimSpace(domainName), ".")
 	hostName = strings.TrimRight(strings.TrimSpace(hostName), ".")
@@ -712,7 +761,9 @@ func (s *DomainService) AddHostToDomainByHostName(ctx context.Context, domainNam
 }
 
 // RemoveAllDomainHosts purges/dissasociates all hosts from a domain. It does not delete the hosts
-func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) error {
+func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
@@ -767,7 +818,9 @@ func (s *DomainService) RemoveAllDomainHosts(ctx context.Context, name string) e
 }
 
 // RemoveHostFromDomain removes a host from a domain
-func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) error {
+func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, roid string) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, name, true)
 	if err != nil {
@@ -857,7 +910,9 @@ func (s *DomainService) RemoveHostFromDomain(ctx context.Context, name string, r
 }
 
 // RemoveHostFromDomainByHostName removes a host from a domain
-func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) error {
+func (s *DomainService) RemoveHostFromDomainByHostName(ctx context.Context, domainName, hostName string) (err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, domainName, true)
 	if err != nil {
@@ -1094,7 +1149,9 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 // relevant TLD and phase information, generates a unique ROID, creates the domain
 // entity, attaches any specified hosts, and persists the resulting domain in the
 // repository. It returns the created domain or an error if any step fails.
-func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (*entities.Domain, error) {
+func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.RegisterDomainCommand) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	// Check if the registrar is accredited for the TLD
 	domName := entities.DomainName(cmd.Name)
 	isAccredited, err := svc.rarRepo.IsRegistrarAccreditedForTLD(ctx, domName.ParentDomain(), cmd.ClID)
@@ -1266,7 +1323,9 @@ func (svc *DomainService) RenewDomainAsRead(ctx context.Context, dom *entities.D
 
 // renew renews dom as cmd says, and saves it with write.
 func (svc *DomainService) renew(ctx context.Context, dom *entities.Domain, cmd *commands.RenewDomainCommand, force bool,
-	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (*entities.Domain, error) {
+	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	// Get the TLD including the phases
 	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
 	if err != nil {
@@ -1410,7 +1469,9 @@ func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (
 // 4. Retrieves the registrar and checks if the registrar has opted in for auto-renewal.
 // 5. Renews the domain using the specified number of years.
 // 6. Saves the updated domain.
-func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, years int) (*entities.Domain, error) {
+func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, years int) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	// Get the domain wihtout the hosts
 	dom, err := svc.GetDomainByName(ctx, name, false)
 	if err != nil {
@@ -1514,7 +1575,9 @@ func (svc *DomainService) MarkDomainForDeletionAsRead(ctx context.Context, dom *
 
 // markForDeletion marks dom for deletion and saves it with write.
 func (svc *DomainService) markForDeletion(ctx context.Context, dom *entities.Domain,
-	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (*entities.Domain, error) {
+	write func(context.Context, *entities.Domain) (*entities.Domain, error)) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	domainName := dom.Name.String()
 	// Get the TLD and phases
 	tld, err := svc.tldRepo.GetByName(ctx, dom.Name.ParentDomain(), true)
@@ -1569,7 +1632,9 @@ func (svc *DomainService) markForDeletion(ctx context.Context, dom *entities.Dom
 // checked, if the stored domain is still before (else
 // entities.ErrDomainChanged), and records it as a domain.updated event. It
 // is the EPP server's update.
-func (svc *DomainService) SaveDomainUpdate(ctx context.Context, before, after *entities.Domain, command interface{}) (*entities.Domain, error) {
+func (svc *DomainService) SaveDomainUpdate(ctx context.Context, before, after *entities.Domain, command interface{}) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	event, err := entities.NewDomainLifeCycleEvent(after.ClID.String(), "", after.Name.ParentDomain(), after.Name.String(), 0, entities.TransactionTypeUpdate)
 	if err != nil {
 		return nil, err
@@ -1586,7 +1651,9 @@ func (svc *DomainService) SaveDomainUpdate(ctx context.Context, before, after *e
 // ExpireDomain expires a domain by its name. It retrieves the domain,
 // fetches the TLD and its current GA phase, and then uses the domain layer to expire the domain.
 // Finally, it updates the domain in the repository.
-func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error) {
+func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
 	if err != nil {
@@ -1642,7 +1709,9 @@ func (svc *DomainService) ExpireDomain(ctx context.Context, domainName string) (
 }
 
 // DropCatch sets or unsets the DropCatch flag on a domain
-func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string, dropcatch bool) error {
+func (svc *DomainService) DropCatchDomain(ctx context.Context, domainName string, dropcatch bool) (err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
 	// Get the domain
 	dom, err := svc.GetDomainByName(ctx, domainName, false)
 	if err != nil {
@@ -1846,8 +1915,12 @@ func (s *DomainService) publishDomainEvent(
 		event.CorrelationID = correlationID
 	}
 
+	source := "domain-os/api"
+	if v, ok := appcontext.EventSource(ctx); ok {
+		source = v
+	}
 	domainEvent := entities.NewDomainEvent(
-		"domain-os/api",
+		source,
 		eventType,
 		event.DomainName,
 		msg,
@@ -1864,12 +1937,21 @@ func (s *DomainService) publishDomainEvent(
 	domainEvent.RoID = event.DomainRoID
 
 	if err := s.eventPublisher.Publish(ctx, domainEvent); err != nil {
+		// In a transaction (begin), the change is rolled back with its
+		// event. Every change publishes in one; outside one this is a
+		// read path's event, logged.
+		if f, ok := appcontext.EventFailuresOf(ctx); ok {
+			f.Add(fmt.Errorf("record %s event: %w", eventType, err))
+			return
+		}
 		log.Printf("failed to publish event %s: %v", eventType, err)
 	}
 }
 
 // SetStatus sets the provided status value on the Domain.Status struct to true
-func (s *DomainService) SetStatus(ctx context.Context, domainName, status string) (*entities.Domain, error) {
+func (s *DomainService) SetStatus(ctx context.Context, domainName, status string) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Fail early before making any DB calls
 	if !slices.Contains(entities.ValidDomainStatuses, (status)) {
 		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
@@ -1914,7 +1996,9 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 }
 
 // UnsetStatus sets the provided status value on the Domain.Status struct to false
-func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status string) (*entities.Domain, error) {
+func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status string) (_ *entities.Domain, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// Fail early before making any DB calls
 	if !slices.Contains(entities.ValidDomainStatuses, status) {
 		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
@@ -2164,17 +2248,20 @@ func (svc *DomainService) BatchExpireDomains(ctx context.Context, names []string
 				continue
 			}
 
-			// Save the domain
-			updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
+			// Save the domain and its event, in one transaction
+			err = svc.atomically(ctx, func(ctx context.Context) error {
+				updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
+				if err != nil {
+					return err
+				}
+				event.DomainRoID = updatedDomain.RoID.String()
+				svc.publishDomainEvent(ctx, "domain.expired", fmt.Sprintf("Domain %s expired", name), event, nil, updatedDomain, prevState)
+				return nil
+			})
 			if err != nil {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
 				continue
 			}
-			event.DomainRoID = updatedDomain.RoID.String()
-
-			// Publish event
-			msg := fmt.Sprintf("Domain %s expired", name)
-			svc.publishDomainEvent(ctx, "domain.expired", msg, event, nil, updatedDomain, prevState)
 
 			result.Succeeded = append(result.Succeeded, name)
 		}
@@ -2322,17 +2409,20 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 				continue
 			}
 
-			// Save the domain
-			updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
+			// Save the domain and its event, in one transaction
+			err = svc.atomically(ctx, func(ctx context.Context) error {
+				updatedDomain, err := svc.domainRepository.UpdateDomainColumnsIfUnchanged(ctx, dom)
+				if err != nil {
+					return err
+				}
+				event.DomainRoID = updatedDomain.RoID.String()
+				svc.publishDomainEvent(ctx, "domain.auto_renewed", fmt.Sprintf("Domain %s auto-renewed for %d years", name, years), event, nil, updatedDomain, prevState)
+				return nil
+			})
 			if err != nil {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("update failed: %v", err)})
 				continue
 			}
-			event.DomainRoID = updatedDomain.RoID.String()
-
-			// Publish event
-			msg := fmt.Sprintf("Domain %s auto-renewed for %d years", name, years)
-			svc.publishDomainEvent(ctx, "domain.auto_renewed", msg, event, nil, updatedDomain, prevState)
 
 			result.Succeeded = append(result.Succeeded, name)
 		}
@@ -2390,65 +2480,57 @@ func (svc *DomainService) BatchPurgeDomains(ctx context.Context, scope entities.
 			continue
 		}
 
-		// Dissociate all hosts if there are any
-		if len(dom.Hosts) > 0 {
-			if err := svc.RemoveAllDomainHosts(ctx, name); err != nil {
-				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("host removal failed: %v", err)})
-				continue
-			}
-		}
-
-		// If the domain is flagged for DropCatching, create an NNDN record
-		var createdNNDN *entities.NNDN
-		if dom.DropCatch {
-			nndn, err := entities.NewNNDN(dom.Name.String())
-			if err != nil {
-				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("NNDN creation failed: %v", err)})
-				continue
-			}
-			nndn.Reason = "Domain.DropCatch is true"
-			createdNNDN, err = svc.nndnRepo.CreateNNDN(ctx, nndn)
-			if err != nil {
-				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("NNDN save failed: %v", err)})
-				continue
-			}
-		}
-
-		// Delete the domain. Gone between the listing and here means an earlier
-		// retry or a concurrent purge got it first — the same as the not-listed
-		// case above, so it is skipped rather than failed.
-		if err := svc.domainRepository.DeleteDomainByName(ctx, scope, name); err != nil {
-			if errors.Is(err, entities.ErrDomainNotFound) {
-				result.Skipped = append(result.Skipped, name)
-				continue
-			}
-			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: fmt.Sprintf("delete failed: %v", err)})
-			continue
-		}
-
-		// Log lifecycle event (matches PurgeDomain: event created after delete)
-		event, err := entities.NewDomainLifeCycleEvent(
-			dom.ClID.String(),
-			"",
-			dom.Name.ParentDomain(),
-			dom.Name.String(),
-			0,
-			entities.TransactionTypePurge,
-		)
-		if err != nil {
-			// Domain already deleted, log failure but count as succeeded
+		// Purge it: hosts, NNDN, delete and event in one transaction.
+		skipped, err := svc.purgeListed(ctx, scope, name, dom)
+		switch {
+		case skipped:
+			result.Skipped = append(result.Skipped, name)
+		case err != nil:
+			result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: err.Error()})
+		default:
 			result.Succeeded = append(result.Succeeded, name)
-			continue
 		}
-		event.DomainRoID = dom.RoID.String()
-
-		msg := fmt.Sprintf("Domain %s purged", name)
-		svc.publishDomainEvent(ctx, "domain.purged", msg, event, nil, createdNNDN, dom)
-
-		result.Succeeded = append(result.Succeeded, name)
 	}
 
 	return result
+}
+
+// purgeListed purges dom, listed by BatchPurgeDomains, in one transaction:
+// its hosts dissociated, an NNDN if it is flagged for drop-catching, the
+// delete, and the domain.purged event. A domain gone since it was listed
+// (an earlier retry or a concurrent purge got it) is skipped.
+func (svc *DomainService) purgeListed(ctx context.Context, scope entities.RegistryScope, name string, dom *entities.Domain) (skipped bool, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
+	if len(dom.Hosts) > 0 {
+		if err := svc.RemoveAllDomainHosts(ctx, name); err != nil {
+			return false, fmt.Errorf("host removal failed: %w", err)
+		}
+	}
+	var createdNNDN *entities.NNDN
+	if dom.DropCatch {
+		nndn, err := entities.NewNNDN(dom.Name.String())
+		if err != nil {
+			return false, fmt.Errorf("NNDN creation failed: %w", err)
+		}
+		nndn.Reason = "Domain.DropCatch is true"
+		if createdNNDN, err = svc.nndnRepo.CreateNNDN(ctx, nndn); err != nil {
+			return false, fmt.Errorf("NNDN save failed: %w", err)
+		}
+	}
+	if err := svc.domainRepository.DeleteDomainByName(ctx, scope, name); err != nil {
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return true, nil
+		}
+		return false, fmt.Errorf("delete failed: %w", err)
+	}
+	event, err := entities.NewDomainLifeCycleEvent(dom.ClID.String(), "", dom.Name.ParentDomain(), dom.Name.String(), 0, entities.TransactionTypePurge)
+	if err != nil {
+		return false, fmt.Errorf("purge event: %w", err)
+	}
+	event.DomainRoID = dom.RoID.String()
+	svc.publishDomainEvent(ctx, "domain.purged", fmt.Sprintf("Domain %s purged", name), event, nil, createdNNDN, dom)
+	return false, nil
 }
 
 // EligibilityPartition is the outcome of partitioning a set of expired domains

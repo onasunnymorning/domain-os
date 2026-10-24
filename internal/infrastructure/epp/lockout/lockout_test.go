@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +73,7 @@ func TestFailuresWhileLockedDoNotStartTheNextLock(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		d, err := m.RecordFailure(ctx, "k")
 		require.NoError(t, err)
-		require.Equal(t, 10*time.Second, d, "the existing lock is reported, not extended")
+		require.Zero(t, d, "the existing lock is neither extended nor reported again")
 	}
 	c.advance(11 * time.Second)
 	_, _ = m.RecordFailure(ctx, "k")
@@ -192,11 +193,12 @@ func TestRedis(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, float64(10*time.Second), float64(left), float64(time.Second))
 
-	// Failures in flight while locked report the lock and are not counted.
+	// Failures in flight while locked are not counted, and do not report
+	// the lock again: only the failure that started it does.
 	for i := 0; i < 5; i++ {
 		d, err = r.RecordFailure(ctx, key)
 		require.NoError(t, err)
-		require.InDelta(t, float64(10*time.Second), float64(d), float64(time.Second))
+		require.Zero(t, d)
 	}
 	strikes, err := client.Get(ctx, "epp:lockout:strikes:"+key).Int()
 	require.NoError(t, err)
@@ -214,4 +216,77 @@ func TestRedis(t *testing.T) {
 	left, err = r.LockedFor(ctx, key)
 	require.NoError(t, err)
 	require.Zero(t, left)
+}
+
+func TestRedisListAndLiftLockouts(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", DB: 9})
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("Redis is required in CI for the lockout script tests: %v", err)
+		}
+		t.Skipf("no Redis on localhost:6379: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	require.NoError(t, client.FlushDB(ctx).Err())
+	r := NewRedis(client, testPolicy)
+	lock := func(key string) {
+		for range testPolicy.MaxFailures {
+			_, err := r.RecordFailure(ctx, key)
+			require.NoError(t, err)
+		}
+	}
+	lock("login-a|192.0.2.1")
+	lock("login-a|2001:db8::1")
+	lock("login-b|192.0.2.1")
+	_, err := r.RecordFailure(ctx, "login-a|198.51.100.7") // counted, not locked
+	require.NoError(t, err)
+
+	all, err := r.ListLockouts(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	assert.Equal(t, "login-a", all[0].Login)
+	assert.Equal(t, "192.0.2.1", all[0].ClientIP)
+	assert.True(t, all[0].EndsAt.After(time.Now()))
+
+	lifted, err := r.LiftLockouts(ctx, "login-a")
+	require.NoError(t, err)
+	assert.Len(t, lifted, 2)
+	for _, src := range []string{"192.0.2.1", "2001:db8::1"} {
+		d, err := r.LockedFor(ctx, "login-a|"+src)
+		require.NoError(t, err)
+		assert.Zero(t, d, src)
+	}
+	keys, err := client.Keys(ctx, "epp:lockout:*login-a|*").Result()
+	require.NoError(t, err)
+	assert.Empty(t, keys, "failure counts and strikes go too, from every source")
+	all, _ = r.ListLockouts(ctx)
+	require.Len(t, all, 1)
+	assert.Equal(t, "login-b", all[0].Login)
+
+	t.Run("login IDs with | or glob characters reach only their own keys", func(t *testing.T) {
+		require.NoError(t, client.FlushDB(ctx).Err())
+		lock("ops|a|192.0.2.1")
+		lock("ops|192.0.2.1")
+		lock("a*b|192.0.2.1")
+		lock("axb|192.0.2.1")
+		all, err := r.ListLockouts(ctx)
+		require.NoError(t, err)
+		logins := map[string]string{}
+		for _, l := range all {
+			logins[l.Login] = l.ClientIP
+		}
+		assert.Equal(t, map[string]string{"ops|a": "192.0.2.1", "ops": "192.0.2.1", "a*b": "192.0.2.1", "axb": "192.0.2.1"}, logins)
+
+		lifted, err := r.LiftLockouts(ctx, "a*b")
+		require.NoError(t, err)
+		require.Len(t, lifted, 1)
+		_, err = r.LiftLockouts(ctx, "ops")
+		require.NoError(t, err)
+		for _, kept := range []string{"axb|192.0.2.1", "ops|a|192.0.2.1"} {
+			d, err := r.LockedFor(ctx, kept)
+			require.NoError(t, err)
+			assert.Positive(t, d, kept)
+		}
+	})
 }

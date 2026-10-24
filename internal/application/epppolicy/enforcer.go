@@ -132,8 +132,14 @@ type Decision struct {
 	// scope=...; suspended-for-ms=...".
 	Reason string
 	// Suspended is set when this command's strike suspended its login, for
-	// the caller to end the login's other sessions and raise the alert.
-	Suspended bool
+	// the caller to end the login's other sessions, raise the alert and
+	// record the event; Suspension and Strikes describe it.
+	Suspended  bool
+	Suspension entities.EPPLoginSuspension
+	Strikes    int
+	// QuotaReached is set on the first create refused for the day's quota,
+	// across every node, for the caller to record it once.
+	QuotaReached bool
 }
 
 // Decide applies the policy's rules to a command of a logged-in session, in
@@ -371,9 +377,11 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 		return closed, nil
 	}
 	if limits.CreatesPerDay > 0 {
-		release, ok, err := e.rates.ReserveQuota(ctx, QuotaKey(clid, e.now()), limits.CreatesPerDay, quotaTTL)
+		key := QuotaKey(clid, e.now())
+		release, ok, err := e.rates.ReserveQuota(ctx, key, limits.CreatesPerDay, quotaTTL)
 		if err == nil && !ok {
-			return Decision{Action: Reject, Rule: RuleCreateQuota, Code: codeDataPolicyViolation,
+			first, _ := e.rates.MarkQuotaReached(ctx, key, quotaTTL)
+			return Decision{Action: Reject, Rule: RuleCreateQuota, Code: codeDataPolicyViolation, QuotaReached: first,
 				Msg: fmt.Sprintf("Data management policy violation; the registrar may create %d domains a day (UTC), and has", limits.CreatesPerDay)}, nil
 		}
 		return d, release
@@ -386,7 +394,7 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EPPRegistrarPolicy, d *Decision) (Decision, bool) {
 	scopes := failedCreateScopes(who.ClID, rp)
 	st, err := e.failed.Assess(ctx, entities.EPPFailedCreateCheck{
-		Login: who.Login, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
+		Login: who.Login, ClID: who.ClID, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
 	})
 	if err != nil {
 		return Decision{}, true
@@ -398,7 +406,12 @@ func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EP
 	switch {
 	case st.Suspended > 0:
 		left := st.Suspended.Round(time.Second)
-		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing, Suspended: st.NewlySuspended,
+		sus := entities.EPPLoginSuspension{ClID: who.ClID, Login: who.Login, Scope: scope, EndsAt: e.now().Add(st.Suspended).UTC().Truncate(time.Second)}
+		if st.Over > 0 && rp.Family != nil {
+			sus.Family = rp.Family.Name
+		}
+		return Decision{Action: Close, Rule: RuleFailedCreates, Code: codeSessionLimitClosing,
+			Suspended: st.NewlySuspended, Suspension: sus, Strikes: st.Strikes,
 			Msg:    fmt.Sprintf("Session limit exceeded; server closing connection; the login is suspended for %s for creating registered names", left),
 			Reason: fmt.Sprintf("failed-creates; scope=%s; suspended-for-ms=%d", scope, left.Milliseconds())}, false
 	case st.Strikes > e.esc.TarpitStrikes:

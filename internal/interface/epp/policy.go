@@ -90,12 +90,18 @@ func (p registrarPolicies) decide(ctx context.Context, cmd *command) policyDecis
 	switch d.Action {
 	case epppolicy.Close:
 		if d.Suspended {
-			p.s.loginSuspended(auth, cmd.session)
+			p.s.loginSuspended(ctx, auth, cmd.session, d)
+		} else {
+			p.s.closedByPolicy(ctx, auth, cmd.session, d.Rule, d.Code, d.Reason)
 		}
 		return policyDecision{action: policyClose, rule: d.Rule, code: d.Code, msg: d.Msg, reason: d.Reason}
 	case epppolicy.Reject:
+		if d.QuotaReached {
+			p.s.quotaReached(ctx, auth, rp.Policy.Limits.CreatesPerDay)
+		}
 		if (d.Rule == epppolicy.RuleRate || d.Rule == epppolicy.RuleFamilyRate) && cmd.session.rateRefusals.Record(time.Now()) {
 			// The client is not backing off: end the session.
+			p.s.closedByPolicy(ctx, auth, cmd.session, d.Rule, 2502, d.Reason)
 			return policyDecision{action: policyClose, rule: d.Rule, code: 2502,
 				msg:    fmt.Sprintf("Session limit exceeded; server closing connection; %d command rate refusals within %s", epppolicy.RefusalsBeforeClose, epppolicy.RefusalWindow),
 				reason: d.Reason}
@@ -174,11 +180,20 @@ func addReason(cmd *command, reason string) {
 	result.AddChild(ext)
 }
 
+// eventSource is the outbox source of what the EPP server records on its
+// own, as for <newPW>.
+const eventSource = "domain-os/epp"
+
 // loginSuspended raises the alert for a login just suspended for failed
 // creates and ends its other sessions on this node; the session that was
 // suspended is closed by its command's answer. Other nodes refuse the
 // login's next domain create and its next login.
-func (s *Server) loginSuspended(auth *entities.EPPAuthenticatedLogin, from *session) {
+//
+// It also records an epp.login.suspended event, with the system as actor.
+// The suspension holds whether or not the event is written: Redis holds
+// the suspension, and the event is its record, so a failed write is logged
+// and counted (epp_events_lost_total), not a reason to let the login go on.
+func (s *Server) loginSuspended(ctx context.Context, auth *entities.EPPAuthenticatedLogin, from *session, d epppolicy.Decision) {
 	s.metrics.loginsSuspended.WithLabelValues(string(auth.ClID)).Inc()
 	s.logger.Error("EPP login suspended for creating registered names past the failed-create budget",
 		"clid", auth.ClID, "login", auth.LoginID, "connection_id", from.id, "client_ip", from.clientIP,
@@ -187,6 +202,41 @@ func (s *Server) loginSuspended(auth *entities.EPPAuthenticatedLogin, from *sess
 		if sess != from && sess.loggedInAs() == string(auth.LoginID) {
 			s.endSession(sess.id, endedSuspended)
 		}
+	}
+	e := entities.NewDomainEvent(eventSource, entities.EventEPPLoginSuspended, string(auth.ClID),
+		fmt.Sprintf("EPP login %s suspended for creating registered names past the failed-create budget", auth.LoginID),
+		entities.EPPLoginSuspendedData{EPPLoginSuspension: d.Suspension, Strikes: d.Strikes, ClientIP: from.clientIP})
+	e.AfterState = d.Suspension
+	s.record(ctx, e)
+}
+
+// closedByPolicy records a session the policy ended (rate refusals,
+// failed-create strikes) as an epp.session.closed_by_policy event.
+func (s *Server) closedByPolicy(ctx context.Context, auth *entities.EPPAuthenticatedLogin, sess *session, rule string, code int, reason string) {
+	s.record(ctx, entities.NewDomainEvent(eventSource, entities.EventEPPSessionClosedByPolicy, string(auth.ClID),
+		fmt.Sprintf("EPP session %s of login %s ended by the policy rule %s", sess.id, auth.LoginID, rule),
+		entities.EPPSessionClosedData{ClID: auth.ClID, Login: string(auth.LoginID), SessionID: sess.id, ClientIP: sess.clientIP, Rule: rule, Code: code, Reason: reason}))
+}
+
+// quotaReached records the registrar's first create refused for its daily
+// quota as an epp.quota.reached event.
+func (s *Server) quotaReached(ctx context.Context, auth *entities.EPPAuthenticatedLogin, limit int) {
+	day := time.Now().UTC().Format(time.DateOnly)
+	s.record(ctx, entities.NewDomainEvent(eventSource, entities.EventEPPQuotaReached, string(auth.ClID),
+		fmt.Sprintf("Registrar %s reached its %d domain creates for %s", auth.ClID, limit, day),
+		entities.EPPQuotaReachedData{ClID: auth.ClID, Day: day, CreatesPerDay: limit, Login: string(auth.LoginID)}))
+}
+
+// record writes an event the server decided on its own, with the system as
+// actor. What it records has happened whether or not it is written: a
+// failed write is logged and counted (epp_events_lost_total), not undone.
+func (s *Server) record(ctx context.Context, e entities.DomainEvent) {
+	e.Actor = "system"
+	ectx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedStoreTimeout*4)
+	defer cancel()
+	if err := s.events.Publish(ectx, e); err != nil {
+		s.metrics.eventsLost.WithLabelValues(e.Type).Inc()
+		s.logger.Error("EPP event not written", "type", e.Type, "subject", e.Subject, "error", err)
 	}
 }
 

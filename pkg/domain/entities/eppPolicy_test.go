@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,4 +96,27 @@ func TestEPPPolicySet(t *testing.T) {
 	empty := DefaultEPPPolicySet()
 	assert.Equal(t, DefaultEPPPolicyLimits(), empty.ForRegistrar("anyone").Policy.Limits)
 	assert.Len(t, empty.Policies(), 2)
+}
+
+func TestNoteExpiringPins(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	pin := func(notAfter time.Time, notice int) *EPPCertificatePin {
+		p := &EPPCertificatePin{Subject: "CN=x", NotAfter: notAfter, ExpiryNotice: notice}
+		p.ID = uuid.New()
+		return p
+	}
+	far, in20, in5, gone := pin(now.AddDate(0, 0, 60), 0), pin(now.AddDate(0, 0, 20), 0), pin(now.AddDate(0, 0, 5), 30), pin(now.Add(-time.Hour), 0)
+	a := &EPPRegistrarAccess{ClID: "rar-a", CertificatePins: []*EPPCertificatePin{far, in20, in5, gone}}
+
+	events := a.NoteExpiringPins(now, "test")
+	require.Len(t, events, 2)
+	assert.Equal(t, 30, events[0].Data.(EPPCertificateExpiringData).Days)
+	assert.Equal(t, 7, events[1].Data.(EPPCertificateExpiringData).Days)
+	assert.Equal(t, "system", events[0].Actor)
+	assert.Equal(t, 30, in20.ExpiryNotice)
+	assert.Equal(t, 7, in5.ExpiryNotice)
+	assert.Zero(t, far.ExpiryNotice, "not due yet")
+	assert.Zero(t, gone.ExpiryNotice, "already expired: no notice")
+	assert.Empty(t, a.NoteExpiringPins(now, "test"), "each notice once")
+	assert.Len(t, a.NoteExpiringPins(now.AddDate(0, 0, 14), "test"), 1, "the 20-day pin's 7-day notice")
 }

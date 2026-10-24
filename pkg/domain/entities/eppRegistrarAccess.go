@@ -116,6 +116,9 @@ type EPPCertificatePin struct {
 	NotAfter   time.Time `json:"not_after"`
 	// Logins restricts the pin to these logins. Empty means every login.
 	Logins []ClIDType `json:"logins,omitempty"`
+	// ExpiryNotice is the expiry notice the pin has had, in days before
+	// its NotAfter: 30, then 7; 0 for none yet (NoteExpiringPins).
+	ExpiryNotice int `json:"expiry_notice_days,omitempty"`
 }
 
 func (p *EPPCertificatePin) lifecycle() *EPPCredentialLifecycle { return &p.EPPCredentialLifecycle }
@@ -511,4 +514,52 @@ func (a *EPPRegistrarAccess) Clone() *EPPRegistrarAccess {
 		c.AllowedNetworks = append(c.AllowedNetworks, &nc)
 	}
 	return c
+}
+
+// EventEPPCertificateExpiring records a pinned certificate nearing its
+// expiry, 30 and again 7 days before.
+const EventEPPCertificateExpiring = "epp.certificate.expiring"
+
+// EPPCertificateExpiryNotices are the notices a pin gets before its
+// NotAfter, in days, largest first.
+var EPPCertificateExpiryNotices = []int{30, 7}
+
+// EPPCertificateExpiringData is an epp.certificate.expiring event's data.
+type EPPCertificateExpiringData struct {
+	ClID     ClIDType  `json:"clid"`
+	PinID    string    `json:"pin_id"`
+	Subject  string    `json:"subject"`
+	NotAfter time.Time `json:"not_after"`
+	Days     int       `json:"days"`
+}
+
+// NoteExpiringPins marks each usable pin whose certificate expires within
+// one of EPPCertificateExpiryNotices of now, and has not had that notice,
+// and returns an epp.certificate.expiring event for each. A pin past its
+// NotAfter gets none: its certificate no longer logs in. Saved with its
+// events in one transaction, a notice is given once however many callers
+// run it.
+func (a *EPPRegistrarAccess) NoteExpiringPins(now time.Time, source string) []DomainEvent {
+	var out []DomainEvent
+	for _, p := range a.CertificatePins {
+		if !p.Usable(now) || !now.Before(p.NotAfter) {
+			continue
+		}
+		due := 0
+		for _, days := range EPPCertificateExpiryNotices {
+			if p.NotAfter.Sub(now) <= time.Duration(days)*24*time.Hour {
+				due = days
+			}
+		}
+		if due == 0 || (p.ExpiryNotice != 0 && p.ExpiryNotice <= due) {
+			continue
+		}
+		p.ExpiryNotice = due
+		e := NewDomainEvent(source, EventEPPCertificateExpiring, a.ClID.String(),
+			fmt.Sprintf("EPP certificate %s of %s expires in %d days or less", p.Subject, a.ClID, due),
+			EPPCertificateExpiringData{ClID: a.ClID, PinID: p.ID.String(), Subject: p.Subject, NotAfter: p.NotAfter, Days: due})
+		e.Actor = "system"
+		out = append(out, e)
+	}
+	return out
 }

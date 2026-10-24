@@ -27,7 +27,7 @@ func NewGORMPremiumLabelRepository(db *gorm.DB) *PremiumLabelRepository {
 // Create creates a new premium list in the database
 func (plr *PremiumLabelRepository) Create(ctx context.Context, premiumLabel *entities.PremiumLabel) (*entities.PremiumLabel, error) {
 	pl := FromEntity(premiumLabel)
-	err := plr.db.WithContext(ctx).Create(pl).Error
+	err := dbFrom(ctx, plr.db).Create(pl).Error
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (plr *PremiumLabelRepository) Create(ctx context.Context, premiumLabel *ent
 // GetByLabelListAndCurrency retrieves a premium label by label, list, and currency
 func (plr *PremiumLabelRepository) GetByLabelListAndCurrency(ctx context.Context, label, list, currency string) (*entities.PremiumLabel, error) {
 	pl := &PremiumLabel{}
-	if err := plr.db.WithContext(ctx).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, strings.ToUpper(currency)).First(pl).Error; err != nil {
+	if err := dbFrom(ctx, plr.db).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, strings.ToUpper(currency)).First(pl).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPremiumLabelNotFound
 		}
@@ -48,13 +48,13 @@ func (plr *PremiumLabelRepository) GetByLabelListAndCurrency(ctx context.Context
 
 // DeleteByLabelListAndCurrency deletes a premium label by label, list, and currency
 func (plr *PremiumLabelRepository) DeleteByLabelListAndCurrency(ctx context.Context, label, list, currency string) error {
-	return plr.db.WithContext(ctx).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, currency).Delete(&PremiumLabel{}).Error
+	return dbFrom(ctx, plr.db).Where("label = ? AND premium_list_name = ? AND currency = ?", label, list, currency).Delete(&PremiumLabel{}).Error
 }
 
 // List retrieves a list of premium labels
 func (plr *PremiumLabelRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumLabel, string, error) {
 	// Create a query object ordering by label (PK used for cursor pagination)
-	dbQuery := plr.db.WithContext(ctx).Order("id ASC")
+	dbQuery := dbFrom(ctx, plr.db).Order("id ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {

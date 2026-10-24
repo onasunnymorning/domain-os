@@ -24,7 +24,7 @@ func NewGormPhaseRepository(db *gorm.DB) *PhaseRepository {
 func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := r.db.WithContext(ctx).Create(gormPhase).Error
+	err := dbFrom(ctx, r.db).Create(gormPhase).Error
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase
 // GetPhaseByTLDAndName gets a phase by its name
 func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error) {
 	var phase Phase
-	err := r.db.WithContext(ctx).Preload("Fees").Preload("Prices").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
+	err := dbFrom(ctx, r.db).Preload("Fees").Preload("Prices").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPhaseNotFound
@@ -47,7 +47,7 @@ func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name st
 // DeletePhaseByTLDAndName deletes a phase, within scope. A phase that does not
 // exist, or whose TLD is outside the scope, is ErrPhaseNotFound.
 func (r *PhaseRepository) DeletePhaseByTLDAndName(ctx context.Context, scope entities.RegistryScope, tld, name string) error {
-	q, err := scopeToTLDs(r.db.WithContext(ctx).Where("name = ? AND tld_name = ?", name, tld), scope)
+	q, err := scopeToTLDs(dbFrom(ctx, r.db).Where("name = ? AND tld_name = ?", name, tld), scope)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
 	gormPhase.UpdatedAt = time.Now().UTC() // Save() used to stamp this; see UpdateDomain
-	res := r.db.WithContext(ctx).
+	res := dbFrom(ctx, r.db).
 		Model(&Phase{}).
 		Where("id = ? AND tld_name = ?", gormPhase.ID, gormPhase.TLDName).
 		Select("*").
@@ -92,7 +92,7 @@ func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string, pageS
 			return nil, err
 		}
 	}
-	err = r.db.WithContext(ctx).Where("tld_name = ?", tld).Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
+	err = dbFrom(ctx, r.db).Where("tld_name = ?", tld).Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
 	if err != nil {
 		return nil, err // this is hard to test
 	}
@@ -116,7 +116,7 @@ func (r *PhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize int, 
 		}
 	}
 
-	err = r.db.WithContext(ctx).Where("type = ?", "GA").Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
+	err = dbFrom(ctx, r.db).Where("type = ?", "GA").Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (r *PhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize int, 
 // currencies need exchange rates for quoting.
 func (r *PhaseRepository) ListDistinctBaseCurrencies(ctx context.Context) ([]string, error) {
 	var currencies []string
-	err := r.db.WithContext(ctx).
+	err := dbFrom(ctx, r.db).
 		Model(&Phase{}).
 		Distinct("base_currency").
 		Where("base_currency <> ''").

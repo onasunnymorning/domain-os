@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/memstore"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -238,3 +239,38 @@ func TestEPPUseRecorderKeepsUsesWhenAFlushFails(t *testing.T) {
 }
 
 var _ repositories.EPPCredentialRepository = (*memstore.EPPCredentials)(nil)
+
+func TestNoteExpiringCertificates(t *testing.T) {
+	ctx := context.Background()
+	creds := memstore.NewEPPCredentials("rar-a")
+	_, err := creds.UpdateAccess(ctx, "rar-a", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		_, err := a.AddCertificatePin(testClientCertPEM(t), nil, "test", eppSvcNow) // valid a year
+		return nil, err
+	})
+	require.NoError(t, err)
+	svc := NewEPPAuthenticationService(creds, nil, nil, nil, 1)
+	expiring := func(evs []entities.DomainEvent) (out []entities.DomainEvent) {
+		for _, e := range evs {
+			if e.Type == entities.EventEPPCertificateExpiring {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+
+	svc.now = func() time.Time { return eppSvcNow.AddDate(0, 0, 300) }
+	n, err := svc.NoteExpiringCertificates(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, n, "65 days left: not due")
+
+	svc.now = func() time.Time { return eppSvcNow.AddDate(0, 0, 340) }
+	n, err = svc.NoteExpiringCertificates(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	n, _ = svc.NoteExpiringCertificates(ctx)
+	assert.Zero(t, n, "once, however often it runs")
+	evs := expiring(creds.Events())
+	require.Len(t, evs, 1)
+	assert.Equal(t, 30, evs[0].Data.(entities.EPPCertificateExpiringData).Days)
+	assert.Equal(t, "domain-os/epp", evs[0].Source)
+}

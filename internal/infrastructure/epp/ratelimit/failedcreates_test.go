@@ -174,3 +174,82 @@ func TestFailOpenFailedCreates(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 15*time.Minute, d.Round(time.Minute), "a suspension made on the node holds")
 }
+
+func TestRedisListAndLiftSuspensions(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", DB: 10})
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Skipf("no Redis on localhost:6379: %v", err)
+	}
+	require.NoError(t, client.FlushDB(ctx).Err())
+	r := NewRedis(client)
+	budget := entities.EPPFailedCreateBudget{Failures: 1, RatioPercent: 100}
+	family := entities.EPPFailedCreateBudget{Failures: 1, RatioPercent: 100}
+
+	reg := check(budget, nil)
+	reg.ClID, reg.SuspendAfter = "rar-a", 1
+	fam := check(entities.EPPFailedCreateBudget{Failures: 1000, RatioPercent: 100}, &family)
+	fam.Login, fam.ClID, fam.Scopes[0].Key, fam.SuspendAfter = "login-b", "rar-b", "reg:rar-b", 1
+	record(t, r, []string{"reg:rar-a"}, 1, 0)
+	record(t, r, []string{"reg:rar-b", "fam:acme"}, 1, 0)
+	for range 2 {
+		_, err := r.Assess(ctx, reg)
+		require.NoError(t, err)
+		_, err = r.Assess(ctx, fam)
+		require.NoError(t, err)
+	}
+
+	got, err := r.ListSuspensions(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, entities.ClIDType("rar-a"), got[0].ClID)
+	assert.Equal(t, "login-a", got[0].Login)
+	assert.Equal(t, "registrar", got[0].Scope)
+	assert.WithinDuration(t, time.Now().Add(15*time.Minute), got[0].EndsAt, 2*time.Second)
+	assert.Equal(t, "family", got[1].Scope)
+	assert.Equal(t, "acme", got[1].Family)
+	st, _ := r.Assess(ctx, fam)
+	assert.Equal(t, 1, st.Over, "an existing suspension names the family")
+
+	lifted, err := r.LiftSuspension(ctx, "login-b")
+	require.NoError(t, err)
+	assert.Equal(t, "acme", lifted.Family)
+	d, _ := r.Suspended(ctx, "login-b")
+	assert.Zero(t, d)
+	st, err = r.Assess(ctx, fam)
+	require.NoError(t, err)
+	assert.Zero(t, st.Suspended, "the strikes went with it: escalation starts afresh")
+	assert.Equal(t, 1, st.Strikes)
+
+	_, err = r.LiftSuspension(ctx, "login-b")
+	assert.ErrorIs(t, err, entities.ErrEPPSuspensionNotFound)
+	got, _ = r.ListSuspensions(ctx)
+	assert.Len(t, got, 1)
+
+	t.Run("a registrar ID with | is kept whole", func(t *testing.T) {
+		odd := check(budget, nil)
+		odd.Login, odd.ClID, odd.Scopes[0].Key, odd.SuspendAfter = "login-odd", "rar|a", "reg:rar|a", 1
+		record(t, r, []string{"reg:rar|a"}, 1, 0)
+		for range 2 {
+			_, err := r.Assess(ctx, odd)
+			require.NoError(t, err)
+		}
+		got, err := r.ListSuspensions(ctx)
+		require.NoError(t, err)
+		var found *entities.EPPLoginSuspension
+		for i := range got {
+			if got[i].Login == "login-odd" {
+				found = &got[i]
+			}
+		}
+		require.NotNil(t, found)
+		assert.Equal(t, entities.ClIDType("rar|a"), found.ClID)
+		assert.Equal(t, "registrar", found.Scope)
+		_, err = r.LiftSuspension(ctx, "login-odd")
+		require.NoError(t, err)
+		n, err := client.Exists(ctx, strikeKey("reg:rar|a")).Result()
+		require.NoError(t, err)
+		assert.Zero(t, n, "its strikes went with it")
+	})
+}

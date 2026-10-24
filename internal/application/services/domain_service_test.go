@@ -22,6 +22,7 @@ func TestDomainFromCreateDomainCommand(t *testing.T) {
 	roidService := NewRoidService(idgen, "TEST")
 
 	domainService := &DomainService{
+		tx:          passThroughTx{},
 		roidService: *roidService,
 	}
 
@@ -87,6 +88,7 @@ func TestBulkDomainFromCreateDomainCommands(t *testing.T) {
 	roidService := NewRoidService(idgen, "TEST")
 
 	domainService := &DomainService{
+		tx:          passThroughTx{},
 		roidService: *roidService,
 	}
 
@@ -188,11 +190,12 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 	}
 
 	repo := new(repositories.MockDomainRepository)
-	repo.On("GetDomainByName", ctx, "example.com", false).Return(existingDomain, nil)
+	repo.On("GetDomainByName", mock.Anything, "example.com", false).Return(existingDomain, nil)
 	// We just want to check if the entity passed to UpdateDomain has the preserved CreatedAt
-	repo.On("UpdateDomainColumnsIfUnchanged", ctx, existingDomain).Return(existingDomain, nil)
+	repo.On("UpdateDomainColumnsIfUnchanged", mock.Anything, existingDomain).Return(existingDomain, nil)
 
 	service := &DomainService{
+		tx:               passThroughTx{},
 		domainRepository: repo,
 		eventPublisher:   &noopPublisher{},
 	}
@@ -228,11 +231,11 @@ func TestDomainService_UpdateDomain_PreservesCreatedAt(t *testing.T) {
 func TestDomainService_UpdateDomain_RequiresTheVersionRead(t *testing.T) {
 	ctx := context.Background()
 	repo := new(repositories.MockDomainRepository)
-	repo.On("GetDomainByName", ctx, "example.com", false).Return(&entities.Domain{
+	repo.On("GetDomainByName", mock.Anything, "example.com", false).Return(&entities.Domain{
 		RoID: "123_DOM-APEX", Name: "example.com", TLDName: "com", ClID: "client123", AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
 		ExpiryDate: time.Now().AddDate(1, 0, 0), UpdatedAt: time.Now(), Status: entities.DomainStatus{OK: true},
 	}, nil)
-	service := &DomainService{domainRepository: repo, eventPublisher: &noopPublisher{}}
+	service := &DomainService{domainRepository: repo, eventPublisher: &noopPublisher{}, tx: passThroughTx{}}
 
 	_, err := service.UpdateDomain(ctx, "example.com", &commands.UpdateDomainCommand{
 		ClID: "client123", AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!", ExpiryDate: time.Now().AddDate(1, 0, 0), Status: entities.DomainStatus{OK: true},
@@ -262,9 +265,10 @@ func TestDomainService_ListEventsByDomain(t *testing.T) {
 	}
 
 	repo := new(repositories.MockDomainRepository)
-	repo.On("ListEventsByDomain", ctx, domainName).Return(mockEvents, nil)
+	repo.On("ListEventsByDomain", mock.Anything, domainName).Return(mockEvents, nil)
 
 	service := &DomainService{
+		tx:               passThroughTx{},
 		domainRepository: repo,
 	}
 

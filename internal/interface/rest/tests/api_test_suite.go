@@ -136,7 +136,7 @@ func NewTestAPI() (*TestAPI, error) {
 	registryOperatorService := services.NewRegistryOperatorService(registryOperatorRepo)
 	tldService := services.NewTLDService(tldRepo, dnsRecordRepo)
 	eventPublisher := &dbEventPublisher{db: db}
-	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
+	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo, phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher, postgres.NewTransactor(db))
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)

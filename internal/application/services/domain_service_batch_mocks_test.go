@@ -232,7 +232,7 @@ func newTestBatchDomainService(
 ) *DomainService {
 	idgen, _ := snowflakeidgenerator.NewIDGenerator()
 	roidSvc := NewRoidService(idgen, "TEST")
-	return NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premiumRepo, fxRepo, rarRepo, eventPub)
+	return NewDomainService(domRepo, hostRepo, *roidSvc, nndnRepo, tldRepo, phaseRepo, premiumRepo, fxRepo, rarRepo, eventPub, passThroughTx{})
 }
 
 func (m *mockTLDRepository) GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
@@ -241,4 +241,12 @@ func (m *mockTLDRepository) GetByNameForOperator(ctx context.Context, scope enti
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*entities.TLD), args.Error(1)
+}
+
+// passThroughTx is a Transactor for tests over mock repositories: no
+// transaction, finish returns the error it is given.
+type passThroughTx struct{}
+
+func (passThroughTx) Begin(ctx context.Context) (context.Context, func(error) error) {
+	return ctx, func(err error) error { return err }
 }

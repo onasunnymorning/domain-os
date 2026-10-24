@@ -101,6 +101,7 @@ func run() int {
 		nil,                    // hostRepo — not used by GetDomainByName
 		services.RoidService{}, // roidService — not used by read-only tools
 		nil, nil, nil, nil, nil, nil, nil,
+		postgres.NewTransactor(gormDB),
 	)
 
 	tldRepo := postgres.NewGormTLDRepo(gormDB)

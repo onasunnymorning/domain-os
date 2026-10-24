@@ -96,7 +96,7 @@ func restoreTestService(t *testing.T, setPolicy func(*entities.PhasePolicy)) (*D
 	idgen, err := snowflakeidgenerator.NewIDGenerator()
 	require.NoError(t, err)
 	svc := NewDomainService(domains, repositories.NewMockHostRepository(), *NewRoidService(idgen, "TEST"), new(mockNNDNRepository),
-		tldRepo, new(mockPhaseRepository), new(mockPremiumLabelRepository), new(mockFXRepository), new(repositories.MockRegistrarRepository), pub)
+		tldRepo, new(mockPhaseRepository), new(mockPremiumLabelRepository), new(mockFXRepository), new(repositories.MockRegistrarRepository), pub, passThroughTx{})
 	return svc, domains, &events
 }
 
